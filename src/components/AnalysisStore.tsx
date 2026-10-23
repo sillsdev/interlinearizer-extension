@@ -2,6 +2,7 @@ import type {
   Book,
   MorphemeAnalysis,
   PhraseAnalysisLink,
+  SenseRef,
   TextAnalysis,
   TokenAnalysis,
   TokenAnalysisLink,
@@ -38,6 +39,7 @@ import analysisReducer, {
   selectAnalysisDeletionOutcome,
   selectEmptiedByGlossClear,
   selectApprovedGloss,
+  selectApprovedGlossSenseRef,
   selectApprovedMorphemes,
   selectCatalogRows,
   selectMorphemePayloadIsSolelyOwned,
@@ -45,6 +47,7 @@ import analysisReducer, {
   selectPhraseLinkById,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
+  selectPhraseSenseRef,
   selectResolvedTokenAnalysis,
   selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
@@ -366,6 +369,20 @@ export function useGloss(tokenRef: string): string {
   useRequiredCallbacks('useGloss');
 
   return useSelector((state: AnalysisRootState) => selectApprovedGloss(state.analysis, tokenRef));
+}
+
+/**
+ * Returns the sense ref on the given token's approved analysis, or `undefined` when the token has
+ * no approved analysis or the analysis has no sense ref. Re-renders only when that ref changes.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useGlossSenseRef(tokenRef: string): SenseRef | undefined {
+  useRequiredCallbacks('useGlossSenseRef');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectApprovedGlossSenseRef(state.analysis, tokenRef),
+  );
 }
 
 /**
@@ -1091,6 +1108,18 @@ export function usePhraseGloss(phraseId: string): string {
   useRequiredCallbacks('usePhraseGloss');
 
   return useSelector((state: AnalysisRootState) => selectPhraseGloss(state.analysis, phraseId));
+}
+
+/**
+ * Returns the sense ref on the given phrase's payload, or `undefined` when the payload has none.
+ * Re-renders only when that ref changes.
+ *
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseSenseRef(phraseId: string): SenseRef | undefined {
+  useRequiredCallbacks('usePhraseSenseRef');
+
+  return useSelector((state: AnalysisRootState) => selectPhraseSenseRef(state.analysis, phraseId));
 }
 
 /**

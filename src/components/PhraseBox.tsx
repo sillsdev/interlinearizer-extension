@@ -7,13 +7,16 @@ import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-s
 import { sortByDocOrder } from '../utils/phrase-arc';
 import { NO_SLOT_FOCUS } from '../utils/token-layout';
 import {
+  useAnalysisLanguage,
   useAnalysisReadOnly,
   usePhraseDispatch,
   usePhraseGloss,
   usePhraseGlossDispatch,
   usePhraseLinkForToken,
+  usePhraseSenseRef,
   useReportGlossEditing,
 } from './AnalysisStore';
+import { useDisplayedGloss } from './LexiconSenses';
 import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
@@ -37,7 +40,11 @@ function PhraseGlossInput({
   /** Called when the input receives focus; used to center this phrase in the strip. */
   onFocus?: () => void;
 }>) {
-  const committed = usePhraseGloss(phraseId);
+  const { text: committed } = useDisplayedGloss(
+    usePhraseGloss(phraseId),
+    usePhraseSenseRef(phraseId),
+    useAnalysisLanguage(),
+  );
   const dispatchPhraseGloss = usePhraseGlossDispatch();
   const { glossPlaceholder, phraseGlossLabel } = usePhraseStripContext();
   const readOnly = useAnalysisReadOnly();

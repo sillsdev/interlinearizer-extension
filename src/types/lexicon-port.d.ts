@@ -178,13 +178,16 @@ declare module 'interlinearizer/lexicon' {
     authority: LexiconAuthority;
 
     /**
-     * Whether the software behind this provider can be reached in this session. Reaching it may
-     * mean waiting for it to start, so this answers late rather than wrongly.
+     * Watches whether the software behind this provider can be reached in this session. Reports as
+     * soon as it can, and again whenever the answer changes. Software that starts or stops while a
+     * project is open is therefore noticed without a reload.
      *
-     * @returns `false` for software that is absent or does not answer in time, which is an ordinary
-     *   configuration rather than a fault: the Interlinearizer glosses with no lexicon at all.
+     * Reaching the software may mean waiting for it to start, so the first report comes late rather
+     * than wrong. Software that is absent or does not answer in time reports `false`. That is an
+     * ordinary configuration rather than a fault: the Interlinearizer glosses with no lexicon at
+     * all.
      */
-    isAvailable: () => Promise<boolean>;
+    subscribeToAvailability: (callback: (available: boolean) => void) => Promise<UnsubscriberAsync>;
 
     /**
      * Watches which of this provider's lexicons a Paratext project is linked to. Reports the

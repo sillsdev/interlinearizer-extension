@@ -1,4 +1,5 @@
 import type { MorphemeAnalysis, Token } from 'interlinearizer';
+import { BookOpen } from 'lucide-react';
 import { PopoverAnchor } from 'platform-bible-react';
 import {
   cloneElement,
@@ -14,6 +15,7 @@ import {
   useMorphemeGlossDispatch,
   useReportGlossEditing,
 } from './AnalysisStore';
+import { useDisplayedGloss } from './LexiconSenses';
 import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
 import { STATUS_TEXT_COLOR_CLASS } from '../types/status-colors';
 import { formatTemplate } from '../utils/format-template';
@@ -26,10 +28,11 @@ const MIN_MORPHEME_COLUMN = '4ch';
  * entered lives separately.
  *
  * The breakdown renders as a boxed grid: each grid column is one morpheme, with its form on the top
- * row directly above its gloss field on the bottom row, so a morpheme and its gloss always share a
- * column (a future lexicon link slots into a third row with the same column alignment). The box
- * appears only for tokens that have a breakdown; an unanalyzed token's "define breakdown"
- * affordance lives in {@link TokenChip} instead.
+ * row directly above its gloss on the second row, so a morpheme and its gloss always share a
+ * column. Where a morpheme stores no gloss of its own, the box shows the gloss of the morpheme's
+ * lexicon sense instead. A third row marks that gloss, in the same column. The box appears only for
+ * tokens that have a breakdown; an unanalyzed token's "define breakdown" affordance lives in
+ * {@link TokenChip} instead.
  *
  * The whole forms row is a single accessible "edit breakdown" control rather than one labeled
  * button per morpheme: every form cell opens the same whole-breakdown editor, so per-cell labels
@@ -230,24 +233,18 @@ function MorphemeBoxInner({
       return cloneElement(cell, { key: m.id, style: { ...cell.props.style, ...placement } });
     }
 
-    if (readOnly) {
-      const gloss = m.gloss?.[analysisLanguage];
-      let glossStyle = 'tw:italic tw:text-muted-foreground';
-      if (gloss)
-        glossStyle = unapproved
-          ? `tw:italic ${STATUS_TEXT_COLOR_CLASS.suggested}`
-          : STATUS_TEXT_COLOR_CLASS.approved;
+    if (readOnly)
       return (
-        <span
-          className={`tw:min-h-lh tw:truncate tw:px-1 tw:text-center tw:text-xs ${glossStyle}`}
-          data-testid={cellGlossTestId}
+        <ReadOnlyMorphemeGloss
+          analysisLanguage={analysisLanguage}
           key={m.id}
-          style={{ ...placement, minWidth: '2ch' }}
-        >
-          {gloss || noGlossLabel || ''}
-        </span>
+          morpheme={m}
+          noGlossLabel={noGlossLabel}
+          placement={placement}
+          testId={cellGlossTestId}
+          unapproved={unapproved}
+        />
       );
-    }
 
     return (
       <MorphemeGlossInput
@@ -296,8 +293,103 @@ function MorphemeBoxInner({
         )}
         {morphemes.map(formCell)}
         {morphemes.map(glossCell)}
+        {/* A caller that renders its own glosses decides what they show. This box cannot tell
+            whether such a gloss came from the lexicon, so it marks none. */}
+        {!renderGloss &&
+          morphemes.map((m, i) => (
+            <LexiconGlossMark
+              analysisLanguage={analysisLanguage}
+              column={firstCell + i}
+              key={m.id}
+              label={labels.lexiconGloss}
+              morpheme={m}
+            />
+          ))}
       </div>
     </PopoverAnchor>
+  );
+}
+
+/** A morpheme's gloss as static text, shown in its grid cell. */
+function ReadOnlyMorphemeGloss({
+  morpheme,
+  analysisLanguage,
+  unapproved,
+  noGlossLabel,
+  testId,
+  placement,
+}: Readonly<{
+  morpheme: MorphemeAnalysis;
+  /** BCP 47 tag of the gloss shown. */
+  analysisLanguage: string;
+  /**
+   * Whether the gloss belongs to a record no one has approved. An unapproved gloss renders as
+   * suggested.
+   */
+  unapproved: boolean;
+  /** Stands in for a morpheme with no gloss to show. */
+  noGlossLabel?: string;
+  testId: string;
+  /** Grid row and column the cell occupies. */
+  placement: CSSProperties;
+}>) {
+  const { text: gloss } = useDisplayedGloss(
+    morpheme.gloss?.[analysisLanguage] ?? '',
+    morpheme.senseRef,
+    analysisLanguage,
+  );
+  let glossStyle = 'tw:italic tw:text-muted-foreground';
+  if (gloss)
+    glossStyle = unapproved
+      ? `tw:italic ${STATUS_TEXT_COLOR_CLASS.suggested}`
+      : STATUS_TEXT_COLOR_CLASS.approved;
+  return (
+    <span
+      className={`tw:min-h-lh tw:truncate tw:px-1 tw:text-center tw:text-xs ${glossStyle}`}
+      data-testid={testId}
+      style={{ ...placement, minWidth: '2ch' }}
+    >
+      {gloss || noGlossLabel || ''}
+    </span>
+  );
+}
+
+/**
+ * Marks a morpheme gloss that comes from the morpheme's lexicon sense. The mark sits in the grid
+ * row below the gloss. Renders nothing for a gloss the morpheme stores itself, or for a morpheme
+ * with no gloss to show.
+ */
+function LexiconGlossMark({
+  morpheme,
+  analysisLanguage,
+  column,
+  label,
+}: Readonly<{
+  morpheme: MorphemeAnalysis;
+  /** BCP 47 tag of the gloss the box shows. */
+  analysisLanguage: string;
+  /** 1-based grid column the mark occupies (shared with the morpheme's form and gloss). */
+  column: number;
+  /** Accessible name and hover text for the mark. */
+  label: string;
+}>) {
+  const { fromLexicon } = useDisplayedGloss(
+    morpheme.gloss?.[analysisLanguage] ?? '',
+    morpheme.senseRef,
+    analysisLanguage,
+  );
+  if (!fromLexicon) return undefined;
+  return (
+    <span
+      aria-label={label}
+      className="tw:flex tw:justify-center tw:text-muted-foreground"
+      data-testid="morpheme-lexicon-mark"
+      role="img"
+      style={{ gridColumn: column, gridRow: 3 }}
+      title={label}
+    >
+      <BookOpen aria-hidden="true" className="tw:size-3" />
+    </span>
   );
 }
 
@@ -351,7 +443,11 @@ export function MorphemeGlossInput({
    */
   glossLabelTemplate?: string;
 }>) {
-  const committed = morpheme.gloss?.[analysisLanguage] ?? '';
+  const { text: committed } = useDisplayedGloss(
+    morpheme.gloss?.[analysisLanguage] ?? '',
+    morpheme.senseRef,
+    analysisLanguage,
+  );
   const dispatchMorphemeGloss = useMorphemeGlossDispatch();
   const [draft, setDraft] = useState(committed);
 

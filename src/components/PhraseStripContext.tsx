@@ -23,6 +23,8 @@ export type TokenChipLabels = Readonly<{
   editStaleMorphemes: string;
   /** Accessible label for a single morpheme's gloss input. */
   morphemeGloss: string;
+  /** Accessible label marking a morpheme gloss shown from a lexicon sense. */
+  lexiconGloss: string;
   /** Accessible label for the dropdown row that approves a token's suggested gloss. */
   acceptSuggestion: string;
   /** Accessible label for a dropdown row that promotes a candidate gloss. */
@@ -46,6 +48,7 @@ export const TOKEN_CHIP_LABEL_KEYS = {
   editMorphemes: '%interlinearizer_tokenChip_editMorphemes%',
   editStaleMorphemes: '%interlinearizer_tokenChip_editStaleMorphemes%',
   morphemeGloss: '%interlinearizer_morphemeGloss_label%',
+  lexiconGloss: '%interlinearizer_morphemeGloss_fromLexicon%',
   acceptSuggestion: '%interlinearizer_suggestion_accept%',
   promoteSuggestion: '%interlinearizer_suggestion_promote%',
   suggestionBreakdown: '%interlinearizer_suggestion_breakdown%',

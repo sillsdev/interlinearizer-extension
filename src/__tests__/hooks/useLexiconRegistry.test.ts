@@ -9,7 +9,7 @@ import { FW_LITE_AUTHORITY } from '../../utils/lexicon-authorities';
 jest.mock('../../utils/fw-lite-lexicon', () => ({
   fwLiteLexiconProvider: {
     authority: 'fw-lite',
-    isAvailable: jest.fn(),
+    subscribeToAvailability: jest.fn(),
     subscribeToLink: jest.fn(),
     connect: jest.fn(),
     openChooser: jest.fn(),
@@ -21,6 +21,30 @@ const provider = jest.mocked(fwLiteLexiconProvider);
 /** The watches the hook has opened, so a test can report a link the way the provider would. */
 let watchers: ((lexiconId: string | undefined) => void)[] = [];
 const unsubscribe = jest.fn(async () => true);
+
+/** The availability watches the hook has opened, so a test can report software arriving or leaving. */
+let availabilityWatchers: ((available: boolean) => void)[] = [];
+const stopWatchingAvailability = jest.fn(async () => true);
+
+/**
+ * Serves an availability watch that reports `available` once subscribed and stays open. The report
+ * waits a turn, as reaching real software does.
+ */
+function availabilityReporting(available: boolean) {
+  provider.subscribeToAvailability.mockImplementation(async (callback) => {
+    availabilityWatchers.push(callback);
+    await Promise.resolve();
+    callback(available);
+    return stopWatchingAvailability;
+  });
+}
+
+/** Reports through every open availability watch, the way software starting or stopping would. */
+async function reportAvailable(available: boolean) {
+  await act(async () => {
+    availabilityWatchers.forEach((callback) => callback(available));
+  });
+}
 
 /**
  * Serves a watch that reports `lexiconId` on subscribing, as `subscribeSetting` does, and stays
@@ -61,18 +85,20 @@ function stubResolver(lexiconId?: string) {
 
 beforeEach(() => {
   watchers = [];
+  availabilityWatchers = [];
+  stopWatchingAvailability.mockResolvedValue(true);
   jest.mocked(logger).debug.mockClear();
   unsubscribe.mockReset();
   unsubscribe.mockResolvedValue(true);
   provider.connect.mockImplementation(stubResolver);
-  provider.isAvailable.mockResolvedValue(true);
+  availabilityReporting(true);
   mockedOpenChooser().mockResolvedValue(true);
   watchReporting('lex-1');
 });
 
 /**
- * Lets the availability answer land inside `act`, so a test that asserts on the registry after the
- * probe settles does not race the state update it makes.
+ * Lets the watches' reports land inside `act`, so a test that asserts on the registry after they
+ * settle does not race the state updates they make.
  */
 async function settleProbe() {
   await act(async () => {});
@@ -102,11 +128,11 @@ describe('useLexiconRegistry', () => {
   });
 
   it('reads a ref of unreachable software as foreign', async () => {
-    provider.isAvailable.mockResolvedValue(false);
+    availabilityReporting(false);
 
     const { result } = renderHook(() => useLexiconRegistry('project-1'));
 
-    await waitFor(() => expect(provider.isAvailable).toHaveBeenCalled());
+    await waitFor(() => expect(provider.subscribeToAvailability).toHaveBeenCalled());
     expect(result.current.isForeign({ authority: FW_LITE_AUTHORITY })).toBe(true);
     expect(provider.subscribeToLink).not.toHaveBeenCalled();
   });
@@ -234,10 +260,14 @@ describe('useLexiconRegistry', () => {
 
   it('opens no watch when the view closes before the software has answered', async () => {
     let answerAvailable = (): void => {};
-    provider.isAvailable.mockReturnValue(
-      new Promise((resolve) => {
-        answerAvailable = () => resolve(true);
-      }),
+    provider.subscribeToAvailability.mockImplementation(
+      (callback) =>
+        new Promise((resolve) => {
+          answerAvailable = () => {
+            callback(true);
+            resolve(stopWatchingAvailability);
+          };
+        }),
     );
 
     const { unmount } = renderHook(() => useLexiconRegistry('project-1'));
@@ -247,14 +277,15 @@ describe('useLexiconRegistry', () => {
     });
 
     expect(provider.subscribeToLink).not.toHaveBeenCalled();
+    expect(stopWatchingAvailability).toHaveBeenCalledTimes(1);
   });
 
   it('keeps every reachable provider when another rejects instead of answering', async () => {
-    provider.isAvailable.mockRejectedValue(new Error('misbehaving provider'));
+    provider.subscribeToAvailability.mockRejectedValue(new Error('misbehaving provider'));
 
     const { result } = renderHook(() => useLexiconRegistry('project-1'));
 
-    await waitFor(() => expect(provider.isAvailable).toHaveBeenCalled());
+    await waitFor(() => expect(provider.subscribeToAvailability).toHaveBeenCalled());
     expect(result.current.isForeign({ authority: FW_LITE_AUTHORITY })).toBe(true);
     expect(provider.subscribeToLink).not.toHaveBeenCalled();
   });
@@ -424,16 +455,9 @@ describe('useLexiconRegistry', () => {
       const { result } = renderHook(() => useLexiconRegistry('project-1'));
       await waitFor(() => expect(result.current.openChooser).toBeDefined());
 
-      provider.isAvailable.mockResolvedValue(false);
-      await act(async () => {
-        window.dispatchEvent(new Event('focus'));
-      });
-      await settleProbe();
+      await reportAvailable(false);
       provider.subscribeToLink.mockImplementation(async () => unsubscribe);
-      provider.isAvailable.mockResolvedValue(true);
-      await act(async () => {
-        window.dispatchEvent(new Event('focus'));
-      });
+      await reportAvailable(true);
       await settleProbe();
 
       expect(provider.subscribeToLink).toHaveBeenCalledTimes(2);
@@ -441,7 +465,7 @@ describe('useLexiconRegistry', () => {
     });
 
     it('offers none while no software can be reached', async () => {
-      provider.isAvailable.mockResolvedValue(false);
+      availabilityReporting(false);
       watchReporting(undefined);
       const { result } = renderHook(() => useLexiconRegistry('project-1'));
       await settleProbe();
@@ -450,48 +474,52 @@ describe('useLexiconRegistry', () => {
     });
   });
 
-  describe('software that starts after the view opened', () => {
-    it('is noticed when the view is focused again', async () => {
-      provider.isAvailable.mockResolvedValue(false);
+  describe('software that starts or stops after the view opened', () => {
+    it('is noticed when it reports in', async () => {
+      availabilityReporting(false);
       watchReporting(undefined);
       const { result } = renderHook(() => useLexiconRegistry('project-1'));
       await settleProbe();
       expect(result.current.openChooser).toBeUndefined();
 
-      provider.isAvailable.mockResolvedValue(true);
-      await act(async () => {
-        window.dispatchEvent(new Event('focus'));
-      });
+      await reportAvailable(true);
 
       await waitFor(() => expect(result.current.openChooser).toBeDefined());
+    });
+
+    it('reads refs as foreign again once it stops', async () => {
+      const { result } = renderHook(() => useLexiconRegistry('project-1'));
+      await waitFor(() => expect(result.current.resolverWith('search')).toBeDefined());
+
+      await reportAvailable(false);
+
+      expect(result.current.isForeign({ authority: FW_LITE_AUTHORITY })).toBe(true);
+      expect(unsubscribe).toHaveBeenCalledTimes(1);
     });
 
     it('leaves the open link watches alone when the answer has not changed', async () => {
       const { result } = renderHook(() => useLexiconRegistry('project-1'));
       await waitFor(() => expect(result.current.resolverWith('search')).toBeDefined());
+      const registry = result.current;
       expect(provider.subscribeToLink).toHaveBeenCalledTimes(1);
 
-      await act(async () => {
-        window.dispatchEvent(new Event('focus'));
-      });
-      await settleProbe();
+      await reportAvailable(true);
 
-      expect(provider.isAvailable).toHaveBeenCalledTimes(2);
+      expect(result.current).toBe(registry);
       expect(provider.subscribeToLink).toHaveBeenCalledTimes(1);
       expect(unsubscribe).not.toHaveBeenCalled();
     });
 
-    it('stops asking once the view is gone', async () => {
-      const { unmount } = renderHook(() => useLexiconRegistry('project-1'));
-      await settleProbe();
-      expect(provider.isAvailable).toHaveBeenCalledTimes(1);
+    it('stops watching once the view is gone', async () => {
+      const { result, unmount } = renderHook(() => useLexiconRegistry('project-1'));
+      await waitFor(() => expect(result.current.resolverWith('search')).toBeDefined());
+      const registry = result.current;
 
       unmount();
-      await act(async () => {
-        window.dispatchEvent(new Event('focus'));
-      });
+      await reportAvailable(false);
 
-      expect(provider.isAvailable).toHaveBeenCalledTimes(1);
+      expect(stopWatchingAvailability).toHaveBeenCalledTimes(1);
+      expect(result.current).toBe(registry);
     });
   });
 });

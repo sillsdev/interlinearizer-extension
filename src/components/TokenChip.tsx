@@ -28,6 +28,7 @@ import {
   useApproveAnalysisDispatch,
   useConfirmMorphemesDispatch,
   useGloss,
+  useGlossSenseRef,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
   useMorphemeDeleteDispatch,
@@ -40,6 +41,7 @@ import {
   useSuggestionAfterClearing,
   useUnapprovedTokenAnalysis,
 } from './AnalysisStore';
+import { useDisplayedGloss } from './LexiconSenses';
 import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover } from './MorphemeEditor';
 import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
@@ -112,10 +114,14 @@ export function TokenChip({
   glossPlaceholder?: string;
   labels?: TokenChipLabels;
 }>) {
-  const committedGloss = useGloss(token.ref);
+  const analysisLanguage = useAnalysisLanguage();
+  const { text: committedGloss } = useDisplayedGloss(
+    useGloss(token.ref),
+    useGlossSenseRef(token.ref),
+    analysisLanguage,
+  );
   const onGlossChange = useGlossDispatch();
   const morphemes = useMorphemes(token.ref);
-  const analysisLanguage = useAnalysisLanguage();
   const dispatchMorphemeBreakdown = useMorphemeBreakdownDispatch();
   const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
   const resetLosesAnnotation = useMorphemeResetLosesAnnotation(token.ref);
@@ -127,6 +133,11 @@ export function TokenChip({
   const resolved = useResolvedTokenAnalysis(token.ref, token.surfaceText, !readOnly);
   // Read-only styles an unapproved token's own record as the suggestion that editing would offer.
   const unapproved = useUnapprovedTokenAnalysis(token.ref, readOnly);
+  const { text: unapprovedGloss } = useDisplayedGloss(
+    unapproved?.gloss?.[analysisLanguage] ?? '',
+    unapproved?.glossSenseRef,
+    analysisLanguage,
+  );
   const approveAnalysis = useApproveAnalysisDispatch();
   const [draft, setDraft] = useState(committedGloss);
   // While the user has emptied an approved token's gloss, the deletion only commits on blur, so the
@@ -520,7 +531,7 @@ export function TokenChip({
             data-testid="readonly-gloss"
             style={{ minWidth: '5ch' }}
           >
-            {unapproved ? (unapproved.gloss?.[analysisLanguage] ?? '') : committedGloss}
+            {unapproved ? unapprovedGloss : committedGloss}
           </span>
         )}
         {/* A second popover root, independent of the morpheme editor's above. Anchoring the panel on

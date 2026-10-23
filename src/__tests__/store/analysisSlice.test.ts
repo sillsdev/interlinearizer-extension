@@ -33,6 +33,7 @@ import {
   reapplyStaleAnalysis,
   selectAnalysisDeletionOutcome,
   selectApprovedGloss,
+  selectApprovedGlossSenseRef,
   selectApprovedMorphemes,
   selectCatalogRows,
   selectEmptiedByGlossClear,
@@ -42,6 +43,7 @@ import {
   selectPhraseLinkById,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
+  selectPhraseSenseRef,
   selectPhraseLinks,
   selectPoolIndex,
   selectResolvedTokenAnalysis,
@@ -665,6 +667,32 @@ describe('selectApprovedGloss', () => {
   });
 });
 
+describe('selectApprovedGlossSenseRef', () => {
+  const SENSE = { authority: 'fw-lite', projectId: 'lex', senseId: 's-1' };
+
+  it("returns the sense ref on the token's approved analysis", () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          glossSenseRef: SENSE,
+        }),
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectApprovedGlossSenseRef(store.getState().analysis, 'tok-1')).toEqual(SENSE);
+  });
+
+  it('returns undefined for a token with no approved analysis', () => {
+    const store = createAnalysisStore();
+
+    expect(selectApprovedGlossSenseRef(store.getState().analysis, 'tok-1')).toBeUndefined();
+  });
+});
+
 /** Builds a {@link TextAnalysis} seeded with the given approved phrase link. */
 function makeAnalysisWithPhrase(link: PhraseAnalysisLink): TextAnalysis {
   return {
@@ -1143,6 +1171,24 @@ describe('selectPhraseGloss', () => {
   it('returns empty string when the phrase id is not found', () => {
     const store = createAnalysisStore();
     expect(selectPhraseGloss(store.getState().analysis, 'nonexistent')).toBe('');
+  });
+});
+
+describe('selectPhraseSenseRef', () => {
+  it("returns the sense ref on the phrase's payload", () => {
+    const sense = { authority: 'fw-lite', projectId: 'lex', senseId: 's-1' };
+    const link = makePhraseLink('phrase-1', ['tok-a']);
+    const analysis = makeAnalysisWithPhrase(link);
+    analysis.phraseAnalyses[0].senseRef = sense;
+    const store = createAnalysisStore({ analysis: { analysis, analysisLanguage: 'und' } });
+
+    expect(selectPhraseSenseRef(store.getState().analysis, 'phrase-1')).toEqual(sense);
+  });
+
+  it('returns undefined when the phrase id is not found', () => {
+    const store = createAnalysisStore();
+
+    expect(selectPhraseSenseRef(store.getState().analysis, 'nonexistent')).toBeUndefined();
   });
 });
 

@@ -1,7 +1,11 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { TooltipProvider } from 'platform-bible-react';
+import type { SenseRef } from 'interlinearizer';
+import type { ResolvedSense } from 'interlinearizer/lexicon';
 import type { ReactElement, ReactNode } from 'react';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
+import { LexiconSensesProvider } from '../../components/LexiconSenses';
+import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
 import { ViewOptions } from '../../types/view-options';
 
 /**
@@ -58,6 +62,42 @@ export const withAnalysisStore = {
  */
 export function withTooltipProvider(children: ReactNode): ReactElement {
   return <TooltipProvider>{children}</TooltipProvider>;
+}
+
+/** The authority of the lexicon {@link withLexicon} connects. */
+export const TEST_LEXICON_AUTHORITY = 'test-lexicon';
+
+/** A ref to the sense `senseId` in the lexicon {@link withLexicon} connects. */
+export function testSenseRef(senseId: string): SenseRef {
+  return { authority: TEST_LEXICON_AUTHORITY, senseId };
+}
+
+/**
+ * One connected lexicon holding `senses`, keyed by sense id. A ref naming any other authority is
+ * foreign to it.
+ *
+ * @returns The registry, and the lexicon's sense look-up so a test can see what was asked.
+ */
+export function stubLexiconRegistry(senses: Record<string, ResolvedSense> = {}) {
+  const resolveSense = jest.fn(async ({ senseId }: SenseRef) => senses[senseId]);
+  const registry = createLexiconRegistry([
+    { ...nullLexiconResolver, authorities: [TEST_LEXICON_AUTHORITY], resolveSense },
+  ]);
+  return { registry, resolveSense };
+}
+
+/**
+ * Wraps a subject in a {@link stubLexiconRegistry} lexicon holding `senses`, standing in for the
+ * lexicon the interlinear view connects.
+ *
+ * @returns The wrapped subject, and the lexicon's sense look-up so a test can see what was asked.
+ */
+export function withLexicon(children: ReactNode, senses: Record<string, ResolvedSense> = {}) {
+  const { registry, resolveSense } = stubLexiconRegistry(senses);
+  return {
+    ui: <LexiconSensesProvider registry={registry}>{children}</LexiconSensesProvider>,
+    resolveSense,
+  };
 }
 
 /** A {@link ViewOptions} object with every toggle set to `false`, for use as a test baseline. */

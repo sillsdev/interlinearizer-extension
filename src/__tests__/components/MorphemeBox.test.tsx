@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MorphemeAnalysis } from 'interlinearizer';
 import { Popover } from 'platform-bible-react';
@@ -11,6 +11,7 @@ import { TOKEN_CHIP_LABEL_KEYS } from '../../components/PhraseStripContext';
 import { STATUS_TEXT_COLOR_CLASS } from '../../types/status-colors';
 import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
 import { makeWordToken } from '../test-helpers';
+import { testSenseRef, withLexicon } from './test-helpers';
 
 jest.mock('../../components/AnalysisStore');
 
@@ -21,6 +22,7 @@ const LABELS = {
   editMorphemes: 'Edit morpheme breakdown for {token}',
   editStaleMorphemes: 'Edit stale morpheme breakdown for {token}',
   morphemeGloss: 'Gloss for morpheme {form}',
+  lexiconGloss: 'Gloss from the lexicon',
 };
 
 const WORD_TOKEN = makeWordToken('GEN 1:1:0', 'hello');
@@ -677,5 +679,91 @@ describe('row labels', () => {
     renderBox();
 
     expect(screen.getByText('hel')).toHaveStyle({ gridColumn: '1' });
+  });
+});
+
+describe('morphemes linked to a lexicon sense', () => {
+  const LINKED: MorphemeAnalysis[] = [
+    { id: 'm-1', form: 'hel', writingSystem: 'en', senseRef: testSenseRef('s-hel') },
+    {
+      id: 'm-2',
+      form: '-lo',
+      writingSystem: 'en',
+      senseRef: testSenseRef('s-lo'),
+      gloss: { en: 'DIM' },
+    },
+  ];
+  const SENSES = {
+    's-hel': { gloss: { en: 'greet' } },
+    's-lo': { gloss: { en: 'small' } },
+  };
+
+  /** Renders the box inside a lexicon holding {@link SENSES}. */
+  function renderLinkedBox(props: Partial<Parameters<typeof MorphemeBox>[0]> = {}) {
+    const { ui } = withLexicon(
+      <Popover>
+        <MorphemeBox
+          analysisLanguage="en"
+          disabled={false}
+          labels={LABELS}
+          morphemes={LINKED}
+          onEditBreakdown={jest.fn()}
+          onGlossFocus={jest.fn()}
+          popoverOpen={false}
+          readOnly={false}
+          token={WORD_TOKEN}
+          {...props}
+        />
+      </Popover>,
+      SENSES,
+    );
+    return render(ui);
+  }
+
+  it('fills a gloss field from the sense where the morpheme stores no gloss', async () => {
+    renderLinkedBox();
+
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: 'Gloss for morpheme hel' })).toHaveValue('greet'),
+    );
+    expect(screen.getByRole('textbox', { name: 'Gloss for morpheme -lo' })).toHaveValue('DIM');
+  });
+
+  it('marks only the gloss shown from the lexicon, in the row under it', async () => {
+    renderLinkedBox();
+
+    const mark = await screen.findByRole('img', { name: 'Gloss from the lexicon' });
+    expect(mark).toHaveStyle({ gridColumn: '1', gridRow: '3' });
+    expect(screen.getAllByTestId('morpheme-lexicon-mark')).toHaveLength(1);
+  });
+
+  it('shows the sense gloss as text in a read-only breakdown, marked as from the lexicon', async () => {
+    renderLinkedBox({ readOnly: true });
+
+    expect(await screen.findByText('greet')).toHaveAttribute(
+      'data-testid',
+      'readonly-morpheme-gloss',
+    );
+    expect(screen.getByRole('img', { name: 'Gloss from the lexicon' })).toBeInTheDocument();
+  });
+
+  it('shows and marks nothing for a link the lexicon cannot resolve', async () => {
+    renderLinkedBox({
+      readOnly: true,
+      noGlossLabel: 'no gloss',
+      morphemes: [{ id: 'm-1', form: 'hel', writingSystem: 'en', senseRef: testSenseRef('gone') }],
+    });
+
+    expect(await screen.findByText('no gloss')).toBeInTheDocument();
+    expect(screen.queryByTestId('morpheme-lexicon-mark')).not.toBeInTheDocument();
+  });
+
+  it('marks nothing where the caller renders the glosses', async () => {
+    const { container } = renderLinkedBox({
+      renderGloss: (morpheme) => <span>{morpheme.form} gloss</span>,
+    });
+
+    await screen.findByText('hel gloss');
+    expect(container.querySelector('[data-testid="morpheme-lexicon-mark"]')).toBeNull();
   });
 });

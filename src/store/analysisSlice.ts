@@ -6,6 +6,7 @@ import type {
   PhraseAnalysisLink,
   SegmentAnalysis,
   SegmentAnalysisLink,
+  SenseRef,
   TextAnalysis,
   TokenAnalysis,
   TokenAnalysisLink,
@@ -2017,6 +2018,19 @@ export function selectApprovedGloss(state: AnalysisState, tokenRef: string): str
 }
 
 /**
+ * Returns the sense ref on `tokenRef`'s approved analysis, or `undefined` when the token has no
+ * approved analysis or the analysis has no sense ref.
+ */
+export function selectApprovedGlossSenseRef(
+  state: AnalysisState,
+  tokenRef: string,
+): SenseRef | undefined {
+  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
+  if (!approvedId) return undefined;
+  return selectAnalysisById(state).get(approvedId)?.glossSenseRef;
+}
+
+/**
  * Memoized selector mapping each approved `TokenAnalysis.id` to the number of distinct tokens whose
  * approved link points at it — the blast radius of a global edit to that payload. At most one
  * approved analysis per token is counted, so multiple approved links on the same token are never
@@ -2435,6 +2449,16 @@ export function selectPhraseGloss(state: AnalysisState, phraseId: string): strin
   if (!link) return '';
   const pa = state.analysis.phraseAnalyses.find((p) => p.id === link.analysisId);
   return pa?.gloss?.[state.analysisLanguage] ?? '';
+}
+
+/**
+ * Returns the sense ref on the payload of the phrase occurrence `phraseId`. Returns `undefined`
+ * when the occurrence or its payload is missing, or when the payload has no sense ref.
+ */
+export function selectPhraseSenseRef(state: AnalysisState, phraseId: string): SenseRef | undefined {
+  const link = state.analysis.phraseAnalysisLinks.find((l) => l.id === phraseId);
+  if (!link) return undefined;
+  return state.analysis.phraseAnalyses.find((p) => p.id === link.analysisId)?.senseRef;
 }
 
 /** Projects `segmentAnalysisLinks` out of `AnalysisState` for use as a `createSelector` input. */

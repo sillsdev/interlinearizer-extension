@@ -199,6 +199,7 @@
       "%interlinearizer_morphemeEditor_confirmResplitAction%": "Save and discard",
       "%interlinearizer_morphemeEditor_staleHint%": "These forms were split from a different spelling. Choose Done to keep them.",
       "%interlinearizer_morphemeGloss_label%": "Gloss for morpheme {form}",
+      "%interlinearizer_morphemeGloss_fromLexicon%": "Gloss from the lexicon",
       "%interlinearizer_tokenChip_editMorphemes%": "Edit morpheme breakdown for {token}",
       "%interlinearizer_tokenChip_editStaleMorphemes%": "Edit morpheme breakdown for {token}, split from a different spelling",
       "%interlinearizer_tokenChip_defineMorphemes%": "Define morpheme breakdown for {token}",

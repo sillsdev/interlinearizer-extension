@@ -13,6 +13,13 @@ export function LocateFixed(props: Readonly<{ className?: string }>): ReactEleme
 }
 
 /**
+ * Stub for the BookOpen icon.
+ */
+export function BookOpen(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="book-open-icon" {...props} />;
+}
+
+/**
  * Stub for the ArrowUpToLine icon.
  */
 export function ArrowUpToLine(props: Readonly<{ className?: string }>): ReactElement {

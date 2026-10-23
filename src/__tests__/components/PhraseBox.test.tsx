@@ -4,7 +4,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
-import type { PhraseAnalysisLink, Token } from 'interlinearizer';
+import type { PhraseAnalysisLink, SenseRef, Token } from 'interlinearizer';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { PhraseBox } from '../../components/PhraseBox';
 import {
@@ -17,7 +17,12 @@ import {
   makePunctToken,
   makeWordToken,
 } from '../test-helpers';
-import { mockKeyAsValueLocalizedStrings, withTooltipProvider } from './test-helpers';
+import {
+  mockKeyAsValueLocalizedStrings,
+  testSenseRef,
+  withLexicon,
+  withTooltipProvider,
+} from './test-helpers';
 
 /** Stable mock fns for AnalysisStore hooks. */
 const mockUseGloss = jest.fn<string, [string]>().mockReturnValue('');
@@ -30,6 +35,7 @@ const mockUsePhraseDispatch = jest.fn().mockReturnValue({
 });
 const mockUsePhraseGloss = jest.fn<string, [string]>().mockReturnValue('');
 const mockUsePhraseGlossDispatch = jest.fn().mockReturnValue(jest.fn());
+const mockUsePhraseSenseRef = jest.fn<SenseRef | undefined, [string]>();
 
 /** What the mocked useAnalysisReadOnly returns; module state, reset by the afterEach below. */
 const mockAnalysisReadOnly = { value: false };
@@ -52,6 +58,9 @@ jest.mock('../../components/AnalysisStore', () => ({
   usePhraseDispatch: () => mockUsePhraseDispatch(),
   usePhraseGloss: (...args: Parameters<typeof mockUsePhraseGloss>) => mockUsePhraseGloss(...args),
   usePhraseGlossDispatch: () => mockUsePhraseGlossDispatch(),
+  usePhraseSenseRef: (...args: Parameters<typeof mockUsePhraseSenseRef>) =>
+    mockUsePhraseSenseRef(...args),
+  useAnalysisLanguage: () => 'en',
   useReportGlossEditing: () => {},
 }));
 
@@ -1061,6 +1070,50 @@ describe('PhraseBox', () => {
     await userEvent.type(glossInput, 'hello');
     await userEvent.tab();
     expect(dispatchSpy).toHaveBeenCalledWith('phrase-1', 'hello');
+  });
+
+  describe('linked to a lexicon sense', () => {
+    beforeEach(() => {
+      mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
+      mockUsePhraseSenseRef.mockReturnValue(testSenseRef('s-1'));
+    });
+
+    it('shows the sense gloss where the phrase stores none', async () => {
+      const { ui } = withLexicon(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+        's-1': { gloss: { en: 'in the' } },
+      });
+      renderBox(ui);
+
+      expect(await screen.findByDisplayValue('in the')).toBe(
+        screen.getByTestId('phrase-gloss-input'),
+      );
+    });
+
+    it('shows the stored gloss over the sense gloss, without asking the lexicon', () => {
+      mockUsePhraseGloss.mockReturnValue('within');
+      const { ui, resolveSense } = withLexicon(
+        <PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />,
+        { 's-1': { gloss: { en: 'in the' } } },
+      );
+      renderBox(ui);
+
+      expect(screen.getByTestId('phrase-gloss-input')).toHaveValue('within');
+      expect(resolveSense).not.toHaveBeenCalled();
+    });
+
+    it('writes nothing on blur when the sense gloss is left as shown', async () => {
+      const dispatchSpy = jest.fn();
+      mockUsePhraseGlossDispatch.mockReturnValue(dispatchSpy);
+      const { ui } = withLexicon(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+        's-1': { gloss: { en: 'in the' } },
+      });
+      renderBox(ui);
+      await userEvent.click(await screen.findByDisplayValue('in the'));
+
+      await userEvent.tab();
+
+      expect(dispatchSpy).not.toHaveBeenCalled();
+    });
   });
 
   it('ignores non-Enter/Space keys on the box container', async () => {

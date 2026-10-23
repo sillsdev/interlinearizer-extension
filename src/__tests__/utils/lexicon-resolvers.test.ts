@@ -153,7 +153,7 @@ function stubProvider(
 ): LexiconProvider & { connect: jest.Mock } {
   return {
     authority,
-    isAvailable: jest.fn(async () => true),
+    subscribeToAvailability: jest.fn(async () => async () => true),
     subscribeToLink: jest.fn(async () => async () => true),
     connect: jest.fn((lexiconId?: string) =>
       stubResolver([authority], { ...NO_CAPABILITIES, search: !!lexiconId }),

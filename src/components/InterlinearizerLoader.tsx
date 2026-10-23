@@ -40,6 +40,7 @@ import useDraftProject, { type EditStep } from '../hooks/useDraftProject';
 import { formatTemplate } from '../utils/format-template';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../hooks/useLexiconRegistry';
+import { LexiconSensesProvider } from './LexiconSenses';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../hooks/useProjectBookIds';
@@ -664,7 +665,8 @@ function InterlinearizerLoaderInner({
     hasFreeTranslations,
   );
 
-  const { openChooser: openLexiconChooser } = useLexiconRegistry(projectId);
+  const lexiconRegistry = useLexiconRegistry(projectId);
+  const { openChooser: openLexiconChooser } = lexiconRegistry;
 
   // The view's own copy of the morpheme-box setting, applied in a transition so the switch — which
   // reads the setting directly — paints without waiting on the chip re-render it triggers.
@@ -2046,7 +2048,7 @@ function InterlinearizerLoaderInner({
           shown={sidePanel === 'concordance'}
           writingSystem={writingSystem}
         >
-          {viewArea}
+          <LexiconSensesProvider registry={lexiconRegistry}>{viewArea}</LexiconSensesProvider>
         </SourceTextProvider>
       </div>
 

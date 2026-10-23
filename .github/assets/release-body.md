@@ -53,15 +53,17 @@ Meant to be used with Paratext 10 `<Studio version>`. Install both files from th
 release: mixing an Interlinearizer zip with a different version of the application is the usual
 cause of a blank Interlinearizer window.
 
-#### Optional: the Lexicon extension <!-- lexicon-step: Verify Release checks the Lexicon zip from here on -->
+Step-by-step instructions, first steps once it is open, and troubleshooting are in
+[INSTALL.md](https://github.com/sillsdev/interlinearizer-extension/blob/v<version>/INSTALL.md).
+
+Please report problems at
+[github.com/sillsdev/interlinearizer-extension/issues](https://github.com/sillsdev/interlinearizer-extension/issues).
+
+#### Optional: the Lexicon extension <!-- lexicon-step: Verify Release reads the Lexicon zip name from here to /lexicon-step -->
 
 **Windows and Linux only.** To browse and edit FieldWorks lexicons in Paratext 10 as well, download
 `lexicon_<Lexicon version>.zip`, copy it zipped into the same extensions folder as in step 4 (first
 deleting any Lexicon zip from an earlier release), and restart Paratext 10. It was built by
 <Lexicon build>.
 
-Step-by-step instructions, first steps once it is open, and troubleshooting are in
-[INSTALL.md](https://github.com/sillsdev/interlinearizer-extension/blob/v<version>/INSTALL.md).
-
-Please report problems at
-[github.com/sillsdev/interlinearizer-extension/issues](https://github.com/sillsdev/interlinearizer-extension/issues).
+<!-- /lexicon-step -->

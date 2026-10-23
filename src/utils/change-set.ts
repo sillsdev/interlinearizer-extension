@@ -7,6 +7,11 @@ export type AppliedChanges = {
   inverse: ChangeSet;
 };
 
+/** Whether `changes` change no record, the scope's record included. */
+export function isEmptyChangeSet(changes: ChangeSet): boolean {
+  return Object.keys(changes).every((key) => key === 'intent');
+}
+
 /** The draft's record, without its analysis or its `dirty` flag. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave them out
 export function scopeRecordOf({ analysis, dirty, ...scope }: DraftProject): ScopeRecord {

@@ -2,27 +2,30 @@
 
 import type { TextAnalysis } from 'interlinearizer';
 import { AnalysisIndex } from '../../services/analysisIndex';
-import { type IndexedAnalysis, IndexedRepository } from '../../services/indexedRepository';
-import { emptyAnalysis } from '../../types/empty-factories';
+import { type IndexedDraft, IndexedRepository } from '../../services/indexedRepository';
+import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
 /** Answers lookups from an index over `records`, keeping it as `keep` says. */
 class StubRepository extends IndexedRepository {
-  readonly kept: IndexedAnalysis | undefined;
+  readonly kept: IndexedDraft | undefined;
 
-  private readonly index: AnalysisIndex;
+  private readonly indexedDraft: IndexedDraft;
 
   constructor(records: TextAnalysis, keep: 'kept' | 'none') {
     super();
-    this.index = new AnalysisIndex(records);
-    this.kept = keep === 'kept' ? { analysis: records, index: this.index } : undefined;
+    this.indexedDraft = {
+      draft: { ...emptyDraft('src'), analysisLanguages: ['en'], analysis: records },
+      index: new AnalysisIndex(records),
+    };
+    this.kept = keep === 'kept' ? this.indexedDraft : undefined;
   }
 
-  protected async indexed(): Promise<AnalysisIndex> {
-    return this.index;
+  protected async indexed(): Promise<IndexedDraft> {
+    return this.indexedDraft;
   }
 
-  protected keptIndex(): IndexedAnalysis | undefined {
+  protected keptIndex(): IndexedDraft | undefined {
     return this.kept;
   }
 }
@@ -54,13 +57,21 @@ describe('IndexedRepository', () => {
 
   it('reports the differences of the index it keeps from its analysis', async () => {
     const repository = new StubRepository(analysis(), 'kept');
-    repository.kept?.analysis.tokenAnalyses.pop();
+    repository.kept?.draft.analysis.tokenAnalyses.pop();
 
     await expect(repository.checkIndexes()).resolves.toContainEqual({
       index: 'tokenAnalyses',
       key: 'ta-and',
       missing: [],
       extra: ['ta-and'],
+    });
+  });
+
+  it("reads the draft's own record without its analysis", async () => {
+    await expect(new StubRepository(analysis(), 'none').getScope()).resolves.toStrictEqual({
+      sourceProjectId: 'src',
+      modelVersion: emptyDraft('src').modelVersion,
+      analysisLanguages: ['en'],
     });
   });
 

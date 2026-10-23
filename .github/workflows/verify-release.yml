@@ -63,7 +63,6 @@ jobs:
           fi
           if grep -qF '<Lexicon build>' <<< "${BODY}"; then
             echo '::error::The release body still has its `<Lexicon build>` placeholder. Replace it with the FieldWorks Lite release or run the Lexicon zip came from and its Lexbox commit, or remove the optional Lexicon step.'
-            lexicon_placeholder=1
             failed=1
           fi
 

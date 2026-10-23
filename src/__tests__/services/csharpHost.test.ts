@@ -99,13 +99,33 @@ describe('startCSharpHost', () => {
     host.stdout.emit('data', 'PapiClient connecting\n');
     expect(papi.commands.sendCommand).not.toHaveBeenCalled();
     host.stdout.emit('data', `${HOST_READY_LINE}\n`);
+    host.stdout.emit('data', 'Disconnected from Platform.Bible\n');
     await flushPromises();
 
+    expect(papi.commands.sendCommand).toHaveBeenCalledTimes(1);
     expect(papi.commands.sendCommand).toHaveBeenCalledWith(
       'interlinearizer.csharpPing',
       'activation',
     );
     expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('.NET 8.0.1, process 42'));
+  });
+
+  it('pings the host once when its ready line arrives split across chunks', async () => {
+    jest.mocked(papi.commands.sendCommand).mockResolvedValue({
+      message: 'activation',
+      runtimeVersion: '10.0.12',
+      processId: 7,
+    });
+    const host = new FakeHost();
+    startCSharpHost(token, makeLauncher('win32', host).launcher);
+
+    const splitAt = HOST_READY_LINE.length - 'ready'.length;
+    host.stdout.emit('data', HOST_READY_LINE.slice(0, splitAt));
+    expect(papi.commands.sendCommand).not.toHaveBeenCalled();
+    host.stdout.emit('data', `${HOST_READY_LINE.slice(splitAt)}\n`);
+    await flushPromises();
+
+    expect(papi.commands.sendCommand).toHaveBeenCalledTimes(1);
   });
 
   it('logs a ping the host does not answer', async () => {

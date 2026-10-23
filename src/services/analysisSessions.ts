@@ -1,7 +1,10 @@
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
+import { isEmptyChangeSet } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
+import { assertApprovalRule } from './commands/approvalRule';
+import { ChangeBuffer } from './commands/changeBuffer';
 import { EditHistory } from './editHistory';
 
 /** BCP 47 tag for a language that cannot be determined. */
@@ -200,6 +203,33 @@ export class AnalysisSessions {
       );
     }
     return this.run(sessionId, edit);
+  }
+
+  /**
+   * Runs `command` as one edit of the session's analysis, in the session's turn. What it stages
+   * applies as one undo step, marking the draft dirty; a command staging nothing applies nothing.
+   *
+   * @returns The changes applied, naming `intent`.
+   * @throws {ReadOnlyAnalysisError} If the session is read-only.
+   * @throws {ApprovalRuleError} If the changes would give a token or segment a second approved
+   *   link; nothing is applied.
+   * @throws {Error} If the session is not open.
+   * @throws Whatever the command or applying its changes throws; nothing is applied.
+   */
+  edit(
+    sessionId: string,
+    intent: string,
+    command: (buffer: ChangeBuffer, session: Session) => Promise<void>,
+  ): Promise<ChangeSet> {
+    return this.runEdit(sessionId, async (session) => {
+      const buffer = new ChangeBuffer(session.repository);
+      await command(buffer, session);
+      const changes = buffer.toChangeSet(intent);
+      if (isEmptyChangeSet(changes)) return changes;
+      await assertApprovalRule(buffer, session.repository);
+      await session.history.apply(changes);
+      return changes;
+    });
   }
 
   /**

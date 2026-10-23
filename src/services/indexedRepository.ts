@@ -1,28 +1,31 @@
 import type {
   AssignmentStatus,
+  DraftProject,
   PhraseAnalysis,
   SegmentAnalysis,
   SegmentAnalysisLink,
-  TextAnalysis,
   TokenAnalysis,
 } from 'interlinearizer';
 import type {
   AnalysisLinks,
   AnalysisRepository,
   IndexDifference,
+  ScopeRecord,
 } from '../types/analysis-repository';
+import { scopeRecordOf } from '../utils/change-set';
 import { jsonCopy } from '../utils/json-copy';
 import type { AnalysisIndex } from './analysisIndex';
 
-/** An index, with the analysis whose records it is kept over. */
-export type IndexedAnalysis = {
-  analysis: TextAnalysis;
+/** An index, with the draft whose records it is kept over. */
+export type IndexedDraft = {
+  draft: DraftProject;
   index: AnalysisIndex;
 };
 
-/** The lookups of a repository that answers them from an {@link AnalysisIndex} over its records. */
+/** The reads of a repository that answers them from an {@link AnalysisIndex} over its records. */
 export abstract class IndexedRepository implements Pick<
   AnalysisRepository,
+  | 'getScope'
   | 'getTokenAnalyses'
   | 'getPhraseAnalyses'
   | 'getSegmentAnalyses'
@@ -34,6 +37,10 @@ export abstract class IndexedRepository implements Pick<
   | 'findPhraseAnalysesByForm'
   | 'checkIndexes'
 > {
+  async getScope(): Promise<ScopeRecord> {
+    return jsonCopy(scopeRecordOf((await this.indexed()).draft));
+  }
+
   getTokenAnalyses(ids: string[]): Promise<TokenAnalysis[]> {
     return this.query((index) => index.getTokenAnalyses(ids));
   }
@@ -78,21 +85,21 @@ export abstract class IndexedRepository implements Pick<
    */
   async checkIndexes(): Promise<IndexDifference[]> {
     const kept = this.keptIndex();
-    return kept ? kept.index.differencesFrom(kept.analysis) : [];
+    return kept ? kept.index.differencesFrom(kept.draft.analysis) : [];
   }
 
   /** Runs `read` against the index and returns a copy of its result, so callers may change it. */
   private async query<T>(read: (index: AnalysisIndex) => T): Promise<T> {
-    return jsonCopy(read(await this.indexed()));
+    return jsonCopy(read((await this.indexed()).index));
   }
 
   /**
-   * The kept index, built over the stored records first when none is kept.
+   * The kept index and its draft, loaded from storage first when none is kept.
    *
    * @throws Whatever loading the stored records throws.
    */
-  protected abstract indexed(): Promise<AnalysisIndex>;
+  protected abstract indexed(): Promise<IndexedDraft>;
 
-  /** The kept index and the analysis it is kept over, or `undefined` when none is kept. */
-  protected abstract keptIndex(): IndexedAnalysis | undefined;
+  /** The kept index and the draft it is kept over, or `undefined` when none is kept. */
+  protected abstract keptIndex(): IndexedDraft | undefined;
 }

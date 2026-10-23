@@ -179,14 +179,24 @@ function benchTier(tier: TierSpec, allBooks: () => Book[]): Record<string, unkno
     `  forms not in the text: ${byWebViewRead.length} by the WebView's read, ${byHostIndex.length} by the host's index, ${disagreeing} disagreeing`,
   );
 
-  // The host's re-anchor, over one book's analysis at a time, and the WebView's passes over the whole
+  // The host's re-anchor, over one book's links at a time, and the WebView's passes over the whole
   // draft must agree on every book of the text and every linked book it lacks.
   const content: DraftContent = { analysis, segmentation: draft.segmentation };
   const byBook = splitAnalysisByBook(analysis);
-  const bookAlone = (bookCode: string): DraftProject => ({
-    ...draft,
-    analysis: byBook.get(bookCode) ?? emptyAnalysis(),
-  });
+  // As the host reads a book: its links, and the segment analyses they reference.
+  const bookAlone = (bookCode: string): DraftProject => {
+    const inBook = byBook.get(bookCode) ?? emptyAnalysis();
+    return {
+      ...draft,
+      analysis: {
+        ...emptyAnalysis(),
+        tokenAnalysisLinks: inBook.tokenAnalysisLinks,
+        phraseAnalysisLinks: inBook.phraseAnalysisLinks,
+        segmentAnalysisLinks: inBook.segmentAnalysisLinks,
+        segmentAnalyses: inBook.segmentAnalyses,
+      },
+    };
+  };
   const textBookCodes = new Set(books.map((book) => book.bookRef));
   const passes: [string, BookPass<DraftContent>][] = [
     ...books.map((book): [string, BookPass<DraftContent>] => [

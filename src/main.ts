@@ -14,6 +14,7 @@ import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
 import * as bookService from './services/bookService';
 import type { ChangeBuffer } from './services/commands/changeBuffer';
+import * as morphemeCommands from './services/commands/morphemeCommands';
 import * as tokenCommands from './services/commands/tokenCommands';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
@@ -903,6 +904,66 @@ function approveAnalysisForToken(
 }
 
 /**
+ * Writes a token's morpheme breakdown, each form in `writingSystem`.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function writeMorphemes(
+  sessionId: string,
+  tokenRef: string,
+  surfaceText: string,
+  forms: string[],
+  writingSystem: string,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'writeMorphemes', (buffer) =>
+    morphemeCommands.writeMorphemes(buffer, {
+      ...editStamp(),
+      tokenRef,
+      surfaceText,
+      writingSystem,
+      morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
+    }),
+  );
+}
+
+/**
+ * Removes a token's morpheme breakdown.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function deleteMorphemes(sessionId: string, tokenRef: string): Promise<string> {
+  return runSessionEdit(sessionId, 'deleteMorphemes', (buffer) =>
+    morphemeCommands.deleteMorphemes(buffer, { ...editStamp(), tokenRef }),
+  );
+}
+
+/**
+ * Glosses one morpheme of a token's breakdown in the session's analysis language; a blank value
+ * clears it.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function writeMorphemeGloss(
+  sessionId: string,
+  tokenRef: string,
+  morphemeId: string,
+  value: string,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'writeMorphemeGloss', (buffer, session) =>
+    morphemeCommands.writeMorphemeGloss(buffer, {
+      ...editStamp(),
+      tokenRef,
+      morphemeId,
+      value,
+      analysisLanguage: session.analysisLanguage,
+    }),
+  );
+}
+
+/**
  * Returns a summary of every interlinearizer project for the given source project as a JSON string.
  * The WebView deserializes this to populate its project picker and to decide whether to prompt
  * "create new" or "select existing" when the user opens the project menu.
@@ -1571,6 +1632,73 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const writeMorphemesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.writeMorphemes',
+    writeMorphemes,
+    {
+      method: {
+        summary: "Write a token's morpheme breakdown",
+        params: [
+          sessionIdParam,
+          ...tokenParams,
+          {
+            name: 'forms',
+            required: true,
+            summary: 'The morpheme forms, in order',
+            schema: { type: 'array', items: { type: 'string' } },
+          },
+          {
+            name: 'writingSystem',
+            required: true,
+            summary: 'BCP 47 tag of the writing system the forms are in',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const deleteMorphemesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.deleteMorphemes',
+    deleteMorphemes,
+    {
+      method: {
+        summary: "Remove a token's morpheme breakdown",
+        params: [sessionIdParam, tokenParams[0]],
+        result: editResult,
+      },
+    },
+  );
+
+  const writeMorphemeGlossCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.writeMorphemeGloss',
+    writeMorphemeGloss,
+    {
+      method: {
+        summary:
+          "Gloss one morpheme of a token's breakdown in a session's analysis language; a blank value clears it",
+        params: [
+          sessionIdParam,
+          tokenParams[0],
+          {
+            name: 'morphemeId',
+            required: true,
+            summary: 'MorphemeAnalysis.id of the morpheme glossed',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'value',
+            required: true,
+            summary: 'The gloss',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
   const checkIndexesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.checkIndexes',
     checkIndexes,
@@ -1966,6 +2094,9 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     checkIndexesCommandRegistration,
     writeGlossCommandRegistration,
     approveAnalysisForTokenCommandRegistration,
+    writeMorphemesCommandRegistration,
+    deleteMorphemesCommandRegistration,
+    writeMorphemeGlossCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,

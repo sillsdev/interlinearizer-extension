@@ -130,8 +130,7 @@ export class DraftRepository implements AnalysisRepository {
 
   /**
    * The draft as this instance's last apply left it, which the next apply builds on. Dropped by
-   * every load and by every write but an apply, since each may come from a caller holding another
-   * draft.
+   * every load and every whole save, since either may come from a caller holding another draft.
    */
   private current: DraftProject | undefined;
 
@@ -196,7 +195,6 @@ export class DraftRepository implements AnalysisRepository {
    * @throws If storage rejects the read or the write.
    */
   async markClean(): Promise<void> {
-    this.current = undefined;
     const { sourceProjectId, storage } = this;
     const raw = await storage.read(draftKey(sourceProjectId));
     if (raw === undefined) return;

@@ -274,7 +274,6 @@ function mixedChanges(): ChangeSet {
     intent: 'mixedChanges',
     scope: {
       ...scopeRecordOf(fullDraft()),
-      dirty: false,
       segmentation: {
         removedVerseStarts: [],
         addedStarts: [{ tokenRef: 'GEN 1:1:9', surfaceText: 'beginning' }],
@@ -289,6 +288,43 @@ function mixedChanges(): ChangeSet {
     tokenAnalysisLinks: { puts: records.tokenAnalysisLinks, deletes: ['tl-gen-beginning'] },
     phraseAnalyses: { puts: records.phraseAnalyses, deletes: ['pa-in-the'] },
     phraseAnalysisLinks: { puts: records.phraseAnalysisLinks, deletes: ['pa-in-the'] },
+  };
+}
+
+/** Replaces EXO's segment payload with one carrying a new free translation. */
+function translatingExodus(): ChangeSet {
+  const [segment] = fullAnalysis().segmentAnalyses;
+  return {
+    intent: 'writeFreeTranslation',
+    segmentAnalyses: {
+      puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
+      deletes: [],
+    },
+  };
+}
+
+/** Deletes every record that only EXO holds, leaving EXO no stored analysis. */
+function deletingExodus(): ChangeSet {
+  return {
+    intent: 'deleteExodus',
+    segmentAnalyses: { puts: [], deletes: ['sa-exo'] },
+    segmentAnalysisLinks: { puts: [], deletes: ['sl-exo'] },
+    tokenAnalysisLinks: { puts: [], deletes: ['tl-exo-and'] },
+  };
+}
+
+/** {@link fullDraft} after {@link deletingExodus}. */
+function fullDraftWithoutExodus(): DraftProject {
+  const draft = fullDraft();
+  const { analysis } = draft;
+  return {
+    ...draft,
+    analysis: {
+      ...analysis,
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalysisLinks: analysis.tokenAnalysisLinks.filter(({ id }) => id !== 'tl-exo-and'),
+    },
   };
 }
 
@@ -557,6 +593,13 @@ export function describeAnalysisRepositoryConformance(
         await repository.replaceAll(draft);
 
         await expect(reload(store)).resolves.toStrictEqual(inIdOrder(draft));
+        await store.damageBook(SOURCE, 'GEN', 'corrupt');
+        const {
+          draft: { analysis },
+        } = await reloadForCopy(store);
+        expect(analysis.tokenAnalyses.find(({ id }) => id === 'ta-and')?.gloss).toStrictEqual({
+          en: 'and then',
+        });
       });
 
       it('stamps what it saves with the current model version', async () => {
@@ -806,26 +849,9 @@ export function describeAnalysisRepositoryConformance(
         const repository = await store.open(SOURCE);
         await repository.replaceAll(fullDraft());
 
-        await repository.apply({
-          intent: 'deleteExodus',
-          segmentAnalyses: { puts: [], deletes: ['sa-exo'] },
-          segmentAnalysisLinks: { puts: [], deletes: ['sl-exo'] },
-          tokenAnalysisLinks: { puts: [], deletes: ['tl-exo-and'] },
-        });
+        await repository.apply(deletingExodus());
 
-        await expect(reload(store)).resolves.toStrictEqual(
-          inIdOrder({
-            ...fullDraft(),
-            analysis: {
-              ...fullAnalysis(),
-              segmentAnalyses: [],
-              segmentAnalysisLinks: [],
-              tokenAnalysisLinks: fullAnalysis().tokenAnalysisLinks.filter(
-                ({ id }) => id !== 'tl-exo-and',
-              ),
-            },
-          }),
-        );
+        await expect(reload(store)).resolves.toStrictEqual(inIdOrder(fullDraftWithoutExodus()));
       });
 
       it('skips a delete of a record that is not stored, with nothing for its inverse to restore', async () => {
@@ -853,7 +879,11 @@ export function describeAnalysisRepositoryConformance(
         await (await store.open(SOURCE)).apply(puttingNewRecords());
 
         await expect(reload(store)).resolves.toStrictEqual(
-          inIdOrder({ ...emptyDraft(SOURCE), analysis: { ...emptyAnalysis(), ...newRecords() } }),
+          inIdOrder({
+            ...emptyDraft(SOURCE),
+            dirty: true,
+            analysis: { ...emptyAnalysis(), ...newRecords() },
+          }),
         );
       });
 
@@ -873,6 +903,7 @@ export function describeAnalysisRepositoryConformance(
         await expect(reload(store)).resolves.toStrictEqual(
           inIdOrder({
             ...emptyDraft(SOURCE),
+            dirty: true,
             analysis: { ...emptyAnalysis(), tokenAnalyses, tokenAnalysisLinks },
           }),
         );
@@ -936,6 +967,11 @@ export function describeAnalysisRepositoryConformance(
         expect(
           analysis.tokenAnalysisLinks.filter(({ analysisId }) => analysisId === 'ta-and'),
         ).toHaveLength(2);
+        await store.damageBook(SOURCE, 'GEN', 'corrupt');
+        const { draft } = await reloadForCopy(store);
+        expect(draft.analysis.tokenAnalyses.filter(({ id }) => id === 'ta-and')).toStrictEqual([
+          edited,
+        ]);
       });
 
       it("carries boundary changes in the scope's record", async () => {
@@ -1080,9 +1116,45 @@ export function describeAnalysisRepositoryConformance(
         await expect(reload(store, 'other-project')).resolves.toStrictEqual(
           inIdOrder({
             ...emptyDraft('other-project'),
+            dirty: true,
             analysis: { ...emptyAnalysis(), ...newRecords() },
           }),
         );
+      });
+
+      it('marks a clean draft unsaved', async () => {
+        await (await store.open(SOURCE)).replaceAll(exodusOnlyDraft());
+
+        await (await store.open(SOURCE)).apply(translatingExodus());
+
+        const { dirty } = await reload(store);
+        expect(dirty).toBe(true);
+      });
+
+      it('leaves the draft unsaved when undoing an edit made before it was marked clean', async () => {
+        const repository = await store.open(SOURCE);
+        await repository.replaceAll(exodusOnlyDraft());
+        const { inverse } = await repository.apply(translatingExodus());
+        await repository.markClean();
+
+        await repository.apply(inverse);
+
+        await expect(reload(store)).resolves.toStrictEqual(
+          inIdOrder({ ...exodusOnlyDraft(), dirty: true }),
+        );
+      });
+
+      it('resolves once the changes have landed even if cleanup after them fails, and a later apply finishes that cleanup', async () => {
+        await (await store.open(SOURCE)).replaceAll(fullDraft());
+        const restore = store.failCleanup(SOURCE);
+
+        await (await store.open(SOURCE)).apply(deletingExodus());
+        await expect(store.holdsLeftovers(SOURCE)).resolves.toBe(true);
+
+        restore();
+        await expect(reload(store)).resolves.toStrictEqual(inIdOrder(fullDraftWithoutExodus()));
+        await (await store.open(SOURCE)).apply({ intent: 'nothing' });
+        await expect(store.holdsLeftovers(SOURCE)).resolves.toBe(false);
       });
 
       it('leaves a draft written by a newer build in place, refusing to apply over it', async () => {
@@ -1091,6 +1163,37 @@ export function describeAnalysisRepositoryConformance(
         await expect((await store.open(SOURCE)).apply(puttingNewRecords())).rejects.toThrow();
 
         await expect((await store.open(SOURCE)).exportAll()).rejects.toThrow();
+      });
+    });
+
+    describe('apply after loading a book that could not be read', () => {
+      it('refuses changes that reach the book, applying nothing', async () => {
+        const repository = await loadedWithUnreadableGenesis(store);
+
+        await expect(repository.apply(puttingNewRecords())).rejects.toThrow();
+
+        await expect(reloadForCopy(store)).resolves.toStrictEqual({
+          draft: inIdOrder(fullDraftWithoutGenesis()),
+          unreadableBooks: ['GEN'],
+        });
+      });
+
+      it('applies changes elsewhere, keeping the book as stored', async () => {
+        const repository = await loadedWithUnreadableGenesis(store);
+        const changes = translatingExodus();
+
+        await repository.apply(changes);
+
+        await expect(reloadForCopy(store)).resolves.toStrictEqual({
+          draft: inIdOrder({
+            ...fullDraftWithoutGenesis(),
+            analysis: {
+              ...fullDraftWithoutGenesis().analysis,
+              segmentAnalyses: changes.segmentAnalyses?.puts ?? [],
+            },
+          }),
+          unreadableBooks: ['GEN'],
+        });
       });
     });
 

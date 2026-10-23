@@ -12,9 +12,9 @@ function copyOf<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
 
-/** The draft's record, without its analysis. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave it out
-export function scopeRecordOf({ analysis, ...scope }: DraftProject): ScopeRecord {
+/** The draft's record, without its analysis or its `dirty` flag. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave them out
+export function scopeRecordOf({ analysis, dirty, ...scope }: DraftProject): ScopeRecord {
   return scope;
 }
 
@@ -68,9 +68,9 @@ function applyRecordChanges<T extends { id: string }>(
 }
 
 /**
- * Applies `changes` to `draft`, leaving `draft` as it was. The result holds copies of the records
- * the changes put, and shares everything else with `draft`, the records the inverse restores
- * included.
+ * Applies `changes` to `draft`, leaving `draft` as it was. The result is marked unsaved. It holds
+ * copies of the records the changes put, and shares everything else with `draft`, the records the
+ * inverse restores included.
  *
  * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
  *   record names another source project.
@@ -126,6 +126,7 @@ export function applyChangeSet(draft: DraftProject, changes: ChangeSet): Applied
   return {
     draft: {
       ...(changes.scope ? copyOf(changes.scope) : scopeRecordOf(draft)),
+      dirty: true,
       analysis: {
         segmentAnalyses: segmentAnalyses.records,
         segmentAnalysisLinks: segmentAnalysisLinks.records,

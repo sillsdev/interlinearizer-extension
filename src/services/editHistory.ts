@@ -1,8 +1,9 @@
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
+import { MAX_UNDO_STEPS } from '../utils/undo-history';
 
 /**
- * A linear undo history of the edits applied through it to one repository. Each edit is one step,
- * and a new edit drops every step undone before it.
+ * A linear undo history of the edits applied through it to one repository, keeping the latest
+ * {@link MAX_UNDO_STEPS}. Each edit is one step, and a new edit drops every step undone before it.
  */
 export class EditHistory {
   private readonly repository: AnalysisRepository;
@@ -25,6 +26,7 @@ export class EditHistory {
   async apply(changes: ChangeSet): Promise<void> {
     const { inverse } = await this.repository.apply(changes);
     this.undoable.push(inverse);
+    if (this.undoable.length > MAX_UNDO_STEPS) this.undoable.shift();
     this.redoable.length = 0;
   }
 

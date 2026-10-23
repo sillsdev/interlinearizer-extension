@@ -133,8 +133,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
 
   /**
    * The draft as this instance last applied changes to it or answered a lookup from it, with the
-   * index over its records. Dropped by every load and by every write but an apply, since each may
-   * come from a caller holding another draft.
+   * index over its records. Dropped by every load and every whole save, since either may come from
+   * a caller holding another draft.
    */
   private current: IndexedDraft | undefined;
 
@@ -200,7 +200,6 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects the read or the write.
    */
   async markClean(): Promise<void> {
-    this.current = undefined;
     const { sourceProjectId, storage } = this;
     const raw = await storage.read(draftKey(sourceProjectId));
     if (raw === undefined) return;

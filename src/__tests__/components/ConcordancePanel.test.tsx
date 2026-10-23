@@ -8,14 +8,13 @@ import type { TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { Collator } from 'platform-bible-utils';
 import { useEffect, type ReactNode } from 'react';
 import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
-import ConcordancePanel from '../../components/ConcordancePanel';
+import ConcordancePanel, { CONCORDANCE_PANEL_STRING_KEYS } from '../../components/ConcordancePanel';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import { ConcordanceEntriesContext, SourceTextContext } from '../../components/SourceTextContext';
 import type { SourceText } from '../../hooks/useSourceTextReader';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { buildConcordanceEntries, indexBook, type ConcordanceEntry } from '../../utils/concordance';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
-import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
 jest.mock('../../components/TextReadingStatus');
@@ -86,12 +85,28 @@ function link(analysisId: string, tokenRef: string): TokenAnalysisLink {
   };
 }
 
+/**
+ * The panel's strings as their own keys, except a `{book}` template for the per-book count and any
+ * `overrides`.
+ */
+function panelStrings(overrides: Record<string, string> = {}): Record<string, string> {
+  return {
+    ...Object.fromEntries(CONCORDANCE_PANEL_STRING_KEYS.map((k) => [k, k])),
+    '%interlinearizer_concordance_occurrenceCountInBook%': 'in {book}',
+    ...overrides,
+  };
+}
+
+const PANEL_STRINGS = panelStrings();
+
 type PanelOptions = Partial<{
   text: SourceText;
   /** The entries listed, {@link ENTRIES} by default. */
   entries: readonly ConcordanceEntry[];
   analysis: TextAnalysis;
   currentBook: string;
+  currentBookName: string;
+  localizedStrings: Record<string, string>;
   onClose: () => void;
   onShowCatalog: () => void;
   setScrRef: (ref: SerializedVerseRef) => void;
@@ -115,6 +130,8 @@ function panelTree(options: PanelOptions = {}) {
           <ConcordanceEntriesContext.Provider value={options.entries ?? ENTRIES}>
             <ConcordancePanel
               currentBook={options.currentBook ?? 'GEN'}
+              currentBookName={options.currentBookName ?? 'Genesis'}
+              localizedStrings={options.localizedStrings ?? PANEL_STRINGS}
               onClose={options.onClose ?? (() => {})}
               onShowCatalog={options.onShowCatalog ?? (() => {})}
               sourceLanguageTag="en"
@@ -138,9 +155,6 @@ function rowFor(form: string): HTMLElement {
 }
 
 beforeEach(() => {
-  mockKeyAsValueLocalizedStrings({
-    '%interlinearizer_concordance_occurrenceCountInBook%': 'in {book}',
-  });
   claimedFocusRequest = undefined;
 });
 
@@ -196,23 +210,11 @@ describe('ConcordancePanel', () => {
   });
 
   it('counts each form in the current book, naming the book', () => {
-    renderPanel({ currentBook: 'EXO' });
+    renderPanel({ currentBook: 'EXO', currentBookName: 'Exodus' });
 
     const count = within(rowFor('let')).getByTestId('concordance-row-count-in-book');
     expect(count).toHaveTextContent('0');
     expect(count).toHaveTextContent('in Exodus');
-  });
-
-  it('names the book in the interface language where the platform has a name for it', () => {
-    mockKeyAsValueLocalizedStrings({
-      '%interlinearizer_concordance_occurrenceCountInBook%': 'in {book}',
-      '%LocalizedId.GEN%': 'Genèse',
-    });
-    renderPanel({ currentBook: 'GEN' });
-
-    expect(within(rowFor('let')).getByTestId('concordance-row-count-in-book')).toHaveTextContent(
-      'in Genèse',
-    );
   });
 
   it('reads a form as analyzed where its occurrences carry approved analyses', () => {
@@ -289,10 +291,11 @@ describe('ConcordancePanel', () => {
   });
 
   it('names the refresh action on hover', () => {
-    mockKeyAsValueLocalizedStrings({
-      '%interlinearizer_concordance_refresh%': 'Read the text again',
+    renderPanel({
+      localizedStrings: panelStrings({
+        '%interlinearizer_concordance_refresh%': 'Read the text again',
+      }),
     });
-    renderPanel();
 
     expect(screen.getByTestId('concordance-refresh')).toHaveAttribute(
       'title',

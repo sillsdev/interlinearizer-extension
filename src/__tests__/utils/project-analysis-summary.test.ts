@@ -1,23 +1,12 @@
 /// <reference types="jest" />
 
-import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type { TextAnalysis, TokenAnalysis } from 'interlinearizer';
 import { summarizeAnalysis } from '../../utils/project-analysis-summary';
-import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
+import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from '../test-helpers';
 
 /** Creates a minimal {@link TokenAnalysis} payload record fixture. */
 function mkTokenAnalysis(id: string): TokenAnalysis {
   return { ...FIXTURE_STAMPS, id, surfaceText: id };
-}
-
-/** Creates a {@link TokenAnalysisLink} joining a token ref to an analysis id. */
-function mkTokenLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
-  return {
-    id: `${tokenRef}:${analysisId}`,
-    ...FIXTURE_STAMPS,
-    analysisId,
-    status: 'approved',
-    token: { tokenRef, surfaceText: tokenRef },
-  };
 }
 
 /** Builds a {@link TextAnalysis} with the given token analyses and links, other layers empty. */
@@ -37,7 +26,7 @@ describe('summarizeAnalysis', () => {
   it('counts token analyses and collects the books their links reference', () => {
     const analysis = mkAnalysis({
       tokenAnalyses: [mkTokenAnalysis('a1'), mkTokenAnalysis('a2')],
-      tokenAnalysisLinks: [mkTokenLink('a1', 'GEN 1:1:0'), mkTokenLink('a2', 'EXO 2:3:4')],
+      tokenAnalysisLinks: [makeTokenLink('a1', 'GEN 1:1:0'), makeTokenLink('a2', 'EXO 2:3:4')],
     });
 
     expect(summarizeAnalysis(analysis)).toEqual({
@@ -49,7 +38,7 @@ describe('summarizeAnalysis', () => {
   it('ignores segment and phrase analyses, which the row does not describe', () => {
     const analysis = mkAnalysis({
       tokenAnalyses: [mkTokenAnalysis('a1')],
-      tokenAnalysisLinks: [mkTokenLink('a1', 'GEN 1:1:0')],
+      tokenAnalysisLinks: [makeTokenLink('a1', 'GEN 1:1:0')],
       segmentAnalyses: [{ ...FIXTURE_STAMPS, id: 's1', surfaceText: 's1' }],
       segmentAnalysisLinks: [
         {
@@ -71,9 +60,9 @@ describe('summarizeAnalysis', () => {
     const analysis = mkAnalysis({
       tokenAnalyses: [mkTokenAnalysis('a1'), mkTokenAnalysis('a2'), mkTokenAnalysis('a3')],
       tokenAnalysisLinks: [
-        mkTokenLink('a1', 'MRK 1:1:0'),
-        mkTokenLink('a2', 'GEN 1:1:0'),
-        mkTokenLink('a3', 'GEN 5:2:0'),
+        makeTokenLink('a1', 'MRK 1:1:0'),
+        makeTokenLink('a2', 'GEN 1:1:0'),
+        makeTokenLink('a3', 'GEN 5:2:0'),
       ],
     });
 
@@ -85,9 +74,9 @@ describe('summarizeAnalysis', () => {
     const analysis = mkAnalysis({
       tokenAnalyses: [mkTokenAnalysis('a1'), mkTokenAnalysis('a2'), mkTokenAnalysis('a3')],
       tokenAnalysisLinks: [
-        mkTokenLink('a1', 'LEV 1:1:0'),
-        mkTokenLink('a2', 'GEN 1:1:0'),
-        mkTokenLink('a3', 'EXO 1:1:0'),
+        makeTokenLink('a1', 'LEV 1:1:0'),
+        makeTokenLink('a2', 'GEN 1:1:0'),
+        makeTokenLink('a3', 'EXO 1:1:0'),
       ],
     });
 
@@ -98,7 +87,7 @@ describe('summarizeAnalysis', () => {
     // A corrupt ref stays visible rather than vanishing from a row whose count still includes it.
     const analysis = mkAnalysis({
       tokenAnalyses: [mkTokenAnalysis('a1'), mkTokenAnalysis('a2')],
-      tokenAnalysisLinks: [mkTokenLink('a1', 'GEN 1:1:0'), mkTokenLink('a2', 'ZZZ 1:1:0')],
+      tokenAnalysisLinks: [makeTokenLink('a1', 'GEN 1:1:0'), makeTokenLink('a2', 'ZZZ 1:1:0')],
     });
 
     expect(summarizeAnalysis(analysis).books).toEqual(['ZZZ', 'GEN']);
@@ -111,7 +100,7 @@ describe('summarizeAnalysis', () => {
   it('counts an analysis payload no link references, so the count matches what is stored', () => {
     const analysis = mkAnalysis({
       tokenAnalyses: [mkTokenAnalysis('a1'), mkTokenAnalysis('orphan')],
-      tokenAnalysisLinks: [mkTokenLink('a1', 'GEN 1:1:0')],
+      tokenAnalysisLinks: [makeTokenLink('a1', 'GEN 1:1:0')],
     });
 
     expect(summarizeAnalysis(analysis)).toEqual({ books: ['GEN'], tokenAnalysisCount: 2 });

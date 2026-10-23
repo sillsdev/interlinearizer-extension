@@ -227,8 +227,6 @@ export class AnalysisSessions {
       const changes = buffer.toChangeSet(intent);
       if (isEmptyChangeSet(changes)) return changes;
       await assertApprovalRule(buffer, session.repository);
-      const scope = await session.repository.getScope();
-      if (!scope.dirty) changes.scope = { ...scope, dirty: true };
       await session.history.apply(changes);
       return changes;
     });

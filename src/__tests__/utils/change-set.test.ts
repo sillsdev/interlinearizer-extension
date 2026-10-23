@@ -18,15 +18,14 @@ function draftOf(...tokenAnalyses: TokenAnalysis[]): DraftProject {
 }
 
 describe('scopeRecordOf', () => {
-  it("returns the draft's record without its analysis", () => {
-    const draft = { ...draftOf(payload('a')), suggestedName: 'Draft' };
+  it("returns the draft's record without its analysis or its dirty flag", () => {
+    const draft = { ...draftOf(payload('a')), suggestedName: 'Draft', dirty: true };
 
     expect(scopeRecordOf(draft)).toStrictEqual({
       sourceProjectId: 'src',
       modelVersion: draft.modelVersion,
       analysisLanguages: ['en'],
       suggestedName: 'Draft',
-      dirty: false,
     });
   });
 });
@@ -87,8 +86,19 @@ describe('applyChangeSet', () => {
 
     const { draft, inverse } = applyChangeSet(stored, { intent: 'boundaries', scope });
 
-    expect(draft).toStrictEqual({ ...scope, analysis: stored.analysis });
+    expect(draft).toStrictEqual({ ...scope, dirty: true, analysis: stored.analysis });
     expect(inverse.scope).toStrictEqual(scopeRecordOf(stored));
+  });
+
+  it('marks the draft unsaved, leaving that out of the inverse', () => {
+    const { draft, inverse } = applyChangeSet(draftOf(payload('a')), {
+      intent: 'edit',
+      scope: scopeRecordOf(draftOf()),
+      tokenAnalyses: { puts: [payload('a', 'ay')], deletes: [] },
+    });
+
+    expect(draft.dirty).toBe(true);
+    expect(inverse.scope).not.toHaveProperty('dirty');
   });
 
   it('leaves the draft it was given as it was', () => {
@@ -96,7 +106,7 @@ describe('applyChangeSet', () => {
 
     applyChangeSet(stored, {
       intent: 'edit',
-      scope: { ...scopeRecordOf(stored), dirty: true },
+      scope: { ...scopeRecordOf(stored), suggestedName: 'New' },
       tokenAnalyses: { puts: [payload('a', 'ay'), payload('b')], deletes: [] },
     });
 

@@ -14,7 +14,11 @@ import type {
   TextAnalysis,
   TokenSnapshot,
 } from 'interlinearizer';
-import { useState as useReactState } from 'react';
+import {
+  useEffect as useReactEffect,
+  useMemo as useReactMemo,
+  useState as useReactState,
+} from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import { useStore } from 'react-redux';
 import { useAnalysis, useGlossDispatch, usePhraseDispatch } from '../../components/AnalysisStore';
@@ -788,6 +792,49 @@ function mockLexiconRegistry(openChooser?: () => Promise<boolean>) {
     resolveSense: async () => undefined,
     openChooser,
   });
+}
+
+/**
+ * Stubs {@link useLocalizedStrings} the way the real hook behaves: each lookup echoes its keys back
+ * until resolved. A resolved key reads as itself without its `%` marks, unless `overrides` names
+ * it.
+ *
+ * @returns Resolves every lookup mounted and not yet resolved.
+ */
+function mockLocalizedStringsResolvedOnDemand(
+  overrides: Record<string, string> = {},
+): () => Promise<void> {
+  const pending = new Set<() => void>();
+  jest.mocked(useLocalizedStrings).mockImplementation(function useStub(keys: readonly string[]) {
+    const unresolved = useReactMemo(() => Object.fromEntries(keys.map((k) => [k, k])), [keys]);
+    const [resolved, setResolved] = useReactState<{
+      keys: readonly string[];
+      strings: Record<string, string>;
+    }>();
+    useReactEffect(() => {
+      const resolve = () =>
+        setResolved({
+          keys,
+          strings: Object.fromEntries(keys.map((k) => [k, overrides[k] ?? k.slice(1, -1)])),
+        });
+      pending.add(resolve);
+      return () => {
+        pending.delete(resolve);
+      };
+    }, [keys]);
+    return resolved?.keys === keys ? [resolved.strings, false] : [unresolved, true];
+  });
+  return async () => {
+    await act(async () => {
+      pending.forEach((resolve) => resolve());
+      pending.clear();
+    });
+  };
+}
+
+/** Every `%…%` localize key showing anywhere in `element`, its text or its attributes. */
+function rawKeysIn(element: HTMLElement): string[] {
+  return element.outerHTML.match(/%[\w.]+%/g) ?? [];
 }
 
 function mockProjectBookIds(bookIds: string[] | undefined, isLoading = false): void {
@@ -4484,6 +4531,96 @@ describe('InterlinearizerLoader', () => {
 
       expect(useConcordanceEntries).toHaveBeenLastCalledWith(
         expect.objectContaining({ shown: false }),
+      );
+    });
+  });
+
+  describe('side panel strings', () => {
+    let resolveStrings: () => Promise<void>;
+
+    beforeEach(() => {
+      jest.mocked(useSourceTextReader).mockReturnValue(makeSourceText({ status: 'ready' }));
+      resolveStrings = mockLocalizedStringsResolvedOnDemand();
+    });
+
+    /** Puts one analysis in the draft, which the catalog needs before it shows its sort control. */
+    function mockDraftWithAnAnalysis(): void {
+      const draftAnalysis = emptyAnalysis();
+      draftAnalysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 't1', surfaceText: 'In' });
+      mockSendCommand.mockResolvedValueOnce(
+        JSON.stringify({ ...emptyDraft(testProjectId), analysis: draftAnalysis }),
+      );
+    }
+
+    it('shows no raw keys when the side panel first opens after the loader strings resolve', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await resolveStrings();
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      expect(rawKeysIn(screen.getByTestId('analysis-catalog-panel'))).toEqual([]);
+    });
+
+    it('shows no raw keys once the side panel switches from the catalog to the concordance', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      await resolveStrings();
+
+      await userEvent.click(screen.getByTestId('side-panel-tab-concordance'));
+
+      expect(rawKeysIn(screen.getByTestId('concordance-panel'))).toEqual([]);
+    });
+
+    it('shows no raw keys once the side panel switches from the concordance to the catalog', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+      await resolveStrings();
+
+      await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
+
+      expect(rawKeysIn(screen.getByTestId('analysis-catalog-panel'))).toEqual([]);
+    });
+
+    it('names the book in the interface language as soon as the side panel switches', async () => {
+      resolveStrings = mockLocalizedStringsResolvedOnDemand({
+        '%LocalizedId.GEN%': 'Genèse',
+        '%interlinearizer_analysisCatalog_sort_usageCountInBook%': 'Most used in {book}',
+      });
+      mockDraftWithAnAnalysis();
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+      await resolveStrings();
+
+      await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
+
+      expect(screen.getByTestId('catalog-sort-usageCountInBook')).toHaveTextContent(
+        'Most used in Genèse',
+      );
+    });
+
+    it('names the book in English where the interface language has no name for it', async () => {
+      resolveStrings = mockLocalizedStringsResolvedOnDemand({
+        '%LocalizedId.GEN%': '%LocalizedId.GEN%',
+        '%interlinearizer_analysisCatalog_sort_usageCountInBook%': 'Most used in {book}',
+      });
+      mockDraftWithAnAnalysis();
+      await act(async () => {
+        renderLoader();
+      });
+      await resolveStrings();
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+
+      expect(screen.getByTestId('catalog-sort-usageCountInBook')).toHaveTextContent(
+        'Most used in Genesis',
       );
     });
   });

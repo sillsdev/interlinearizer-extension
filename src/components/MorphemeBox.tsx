@@ -239,7 +239,7 @@ function MorphemeBoxInner({
           : STATUS_TEXT_COLOR_CLASS.approved;
       return (
         <span
-          className={`tw:truncate tw:px-1 tw:text-center tw:text-xs ${glossStyle}`}
+          className={`tw:min-h-lh tw:truncate tw:px-1 tw:text-center tw:text-xs ${glossStyle}`}
           data-testid={cellGlossTestId}
           key={m.id}
           style={{ ...placement, minWidth: '2ch' }}

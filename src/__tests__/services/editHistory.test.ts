@@ -4,6 +4,7 @@ import type { TokenAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
 import { EditHistory } from '../../services/editHistory';
 import type { ChangeSet } from '../../types/analysis-repository';
+import { MAX_UNDO_STEPS } from '../../utils/undo-history';
 import { FIXTURE_STAMPS, memoryStorage, silentLogger } from '../test-helpers';
 
 function payload(id: string): TokenAnalysis {
@@ -75,6 +76,20 @@ describe('EditHistory', () => {
     await history.apply(putting('a'));
 
     await expect(history.redo()).resolves.toBeUndefined();
+  });
+
+  it(`forgets the oldest edit once more than ${MAX_UNDO_STEPS} are undoable`, async () => {
+    const { history, storedIds } = makeHistory();
+    const times = (count: number, step: (i: number) => Promise<unknown>) =>
+      Array.from({ length: count }).reduce<Promise<unknown>>(
+        (previous, _, i) => previous.then(() => step(i)),
+        Promise.resolve(),
+      );
+    await times(MAX_UNDO_STEPS + 1, (i) => history.apply(putting(`p${i}`)));
+    await times(MAX_UNDO_STEPS, () => history.undo());
+
+    await expect(history.undo()).resolves.toBeUndefined();
+    await expect(storedIds()).resolves.toStrictEqual(['p0']);
   });
 
   it('drops the undone edits when a new edit is applied', async () => {

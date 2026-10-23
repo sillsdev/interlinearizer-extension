@@ -56,11 +56,12 @@ function PhraseGlossInput({
   // the draft if the input unmounts mid-edit. A read-only phrase has no input, so it never reports.
   useReportGlossEditing(!disabled && !readOnly && draft !== committed, commitDraft);
 
-  // A read-only analysis shows the phrase gloss as plain text, not as an input.
+  // A read-only analysis shows the phrase gloss as plain text, not as an input; an empty gloss still
+  // holds its line.
   if (readOnly) {
     return (
       <span
-        className="tw:mt-0.5 tw:px-1 tw:text-center tw:text-sm tw:text-foreground"
+        className="tw:mt-0.5 tw:min-h-lh tw:px-1 tw:text-center tw:text-sm tw:text-foreground"
         data-testid="readonly-phrase-gloss"
       >
         {committed}

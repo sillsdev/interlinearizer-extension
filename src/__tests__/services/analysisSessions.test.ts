@@ -497,28 +497,13 @@ describe('AnalysisSessions', () => {
         buffer.create('tokenAnalyses', payload('b'));
       });
 
-      expect(changes).toMatchObject({ intent: 'add', scope: { dirty: true } });
+      expect(changes).toMatchObject({ intent: 'add' });
       await expect(stored(storage)).resolves.toMatchObject({
         dirty: true,
         analysis: { tokenAnalyses: [payload('a'), payload('b')] },
       });
       await sessions.undo(sessionId);
-      await expect(stored(storage)).resolves.toMatchObject({
-        dirty: false,
-        analysis: { tokenAnalyses: [] },
-      });
-    });
-
-    it('leaves the scope alone on a draft already dirty', async () => {
-      const { sessions, saveDraft } = makeSessions();
-      await saveDraft({ ...emptyDraft(SOURCE), dirty: true });
-      const { sessionId } = await sessions.open(SOURCE);
-
-      const changes = await sessions.edit(sessionId, 'add', async (buffer) => {
-        buffer.create('tokenAnalyses', payload('a'));
-      });
-
-      expect(changes).not.toHaveProperty('scope');
+      await expect(stored(storage)).resolves.toMatchObject({ analysis: { tokenAnalyses: [] } });
     });
 
     it('applies nothing, and records no undo step, for a command staging nothing', async () => {

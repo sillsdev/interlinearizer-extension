@@ -5,7 +5,6 @@ import type {
   SegmentAnalysisLink,
   TextAnalysis,
   TokenAnalysis,
-  TokenAnalysisLink,
 } from 'interlinearizer';
 import {
   BOOKLESS_PARTITION,
@@ -15,7 +14,7 @@ import {
   removeBookFromSegmentation,
   splitAnalysisByBook,
 } from '../../utils/analysis-book';
-import { makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
+import { makePhraseLink, makeTokenLink, FIXTURE_STAMPS } from '../test-helpers';
 
 /**
  * Creates a minimal {@link TokenAnalysis} payload record fixture, with `surfaceText` defaulting to
@@ -23,17 +22,6 @@ import { makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
  */
 function mkTokenAnalysis(id: string, surfaceText = id): TokenAnalysis {
   return { ...FIXTURE_STAMPS, id, surfaceText };
-}
-
-/** Creates a {@link TokenAnalysisLink} joining a token ref to an analysis id. */
-function mkTokenLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
-  return {
-    id: `${tokenRef}:${analysisId}`,
-    ...FIXTURE_STAMPS,
-    analysisId,
-    status: 'approved',
-    token: { tokenRef, surfaceText: tokenRef },
-  };
 }
 
 /**
@@ -77,7 +65,7 @@ describe('splitAnalysisByBook', () => {
   it('gives each book only its own records', () => {
     const analysis: TextAnalysis = {
       tokenAnalyses: [mkTokenAnalysis('ta-gen'), mkTokenAnalysis('ta-exo')],
-      tokenAnalysisLinks: [mkTokenLink('ta-gen', 'GEN 1:1'), mkTokenLink('ta-exo', 'EXO 1:1')],
+      tokenAnalysisLinks: [makeTokenLink('ta-gen', 'GEN 1:1'), makeTokenLink('ta-exo', 'EXO 1:1')],
       segmentAnalyses: [],
       segmentAnalysisLinks: [],
       phraseAnalyses: [],
@@ -110,7 +98,7 @@ describe('splitAnalysisByBook', () => {
   it('copies a payload shared across books into each book that links it', () => {
     const analysis: TextAnalysis = {
       tokenAnalyses: [mkTokenAnalysis('shared')],
-      tokenAnalysisLinks: [mkTokenLink('shared', 'GEN 1:1'), mkTokenLink('shared', 'EXO 1:1')],
+      tokenAnalysisLinks: [makeTokenLink('shared', 'GEN 1:1'), makeTokenLink('shared', 'EXO 1:1')],
       segmentAnalyses: [],
       segmentAnalysisLinks: [],
       phraseAnalyses: [],
@@ -144,7 +132,7 @@ describe('splitAnalysisByBook', () => {
   it('carries a payload once when two links in the same book share it', () => {
     const analysis: TextAnalysis = {
       tokenAnalyses: [mkTokenAnalysis('shared')],
-      tokenAnalysisLinks: [mkTokenLink('shared', 'GEN 1:1'), mkTokenLink('shared', 'GEN 1:2')],
+      tokenAnalysisLinks: [makeTokenLink('shared', 'GEN 1:1'), makeTokenLink('shared', 'GEN 1:2')],
       segmentAnalyses: [],
       segmentAnalysisLinks: [],
       phraseAnalyses: [],
@@ -160,7 +148,7 @@ describe('splitAnalysisByBook', () => {
   it('keeps a payload no link references out of the linked book’s partition', () => {
     const analysis: TextAnalysis = {
       tokenAnalyses: [mkTokenAnalysis('orphan')],
-      tokenAnalysisLinks: [mkTokenLink('linked', 'GEN 1:1')],
+      tokenAnalysisLinks: [makeTokenLink('linked', 'GEN 1:1')],
       segmentAnalyses: [],
       segmentAnalysisLinks: [],
       phraseAnalyses: [],
@@ -175,7 +163,7 @@ describe('splitAnalysisByBook', () => {
   it('partitions a payload no link references under the bookless key', () => {
     const analysis: TextAnalysis = {
       tokenAnalyses: [mkTokenAnalysis('orphan')],
-      tokenAnalysisLinks: [mkTokenLink('linked', 'GEN 1:1')],
+      tokenAnalysisLinks: [makeTokenLink('linked', 'GEN 1:1')],
       segmentAnalyses: [],
       segmentAnalysisLinks: [],
       phraseAnalyses: [],
@@ -206,7 +194,7 @@ describe('splitAnalysisByBook', () => {
   it('does not file a payload as bookless when another book links it', () => {
     const analysis: TextAnalysis = {
       tokenAnalyses: [mkTokenAnalysis('shared')],
-      tokenAnalysisLinks: [mkTokenLink('shared', 'GEN 1:1')],
+      tokenAnalysisLinks: [makeTokenLink('shared', 'GEN 1:1')],
       segmentAnalyses: [],
       segmentAnalysisLinks: [],
       phraseAnalyses: [],
@@ -251,7 +239,10 @@ describe('splitAnalysisByBook', () => {
 describe('mergeAnalyses', () => {
   const genesis: TextAnalysis = {
     tokenAnalyses: [mkTokenAnalysis('ta-gen'), mkTokenAnalysis('shared')],
-    tokenAnalysisLinks: [mkTokenLink('ta-gen', 'GEN 1:1:0'), mkTokenLink('shared', 'GEN 1:1:3')],
+    tokenAnalysisLinks: [
+      makeTokenLink('ta-gen', 'GEN 1:1:0'),
+      makeTokenLink('shared', 'GEN 1:1:3'),
+    ],
     segmentAnalyses: [mkSegmentAnalysis('sa-gen')],
     segmentAnalysisLinks: [mkSegmentLink('sa-gen', 'GEN 1:1')],
     phraseAnalyses: [{ ...FIXTURE_STAMPS, id: 'pa-gen', surfaceText: 'in the' }],
@@ -259,7 +250,7 @@ describe('mergeAnalyses', () => {
   };
   const exodus: TextAnalysis = {
     tokenAnalyses: [mkTokenAnalysis('shared')],
-    tokenAnalysisLinks: [mkTokenLink('shared', 'EXO 1:1:0')],
+    tokenAnalysisLinks: [makeTokenLink('shared', 'EXO 1:1:0')],
     segmentAnalyses: [mkSegmentAnalysis('sa-exo')],
     segmentAnalysisLinks: [mkSegmentLink('sa-exo', 'EXO 1:1')],
     phraseAnalyses: [],
@@ -321,10 +312,10 @@ describe('removeBookFromAnalysis', () => {
         mkTokenAnalysis('tok-orphan'),
       ],
       tokenAnalysisLinks: [
-        mkTokenLink('tok-gen', 'GEN 1:1:0'),
-        mkTokenLink('tok-exo', 'EXO 2:2:0'),
+        makeTokenLink('tok-gen', 'GEN 1:1:0'),
+        makeTokenLink('tok-exo', 'EXO 2:2:0'),
         // Only link referencing tok-orphan is a GEN link → removing GEN orphans the payload.
-        mkTokenLink('tok-orphan', 'GEN 3:3:0'),
+        makeTokenLink('tok-orphan', 'GEN 3:3:0'),
       ],
       segmentAnalyses: [mkSegmentAnalysis('seg-gen'), mkSegmentAnalysis('seg-exo')],
       segmentAnalysisLinks: [

@@ -1,5 +1,3 @@
-import { useLocalizedStrings } from '@papi/frontend/react';
-import { Canon } from '@sillsdev/scripture';
 import { RefreshCw, X } from 'lucide-react';
 import {
   Button,
@@ -9,7 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
+import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useAnalysis, useAnalysisLanguage } from './AnalysisStore';
 import { useConcordanceEntriesContext, useSourceTextContext } from './SourceTextContext';
@@ -29,7 +27,7 @@ import {
  * Localized string keys the panel needs, the rows' among them so the list resolves once rather than
  * once per form.
  */
-const STRING_KEYS = [
+export const CONCORDANCE_PANEL_STRING_KEYS = [
   '%interlinearizer_concordance_close%',
   '%interlinearizer_concordance_refresh%',
   '%interlinearizer_concordance_empty%',
@@ -50,6 +48,10 @@ type ConcordancePanelProps = Readonly<{
   onClose: () => void;
   /** Switches the side panel to the analysis catalog. */
   onShowCatalog: () => void;
+  /** Resolved localizations covering at least {@link CONCORDANCE_PANEL_STRING_KEYS}. */
+  localizedStrings: LanguageStrings;
+  /** What the current book is called where the rows name it in prose. */
+  currentBookName: string;
 }>;
 
 /**
@@ -64,8 +66,9 @@ export default function ConcordancePanel({
   sourceLanguageTag,
   onClose,
   onShowCatalog,
+  localizedStrings,
+  currentBookName,
 }: ConcordancePanelProps) {
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const refreshTooltip = tooltipContentOrUndefined(
     resolvedOrEmpty(localizedStrings['%interlinearizer_concordance_refresh%']),
   );
@@ -93,30 +96,15 @@ export default function ConcordancePanel({
     [windowEntries, approvedByToken, currentBook],
   );
 
-  /**
-   * The current book's name key, asked for separately from {@link STRING_KEYS} so that changing book
-   * re-resolves this alone rather than every string the panel shows.
-   */
-  const bookNameKeys = useMemo(
-    () => [`%LocalizedId.${currentBook}%`] as const satisfies `%${string}%`[],
-    [currentBook],
+  /** Label every row carries for its per-book occurrence count. */
+  const occurrenceCountInBookLabel = useMemo(
+    () =>
+      formatReplacementString(
+        localizedStrings['%interlinearizer_concordance_occurrenceCountInBook%'],
+        { book: currentBookName },
+      ),
+    [currentBookName, localizedStrings],
   );
-  const [localizedBookName] = useLocalizedStrings(bookNameKeys);
-
-  /**
-   * Label every row carries for its per-book occurrence count, naming the book in the interface
-   * language where the platform has a name for it and in English otherwise.
-   */
-  const occurrenceCountInBookLabel = useMemo(() => {
-    const [bookKey] = bookNameKeys;
-    const resolved = localizedBookName?.[bookKey];
-    const bookName =
-      resolved && resolved !== bookKey ? resolved : Canon.bookIdToEnglishName(currentBook);
-    return formatReplacementString(
-      localizedStrings['%interlinearizer_concordance_occurrenceCountInBook%'],
-      { book: bookName },
-    );
-  }, [bookNameKeys, localizedBookName, currentBook, localizedStrings]);
 
   const { navigate, requestFocusToken } = useInterlinearNav();
 

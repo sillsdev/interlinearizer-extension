@@ -72,7 +72,6 @@ describe('IndexedRepository', () => {
       sourceProjectId: 'src',
       modelVersion: emptyDraft('src').modelVersion,
       analysisLanguages: ['en'],
-      dirty: false,
     });
   });
 

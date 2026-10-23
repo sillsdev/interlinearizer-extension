@@ -64,8 +64,11 @@ export type DraftExport = {
   unreadableBooks: string[];
 };
 
-/** A draft's own record: everything in it but its analysis. */
-export type ScopeRecord = Omit<DraftProject, 'analysis'>;
+/**
+ * A draft's own record: everything in it but its analysis and its `dirty` flag, which every apply
+ * sets.
+ */
+export type ScopeRecord = Omit<DraftProject, 'analysis' | 'dirty'>;
 
 /** Whole-record puts and deletes of one record kind. */
 export type RecordChanges<T> = {
@@ -179,8 +182,8 @@ export interface AnalysisRepository {
   markClean(): Promise<void>;
 
   /**
-   * Applies `changes` to the stored draft whole or not at all, stamped with this build's model
-   * version. A draft never saved counts as an empty one.
+   * Applies `changes` to the stored draft whole or not at all, marked unsaved and stamped with this
+   * build's model version. A draft never saved counts as an empty one.
    *
    * @throws {ReadOnlyAnalysisError} If the repository is read-only; nothing is applied.
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's

@@ -269,23 +269,6 @@ describe('DraftRepository', () => {
       expect(writes).not.toContain(draftAnalysisKey('src', 'GEN'));
     });
 
-    it('builds on the stored draft after it was marked clean, keeping it clean', async () => {
-      const { storage } = memoryStorage();
-      const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll({ ...twoBookDraft(), dirty: true });
-      await repository.apply({ intent: 'nothing' });
-
-      await repository.markClean();
-      await repository.apply({
-        intent: 'deleteLink',
-        tokenAnalysisLinks: { puts: [], deletes: ['tl-GEN'] },
-      });
-
-      const { draft } = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
-      expect(draft.dirty).toBe(false);
-      expect(draft.analysis.tokenAnalysisLinks.map(({ id }) => id)).toEqual(['tl-EXO']);
-    });
-
     it('rewrites every book linking a payload it edits', async () => {
       const { storage, records } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());

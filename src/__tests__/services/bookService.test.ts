@@ -758,6 +758,7 @@ describe('onBookTextChanged', () => {
     await getBookOutline('src', 'GEN');
 
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await settle();
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith('src', 'GEN');
@@ -769,6 +770,7 @@ describe('onBookTextChanged', () => {
     await getBookOutline('src', 'GEN');
 
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await settle();
 
     listeners.forEach((listener) => expect(listener).toHaveBeenCalledTimes(1));
   });
@@ -822,6 +824,7 @@ describe('onBookTextChanged', () => {
     await settle();
 
     subscriptionsTo(project, 'GEN')[1].deliver(usj('GEN', 'v3'));
+    await settle();
 
     expect(listener).toHaveBeenCalledTimes(2);
   });
@@ -857,6 +860,7 @@ describe('onBookTextChanged', () => {
 
     await getBookOutline('src', 'GEN');
     subscriptionsTo(project, 'GEN')[1].deliver(usj('GEN', 'v2'));
+    await settle();
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith('src', 'GEN');
@@ -909,6 +913,7 @@ describe('onBookTextChanged', () => {
     await getBookOutline('src', 'EXO');
 
     subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO', 'v2'));
+    await settle();
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith('src', 'EXO');
@@ -927,6 +932,7 @@ describe('onBookTextChanged', () => {
     await earlier;
 
     subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO', 'v2'));
+    await settle();
 
     expect(listener).toHaveBeenCalledWith('src', 'EXO');
   });
@@ -1243,6 +1249,10 @@ describe('onBookRead', () => {
     return listener;
   }
 
+  beforeEach(() => {
+    segmentStandIns();
+  });
+
   afterEach(() => {
     unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
   });
@@ -1293,6 +1303,58 @@ describe('onBookRead', () => {
     await settle();
 
     expect(heard).toEqual(['read v1@en', 'read v2@en', 'edited']);
+  });
+
+  it('passes the edited open book before the edit is reported, ahead of the read', async () => {
+    let version = 'v1';
+    const project = serveProject((bookId) => usj(bookId, version));
+    const heard: string[] = [];
+    listenForBooks((_, book) => heard.push(`read ${book.textVersion}`));
+    unsubscribers.push(onBookTextChanged(() => heard.push('edited')));
+    await getBookOutline('src', 'GEN');
+
+    version = 'v2';
+    project.subscriptions[0].deliver(usj('GEN', version));
+    await settle();
+
+    expect(heard).toEqual(['read v2@en', 'edited']);
+  });
+
+  it('reports an edit to the open book that no longer reads, passing nothing', async () => {
+    let delivery: Delivery = usj('GEN');
+    const project = serveProject(() => delivery);
+    const listener = listenForBooks();
+    const edits = jest.fn();
+    unsubscribers.push(onBookTextChanged(edits));
+    await getBookOutline('src', 'GEN');
+
+    delivery = platformError('busy');
+    project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(edits).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes and reports nothing for an open book edited as the project closes', async () => {
+    const project = serveProject();
+    const listener = listenForBooks();
+    const edits = jest.fn();
+    unsubscribers.push(onBookTextChanged(edits));
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    project.subscriptions[0].deliver(usj('GEN'));
+    await outline;
+
+    project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    const closed = closeProject('src');
+    await settle();
+    subscriptionsTo(project, 'GEN')[1].deliver(usj('GEN', 'v2'));
+    await closed;
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(edits).not.toHaveBeenCalled();
   });
 
   it('passes a book that failed to read once it reads', async () => {

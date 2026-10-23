@@ -177,12 +177,13 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
     if (!isOpen) return;
     // Read again at once, so the book stays watched and a refetch started by the listeners sees
     // the edit.
-    openBooks.set(sourceProjectId, holdBook(sourceProjectId, bookId, writingSystem));
+    const reheld = holdBook(sourceProjectId, bookId, writingSystem);
+    openBooks.set(sourceProjectId, reheld);
     // The whole-text read's watch may have first read the book before the edit or after it, so the
     // read itself reads the book again over a new watch and reports the edit.
     const read = textReads.get(sourceProjectId);
     if (read?.watches.has(bookId)) rereadTextBook(sourceProjectId, read, bookId);
-    else reportEdit(sourceProjectId, bookId);
+    else reportOpenBookEdit(sourceProjectId, reheld);
   });
   const book = perfTrack('getTokenizedBook:usj', watch.text).then(
     (usj) =>
@@ -195,6 +196,19 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
   );
   book.catch(() => releaseBook(sourceProjectId, watch));
   return { bookId, writingSystem, book, watch };
+}
+
+/**
+ * Passes the open book's edited text to {@link onBookRead}'s listeners once it is read again, then
+ * reports the edit, unless the project closed meanwhile. A book that fails to read again, or has no
+ * text, is reported all the same.
+ */
+async function reportOpenBookEdit(sourceProjectId: string, held: HeldBook): Promise<void> {
+  const closeCount = closeCounts.get(sourceProjectId);
+  const book = await held.book.catch(() => undefined);
+  if (closeCounts.get(sourceProjectId) !== closeCount) return;
+  if (book) bookReadListeners.forEach((listener) => listener(sourceProjectId, book));
+  reportEdit(sourceProjectId, held.bookId);
 }
 
 /**
@@ -300,8 +314,9 @@ export function onBookTextChanged(listener: BookTextListener): () => boolean {
 /**
  * Calls `listener` with each book that a source project's whole-text read files with text, until
  * the returned function is called: as the read first reaches the book, and again each time the
- * book's text changes. For a change, `listener` is called before {@link onBookTextChanged}'s
- * listeners hear of it. A book whose read fails, or that has no text, is not passed.
+ * book's text changes. The open book's edited text is passed too while the read has yet to reach
+ * the book. For a change, `listener` is called before {@link onBookTextChanged}'s listeners hear of
+ * it. A book whose read fails, or that has no text, is not passed.
  */
 export function onBookRead(listener: BookReadListener): () => boolean {
   bookReadListeners.add(listener);

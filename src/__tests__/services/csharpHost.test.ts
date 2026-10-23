@@ -82,9 +82,18 @@ describe('startCSharpHost', () => {
     const host = new FakeHost();
 
     const stop = startCSharpHost(token, makeLauncher('win32', host).launcher);
-    stop();
 
+    expect(stop()).toBe(true);
     expect(host.kill).toHaveBeenCalled();
+  });
+
+  it('reports a stop as done when the host is no longer running', () => {
+    const host = new FakeHost();
+    host.kill.mockReturnValue(false);
+
+    const stop = startCSharpHost(token, makeLauncher('win32', host).launcher);
+
+    expect(stop()).toBe(true);
   });
 
   it('pings the host once it reports ready, and logs who answered', async () => {

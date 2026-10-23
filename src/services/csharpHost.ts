@@ -41,11 +41,16 @@ export const HOST_READY_LINE = 'Interlinearizer host ready';
 /**
  * Starts the interlinearizer's .NET process, which serves its C# commands over the Platform.Bible
  * network, and pings it once it is ready. Anything that goes wrong is logged, never thrown: the
- * extension works without the process. `arch` is the processor the extension host runs on, as Node
- * names it.
+ * extension works without the process.
  *
- * @returns Stops the process. Register it so deactivation does, since the platform stops the
- *   processes extensions start only in packaged builds.
+ * @param executionToken - The extension's token, which the platform needs to start a process for
+ *   it.
+ * @param createProcess - The platform's privilege for starting processes; absent when the manifest
+ *   grants none, which leaves the host off.
+ * @param arch - The processor the extension host runs on, as Node names it.
+ * @returns Stops the process, and succeeds whether or not it was still running. Register it so
+ *   deactivation does, since the platform stops the processes extensions start only in packaged
+ *   builds.
  */
 export function startCSharpHost(
   executionToken: ExecutionToken,
@@ -82,7 +87,10 @@ export function startCSharpHost(
     carried = unread.slice(1 - HOST_READY_LINE.length);
   });
 
-  return () => host.kill();
+  return () => {
+    host.kill();
+    return true;
+  };
 }
 
 /** Logs which .NET runtime and process answer the host's ping, or why none did. */

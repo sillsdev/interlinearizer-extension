@@ -17,7 +17,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- The same version Platform.Bible uses. -->
+    <!-- Keep matched to Platform.Bible's version, so these services can move into its process. -->
     <PackageReference Include="StreamJsonRpc" Version="2.22.11" />
   </ItemGroup>
 

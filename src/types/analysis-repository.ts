@@ -131,8 +131,8 @@ export type IndexDifference = {
  * back in no promised order, and a lookup by several keys returns each record once.
  *
  * Calls for one draft must not overlap, whether on one repository or several. After one repository
- * saves a draft, any other that had already loaded or saved it must load it again before its next
- * save.
+ * saves a draft, any other that had already loaded or saved it must load it again through
+ * {@link exportAll} before its next save or lookup; {@link exportForCopy} does not count.
  */
 export interface AnalysisRepository {
   /** Fixed for the repository's lifetime. */

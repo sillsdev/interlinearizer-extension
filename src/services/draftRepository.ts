@@ -172,8 +172,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Loads the stored draft as {@link exportAll} does, for copying into a project. A draft never
-   * saved exports as a fresh empty one.
+   * Loads the stored draft as {@link exportAll} does, for copying into a project, without refreshing
+   * the draft that lookups and {@link apply} work from. A draft never saved exports as a fresh empty
+   * one.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.

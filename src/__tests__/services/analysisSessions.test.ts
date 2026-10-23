@@ -56,9 +56,10 @@ function makeSessions(projects: InterlinearProject[] = []) {
     releaseDraftRepository: jest.fn<Promise<void>, [string]>(async () => {}),
     openPt9ImportRepository: jest.fn(
       (interlinearProjectId: string) =>
-        new Pt9ImportRepository(interlinearProjectId, async () =>
-          projects.find(({ id }) => id === interlinearProjectId),
-        ),
+        new Pt9ImportRepository(interlinearProjectId, async () => {
+          const project = projects.find(({ id }) => id === interlinearProjectId);
+          return project && JSON.parse(JSON.stringify(project));
+        }),
     ),
     getInterfaceLanguages: jest.fn(async (): Promise<string[]> => []),
   } satisfies SessionHost;

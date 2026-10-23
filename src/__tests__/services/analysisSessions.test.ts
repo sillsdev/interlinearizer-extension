@@ -57,9 +57,10 @@ function makeSessions(projects: InterlinearProject[] = []) {
     releaseDraftRepository: jest.fn<Promise<void>, [string]>(async () => {}),
     openPt9ImportRepository: jest.fn(
       (interlinearProjectId: string) =>
-        new Pt9ImportRepository(interlinearProjectId, async () =>
-          projects.find(({ id }) => id === interlinearProjectId),
-        ),
+        new Pt9ImportRepository(interlinearProjectId, async () => {
+          const project = projects.find(({ id }) => id === interlinearProjectId);
+          return project && JSON.parse(JSON.stringify(project));
+        }),
     ),
     getInterfaceLanguages: jest.fn(async (): Promise<string[]> => []),
   } satisfies SessionHost;
@@ -326,6 +327,27 @@ describe('AnalysisSessions', () => {
       await expect(sessions.run(second.sessionId, async () => {})).rejects.toThrow();
       expect(host.releaseDraftRepository).toHaveBeenCalledWith(SOURCE);
       expect(host.releaseDraftRepository).toHaveBeenCalledWith(OTHER_SOURCE);
+    });
+
+    it('closes a session whose open is still underway', async () => {
+      const { host, sessions } = makeSessions();
+      const languages = deferred();
+      host.getInterfaceLanguages.mockImplementation(async () => {
+        await languages.promise;
+        return [];
+      });
+      const opening = sessions.open(SOURCE);
+      await flushPromises();
+
+      const closing = sessions.closeAll();
+      languages.resolve();
+      const { sessionId } = await opening;
+      await closing;
+
+      await expect(sessions.run(sessionId, async () => {})).rejects.toThrow(
+        `no session ${sessionId} is open`,
+      );
+      expect(host.releaseDraftRepository).toHaveBeenCalledWith(SOURCE);
     });
   });
 

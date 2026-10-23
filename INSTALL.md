@@ -150,6 +150,17 @@ The Interlinearizer opens in a new tab, showing the text of the book you are cur
   interlinear project. **Select Interlinear Project…** switches between projects for the same source
   text, and **New Interlinear Project…** starts a fresh one.
 
+## Optional: the Lexicon extension
+
+Each release also attaches `lexicon_<Lexicon version>.zip`, the Lexicon extension, which lets you
+browse and edit FieldWorks lexicons in Paratext 10. Its version is the date of the Lexbox
+commit it was built from, not the Interlinearizer's version. You do not need it to use the Interlinearizer.
+
+> **Windows and Linux only.** The Lexicon extension does not run on macOS yet.
+
+Download it from the same release, leave it zipped, and copy it into the extensions folder from
+step 3, first deleting any Lexicon zip from an earlier release. Then restart Paratext 10.
+
 ## Updating to a newer version
 
 Delete the old `interlinearizer_<version>.zip` from the extensions folder, copy the new one in, and

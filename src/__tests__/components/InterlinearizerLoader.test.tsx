@@ -1926,6 +1926,51 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
+    /** Imports from the select modal and opens the fresh import from its report. */
+    async function openFreshImport(): Promise<void> {
+      mockImportCommands({
+        importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
+      });
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
+      await screen.findByTestId('pt9-import-report');
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
+      );
+    }
+
+    it('explains the read-only import once it opens from the report', async () => {
+      await openFreshImport();
+
+      expect(screen.getByTestId('pt9-read-only-intro-title')).toBeInTheDocument();
+    });
+
+    it('moves from the read-only explanation to the copy dialog', async () => {
+      await openFreshImport();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ReadOnlyIntro_copy%' }),
+      );
+
+      expect(screen.queryByTestId('pt9-read-only-intro-title')).not.toBeInTheDocument();
+      expect(screen.getByTestId('copy-to-editable-modal-title')).toBeInTheDocument();
+    });
+
+    it('leaves the import open read-only when the explanation is answered View read-only', async () => {
+      await openFreshImport();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_pt9ReadOnlyIntro_view%' }),
+      );
+
+      expect(screen.queryByTestId('pt9-read-only-intro-title')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('copy-to-editable-modal-title')).not.toBeInTheDocument();
+      expect(screen.getByTestId('pt9-import-banner')).toBeInTheDocument();
+    });
+
     it('returns to the select modal when an import report is closed', async () => {
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
@@ -2051,6 +2096,7 @@ describe('InterlinearizerLoader', () => {
         'interlinearizer.importPt9Project',
         expect.anything(),
       );
+      expect(screen.queryByTestId('pt9-read-only-intro-title')).not.toBeInTheDocument();
     });
 
     it('auto-syncs a changed import before opening, with no report step', async () => {

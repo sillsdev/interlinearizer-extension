@@ -11,7 +11,7 @@ import type { ProjectConfig } from 'interlinearizer';
 import { formatReplacementString, type LocalizeKey } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-import { AnalysisSessions, type Session } from './services/analysisSessions';
+import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
 import * as bookService from './services/bookService';
 import type { ChangeBuffer } from './services/commands/changeBuffer';
 import * as morphemeCommands from './services/commands/morphemeCommands';
@@ -745,7 +745,7 @@ async function saveInterlinearDraft(
  * on the source project's draft, which saves to `interlinearProjectId` when given. Closes the
  * source's earlier session, if any.
  *
- * @returns A JSON string of what {@link AnalysisSessions.open} resolves to.
+ * @returns A JSON string of an {@link OpenedSession}.
  * @throws If the source project has no such interlinear project, or its analysis cannot be loaded.
  *   The error is logged before rethrowing.
  */
@@ -754,7 +754,8 @@ async function openSession(
   interlinearProjectId?: string,
 ): Promise<string> {
   try {
-    return JSON.stringify(await sessions.open(sourceProjectId, interlinearProjectId));
+    const opened: OpenedSession = await sessions.open(sourceProjectId, interlinearProjectId);
+    return JSON.stringify(opened);
   } catch (e) {
     logger.error(`Interlinearizer: failed to open a session on project ${sourceProjectId}`, e);
     throw e;

@@ -26,8 +26,8 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
 
   /**
    * @param interlinearProjectId - Id of the project to read, which must be a Paratext 9 import.
-   * @param readProject - Reads the project stored under that id afresh, resolving `undefined` when
-   *   none is stored.
+   * @param readProject - Reads the project stored under that id afresh, as a new object that the
+   *   repository may hand out, resolving `undefined` when none is stored.
    */
   constructor(
     interlinearProjectId: string,

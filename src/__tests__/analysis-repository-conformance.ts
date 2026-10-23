@@ -1365,7 +1365,7 @@ export function describeAnalysisRepositoryConformance(
     });
 
     describe('a read-only repository', () => {
-      /** The analysis `repository` loads, with its record lists in id order. */
+      /** The analysis that `repository` loads, with its record lists in id order. */
       async function analysisOf(repository: AnalysisRepository): Promise<TextAnalysis> {
         return (await load(repository)).analysis;
       }

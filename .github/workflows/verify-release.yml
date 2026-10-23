@@ -55,6 +55,17 @@ jobs:
             failed=1
           fi
 
+          lexicon_placeholder=0
+          if grep -qF 'lexicon_<Lexicon version>.zip' <<< "${BODY}"; then
+            echo '::error::The release body still has its `lexicon_<Lexicon version>.zip` placeholder. Replace it with the name of the Lexicon zip attached below, or remove the optional Lexicon step.'
+            lexicon_placeholder=1
+            failed=1
+          fi
+          if grep -qF '<Lexicon build>' <<< "${BODY}"; then
+            echo '::error::The release body still has its `<Lexicon build>` placeholder. Replace it with the FieldWorks Lite release or run the Lexicon zip came from and its Lexbox commit, or remove the optional Lexicon step.'
+            failed=1
+          fi
+
           # Requiring the tag catches a body copied from a previous release, whose docs link
           # resolves and looks right while serving another version's instructions.
           if ! grep -qF "/blob/${RELEASE_TAG}/INSTALL.md" <<< "${BODY}"; then
@@ -78,6 +89,23 @@ jobs:
               failed=1
             elif ! grep -qxF "${extension_zip}" <<< "${names}"; then
               echo "::error::The Interlinearizer zip the release body names is not attached: ${extension_zip}"
+              unattached=1
+              failed=1
+            fi
+          fi
+
+          # The Lexicon step is optional, so a body without it passes. The search is bounded by the
+          # step's `lexicon-step` and `/lexicon-step` markers because the appended changelog can name
+          # a `lexicon_*.zip` too, which would otherwise stand in for one the step no longer names.
+          if [ "${lexicon_placeholder}" -eq 0 ] && grep -qF '<!-- lexicon-step:' <<< "${BODY}"; then
+            # `|| true` else a no-match `grep` would abort the step under `set -e`.
+            lexicon_zip="$(sed -n '/<!-- lexicon-step:/,/<!-- \/lexicon-step -->/p' <<< "${BODY}" \
+              | grep -oE 'lexicon_[^[:space:]`]+\.zip' | sed -n '1p' || true)"
+            if [ -z "${lexicon_zip}" ]; then
+              echo '::error::The release body has a Lexicon step that names no Lexicon zip. Name the Lexicon zip attached below, or remove the optional Lexicon step.'
+              failed=1
+            elif ! grep -qxF "${lexicon_zip}" <<< "${names}"; then
+              echo "::error::The Lexicon zip the release body names is not attached: ${lexicon_zip}"
               unattached=1
               failed=1
             fi

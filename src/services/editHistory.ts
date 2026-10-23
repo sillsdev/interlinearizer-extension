@@ -4,12 +4,15 @@ import { mergeChangeSets } from '../utils/change-set';
 import { MAX_UNDO_STEPS } from '../utils/undo-history';
 
 /**
- * Re-anchors the stored draft to the current text of each of `books`, in turn, outside any undo
- * history.
+ * The changes that re-anchor the stored draft, as `changes` would leave it, to the current text of
+ * each of `books` in turn. Applies nothing.
  *
- * @returns The changes it applied, or `undefined` when it applied none.
+ * @returns The changes, or `undefined` when there are none.
  */
-export type ReanchorBooks = (books: readonly Book[]) => Promise<ChangeSet | undefined>;
+export type ReanchorBooks = (
+  changes: ChangeSet,
+  books: readonly Book[],
+) => Promise<ChangeSet | undefined>;
 
 /** What reverts or redoes one edit. */
 type Step = {
@@ -47,8 +50,8 @@ export class EditHistory {
   private passCount = 0;
 
   /**
-   * @param reanchorBooks - Re-anchors what an undo or redo restores; absent, nothing restored is
-   *   re-anchored.
+   * @param reanchorBooks - Re-anchors what an undo or redo would restore; absent, nothing restored
+   *   is re-anchored.
    */
   constructor(repository: AnalysisRepository, reanchorBooks?: ReanchorBooks) {
     this.repository = repository;
@@ -87,8 +90,8 @@ export class EditHistory {
    *
    * @returns The changes that reverted it, with those that re-anchored it, or `undefined` when
    *   there is none.
-   * @throws Whatever applying the reverting changes throws; the edit stays the next to undo.
-   * @throws Whatever re-anchoring throws; the edit is undone all the same.
+   * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
+   *   edit stays the next to undo.
    */
   undo(): Promise<ChangeSet | undefined> {
     return this.step(this.undoable, this.redoable);
@@ -99,27 +102,33 @@ export class EditHistory {
    *
    * @returns The changes that redid it, with those that re-anchored it, or `undefined` when there
    *   is none.
-   * @throws Whatever applying the redoing changes throws; the edit stays the next to redo.
-   * @throws Whatever re-anchoring throws; the edit is redone all the same.
+   * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
+   *   edit stays the next to redo.
    */
   redo(): Promise<ChangeSet | undefined> {
     return this.step(this.redoable, this.undoable);
   }
 
-  /** Applies the latest changes on `from`, moving what reverts them onto `to`. */
+  /**
+   * Applies the latest changes on `from`, re-anchored to each book passed over since they were
+   * captured, as one apply, moving what reverts it onto `to`.
+   */
   private async step(from: Step[], to: Step[]): Promise<ChangeSet | undefined> {
     const step = from.at(-1);
     if (!step) return undefined;
-    const { inverse } = await this.repository.apply(step.changes);
-    from.pop();
-    to.push({ changes: inverse, passesSeen: this.passCount });
     const books = [...this.passes.values()]
       .filter(({ ordinal }) => ordinal > step.passesSeen)
       .map(({ book }) => book);
-    this.forgetUnneededPasses();
     const reanchored =
-      books.length > 0 && this.reanchorBooks ? await this.reanchorBooks(books) : undefined;
-    return reanchored ? mergeChangeSets(step.changes, reanchored) : step.changes;
+      books.length > 0 && this.reanchorBooks
+        ? await this.reanchorBooks(step.changes, books)
+        : undefined;
+    const changes = reanchored ? mergeChangeSets(step.changes, reanchored) : step.changes;
+    const { inverse } = await this.repository.apply(changes);
+    from.pop();
+    to.push({ changes: inverse, passesSeen: this.passCount });
+    this.forgetUnneededPasses();
+    return changes;
   }
 
   /** Forgets each pass that every step still held already reflects. */

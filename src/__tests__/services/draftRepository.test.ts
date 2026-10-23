@@ -417,6 +417,33 @@ describe('DraftRepository', () => {
       expect(read).toHaveBeenCalled();
     });
 
+    it("return a book's links in stored order after an edit replaces one", async () => {
+      const { storage } = memoryStorage();
+      const [genesis] = twoBookAnalysis().tokenAnalysisLinks;
+      const later = {
+        ...genesis,
+        id: 'tl-GEN-later',
+        token: { ...genesis.token, tokenRef: 'GEN 1:1!4' },
+      };
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll({
+        ...twoBookDraft(),
+        analysis: { ...twoBookAnalysis(), tokenAnalysisLinks: [genesis, later] },
+      });
+      await repository.findLinksInBooks(['GEN']);
+
+      await repository.apply({
+        intent: 'reject',
+        tokenAnalysisLinks: { puts: [{ ...genesis, status: 'rejected' }], deletes: [] },
+      });
+
+      const { tokenAnalysisLinks } = await repository.findLinksInBooks(['GEN']);
+      const stored = (await new DraftRepository(storage, 'src', silentLogger()).exportAll()).draft
+        .analysis.tokenAnalysisLinks;
+      expect(tokenAnalysisLinks.map(({ id }) => id)).toStrictEqual(['tl-GEN', 'tl-GEN-later']);
+      expect(stored.map(({ id }) => id)).toStrictEqual(['tl-GEN', 'tl-GEN-later']);
+    });
+
     it('answer from what an apply left without loading the draft again', async () => {
       const { storage } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());

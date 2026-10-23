@@ -14,6 +14,12 @@ export interface WarningLogger {
   warn(message: string, ...details: unknown[]): void;
 }
 
+/** What an {@link AnalysisRepository} lets its caller do. */
+export interface RepositoryCapabilities {
+  /** Whether every write is refused, as it is for a Paratext 9 import. */
+  readOnly: boolean;
+}
+
 /**
  * Thrown where a draft that could not be read for some books would overwrite stored analysis with
  * only what it could read.
@@ -51,20 +57,26 @@ export type DraftExport = {
 };
 
 /**
- * Reads and writes one source project's draft. Every call is async and takes and returns only
- * JSON-plain values, so an implementation may sit behind a network boundary or another language.
- * Once a call settles, the caller may change a draft it passed in or got back without changing what
- * is stored. Lists of records come back in no promised order.
+ * Reads and writes one source project's draft, or, when read-only, reads analysis in a draft's
+ * shape. Every call is async and takes and returns only JSON-plain values, so an implementation may
+ * sit behind a network boundary or another language. Once a call settles, the caller may change a
+ * draft it passed in or got back without changing what is stored. Lists of records come back in no
+ * promised order.
  *
  * Calls for one draft must not overlap, whether on one repository or several. After one repository
  * saves a draft, any other that had already loaded or saved it must load it again before its next
  * save.
  */
 export interface AnalysisRepository {
+  /** Fixed for the repository's lifetime. */
+  readonly capabilities: RepositoryCapabilities;
+
   /**
-   * Loads the whole stored draft, or an empty one for the source project when none is stored.
-   * Stored content that cannot be read loads as empty, so one damaged record never hides the rest.
+   * Loads the whole stored draft, or, from a writable repository, an empty one for the source
+   * project when none is stored. Stored content that cannot be read loads as empty, so one damaged
+   * record never hides the rest.
    *
+   * @throws {Error} If the repository is read-only and nothing is stored for it to read.
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft was written by a newer build.
    * @throws If storage rejects a read.
@@ -72,9 +84,10 @@ export interface AnalysisRepository {
   exportAll(): Promise<DraftExport>;
 
   /**
-   * Loads the whole stored draft for copying into a project, or an empty one for the source project
-   * when none is stored.
+   * Loads the whole stored draft for copying into a project, or, from a writable repository, an
+   * empty one for the source project when none is stored.
    *
+   * @throws {Error} If the repository is read-only and nothing is stored for it to read.
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft was written by a newer build.
    * @throws {Error} If the draft itself is unreadable, so no book in it can be vouched for.
@@ -93,6 +106,7 @@ export interface AnalysisRepository {
    *
    * @returns The books whose analysis in the draft was left out for that reason; empty when the
    *   draft was saved whole.
+   * @throws {ReadOnlyAnalysisError} If the repository is read-only; nothing is written.
    * @throws {Error} If the stored draft was written by a newer build; nothing is written.
    * @throws If storage rejects a read or a write.
    */
@@ -102,6 +116,7 @@ export interface AnalysisRepository {
    * Records the stored draft as saved to its project, leaving its content as it stands. A draft
    * never saved, or already clean, is left alone.
    *
+   * @throws {ReadOnlyAnalysisError} If the repository is read-only; nothing is written.
    * @throws {Error} If the stored draft was written by a newer build, or is unreadable; nothing is
    *   written.
    * @throws If storage rejects a read or a write.

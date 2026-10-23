@@ -19,6 +19,7 @@ const mockNotificationsSend = jest.fn();
 const mockProjectDataProvidersGet = jest.fn();
 const mockGetLocalizedString = jest.fn();
 const mockCreateNetworkEventEmitterAsync = jest.fn();
+const mockSettingsGet = jest.fn();
 const mockLogger = {
   debug: jest.fn(),
   error: jest.fn(),
@@ -35,6 +36,9 @@ const papi = {
   },
   projectSettings: {
     registerValidator: mockRegisterValidator,
+  },
+  settings: {
+    get: mockSettingsGet,
   },
   notifications: {
     send: mockNotificationsSend,
@@ -87,6 +91,7 @@ const defaultExport = {
   __mockProjectDataProvidersGet: mockProjectDataProvidersGet,
   __mockGetLocalizedString: mockGetLocalizedString,
   __mockCreateNetworkEventEmitterAsync: mockCreateNetworkEventEmitterAsync,
+  __mockSettingsGet: mockSettingsGet,
   __mockLogger: mockLogger,
 };
 

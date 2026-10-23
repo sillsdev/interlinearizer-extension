@@ -4,6 +4,7 @@ import type {
   DraftExport,
   KeyValueStorage,
   ReplaceAllOptions,
+  RepositoryCapabilities,
   WarningLogger,
 } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
@@ -101,6 +102,8 @@ type LoadedShard = {
  * Calls on one instance must not overlap.
  */
 export class DraftRepository implements AnalysisRepository {
+  readonly capabilities: RepositoryCapabilities = { readOnly: false };
+
   private readonly storage: KeyValueStorage;
 
   private readonly logger: WarningLogger;
@@ -118,6 +121,9 @@ export class DraftRepository implements AnalysisRepository {
    * keeps its shard and manifest entry as they stand, whatever the draft carries for the book.
    */
   private unreadableShards = new Set<string>();
+
+  /** Whether this instance has loaded the stored draft, so it knows which shards it cannot read. */
+  private loaded = false;
 
   constructor(storage: KeyValueStorage, sourceProjectId: string, logger: WarningLogger) {
     this.storage = storage;
@@ -147,7 +153,9 @@ export class DraftRepository implements AnalysisRepository {
    * @throws If storage rejects a read.
    */
   async exportAll(): Promise<DraftExport> {
-    return this.readDraft(false);
+    const exported = await this.readDraft(false);
+    this.loaded = true;
+    return exported;
   }
 
   /**
@@ -161,7 +169,9 @@ export class DraftRepository implements AnalysisRepository {
    * @throws If storage rejects a read.
    */
   async exportForCopy(): Promise<DraftExport> {
-    return this.readDraft(true);
+    const exported = await this.readDraft(true);
+    this.loaded = true;
+    return exported;
   }
 
   /**
@@ -200,22 +210,30 @@ export class DraftRepository implements AnalysisRepository {
    *
    * Recovery survives a restart. The next load finds a shard the envelope never came to name, and a
    * later save retries a failed deletion. A book dropped from the analysis leaves no shard behind,
-   * whether or not this instance loaded the draft, unless that load could not use the book's shard.
-   * Such a book's shard is kept as it stands, and any analysis the draft carries for the book is
-   * left out rather than written over what could not be read. Starting the draft over, through
-   * `options`, lets the save write or wipe the book like any other.
+   * unless its stored shard cannot be read. Such a book's shard is kept as it stands, and any
+   * analysis the draft carries for the book is left out rather than written over what could not be
+   * read. Starting the draft over, through `options`, lets the save write or wipe the book like any
+   * other.
    *
    * A save that fails leaves no storage call of its own in flight. Once the draft has landed, a
    * wiped book's shard that could not be deleted, or a shard journal that could not be updated, is
    * no failure of the save: each is logged, and a later save retries it.
    *
-   * @returns The books whose analysis in the draft was left out because this instance's load could
-   *   not use their shard; empty when the draft was saved whole.
+   * @returns The books whose analysis in the draft was left out because their stored shard cannot
+   *   be read; empty when the draft was saved whole.
    * @throws {Error} If the stored draft was written by a newer build; nothing is written.
-   * @throws If storage rejects a read while checking the stored draft; nothing is written.
+   * @throws If storage rejects a read; nothing is written.
    * @throws If storage rejects a write.
    */
   async replaceAll(draft: DraftProject, options?: ReplaceAllOptions): Promise<string[]> {
+    if (!this.loaded) {
+      try {
+        await this.exportAll();
+      } catch (e) {
+        // An unparseable draft names no shard to keep, and this save replaces it.
+        if (!(e instanceof SyntaxError)) throw e;
+      }
+    }
     const { sourceProjectId, storage, shardContents: saved, unreadableShards: unreadable } = this;
     const { analysis } = draft;
     const storedBooks = await perfTimeAsync('saveDraft:read', () =>
@@ -227,8 +245,8 @@ export class DraftRepository implements AnalysisRepository {
     leftOut.forEach((bookCode) => byBook.delete(bookCode));
 
     // Books this save no longer carries, less those held back because the load could not read them.
-    // Without a load here, only the stored manifest and the journal name earlier shards. A
-    // journaled addition whose shard never landed deletes as a no-op.
+    // The stored manifest and the journal also list shards the load did not see, such as one
+    // awaiting deletion. A journaled addition whose shard never landed deletes as a no-op.
     const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
     const knownShards = new Set([
       ...saved.keys(),

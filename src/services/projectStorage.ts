@@ -7,7 +7,12 @@ import type {
   SegmentationDelta,
   TextAnalysis,
 } from 'interlinearizer';
-import type { DraftExport, KeyValueStorage, ReplaceAllOptions } from '../types/analysis-repository';
+import type {
+  AnalysisRepository,
+  DraftExport,
+  KeyValueStorage,
+  ReplaceAllOptions,
+} from '../types/analysis-repository';
 import { UnreadableBooksError } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
@@ -17,6 +22,7 @@ import { removeBookFromSegmentation } from '../utils/analysis-book';
 import { reportAnalysisViolations } from '../utils/analysis-violations';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 import { DraftRepository } from './draftRepository';
+import { Pt9ImportRepository } from './pt9ImportRepository';
 import { ProjectSummaries, summarizeProject } from './projectSummaries';
 import { draftKey, projectKey } from './storageKeys';
 
@@ -57,8 +63,8 @@ const projectQueues = new Map<string, Promise<unknown>>();
 const draftQueues = new Map<string, Promise<unknown>>();
 
 /**
- * Each source project's draft repository, kept across calls so a save rewrites only the books that
- * changed since the last load or save.
+ * Each source project's draft repository, kept across calls until released, so a save rewrites only
+ * the books that changed since the last load or save.
  */
 const draftRepositories = new Map<string, DraftRepository>();
 
@@ -1017,9 +1023,7 @@ export async function getDraft(
   token: ExecutionToken,
   sourceProjectId: string,
 ): Promise<DraftExport> {
-  return enqueueSerialized(draftQueues, sourceProjectId, async () => {
-    return draftRepositoryFor(token, sourceProjectId).exportAll();
-  });
+  return openDraftRepository(token, sourceProjectId).exportAll();
 }
 
 /**
@@ -1090,8 +1094,7 @@ async function markCopiedDraftClean(
  * @returns The books whose analysis in the draft was left out for that reason; empty when the draft
  *   was saved whole.
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
- * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason while checking the
- *   stored draft; nothing is written.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason; nothing is written.
  * @throws If `papi.storage.writeUserData` rejects. Once the draft has landed, a wiped book's shard
  *   that could not be deleted, or a shard journal that could not be updated, is no failure of the
  *   save: each is logged, and a later save retries it.
@@ -1102,10 +1105,52 @@ export async function saveDraft(
   draft: DraftProject,
   options?: ReplaceAllOptions,
 ): Promise<string[]> {
-  draftWriteCounts.set(sourceProjectId, (draftWriteCounts.get(sourceProjectId) ?? 0) + 1);
   // Invariant violations go unreported here: this runs on every edit, so one would log per keystroke.
-  return enqueueSerialized(draftQueues, sourceProjectId, async () =>
-    draftRepositoryFor(token, sourceProjectId).replaceAll(draft, options),
+  return openDraftRepository(token, sourceProjectId).replaceAll(draft, options);
+}
+
+/**
+ * The source project's draft repository. Calls on it wait for every draft call already made for
+ * that source, through any handle, so calls never overlap.
+ */
+export function openDraftRepository(
+  token: ExecutionToken,
+  sourceProjectId: string,
+): AnalysisRepository {
+  const queued = <T>(call: (repository: DraftRepository) => Promise<T>) =>
+    enqueueSerialized(draftQueues, sourceProjectId, () =>
+      call(draftRepositoryFor(token, sourceProjectId)),
+    );
+  return {
+    capabilities: { readOnly: false },
+    exportAll: () => queued((repository) => repository.exportAll()),
+    exportForCopy: () => queued((repository) => repository.exportForCopy()),
+    replaceAll: (draft, options) => {
+      draftWriteCounts.set(sourceProjectId, (draftWriteCounts.get(sourceProjectId) ?? 0) + 1);
+      return queued((repository) => repository.replaceAll(draft, options));
+    },
+    markClean: () => queued((repository) => repository.markClean()),
+  };
+}
+
+/**
+ * Releases the source project's draft repository once the draft calls already made for that source
+ * settle. The next call gets a new one, which knows nothing of what the released one loaded or
+ * saved.
+ */
+export function releaseDraftRepository(sourceProjectId: string): Promise<void> {
+  return enqueueSerialized(draftQueues, sourceProjectId, async () => {
+    draftRepositories.delete(sourceProjectId);
+  });
+}
+
+/** A read-only repository over the Paratext 9 import `interlinearProjectId`. */
+export function openPt9ImportRepository(
+  token: ExecutionToken,
+  interlinearProjectId: string,
+): AnalysisRepository {
+  return new Pt9ImportRepository(interlinearProjectId, () =>
+    getProject(token, interlinearProjectId),
   );
 }
 

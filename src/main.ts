@@ -11,6 +11,7 @@ import type { ProjectConfig } from 'interlinearizer';
 import { formatReplacementString, type LocalizeKey } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
+import { AnalysisSessions, type OpenedSession } from './services/analysisSessions';
 import * as bookService from './services/bookService';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
@@ -125,6 +126,21 @@ const openWebViewsByProject = new Map<string, string>();
  * every write.
  */
 const leftOutDraftBooks = new Map<string, string>();
+
+/** The open analysis sessions, over the extension's storage. */
+const sessions = new AnalysisSessions({
+  findProject: async (sourceProjectId, interlinearProjectId) =>
+    (await projectStorage.getProjectSummariesForSource(executionToken, sourceProjectId)).find(
+      (summary) => summary.id === interlinearProjectId,
+    ),
+  openDraftRepository: (sourceProjectId) =>
+    projectStorage.openDraftRepository(executionToken, sourceProjectId),
+  releaseDraftRepository: (sourceProjectId) =>
+    projectStorage.releaseDraftRepository(sourceProjectId),
+  openPt9ImportRepository: (interlinearProjectId) =>
+    projectStorage.openPt9ImportRepository(executionToken, interlinearProjectId),
+  getInterfaceLanguages: () => papi.settings.get('platform.interfaceLanguage'),
+});
 
 // #endregion
 
@@ -722,6 +738,42 @@ async function saveInterlinearDraft(
 }
 
 /**
+ * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import, otherwise
+ * on the source project's draft, which saves to `interlinearProjectId` when given. Closes the
+ * source's earlier session, if any.
+ *
+ * @returns A JSON string of an {@link OpenedSession}.
+ * @throws If the source project has no such interlinear project, or its analysis cannot be loaded.
+ *   The error is logged before rethrowing.
+ */
+async function openSession(
+  sourceProjectId: string,
+  interlinearProjectId?: string,
+): Promise<string> {
+  try {
+    const opened: OpenedSession = await sessions.open(sourceProjectId, interlinearProjectId);
+    return JSON.stringify(opened);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to open a session on project ${sourceProjectId}`, e);
+    throw e;
+  }
+}
+
+/**
+ * Sets the language a session's glosses are read and written in.
+ *
+ * @throws If the session is not open. The error is logged before rethrowing.
+ */
+async function setAnalysisLanguage(sessionId: string, analysisLanguage: string): Promise<void> {
+  try {
+    await sessions.setAnalysisLanguage(sessionId, analysisLanguage);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to set the analysis language of session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/**
  * Returns a summary of every interlinearizer project for the given source project as a JSON string.
  * The WebView deserializes this to populate its project picker and to decide whether to prompt
  * "create new" or "select existing" when the user opens the project menu.
@@ -1224,6 +1276,77 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  /** The parameter naming the session a session command acts on. */
+  const sessionIdParam = {
+    name: 'sessionId',
+    required: true,
+    summary: 'ID of the session, as openSession returned it',
+    schema: { type: 'string' },
+  } as const;
+
+  const openSessionCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.openSession',
+    openSession,
+    {
+      method: {
+        summary:
+          "Open a session on a source project's draft, or read-only on its Paratext 9 import, closing the source's earlier session",
+        params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible source project ID whose analysis to open',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'interlinearProjectId',
+            required: false,
+            summary:
+              'UUID of the interlinear project the draft saves to, or of the Paratext 9 import to read; omit for the draft alone',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified { sessionId, readOnly, hasFreeTranslations }',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const closeSessionCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.closeSession',
+    (sessionId: string) => sessions.close(sessionId),
+    {
+      method: {
+        summary: 'Close a session once the commands sent to it settle',
+        params: [sessionIdParam],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const setAnalysisLanguageCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.setAnalysisLanguage',
+    setAnalysisLanguage,
+    {
+      method: {
+        summary: "Set the language a session's glosses are read and written in",
+        params: [
+          sessionIdParam,
+          {
+            name: 'analysisLanguage',
+            required: true,
+            summary: 'BCP 47 tag of the language',
+            schema: { type: 'string' },
+          },
+        ],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
   const setPerfMarksCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.setPerfMarks',
     async (enabled: boolean) => setHostPerfMarks(enabled),
@@ -1594,6 +1717,9 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getSegmentsCommandRegistration,
     getTextReadStatusCommandRegistration,
     saveDraftCommandRegistration,
+    openSessionCommandRegistration,
+    closeSessionCommandRegistration,
+    setAnalysisLanguageCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,
@@ -1628,6 +1754,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
  */
 export async function deactivate(): Promise<boolean> {
   openWebViewsByProject.clear();
+  await sessions.closeAll();
   await bookService.closeAllProjects();
   logger.debug('Interlinearizer extension is deactivating!');
   return true;

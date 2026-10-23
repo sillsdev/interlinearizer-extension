@@ -2,7 +2,7 @@
 
 import type { DraftProject, TokenAnalysis } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
-import { applyChangeSet, scopeRecordOf } from '../../utils/change-set';
+import { applyChangeSet, mergeChangeSets, scopeRecordOf } from '../../utils/change-set';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
 function payload(id: string, gloss?: string): TokenAnalysis {
@@ -187,5 +187,77 @@ describe('applyChangeSet', () => {
         analysis.phraseAnalysisLinks,
       ].map((records) => records.map(({ id }) => id)),
     ).toStrictEqual([['sa'], ['sl'], ['a'], ['tl'], ['pa'], ['pl']]);
+  });
+});
+
+describe('mergeChangeSets', () => {
+  it('applies as its two change sets applied in turn', () => {
+    const draft = draftOf(payload('a'), payload('b'), payload('c'));
+    const first = {
+      intent: 'first',
+      tokenAnalyses: { puts: [payload('a', 'one'), payload('d')], deletes: ['b'] },
+    };
+    const then = {
+      intent: 'then',
+      tokenAnalyses: { puts: [payload('a', 'two'), payload('b', 'back')], deletes: ['d', 'c'] },
+    };
+
+    const merged = applyChangeSet(draft, mergeChangeSets(first, then)).draft;
+    const inTurn = applyChangeSet(applyChangeSet(draft, first).draft, then).draft;
+
+    expect(merged.analysis.tokenAnalyses).toEqual(
+      expect.arrayContaining(inTurn.analysis.tokenAnalyses),
+    );
+    expect(merged.analysis.tokenAnalyses).toHaveLength(inTurn.analysis.tokenAnalyses.length);
+  });
+
+  it("is named by the first change set's intent", () => {
+    expect(mergeChangeSets({ intent: 'first' }, { intent: 'then' }).intent).toBe('first');
+  });
+
+  it("keeps the later scope's record, or the earlier one when only it has one", () => {
+    const earlier = scopeRecordOf({ ...draftOf(), suggestedName: 'Earlier' });
+    const later = scopeRecordOf({ ...draftOf(), suggestedName: 'Later' });
+
+    expect(
+      mergeChangeSets({ intent: 'a', scope: earlier }, { intent: 'b', scope: later }).scope,
+    ).toBe(later);
+    expect(mergeChangeSets({ intent: 'a', scope: earlier }, { intent: 'b' }).scope).toBe(earlier);
+  });
+
+  it('merges every record kind both change sets change', () => {
+    const kinds = [
+      'segmentAnalyses',
+      'segmentAnalysisLinks',
+      'tokenAnalyses',
+      'tokenAnalysisLinks',
+      'phraseAnalyses',
+      'phraseAnalysisLinks',
+    ] as const;
+    const deleting = (id: string) =>
+      Object.fromEntries(kinds.map((kind) => [kind, { puts: [], deletes: [id] }]));
+
+    const merged = mergeChangeSets(
+      { intent: 'a', ...deleting('x') },
+      { intent: 'b', ...deleting('y') },
+    );
+
+    expect(merged).toStrictEqual({
+      intent: 'a',
+      ...Object.fromEntries(kinds.map((kind) => [kind, { puts: [], deletes: ['x', 'y'] }])),
+    });
+  });
+
+  it('carries each kind that either change set changes, and no other', () => {
+    const merged = mergeChangeSets(
+      { intent: 'a', tokenAnalyses: { puts: [payload('a')], deletes: [] } },
+      { intent: 'b', segmentAnalyses: { puts: [], deletes: ['s'] } },
+    );
+
+    expect(merged).toStrictEqual({
+      intent: 'a',
+      tokenAnalyses: { puts: [payload('a')], deletes: [] },
+      segmentAnalyses: { puts: [], deletes: ['s'] },
+    });
   });
 });

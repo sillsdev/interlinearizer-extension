@@ -134,3 +134,46 @@ export function applyChangeSet(draft: DraftProject, changes: ChangeSet): Applied
     inverse,
   };
 }
+
+/** One record kind's `first` then `then`, as one; `then` wins wherever both name a record. */
+function mergeRecordChanges<T extends { id: string }>(
+  first: RecordChanges<T> | undefined,
+  then: RecordChanges<T> | undefined,
+): RecordChanges<T> | undefined {
+  if (!first || !then) return first ?? then;
+  const named = new Set([...then.puts.map(({ id }) => id), ...then.deletes]);
+  return {
+    puts: [...first.puts.filter(({ id }) => !named.has(id)), ...then.puts],
+    deletes: [...first.deletes.filter((id) => !named.has(id)), ...then.deletes],
+  };
+}
+
+/**
+ * Changes that apply as `first` and then `then` do, named by `first`'s intent. Where both name a
+ * record, or both carry the scope's record, `then`'s stands.
+ */
+export function mergeChangeSets(first: ChangeSet, then: ChangeSet): ChangeSet {
+  const scope = then.scope ?? first.scope;
+  const segmentAnalyses = mergeRecordChanges(first.segmentAnalyses, then.segmentAnalyses);
+  const segmentAnalysisLinks = mergeRecordChanges(
+    first.segmentAnalysisLinks,
+    then.segmentAnalysisLinks,
+  );
+  const tokenAnalyses = mergeRecordChanges(first.tokenAnalyses, then.tokenAnalyses);
+  const tokenAnalysisLinks = mergeRecordChanges(first.tokenAnalysisLinks, then.tokenAnalysisLinks);
+  const phraseAnalyses = mergeRecordChanges(first.phraseAnalyses, then.phraseAnalyses);
+  const phraseAnalysisLinks = mergeRecordChanges(
+    first.phraseAnalysisLinks,
+    then.phraseAnalysisLinks,
+  );
+  return {
+    intent: first.intent,
+    ...(scope && { scope }),
+    ...(segmentAnalyses && { segmentAnalyses }),
+    ...(segmentAnalysisLinks && { segmentAnalysisLinks }),
+    ...(tokenAnalyses && { tokenAnalyses }),
+    ...(tokenAnalysisLinks && { tokenAnalysisLinks }),
+    ...(phraseAnalyses && { phraseAnalyses }),
+    ...(phraseAnalysisLinks && { phraseAnalysisLinks }),
+  };
+}

@@ -1,4 +1,14 @@
-import type { DraftProject, TextAnalysis } from 'interlinearizer';
+import type {
+  AssignmentStatus,
+  DraftProject,
+  PhraseAnalysis,
+  SegmentAnalysis,
+  SegmentAnalysisLink,
+  TextAnalysis,
+  TokenAnalysis,
+} from 'interlinearizer';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
+import type { normalizeSurfaceForm } from '../utils/analysis-identity';
 
 /** Text records by key. */
 export interface KeyValueStorage {
@@ -89,16 +99,40 @@ export type ApplyResult = {
   inverse: ChangeSet;
 };
 
+/** Links of every kind, one list per kind. */
+export type AnalysisLinks = Pick<
+  TextAnalysis,
+  'tokenAnalysisLinks' | 'phraseAnalysisLinks' | 'segmentAnalysisLinks'
+>;
+
+/** A difference between a repository's kept indexes and ones built afresh from its records. */
+export type IndexDifference = {
+  /** The record kind, or `<kind> by <index name>` for a derived index. */
+  index: string;
+  /** The record id, or the key whose entries differ in a derived index. */
+  key: string;
+  /**
+   * Ids filed under `key` in the fresh index and not the kept one; where `index` names a record
+   * kind, also the id of a record whose kept copy differs.
+   */
+  missing: string[];
+  /**
+   * Ids filed under `key` in the kept index and not the fresh one; where `index` names a record
+   * kind, also the id of a record whose kept copy differs.
+   */
+  extra: string[];
+};
+
 /**
  * Reads and writes one source project's draft, or, when read-only, reads analysis in a draft's
  * shape. Every call is async and takes and returns only JSON-plain values, so an implementation may
  * sit behind a network boundary or another language. Once a call settles, the caller may change a
- * draft it passed in or got back without changing what is stored. Lists of records come back in no
- * promised order.
+ * draft or records it passed in or got back without changing what is stored. Lists of records come
+ * back in no promised order, and a lookup by several keys returns each record once.
  *
  * Calls for one draft must not overlap, whether on one repository or several. After one repository
- * saves a draft, any other that had already loaded or saved it must load it again before its next
- * save.
+ * saves a draft, any other that had already loaded or saved it must load it again through
+ * {@link exportAll} before its next save or lookup; {@link exportForCopy} does not count.
  */
 export interface AnalysisRepository {
   /** Fixed for the repository's lifetime. */
@@ -171,4 +205,78 @@ export interface AnalysisRepository {
    *   unchanged, though storage may hold some of the changes until a later save.
    */
   apply(changes: ChangeSet): Promise<ApplyResult>;
+
+  /**
+   * The token analyses stored under `ids`; an id with none stored under it is skipped.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  getTokenAnalyses(ids: string[]): Promise<TokenAnalysis[]>;
+
+  /**
+   * The phrase analyses stored under `ids`; an id with none stored under it is skipped.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  getPhraseAnalyses(ids: string[]): Promise<PhraseAnalysis[]>;
+
+  /**
+   * The segment analyses stored under `ids`; an id with none stored under it is skipped.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  getSegmentAnalyses(ids: string[]): Promise<SegmentAnalysis[]>;
+
+  /**
+   * The token links on any of `tokenRefs`, and the phrase links touching any of them.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  findLinksByToken(
+    tokenRefs: string[],
+  ): Promise<Pick<AnalysisLinks, 'tokenAnalysisLinks' | 'phraseAnalysisLinks'>>;
+
+  /**
+   * The segment links on any of `segmentIds`.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  findLinksBySegment(segmentIds: string[]): Promise<SegmentAnalysisLink[]>;
+
+  /**
+   * The links of every kind to any of `analysisIds`.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  findLinksToAnalyses(analysisIds: string[]): Promise<AnalysisLinks>;
+
+  /**
+   * The links of every kind into any of `bookCodes`, limited to `statuses` when given.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  findLinksInBooks(bookCodes: string[], statuses?: AssignmentStatus[]): Promise<AnalysisLinks>;
+
+  /**
+   * The token analyses whose surface text {@link normalizeSurfaceForm} maps to one of
+   * `normalizedForms`.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  findTokenAnalysesByForm(normalizedForms: string[]): Promise<TokenAnalysis[]>;
+
+  /**
+   * The phrase analyses whose surface text {@link normalizeSurfaceForm} maps to one of
+   * `normalizedForms`.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  findPhraseAnalysesByForm(normalizedForms: string[]): Promise<PhraseAnalysis[]>;
+
+  /**
+   * Reports where the derived indexes the repository keeps differ from ones built afresh from its
+   * records, for debugging, leaving the kept ones as they are. A repository keeping none reports
+   * nothing.
+   */
+  checkIndexes(): Promise<IndexDifference[]>;
 }

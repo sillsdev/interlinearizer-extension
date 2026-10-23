@@ -18,10 +18,14 @@ function makeImport(overrides: Partial<InterlinearProject> = {}): InterlinearPro
   };
 }
 
+/** The revision of an import that no sync replaces. */
+const NEVER_SYNCED = () => 0;
+
 function repositoryOver(project: InterlinearProject | undefined) {
   return new Pt9ImportRepository(
     'import-id',
     async () => project && JSON.parse(JSON.stringify(project)),
+    NEVER_SYNCED,
   );
 }
 
@@ -77,9 +81,13 @@ describe('Pt9ImportRepository', () => {
     });
 
     it('rethrows a failed read', async () => {
-      const repository = new Pt9ImportRepository('import-id', async () => {
-        throw new Error('disk full');
-      });
+      const repository = new Pt9ImportRepository(
+        'import-id',
+        async () => {
+          throw new Error('disk full');
+        },
+        NEVER_SYNCED,
+      );
 
       await expect(repository.exportAll()).rejects.toThrow('disk full');
     });
@@ -97,9 +105,9 @@ describe('Pt9ImportRepository', () => {
     it('refuses, reading nothing', async () => {
       const readProject = jest.fn(async () => makeImport());
 
-      await expect(new Pt9ImportRepository('import-id', readProject).markClean()).rejects.toThrow(
-        ReadOnlyAnalysisError,
-      );
+      await expect(
+        new Pt9ImportRepository('import-id', readProject, NEVER_SYNCED).markClean(),
+      ).rejects.toThrow(ReadOnlyAnalysisError);
       expect(readProject).not.toHaveBeenCalled();
     });
   });
@@ -107,7 +115,11 @@ describe('Pt9ImportRepository', () => {
   describe('replaceAll', () => {
     it('refuses every save', async () => {
       const readProject = jest.fn(async () => makeImport());
-      const repository: AnalysisRepository = new Pt9ImportRepository('import-id', readProject);
+      const repository: AnalysisRepository = new Pt9ImportRepository(
+        'import-id',
+        readProject,
+        NEVER_SYNCED,
+      );
 
       await expect(repository.replaceAll(emptyDraft('src-project'))).rejects.toThrow(
         ReadOnlyAnalysisError,
@@ -119,12 +131,116 @@ describe('Pt9ImportRepository', () => {
   describe('apply', () => {
     it('refuses every change', async () => {
       const readProject = jest.fn(async () => makeImport());
-      const repository: AnalysisRepository = new Pt9ImportRepository('import-id', readProject);
+      const repository: AnalysisRepository = new Pt9ImportRepository(
+        'import-id',
+        readProject,
+        NEVER_SYNCED,
+      );
 
       await expect(repository.apply({ intent: 'writeGloss' })).rejects.toThrow(
         ReadOnlyAnalysisError,
       );
       expect(readProject).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('lookups', () => {
+    const imported = () =>
+      makeImport({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'and' }],
+        },
+      });
+
+    it("answer from the import's records, reading it once", async () => {
+      const readProject = jest.fn(async () => imported());
+      const repository = new Pt9ImportRepository('import-id', readProject, NEVER_SYNCED);
+
+      await expect(repository.getTokenAnalyses(['ta-1'])).resolves.toStrictEqual(
+        imported().analysis.tokenAnalyses,
+      );
+      await repository.findTokenAnalysesByForm(['and']);
+
+      expect(readProject).toHaveBeenCalledTimes(1);
+    });
+
+    it('keep what they read across a load', async () => {
+      const readProject = jest.fn(async () => imported());
+      const repository = new Pt9ImportRepository('import-id', readProject, NEVER_SYNCED);
+      await repository.getTokenAnalyses(['ta-1']);
+
+      await repository.exportAll();
+      await repository.getTokenAnalyses(['ta-1']);
+
+      expect(readProject).toHaveBeenCalledTimes(2);
+    });
+
+    it('read the import again once a sync replaces it', async () => {
+      let revision = 0;
+      const synced = makeImport({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'but' }],
+        },
+      });
+      const readProject = jest.fn(async () => (revision === 0 ? imported() : synced));
+      const repository = new Pt9ImportRepository('import-id', readProject, () => revision);
+      await repository.getTokenAnalyses(['ta-1']);
+
+      revision = 1;
+
+      await expect(repository.getTokenAnalyses(['ta-1'])).resolves.toStrictEqual(
+        synced.analysis.tokenAnalyses,
+      );
+      expect(readProject).toHaveBeenCalledTimes(2);
+    });
+
+    it('read the import again after a sync that lands during a read', async () => {
+      let revision = 0;
+      const readProject = jest.fn(async () => {
+        revision += 1;
+        return imported();
+      });
+      const repository = new Pt9ImportRepository('import-id', readProject, () => revision);
+
+      await repository.getTokenAnalyses(['ta-1']);
+      await repository.getTokenAnalyses(['ta-1']);
+
+      expect(readProject).toHaveBeenCalledTimes(2);
+    });
+
+    it('refuse when no import is stored', async () => {
+      await expect(repositoryOver(undefined).getTokenAnalyses(['ta-1'])).rejects.toThrow(
+        'no Paratext 9 import is stored as project import-id',
+      );
+    });
+  });
+
+  describe('checkIndexes', () => {
+    it('reports nothing before a lookup', async () => {
+      await expect(repositoryOver(makeImport()).checkIndexes()).resolves.toStrictEqual([]);
+    });
+
+    it('reports nothing after a lookup', async () => {
+      const repository = repositoryOver(makeImport());
+      await repository.getTokenAnalyses(['ta-1']);
+
+      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
+    });
+
+    it('reports nothing once a sync replaces the import', async () => {
+      let revision = 0;
+      const repository = new Pt9ImportRepository(
+        'import-id',
+        async () => makeImport(),
+        () => revision,
+      );
+      await repository.getTokenAnalyses(['ta-1']);
+
+      revision = 1;
+
+      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
     });
   });
 });

@@ -360,4 +360,113 @@ describe('DraftRepository', () => {
       expect(records.get(draftAnalysisKey('src', 'GEN'))).not.toContain('and then');
     });
   });
+
+  describe('lookups', () => {
+    it('load the draft once, answering later lookups from what they kept', async () => {
+      const { storage } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      const read = jest.spyOn(storage, 'read');
+
+      await repository.findLinksInBooks(['GEN']);
+      const readsAfterFirst = read.mock.calls.length;
+      await repository.findLinksToAnalyses(['ta-and']);
+
+      expect(readsAfterFirst).toBeGreaterThan(0);
+      expect(read).toHaveBeenCalledTimes(readsAfterFirst);
+    });
+
+    it.each(['exportForCopy', 'markClean'] as const)(
+      'keep what they kept across %s',
+      async (call) => {
+        const { storage } = memoryStorage();
+        const repository = new DraftRepository(storage, 'src', silentLogger());
+        await repository.replaceAll({ ...twoBookDraft(), dirty: true });
+        await repository.findLinksInBooks(['GEN']);
+        await repository[call]();
+        const read = jest.spyOn(storage, 'read');
+
+        await repository.findLinksInBooks(['GEN']);
+
+        expect(read).not.toHaveBeenCalled();
+      },
+    );
+
+    it('read the draft again after exportAll', async () => {
+      const { storage } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+      await repository.findLinksInBooks(['GEN']);
+      await repository.exportAll();
+      const read = jest.spyOn(storage, 'read');
+
+      await repository.findLinksInBooks(['GEN']);
+
+      expect(read).toHaveBeenCalled();
+    });
+
+    it('read the draft again after a whole save', async () => {
+      const { storage } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.exportAll();
+      await repository.replaceAll(twoBookDraft());
+      const read = jest.spyOn(storage, 'read');
+
+      await repository.findLinksInBooks(['GEN']);
+
+      expect(read).toHaveBeenCalled();
+    });
+
+    it("return a book's links in stored order after an edit replaces one", async () => {
+      const { storage } = memoryStorage();
+      const [genesis] = twoBookAnalysis().tokenAnalysisLinks;
+      const later = {
+        ...genesis,
+        id: 'tl-GEN-later',
+        token: { ...genesis.token, tokenRef: 'GEN 1:1!4' },
+      };
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll({
+        ...twoBookDraft(),
+        analysis: { ...twoBookAnalysis(), tokenAnalysisLinks: [genesis, later] },
+      });
+      await repository.findLinksInBooks(['GEN']);
+
+      await repository.apply({
+        intent: 'reject',
+        tokenAnalysisLinks: { puts: [{ ...genesis, status: 'rejected' }], deletes: [] },
+      });
+
+      const { tokenAnalysisLinks } = await repository.findLinksInBooks(['GEN']);
+      const stored = (await new DraftRepository(storage, 'src', silentLogger()).exportAll()).draft
+        .analysis.tokenAnalysisLinks;
+      expect(tokenAnalysisLinks.map(({ id }) => id)).toStrictEqual(['tl-GEN', 'tl-GEN-later']);
+      expect(stored.map(({ id }) => id)).toStrictEqual(['tl-GEN', 'tl-GEN-later']);
+    });
+
+    it('answer from what an apply left without loading the draft again', async () => {
+      const { storage } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.apply({
+        intent: 'add',
+        tokenAnalyses: { puts: twoBookAnalysis().tokenAnalyses, deletes: [] },
+      });
+      const read = jest.spyOn(storage, 'read');
+
+      await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual(
+        twoBookAnalysis().tokenAnalyses,
+      );
+      expect(read).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('checkIndexes', () => {
+    it('reports nothing while it keeps no index', async () => {
+      const { storage } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+
+      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
+    });
+  });
 });

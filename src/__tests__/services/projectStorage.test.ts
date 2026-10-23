@@ -24,6 +24,7 @@ import {
   updateProjectMetadata,
 } from '../../services/projectStorage';
 import { summarizeProject } from '../../services/projectSummaries';
+import type { AnalysisRepository } from '../../types/analysis-repository';
 import { ReadOnlyAnalysisError } from '../../types/read-only-analysis-error';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { removeBookFromAnalysis } from '../../utils/analysis-book';
@@ -764,6 +765,55 @@ describe('projectStorage', () => {
       await deleteProject(token, 'nonexistent');
 
       expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
+    it('makes a repository already opened over a deleted import refuse lookups', async () => {
+      const imported: InterlinearProject = {
+        ...makeStubProject('import-id'),
+        pt9Import: { fileHashes: {}, importedAt: '2026-02-01T00:00:00.000Z' },
+      };
+      mockListedProject(imported);
+      const repository = openPt9ImportRepository(token, 'import-id');
+      await repository.getTokenAnalyses(['ta-1']);
+      mockStore({ projectSummaries: storedSummaries(imported) });
+
+      await deleteProject(token, 'import-id');
+
+      await expect(repository.getTokenAnalyses(['ta-1'])).rejects.toThrow(
+        'no Paratext 9 import is stored as project import-id',
+      );
+    });
+
+    it('keeps no import a repository read while the import was being deleted', async () => {
+      const imported: InterlinearProject = {
+        ...makeStubProject('import-id'),
+        pt9Import: { fileHashes: {}, importedAt: '2026-02-01T00:00:00.000Z' },
+      };
+      mockListedProject(imported);
+      let markDeletionStarted = () => {};
+      const deletionStarted = new Promise<void>((resolve) => {
+        markDeletionStarted = resolve;
+      });
+      let finishDeletion = () => {};
+      __mockDeleteUserData.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            markDeletionStarted();
+            finishDeletion = resolve;
+          }),
+      );
+      const repository = openPt9ImportRepository(token, 'import-id');
+
+      const deletion = deleteProject(token, 'import-id');
+      await deletionStarted;
+      await repository.getTokenAnalyses(['ta-1']);
+      mockStore({});
+      finishDeletion();
+      await deletion;
+
+      await expect(repository.getTokenAnalyses(['ta-1'])).rejects.toThrow(
+        'no Paratext 9 import is stored as project import-id',
+      );
     });
 
     it('unlists the project when its record is already missing', async () => {
@@ -2915,6 +2965,42 @@ describe('projectStorage', () => {
       expect(analysis.tokenAnalysisLinks).toStrictEqual([]);
     });
 
+    it.each([
+      ['getTokenAnalyses', (r: AnalysisRepository) => r.getTokenAnalyses(['analysis-GEN']), 1],
+      ['getPhraseAnalyses', (r: AnalysisRepository) => r.getPhraseAnalyses(['p']), 0],
+      ['getSegmentAnalyses', (r: AnalysisRepository) => r.getSegmentAnalyses(['s']), 0],
+      ['findLinksBySegment', (r: AnalysisRepository) => r.findLinksBySegment(['GEN 1:1']), 0],
+      [
+        'findLinksByToken',
+        (r: AnalysisRepository) =>
+          r.findLinksByToken(['GEN 1:1!0']).then((l) => l.tokenAnalysisLinks),
+        1,
+      ],
+      [
+        'findLinksToAnalyses',
+        (r: AnalysisRepository) =>
+          r.findLinksToAnalyses(['analysis-GEN']).then((l) => l.tokenAnalysisLinks),
+        1,
+      ],
+      [
+        'findLinksInBooks',
+        (r: AnalysisRepository) =>
+          r.findLinksInBooks(['GEN'], ['approved']).then((l) => l.tokenAnalysisLinks),
+        1,
+      ],
+      [
+        'findTokenAnalysesByForm',
+        (r: AnalysisRepository) => r.findTokenAnalysesByForm(['word-gen']),
+        1,
+      ],
+      ['findPhraseAnalysesByForm', (r: AnalysisRepository) => r.findPhraseAnalysesByForm(['x']), 0],
+      ['checkIndexes', (r: AnalysisRepository) => r.checkIndexes(), 0],
+    ])('answers %s from the draft saveDraft saved', async (_name, lookup, count) => {
+      await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+
+      await expect(lookup(openDraftRepository(token, 'src-proj'))).resolves.toHaveLength(count);
+    });
+
     it('waits for a draft call already made before reading', async () => {
       let finishWrite: () => void = () => {};
       __mockWriteUserData.mockImplementationOnce(
@@ -3158,6 +3244,29 @@ describe('projectStorage', () => {
             analysis: newAnalysis,
             pt9Import: NEW_PROVENANCE,
           }),
+        );
+      });
+
+      it('makes a repository already opened over the import answer from the new one', async () => {
+        writeThroughStore({
+          projectSummaries: storedSummaries(importedProject),
+          'project:import-id': JSON.stringify(importedProject),
+        });
+        const repository = openPt9ImportRepository(token, 'import-id');
+        await repository.getTokenAnalyses(['pt9:ta:GEN 1:1:0:0']);
+
+        await savePt9Import(
+          token,
+          'src-project',
+          'Paratext 9 Interlinear',
+          'Imported from Paratext 9.',
+          ['en'],
+          newAnalysis,
+          NEW_PROVENANCE,
+        );
+
+        await expect(repository.getTokenAnalyses(['pt9:ta:GEN 1:1:0:0'])).resolves.toStrictEqual(
+          newAnalysis.tokenAnalyses,
         );
       });
 

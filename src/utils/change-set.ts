@@ -7,11 +7,6 @@ export type AppliedChanges = {
   inverse: ChangeSet;
 };
 
-/** A copy of a JSON-plain value that shares nothing with it. */
-function copyOf<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value));
-}
-
 /** The draft's record, without its analysis or its `dirty` flag. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave them out
 export function scopeRecordOf({ analysis, dirty, ...scope }: DraftProject): ScopeRecord {
@@ -41,7 +36,7 @@ function applyRecordChanges<T extends { id: string }>(
 
   const stored = new Map(records.map((record) => [record.id, record]));
   const deleted = new Set(changes.deletes);
-  const puts = new Map(changes.puts.map((record) => [record.id, copyOf(record)]));
+  const puts = new Map(changes.puts.map((record) => [record.id, record]));
   const inverse: RecordChanges<T> = { puts: [], deletes: [] };
   changes.puts.forEach(({ id }) => {
     const prior = stored.get(id);
@@ -68,9 +63,9 @@ function applyRecordChanges<T extends { id: string }>(
 }
 
 /**
- * Applies `changes` to `draft`, leaving `draft` as it was. The result is marked unsaved. It holds
- * copies of the records the changes put, and shares everything else with `draft`, the records the
- * inverse restores included.
+ * Applies `changes` to `draft`, leaving `draft` as it was. The result is marked unsaved. It shares
+ * the put records and any scope record with `changes`, and everything else with `draft`, including
+ * the records the inverse restores.
  *
  * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
  *   record names another source project.
@@ -125,7 +120,7 @@ export function applyChangeSet(draft: DraftProject, changes: ChangeSet): Applied
   };
   return {
     draft: {
-      ...(changes.scope ? copyOf(changes.scope) : scopeRecordOf(draft)),
+      ...(changes.scope ?? scopeRecordOf(draft)),
       dirty: true,
       analysis: {
         segmentAnalyses: segmentAnalyses.records,

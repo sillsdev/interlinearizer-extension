@@ -16,6 +16,7 @@ import { toProjectSummary } from '../types/interlinear-project-summary';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
 
 jest.mock('../services/bookService');
+jest.mock('../services/csharpHost');
 jest.mock('../services/hostPerf');
 jest.mock('../services/projectStorage');
 jest.mock('../services/pt9ImportService');

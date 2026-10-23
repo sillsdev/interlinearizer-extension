@@ -142,6 +142,8 @@ const sessions = new AnalysisSessions({
   openPt9ImportRepository: (interlinearProjectId) =>
     projectStorage.openPt9ImportRepository(executionToken, interlinearProjectId),
   getInterfaceLanguages: () => papi.settings.get('platform.interfaceLanguage'),
+  startTextRead: (sourceProjectId) => bookService.startTextRead(sourceProjectId),
+  stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
 });
 
 // #endregion
@@ -1879,12 +1881,35 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const analysisChangedEmitter = await papi.network.createNetworkEventEmitterAsync(
     'interlinearizer.onAnalysisChanged',
   );
+  const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book) =>
+    sessions
+      .reanchorBook(sourceProjectId, book)
+      .catch((e) =>
+        logger.warn(
+          `Interlinearizer: could not re-anchor ${book.bookRef} of project ${sourceProjectId}`,
+          e,
+        ),
+      ),
+  );
+  const textReadUnsubscriber = bookService.onTextRead((sourceProjectId, textBookIds) =>
+    sessions
+      .reanchorMissingBooks(sourceProjectId, textBookIds)
+      .catch((e) =>
+        logger.warn(
+          `Interlinearizer: could not re-anchor the books project ${sourceProjectId} lacks`,
+          e,
+        ),
+      ),
+  );
+  // A book's new text reaches its pass before its edit is reported, so the event waits for the pass.
   const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
-    analysisChangedEmitter.emit({
-      sourceProjectId,
-      changeId: crypto.randomUUID(),
-      scriptureEdit: { bookId },
-    }),
+    sessions.settled(sourceProjectId).then(() =>
+      analysisChangedEmitter.emit({
+        sourceProjectId,
+        changeId: crypto.randomUUID(),
+        scriptureEdit: { bookId },
+      }),
+    ),
   );
 
   const openLexiconChooserCommandRegistration = await papi.commands.registerCommand(
@@ -1982,6 +2007,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     undoFromNotificationEmitter,
     undoFromNotificationCommandRegistration,
     analysisChangedEmitter,
+    bookReadUnsubscriber,
+    textReadUnsubscriber,
     bookTextUnsubscriber,
     openLexiconChooserCommandRegistration,
     saveCommandRegistration,

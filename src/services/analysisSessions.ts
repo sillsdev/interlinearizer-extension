@@ -1,11 +1,15 @@
+import { Canon } from '@sillsdev/scripture';
+import type { Book } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { isEmptyChangeSet } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
+import { missingBook } from '../utils/reanchor-draft';
 import { assertApprovalRule } from './commands/approvalRule';
 import { ChangeBuffer } from './commands/changeBuffer';
 import { EditHistory } from './editHistory';
+import { booksLinkedAmong, reanchorRestored, reanchorStoredBook } from './reanchorPasses';
 
 /** BCP 47 tag for a language that cannot be determined. */
 export const UNDETERMINED_LANGUAGE = 'und';
@@ -65,6 +69,20 @@ export interface SessionHost {
   openPt9ImportRepository(interlinearProjectId: string): AnalysisRepository;
   /** The platform's interface languages, most preferred first. */
   getInterfaceLanguages(): Promise<string[]>;
+  /**
+   * Starts reading the source project's whole text afresh, without waiting on it, so that every
+   * book reaches {@link AnalysisSessions.reanchorBook} and the books holding text reach
+   * {@link AnalysisSessions.reanchorMissingBooks}.
+   */
+  startTextRead(sourceProjectId: string): Promise<void>;
+  /** Ends the source project's whole-text read. */
+  stopTextRead(sourceProjectId: string): Promise<void>;
+}
+
+/** Re-anchors the session's draft to `book`, recording the pass in its history. */
+async function reanchorNow(session: Session, book: Book): Promise<void> {
+  await reanchorStoredBook(session.repository, book);
+  session.history.recordPass(book);
 }
 
 type OpenSession = {
@@ -100,7 +118,8 @@ export class AnalysisSessions {
    * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
    * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
    * Opening closes the source's earlier session, if any, and starts the new one on what storage
-   * holds, with nothing to undo.
+   * holds, with nothing to undo, and starts reading the source's whole text afresh, which the
+   * session's close ends.
    *
    * The session starts on the opened draft's first analysis language. When the draft lists none, it
    * starts on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the
@@ -125,7 +144,7 @@ export class AnalysisSessions {
         id: crypto.randomUUID(),
         scope,
         repository,
-        history: new EditHistory(repository),
+        history: new EditHistory(repository, reanchorRestored(repository)),
         analysisLanguage:
           opened.analysisLanguages[0] ??
           ((await this.host.getInterfaceLanguages())[0] || UNDETERMINED_LANGUAGE),
@@ -133,6 +152,7 @@ export class AnalysisSessions {
       const entry: OpenSession = { session, queue: Promise.resolve() };
       this.sessions.set(session.id, entry);
       this.sessionsBySource.set(sourceProjectId, entry);
+      await this.host.startTextRead(sourceProjectId);
       return {
         sessionId: session.id,
         readOnly: repository.capabilities.readOnly,
@@ -263,6 +283,57 @@ export class AnalysisSessions {
   }
 
   /**
+   * Re-anchors the draft of the source project's session to `book`'s current text, in the session's
+   * turn and as no undo step, so that what a later undo or redo restores is re-anchored to it too.
+   * A book the text lacks is passed as a book with no segments. Does nothing when the source has no
+   * session open, or only a read-only one.
+   *
+   * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
+   */
+  reanchorBook(sourceProjectId: string, book: Book): Promise<void> {
+    return this.runOnWritable(sourceProjectId, (session) => reanchorNow(session, book));
+  }
+
+  /**
+   * Re-anchors the draft of the source project's session, as {@link reanchorBook} does, to every
+   * book it links into that `textBookIds` leaves out, which the text lacks.
+   *
+   * @throws Whatever reading the draft or applying the changes throws; the books before stay
+   *   re-anchored.
+   */
+  reanchorMissingBooks(sourceProjectId: string, textBookIds: readonly string[]): Promise<void> {
+    return this.runOnWritable(sourceProjectId, async (session) => {
+      const present = new Set(textBookIds);
+      const missing = await booksLinkedAmong(
+        session.repository,
+        Canon.allBookIds.filter((bookCode) => !present.has(bookCode)),
+      );
+      await missing.reduce<Promise<void>>(
+        (previous, bookCode) => previous.then(() => reanchorNow(session, missingBook(bookCode))),
+        Promise.resolve(),
+      );
+    });
+  }
+
+  /**
+   * Settles once every command sent so far to the source project's session has settled, at once
+   * when the source has no session open. Never rejects.
+   */
+  async settled(sourceProjectId: string): Promise<void> {
+    await this.sessionsBySource.get(sourceProjectId)?.queue;
+  }
+
+  /** Runs `command` on the source project's session unless it has none open or only a read-only one. */
+  private runOnWritable(
+    sourceProjectId: string,
+    command: (session: Session) => Promise<void>,
+  ): Promise<void> {
+    const entry = this.sessionsBySource.get(sourceProjectId);
+    if (!entry || entry.session.repository.capabilities.readOnly) return Promise.resolve();
+    return this.run(entry.session.id, command);
+  }
+
+  /**
    * Resolves the scope for a session on the source project, paired with `interlinearProjectId` when
    * given.
    *
@@ -287,9 +358,9 @@ export class AnalysisSessions {
   }
 
   /**
-   * Makes the session unreachable by id or source, then, for a draft, releases its repository once
-   * the commands sent to it have settled. A session that an earlier step already closed is left
-   * alone, so its repository is released only once.
+   * Makes the session unreachable by id or source, then, once the commands sent to it have settled,
+   * ends the source's whole-text read and, for a draft, releases its repository. A session that an
+   * earlier step already closed is left alone, so its repository is released only once.
    */
   private async closeNow(entry: OpenSession): Promise<void> {
     const { id, scope } = entry.session;
@@ -297,6 +368,7 @@ export class AnalysisSessions {
     this.sessions.delete(id);
     this.sessionsBySource.delete(scope.sourceProjectId);
     await entry.queue;
+    await this.host.stopTextRead(scope.sourceProjectId);
     if (scope.kind === 'draft') await this.host.releaseDraftRepository(scope.sourceProjectId);
   }
 

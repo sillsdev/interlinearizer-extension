@@ -15,8 +15,7 @@ function draftHolding({ analysis, segmentation }: DraftContent): DraftProject {
 /**
  * Checks that the host's re-anchor of `bookCode` gives what the WebView's `pass` made of `content`,
  * `reanchored`: the changes it applies bring the draft to `reanchored`, and the pass over only the
- * book's analysis, as the host reads it, makes the same changes. `pass` must stamp every run
- * alike.
+ * book's links, as the host reads them, makes the same changes. `pass` must stamp every run alike.
  */
 export function expectHostReanchorParity(
   content: DraftContent,
@@ -30,8 +29,16 @@ export function expectHostReanchorParity(
   expect(applied.analysis).toEqual(reanchored.analysis);
   expect(applied.segmentation).toEqual(reanchored.segmentation);
 
+  // As the host reads a book: its links, and the segment analyses they reference.
+  const inBook = splitAnalysisByBook(content.analysis).get(bookCode) ?? emptyAnalysis();
   const bookAlone: DraftContent = {
-    analysis: splitAnalysisByBook(content.analysis).get(bookCode) ?? emptyAnalysis(),
+    analysis: {
+      ...emptyAnalysis(),
+      tokenAnalysisLinks: inBook.tokenAnalysisLinks,
+      phraseAnalysisLinks: inBook.phraseAnalysisLinks,
+      segmentAnalysisLinks: inBook.segmentAnalysisLinks,
+      segmentAnalyses: inBook.segmentAnalyses,
+    },
     segmentation: content.segmentation,
   };
   expect(changesOfReanchor(draftHolding(bookAlone), pass(bookAlone))).toEqual(changes);

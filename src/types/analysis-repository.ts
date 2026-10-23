@@ -1,4 +1,4 @@
-import type { DraftProject } from 'interlinearizer';
+import type { DraftProject, TextAnalysis } from 'interlinearizer';
 
 /** Text records by key. */
 export interface KeyValueStorage {
@@ -54,6 +54,39 @@ export type DraftExport = {
    * must not take that absence for the book having been wiped.
    */
   unreadableBooks: string[];
+};
+
+/**
+ * A draft's own record: everything in it but its analysis and its `dirty` flag, which every apply
+ * sets.
+ */
+export type ScopeRecord = Omit<DraftProject, 'analysis' | 'dirty'>;
+
+/** Whole-record puts and deletes of one record kind. */
+export type RecordChanges<T> = {
+  /** Records to store whole, each replacing any stored under its id. */
+  puts: T[];
+  /** Ids of records to remove; an id with nothing stored under it is skipped. */
+  deletes: string[];
+};
+
+/**
+ * One command's changes, applied all-or-nothing. A record kind it leaves alone is absent, and an id
+ * appears at most once in a kind's puts and deletes together.
+ */
+export type ChangeSet = {
+  /** Names the command that made the changes. */
+  intent: string;
+  /** The scope's record, whole, which carries boundary changes; absent when it is left alone. */
+  scope?: ScopeRecord;
+} & {
+  [Kind in keyof TextAnalysis]?: RecordChanges<TextAnalysis[Kind][number]>;
+};
+
+/** What applying a {@link ChangeSet} tells its caller. */
+export type ApplyResult = {
+  /** Restores what the applied changes replaced; applying it undoes them. */
+  inverse: ChangeSet;
 };
 
 /**
@@ -122,4 +155,20 @@ export interface AnalysisRepository {
    * @throws If storage rejects a read or a write.
    */
   markClean(): Promise<void>;
+
+  /**
+   * Applies `changes` to the stored draft whole or not at all, marked unsaved and stamped with this
+   * build's model version. A draft never saved counts as an empty one.
+   *
+   * @throws {ReadOnlyAnalysisError} If the repository is read-only; nothing is applied.
+   * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
+   *   record names another source project; nothing is applied.
+   * @throws {Error} If the changes reach a book whose stored analysis could not be read; nothing is
+   *   applied.
+   * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
+   * @throws {Error} If the stored draft was written by a newer build; nothing is applied.
+   * @throws If storage rejects a read or a write. The draft as this repository holds it is
+   *   unchanged, though storage may hold some of the changes until a later save.
+   */
+  apply(changes: ChangeSet): Promise<ApplyResult>;
 }

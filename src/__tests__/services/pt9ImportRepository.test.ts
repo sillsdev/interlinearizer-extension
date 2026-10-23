@@ -115,4 +115,16 @@ describe('Pt9ImportRepository', () => {
       expect(readProject).not.toHaveBeenCalled();
     });
   });
+
+  describe('apply', () => {
+    it('refuses every change', async () => {
+      const readProject = jest.fn(async () => makeImport());
+      const repository: AnalysisRepository = new Pt9ImportRepository('import-id', readProject);
+
+      await expect(repository.apply({ intent: 'writeGloss' })).rejects.toThrow(
+        ReadOnlyAnalysisError,
+      );
+      expect(readProject).not.toHaveBeenCalled();
+    });
+  });
 });

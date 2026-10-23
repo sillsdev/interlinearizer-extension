@@ -1,7 +1,8 @@
-import type { AnalysisRepository } from '../types/analysis-repository';
+import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
+import { EditHistory } from './editHistory';
 
 /** BCP 47 tag for a language that cannot be determined. */
 export const UNDETERMINED_LANGUAGE = 'und';
@@ -34,6 +35,8 @@ export type Session = {
   readonly id: string;
   readonly scope: SessionScope;
   readonly repository: AnalysisRepository;
+  /** Every edit to the session's analysis is applied through it, so that undo can revert each one. */
+  readonly history: EditHistory;
   /** BCP 47 tag of the language that glosses are read and written in. */
   analysisLanguage: string;
 };
@@ -94,7 +97,7 @@ export class AnalysisSessions {
    * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
    * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
    * Opening closes the source's earlier session, if any, and starts the new one on what storage
-   * holds.
+   * holds, with nothing to undo.
    *
    * The session starts on the opened draft's first analysis language. When the draft lists none, it
    * starts on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the
@@ -119,6 +122,7 @@ export class AnalysisSessions {
         id: crypto.randomUUID(),
         scope,
         repository,
+        history: new EditHistory(repository),
         analysisLanguage:
           opened.analysisLanguages[0] ??
           ((await this.host.getInterfaceLanguages())[0] || UNDETERMINED_LANGUAGE),
@@ -196,6 +200,30 @@ export class AnalysisSessions {
       );
     }
     return this.run(sessionId, edit);
+  }
+
+  /**
+   * Reverts the session's latest edit not yet undone.
+   *
+   * @returns The changes that reverted it, or `undefined` when there is none.
+   * @throws {ReadOnlyAnalysisError} If the session is read-only.
+   * @throws {Error} If the session is not open.
+   * @throws Whatever applying the changes throws; the edit stays the next to undo.
+   */
+  undo(sessionId: string): Promise<ChangeSet | undefined> {
+    return this.runEdit(sessionId, (session) => session.history.undo());
+  }
+
+  /**
+   * Redoes the session's latest undone edit.
+   *
+   * @returns The changes that redid it, or `undefined` when there is none.
+   * @throws {ReadOnlyAnalysisError} If the session is read-only.
+   * @throws {Error} If the session is not open.
+   * @throws Whatever applying the changes throws; the edit stays the next to redo.
+   */
+  redo(sessionId: string): Promise<ChangeSet | undefined> {
+    return this.runEdit(sessionId, (session) => session.history.redo());
   }
 
   /**

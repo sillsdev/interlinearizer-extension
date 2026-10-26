@@ -40,8 +40,9 @@ function reanchorInTurn(draft: DraftProject, books: readonly Book[]): ChangeSet 
 }
 
 /**
- * Re-anchors the stored draft to `book`'s current text, outside any undo history. A book the text
- * lacks is passed as a book with no segments.
+ * Re-anchors the stored draft to `book`'s current text, outside any undo history and leaving the
+ * draft as saved or unsaved as it was, since a pass is bookkeeping rather than an edit. A book the
+ * text lacks is passed as a book with no segments.
  *
  * @returns The changes applied, or `undefined` when the draft already read as re-anchored.
  * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
@@ -51,7 +52,7 @@ export async function reanchorStoredBook(
   book: Book,
 ): Promise<ChangeSet | undefined> {
   const changes = reanchorInTurn(await readBooks(repository, [book.bookRef]), [book]);
-  if (changes) await repository.apply(changes);
+  if (changes) await repository.apply(changes, { keepDirty: true });
   return changes;
 }
 

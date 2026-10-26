@@ -1,6 +1,7 @@
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import type {
   AnalysisRepository,
+  ApplyOptions,
   ApplyResult,
   ChangeSet,
   DraftExport,
@@ -263,10 +264,12 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects a read or a write, as {@link replaceAll} does; this instance's draft
    *   is left as it was.
    */
-  async apply(changes: ChangeSet): Promise<ApplyResult> {
+  async apply(changes: ChangeSet, options?: ApplyOptions): Promise<ApplyResult> {
     const { draft: base, index } = await this.indexed();
     const copied = jsonCopy(changes);
-    const { draft, inverse } = applyChangeSet(base, copied);
+    const applied = applyChangeSet(base, copied);
+    const { inverse } = applied;
+    const draft = options?.keepDirty ? { ...applied.draft, dirty: base.dirty } : applied.draft;
     await this.writeDraft(draft, undefined, { refuseUnreadable: true });
     index.apply(copied);
     this.current = { draft, index };

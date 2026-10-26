@@ -34,6 +34,7 @@ const NOW = '2026-06-01T00:00:00.000Z';
 const EARLIER = { createdAt: '2025-06-01T00:00:00.000Z', updatedAt: '2025-06-01T00:00:00.000Z' };
 const STAMP = { forkId: 'fork', now: NOW };
 const NEW = { linkId: 'new-link', analysisId: 'new-analysis' };
+const SENSE = { authority: 'fwlite', senseId: 's-beginning' } as const;
 
 const WORDS = ['In', 'the', 'beginning', 'God', 'created'];
 
@@ -521,6 +522,40 @@ describe('writePhraseGloss parity with the reducer', () => {
           expect(linkOf(store, 'pl-1')).toStrictEqual(
             link('pl-1', 'pa-2', run(1, 0, 1), { updatedAt: NOW }),
           );
+        },
+      },
+    ],
+    [
+      'keeps the sense ref through a write',
+      {
+        analysis: analysisOf(
+          [payload('pa-1', 'In the', { gloss: { en: 'a' }, senseRef: SENSE })],
+          [link('pl-1', 'pa-1', run(1, 0, 1))],
+        ),
+        input: { value: 'at first' },
+        expectStore: (store) => {
+          expect(store.phraseAnalyses).toStrictEqual([
+            payload('pa-1', 'In the', {
+              gloss: { en: 'at first' },
+              senseRef: SENSE,
+              updatedAt: NOW,
+            }),
+          ]);
+        },
+      },
+    ],
+    [
+      'keeps the sense ref through a blank value that clears the last gloss',
+      {
+        analysis: analysisOf(
+          [payload('pa-1', 'In the', { gloss: { en: 'a' }, senseRef: SENSE })],
+          [link('pl-1', 'pa-1', run(1, 0, 1))],
+        ),
+        input: { value: '' },
+        expectStore: (store) => {
+          expect(store.phraseAnalyses).toStrictEqual([
+            payload('pa-1', 'In the', { senseRef: SENSE, updatedAt: NOW }),
+          ]);
         },
       },
     ],

@@ -1143,7 +1143,7 @@ export function openDraftRepository(
     exportForCopy: () => queued((repository) => repository.exportForCopy()),
     replaceAll: (draft, options) => counted((repository) => repository.replaceAll(draft, options)),
     markClean: () => queued((repository) => repository.markClean()),
-    apply: (changes) => counted((repository) => repository.apply(changes)),
+    apply: (changes, options) => counted((repository) => repository.apply(changes, options)),
     getScope: () => queued((repository) => repository.getScope()),
     getTokenAnalyses: (ids) => queued((repository) => repository.getTokenAnalyses(ids)),
     getPhraseAnalyses: (ids) => queued((repository) => repository.getPhraseAnalyses(ids)),

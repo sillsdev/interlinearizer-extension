@@ -1153,6 +1153,22 @@ export function describeAnalysisRepositoryConformance(
         expect(dirty).toBe(true);
       });
 
+      it.each([false, true])(
+        'leaves a draft whose unsaved mark is %s as it was when asked to keep the mark',
+        async (dirty) => {
+          await (await store.open(SOURCE)).replaceAll({ ...exodusOnlyDraft(), dirty });
+
+          await (await store.open(SOURCE)).apply(translatingExodus(), { keepDirty: true });
+
+          await expect(reload(store)).resolves.toMatchObject({
+            dirty,
+            analysis: {
+              segmentAnalyses: [expect.objectContaining({ freeTranslation: { en: 'And then.' } })],
+            },
+          });
+        },
+      );
+
       it('leaves the draft unsaved when undoing an edit made before it was marked clean', async () => {
         const repository = await store.open(SOURCE);
         await repository.replaceAll(exodusOnlyDraft());

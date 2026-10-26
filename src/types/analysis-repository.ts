@@ -93,6 +93,15 @@ export type ChangeSet = {
   [Kind in keyof TextAnalysis]?: RecordChanges<TextAnalysis[Kind][number]>;
 };
 
+/** How an apply treats the draft's unsaved mark. */
+export type ApplyOptions = {
+  /**
+   * Leave the draft as saved or unsaved as it was, for bookkeeping such as a re-anchor pass rather
+   * than an edit. Absent, the draft is marked unsaved.
+   */
+  keepDirty?: boolean;
+};
+
 /** What applying a {@link ChangeSet} tells its caller. */
 export type ApplyResult = {
   /** Restores what the applied changes replaced; applying it undoes them. */
@@ -191,8 +200,9 @@ export interface AnalysisRepository {
   markClean(): Promise<void>;
 
   /**
-   * Applies `changes` to the stored draft whole or not at all, marked unsaved and stamped with this
-   * build's model version. A draft never saved counts as an empty one.
+   * Applies `changes` to the stored draft whole or not at all, marked unsaved unless `options`
+   * keeps the mark, and stamped with this build's model version. A draft never saved counts as an
+   * empty one.
    *
    * @throws {ReadOnlyAnalysisError} If the repository is read-only; nothing is applied.
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
@@ -204,7 +214,7 @@ export interface AnalysisRepository {
    * @throws If storage rejects a read or a write. The draft as this repository holds it is
    *   unchanged, though storage may hold some of the changes until a later save.
    */
-  apply(changes: ChangeSet): Promise<ApplyResult>;
+  apply(changes: ChangeSet, options?: ApplyOptions): Promise<ApplyResult>;
 
   /**
    * The draft's own record, as {@link AnalysisRepository.exportAll} would load it.

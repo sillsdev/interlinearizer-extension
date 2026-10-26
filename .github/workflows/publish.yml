@@ -29,12 +29,22 @@ on:
         default: false
 
 jobs:
-  # Builds the C# host for every platform, each with its own .NET runtime. It runs on macOS because
-  # the .NET SDK code-signs macOS executables only there, and macOS on Apple silicon will not run
-  # one that is unsigned. Windows and Linux builds cross-publish from macOS fine.
+  # Builds the C# host for every platform, each with its own .NET runtime, on the same runners the
+  # Test workflow's c-sharp-host job checks it on. Both macOS builds run on macOS because the .NET
+  # SDK code-signs macOS executables only there, and macOS on Apple silicon will not run one that is
+  # unsigned.
   c-sharp-host:
-    name: Build the C# host
-    runs-on: macos-latest
+    name: Build the C# host on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rids: linux-x64
+          - os: windows-latest
+            rids: win-x64
+          - os: macos-latest
+            rids: osx-x64 osx-arm64
     steps:
       - name: Checkout git repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,12 +55,12 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Publish the C# host
-        run: npm run build:c-sharp
+        run: npm run build:c-sharp -- ${{ matrix.rids }}
 
       - name: Upload the C# host
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: c-sharp-host
+          name: c-sharp-host-${{ matrix.os }}
           path: c-sharp/publish/
           if-no-files-found: error
 
@@ -248,7 +258,8 @@ jobs:
       - name: Download the C# host
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: c-sharp-host
+          pattern: c-sharp-host-*
+          merge-multiple: true
           path: extension-repo/c-sharp/publish/
 
       - name: Package for distribution

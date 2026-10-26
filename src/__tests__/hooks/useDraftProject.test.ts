@@ -910,6 +910,22 @@ describe('useDraftProject', () => {
         expect(glossesIn(lastSavedDraft().analysis)).toEqual(['MAT 1:1:0=mat-unsaved']);
       });
 
+      it('marks a clean draft unsaved', async () => {
+        mockGetDraftResolves(
+          makeDraft({
+            analysis: analysisOf(['gen-unsaved', 'GEN 1:1:0'], ['mat-unsaved', 'MAT 1:1:0']),
+          }),
+        );
+        const { result } = await renderLoaded();
+
+        act(() => {
+          result.current.discardBook('GEN');
+        });
+
+        expect(result.current.dirty).toBe(true);
+        expect(lastSavedDraft().dirty).toBe(true);
+      });
+
       it('drops the book’s custom boundaries while keeping other books’', async () => {
         mockGetDraftResolves(
           makeDraft({

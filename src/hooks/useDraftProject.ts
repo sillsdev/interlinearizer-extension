@@ -228,8 +228,8 @@ export type UseDraftProjectResult = {
   newDraft: (config: NewDraftConfig) => void;
   /**
    * Discards one book's unsaved changes, by 3-letter book code: resets its analysis and boundaries
-   * to those in `saved`, or removes them when `saved` is absent. Leaves the draft as dirty as it
-   * was.
+   * to those in `saved`, or removes them when `saved` is absent. With `saved`, the draft stays as
+   * dirty as it was. Without `saved`, the draft is marked dirty.
    */
   discardBook: (bookCode: string, saved?: DraftContent) => void;
   /**
@@ -564,9 +564,10 @@ export default function useDraftProject(
           bookCode,
         ),
       };
-      // Left as dirty as it was: other books may still differ from the saved project.
+      // Other books may still differ from the saved project.
+      // Without one, nothing they hold is saved.
       applyReplacement(
-        withContent(current, restored, current.dirty),
+        withContent(current, restored, saved ? current.dirty : true),
         recordStep(historyRef.current, contentOf(current), {
           summary: { kind: 'discardBook', book: bookCode },
         }),

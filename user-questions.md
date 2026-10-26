@@ -63,6 +63,7 @@ Decisions made during development that we'd like reviewed:
    marker, since the draft then matches the active project (or is empty when none is active).
    Discarding the **current book's** changes leaves the marker as it was, because other books may
    still hold unsaved changes; the marker can therefore stay lit when that book held the only ones.
+   With no active project, a book discard always lights the marker, since nothing it keeps is saved.
    Is this split right, or should a book discard check whether anything unsaved remains?
 
 9. **Save As → Overwrite and the target's metadata.** "Save As → Overwrite an existing project"

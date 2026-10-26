@@ -303,6 +303,7 @@ export function ProjectMetadataModal({
         <DeleteProjectConfirm
           projectId={interlinearProjectId}
           projectName={name}
+          isPt9Import={readOnly}
           onCancel={() => setConfirmingDelete(false)}
           onDeleted={handleDeleted}
         />

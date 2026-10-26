@@ -246,6 +246,7 @@ export function SelectInterlinearProjectModal({
         <DeleteProjectConfirm
           projectId={pendingDelete.id}
           projectName={pendingDelete.name}
+          isPt9Import={pendingDelete.pt9Import !== undefined}
           onCancel={() => setPendingDelete(undefined)}
           onDeleted={handleDeleted}
         />

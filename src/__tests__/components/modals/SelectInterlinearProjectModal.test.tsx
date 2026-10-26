@@ -441,7 +441,7 @@ describe('SelectInterlinearProjectModal project deletion', () => {
   it('asks for confirmation naming the project before deleting anything', async () => {
     const confirm = await chooseDeleteForFrenchGlosses();
 
-    expect(confirm).toHaveTextContent('No Paratext 9 data will be affected.');
+    expect(confirm).not.toHaveTextContent('No Paratext 9 data will be affected.');
     expect(mockSendCommand).not.toHaveBeenCalledWith(
       'interlinearizer.deleteProject',
       expect.anything(),
@@ -580,5 +580,27 @@ describe('SelectInterlinearProjectModal Paratext 9 import entry', () => {
     expect(await screen.findByTestId('readonly-chip')).toHaveTextContent('Read-only');
     expect(screen.queryByTestId('import-pt9-button')).not.toBeInTheDocument();
     expect(mockPdpGet).not.toHaveBeenCalled();
+  });
+
+  it('tells the user that Paratext 9 data is left alone when deleting the import', async () => {
+    serveProjects([
+      makeProjectSummary({
+        id: 'import-id',
+        name: 'Paratext 9 Interlinear',
+        pt9Import: {
+          fileHashes: { 'Lexicon.xml': 'aaaa1111' },
+          importedAt: '2026-08-01T00:00:00.000Z',
+        },
+      }),
+    ]);
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await screen.findByTestId('readonly-chip');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Project actions' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Delete Paratext 9 Interlinear?' }),
+    ).toHaveTextContent('No Paratext 9 data will be affected.');
   });
 });

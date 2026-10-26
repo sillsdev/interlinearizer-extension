@@ -12,6 +12,7 @@ const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 const defaultProps = {
   projectId: 'proj-uuid',
   projectName: 'French glosses',
+  isPt9Import: false,
   onCancel: jest.fn(),
   onDeleted: jest.fn(),
 };
@@ -40,12 +41,20 @@ describe('DeleteProjectConfirm', () => {
     ).toBeInTheDocument();
   });
 
-  it('tells the user that Paratext 9 data is left alone', () => {
-    render(<DeleteProjectConfirm {...defaultProps} />);
+  it('tells the user that Paratext 9 data is left alone when deleting an import', () => {
+    render(<DeleteProjectConfirm {...defaultProps} isPt9Import />);
 
     expect(
       screen.getByText(/%interlinearizer_confirm_deleteProject_pt9Unaffected%/),
     ).toBeInTheDocument();
+  });
+
+  it('leaves Paratext 9 unmentioned when deleting a project that is not an import', () => {
+    render(<DeleteProjectConfirm {...defaultProps} />);
+
+    expect(
+      screen.queryByText(/%interlinearizer_confirm_deleteProject_pt9Unaffected%/),
+    ).not.toBeInTheDocument();
   });
 
   it('deletes the project and reports it once the user confirms', async () => {

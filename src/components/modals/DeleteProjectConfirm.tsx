@@ -23,6 +23,8 @@ const DELETE_PROJECT_CONFIRM_STRING_KEYS: `%${string}%`[] = [
  *
  * @param props.projectId - UUID of the project to delete.
  * @param props.projectName - The project's name, shown in the title; absent for an unnamed project.
+ * @param props.isPt9Import - Whether the project is a Paratext 9 import. Only an import's dialog
+ *   says that the Paratext 9 data stays untouched.
  * @param props.onCancel - Called when the user backs out, leaving the project in place.
  * @param props.onDeleted - Called with the project's UUID once the delete has landed.
  * @returns The confirmation overlay, or nothing while localized strings are loading.
@@ -30,11 +32,13 @@ const DELETE_PROJECT_CONFIRM_STRING_KEYS: `%${string}%`[] = [
 export function DeleteProjectConfirm({
   projectId,
   projectName,
+  isPt9Import,
   onCancel,
   onDeleted,
 }: Readonly<{
   projectId: string;
   projectName?: string;
+  isPt9Import: boolean;
   onCancel: () => void;
   onDeleted: (deletedProjectId: string) => void;
 }>) {
@@ -73,8 +77,12 @@ export function DeleteProjectConfirm({
     >
       <p className="tw:text-sm tw:mb-4">
         {localizedStrings['%interlinearizer_confirm_deleteProject_body%']}
-        <br />
-        {localizedStrings['%interlinearizer_confirm_deleteProject_pt9Unaffected%']}
+        {isPt9Import && (
+          <>
+            <br />
+            {localizedStrings['%interlinearizer_confirm_deleteProject_pt9Unaffected%']}
+          </>
+        )}
       </p>
       <div className="tw:modal-actions">
         <Button variant="secondary" onClick={onCancel} disabled={isSubmitting}>

@@ -347,6 +347,16 @@ describe('ProjectMetadataModal', () => {
     expect(mockSendCommand).not.toHaveBeenCalled();
   });
 
+  it('leaves Paratext 9 unmentioned when deleting a project that is not an import', async () => {
+    render(<ProjectMetadataModal {...testProps} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    expect(screen.getByRole('dialog', { name: 'Delete Old Name?' })).not.toHaveTextContent(
+      'No Paratext 9 data will be affected.',
+    );
+  });
+
   it('hides delete confirmation when Cancel is clicked inside it', async () => {
     const onClose = jest.fn();
     render(<ProjectMetadataModal {...testProps} onClose={onClose} />);
@@ -447,5 +457,15 @@ describe('ProjectMetadataModal read-only (Paratext 9 import)', () => {
 
     expect(screen.getByText('Last synced')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+  });
+
+  it('tells the user that Paratext 9 data is left alone when deleting the import', async () => {
+    render(<ProjectMetadataModal {...importProps} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Delete Paratext 9 Interlinear?' }),
+    ).toHaveTextContent('No Paratext 9 data will be affected.');
   });
 });

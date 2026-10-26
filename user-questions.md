@@ -396,7 +396,7 @@ Questions we'd like answered:
 2. **What gets in the way?** For example: leaving the text to link and losing your place, wanting
    to link one occurrence rather than every use, or linking falling behind glossing because it
    happens somewhere else.
-3. **Would you expect to link while glossing in the interlinear view,** in addition to or instead
-   of linking from the catalog?
+3. **Would you expect to link while glossing in the interlinear view?** In addition to linking
+   from the catalog, or instead of it?
 
 #228

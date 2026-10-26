@@ -1555,13 +1555,15 @@ export function DropdownMenu({ children }: Readonly<{ children?: ReactNode }>): 
  */
 export function DropdownMenuTrigger({
   children,
-}: Readonly<{ children?: ReactNode; asChild?: boolean }>): ReactNode {
+  disabled,
+}: Readonly<{ children?: ReactNode; asChild?: boolean; disabled?: boolean }>): ReactNode {
   const { open, setOpen, triggerRef } = useContext(DropdownMenuContext);
   if (!isValidElement(children)) return <>{children}</>;
   return cloneElement(children, {
     ref: triggerRef,
     'aria-expanded': open,
     'aria-haspopup': 'menu',
+    ...(disabled !== undefined && { disabled }),
     onClick: () => setOpen(!open),
   });
 }

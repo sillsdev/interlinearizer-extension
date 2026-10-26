@@ -373,7 +373,7 @@ describe('ProjectMetadataModal', () => {
     expect(screen.getByLabelText(/^name$/i)).toHaveValue('Renamed');
   });
 
-  it('closes on a second Escape once the delete confirmation has collapsed', async () => {
+  it('closes on a second Escape once the delete confirmation has closed', async () => {
     const onClose = jest.fn();
     render(<ProjectMetadataModal {...testProps} onClose={onClose} />);
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));

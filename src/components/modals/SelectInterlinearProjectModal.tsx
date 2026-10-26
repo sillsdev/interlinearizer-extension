@@ -189,7 +189,9 @@ export function SelectInterlinearProjectModal({
                   )}
                 </button>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                  {/* Disabled on the trigger, because a disabled button still receives the pointerdown
+                      that opens the menu. */}
+                  <DropdownMenuTrigger asChild disabled={isOpening}>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -197,7 +199,6 @@ export function SelectInterlinearProjectModal({
                         localizedStrings['%interlinearizer_modal_select_actions_button_label%']
                       }
                       className="tw:shrink-0 tw:me-1"
-                      disabled={isOpening}
                     >
                       <EllipsisVertical className="tw:size-4" />
                     </Button>

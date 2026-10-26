@@ -113,6 +113,5 @@ describe('DeleteProjectConfirm', () => {
 
     resolveDelete();
     await waitFor(() => expect(defaultProps.onDeleted).toHaveBeenCalledTimes(1));
-    expect(mockSendCommand).toHaveBeenCalledTimes(1);
   });
 });

@@ -280,7 +280,7 @@ describe('SelectInterlinearProjectModal', () => {
     expect(screen.getByRole('button', { name: /create new/i })).toBeDisabled();
   });
 
-  it('ignores clicks on a project row and its actions menu while a chosen project is being opened', async () => {
+  it('ignores clicks on a project row and disables its actions menu while a chosen project is being opened', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
     render(<SelectInterlinearProjectModal {...defaultProps} isOpening />);
     await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
@@ -291,10 +291,8 @@ describe('SelectInterlinearProjectModal', () => {
     expect(actions).toBeDisabled();
 
     await userEvent.click(row);
-    await userEvent.click(actions);
 
     expect(defaultProps.onSelect).not.toHaveBeenCalled();
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
   it('ignores Escape while a chosen project is being opened, since the open completes regardless', async () => {

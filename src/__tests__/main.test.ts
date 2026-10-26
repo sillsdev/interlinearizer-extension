@@ -4,17 +4,24 @@ import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } fr
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
-import type { DraftProject, ProjectConfig } from 'interlinearizer';
+import type { DraftProject, ProjectConfig, TextAnalysis } from 'interlinearizer';
 import { AnalysisSessions } from '../services/analysisSessions';
 import * as bookService from '../services/bookService';
+import { DraftRepository } from '../services/draftRepository';
 import * as hostPerf from '../services/hostPerf';
 import * as projectStorage from '../services/projectStorage';
 import * as pt9ImportService from '../services/pt9ImportService';
 import { type AnalysisRepository, UnreadableBooksError } from '../types/analysis-repository';
-import { emptyDraft } from '../types/empty-factories';
+import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { scopeRecordOf } from '../utils/change-set';
 import { toProjectSummary } from '../types/interlinear-project-summary';
-import { createTestActivationContext, makeStubProject } from './test-helpers';
+import {
+  createTestActivationContext,
+  FIXTURE_STAMPS,
+  makeStubProject,
+  memoryStorage,
+  silentLogger,
+} from './test-helpers';
 
 jest.mock('../services/bookService');
 jest.mock('../services/hostPerf');
@@ -404,6 +411,10 @@ describe('main', () => {
           'interlinearizer.checkIndexes',
           'interlinearizer.writeGloss',
           'interlinearizer.approveAnalysisForToken',
+          'interlinearizer.discardStaleAnalysis',
+          'interlinearizer.reapplyStaleAnalysis',
+          'interlinearizer.keepStaleFreeTranslation',
+          'interlinearizer.discardStaleFreeTranslation',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
           'interlinearizer.openProjectInfoModal',
@@ -1897,8 +1908,74 @@ describe('main', () => {
             analysisId: string,
           ) => Promise<string>
         >('interlinearizer.approveAnalysisForToken'),
+        discardStaleAnalysis: handler<
+          (sessionId: string, analysisId: string, tokenRef: string) => Promise<string>
+        >('interlinearizer.discardStaleAnalysis'),
+        reapplyStaleAnalysis: handler<
+          (
+            sessionId: string,
+            analysisId: string,
+            staleTokenRef: string,
+            tokenRef: string,
+            surfaceText: string,
+          ) => Promise<string>
+        >('interlinearizer.reapplyStaleAnalysis'),
+        keepStaleFreeTranslation: handler<
+          (
+            sessionId: string,
+            analysisId: string,
+            segmentId: string,
+            surfaceText: string,
+          ) => Promise<string>
+        >('interlinearizer.keepStaleFreeTranslation'),
+        discardStaleFreeTranslation: handler<
+          (sessionId: string, analysisId: string) => Promise<string>
+        >('interlinearizer.discardStaleFreeTranslation'),
       };
     }
+
+    /** Stores a draft of `src-project` holding `analysis`, for sessions to open. */
+    async function storeDraftHolding(analysis: Partial<TextAnalysis>): Promise<void> {
+      const repository = new DraftRepository(
+        memoryStorage().storage,
+        'src-project',
+        silentLogger(),
+      );
+      await repository.replaceAll({
+        ...emptyDraft('src-project'),
+        analysisLanguages: ['en'],
+        analysis: { ...emptyAnalysis(), ...analysis },
+      });
+      jest.mocked(projectStorage.openDraftRepository).mockReturnValue(repository);
+    }
+
+    const staleToken = {
+      tokenAnalyses: [{ id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'at' } }],
+      tokenAnalysisLinks: [
+        {
+          id: 'tl-stale',
+          analysisId: 'ta-in',
+          ...FIXTURE_STAMPS,
+          status: 'stale' as const,
+          token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+        },
+      ],
+    };
+
+    const staleTranslation = {
+      segmentAnalyses: [
+        { id: 'sa-1', ...FIXTURE_STAMPS, surfaceText: 'In the beginning', freeTranslation: {} },
+      ],
+      segmentAnalysisLinks: [
+        {
+          id: 'sl-stale',
+          analysisId: 'sa-1',
+          ...FIXTURE_STAMPS,
+          status: 'stale' as const,
+          segmentId: 'GEN 1:1-2',
+        },
+      ],
+    };
 
     beforeEach(() => {
       jest
@@ -2116,6 +2193,77 @@ describe('main', () => {
       await expect(
         approveAnalysisForToken(sessionId, 'GEN 1:1:0', 'In', 'ta-unknown').then(JSON.parse),
       ).resolves.toStrictEqual({ intent: 'approveAnalysisForToken' });
+    });
+
+    it('discards the place an analysis went stale at, replying with the changes', async () => {
+      await storeDraftHolding(staleToken);
+      const { openSession, discardStaleAnalysis } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(
+        discardStaleAnalysis(sessionId, 'ta-in', 'GEN 1:1:0').then(JSON.parse),
+      ).resolves.toStrictEqual({
+        intent: 'discardStaleAnalysis',
+        tokenAnalyses: { puts: [], deletes: ['ta-in'] },
+        tokenAnalysisLinks: { puts: [], deletes: ['tl-stale'] },
+      });
+    });
+
+    it('reapplies a stale analysis on a token, replying with the changes', async () => {
+      await storeDraftHolding(staleToken);
+      const { openSession, reapplyStaleAnalysis } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(
+        await reapplyStaleAnalysis(sessionId, 'ta-in', 'GEN 1:1:0', 'GEN 1:2:0', 'In'),
+      );
+
+      expect(changes).toMatchObject({
+        intent: 'reapplyStaleAnalysis',
+        tokenAnalysisLinks: {
+          puts: [
+            {
+              analysisId: 'ta-in',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:2:0', surfaceText: 'In' },
+            },
+          ],
+          deletes: ['tl-stale'],
+        },
+      });
+    });
+
+    it('keeps a stale free translation for a segment, replying with the changes', async () => {
+      await storeDraftHolding(staleTranslation);
+      const { openSession, keepStaleFreeTranslation } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(
+        await keepStaleFreeTranslation(sessionId, 'sa-1', 'GEN 1:1', 'In the start'),
+      );
+
+      expect(changes).toMatchObject({
+        intent: 'keepStaleFreeTranslation',
+        segmentAnalyses: { puts: [{ id: 'sa-1', surfaceText: 'In the start' }], deletes: [] },
+        segmentAnalysisLinks: {
+          puts: [{ id: 'sl-stale', status: 'approved', segmentId: 'GEN 1:1' }],
+          deletes: [],
+        },
+      });
+    });
+
+    it('discards a stale free translation, replying with the changes', async () => {
+      await storeDraftHolding(staleTranslation);
+      const { openSession, discardStaleFreeTranslation } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(
+        discardStaleFreeTranslation(sessionId, 'sa-1').then(JSON.parse),
+      ).resolves.toStrictEqual({
+        intent: 'discardStaleFreeTranslation',
+        segmentAnalyses: { puts: [], deletes: ['sa-1'] },
+        segmentAnalysisLinks: { puts: [], deletes: ['sl-stale'] },
+      });
     });
 
     it('closes every session on deactivation', async () => {

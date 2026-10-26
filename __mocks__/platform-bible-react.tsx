@@ -1513,6 +1513,89 @@ export function PopoverContent({
   );
 }
 
+/** Context carrying a {@link DropdownMenu}'s open state down to its trigger, content, and items. */
+const DropdownMenuContext = createContext<{ open: boolean; setOpen: (open: boolean) => void }>({
+  open: false,
+  setOpen: () => {},
+});
+
+/** Stub dropdown-menu root that holds the menu's open state, as the real uncontrolled root does. */
+export function DropdownMenu({ children }: Readonly<{ children?: ReactNode }>): ReactElement {
+  const [open, setOpen] = useState(false);
+  const contextValue = useMemo(() => ({ open, setOpen }), [open]);
+  return (
+    <DropdownMenuContext.Provider value={contextValue}>{children}</DropdownMenuContext.Provider>
+  );
+}
+
+/**
+ * Stub dropdown-menu trigger that behaves as with `asChild`, cloning its single child with the
+ * menu-button attributes and a click handler that toggles the menu.
+ */
+export function DropdownMenuTrigger({
+  children,
+}: Readonly<{ children?: ReactNode; asChild?: boolean }>): ReactNode {
+  const { open, setOpen } = useContext(DropdownMenuContext);
+  if (!isValidElement(children)) return <>{children}</>;
+  return cloneElement(children, {
+    'aria-expanded': open,
+    'aria-haspopup': 'menu',
+    onClick: () => setOpen(!open),
+  });
+}
+
+/**
+ * Stub dropdown-menu content, rendered as a `role="menu"` element only while the menu is open. The
+ * layout props steer positioning that jsdom cannot measure, so they are accepted and ignored.
+ */
+export function DropdownMenuContent({
+  children,
+  className,
+}: Readonly<{
+  children?: ReactNode;
+  className?: string;
+  align?: 'start' | 'center' | 'end';
+}>): ReactElement | undefined {
+  const { open } = useContext(DropdownMenuContext);
+  if (!open) return undefined;
+  return (
+    <div className={className} data-slot="dropdown-menu-content" role="menu">
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Stub dropdown-menu item rendered as a `role="menuitem"` button. Choosing it fires `onSelect` and
+ * then closes the menu unless the handler prevents the event, as the real item does.
+ */
+export function DropdownMenuItem({
+  children,
+  className,
+  onSelect,
+}: Readonly<{
+  children?: ReactNode;
+  className?: string;
+  onSelect?: (event: Event) => void;
+  variant?: 'default' | 'destructive';
+}>): ReactElement {
+  const { setOpen } = useContext(DropdownMenuContext);
+  return (
+    <button
+      className={className}
+      role="menuitem"
+      type="button"
+      onClick={() => {
+        const event = new Event('select', { cancelable: true });
+        onSelect?.(event);
+        if (!event.defaultPrevented) setOpen(false);
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 /**
  * Stub label rendered as a native `<label>` element.
  */

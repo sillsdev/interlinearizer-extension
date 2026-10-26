@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
@@ -17,12 +17,20 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_select_create_new%': 'Create New',
   '%interlinearizer_modal_select_cancel%': 'Cancel',
   '%interlinearizer_modal_select_name_unnamed%': 'Unnamed',
-  '%interlinearizer_modal_select_info_button_label%': 'Project info',
+  '%interlinearizer_modal_select_actions_button_label%': 'Project actions',
+  '%interlinearizer_modal_select_get_info%': 'Get info',
+  '%interlinearizer_modal_select_delete%': 'Delete',
   '%interlinearizer_modal_select_active_badge%': 'Active',
   '%interlinearizer_modal_select_modified_prefix%': 'Modified',
   '%interlinearizer_modal_select_importPt9%': 'Import from Paratext 9',
   '%interlinearizer_readonly_chip%': 'Read-only',
   '%interlinearizer_loading%': 'Loading…',
+  '%interlinearizer_confirm_deleteProject_title%': 'Delete {name}?',
+  '%interlinearizer_confirm_deleteProject_title_unnamed%': 'Delete unnamed project?',
+  '%interlinearizer_confirm_deleteProject_body%': 'Permanently delete this interlinear data?',
+  '%interlinearizer_confirm_deleteProject_pt9Unaffected%': 'No Paratext 9 data will be affected.',
+  '%interlinearizer_confirm_deleteProject_ok%': 'Delete',
+  '%interlinearizer_confirm_deleteProject_cancel%': 'Cancel',
 };
 
 const STUB_PROJECT = makeProjectSummary();
@@ -35,6 +43,13 @@ const STUB_PROJECT_2 = makeProjectSummary({
   name: 'French glosses',
 });
 
+/** Answers the project-list load with `projects` and every other command with nothing. */
+function serveProjects(projects: unknown[]) {
+  mockSendCommand.mockImplementation(async (...args: unknown[]) =>
+    args[0] === 'interlinearizer.getProjectsForSource' ? JSON.stringify(projects) : undefined,
+  );
+}
+
 const defaultProps = {
   sourceProjectId: 'src-proj',
   onSelect: jest.fn(),
@@ -42,6 +57,7 @@ const defaultProps = {
   onImportPt9: jest.fn(),
   onClose: jest.fn(),
   onViewInfo: jest.fn(),
+  onProjectDeleted: jest.fn(),
 };
 
 describe('SelectInterlinearProjectModal', () => {
@@ -151,13 +167,14 @@ describe('SelectInterlinearProjectModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onViewInfo with the project when the info button is clicked', async () => {
+  it('calls onViewInfo with the project when Get info is chosen from its menu', async () => {
     const onViewInfo = jest.fn();
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
     render(<SelectInterlinearProjectModal {...defaultProps} onViewInfo={onViewInfo} />);
     await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole('button', { name: /project info/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Project actions' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Get info' }));
 
     expect(onViewInfo).toHaveBeenCalledWith(STUB_PROJECT);
   });
@@ -263,21 +280,21 @@ describe('SelectInterlinearProjectModal', () => {
     expect(screen.getByRole('button', { name: /create new/i })).toBeDisabled();
   });
 
-  it('ignores clicks on a project row and its info button while a chosen project is being opened', async () => {
+  it('ignores clicks on a project row and its actions menu while a chosen project is being opened', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
     render(<SelectInterlinearProjectModal {...defaultProps} isOpening />);
     await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
 
     const row = screen.getByRole('button', { name: /unnamed/i });
-    const info = screen.getByRole('button', { name: /project info/i });
+    const actions = screen.getByRole('button', { name: 'Project actions' });
     expect(row).toBeDisabled();
-    expect(info).toBeDisabled();
+    expect(actions).toBeDisabled();
 
     await userEvent.click(row);
-    await userEvent.click(info);
+    await userEvent.click(actions);
 
     expect(defaultProps.onSelect).not.toHaveBeenCalled();
-    expect(defaultProps.onViewInfo).not.toHaveBeenCalled();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
   it('ignores Escape while a chosen project is being opened, since the open completes regardless', async () => {
@@ -406,6 +423,72 @@ describe('SelectInterlinearProjectModal', () => {
   });
 });
 
+describe('SelectInterlinearProjectModal project deletion', () => {
+  beforeEach(() => {
+    jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
+    serveProjects([STUB_PROJECT, STUB_PROJECT_2]);
+  });
+
+  /** Opens the menu on the "French glosses" row and chooses Delete, returning the confirmation. */
+  async function chooseDeleteForFrenchGlosses() {
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    const row = screen.getByRole('button', { name: /french glosses/i }).closest('li');
+    if (!row) throw new Error('the project row is not a list item');
+    await userEvent.click(within(row).getByRole('button', { name: 'Project actions' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    return screen.getByRole('dialog', { name: 'Delete French glosses?' });
+  }
+
+  it('asks for confirmation naming the project before deleting anything', async () => {
+    const confirm = await chooseDeleteForFrenchGlosses();
+
+    expect(confirm).toHaveTextContent('No Paratext 9 data will be affected.');
+    expect(mockSendCommand).not.toHaveBeenCalledWith(
+      'interlinearizer.deleteProject',
+      expect.anything(),
+    );
+  });
+
+  it('deletes the project on confirmation, drops its row, and reports the deletion', async () => {
+    const confirm = await chooseDeleteForFrenchGlosses();
+
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(defaultProps.onProjectDeleted).toHaveBeenCalledWith('proj-uuid-2'));
+    expect(mockSendCommand).toHaveBeenCalledWith('interlinearizer.deleteProject', 'proj-uuid-2');
+    expect(screen.queryByText('French glosses')).not.toBeInTheDocument();
+    expect(screen.getByText('Unnamed')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('dialog', { name: 'Delete French glosses?' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the project when the confirmation is canceled', async () => {
+    const confirm = await chooseDeleteForFrenchGlosses();
+
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Delete French glosses?' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText('French glosses')).toBeInTheDocument();
+    expect(defaultProps.onProjectDeleted).not.toHaveBeenCalled();
+  });
+
+  it('backs out of the confirmation alone on Escape, leaving the list open', async () => {
+    await chooseDeleteForFrenchGlosses();
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Delete French glosses?' }),
+    ).not.toBeInTheDocument();
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
+    expect(screen.getByText('French glosses')).toBeInTheDocument();
+  });
+});
+
 describe('SelectInterlinearProjectModal Paratext 9 import entry', () => {
   const mockPdpGet = getMockedPdpGet(papi);
 
@@ -440,6 +523,37 @@ describe('SelectInterlinearProjectModal Paratext 9 import entry', () => {
 
     await waitFor(() => expect(mockPdpGet).toHaveBeenCalled());
     expect(screen.queryByTestId('import-pt9-button')).not.toBeInTheDocument();
+  });
+
+  it('offers the import again once the existing import is deleted', async () => {
+    const imported = makeProjectSummary({
+      id: 'import-id',
+      name: 'Paratext 9 Interlinear',
+      pt9Import: {
+        fileHashes: { 'Lexicon.xml': 'aaaa1111' },
+        importedAt: '2026-08-01T00:00:00.000Z',
+      },
+    });
+    serveProjects([imported]);
+    mockPdpGet.mockResolvedValue({
+      getPt9InterlinearManifest: async () => ({
+        maxReadBytes: 52_428_800,
+        files: { 'Lexicon.xml': { hash: 'aaaa1111', sizeBytes: 1024 } },
+      }),
+    });
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await screen.findByTestId('readonly-chip');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Project actions' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    await userEvent.click(
+      within(screen.getByRole('dialog', { name: 'Delete Paratext 9 Interlinear?' })).getByRole(
+        'button',
+        { name: 'Delete' },
+      ),
+    );
+
+    expect(await screen.findByTestId('import-pt9-button')).toBeInTheDocument();
   });
 
   it('chips the import row read-only and skips the probe once an import exists', async () => {

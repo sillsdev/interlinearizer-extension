@@ -5,6 +5,7 @@ import { Button, Input, Label, Textarea } from 'platform-bible-react';
 import { useCallback, useMemo, useState } from 'react';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { parseLanguageTags } from '../../utils/language-tags';
+import { DeleteProjectConfirm } from './DeleteProjectConfirm';
 import { ModalShell } from './ModalShell';
 
 /** Localized string keys requested for this modal's rendered text. */
@@ -23,10 +24,6 @@ const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_save%',
   '%interlinearizer_modal_metadata_close%',
   '%interlinearizer_modal_metadata_delete%',
-  '%interlinearizer_modal_metadata_delete_confirm_title%',
-  '%interlinearizer_modal_metadata_delete_confirm_body%',
-  '%interlinearizer_modal_metadata_delete_confirm_ok%',
-  '%interlinearizer_modal_metadata_delete_confirm_cancel%',
   '%interlinearizer_modal_metadata_lastSynced_label%',
 ];
 
@@ -70,7 +67,7 @@ type ProjectMetadataModalProps = Readonly<{
 /**
  * Modal that displays and allows editing of the active interlinearizer project's metadata. Editable
  * fields are name, description, and analysis language. Read-only fields are project ID, creation
- * date, and source project. Includes an inline delete-with-confirmation flow.
+ * date, and source project. Delete asks for confirmation before it runs.
  */
 export function ProjectMetadataModal({
   interlinearProjectId,
@@ -94,7 +91,7 @@ export function ProjectMetadataModal({
   const [editDescription, setEditDescription] = useState(description ?? '');
   const [editLanguages, setEditLanguages] = useState(analysisLanguages.join(', '));
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  // Guards Save/Delete against double-submit; `isSubmitting` disables the controls while one runs.
+  // Guards Save against double-submit; `isSubmitting` disables the controls while it runs.
   const { isSubmitting, runGuarded } = useSubmitGuard();
 
   const readOnly = pt9ImportedAt !== undefined;
@@ -167,34 +164,13 @@ export function ProjectMetadataModal({
     ],
   );
 
-  /**
-   * Sends the delete command to the backend, then notifies the caller and closes the modal. Logs on
-   * failure; the backend command handler is responsible for showing the error notification so this
-   * handler does not re-send it.
-   */
-  const handleDelete = useCallback(
-    () =>
-      runGuarded(async () => {
-        try {
-          await papi.commands.sendCommand('interlinearizer.deleteProject', interlinearProjectId);
-          onProjectDeleted?.(interlinearProjectId);
-          onClose();
-        } catch (e) {
-          logger.error('Interlinearizer: failed to delete project', e);
-        }
-      }),
-    [interlinearProjectId, onProjectDeleted, onClose, runGuarded],
+  const handleDeleted = useCallback(
+    (deletedProjectId: string) => {
+      onProjectDeleted?.(deletedProjectId);
+      onClose();
+    },
+    [onProjectDeleted, onClose],
   );
-
-  /**
-   * A dismissal — Escape or a click outside — backs out one layer at a time: an armed delete
-   * confirmation collapses first, so an attempt aimed at that box does not also discard the edits
-   * typed into the fields behind it. A second dismissal then closes the modal.
-   */
-  const handleDismiss = useCallback(() => {
-    if (confirmingDelete) setConfirmingDelete(false);
-    else onClose();
-  }, [confirmingDelete, onClose]);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
@@ -203,7 +179,7 @@ export function ProjectMetadataModal({
       titleTestId="project-metadata-modal-title"
       title={localizedStrings['%interlinearizer_modal_metadata_title%']}
       width="tw:w-lg"
-      onClose={isSubmitting ? undefined : handleDismiss}
+      onClose={isSubmitting ? undefined : onClose}
     >
       {/* Editable fields; static rows for a read-only import, whose values the import stamps. */}
       {readOnly ? (
@@ -299,52 +275,37 @@ export function ProjectMetadataModal({
       </dl>
 
       {/* Footer */}
-      {confirmingDelete ? (
-        <div className="tw:modal-error-box tw:px-3 tw:py-2">
-          <p className="tw:font-medium tw:text-foreground tw:mb-0.5">
-            {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_title%']}
-          </p>
-          <p className="tw:text-xs tw:text-muted-foreground tw:mb-2">
-            {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_body%']}
-          </p>
-          <div className="tw:modal-actions">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setConfirmingDelete(false)}
-              disabled={isSubmitting}
-            >
-              {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_cancel%']}
-            </Button>
-            <Button variant="destructive" size="sm" onClick={handleDelete} disabled={isSubmitting}>
-              {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_ok%']}
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="tw:flex tw:gap-2 tw:justify-between">
-          <Button
-            variant="destructive"
-            onClick={() => setConfirmingDelete(true)}
-            disabled={isSubmitting}
-          >
-            <Trash2 className="tw:mr-1 tw:size-[13px]" />
-            {localizedStrings['%interlinearizer_modal_metadata_delete%']}
+      <div className="tw:flex tw:gap-2 tw:justify-between">
+        <Button
+          variant="destructive"
+          onClick={() => setConfirmingDelete(true)}
+          disabled={isSubmitting}
+        >
+          <Trash2 className="tw:mr-1 tw:size-[13px]" />
+          {localizedStrings['%interlinearizer_modal_metadata_delete%']}
+        </Button>
+        <div className="tw:flex tw:gap-2">
+          <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
+            {localizedStrings['%interlinearizer_modal_metadata_close%']}
           </Button>
-          <div className="tw:flex tw:gap-2">
-            <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
-              {localizedStrings['%interlinearizer_modal_metadata_close%']}
+          {!readOnly && (
+            <Button
+              onClick={handleSave}
+              disabled={isSubmitting || editName.trim() === '' || parsedLanguages.length === 0}
+            >
+              {localizedStrings['%interlinearizer_modal_metadata_save%']}
             </Button>
-            {!readOnly && (
-              <Button
-                onClick={handleSave}
-                disabled={isSubmitting || editName.trim() === '' || parsedLanguages.length === 0}
-              >
-                {localizedStrings['%interlinearizer_modal_metadata_save%']}
-              </Button>
-            )}
-          </div>
+          )}
         </div>
+      </div>
+
+      {confirmingDelete && (
+        <DeleteProjectConfirm
+          projectId={interlinearProjectId}
+          projectName={name}
+          onCancel={() => setConfirmingDelete(false)}
+          onDeleted={handleDeleted}
+        />
       )}
     </ModalShell>
   );

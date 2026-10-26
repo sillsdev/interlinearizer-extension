@@ -1204,9 +1204,10 @@ const mountedDialogs: { current?: (open: boolean) => void }[] = [];
  * Stub dialog surface rendered as a `<div role="dialog" data-slot="dialog-content">` — the slot
  * being what tells a modal apart from a popover, since both carry the dialog role — that reports
  * Escape and outside clicks back through the root's change handler, those being the dismissal
- * paths the extension's own code implements. The real component additionally traps focus, locks
- * scrolling, and restores focus on close; those are behaviors of the platform package rather than
- * of this extension, so they are left to end-to-end coverage rather than faked here.
+ * paths the extension's own code implements. Unmounting fires `onCloseAutoFocus`, where the
+ * extension restores focus itself. The real component additionally traps focus and locks scrolling;
+ * those are behaviors of the platform package rather than of this extension, so they are left to
+ * end-to-end coverage rather than faked here.
  *
  * A sentinel `data-testid="dialog-outside"` button stands in for the region outside the surface:
  * clicking it invokes `onInteractOutside` and, unless that prevents the event, reports the
@@ -1219,15 +1220,26 @@ export const DialogContent = forwardRef<
     'aria-describedby'?: undefined;
     children?: ReactNode;
     className?: string;
+    onCloseAutoFocus?: (event: Event) => void;
     onInteractOutside?: (event: { preventDefault: () => void }) => void;
     showCloseButton?: boolean;
   }>
->(function DialogContent({ children, className, onInteractOutside }, ref): ReactElement {
+>(function DialogContent(
+  { children, className, onCloseAutoFocus, onInteractOutside },
+  ref,
+): ReactElement {
   const { onOpenChange, titleId } = useContext(DialogContext);
   const onOpenChangeRef = useRef(onOpenChange);
+  const onCloseAutoFocusRef = useRef(onCloseAutoFocus);
   useEffect(() => {
     onOpenChangeRef.current = onOpenChange;
+    onCloseAutoFocusRef.current = onCloseAutoFocus;
   });
+
+  useEffect(
+    () => () => onCloseAutoFocusRef.current?.(new Event('closeAutoFocus', { cancelable: true })),
+    [],
+  );
 
   // The real component dismisses on Escape from anywhere in the document rather than only when the
   // surface itself holds focus, so listen the same way here — but only the topmost dialog reacts.
@@ -1510,6 +1522,125 @@ export function PopoverContent({
         </button>
       )}
     </>
+  );
+}
+
+/** Context sharing a {@link DropdownMenu}'s open state and trigger element with its parts. */
+const DropdownMenuContext = createContext<{
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  // eslint-disable-next-line no-null/no-null
+  triggerRef: RefObject<HTMLElement | null>;
+}>({
+  open: false,
+  setOpen: () => {},
+  // eslint-disable-next-line no-null/no-null
+  triggerRef: { current: null },
+});
+
+/** Stub dropdown-menu root that holds the menu's open state, as the real uncontrolled root does. */
+export function DropdownMenu({ children }: Readonly<{ children?: ReactNode }>): ReactElement {
+  const [open, setOpen] = useState(false);
+  // eslint-disable-next-line no-null/no-null
+  const triggerRef = useRef<HTMLElement | null>(null);
+  const contextValue = useMemo(() => ({ open, setOpen, triggerRef }), [open]);
+  return (
+    <DropdownMenuContext.Provider value={contextValue}>{children}</DropdownMenuContext.Provider>
+  );
+}
+
+/**
+ * Stub dropdown-menu trigger that behaves as with `asChild`, cloning its single child with the
+ * menu-button attributes and a click handler that toggles the menu.
+ */
+export function DropdownMenuTrigger({
+  children,
+  disabled,
+}: Readonly<{ children?: ReactNode; asChild?: boolean; disabled?: boolean }>): ReactNode {
+  const { open, setOpen, triggerRef } = useContext(DropdownMenuContext);
+  if (!isValidElement(children)) return <>{children}</>;
+  return cloneElement(children, {
+    ref: triggerRef,
+    'aria-expanded': open,
+    'aria-haspopup': 'menu',
+    ...(disabled !== undefined && { disabled }),
+    onClick: () => setOpen(!open),
+  });
+}
+
+type DropdownMenuContentProps = Readonly<{
+  children?: ReactNode;
+  className?: string;
+  align?: 'start' | 'center' | 'end';
+  onCloseAutoFocus?: (event: Event) => void;
+}>;
+
+/**
+ * Stub dropdown-menu content, rendered as a `role="menu"` element only while the menu is open. The
+ * layout props steer positioning that jsdom cannot measure, so they are accepted and ignored.
+ */
+export function DropdownMenuContent(props: DropdownMenuContentProps): ReactElement | undefined {
+  const { open } = useContext(DropdownMenuContext);
+  return open ? <OpenDropdownMenuContent {...props} /> : undefined;
+}
+
+/**
+ * The open menu's surface. Closing it fires `onCloseAutoFocus` and then, unless the handler prevents
+ * the event, focuses the trigger, as the real content does.
+ */
+function OpenDropdownMenuContent({
+  children,
+  className,
+  onCloseAutoFocus,
+}: DropdownMenuContentProps): ReactElement {
+  const { triggerRef } = useContext(DropdownMenuContext);
+  const onCloseAutoFocusRef = useRef(onCloseAutoFocus);
+  useEffect(() => {
+    onCloseAutoFocusRef.current = onCloseAutoFocus;
+  });
+  useEffect(
+    () => () => {
+      const event = new Event('closeAutoFocus', { cancelable: true });
+      onCloseAutoFocusRef.current?.(event);
+      if (!event.defaultPrevented) triggerRef.current?.focus();
+    },
+    [triggerRef],
+  );
+  return (
+    <div className={className} data-slot="dropdown-menu-content" role="menu">
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Stub dropdown-menu item rendered as a `role="menuitem"` button. Choosing it fires `onSelect` and
+ * then closes the menu unless the handler prevents the event, as the real item does.
+ */
+export function DropdownMenuItem({
+  children,
+  className,
+  onSelect,
+}: Readonly<{
+  children?: ReactNode;
+  className?: string;
+  onSelect?: (event: Event) => void;
+  variant?: 'default' | 'destructive';
+}>): ReactElement {
+  const { setOpen } = useContext(DropdownMenuContext);
+  return (
+    <button
+      className={className}
+      role="menuitem"
+      type="button"
+      onClick={() => {
+        const event = new Event('select', { cancelable: true });
+        onSelect?.(event);
+        if (!event.defaultPrevented) setOpen(false);
+      }}
+    >
+      {children}
+    </button>
   );
 }
 

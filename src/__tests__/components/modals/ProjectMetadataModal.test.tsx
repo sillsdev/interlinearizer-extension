@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import papi, { logger } from '@papi/frontend';
@@ -24,11 +24,13 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_metadata_save%': 'Save',
   '%interlinearizer_modal_metadata_close%': 'Close',
   '%interlinearizer_modal_metadata_delete%': 'Delete',
-  '%interlinearizer_modal_metadata_delete_confirm_title%': 'Delete project?',
-  '%interlinearizer_modal_metadata_delete_confirm_body%': 'This cannot be undone.',
-  '%interlinearizer_modal_metadata_delete_confirm_ok%': 'Delete',
-  '%interlinearizer_modal_metadata_delete_confirm_cancel%': 'Cancel',
   '%interlinearizer_modal_metadata_lastSynced_label%': 'Last synced',
+  '%interlinearizer_confirm_deleteProject_title%': 'Delete {name}?',
+  '%interlinearizer_confirm_deleteProject_title_unnamed%': 'Delete unnamed project?',
+  '%interlinearizer_confirm_deleteProject_body%': 'Permanently delete this interlinear data?',
+  '%interlinearizer_confirm_deleteProject_pt9Unaffected%': 'No Paratext 9 data will be affected.',
+  '%interlinearizer_confirm_deleteProject_ok%': 'Delete',
+  '%interlinearizer_confirm_deleteProject_cancel%': 'Cancel',
 };
 
 const testProps = {
@@ -259,22 +261,6 @@ describe('ProjectMetadataModal', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('logs the failure and does not call onProjectDeleted or onClose when delete sendCommand rejects', async () => {
-    mockSendCommand.mockRejectedValue(new Error('delete failed'));
-    const onProjectDeleted = jest.fn();
-    const onClose = jest.fn();
-    render(
-      <ProjectMetadataModal {...testProps} onProjectDeleted={onProjectDeleted} onClose={onClose} />,
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-
-    await waitFor(() => expect(jest.mocked(logger.error)).toHaveBeenCalled());
-    expect(onProjectDeleted).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
-  });
-
   it('trims whitespace from the language input before saving', async () => {
     render(<ProjectMetadataModal {...testProps} />);
 
@@ -308,25 +294,6 @@ describe('ProjectMetadataModal', () => {
     const saveButton = screen.getByRole('button', { name: /^save$/i });
     await userEvent.click(saveButton);
     await userEvent.click(saveButton);
-    resolveCommand('{}');
-
-    await waitFor(() => expect(mockSendCommand).toHaveBeenCalledTimes(1));
-  });
-
-  it('sends the delete command only once when delete-confirm is double-clicked before the first resolves', async () => {
-    let resolveCommand: (value: string) => void = () => {};
-    mockSendCommand.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveCommand = resolve;
-        }),
-    );
-    render(<ProjectMetadataModal {...testProps} />);
-
-    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-    const confirmButton = screen.getByRole('button', { name: /^delete$/i });
-    await userEvent.click(confirmButton);
-    await userEvent.click(confirmButton);
     resolveCommand('{}');
 
     await waitFor(() => expect(mockSendCommand).toHaveBeenCalledTimes(1));
@@ -371,23 +338,35 @@ describe('ProjectMetadataModal', () => {
     expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
   });
 
-  it('shows delete confirmation when the Delete button is clicked', async () => {
+  it('asks for confirmation naming the project when the Delete button is clicked', async () => {
     render(<ProjectMetadataModal {...testProps} />);
 
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
-    expect(screen.getByText('Delete project?')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Delete Old Name?' })).toBeInTheDocument();
+    expect(mockSendCommand).not.toHaveBeenCalled();
+  });
+
+  it('leaves Paratext 9 unmentioned when deleting a project that is not an import', async () => {
+    render(<ProjectMetadataModal {...testProps} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    expect(screen.getByRole('dialog', { name: 'Delete Old Name?' })).not.toHaveTextContent(
+      'No Paratext 9 data will be affected.',
+    );
   });
 
   it('hides delete confirmation when Cancel is clicked inside it', async () => {
-    render(<ProjectMetadataModal {...testProps} />);
+    const onClose = jest.fn();
+    render(<ProjectMetadataModal {...testProps} onClose={onClose} />);
 
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-    expect(screen.getByText('Delete project?')).toBeInTheDocument();
+    const confirm = screen.getByRole('dialog', { name: 'Delete Old Name?' });
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }));
 
-    await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
-
-    expect(screen.queryByText('Delete project?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Delete Old Name?' })).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('hides delete confirmation on Escape, keeping the modal and its edits open', async () => {
@@ -399,12 +378,12 @@ describe('ProjectMetadataModal', () => {
 
     await userEvent.keyboard('{Escape}');
 
-    expect(screen.queryByText('Delete project?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Delete Old Name?' })).not.toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByLabelText(/^name$/i)).toHaveValue('Renamed');
   });
 
-  it('closes on a second Escape once the delete confirmation has collapsed', async () => {
+  it('closes on a second Escape once the delete confirmation has closed', async () => {
     const onClose = jest.fn();
     render(<ProjectMetadataModal {...testProps} onClose={onClose} />);
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
@@ -415,26 +394,12 @@ describe('ProjectMetadataModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('calls deleteProject command when delete is confirmed', async () => {
-    render(<ProjectMetadataModal {...testProps} />);
-
-    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-
-    await waitFor(() =>
-      expect(mockSendCommand).toHaveBeenCalledWith(
-        'interlinearizer.deleteProject',
-        'il-project-uuid',
-      ),
-    );
-  });
-
   it('calls onProjectDeleted with the project ID after deletion', async () => {
     const onProjectDeleted = jest.fn();
     render(<ProjectMetadataModal {...testProps} onProjectDeleted={onProjectDeleted} />);
 
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+    await userEvent.click(screen.getByTestId('delete-project-confirm'));
 
     await waitFor(() => expect(onProjectDeleted).toHaveBeenCalledWith('il-project-uuid'));
   });
@@ -444,7 +409,7 @@ describe('ProjectMetadataModal', () => {
     render(<ProjectMetadataModal {...testProps} onClose={onClose} />);
 
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+    await userEvent.click(screen.getByTestId('delete-project-confirm'));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
@@ -492,5 +457,15 @@ describe('ProjectMetadataModal read-only (Paratext 9 import)', () => {
 
     expect(screen.getByText('Last synced')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+  });
+
+  it('tells the user that Paratext 9 data is left alone when deleting the import', async () => {
+    render(<ProjectMetadataModal {...importProps} />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Delete Paratext 9 Interlinear?' }),
+    ).toHaveTextContent('No Paratext 9 data will be affected.');
   });
 });

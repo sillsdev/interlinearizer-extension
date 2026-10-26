@@ -1,9 +1,18 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Info } from 'lucide-react';
-import { Button, Spinner } from 'platform-bible-react';
+import { EllipsisVertical } from 'lucide-react';
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Spinner,
+} from 'platform-bible-react';
+import { useCallback, useRef, useState } from 'react';
 import useProjectsForSource from '../../hooks/useProjectsForSource';
 import usePt9ImportAvailability from '../../hooks/usePt9ImportAvailability';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
+import { DeleteProjectConfirm } from './DeleteProjectConfirm';
 import { ModalShell } from './ModalShell';
 import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
@@ -14,7 +23,9 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_select_create_new%',
   '%interlinearizer_modal_select_cancel%',
   '%interlinearizer_modal_select_name_unnamed%',
-  '%interlinearizer_modal_select_info_button_label%',
+  '%interlinearizer_modal_select_actions_button_label%',
+  '%interlinearizer_modal_select_get_info%',
+  '%interlinearizer_modal_select_delete%',
   '%interlinearizer_modal_select_active_badge%',
   '%interlinearizer_modal_select_modified_prefix%',
   '%interlinearizer_modal_select_analysis_count%',
@@ -26,7 +37,8 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
 
 /**
  * Modal that lists all existing interlinearizer projects for a source project and lets the user
- * select one, view its details (via the info icon), or request that a new one be created.
+ * select one, view its details or delete it (through its row's menu), or request that a new one be
+ * created.
  *
  * @param props.sourceProjectId - Platform.Bible project ID whose interlinear projects to list.
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if
@@ -42,8 +54,10 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  * @param props.onImportPt9 - Called when the user chooses to import the source's Paratext 9
  *   interlinear data; the button only renders when a probe found data and no import exists yet.
  * @param props.onClose - Called when the user cancels without selecting.
- * @param props.onViewInfo - Called with a project when the user clicks its info icon, so the caller
- *   can open the project metadata modal for that project.
+ * @param props.onViewInfo - Called with a project when the user chooses Get info from its menu, so
+ *   the caller can open the project metadata modal for that project.
+ * @param props.onProjectDeleted - Called with a project's UUID once the user has deleted it from
+ *   its menu; the modal has already dropped it from the list.
  * @returns The modal overlay with the project list, or nothing while strings are loading.
  */
 export function SelectInterlinearProjectModal({
@@ -55,6 +69,7 @@ export function SelectInterlinearProjectModal({
   onImportPt9,
   onClose,
   onViewInfo,
+  onProjectDeleted,
 }: Readonly<{
   sourceProjectId: string;
   activeProjectId?: string;
@@ -64,13 +79,39 @@ export function SelectInterlinearProjectModal({
   onImportPt9: () => void;
   onClose: () => void;
   onViewInfo: (project: InterlinearProjectSummary) => void;
+  onProjectDeleted: (deletedProjectId: string) => void;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(
     SELECT_INTERLINEAR_PROJECT_STRING_KEYS,
   );
 
-  const { projects, isLoading } = useProjectsForSource(sourceProjectId);
+  const { projects, isLoading, removeProject } = useProjectsForSource(sourceProjectId);
   const showImportPt9 = usePt9ImportAvailability(sourceProjectId, projects, isLoading);
+
+  /** The project whose deletion awaits the user's confirmation. */
+  const [pendingDelete, setPendingDelete] = useState<InterlinearProjectSummary | undefined>(
+    undefined,
+  );
+
+  /** The project whose Delete was chosen from its menu, held until that menu has closed. */
+  const deleteRequest = useRef<InterlinearProjectSummary | undefined>(undefined);
+
+  // Runs as the menu closes, so the confirmation opens after the menu has refocused its button.
+  // The confirmation then returns focus to that button when it closes.
+  const openRequestedDelete = useCallback(() => {
+    if (!deleteRequest.current) return;
+    setPendingDelete(deleteRequest.current);
+    deleteRequest.current = undefined;
+  }, []);
+
+  const handleDeleted = useCallback(
+    (deletedProjectId: string) => {
+      setPendingDelete(undefined);
+      removeProject(deletedProjectId);
+      onProjectDeleted(deletedProjectId);
+    },
+    [onProjectDeleted, removeProject],
+  );
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
@@ -105,16 +146,19 @@ export function SelectInterlinearProjectModal({
           {projects.map((project) => {
             const isActive = project.id === activeProjectId;
             return (
-              <li key={project.id} className="tw:flex tw:items-center tw:gap-1">
+              <li
+                key={project.id}
+                className={`tw:flex tw:items-center tw:rounded tw:border tw:transition-colors ${
+                  isActive
+                    ? 'tw:border-primary tw:bg-primary/10 tw:hover:bg-primary/20'
+                    : 'tw:border-border tw:bg-muted/40 tw:hover:bg-muted/70'
+                }`}
+              >
                 <button
                   type="button"
                   aria-current={isActive ? 'true' : undefined}
                   disabled={isOpening}
-                  className={`tw:flex-1 tw:flex tw:rounded tw:border tw:px-3 tw:py-2 tw:text-left tw:text-sm tw:transition-colors tw:min-w-0 ${
-                    isActive
-                      ? 'tw:border-primary tw:bg-primary/10 tw:hover:bg-primary/20'
-                      : 'tw:border-border tw:bg-muted/40 tw:hover:bg-muted/70'
-                  }`}
+                  className="tw:flex-1 tw:flex tw:px-3 tw:py-2 tw:text-left tw:text-sm tw:min-w-0"
                   onClick={() => onSelect(project)}
                 >
                   <ProjectSummaryDetails
@@ -144,16 +188,35 @@ export function SelectInterlinearProjectModal({
                     </span>
                   )}
                 </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={localizedStrings['%interlinearizer_modal_select_info_button_label%']}
-                  className="tw:shrink-0"
-                  disabled={isOpening}
-                  onClick={() => onViewInfo(project)}
-                >
-                  <Info className="tw:size-[15px]" />
-                </Button>
+                <DropdownMenu>
+                  {/* Disabled on the trigger, because a disabled button still receives the pointerdown
+                      that opens the menu. */}
+                  <DropdownMenuTrigger asChild disabled={isOpening}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={
+                        localizedStrings['%interlinearizer_modal_select_actions_button_label%']
+                      }
+                      className="tw:shrink-0 tw:me-1"
+                    >
+                      <EllipsisVertical className="tw:size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onCloseAutoFocus={openRequestedDelete}>
+                    <DropdownMenuItem onSelect={() => onViewInfo(project)}>
+                      {localizedStrings['%interlinearizer_modal_select_get_info%']}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={() => {
+                        deleteRequest.current = project;
+                      }}
+                    >
+                      {localizedStrings['%interlinearizer_modal_select_delete%']}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </li>
             );
           })}
@@ -178,6 +241,16 @@ export function SelectInterlinearProjectModal({
           {localizedStrings['%interlinearizer_modal_select_create_new%']}
         </Button>
       </div>
+
+      {pendingDelete && (
+        <DeleteProjectConfirm
+          projectId={pendingDelete.id}
+          projectName={pendingDelete.name}
+          isPt9Import={pendingDelete.pt9Import !== undefined}
+          onCancel={() => setPendingDelete(undefined)}
+          onDeleted={handleDeleted}
+        />
+      )}
     </ModalShell>
   );
 }

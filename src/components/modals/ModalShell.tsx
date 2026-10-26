@@ -10,8 +10,9 @@ import { useState, type ReactNode } from 'react';
  * Shared chrome for the project modals: the platform dialog surface, its accessibility wiring, and
  * the title heading.
  *
- * The platform dialog supplies a focus trap, scroll lock, and focus restore on close, so a modal
- * genuinely blocks the view behind it rather than merely covering it.
+ * The platform dialog supplies a focus trap and scroll lock, so a modal genuinely blocks the view
+ * behind it rather than merely covering it. Closing returns focus to whatever held it when the
+ * modal opened.
  *
  * A popover opened inside a modal portals into the dialog rather than to `document.body`, where the
  * focus trap would pull focus straight back out of it and the dismiss layer would read a click in
@@ -50,6 +51,8 @@ export function ModalShell({
 }>) {
   // eslint-disable-next-line no-null/no-null -- the platform's container prop takes null until the dialog mounts
   const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
+  // Read before the dialog takes focus; the platform refocuses only a trigger, and there is none.
+  const [returnFocusTo] = useState(() => document.activeElement);
 
   return (
     <Dialog
@@ -73,6 +76,10 @@ export function ModalShell({
         onInteractOutside={(event) => {
           if (!onClose || dialogEl?.querySelector('[data-slot="popover-content"]'))
             event.preventDefault();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (returnFocusTo instanceof HTMLElement) returnFocusTo.focus();
         }}
         ref={setDialogEl}
         showCloseButton={false}

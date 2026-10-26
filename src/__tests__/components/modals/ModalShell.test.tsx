@@ -4,6 +4,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Popover, PopoverContent } from 'platform-bible-react';
+import { useState } from 'react';
 import { ModalShell } from '../../../components/modals/ModalShell';
 
 // Popovers carry the dialog role too, so the modal surface is reached by the slot that is its own.
@@ -50,6 +51,31 @@ describe('ModalShell', () => {
     render(<ModalShell {...defaultProps} />);
 
     expect(screen.getByRole('heading', { name: 'Test modal' })).toBeInTheDocument();
+  });
+
+  it('returns focus on close to the element that held it when the modal opened', async () => {
+    function Host() {
+      const [isOpen, setIsOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setIsOpen(true)}>
+            Open
+          </button>
+          {isOpen && (
+            <ModalShell {...defaultProps} onClose={() => setIsOpen(false)}>
+              <input aria-label="Field" />
+            </ModalShell>
+          )}
+        </>
+      );
+    }
+    render(<Host />);
+    await userEvent.click(screen.getByRole('button', { name: 'Open' }));
+    await userEvent.click(screen.getByRole('textbox', { name: 'Field' }));
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveFocus();
   });
 
   it('calls onClose when the user presses Escape', async () => {

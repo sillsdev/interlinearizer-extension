@@ -281,9 +281,8 @@ export function TokenChip({
   }, []);
 
   /**
-   * Approves the chosen suggestion payload for this token and closes the dropdown. Any typed draft
-   * is discarded: the approval updates `committedGloss`, which the sync effect mirrors back into
-   * the input so the selection wins.
+   * Approves the chosen suggestion payload for this token and closes the dropdown. The approved
+   * gloss replaces a typed draft wherever it changes the stored gloss.
    *
    * @param id - The chosen payload's id (the suggested pick or a promoted candidate).
    */

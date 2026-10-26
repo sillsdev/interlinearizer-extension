@@ -7,7 +7,7 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type { ProjectConfig } from 'interlinearizer';
+import type { ProjectConfig, TokenSnapshot } from 'interlinearizer';
 import { formatReplacementString, type LocalizeKey } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
@@ -15,6 +15,7 @@ import { AnalysisSessions, type OpenedSession, type Session } from './services/a
 import * as bookService from './services/bookService';
 import type { ChangeBuffer } from './services/commands/changeBuffer';
 import * as staleCommands from './services/commands/staleCommands';
+import * as phraseCommands from './services/commands/phraseCommands';
 import * as tokenCommands from './services/commands/tokenCommands';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
@@ -848,11 +849,15 @@ async function runSessionEdit(
   }
 }
 
-/** Ids that a new record or link would take, and the time an edit lands. */
+/**
+ * Ids that a new record or link would take, the id a private copy of a shared payload would take,
+ * and the time an edit lands.
+ */
 function editStamp() {
   return {
     analysisId: crypto.randomUUID(),
     linkId: crypto.randomUUID(),
+    forkId: crypto.randomUUID(),
     now: new Date().toISOString(),
   };
 }
@@ -978,6 +983,123 @@ function keepStaleFreeTranslation(
 function discardStaleFreeTranslation(sessionId: string, analysisId: string): Promise<string> {
   return runSessionEdit(sessionId, 'discardStaleFreeTranslation', (buffer) =>
     staleCommands.discardStaleFreeTranslation(buffer, { analysisId }),
+  );
+}
+
+/**
+ * Adds an approved phrase occurrence over `tokens`, sharing a content-identical stored payload
+ * where one exists.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<string> {
+  return runSessionEdit(sessionId, 'createPhrase', (buffer) =>
+    phraseCommands.createPhrase(buffer, { ...editStamp(), tokens }),
+  );
+}
+
+/**
+ * Gives a phrase occurrence a new token run, keeping its gloss; an empty run removes the
+ * occurrence.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function updatePhrase(
+  sessionId: string,
+  phraseId: string,
+  tokens: TokenSnapshot[],
+): Promise<string> {
+  return runSessionEdit(sessionId, 'updatePhrase', (buffer) =>
+    phraseCommands.updatePhrase(buffer, { ...editStamp(), phraseId, tokens }),
+  );
+}
+
+/**
+ * Removes a phrase occurrence, with its payload unless another occurrence shares it.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function deletePhrase(sessionId: string, phraseId: string): Promise<string> {
+  return runSessionEdit(sessionId, 'deletePhrase', (buffer) =>
+    phraseCommands.deletePhrase(buffer, { phraseId }),
+  );
+}
+
+/**
+ * Merges a neighbor into a phrase occurrence as one edit: the target takes the merged token run,
+ * and the absorbed occurrence, when named, is removed.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function mergePhrases(
+  sessionId: string,
+  targetPhraseId: string,
+  tokens: TokenSnapshot[],
+  absorbedPhraseId?: string,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'mergePhrases', (buffer) =>
+    phraseCommands.mergePhrases(buffer, {
+      ...editStamp(),
+      targetPhraseId,
+      tokens,
+      ...(absorbedPhraseId ? { absorbedPhraseId } : {}),
+    }),
+  );
+}
+
+/**
+ * Writes a phrase occurrence's gloss in the session's analysis language; a blank value clears it.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function writePhraseGloss(sessionId: string, phraseId: string, value: string): Promise<string> {
+  return runSessionEdit(sessionId, 'writePhraseGloss', (buffer, session) =>
+    phraseCommands.writePhraseGloss(buffer, {
+      ...editStamp(),
+      phraseId,
+      value,
+      analysisLanguage: session.analysisLanguage,
+    }),
+  );
+}
+
+/**
+ * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function approvePhrase(sessionId: string, phraseId: string): Promise<string> {
+  return runSessionEdit(sessionId, 'approvePhrase', (buffer) =>
+    phraseCommands.approvePhrase(buffer, { ...editStamp(), phraseId }),
+  );
+}
+
+/**
+ * Splits a phrase occurrence just after a token, in document order. A half left with a single token
+ * leaves that token in no phrase.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function splitPhrase(
+  sessionId: string,
+  phraseId: string,
+  splitAfterTokenRef: string,
+  tokenDocOrder: Record<string, number>,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'splitPhrase', (buffer) =>
+    phraseCommands.splitPhrase(buffer, {
+      ...editStamp(),
+      phraseId,
+      splitAfterTokenRef,
+      tokenDocOrder: new Map(Object.entries(tokenDocOrder)),
+    }),
   );
 }
 
@@ -1749,6 +1871,177 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  /** The parameter naming the phrase occurrence a phrase edit acts on. */
+  const phraseIdParam = {
+    name: 'phraseId',
+    required: true,
+    summary: 'PhraseAnalysisLink.id of the phrase occurrence edited',
+    schema: { type: 'string' },
+  } as const;
+
+  const tokenSnapshotsSchema = {
+    type: 'array' as const,
+    items: {
+      type: 'object' as const,
+      properties: {
+        tokenRef: { type: 'string' as const },
+        surfaceText: { type: 'string' as const },
+      },
+      required: ['tokenRef', 'surfaceText'],
+    },
+  };
+
+  const createPhraseCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.createPhrase',
+    createPhrase,
+    {
+      method: {
+        summary:
+          'Add an approved phrase occurrence, sharing a content-identical stored payload where one exists',
+        params: [
+          sessionIdParam,
+          {
+            name: 'tokens',
+            required: true,
+            summary: "The phrase's token snapshots, in document order",
+            schema: tokenSnapshotsSchema,
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const updatePhraseCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.updatePhrase',
+    updatePhrase,
+    {
+      method: {
+        summary:
+          'Give a phrase occurrence a new token run, keeping its gloss; an empty run removes it',
+        params: [
+          sessionIdParam,
+          phraseIdParam,
+          {
+            name: 'tokens',
+            required: true,
+            summary: 'The new token snapshots, in document order',
+            schema: tokenSnapshotsSchema,
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const deletePhraseCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.deletePhrase',
+    deletePhrase,
+    {
+      method: {
+        summary: 'Remove a phrase occurrence, with its payload unless another occurrence shares it',
+        params: [sessionIdParam, phraseIdParam],
+        result: editResult,
+      },
+    },
+  );
+
+  const mergePhrasesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.mergePhrases',
+    mergePhrases,
+    {
+      method: {
+        summary:
+          'Grow a phrase occurrence to a merged token run, removing the absorbed occurrence when named',
+        params: [
+          sessionIdParam,
+          {
+            name: 'targetPhraseId',
+            required: true,
+            summary: 'PhraseAnalysisLink.id of the phrase occurrence that grows',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'tokens',
+            required: true,
+            summary: 'The merged token snapshots, in document order',
+            schema: tokenSnapshotsSchema,
+          },
+          {
+            name: 'absorbedPhraseId',
+            required: false,
+            summary:
+              'PhraseAnalysisLink.id of the neighboring occurrence merged in; omit when the neighbor is in no phrase',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const writePhraseGlossCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.writePhraseGloss',
+    writePhraseGloss,
+    {
+      method: {
+        summary:
+          "Write a phrase occurrence's gloss in a session's analysis language; a blank value clears it",
+        params: [
+          sessionIdParam,
+          phraseIdParam,
+          {
+            name: 'value',
+            required: true,
+            summary: 'The gloss',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const approvePhraseCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.approvePhrase',
+    approvePhrase,
+    {
+      method: {
+        summary: 'Approve a phrase occurrence, unless any of its tokens is in an approved phrase',
+        params: [sessionIdParam, phraseIdParam],
+        result: editResult,
+      },
+    },
+  );
+
+  const splitPhraseCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.splitPhrase',
+    splitPhrase,
+    {
+      method: {
+        summary: 'Split a phrase occurrence just after a token, in document order',
+        params: [
+          sessionIdParam,
+          phraseIdParam,
+          {
+            name: 'splitAfterTokenRef',
+            required: true,
+            summary: 'Token.ref of the token the first half ends with',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'tokenDocOrder',
+            required: true,
+            summary:
+              "Each of the phrase's tokens' place in document order, by Token.ref; a token left out sorts as if at place zero",
+            schema: { type: 'object', additionalProperties: { type: 'number' } },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
   const checkIndexesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.checkIndexes',
     checkIndexes,
@@ -2148,6 +2441,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     reapplyStaleAnalysisCommandRegistration,
     keepStaleFreeTranslationCommandRegistration,
     discardStaleFreeTranslationCommandRegistration,
+    createPhraseCommandRegistration,
+    updatePhraseCommandRegistration,
+    deletePhraseCommandRegistration,
+    mergePhrasesCommandRegistration,
+    writePhraseGlossCommandRegistration,
+    approvePhraseCommandRegistration,
+    splitPhraseCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,

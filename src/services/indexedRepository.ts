@@ -2,6 +2,7 @@ import type {
   AssignmentStatus,
   DraftProject,
   PhraseAnalysis,
+  PhraseAnalysisLink,
   SegmentAnalysis,
   SegmentAnalysisLink,
   TokenAnalysis,
@@ -29,6 +30,7 @@ export abstract class IndexedRepository implements Pick<
   | 'getTokenAnalyses'
   | 'getPhraseAnalyses'
   | 'getSegmentAnalyses'
+  | 'getPhraseAnalysisLinks'
   | 'findLinksByToken'
   | 'findLinksBySegment'
   | 'findLinksToAnalyses'
@@ -51,6 +53,10 @@ export abstract class IndexedRepository implements Pick<
 
   getSegmentAnalyses(ids: string[]): Promise<SegmentAnalysis[]> {
     return this.query((index) => index.getSegmentAnalyses(ids));
+  }
+
+  getPhraseAnalysisLinks(ids: string[]): Promise<PhraseAnalysisLink[]> {
+    return this.query((index) => index.getPhraseAnalysisLinks(ids));
   }
 
   findLinksByToken(

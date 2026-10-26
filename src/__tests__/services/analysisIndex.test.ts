@@ -48,6 +48,12 @@ describe('AnalysisIndex', () => {
     expect(ids(index.getSegmentAnalyses(['sa-1']))).toStrictEqual(['sa-1']);
   });
 
+  it('gets phrase links by id', () => {
+    const index = new AnalysisIndex(analysis());
+
+    expect(ids(index.getPhraseAnalysisLinks(['pa-1', 'missing', 'pa-1']))).toStrictEqual(['pa-1']);
+  });
+
   it('finds token links by token ref, and phrase links by any of their tokens', () => {
     const { tokenAnalysisLinks, phraseAnalysisLinks } = new AnalysisIndex(
       analysis(),

@@ -86,10 +86,10 @@ export function sortByDocOrder<T extends { tokenRef: string }>(
  * Slices a phrase's tokens, in document order, into the half up to and including the boundary token
  * and the remainder after it; `undefined` when the boundary token is not among them.
  *
- * The single source of this slice, so the destructive-border preview cannot drift from the split it
- * previews.
+ * The single source of this slice, so that no split, and no preview of one, slices a phrase
+ * differently.
  */
-function sliceAtBoundary(
+export function sliceAtBoundary(
   tokens: readonly TokenSnapshot[],
   splitAfterTokenRef: string,
   tokenDocOrder: ReadonlyMap<string, number>,

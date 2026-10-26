@@ -1,5 +1,6 @@
 import type {
   PhraseAnalysis,
+  PhraseAnalysisLink,
   SegmentAnalysis,
   SegmentAnalysisLink,
   TextAnalysis,
@@ -68,6 +69,13 @@ export class ChangeBuffer {
     const wanted = new Set(ids);
     const stored = await this.repository.getSegmentAnalyses(ids);
     return this.overlay('segmentAnalyses', stored, ({ id }) => wanted.has(id));
+  }
+
+  /** The phrase links stored under `ids` once the staged changes apply. */
+  async getPhraseAnalysisLinks(ids: string[]): Promise<PhraseAnalysisLink[]> {
+    const wanted = new Set(ids);
+    const stored = await this.repository.getPhraseAnalysisLinks(ids);
+    return this.overlay('phraseAnalysisLinks', stored, ({ id }) => wanted.has(id));
   }
 
   /**

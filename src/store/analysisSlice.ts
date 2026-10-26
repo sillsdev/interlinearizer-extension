@@ -22,6 +22,7 @@ import {
 import { buildCatalogRows, type HeadingPlacement } from '../utils/analysis-query';
 import type { StaleFreeTranslation } from '../utils/stale-free-translations';
 import { isEmptyMultiString } from '../utils/multi-string';
+import { phraseSurfaceText } from '../utils/phrase-text';
 import { clearAnalysisGloss, isEmptyTokenAnalysis } from '../utils/token-analysis-content';
 import {
   preferredLink,
@@ -196,11 +197,6 @@ export const defaultState: AnalysisState = {
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-/** Derives the display surface text for a phrase by joining each token's surface text with a space. */
-function phraseSurfaceText(tokens: TokenSnapshot[]): string {
-  return tokens.map((t) => t.surfaceText).join(' ');
 }
 
 function findPhraseLink(state: AnalysisState, phraseId: string): PhraseAnalysisLink | undefined {

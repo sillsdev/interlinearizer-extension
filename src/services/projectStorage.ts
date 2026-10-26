@@ -1148,6 +1148,7 @@ export function openDraftRepository(
     getTokenAnalyses: (ids) => queued((repository) => repository.getTokenAnalyses(ids)),
     getPhraseAnalyses: (ids) => queued((repository) => repository.getPhraseAnalyses(ids)),
     getSegmentAnalyses: (ids) => queued((repository) => repository.getSegmentAnalyses(ids)),
+    getPhraseAnalysisLinks: (ids) => queued((repository) => repository.getPhraseAnalysisLinks(ids)),
     findLinksByToken: (tokenRefs) => queued((repository) => repository.findLinksByToken(tokenRefs)),
     findLinksBySegment: (segmentIds) =>
       queued((repository) => repository.findLinksBySegment(segmentIds)),

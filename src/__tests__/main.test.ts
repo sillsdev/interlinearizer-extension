@@ -4,7 +4,7 @@ import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } fr
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
-import type { DraftProject, ProjectConfig, TextAnalysis } from 'interlinearizer';
+import type { DraftProject, ProjectConfig, TextAnalysis, TokenSnapshot } from 'interlinearizer';
 import { AnalysisSessions } from '../services/analysisSessions';
 import * as bookService from '../services/bookService';
 import { DraftRepository } from '../services/draftRepository';
@@ -415,6 +415,13 @@ describe('main', () => {
           'interlinearizer.reapplyStaleAnalysis',
           'interlinearizer.keepStaleFreeTranslation',
           'interlinearizer.discardStaleFreeTranslation',
+          'interlinearizer.createPhrase',
+          'interlinearizer.updatePhrase',
+          'interlinearizer.deletePhrase',
+          'interlinearizer.mergePhrases',
+          'interlinearizer.writePhraseGloss',
+          'interlinearizer.approvePhrase',
+          'interlinearizer.splitPhrase',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
           'interlinearizer.openProjectInfoModal',
@@ -1853,6 +1860,7 @@ describe('main', () => {
         getTokenAnalyses: async () => [],
         getPhraseAnalyses: async () => [],
         getSegmentAnalyses: async () => [],
+        getPhraseAnalysisLinks: async () => [],
         findLinksByToken: async () => noLinks,
         findLinksBySegment: async () => [],
         findLinksToAnalyses: async () => noLinks,
@@ -1931,6 +1939,37 @@ describe('main', () => {
         discardStaleFreeTranslation: handler<
           (sessionId: string, analysisId: string) => Promise<string>
         >('interlinearizer.discardStaleFreeTranslation'),
+        createPhrase: handler<(sessionId: string, tokens: TokenSnapshot[]) => Promise<string>>(
+          'interlinearizer.createPhrase',
+        ),
+        updatePhrase: handler<
+          (sessionId: string, phraseId: string, tokens: TokenSnapshot[]) => Promise<string>
+        >('interlinearizer.updatePhrase'),
+        deletePhrase: handler<(sessionId: string, phraseId: string) => Promise<string>>(
+          'interlinearizer.deletePhrase',
+        ),
+        mergePhrases: handler<
+          (
+            sessionId: string,
+            targetPhraseId: string,
+            tokens: TokenSnapshot[],
+            absorbedPhraseId?: string,
+          ) => Promise<string>
+        >('interlinearizer.mergePhrases'),
+        writePhraseGloss: handler<
+          (sessionId: string, phraseId: string, value: string) => Promise<string>
+        >('interlinearizer.writePhraseGloss'),
+        approvePhrase: handler<(sessionId: string, phraseId: string) => Promise<string>>(
+          'interlinearizer.approvePhrase',
+        ),
+        splitPhrase: handler<
+          (
+            sessionId: string,
+            phraseId: string,
+            splitAfterTokenRef: string,
+            tokenDocOrder: Record<string, number>,
+          ) => Promise<string>
+        >('interlinearizer.splitPhrase'),
       };
     }
 
@@ -2265,6 +2304,91 @@ describe('main', () => {
         segmentAnalysisLinks: { puts: [], deletes: ['sl-stale'] },
       });
     });
+
+    const inThe: TokenSnapshot[] = [
+      { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+      { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+    ];
+
+    it('creates a phrase, replying with the changes', async () => {
+      const { openSession, createPhrase } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(await createPhrase(sessionId, inThe));
+
+      expect(changes).toMatchObject({
+        intent: 'createPhrase',
+        phraseAnalyses: { puts: [{ surfaceText: 'In the' }], deletes: [] },
+        phraseAnalysisLinks: { puts: [{ status: 'approved', tokens: inThe }], deletes: [] },
+      });
+    });
+
+    it("writes a phrase's gloss in the session's language, replying with the changes", async () => {
+      await storeDraftHolding({
+        phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the' }],
+        phraseAnalysisLinks: [
+          { id: 'pl-1', analysisId: 'pa-1', ...FIXTURE_STAMPS, status: 'approved', tokens: inThe },
+        ],
+      });
+      const { openSession, setAnalysisLanguage, writePhraseGloss } =
+        await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+      await setAnalysisLanguage(sessionId, 'fr');
+
+      const changes = JSON.parse(await writePhraseGloss(sessionId, 'pl-1', 'au début'));
+
+      expect(changes).toMatchObject({
+        intent: 'writePhraseGloss',
+        phraseAnalyses: { puts: [{ id: 'pa-1', gloss: { fr: 'au début' } }], deletes: [] },
+        phraseAnalysisLinks: { puts: [{ id: 'pl-1' }], deletes: [] },
+      });
+    });
+
+    type SessionCommands = Awaited<ReturnType<typeof activateSessionCommands>>;
+
+    it.each([
+      [
+        'updatePhrase',
+        'updatePhrase',
+        (c: SessionCommands, id: string) => c.updatePhrase(id, 'pl-1', inThe),
+      ],
+      [
+        'deletePhrase',
+        'deletePhrase',
+        (c: SessionCommands, id: string) => c.deletePhrase(id, 'pl-1'),
+      ],
+      [
+        'mergePhrases absorbing a phrase',
+        'mergePhrases',
+        (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', inThe, 'pl-2'),
+      ],
+      [
+        'mergePhrases absorbing a token in no phrase',
+        'mergePhrases',
+        (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', inThe),
+      ],
+      [
+        'approvePhrase',
+        'approvePhrase',
+        (c: SessionCommands, id: string) => c.approvePhrase(id, 'pl-1'),
+      ],
+      [
+        'splitPhrase',
+        'splitPhrase',
+        (c: SessionCommands, id: string) =>
+          c.splitPhrase(id, 'pl-1', 'GEN 1:1:0', { 'GEN 1:1:0': 0, 'GEN 1:1:1': 1 }),
+      ],
+    ])(
+      'runs %s as an edit of the session, replying with the changes',
+      async (_name, intent, command) => {
+        const commands = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+
+        await expect(command(commands, sessionId).then(JSON.parse)).resolves.toStrictEqual({
+          intent,
+        });
+      },
+    );
 
     it('closes every session on deactivation', async () => {
       const { openSession } = await activateSessionCommands();

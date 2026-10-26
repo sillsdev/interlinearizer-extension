@@ -86,3 +86,12 @@ One exception - a parameter's default, which a call site's hover shows as `timeo
 Sparingly: only when the reasoning is not clear from the code, or a bugfix is non-obvious. Keep them short - reasoning that outgrows a few sentences belongs on the nearest doc comment, not interleaved with statements - and about the code they sit next to.
 
 In tests, two extra tells of noise: restating the test title or narrating steps the code shows, and justifying the test to the coverage gate ("covers the false branch of…"). Why a module is mocked, or why fixture geometry is shaped as it is, stays fine - that is reasoning the code cannot show.
+
+## Sentences
+
+Every comment sentence parses on the first read. Check each one by reading it once at normal speed: if you backtracked or had to choose between two readings, rewrite it.
+
+- **One claim per sentence.** Two independent claims spliced with a comma, or chained with "and", "so", or "which", make a run-on. Split them, or join with a semicolon when the second explains the first.
+- **Short sentences, short paragraphs.** Keep sentences under about 25 words. A sentence that needs nested clauses or a parenthetical to hold together is two sentences. A paragraph carries one idea; a doc comment with several ideas gives each its own paragraph, summary first.
+- **One reading per word.** When "it", "this", or "that" has more than one candidate antecedent, name the noun. Write "because" for cause and "whereas" for contrast; "since" and "while" also read as time. Place "only" directly before what it limits. Domain words (token, phrase, segment, link, analysis) carry only their domain meaning; reach for a synonym in the everyday sense.
+- **Commit the reader to the right parse.** A garden-path sentence opens with a parse its ending overturns. Keep the optional "that" after verbs like verifies, ensures, and assumes: "Verifies that the segment boundaries match the source", not "Verifies the segment boundaries match the source". Put a comma after an introductory clause: "Because the store updates, links are re-resolved". Place each modifier beside what it modifies; in "Clears the cache the loader fills when the project changes", the reader cannot tell which action happens on project change.

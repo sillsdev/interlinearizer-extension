@@ -565,11 +565,13 @@ declare module 'papi-shared-types' {
 
     /**
      * Writes a segment's free translation in a session's analysis language, refreshing the surface
-     * text stored with it. A blank value clears the translation, removing it once nothing is left.
+     * text stored with it. A blank value clears the translation in that language. The translation's
+     * record is removed once it holds nothing.
      *
      * A segment with no approved translation adopts the stale translation `adoptStaleAnalysisId`
-     * names, approving it for the segment, so that its other languages carry over. A value typed
-     * over no stale translation leaves `adoptStaleAnalysisId` out, or passes `null`.
+     * names, approving it for the segment, so that the stale translation's other languages carry
+     * over. Leave `adoptStaleAnalysisId` out, or pass `null`, when the value was typed over no
+     * stale translation.
      *
      * @returns A JSON string of the changes it applied.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
@@ -585,10 +587,11 @@ declare module 'papi-shared-types' {
 
     /**
      * Merges the segment beginning at `secondSegmentStartRef` into the one before it. A segment
-     * with no run before it to merge into, such as the book's first, is left as it is.
+     * with no verse text directly before it, such as the book's first or one after a heading, is
+     * left as it is.
      *
-     * @returns A JSON string of the changes it applied, which carry the draft's boundaries in its
-     *   scope record.
+     * @returns A JSON string of the changes it applied. Their scope record carries the draft's
+     *   boundaries.
      * @throws If the project has no text for the token's book, the session is read-only or not
      *   open, or the edit fails (logged before rethrowing).
      */
@@ -601,8 +604,8 @@ declare module 'papi-shared-types' {
      * Splits a segment so a new one begins at `tokenRef`. Every approved phrase the new boundary
      * would cut is split first, in the same edit, so that no phrase spans two segments.
      *
-     * @returns A JSON string of the changes it applied, which carry the draft's boundaries in its
-     *   scope record.
+     * @returns A JSON string of the changes it applied. Their scope record carries the draft's
+     *   boundaries.
      * @throws If the project has no text for the token's book, the session is read-only or not
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
@@ -613,8 +616,8 @@ declare module 'papi-shared-types' {
      * boundary does. Every approved phrase a boundary before `toRef` would cut is split first, in
      * the same edit.
      *
-     * @returns A JSON string of the changes it applied, which carry the draft's boundaries in its
-     *   scope record.
+     * @returns A JSON string of the changes it applied. Their scope record carries the draft's
+     *   boundaries.
      * @throws If the project has no text for the book of `toRef`, the session is read-only or not
      *   open, or the edit is refused or fails (logged before rethrowing).
      */

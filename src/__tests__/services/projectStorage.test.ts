@@ -767,6 +767,55 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
+    it('makes a repository already opened over a deleted import refuse lookups', async () => {
+      const imported: InterlinearProject = {
+        ...makeStubProject('import-id'),
+        pt9Import: { fileHashes: {}, importedAt: '2026-02-01T00:00:00.000Z' },
+      };
+      mockListedProject(imported);
+      const repository = openPt9ImportRepository(token, 'import-id');
+      await repository.getTokenAnalyses(['ta-1']);
+      mockStore({ projectSummaries: storedSummaries(imported) });
+
+      await deleteProject(token, 'import-id');
+
+      await expect(repository.getTokenAnalyses(['ta-1'])).rejects.toThrow(
+        'no Paratext 9 import is stored as project import-id',
+      );
+    });
+
+    it('keeps no import a repository read while the import was being deleted', async () => {
+      const imported: InterlinearProject = {
+        ...makeStubProject('import-id'),
+        pt9Import: { fileHashes: {}, importedAt: '2026-02-01T00:00:00.000Z' },
+      };
+      mockListedProject(imported);
+      let markDeletionStarted = () => {};
+      const deletionStarted = new Promise<void>((resolve) => {
+        markDeletionStarted = resolve;
+      });
+      let finishDeletion = () => {};
+      __mockDeleteUserData.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            markDeletionStarted();
+            finishDeletion = resolve;
+          }),
+      );
+      const repository = openPt9ImportRepository(token, 'import-id');
+
+      const deletion = deleteProject(token, 'import-id');
+      await deletionStarted;
+      await repository.getTokenAnalyses(['ta-1']);
+      mockStore({});
+      finishDeletion();
+      await deletion;
+
+      await expect(repository.getTokenAnalyses(['ta-1'])).rejects.toThrow(
+        'no Paratext 9 import is stored as project import-id',
+      );
+    });
+
     it('unlists the project when its record is already missing', async () => {
       __mockDeleteUserData.mockRejectedValue(enoentError());
       mockStore({ projectSummaries: listed });
@@ -3200,6 +3249,29 @@ describe('projectStorage', () => {
             analysis: newAnalysis,
             pt9Import: NEW_PROVENANCE,
           }),
+        );
+      });
+
+      it('makes a repository already opened over the import answer from the new one', async () => {
+        writeThroughStore({
+          projectSummaries: storedSummaries(importedProject),
+          'project:import-id': JSON.stringify(importedProject),
+        });
+        const repository = openPt9ImportRepository(token, 'import-id');
+        await repository.getTokenAnalyses(['pt9:ta:GEN 1:1:0:0']);
+
+        await savePt9Import(
+          token,
+          'src-project',
+          'Paratext 9 Interlinear',
+          'Imported from Paratext 9.',
+          ['en'],
+          newAnalysis,
+          NEW_PROVENANCE,
+        );
+
+        await expect(repository.getTokenAnalyses(['pt9:ta:GEN 1:1:0:0'])).resolves.toStrictEqual(
+          newAnalysis.tokenAnalyses,
         );
       });
 

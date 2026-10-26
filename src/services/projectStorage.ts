@@ -74,6 +74,12 @@ const draftRepositories = new Map<string, DraftRepository>();
  */
 const draftWriteCounts = new Map<string, number>();
 
+/**
+ * How many times a sync has replaced or a deletion removed each project, so a repository over a
+ * Paratext 9 import can tell its kept records are out of date.
+ */
+const importRevisions = new Map<string, number>();
+
 /** A project created from a copy of the stored draft, and the books the copy left out. */
 export type NewProjectFromDraft = {
   project: InterlinearProject;
@@ -582,7 +588,7 @@ export async function getPt9ImportForSource(
  * record, or replaces it wholesale when one exists. This is the only write path for
  * `pt9Import`-carrying projects - the public update functions reject them - and every field except
  * `id` and `createdAt` is rebuilt from the arguments on replace, so nothing from the previous
- * import survives a sync.
+ * import survives a sync, not even in a repository already opened over it.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID the interlinear data was imported from.
@@ -640,6 +646,7 @@ export async function savePt9Import(
         createdAt: current.createdAt,
       };
       await papi.storage.writeUserData(token, projectKey(current.id), JSON.stringify(updated));
+      importRevisions.set(current.id, (importRevisions.get(current.id) ?? 0) + 1);
       return (await refreshSummary(token, summarizeProject(updated))) ? updated : undefined;
     });
     if (replaced) return replaced;
@@ -945,7 +952,8 @@ export async function updateProjectMetadata(
 /**
  * Unlists the project with the given ID and deletes its record. No-ops silently if the project does
  * not exist. The deletion is committed once the project is unlisted: a record that then fails to
- * delete is logged and left to a later {@link sweepPendingCleanup}, not reported.
+ * delete is logged and left to a later {@link sweepPendingCleanup}, not reported. A repository
+ * already opened over a deleted Paratext 9 import stops answering from what it kept.
  *
  * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
  * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
@@ -970,10 +978,13 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
     try {
       await papi.storage.deleteUserData(token, projectKey(id));
     } catch (e) {
-      if (isNotFound(e)) return;
-      logger.error(`Failed to delete the record of unlisted project ${id}:`, e);
-      await recordForCleanup();
+      if (!isNotFound(e)) {
+        logger.error(`Failed to delete the record of unlisted project ${id}:`, e);
+        await recordForCleanup();
+      }
     }
+    // Bumped after the deletion settles, so a repository drops whatever it read meanwhile.
+    importRevisions.set(id, (importRevisions.get(id) ?? 0) + 1);
   });
 }
 
@@ -1168,8 +1179,10 @@ export function openPt9ImportRepository(
   token: ExecutionToken,
   interlinearProjectId: string,
 ): AnalysisRepository {
-  return new Pt9ImportRepository(interlinearProjectId, () =>
-    getProject(token, interlinearProjectId),
+  return new Pt9ImportRepository(
+    interlinearProjectId,
+    () => getProject(token, interlinearProjectId),
+    () => importRevisions.get(interlinearProjectId) ?? 0,
   );
 }
 
@@ -1185,4 +1198,5 @@ export function resetQueuesForTesting(): void {
   draftQueues.clear();
   draftRepositories.clear();
   draftWriteCounts.clear();
+  importRevisions.clear();
 }

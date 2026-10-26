@@ -44,6 +44,17 @@ describe('RecordTable', () => {
     expect(table.find('tag', ['y'])).toStrictEqual([moved]);
   });
 
+  it('keeps a replaced record in its place under the keys it keeps', () => {
+    const b = { id: 'b', tags: ['x'] };
+    const table = tableOf({ id: 'a', tags: ['x'] }, b);
+    const replaced = { id: 'a', tags: ['x', 'y'], note: 'changed' };
+
+    table.apply({ puts: [replaced], deletes: [] });
+
+    expect(table.find('tag', ['x'])).toStrictEqual([replaced, b]);
+    expect(table.find('tag', ['y'])).toStrictEqual([replaced]);
+  });
+
   it('unfiles a deleted record, skipping an id with nothing stored', () => {
     const table = tableOf({ id: 'a', tags: ['x'] });
 

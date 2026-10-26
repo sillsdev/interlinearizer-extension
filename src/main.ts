@@ -811,12 +811,11 @@ async function redoEdit(sessionId: string): Promise<string | undefined> {
 }
 
 /**
- * Rebuilds a session's derived indexes from its records and reports where the kept ones differ, for
+ * Reports where a session's derived indexes differ from ones built afresh from its records, for
  * debugging.
  *
- * @returns A JSON string of the differences, empty when there are none.
- * @throws If the session is not open, or its records cannot be read. The error is logged before
- *   rethrowing.
+ * @returns A JSON string of the differences; `"[]"` when there are none.
+ * @throws If the session is not open. The error is logged before rethrowing.
  */
 async function checkIndexes(sessionId: string): Promise<string> {
   try {
@@ -1705,11 +1704,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary:
-          "Rebuild a session's derived indexes from its records and report where the kept ones differ, for debugging",
+          "Report where a session's derived indexes differ from ones built afresh from its records, for debugging",
         params: [sessionIdParam],
         result: {
           name: 'return value',
-          summary: 'JSON-stringified [{ index, key, missing, extra }]; empty when none differ',
+          summary: 'JSON-stringified IndexDifference[]; "[]" when none differ',
           schema: { type: 'string' },
         },
       },

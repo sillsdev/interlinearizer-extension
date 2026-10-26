@@ -21,21 +21,30 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
 
   private readonly readProject: () => Promise<InterlinearProject | undefined>;
 
-  /** The import as a lookup last read it, with the index over its records; dropped by every load. */
-  private loaded: IndexedDraft | undefined;
+  private readonly revision: () => number;
+
+  /**
+   * The import as first read for a lookup, with the index over its records; dropped once a sync
+   * replaces the import or a deletion removes it.
+   */
+  private loaded: (IndexedDraft & { revision: number }) | undefined;
 
   /**
    * @param interlinearProjectId - Id of the project to read, which must be a Paratext 9 import.
    * @param readProject - Reads the project stored under that id afresh, as a new object that the
    *   repository may hand out, resolving `undefined` when none is stored.
+   * @param revision - The import's revision, which moves whenever a sync replaces the import or a
+   *   deletion removes it.
    */
   constructor(
     interlinearProjectId: string,
     readProject: () => Promise<InterlinearProject | undefined>,
+    revision: () => number,
   ) {
     super();
     this.interlinearProjectId = interlinearProjectId;
     this.readProject = readProject;
+    this.revision = revision;
   }
 
   /**
@@ -47,7 +56,6 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
    * @throws Whatever reading the project throws.
    */
   async exportAll(): Promise<DraftExport> {
-    this.loaded = undefined;
     return { draft: await this.readImport(), unreadableBooks: [] };
   }
 
@@ -77,14 +85,18 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
 
   /** @throws Whatever {@link exportAll} throws. */
   protected async indexed(): Promise<IndexedDraft> {
-    if (!this.loaded) {
-      const draft = await this.readImport();
-      this.loaded = { draft, index: new AnalysisIndex(draft.analysis) };
-    }
+    const kept = this.keptIndex();
+    if (kept) return kept;
+    // The revision is taken before the read, so a sync landing during it forces another.
+    const revision = this.revision();
+    const draft = await this.readImport();
+    this.loaded = { draft, revision, index: new AnalysisIndex(draft.analysis) };
     return this.loaded;
   }
 
+  /** The import as last read, unless a sync or a deletion has changed it since. */
   protected keptIndex(): IndexedDraft | undefined {
+    if (this.loaded?.revision !== this.revision()) this.loaded = undefined;
     return this.loaded;
   }
 

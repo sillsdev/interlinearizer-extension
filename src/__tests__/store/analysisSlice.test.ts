@@ -208,7 +208,7 @@ describe('writeGloss', () => {
     expect(tokenAnalyses[0].gloss).toStrictEqual({ und: 'hello' });
   });
 
-  it('drops the sense reference when the reader rewrites the gloss', () => {
+  it('keeps the sense reference when the reader rewrites the gloss', () => {
     const store = createAnalysisStore({
       analysis: {
         analysis: makeAnalysis({
@@ -226,7 +226,10 @@ describe('writeGloss', () => {
 
     const { tokenAnalyses } = store.getState().analysis.analysis;
     expect(tokenAnalyses[0].gloss).toStrictEqual({ und: 'race' });
-    expect(tokenAnalyses[0].glossSenseRef).toBeUndefined();
+    expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({
+      authority: 'x-test',
+      senseId: 'sense-run',
+    });
   });
 
   it('drops the sense reference when the reader clears the gloss', () => {
@@ -5154,7 +5157,7 @@ describe('analysis-keyed reducers', () => {
       expect(tokenAnalyses[0].gloss).toBeUndefined();
     });
 
-    it('drops the sense reference when the reader rewrites the gloss', () => {
+    it('keeps the sense reference when the reader rewrites the gloss', () => {
       const store = makeSharedStore({
         glossSenseRef: { authority: 'x-test', senseId: 'sense-run' },
         morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'en' }],
@@ -5164,7 +5167,10 @@ describe('analysis-keyed reducers', () => {
 
       const { tokenAnalyses } = store.getState().analysis.analysis;
       expect(tokenAnalyses[0].gloss).toEqual({ und: 'race' });
-      expect(tokenAnalyses[0].glossSenseRef).toBeUndefined();
+      expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        authority: 'x-test',
+        senseId: 'sense-run',
+      });
     });
 
     it('drops the sense reference when the reader clears the gloss', () => {

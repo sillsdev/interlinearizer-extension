@@ -57,10 +57,14 @@ function makeSessions(projects: InterlinearProject[] = []) {
     releaseDraftRepository: jest.fn<Promise<void>, [string]>(async () => {}),
     openPt9ImportRepository: jest.fn(
       (interlinearProjectId: string) =>
-        new Pt9ImportRepository(interlinearProjectId, async () => {
-          const project = projects.find(({ id }) => id === interlinearProjectId);
-          return project && JSON.parse(JSON.stringify(project));
-        }),
+        new Pt9ImportRepository(
+          interlinearProjectId,
+          async () => {
+            const project = projects.find(({ id }) => id === interlinearProjectId);
+            return project && JSON.parse(JSON.stringify(project));
+          },
+          () => 0,
+        ),
     ),
     getInterfaceLanguages: jest.fn(async (): Promise<string[]> => []),
   } satisfies SessionHost;
@@ -504,6 +508,34 @@ describe('AnalysisSessions', () => {
       });
       await sessions.undo(sessionId);
       await expect(stored(storage)).resolves.toMatchObject({ analysis: { tokenAnalyses: [] } });
+    });
+
+    it("lists the session's analysis language on a draft listing none, undoing it with the edit", async () => {
+      const { host, sessions, storage } = makeSessions();
+      host.getInterfaceLanguages.mockResolvedValue(['de']);
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await sessions.edit(sessionId, 'add', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('a'));
+      });
+
+      await expect(stored(storage)).resolves.toMatchObject({ analysisLanguages: ['de'] });
+      await sessions.undo(sessionId);
+      await expect(stored(storage)).resolves.toMatchObject({ analysisLanguages: [] });
+    });
+
+    it('leaves the analysis languages of a draft listing some', async () => {
+      const { sessions, storage, saveDraft } = makeSessions();
+      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['fr', 'en'] });
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.setAnalysisLanguage(sessionId, 'de');
+
+      const changes = await sessions.edit(sessionId, 'add', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('a'));
+      });
+
+      expect(changes.scope).toBeUndefined();
+      await expect(stored(storage)).resolves.toMatchObject({ analysisLanguages: ['fr', 'en'] });
     });
 
     it('applies nothing, and records no undo step, for a command staging nothing', async () => {

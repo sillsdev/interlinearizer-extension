@@ -69,8 +69,8 @@ function applyRecordChanges<T extends { id: string }>(
 
 /**
  * Applies `changes` to `draft`, leaving `draft` as it was. The result is marked unsaved. It shares
- * the records the changes put with `changes`, and everything else with `draft`, the records the
- * inverse restores included.
+ * the put records and any scope record with `changes`, and everything else with `draft`, including
+ * the records the inverse restores.
  *
  * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
  *   record names another source project.

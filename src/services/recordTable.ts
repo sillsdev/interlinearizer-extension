@@ -103,12 +103,21 @@ export class RecordTable<T extends { id: string }, Index extends string> {
     return new Set(this.keyers[index](record));
   }
 
+  /** Stores `record`, keeping a replaced record's place under every key it keeps. */
   private put(record: T): void {
-    this.remove(record.id);
+    const prior = this.records.get(record.id);
     this.records.set(record.id, record);
-    this.indexNames().forEach((index) =>
-      this.keysOf(index, record).forEach((key) => fileId(this.filed(index), key, record.id)),
-    );
+    this.indexNames().forEach((index) => {
+      const filed = this.filed(index);
+      const before = prior ? this.keysOf(index, prior) : new Set<string>();
+      const after = this.keysOf(index, record);
+      before.forEach((key) => {
+        if (!after.has(key)) unfileId(filed, key, record.id);
+      });
+      after.forEach((key) => {
+        if (!before.has(key)) fileId(filed, key, record.id);
+      });
+    });
   }
 
   private remove(id: string): void {

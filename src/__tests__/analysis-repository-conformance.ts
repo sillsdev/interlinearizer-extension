@@ -1220,7 +1220,10 @@ export function describeAnalysisRepositoryConformance(
     });
 
     describe('lookups', () => {
-      /** A repository over {@link fullDraft}, saved through another one so its lookups load it. */
+      /**
+       * A repository over {@link fullDraft}, saved by another repository so its first lookup loads
+       * the draft from storage.
+       */
       async function overFullDraft(): Promise<AnalysisRepository> {
         await (await store.open(SOURCE)).replaceAll(fullDraft());
         return store.open(SOURCE);
@@ -1428,6 +1431,22 @@ export function describeAnalysisRepositoryConformance(
         ).resolves.toMatchObject({ tokenAnalysisLinks: [] });
       });
 
+      it('answers and applies unaffected by changes to a draft it exported', async () => {
+        const repository = await overFullDraft();
+        changeInPlace((await repository.exportAll()).draft);
+
+        await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([
+          fullAnalysis().tokenAnalyses[0],
+        ]);
+        await repository.apply(puttingNewRecords());
+
+        await expect(
+          reload(store).then(({ analysis }) =>
+            analysis.tokenAnalyses.find(({ id }) => id === 'ta-and'),
+          ),
+        ).resolves.toStrictEqual(fullAnalysis().tokenAnalyses[0]);
+      });
+
       it('keeps indexes that match its records through applies, undo and redo', async () => {
         const repository = await overFullDraft();
         await repository.findLinksInBooks(['GEN']);
@@ -1491,6 +1510,16 @@ export function describeAnalysisRepositoryConformance(
         await expect(analysisOf(repository)).resolves.toStrictEqual(
           inIdOrder(fullDraft()).analysis,
         );
+      });
+
+      it('answers lookups unaffected by changes to a draft it exported', async () => {
+        const repository = await store.openReadOnly(fullDraft());
+
+        changeInPlace((await repository.exportAll()).draft);
+
+        await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([
+          fullAnalysis().tokenAnalyses[0],
+        ]);
       });
 
       it('refuses a save, leaving what it loads unchanged', async () => {

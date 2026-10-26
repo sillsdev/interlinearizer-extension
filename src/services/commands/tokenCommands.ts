@@ -217,9 +217,9 @@ export async function appendApprovedAnalysis(
 /**
  * Stages writing a token's gloss. The edit is per token: a payload other tokens share is forked
  * first. An edit that makes the payload identical to another folds it in. A token with no approved
- * analysis takes a content-identical stored one, or a new one. A blank value clears the gloss, and
- * a payload left empty goes once nothing links it; a blank write to a token with no approved
- * analysis stages nothing.
+ * analysis takes a content-identical stored one, or a new one. A rewrite keeps the payload's
+ * `glossSenseRef`. A blank value clears the gloss, and a payload left empty goes once nothing links
+ * it; a blank write to a token with no approved analysis stages nothing.
  */
 export async function writeGloss(buffer: ChangeBuffer, request: WriteGlossRequest): Promise<void> {
   const { tokenRef, surfaceText, value, analysisLanguage: lang, analysisId, now } = request;
@@ -243,7 +243,6 @@ export async function writeGloss(buffer: ChangeBuffer, request: WriteGlossReques
       }
     } else {
       target.gloss = { ...target.gloss, [lang]: value };
-      delete target.glossSenseRef;
     }
     buffer.put('tokenAnalyses', target);
     buffer.put('tokenAnalysisLinks', link);

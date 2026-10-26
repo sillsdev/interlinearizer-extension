@@ -857,7 +857,6 @@ function writeGlossOntoAnalysis(
   } else {
     if (!analysis.gloss) analysis.gloss = {};
     analysis.gloss[lang] = value;
-    delete analysis.glossSenseRef;
   }
   analysis.updatedAt = now;
 
@@ -940,9 +939,9 @@ const analysisSlice = createSlice({
        * stranded on an emptied payload. A blank write to a token with no approved analysis is a
        * no-op, so a focus/blur cycle on an empty gloss never creates a record.
        *
-       * A gloss the reader typed resolves through no lexicon sense of theirs, so a rewrite drops
-       * the payload's `glossSenseRef`. A clear drops it only once no language still holds usable
-       * gloss text, the sense belonging to the analysis rather than to the emptied language.
+       * A rewrite keeps the payload's `glossSenseRef`. A clear drops it only once no language still
+       * holds usable gloss text, the sense belonging to the analysis rather than to the emptied
+       * language.
        */
       reducer(state, action: PayloadAction<WriteGlossPayload>) {
         const { tokenRef, surfaceText, value, id, linkId, now } = action.payload;
@@ -977,7 +976,6 @@ const analysisSlice = createSlice({
           }
           if (!target.gloss) target.gloss = {};
           target.gloss[lang] = value;
-          delete target.glossSenseRef;
           // An in-place edit can make this payload identical to an existing one (e.g. a homograph
           // instance re-glossed to match its sibling); re-converge so the dedupe the create path
           // guarantees on first write also holds after edits.
@@ -1210,9 +1208,9 @@ const analysisSlice = createSlice({
      * removes it and every link to it. An edit that makes the record identical to a sibling
      * collapses it into that sibling, so the edited row disappears from the catalog.
      *
-     * A gloss the reader typed resolves through no lexicon sense of theirs, so a rewrite drops the
-     * record's `glossSenseRef`. A clear drops it only once no language still holds usable gloss
-     * text, the sense belonging to the analysis rather than to the emptied language.
+     * A rewrite keeps the record's `glossSenseRef`. A clear drops it only once no language still
+     * holds usable gloss text, the sense belonging to the analysis rather than to the emptied
+     * language.
      */
     writeAnalysisGloss: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */

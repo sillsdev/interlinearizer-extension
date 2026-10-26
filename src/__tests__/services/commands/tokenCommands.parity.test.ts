@@ -99,7 +99,7 @@ describe('writeGloss parity with the reducer', () => {
       },
     ],
     [
-      'edits an unshared payload in place, refreshing surface text and dropping its sense',
+      'edits an unshared payload in place, refreshing surface text and keeping its sense',
       {
         analysis: analysisOf(
           [
@@ -113,7 +113,11 @@ describe('writeGloss parity with the reducer', () => {
         input: { surfaceText: 'In,', value: 'at first' },
         expectStore: (store) => {
           expect(store.tokenAnalyses).toStrictEqual([
-            payload('ta-in', 'In,', { gloss: { en: 'at first', fr: 'à' }, updatedAt: NOW }),
+            payload('ta-in', 'In,', {
+              gloss: { en: 'at first', fr: 'à' },
+              glossSenseRef: { authority: 'fwlite', senseId: 's-at' },
+              updatedAt: NOW,
+            }),
           ]);
         },
       },

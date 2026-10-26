@@ -10,6 +10,7 @@ Measures the extension rather than tests it: the data layer's pure functions in 
 - `npm run perf:app` times the extension in the app.
 - `npm run perf:summary` renders the newest results of each kind as markdown tables.
 - `npm run perf:shape -- <dataset>...` compares the shape of analyses; see [Dataset shape](#dataset-shape).
+- `npm run perf:indexes -- [tier]...` applies random edits and undoes to each tier in Node, then checks that the derived indexes match ones built afresh and that lookups match a scan of the stored records. It exits nonzero on any difference.
 
 `PERF_TIERS` (comma-separated tier names) and `PERF_RUNS` (10 by default) narrow a run. The `large` tier's draft exceeds one websocket message, so only the Node benchmarks can measure it.
 

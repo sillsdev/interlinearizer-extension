@@ -116,6 +116,20 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
       },
     ],
     [
+      'writes the smaller-id translation of two approved ones updated alike, listed second',
+      {
+        analysis: analysisOf(
+          [translation('sa-1'), translation('sa-2')],
+          [link('sl-2', 'sa-2'), link('sl-1', 'sa-1')],
+        ),
+        input: { value: 'At first' },
+        expectStore: (store) => {
+          expect(translationOf(store, 'sa-1')?.freeTranslation).toStrictEqual({ en: 'At first' });
+          expect(translationOf(store, 'sa-2')?.freeTranslation).toBeUndefined();
+        },
+      },
+    ],
+    [
       'removes an approved link naming no stored translation before making one',
       {
         analysis: analysisOf([], [link('sl-orphan', 'sa-missing')]),
@@ -230,25 +244,40 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
       },
     ],
     [
-      // The reducer takes the first stale link listed, whereas the host takes the one the tie
-      // picks. Listing the tie's pick first lets the two agree.
-      'adopts the stale translation through the stale link the approval tie picks',
+      'adopts the stale translation through the stale link updated last, listed second',
       {
         analysis: analysisOf(
           [translation('sa-stale', { freeTranslation: { fr: 'Au début' } })],
           [
+            link('sl-stale-1', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT }),
             link('sl-stale-2', 'sa-stale', {
               ...LATER,
               status: 'stale',
               segmentId: OTHER_SEGMENT,
             }),
-            link('sl-stale-1', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT }),
           ],
         ),
         input: { value: 'At first', adoptStaleAnalysisId: 'sa-stale' },
         expectStore: (store) => {
           expect(linkOf(store, 'sl-stale-2')?.status).toBe('approved');
           expect(linkOf(store, 'sl-stale-1')?.status).toBe('stale');
+        },
+      },
+    ],
+    [
+      'adopts the stale translation through the smaller-id stale link of two updated alike',
+      {
+        analysis: analysisOf(
+          [translation('sa-stale', { freeTranslation: { fr: 'Au début' } })],
+          [
+            link('sl-stale-2', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT }),
+            link('sl-stale-1', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT }),
+          ],
+        ),
+        input: { value: 'At first', adoptStaleAnalysisId: 'sa-stale' },
+        expectStore: (store) => {
+          expect(linkOf(store, 'sl-stale-1')?.status).toBe('approved');
+          expect(linkOf(store, 'sl-stale-2')?.status).toBe('stale');
         },
       },
     ],
@@ -313,6 +342,23 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
               updatedAt: NOW,
             }),
           ]);
+        },
+      },
+    ],
+    [
+      'stamps the stale link the approval tie picks when a blank value clears a language',
+      {
+        analysis: analysisOf(
+          [translation('sa-stale', { freeTranslation: { en: 'Old', fr: 'Au début' } })],
+          [
+            link('sl-stale-2', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT }),
+            link('sl-stale-1', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT }),
+          ],
+        ),
+        input: { value: '', adoptStaleAnalysisId: 'sa-stale' },
+        expectStore: (store) => {
+          expect(linkOf(store, 'sl-stale-1')?.updatedAt).toBe(NOW);
+          expect(linkOf(store, 'sl-stale-2')?.updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
         },
       },
     ],

@@ -94,7 +94,7 @@ function reportEdit(sourceProjectId: string, bookId: string): void {
   bookTextListeners.forEach((listener) => listener(sourceProjectId, bookId));
 }
 
-/** Receives the source project and tokenized text of each book a whole-text read files. */
+/** Receives the source project and tokenized text of each book that a whole-text read takes in. */
 type BookReadListener = (sourceProjectId: string, book: Book) => void;
 
 const bookReadListeners = new Set<BookReadListener>();
@@ -312,11 +312,12 @@ export function onBookTextChanged(listener: BookTextListener): () => boolean {
 }
 
 /**
- * Calls `listener` with each book that a source project's whole-text read files with text, until
- * the returned function is called: as the read first reaches the book, and again each time the
- * book's text changes. The open book's edited text is passed too while the read has yet to reach
- * the book. For a change, `listener` is called before {@link onBookTextChanged}'s listeners hear of
- * it. A book whose read fails, or that has no text, is not passed.
+ * Calls `listener` with each book of a source project that holds text, until the returned function
+ * is called. A book is passed when the whole-text read first reaches it, and again each time its
+ * text changes. The open book's edited text is passed even before the read reaches that book.
+ *
+ * For a change, `listener` is called before {@link onBookTextChanged}'s listeners hear of it. A book
+ * whose read fails, or that holds no text, is not passed.
  */
 export function onBookRead(listener: BookReadListener): () => boolean {
   bookReadListeners.add(listener);
@@ -324,9 +325,11 @@ export function onBookRead(listener: BookReadListener): () => boolean {
 }
 
 /**
- * Calls `listener` with the books of a source project's text that hold text, until the returned
- * function is called: once its whole-text read has read every book with none failed, and again
- * whenever a book's text appears or goes, or its failed read is the last to read again.
+ * Calls `listener` with the books of a source project that hold text, until the returned function
+ * is called. It is first called once the whole-text read has read every book with none failed.
+ *
+ * It is called again whenever a book gains or loses its text. It is also called when a retried read
+ * succeeds and no other book's read is still failing.
  */
 export function onTextRead(listener: TextReadListener): () => boolean {
   textReadListeners.add(listener);

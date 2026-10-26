@@ -2,7 +2,7 @@ import type { Book, DraftProject } from 'interlinearizer';
 import type { DraftContent } from '../hooks/useDraftProject';
 import type { ChangeSet, RecordChanges } from '../types/analysis-repository';
 import { scopeRecordOf } from './change-set';
-import { reanchorDraftToBook, reanchorDraftToMissingBook } from './reanchor-draft';
+import { reanchorDraftToBook } from './reanchor-draft';
 import type { BookPass } from './undo-history';
 
 /** Names the changes a re-anchor pass makes. */
@@ -22,7 +22,7 @@ function rewritten<T extends { id: string }>(
 }
 
 /**
- * The changes that bring `draft` to `reanchored`, the content a re-anchor pass made of it.
+ * The changes that bring `draft` to the content that a re-anchor pass made of it.
  *
  * @returns The changes, or `undefined` when the pass made nothing new.
  */
@@ -63,25 +63,12 @@ function changesOfPass(draft: DraftProject, pass: BookPass<DraftContent>): Chang
 }
 
 /**
- * The changes that re-anchor `draft` to `book`'s current text, as {@link reanchorDraftToBook} does.
- * The draft may hold only the links in `book`, with the segment analyses they reference, and the
- * changes are the same.
+ * The changes that re-anchor `draft` to `book`'s current text, matching the WebView's pass over
+ * `book`. A book the text lacks is passed as a book with no segments. The draft may hold only the
+ * links in `book`, with the segment analyses they reference, and the changes are the same.
  *
  * @returns The changes, or `undefined` when the draft already reads as re-anchored.
  */
 export function reanchorChangesForBook(draft: DraftProject, book: Book): ChangeSet | undefined {
   return changesOfPass(draft, reanchorDraftToBook(book));
-}
-
-/**
- * The changes that re-anchor `draft` to a book the text lacks, as {@link reanchorDraftToMissingBook}
- * does. The draft may hold only the links in the book, as for {@link reanchorChangesForBook}.
- *
- * @returns The changes, or `undefined` when the draft already reads as re-anchored.
- */
-export function reanchorChangesForMissingBook(
-  draft: DraftProject,
-  bookCode: string,
-): ChangeSet | undefined {
-  return changesOfPass(draft, reanchorDraftToMissingBook(bookCode));
 }

@@ -2,26 +2,16 @@
 
 import type { Book, DraftProject, SegmentationDelta, TextAnalysis } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
-import {
-  REANCHOR_INTENT,
-  reanchorChangesForBook,
-  reanchorChangesForMissingBook,
-} from '../../utils/reanchor-changes';
-import { FIXTURE_STAMPS, makeTokenLink, makeVerseBook } from '../test-helpers';
+import { REANCHOR_INTENT, reanchorChangesForBook } from '../../utils/reanchor-changes';
+import { missingBook } from '../../utils/reanchor-draft';
+import { FIXTURE_STAMPS, makeTokenLink, makeVerseBook, tokenRefOf } from '../test-helpers';
 
-// The cases of `reanchor-analysis.test.ts` and `reanchor-draft.test.ts` check these changes against
-// the WebView's passes; these check what the changes carry.
+// These check what the changes carry. Each case of the WebView's passes checks that the changes
+// match the pass's result.
 
 /** A book of Genesis 1, one verse per text. */
 function genesis(...verses: string[]): Book {
   return makeVerseBook(verses.map((text, index) => ({ sid: `GEN 1:${index + 1}`, text })));
-}
-
-/** The ref of the first token of `book` reading `surfaceText`. */
-function refOf(book: Book, surfaceText: string): string {
-  const token = book.segments.flatMap((s) => s.tokens).find((t) => t.surfaceText === surfaceText);
-  if (!token) throw new Error(`fixture missing token ${surfaceText}`);
-  return token.ref;
 }
 
 /** An analysis glossing each of `words` where `book` has it. */
@@ -34,7 +24,7 @@ function glossing(book: Book, words: string[]): TextAnalysis {
       surfaceText: word,
     })),
     tokenAnalysisLinks: words.map((word) =>
-      makeTokenLink(`ta-${word}`, refOf(book, word), { surfaceText: word }),
+      makeTokenLink(`ta-${word}`, tokenRefOf(book, word), { surfaceText: word }),
     ),
   };
 }
@@ -47,7 +37,7 @@ function draftOf(analysis: TextAnalysis, segmentation?: SegmentationDelta): Draf
 function splitBeforeBeta(): SegmentationDelta {
   return {
     removedVerseStarts: [],
-    addedStarts: [{ tokenRef: refOf(genesis('alpha beta'), 'beta'), surfaceText: 'beta' }],
+    addedStarts: [{ tokenRef: tokenRefOf(genesis('alpha beta'), 'beta'), surfaceText: 'beta' }],
   };
 }
 
@@ -97,22 +87,23 @@ describe('reanchorChangesForBook', () => {
       reanchorChangesForBook(draftOf(glossing(book, ['beta']), splitBeforeBeta()), book),
     ).toBeUndefined();
   });
-});
 
-describe('reanchorChangesForMissingBook', () => {
-  it('puts the links it stales, named as a re-anchor', () => {
-    const changes = reanchorChangesForMissingBook(
+  it('puts the links into a book the text lacks as stale, named as a re-anchor', () => {
+    const changes = reanchorChangesForBook(
       draftOf(glossing(genesis('alpha beta'), ['beta'])),
-      'GEN',
+      missingBook('GEN'),
     );
 
     expect(changes?.intent).toBe(REANCHOR_INTENT);
     expect(changes?.tokenAnalysisLinks?.puts.map(({ status }) => status)).toEqual(['stale']);
   });
 
-  it("changes nothing for another book's links", () => {
+  it("changes nothing for another book's links when a book the text lacks is passed", () => {
     expect(
-      reanchorChangesForMissingBook(draftOf(glossing(genesis('alpha beta'), ['beta'])), 'EXO'),
+      reanchorChangesForBook(
+        draftOf(glossing(genesis('alpha beta'), ['beta'])),
+        missingBook('EXO'),
+      ),
     ).toBeUndefined();
   });
 });

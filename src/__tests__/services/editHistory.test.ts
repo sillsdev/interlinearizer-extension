@@ -13,6 +13,7 @@ import {
   makeVerseBook,
   memoryStorage,
   silentLogger,
+  tokenRefOf,
 } from '../test-helpers';
 
 function payload(id: string): TokenAnalysis {
@@ -154,16 +155,12 @@ describe('EditHistory re-anchoring', () => {
     return verseBook('GEN 1:1', text);
   }
 
-  /** The ref of the token reading `surfaceText` in `book`. */
-  function refOf(book: Book, surfaceText: string): string {
-    const token = book.segments[0].tokens.find((t) => t.surfaceText === surfaceText);
-    if (!token) throw new Error(`fixture missing token ${surfaceText}`);
-    return token.ref;
-  }
-
   /** A link to the payload `analysisId` on the word `beta` where `book` has it. */
   function betaLink(book: Book, analysisId: string): TokenAnalysisLink {
-    return makeTokenLink(analysisId, refOf(book, 'beta'), { surfaceText: 'beta', id: 'tl-beta' });
+    return makeTokenLink(analysisId, tokenRefOf(book, 'beta'), {
+      surfaceText: 'beta',
+      id: 'tl-beta',
+    });
   }
 
   function linking(link: TokenAnalysisLink): ChangeSet {
@@ -214,7 +211,7 @@ describe('EditHistory re-anchoring', () => {
 
     const restored = await storedLink();
     expect(restored.analysisId).toBe('ta-1');
-    expect(restored.token.tokenRef).toBe(refOf(after, 'beta'));
+    expect(restored.token.tokenRef).toBe(tokenRefOf(after, 'beta'));
   });
 
   it('redoes an edit to the text a pass re-anchored to since the undo', async () => {
@@ -230,7 +227,7 @@ describe('EditHistory re-anchoring', () => {
 
     const restored = await storedLink();
     expect(restored.analysisId).toBe('ta-2');
-    expect(restored.token.tokenRef).toBe(refOf(after, 'beta'));
+    expect(restored.token.tokenRef).toBe(tokenRefOf(after, 'beta'));
   });
 
   it('returns the changes that reverted the edit with those that re-anchored them', async () => {
@@ -247,7 +244,7 @@ describe('EditHistory re-anchoring', () => {
     expect(undone?.tokenAnalysisLinks?.puts).toEqual([
       expect.objectContaining({
         analysisId: 'ta-1',
-        token: { tokenRef: refOf(after, 'beta'), surfaceText: 'beta' },
+        token: { tokenRef: tokenRefOf(after, 'beta'), surfaceText: 'beta' },
       }),
     ]);
   });
@@ -331,7 +328,7 @@ describe('EditHistory re-anchoring', () => {
     expect(await storedLink()).toEqual(
       expect.objectContaining({
         analysisId: 'ta-1',
-        token: { tokenRef: refOf(after, 'beta'), surfaceText: 'beta' },
+        token: { tokenRef: tokenRefOf(after, 'beta'), surfaceText: 'beta' },
       }),
     );
   });

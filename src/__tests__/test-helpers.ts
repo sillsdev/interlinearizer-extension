@@ -378,6 +378,17 @@ export function makeVerseBook(
 }
 
 /**
+ * The ref of the first token of `book` reading `surfaceText`.
+ *
+ * @throws {Error} If no token of `book` reads `surfaceText`.
+ */
+export function tokenRefOf(book: Book, surfaceText: string): string {
+  const token = book.segments.flatMap((s) => s.tokens).find((t) => t.surfaceText === surfaceText);
+  if (!token) throw new Error(`fixture missing token ${surfaceText}`);
+  return token.ref;
+}
+
+/**
  * Builds a minimal `InterlinearProject` test fixture with stable defaults used across command
  * tests.
  */

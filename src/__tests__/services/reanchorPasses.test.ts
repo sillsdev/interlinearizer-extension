@@ -15,6 +15,7 @@ import {
   makeVerseBook,
   memoryStorage,
   silentLogger,
+  tokenRefOf,
 } from '../test-helpers';
 
 const SOURCE = 'src';
@@ -24,20 +25,13 @@ function verseBook(sid: string, text: string): Book {
   return makeVerseBook([{ sid, text }]);
 }
 
-/** The ref of the token reading `surfaceText` in `book`. */
-function refOf(book: Book, surfaceText: string): string {
-  const token = book.segments[0].tokens.find((t) => t.surfaceText === surfaceText);
-  if (!token) throw new Error(`fixture missing token ${surfaceText}`);
-  return token.ref;
-}
-
 /** An analysis glossing `word` where `book` has it, under the link id `linkId`. */
 function glossing(book: Book, word: string, linkId: string): TextAnalysis {
   return {
     ...emptyAnalysis(),
     tokenAnalyses: [{ ...FIXTURE_STAMPS, id: `ta-${word}`, surfaceText: word }],
     tokenAnalysisLinks: [
-      makeTokenLink(`ta-${word}`, refOf(book, word), { surfaceText: word, id: linkId }),
+      makeTokenLink(`ta-${word}`, tokenRefOf(book, word), { surfaceText: word, id: linkId }),
     ],
   };
 }
@@ -77,7 +71,7 @@ describe('reanchorStoredBook', () => {
     const changes = await reanchorStoredBook(repository, edited);
 
     const draft = await stored();
-    expect(linkNamed(draft, 'tl-gen').token.tokenRef).toBe(refOf(edited, 'beta'));
+    expect(linkNamed(draft, 'tl-gen').token.tokenRef).toBe(tokenRefOf(edited, 'beta'));
     expect(linkNamed(draft, 'tl-exo').token.tokenRef).toBe('EXO 1:1:6');
     expect(changes?.tokenAnalysisLinks?.puts.map(({ id }) => id)).toEqual(['tl-gen']);
   });
@@ -110,7 +104,7 @@ describe('reanchorStoredBook', () => {
       suggestedName: 'Named',
       segmentation: {
         removedVerseStarts: [],
-        addedStarts: [{ tokenRef: refOf(before, 'beta'), surfaceText: 'beta' }],
+        addedStarts: [{ tokenRef: tokenRefOf(before, 'beta'), surfaceText: 'beta' }],
       },
     });
     const edited = verseBook('GEN 1:1', 'alpha and beta');
@@ -119,7 +113,7 @@ describe('reanchorStoredBook', () => {
 
     const draft = await stored();
     expect(draft.segmentation?.addedStarts).toEqual([
-      { tokenRef: refOf(edited, 'beta'), surfaceText: 'beta' },
+      { tokenRef: tokenRefOf(edited, 'beta'), surfaceText: 'beta' },
     ]);
     expect(draft.suggestedName).toBe('Named');
   });
@@ -144,7 +138,7 @@ describe('reanchorRestored', () => {
       intent: 'undo',
       tokenAnalysisLinks: {
         puts: [
-          makeTokenLink('ta-beta', refOf(before, 'beta'), { surfaceText: 'beta', id: 'tl-2' }),
+          makeTokenLink('ta-beta', tokenRefOf(before, 'beta'), { surfaceText: 'beta', id: 'tl-2' }),
         ],
         deletes: [],
       },
@@ -157,7 +151,7 @@ describe('reanchorRestored', () => {
       expect.objectContaining({ id: 'tl-gen' }),
       expect.objectContaining({
         id: 'tl-2',
-        token: { tokenRef: refOf(edited, 'beta'), surfaceText: 'beta' },
+        token: { tokenRef: tokenRefOf(edited, 'beta'), surfaceText: 'beta' },
       }),
     ]);
     expect(apply).not.toHaveBeenCalled();

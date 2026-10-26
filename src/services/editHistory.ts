@@ -25,9 +25,9 @@ type Step = {
  * A linear undo history of the edits applied through it to one repository, keeping the latest
  * {@link MAX_UNDO_STEPS}. Each edit is one step, and a new edit drops every step undone before it.
  *
- * A re-anchor pass is no step. What an undo or redo restores is re-anchored to the current text of
- * each book a pass has re-anchored since the step was captured, since the step holds records as
- * they read before that text.
+ * A re-anchor pass is no step. A step holds records as they read when it was captured. So what an
+ * undo or redo restores is re-anchored to the current text of each book that a pass has re-anchored
+ * since then.
  */
 export class EditHistory {
   private readonly repository: AnalysisRepository;
@@ -50,8 +50,9 @@ export class EditHistory {
   private passCount = 0;
 
   /**
-   * @param reanchorBooks - Re-anchors what an undo or redo would restore; absent, nothing restored
-   *   is re-anchored.
+   * @param repository - The repository whose edits the history applies and reverts.
+   * @param reanchorBooks - Gives the changes that re-anchor what an undo or redo would restore;
+   *   absent, nothing restored is re-anchored.
    */
   constructor(repository: AnalysisRepository, reanchorBooks?: ReanchorBooks) {
     this.repository = repository;
@@ -74,8 +75,8 @@ export class EditHistory {
   /**
    * Records that a pass has just re-anchored the stored draft to `book`'s current text, superseding
    * any earlier pass over the book, so that what an undo or redo restores is re-anchored to it too.
-   * A missing book is passed as a book with no segments. A pass over text the book's last pass read
-   * records nothing.
+   * A missing book is passed as a book with no segments. Nothing is recorded when the book's text
+   * is the same text its last pass re-anchored to.
    */
   recordPass(book: Book): void {
     if (this.undoable.length === 0 && this.redoable.length === 0) return;
@@ -131,7 +132,7 @@ export class EditHistory {
     return changes;
   }
 
-  /** Forgets each pass that every step still held already reflects. */
+  /** Forgets each pass that every undo and redo step still held already reflects. */
   private forgetUnneededPasses(): void {
     const oldestSeen = Math.min(
       ...[...this.undoable, ...this.redoable].map(({ passesSeen }) => passesSeen),

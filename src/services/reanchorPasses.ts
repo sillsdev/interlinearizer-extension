@@ -9,7 +9,7 @@ import type { ReanchorBooks } from './editHistory';
 /**
  * The stored draft as a pass over `bookCodes` needs it: the draft's record, the links into those
  * books, and the segment analyses referenced by those links or by the links in `alsoLinked`, which
- * are not yet stored. Reads one call at a time, since calls for one draft must not overlap.
+ * are not yet stored. Reads one call at a time, because calls for one draft must not overlap.
  */
 async function readBooks(
   repository: AnalysisRepository,
@@ -38,9 +38,9 @@ function reanchorInTurn(draft: DraftProject, books: readonly Book[]): ChangeSet 
 }
 
 /**
- * Re-anchors the stored draft to `book`'s current text, outside any undo history and leaving the
- * draft as saved or unsaved as it was, since a pass is bookkeeping rather than an edit. A book the
- * text lacks is passed as a book with no segments.
+ * Re-anchors the stored draft to `book`'s current text, outside any undo history. The draft stays
+ * as saved or unsaved as it was, because a pass is bookkeeping rather than an edit. A book the text
+ * lacks is passed as a book with no segments.
  *
  * @returns The changes applied, or `undefined` when the draft already read as re-anchored.
  * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
@@ -54,7 +54,10 @@ export async function reanchorStoredBook(
   return changes;
 }
 
-/** Re-anchors what an undo or redo would restore in `repository`, for an {@link EditHistory}. */
+/**
+ * Gives the {@link ReanchorBooks} for `repository`: the changes that re-anchor what an undo or redo
+ * would restore there, without applying them.
+ */
 export function reanchorRestored(repository: AnalysisRepository): ReanchorBooks {
   return async (changes, books) => {
     // A restored link may name a payload no stored link does, which only the step's puts reveal.

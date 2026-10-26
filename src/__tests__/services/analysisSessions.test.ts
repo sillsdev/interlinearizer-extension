@@ -21,6 +21,7 @@ import {
   makeVerseBook,
   memoryStorage,
   silentLogger,
+  tokenRefOf,
 } from '../test-helpers';
 
 const SOURCE = 'src-project';
@@ -636,15 +637,12 @@ describe('AnalysisSessions', () => {
       return { ...makeVerseBook([{ sid: 'GEN 1:1', text }]), textVersion: text };
     }
 
-    function refOf(book: Book, surfaceText: string): string {
-      const token = book.segments[0].tokens.find((t) => t.surfaceText === surfaceText);
-      if (!token) throw new Error(`fixture missing token ${surfaceText}`);
-      return token.ref;
-    }
-
     /** A link to the payload `analysisId` on "beta" where `book` has it. */
     function betaLink(book: Book, analysisId: string) {
-      return makeTokenLink(analysisId, refOf(book, 'beta'), { surfaceText: 'beta', id: 'tl-beta' });
+      return makeTokenLink(analysisId, tokenRefOf(book, 'beta'), {
+        surfaceText: 'beta',
+        id: 'tl-beta',
+      });
     }
 
     const BEFORE = genesis('alpha beta');
@@ -676,7 +674,7 @@ describe('AnalysisSessions', () => {
 
       await sessions.reanchorBook(SOURCE, AFTER);
 
-      expect((await storedLink(storage)).token.tokenRef).toBe(refOf(AFTER, 'beta'));
+      expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
     });
 
     it('adds no undo step', async () => {
@@ -729,11 +727,11 @@ describe('AnalysisSessions', () => {
 
       const reanchoring = sessions.reanchorBook(SOURCE, AFTER);
       await flushPromises();
-      expect((await storedLink(storage)).token.tokenRef).toBe(refOf(BEFORE, 'beta'));
+      expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(BEFORE, 'beta'));
       command.resolve();
       await Promise.all([running, reanchoring]);
 
-      expect((await storedLink(storage)).token.tokenRef).toBe(refOf(AFTER, 'beta'));
+      expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
     });
 
     it('does nothing for a source with no session open', async () => {

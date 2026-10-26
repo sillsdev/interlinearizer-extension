@@ -18,6 +18,7 @@ import { toProjectSummary } from '../types/interlinear-project-summary';
 import {
   createTestActivationContext,
   FIXTURE_STAMPS,
+  GEN_1_1_BOOK,
   makeStubProject,
   memoryStorage,
   silentLogger,
@@ -373,13 +374,7 @@ describe('main', () => {
     });
 
     describe('re-anchoring', () => {
-      const book = {
-        id: 'GEN',
-        bookRef: 'GEN',
-        textVersion: 'v1',
-        segments: [],
-        duplicateVerseIds: [],
-      };
+      const book = GEN_1_1_BOOK;
 
       it("re-anchors each book read to the source's session", async () => {
         const reanchorBook = jest

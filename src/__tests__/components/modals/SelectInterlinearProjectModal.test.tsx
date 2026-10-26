@@ -464,6 +464,16 @@ describe('SelectInterlinearProjectModal project deletion', () => {
     ).not.toBeInTheDocument();
   });
 
+  it("returns focus to the row's menu button once the confirmation is canceled", async () => {
+    const confirm = await chooseDeleteForFrenchGlosses();
+
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+
+    const row = screen.getByRole('button', { name: /french glosses/i }).closest('li');
+    if (!row) throw new Error('the project row is not a list item');
+    expect(within(row).getByRole('button', { name: 'Project actions' })).toHaveFocus();
+  });
+
   it('keeps the project when the confirmation is canceled', async () => {
     const confirm = await chooseDeleteForFrenchGlosses();
 

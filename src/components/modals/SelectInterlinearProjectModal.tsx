@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
   Spinner,
 } from 'platform-bible-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import useProjectsForSource from '../../hooks/useProjectsForSource';
 import usePt9ImportAvailability from '../../hooks/usePt9ImportAvailability';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
@@ -92,6 +92,17 @@ export function SelectInterlinearProjectModal({
   const [pendingDelete, setPendingDelete] = useState<InterlinearProjectSummary | undefined>(
     undefined,
   );
+
+  /** The project whose Delete was chosen from its menu, held until that menu has closed. */
+  const deleteRequest = useRef<InterlinearProjectSummary | undefined>(undefined);
+
+  // Runs as the menu closes, so the confirmation opens after the menu has refocused its button.
+  // The confirmation then returns focus to that button when it closes.
+  const openRequestedDelete = useCallback(() => {
+    if (!deleteRequest.current) return;
+    setPendingDelete(deleteRequest.current);
+    deleteRequest.current = undefined;
+  }, []);
 
   const handleDeleted = useCallback(
     (deletedProjectId: string) => {
@@ -191,13 +202,15 @@ export function SelectInterlinearProjectModal({
                       <EllipsisVertical className="tw:size-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" onCloseAutoFocus={openRequestedDelete}>
                     <DropdownMenuItem onSelect={() => onViewInfo(project)}>
                       {localizedStrings['%interlinearizer_modal_select_get_info%']}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       variant="destructive"
-                      onSelect={() => setPendingDelete(project)}
+                      onSelect={() => {
+                        deleteRequest.current = project;
+                      }}
                     >
                       {localizedStrings['%interlinearizer_modal_select_delete%']}
                     </DropdownMenuItem>

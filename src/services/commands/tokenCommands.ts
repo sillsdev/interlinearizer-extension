@@ -5,7 +5,7 @@ import { clearAnalysisGloss, isEmptyTokenAnalysis } from '../../utils/token-anal
 import type { ChangeBuffer } from './changeBuffer';
 
 /** What every token edit needs. */
-type TokenEdit = {
+export type TokenEdit = {
   /** `Token.ref` of the token edited. */
   tokenRef: string;
   /** The token's current surface text, refreshed on the records the edit touches. */
@@ -37,7 +37,7 @@ export type ApproveAnalysisRequest = TokenEdit & {
  * is none. Approved links that name no stored payload are removed first, so that they never persist
  * or crowd the pick.
  */
-async function resolveApprovedAnalysis(
+export async function resolveApprovedAnalysis(
   buffer: ChangeBuffer,
   tokenRef: string,
 ): Promise<{ link: TokenAnalysisLink; analysis: TokenAnalysis } | undefined> {
@@ -111,7 +111,10 @@ async function approveHeldLink(
 }
 
 /** Removes the payload once no link of any status names it. */
-async function reclaimIfUnlinked(buffer: ChangeBuffer, analysis: TokenAnalysis): Promise<void> {
+export async function reclaimIfUnlinked(
+  buffer: ChangeBuffer,
+  analysis: TokenAnalysis,
+): Promise<void> {
   const { tokenAnalysisLinks } = await buffer.findLinksToAnalyses([analysis.id]);
   if (tokenAnalysisLinks.length === 0) buffer.delete('tokenAnalyses', analysis);
 }

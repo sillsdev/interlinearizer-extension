@@ -14,6 +14,7 @@ import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
 import * as bookService from './services/bookService';
 import type { ChangeBuffer } from './services/commands/changeBuffer';
+import * as staleCommands from './services/commands/staleCommands';
 import * as tokenCommands from './services/commands/tokenCommands';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
@@ -902,6 +903,85 @@ function approveAnalysisForToken(
 }
 
 /**
+ * Gives up the place an analysis went stale at, leaving its other places alone.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function discardStaleAnalysis(
+  sessionId: string,
+  analysisId: string,
+  tokenRef: string,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'discardStaleAnalysis', (buffer) =>
+    staleCommands.discardStaleAnalysis(buffer, { analysisId, tokenRef }),
+  );
+}
+
+/**
+ * Moves an analysis from a place it went stale at onto a token, approving it there in place of
+ * whatever that token held.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function reapplyStaleAnalysis(
+  sessionId: string,
+  analysisId: string,
+  staleTokenRef: string,
+  tokenRef: string,
+  surfaceText: string,
+): Promise<string> {
+  const { analysisId: copyId, linkId, now } = editStamp();
+  return runSessionEdit(sessionId, 'reapplyStaleAnalysis', (buffer) =>
+    staleCommands.reapplyStaleAnalysis(buffer, {
+      analysisId,
+      staleTokenRef,
+      tokenRef,
+      surfaceText,
+      copyId,
+      linkId,
+      now,
+    }),
+  );
+}
+
+/**
+ * Keeps a stale free translation as a claim about a segment's current text, approving it for that
+ * segment.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function keepStaleFreeTranslation(
+  sessionId: string,
+  analysisId: string,
+  segmentId: string,
+  surfaceText: string,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'keepStaleFreeTranslation', (buffer) =>
+    staleCommands.keepStaleFreeTranslation(buffer, {
+      analysisId,
+      segmentId,
+      surfaceText,
+      now: new Date().toISOString(),
+    }),
+  );
+}
+
+/**
+ * Drops a stale free translation, even one whose verse the book no longer holds.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function discardStaleFreeTranslation(sessionId: string, analysisId: string): Promise<string> {
+  return runSessionEdit(sessionId, 'discardStaleFreeTranslation', (buffer) =>
+    staleCommands.discardStaleFreeTranslation(buffer, { analysisId }),
+  );
+}
+
+/**
  * Returns a summary of every interlinearizer project for the given source project as a JSON string.
  * The WebView deserializes this to populate its project picker and to decide whether to prompt
  * "create new" or "select existing" when the user opens the project menu.
@@ -1571,6 +1651,104 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const staleAnalysisParam = {
+    name: 'analysisId',
+    required: true,
+    summary: 'Id of the token analysis the stale link names',
+    schema: { type: 'string' },
+  } as const;
+
+  const discardStaleAnalysisCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.discardStaleAnalysis',
+    discardStaleAnalysis,
+    {
+      method: {
+        summary: 'Give up the place an analysis went stale at, leaving its other places alone',
+        params: [
+          sessionIdParam,
+          staleAnalysisParam,
+          {
+            name: 'tokenRef',
+            required: true,
+            summary: 'Token.ref the stale link names',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const reapplyStaleAnalysisCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.reapplyStaleAnalysis',
+    reapplyStaleAnalysis,
+    {
+      method: {
+        summary:
+          'Move an analysis from a place it went stale at onto a token, approving it there in place of whatever the token held',
+        params: [
+          sessionIdParam,
+          staleAnalysisParam,
+          {
+            name: 'staleTokenRef',
+            required: true,
+            summary: 'Token.ref the stale link names',
+            schema: { type: 'string' },
+          },
+          ...tokenParams,
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const staleTranslationParam = {
+    name: 'analysisId',
+    required: true,
+    summary: 'Id of the stale segment analysis',
+    schema: { type: 'string' },
+  } as const;
+
+  const keepStaleFreeTranslationCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.keepStaleFreeTranslation',
+    keepStaleFreeTranslation,
+    {
+      method: {
+        summary:
+          "Keep a stale free translation as a claim about a segment's current text, approving it for that segment",
+        params: [
+          sessionIdParam,
+          staleTranslationParam,
+          {
+            name: 'segmentId',
+            required: true,
+            summary: 'Segment.id of the segment it is kept for',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'surfaceText',
+            required: true,
+            summary: "The segment's current baseline text",
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const discardStaleFreeTranslationCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.discardStaleFreeTranslation',
+    discardStaleFreeTranslation,
+    {
+      method: {
+        summary: 'Drop a stale free translation, one whose verse the book no longer holds included',
+        params: [sessionIdParam, staleTranslationParam],
+        result: editResult,
+      },
+    },
+  );
+
   const checkIndexesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.checkIndexes',
     checkIndexes,
@@ -1966,6 +2144,10 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     checkIndexesCommandRegistration,
     writeGlossCommandRegistration,
     approveAnalysisForTokenCommandRegistration,
+    discardStaleAnalysisCommandRegistration,
+    reapplyStaleAnalysisCommandRegistration,
+    keepStaleFreeTranslationCommandRegistration,
+    discardStaleFreeTranslationCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,

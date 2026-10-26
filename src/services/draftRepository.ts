@@ -188,8 +188,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Records the stored draft as clean, rewriting only its envelope. A draft never saved, or already
-   * clean, is left alone.
+   * Records the stored draft, and the draft this instance keeps, as clean, rewriting only the
+   * stored envelope. A stored draft never saved, or already clean, is left alone.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON; nothing is written.
    * @throws {Error} If the stored draft was written by a newer build, fails validation, or belongs
@@ -206,11 +206,16 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       throw new Error(
         `Interlinearizer: stored draft for source project ${sourceProjectId} failed validation; not marking it clean`,
       );
-    if (!parsed.dirty) return;
-    await storage.write(
-      draftKey(sourceProjectId),
-      JSON.stringify({ ...parsed, modelVersion: CURRENT_MODEL_VERSION, dirty: false }),
-    );
+    if (parsed.dirty) {
+      await storage.write(
+        draftKey(sourceProjectId),
+        JSON.stringify({ ...parsed, modelVersion: CURRENT_MODEL_VERSION, dirty: false }),
+      );
+    }
+    // An apply that keeps the mark takes it from the kept draft, which must not still read unsaved.
+    if (this.current) {
+      this.current = { ...this.current, draft: { ...this.current.draft, dirty: false } };
+    }
   }
 
   /**

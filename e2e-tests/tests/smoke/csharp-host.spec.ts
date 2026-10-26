@@ -5,13 +5,30 @@ import { sendPapiRequestOnce, waitForPapiMethodRegistered } from '../../fixtures
 
 const PING_REQUEST_TYPE = 'command:interlinearizer.csharpPing';
 
-const PUBLISH_DIR = path.join(__dirname, '..', '..', '..', 'c-sharp', 'publish');
+/**
+ * The runtime identifier `npm run build:c-sharp` publishes each platform and processor's host
+ * under.
+ */
+const RUNTIME_IDENTIFIERS: Record<string, string | undefined> = {
+  'win32 x64': 'win-x64',
+  'linux x64': 'linux-x64',
+  'darwin x64': 'osx-x64',
+  'darwin arm64': 'osx-arm64',
+};
+
+const RUNTIME_IDENTIFIER = RUNTIME_IDENTIFIERS[`${process.platform} ${process.arch}`];
 
 test.describe('C# host', () => {
   // CI always publishes the host; locally it exists only after `npm run build:c-sharp`.
   test.skip(
-    !process.env.CI && !fs.existsSync(PUBLISH_DIR),
-    'C# host not published; run `npm run build:c-sharp -- <runtime identifier>` first',
+    !process.env.CI &&
+      !(
+        RUNTIME_IDENTIFIER &&
+        fs.existsSync(
+          path.join(__dirname, '..', '..', '..', 'c-sharp', 'publish', RUNTIME_IDENTIFIER),
+        )
+      ),
+    `C# host not published for this machine; run \`npm run build:c-sharp -- ${RUNTIME_IDENTIFIER ?? '<runtime identifier>'}\` first`,
   );
 
   test('should answer a ping routed through Platform.Bible', async ({ mainPage }) => {

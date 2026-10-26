@@ -309,9 +309,9 @@ export async function getBookOutline(
 }
 
 /**
- * Finds the source project's book as its open or latest book holds it, so that it keeps the
- * language tag the book was last read under. A book the project keeps as neither is read under the
- * project's language tag and kept as its latest.
+ * Finds the source project's book as the project's open or latest book holds it, so that the book
+ * keeps the language tag it was last read under. A book the project keeps as neither is read under
+ * the project's language tag and kept as the project's latest.
  */
 async function keptBook(sourceProjectId: string, bookId: string): Promise<HeldBook> {
   return (
@@ -351,8 +351,9 @@ export async function getSegments(
 }
 
 /**
- * Reads a book of the source project tokenized one segment per verse, the same text its segment
- * pages serve. The book is shared, so the caller must not change it.
+ * Reads a book of the source project, tokenized one segment per verse: the book that
+ * {@link getSegments} pages are segmented from. The book is shared, so the caller must not change
+ * it.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book's text or the project's language tag cannot be read, or the text cannot be

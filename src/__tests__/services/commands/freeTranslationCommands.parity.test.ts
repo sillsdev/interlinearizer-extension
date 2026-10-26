@@ -230,7 +230,8 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
       },
     ],
     [
-      // The reducer takes the first stale link listed, so the one the tie picks is listed first.
+      // The reducer takes the first stale link listed, whereas the host takes the one the tie
+      // picks. Listing the tie's pick first lets the two agree.
       'adopts the stale translation through the stale link the approval tie picks',
       {
         analysis: analysisOf(

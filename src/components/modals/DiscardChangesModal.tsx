@@ -24,16 +24,20 @@ const DISCARD_CHANGES_MODAL_STRING_KEYS: `%${string}%`[] = [
  *
  * @param props.hasActiveBook - Whether a book is currently loaded. When `false`, the "current book"
  *   option is disabled and the selection defaults to the whole draft.
+ * @param props.isSubmitting - Whether the caller is still carrying out the confirmed discard. When
+ *   `true`, the buttons are disabled and the dialog can't be dismissed.
  * @param props.onConfirm - Called with the chosen {@link DiscardScope} when the user confirms.
  * @param props.onCancel - Called when the user backs out, leaving the draft untouched.
  * @returns The dialog, or nothing while localized strings are loading.
  */
 export function DiscardChangesModal({
   hasActiveBook,
+  isSubmitting = false,
   onConfirm,
   onCancel,
 }: Readonly<{
   hasActiveBook: boolean;
+  isSubmitting?: boolean;
   onConfirm: (scope: DiscardScope) => void;
   onCancel: () => void;
 }>) {
@@ -50,7 +54,7 @@ export function DiscardChangesModal({
       titleTestId="discard-changes-modal-title"
       title={localizedStrings['%interlinearizer_discardChanges_modal_title%']}
       width="tw:w-96"
-      onClose={onCancel}
+      onClose={isSubmitting ? undefined : onCancel}
     >
       <p className="tw:text-sm tw:mb-4">
         {localizedStrings['%interlinearizer_discardChanges_modal_prompt%']}
@@ -96,12 +100,13 @@ export function DiscardChangesModal({
       </RadioGroup>
 
       <div className="tw:modal-actions">
-        <Button variant="secondary" onClick={onCancel}>
+        <Button variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           {localizedStrings['%interlinearizer_discardChanges_modal_cancel%']}
         </Button>
         <Button
           variant="destructive"
           onClick={() => onConfirm(scope)}
+          disabled={isSubmitting}
           data-testid="discard-changes-confirm"
         >
           {localizedStrings['%interlinearizer_discardChanges_modal_confirm%']}

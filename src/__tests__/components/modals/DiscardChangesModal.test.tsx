@@ -89,6 +89,31 @@ describe('DiscardChangesModal', () => {
     expect(onConfirm).toHaveBeenCalledWith('all');
   });
 
+  it('disables both buttons while submitting', () => {
+    render(<DiscardChangesModal {...defaultProps} isSubmitting />);
+
+    expect(screen.getByTestId('discard-changes-confirm')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+  });
+
+  it('calls onCancel when Escape is pressed', async () => {
+    const onCancel = jest.fn();
+    render(<DiscardChangesModal {...defaultProps} onCancel={onCancel} />);
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores Escape while submitting', async () => {
+    const onCancel = jest.fn();
+    render(<DiscardChangesModal {...defaultProps} isSubmitting onCancel={onCancel} />);
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
   it('calls onCancel when the Cancel button is clicked', async () => {
     const onCancel = jest.fn();
     render(<DiscardChangesModal {...defaultProps} onCancel={onCancel} />);

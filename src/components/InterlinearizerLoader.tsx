@@ -1417,38 +1417,48 @@ function InterlinearizerLoaderInner({
     }
   }, [activeProject, commitDraft, projectId, setActiveProject, setModal]);
 
+  /** Guards a confirmed discard until it ends, disabling the discard dialog meanwhile. */
+  const { isSubmitting: isDiscarding, runGuarded: runDiscardGuarded } = useSubmitGuard();
+
   /**
-   * Dismisses the dialog, then resets the chosen scope to the active project's stored content, or
-   * empties it when no project is active. When the stored content can't be read, it notifies the
-   * user and leaves the draft untouched.
+   * Resets the chosen scope to the active project's stored content, or empties it when no project
+   * is active. When the stored content can't be read, it notifies the user and leaves the draft
+   * untouched. Either way, the dialog closes once the discard ends.
    */
   const handleDiscardChangesConfirm = useCallback(
-    async (scope: DiscardScope) => {
-      setDiscardChangesModalOpen(false);
-      const bookCode = book?.bookRef;
-      let saved: DraftContent | undefined;
-      if (activeProject) {
-        const project = await readOpenableProject(activeProject.id).catch((e) => {
-          logger.error('Interlinearizer: failed to read the project to discard changes', e);
-          return undefined;
-        });
-        if (!project) {
-          await papi.notifications
-            .send({ message: '%interlinearizer_error_discardChanges_failed%', severity: 'error' })
-            .catch(() => {});
-          return;
+    (scope: DiscardScope) =>
+      runDiscardGuarded(async () => {
+        try {
+          const bookCode = book?.bookRef;
+          let saved: DraftContent | undefined;
+          if (activeProject) {
+            const project = await readOpenableProject(activeProject.id).catch((e) => {
+              logger.error('Interlinearizer: failed to read the project to discard changes', e);
+              return undefined;
+            });
+            if (!project) {
+              await papi.notifications
+                .send({
+                  message: '%interlinearizer_error_discardChanges_failed%',
+                  severity: 'error',
+                })
+                .catch(() => {});
+              return;
+            }
+            saved = { analysis: project.analysis, segmentation: project.segmentation };
+          }
+          if (scope === 'book') {
+            /* v8 ignore next -- defensive: the dialog disables the book scope unless a book is loaded */
+            if (bookCode) discardBook(bookCode, saved);
+          }
+          // Match 'all' explicitly rather than via an else, so a future scope can't fall through to
+          // the whole-draft discard.
+          if (scope === 'all') discardAll(saved);
+        } finally {
+          setDiscardChangesModalOpen(false);
         }
-        saved = { analysis: project.analysis, segmentation: project.segmentation };
-      }
-      if (scope === 'book') {
-        /* v8 ignore next -- defensive: the dialog disables the book scope unless a book is loaded */
-        if (bookCode) discardBook(bookCode, saved);
-      }
-      // Match 'all' explicitly rather than via an else, so a future scope can't fall through to the
-      // whole-draft discard.
-      if (scope === 'all') discardAll(saved);
-    },
-    [activeProject, book, discardBook, discardAll],
+      }),
+    [activeProject, book, discardBook, discardAll, runDiscardGuarded],
   );
 
   /** Dismisses the discard dialog, leaving the draft untouched. */
@@ -2121,6 +2131,7 @@ function InterlinearizerLoaderInner({
       {discardChangesModalOpen && (
         <DiscardChangesModal
           hasActiveBook={!!book}
+          isSubmitting={isDiscarding}
           onConfirm={handleDiscardChangesConfirm}
           onCancel={handleDiscardChangesCancel}
         />

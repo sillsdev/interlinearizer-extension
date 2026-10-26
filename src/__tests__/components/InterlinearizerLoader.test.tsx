@@ -187,14 +187,20 @@ jest.mock('../../components/modals/DiscardChangesModal', () => ({
    */
   DiscardChangesModal: ({
     hasActiveBook,
+    isSubmitting,
     onConfirm,
     onCancel,
   }: {
     hasActiveBook: boolean;
+    isSubmitting: boolean;
     onConfirm: (scope: 'book' | 'all') => void;
     onCancel: () => void;
   }) => (
-    <div data-testid="discard-changes-modal-panel" data-has-active-book={String(hasActiveBook)}>
+    <div
+      data-testid="discard-changes-modal-panel"
+      data-has-active-book={String(hasActiveBook)}
+      data-is-submitting={String(isSubmitting)}
+    >
       <button
         type="button"
         data-testid="discard-changes-confirm-book"
@@ -4987,6 +4993,39 @@ describe('InterlinearizerLoader', () => {
           }),
         );
         expect(lastSavedDraft()).toBeUndefined();
+      });
+
+      it('keeps the dialog open and submitting while the project is read', async () => {
+        mockStoredProject(() => new Promise(() => {}));
+
+        await discard('all');
+
+        expect(screen.getByTestId('discard-changes-modal-panel')).toHaveAttribute(
+          'data-is-submitting',
+          'true',
+        );
+      });
+
+      it('dismisses the dialog once the restored content is applied', async () => {
+        mockStoredProject();
+
+        await discard('all');
+
+        await waitFor(() =>
+          expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument(),
+        );
+      });
+
+      it('dismisses the dialog when the project cannot be read', async () => {
+        mockStoredProject(async () => {
+          throw new Error('storage offline');
+        });
+
+        await discard('all');
+
+        await waitFor(() =>
+          expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument(),
+        );
       });
 
       it('notifies and leaves the draft untouched when the project no longer exists', async () => {

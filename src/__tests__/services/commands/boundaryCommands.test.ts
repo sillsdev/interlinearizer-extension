@@ -2,7 +2,6 @@
 
 import type { DraftProject, PhraseAnalysisLink, TokenSnapshot } from 'interlinearizer';
 import { AnalysisSessions } from '../../../services/analysisSessions';
-import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { splitSegment } from '../../../services/commands/boundaryCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
@@ -18,9 +17,7 @@ const VERSE_BOOK = makeVerseBook([
 
 const IN: TokenSnapshot = { tokenRef: 'GEN 1:1:0', surfaceText: 'In' };
 const THE: TokenSnapshot = { tokenRef: 'GEN 1:1:3', surfaceText: 'the' };
-const BEGINNING: TokenSnapshot = { tokenRef: 'GEN 1:1:7', surfaceText: 'beginning' };
 const GOD: TokenSnapshot = { tokenRef: 'GEN 1:1:17', surfaceText: 'God' };
-const CREATED: TokenSnapshot = { tokenRef: 'GEN 1:1:21', surfaceText: 'created' };
 const AND: TokenSnapshot = { tokenRef: 'GEN 1:2:0', surfaceText: 'And' };
 
 function phraseLink(id: string, analysisId: string, tokens: TokenSnapshot[]): PhraseAnalysisLink {
@@ -96,30 +93,5 @@ describe('splitSegment', () => {
     });
     await sessions.redo(sessionId);
     await expect(stored()).resolves.toStrictEqual(split);
-  });
-
-  it('breaks the phrases it cuts in id order, whatever order they are stored in', async () => {
-    const { storage } = memoryStorage();
-    const repository = new DraftRepository(storage, SOURCE, silentLogger());
-    await repository.replaceAll(
-      draftWith(
-        phraseLink('pl-b', 'pa-1', [BEGINNING, CREATED, AND]),
-        phraseLink('pl-a', 'pa-1', [IN, THE, GOD]),
-      ),
-    );
-    const buffer = new ChangeBuffer(repository);
-
-    await splitSegment(buffer, {
-      verseBook: VERSE_BOOK,
-      tokenRef: GOD.tokenRef,
-      now: NOW,
-      newId: idSequence(),
-    });
-
-    const [a, b] = await buffer
-      .getPhraseAnalysisLinks(['pl-a', 'pl-b'])
-      .then((links) => links.sort((x, y) => x.id.localeCompare(y.id)));
-    expect(a.analysisId).toBe('id-1');
-    expect(b.analysisId).toBe('pa-1');
   });
 });

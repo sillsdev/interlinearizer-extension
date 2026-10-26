@@ -375,12 +375,18 @@ function removeSegmentAnalysis(
   );
 }
 
+/**
+ * The stale translation that `analysisId` names, with the stale link an approval tie picks among
+ * those naming it, or `undefined` when no stale link names a stored analysis by that id.
+ */
 function findStaleSegmentAnalysis(
   state: AnalysisState,
   analysisId: string,
 ): { link: SegmentAnalysisLink; analysis: SegmentAnalysis } | undefined {
-  const link = state.analysis.segmentAnalysisLinks.find(
-    (l) => l.status === 'stale' && l.analysisId === analysisId,
+  const link = preferredLink(
+    state.analysis.segmentAnalysisLinks.filter(
+      (l) => l.status === 'stale' && l.analysisId === analysisId,
+    ),
   );
   const analysis = state.analysis.segmentAnalyses.find((sa) => sa.id === analysisId);
   return link && analysis ? { link, analysis } : undefined;

@@ -117,9 +117,9 @@ export class AnalysisSessions {
   /**
    * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
    * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
-   * Opening closes the source's earlier session, if any, and starts the new one on what storage
-   * holds, with nothing to undo, and starts reading the source's whole text afresh, which the
-   * session's close ends.
+   * Opening closes the source's earlier session, if any. The new session starts on what storage
+   * holds, with nothing to undo. Opening also starts a fresh read of the source's whole text, which
+   * lasts until the session closes.
    *
    * The session starts on the opened draft's first analysis language. When the draft lists none, it
    * starts on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the
@@ -295,8 +295,9 @@ export class AnalysisSessions {
   }
 
   /**
-   * Re-anchors the draft of the source project's session, as {@link reanchorBook} does, to every
-   * book it links into that `textBookIds` leaves out, which the text lacks.
+   * Re-anchors the draft of the source project's session, as {@link reanchorBook} does, to each book
+   * the text lacks. A book the text lacks is one the draft links into that `textBookIds` does not
+   * list.
    *
    * @throws Whatever reading the draft or applying the changes throws; the books before stay
    *   re-anchored.

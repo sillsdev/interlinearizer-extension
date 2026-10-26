@@ -167,6 +167,46 @@ describe('reanchorRestored', () => {
     ]);
   });
 
+  it('stales a restored translation whose stored payload no link names', async () => {
+    const before = verseBook('GEN 1:1', 'alpha beta');
+    const { repository } = await storedDraft({
+      analysis: {
+        ...emptyAnalysis(),
+        segmentAnalyses: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'sa-1',
+            surfaceText: before.segments[0].baselineText,
+            freeTranslation: { en: 'first second' },
+          },
+        ],
+      },
+    });
+    const restoring = {
+      intent: 'undo',
+      segmentAnalysisLinks: {
+        puts: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'sl-1',
+            analysisId: 'sa-1',
+            status: 'approved' as const,
+            segmentId: before.segments[0].id,
+          },
+        ],
+        deletes: [],
+      },
+    };
+
+    const changes = await reanchorRestored(repository)(restoring, [
+      verseBook('GEN 1:1', 'alpha gamma'),
+    ]);
+
+    expect(changes?.segmentAnalysisLinks?.puts).toEqual([
+      expect.objectContaining({ id: 'sl-1', status: 'stale' }),
+    ]);
+  });
+
   it('gives nothing when what the changes would restore already reads as the books do', async () => {
     const { repository } = await storedDraft();
 

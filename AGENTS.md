@@ -130,6 +130,16 @@ Key invariants: `Segment.baselineText.slice(charStart, charEnd) === Token.surfac
 - `@main` → `src/main`
 - `parsers/*` → `src/parsers/*`
 
+## Edge cases
+
+Weigh an edge case's cost before handling it. Each one handled is paid for across code, tests, and documentation, in maintenance and in the context every agent loads to work here. Handle it fully only when that cost buys something:
+
+- **Danger**: what actually goes wrong if it's unhandled? Lost or corrupted data and silently wrong output justify the cost; an awkward result in a state no real workflow reaches does not.
+- **Use**: does a real user or caller produce it, or only a contrived input?
+- **Blocking**: does the task at hand need it handled to work, or can it wait for a follow-up issue?
+
+When it isn't worth handling, throw a clear error naming the unsupported case. A throw costs a line, marks the boundary, and turns a silently wrong result into a visible one that can be addressed once it matters.
+
 ## Testing
 
 Jest with ts-jest, jsdom environment. PAPI is fully mocked in `__mocks__/`. Coverage is enforced at 100% on all `src/**` files (branches, functions, lines, statements), aside for select explicit exclusions.

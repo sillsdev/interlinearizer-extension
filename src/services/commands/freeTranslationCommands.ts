@@ -1,10 +1,12 @@
-import type { SegmentAnalysis, SegmentAnalysisLink } from 'interlinearizer';
+import type { SegmentAnalysis } from 'interlinearizer';
 import { isEmptyMultiString } from '../../utils/multi-string';
 import { preferredLink } from '../../utils/pick-rules';
 import type { ChangeBuffer } from './changeBuffer';
-
-/** A segment analysis with the link that places it. */
-type PlacedSegmentAnalysis = { link: SegmentAnalysisLink; analysis: SegmentAnalysis };
+import {
+  approveStaleTranslation,
+  findStaleTranslation,
+  type PlacedTranslation,
+} from './staleCommands';
 
 /** What writing a segment's free translation needs. */
 export type WriteSegmentFreeTranslationRequest = {
@@ -37,7 +39,7 @@ export type WriteSegmentFreeTranslationRequest = {
 async function resolveApprovedSegmentAnalysis(
   buffer: ChangeBuffer,
   segmentId: string,
-): Promise<PlacedSegmentAnalysis | undefined> {
+): Promise<PlacedTranslation | undefined> {
   const approved = (await buffer.findLinksBySegment([segmentId])).filter(
     ({ status }) => status === 'approved',
   );
@@ -54,20 +56,6 @@ async function resolveApprovedSegmentAnalysis(
   return link && analysis ? { link, analysis } : undefined;
 }
 
-/**
- * The stale translation that `analysisId` names, with the stale link an approval tie picks among
- * those naming it. Resolves to `undefined` when no stale link names a stored analysis by that id.
- */
-async function findStaleSegmentAnalysis(
-  buffer: ChangeBuffer,
-  analysisId: string,
-): Promise<PlacedSegmentAnalysis | undefined> {
-  const { segmentAnalysisLinks } = await buffer.findLinksToAnalyses([analysisId]);
-  const link = preferredLink(segmentAnalysisLinks.filter(({ status }) => status === 'stale'));
-  const [analysis] = await buffer.getSegmentAnalyses([analysisId]);
-  return link && analysis ? { link, analysis } : undefined;
-}
-
 /** Whether a segment analysis carries neither a free nor a literal translation worth keeping. */
 function isEmptySegmentAnalysis(analysis: SegmentAnalysis): boolean {
   return (
@@ -75,7 +63,7 @@ function isEmptySegmentAnalysis(analysis: SegmentAnalysis): boolean {
   );
 }
 
-function removeSegmentAnalysis(buffer: ChangeBuffer, { analysis, link }: PlacedSegmentAnalysis) {
+function removeSegmentAnalysis(buffer: ChangeBuffer, { analysis, link }: PlacedTranslation) {
   buffer.delete('segmentAnalyses', analysis);
   buffer.delete('segmentAnalysisLinks', link);
 }
@@ -84,11 +72,7 @@ function removeSegmentAnalysis(buffer: ChangeBuffer, { analysis, link }: PlacedS
  * Removes the `lang` free translation from `placed`'s analysis, staging the analysis and its link
  * as they then stand. The two are removed instead once the analysis holds nothing.
  */
-function clearFreeTranslation(
-  buffer: ChangeBuffer,
-  placed: PlacedSegmentAnalysis,
-  lang: string,
-): void {
+function clearFreeTranslation(buffer: ChangeBuffer, placed: PlacedTranslation, lang: string): void {
   const { analysis, link } = placed;
   if (analysis.freeTranslation) {
     delete analysis.freeTranslation[lang];
@@ -100,32 +84,6 @@ function clearFreeTranslation(
   }
   buffer.put('segmentAnalyses', analysis);
   buffer.put('segmentAnalysisLinks', link);
-}
-
-/**
- * Re-approves the stale translation that `analysisId` names, moving its link to `segmentId`, so
- * that a translation whose own segment has vanished lands where it was shown. It stages the link
- * but not the analysis.
- *
- * Resolves to the translation with its approved link. Resolves to `undefined` when `analysisId`
- * names no stale translation, or when `segmentId` already holds an approved one.
- */
-async function approveStaleSegmentAnalysis(
-  buffer: ChangeBuffer,
-  segmentId: string,
-  analysisId: string,
-  now: string,
-): Promise<PlacedSegmentAnalysis | undefined> {
-  const links = await buffer.findLinksBySegment([segmentId]);
-  /* v8 ignore next -- a write adopts only once the segment holds no approved link */
-  if (links.some(({ status }) => status === 'approved')) return undefined;
-  const stale = await findStaleSegmentAnalysis(buffer, analysisId);
-  if (!stale) return undefined;
-  stale.link.status = 'approved';
-  stale.link.segmentId = segmentId;
-  stale.link.updatedAt = now;
-  buffer.put('segmentAnalysisLinks', stale.link);
-  return stale;
 }
 
 /**
@@ -162,7 +120,7 @@ export async function writeSegmentFreeTranslation(
     const stale =
       adoptStaleAnalysisId === undefined
         ? undefined
-        : await findStaleSegmentAnalysis(buffer, adoptStaleAnalysisId);
+        : await findStaleTranslation(buffer, adoptStaleAnalysisId);
     if (!stale) return;
     stale.analysis.updatedAt = now;
     stale.link.updatedAt = now;
@@ -174,7 +132,7 @@ export async function writeSegmentFreeTranslation(
     approved ??
     (adoptStaleAnalysisId === undefined
       ? undefined
-      : await approveStaleSegmentAnalysis(buffer, segmentId, adoptStaleAnalysisId, now));
+      : await approveStaleTranslation(buffer, segmentId, adoptStaleAnalysisId, now));
   if (resolved) {
     const { link, analysis } = resolved;
     analysis.surfaceText = surfaceText;

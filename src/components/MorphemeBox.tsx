@@ -1,13 +1,12 @@
 import type { MorphemeAnalysis, Token } from 'interlinearizer';
 import { BookOpen } from 'lucide-react';
-import { PopoverAnchor } from 'platform-bible-react';
+import { PopoverAnchor, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import {
   cloneElement,
   isValidElement,
   type CSSProperties,
   type MouseEvent,
   type ReactNode,
-  useEffect,
   useState,
 } from 'react';
 import {
@@ -15,10 +14,12 @@ import {
   useMorphemeGlossDispatch,
   useReportGlossEditing,
 } from './AnalysisStore';
+import useGlossDraft from '../hooks/useGlossDraft';
 import { useDisplayedGloss } from './LexiconSenses';
 import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
 import { STATUS_TEXT_COLOR_CLASS } from '../types/status-colors';
 import { formatTemplate } from '../utils/format-template';
+import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 
 /** The narrowest a morpheme column goes, below which its form and gloss stop being legible. */
 const MIN_MORPHEME_COLUMN = '4ch';
@@ -370,7 +371,7 @@ function LexiconGlossMark({
   analysisLanguage: string;
   /** 1-based grid column the mark occupies (shared with the morpheme's form and gloss). */
   column: number;
-  /** Accessible name and hover text for the mark. */
+  /** Accessible name and tooltip text for the mark. */
   label: string;
 }>) {
   const { fromLexicon } = useDisplayedGloss(
@@ -379,17 +380,22 @@ function LexiconGlossMark({
     analysisLanguage,
   );
   if (!fromLexicon) return undefined;
+  const tooltip = tooltipContentOrUndefined(resolvedOrEmpty(label));
   return (
-    <span
-      aria-label={label}
-      className="tw:flex tw:justify-center tw:text-muted-foreground"
-      data-testid="morpheme-lexicon-mark"
-      role="img"
-      style={{ gridColumn: column, gridRow: 3 }}
-      title={label}
-    >
-      <BookOpen aria-hidden="true" className="tw:size-3" />
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          aria-label={label}
+          className="tw:flex tw:justify-center tw:text-muted-foreground"
+          data-testid="morpheme-lexicon-mark"
+          role="img"
+          style={{ gridColumn: column, gridRow: 3 }}
+        >
+          <BookOpen aria-hidden="true" className="tw:size-3" />
+        </span>
+      </TooltipTrigger>
+      {tooltip !== undefined && <TooltipContent>{tooltip}</TooltipContent>}
+    </Tooltip>
   );
 }
 
@@ -443,17 +449,10 @@ export function MorphemeGlossInput({
    */
   glossLabelTemplate?: string;
 }>) {
-  const { text: committed } = useDisplayedGloss(
-    morpheme.gloss?.[analysisLanguage] ?? '',
-    morpheme.senseRef,
-    analysisLanguage,
-  );
+  const stored = morpheme.gloss?.[analysisLanguage] ?? '';
+  const { text: committed } = useDisplayedGloss(stored, morpheme.senseRef, analysisLanguage);
   const dispatchMorphemeGloss = useMorphemeGlossDispatch();
-  const [draft, setDraft] = useState(committed);
-
-  useEffect(() => {
-    setDraft(committed);
-  }, [committed]);
+  const [draft, setDraft] = useGlossDraft(stored, committed);
 
   /** Writes the draft gloss only when it differs from the committed value. */
   const commitDraft = () => {

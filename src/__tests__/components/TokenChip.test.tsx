@@ -1,18 +1,26 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, Token, TokenSnapshot } from 'interlinearizer';
+import type { ResolvedSense } from 'interlinearizer/lexicon';
 import { TooltipProvider } from 'platform-bible-react';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
+import { LexiconSensesProvider } from '../../components/LexiconSenses';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { STATUS_TEXT_COLOR_CLASS } from '../../types/status-colors';
+import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
 import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
 import { FIXTURE_STAMPS, makePunctToken, makeWordToken } from '../test-helpers';
-import { mockKeyAsValueLocalizedStrings, testSenseRef, withLexicon } from './test-helpers';
+import {
+  mockKeyAsValueLocalizedStrings,
+  TEST_LEXICON_AUTHORITY,
+  testSenseRef,
+  withLexicon,
+} from './test-helpers';
 
 jest.mock('../../components/AnalysisStore');
 
@@ -987,6 +995,32 @@ describe('TokenChip linked to a lexicon sense', () => {
     render(ui);
 
     await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('greet'));
+  });
+
+  it('keeps text typed before the sense arrives', async () => {
+    let arrive: (sense: ResolvedSense) => void = () => {};
+    const registry = createLexiconRegistry([
+      {
+        ...nullLexiconResolver,
+        authorities: [TEST_LEXICON_AUTHORITY],
+        resolveSense: () =>
+          new Promise<ResolvedSense>((resolve) => {
+            arrive = resolve;
+          }),
+      },
+    ]);
+    render(
+      <LexiconSensesProvider registry={registry}>
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} />
+        </AnalysisStoreProvider>
+      </LexiconSensesProvider>,
+    );
+    await userEvent.type(screen.getByRole('textbox'), 'river');
+
+    await act(async () => arrive({ gloss: { und: 'greet' } }));
+
+    expect(screen.getByRole('textbox')).toHaveValue('river');
   });
 
   it('writes nothing on blur when the sense gloss is left as shown', async () => {

@@ -1,7 +1,7 @@
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback } from 'react';
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { sortByDocOrder } from '../utils/phrase-arc';
@@ -16,6 +16,7 @@ import {
   usePhraseSenseRef,
   useReportGlossEditing,
 } from './AnalysisStore';
+import useGlossDraft from '../hooks/useGlossDraft';
 import { useDisplayedGloss } from './LexiconSenses';
 import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
@@ -40,19 +41,16 @@ function PhraseGlossInput({
   /** Called when the input receives focus; used to center this phrase in the strip. */
   onFocus?: () => void;
 }>) {
+  const stored = usePhraseGloss(phraseId);
   const { text: committed } = useDisplayedGloss(
-    usePhraseGloss(phraseId),
+    stored,
     usePhraseSenseRef(phraseId),
     useAnalysisLanguage(),
   );
   const dispatchPhraseGloss = usePhraseGlossDispatch();
   const { glossPlaceholder, phraseGlossLabel } = usePhraseStripContext();
   const readOnly = useAnalysisReadOnly();
-  const [draft, setDraft] = useState(committed);
-
-  useEffect(() => {
-    setDraft(committed);
-  }, [committed]);
+  const [draft, setDraft] = useGlossDraft(stored, committed);
 
   /** Writes the draft gloss only when it differs from the committed value. */
   const commitDraft = () => {

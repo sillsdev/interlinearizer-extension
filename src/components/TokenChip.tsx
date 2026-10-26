@@ -41,6 +41,7 @@ import {
   useSuggestionAfterClearing,
   useUnapprovedTokenAnalysis,
 } from './AnalysisStore';
+import useGlossDraft from '../hooks/useGlossDraft';
 import { useDisplayedGloss } from './LexiconSenses';
 import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover } from './MorphemeEditor';
@@ -115,8 +116,9 @@ export function TokenChip({
   labels?: TokenChipLabels;
 }>) {
   const analysisLanguage = useAnalysisLanguage();
+  const storedGloss = useGloss(token.ref);
   const { text: committedGloss } = useDisplayedGloss(
-    useGloss(token.ref),
+    storedGloss,
     useGlossSenseRef(token.ref),
     analysisLanguage,
   );
@@ -139,7 +141,7 @@ export function TokenChip({
     analysisLanguage,
   );
   const approveAnalysis = useApproveAnalysisDispatch();
-  const [draft, setDraft] = useState(committedGloss);
+  const [draft, setDraft] = useGlossDraft(storedGloss, committedGloss);
   // While the user has emptied an approved token's gloss, the deletion only commits on blur, so the
   // store still reports the token as approved. Preview the post-commit suggestion now — derived as
   // if this token's approval were already gone — so the row and ghost placeholder stay consistent
@@ -175,11 +177,6 @@ export function TokenChip({
       if (!onRemove && isRemoveHovered) setIsRemoveHovered(false);
     }
   }, [onRemove, isRemoveHovered]);
-
-  // Keep local draft in sync when the committed value changes externally (e.g. project switch).
-  useEffect(() => {
-    setDraft(committedGloss);
-  }, [committedGloss]);
 
   /** Commits the draft gloss only when it differs from the committed value. */
   const commitDraft = () => {

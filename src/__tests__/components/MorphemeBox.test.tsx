@@ -11,7 +11,7 @@ import { TOKEN_CHIP_LABEL_KEYS } from '../../components/PhraseStripContext';
 import { STATUS_TEXT_COLOR_CLASS } from '../../types/status-colors';
 import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
 import { makeWordToken } from '../test-helpers';
-import { testSenseRef, withLexicon } from './test-helpers';
+import { testSenseRef, withLexicon, withTooltipProvider } from './test-helpers';
 
 jest.mock('../../components/AnalysisStore');
 
@@ -701,20 +701,22 @@ describe('morphemes linked to a lexicon sense', () => {
   /** Renders the box inside a lexicon holding {@link SENSES}. */
   function renderLinkedBox(props: Partial<Parameters<typeof MorphemeBox>[0]> = {}) {
     const { ui } = withLexicon(
-      <Popover>
-        <MorphemeBox
-          analysisLanguage="en"
-          disabled={false}
-          labels={LABELS}
-          morphemes={LINKED}
-          onEditBreakdown={jest.fn()}
-          onGlossFocus={jest.fn()}
-          popoverOpen={false}
-          readOnly={false}
-          token={WORD_TOKEN}
-          {...props}
-        />
-      </Popover>,
+      withTooltipProvider(
+        <Popover>
+          <MorphemeBox
+            analysisLanguage="en"
+            disabled={false}
+            labels={LABELS}
+            morphemes={LINKED}
+            onEditBreakdown={jest.fn()}
+            onGlossFocus={jest.fn()}
+            popoverOpen={false}
+            readOnly={false}
+            token={WORD_TOKEN}
+            {...props}
+          />
+        </Popover>,
+      ),
       SENSES,
     );
     return render(ui);
@@ -735,6 +737,23 @@ describe('morphemes linked to a lexicon sense', () => {
     const mark = await screen.findByRole('img', { name: 'Gloss from the lexicon' });
     expect(mark).toHaveStyle({ gridColumn: '1', gridRow: '3' });
     expect(screen.getAllByTestId('morpheme-lexicon-mark')).toHaveLength(1);
+  });
+
+  it('names the mark in a platform tooltip', async () => {
+    renderLinkedBox();
+
+    expect(await screen.findByTestId('morpheme-lexicon-mark')).toHaveAttribute(
+      'title',
+      'Gloss from the lexicon',
+    );
+  });
+
+  it('shows no tooltip before the label resolves, still naming the mark', async () => {
+    renderLinkedBox({ labels: TOKEN_CHIP_LABEL_KEYS });
+
+    const mark = await screen.findByTestId('morpheme-lexicon-mark');
+    expect(mark).not.toHaveAttribute('title');
+    expect(mark).toHaveAccessibleName(TOKEN_CHIP_LABEL_KEYS.lexiconGloss);
   });
 
   it('shows the sense gloss as text in a read-only breakdown, marked as from the lexicon', async () => {

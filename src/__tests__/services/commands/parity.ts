@@ -1,13 +1,63 @@
 /// <reference types="jest" />
 
 import type { UnknownAction } from '@reduxjs/toolkit';
-import type { TextAnalysis } from 'interlinearizer';
+import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { DraftRepository } from '../../../services/draftRepository';
 import reducer from '../../../store/analysisSlice';
 import type { ChangeSet, IndexDifference } from '../../../types/analysis-repository';
-import { emptyDraft } from '../../../types/empty-factories';
-import { memoryStorage, silentLogger } from '../../test-helpers';
+import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
+import { FIXTURE_STAMPS, memoryStorage, silentLogger } from '../../test-helpers';
+
+export const NOW = '2026-06-01T00:00:00.000Z';
+export const EARLIER = {
+  createdAt: '2025-06-01T00:00:00.000Z',
+  updatedAt: '2025-06-01T00:00:00.000Z',
+};
+export const LATER = {
+  createdAt: '2026-03-01T00:00:00.000Z',
+  updatedAt: '2026-03-01T00:00:00.000Z',
+};
+
+export const TOKEN = 'GEN 1:1:0';
+export const OTHER_TOKEN = 'GEN 1:2:0';
+
+export function payload(id: string, surfaceText: string, fields: Partial<TokenAnalysis> = {}) {
+  return { id, ...FIXTURE_STAMPS, surfaceText, ...fields };
+}
+
+export function link(
+  id: string,
+  analysisId: string,
+  tokenRef: string,
+  surfaceText: string,
+  fields: Partial<TokenAnalysisLink> = {},
+): TokenAnalysisLink {
+  return {
+    id,
+    analysisId,
+    ...FIXTURE_STAMPS,
+    status: 'approved',
+    token: { tokenRef, surfaceText },
+    ...fields,
+  };
+}
+
+export function analysisOf(
+  tokenAnalyses: TokenAnalysis[],
+  tokenAnalysisLinks: TokenAnalysisLink[],
+): TextAnalysis {
+  return { ...emptyAnalysis(), tokenAnalyses, tokenAnalysisLinks };
+}
+
+export const ids = (records: readonly { id: string }[]) => records.map(({ id }) => id).sort();
+
+export type ParityCase<Input> = {
+  analysis: TextAnalysis;
+  input: Input;
+  /** What the reducer's result must show, so the case exercises the path it names. */
+  expectStore: (store: TextAnalysis) => void;
+};
 
 /** What one input gives through the store's reducer and through the host's command. */
 export type ParityOutcome = {
@@ -72,4 +122,17 @@ export async function runParity(
     changes,
     indexDifferences: await repository.checkIndexes(),
   };
+}
+
+/**
+ * Asserts the reducer took the path the case names, and that the command left the same analysis
+ * with its indexes matching its records.
+ */
+export function expectParity(
+  outcome: ParityOutcome,
+  expectStore: ParityCase<unknown>['expectStore'],
+): void {
+  expectStore(outcome.store);
+  expect(outcome.host).toStrictEqual(outcome.store);
+  expect(outcome.indexDifferences).toStrictEqual([]);
 }

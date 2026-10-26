@@ -1,59 +1,27 @@
 /// <reference types="jest" />
 
-import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import {
   approveAnalysisForToken as approveCommand,
   writeGloss as writeGlossCommand,
 } from '../../../services/commands/tokenCommands';
 import { approveAnalysisForToken, writeGloss } from '../../../store/analysisSlice';
 import { emptyAnalysis } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS } from '../../test-helpers';
-import { runParity } from './parity';
-
-const NOW = '2026-06-01T00:00:00.000Z';
-const EARLIER = { createdAt: '2025-06-01T00:00:00.000Z', updatedAt: '2025-06-01T00:00:00.000Z' };
-const LATER = { createdAt: '2026-03-01T00:00:00.000Z', updatedAt: '2026-03-01T00:00:00.000Z' };
-
-function payload(id: string, surfaceText: string, fields: Partial<TokenAnalysis> = {}) {
-  return { id, ...FIXTURE_STAMPS, surfaceText, ...fields };
-}
-
-function link(
-  id: string,
-  analysisId: string,
-  tokenRef: string,
-  fields: Partial<TokenAnalysisLink> = {},
-): TokenAnalysisLink {
-  return {
-    id,
-    analysisId,
-    ...FIXTURE_STAMPS,
-    status: 'approved',
-    token: { tokenRef, surfaceText: 'in' },
-    ...fields,
-  };
-}
-
-function analysisOf(
-  tokenAnalyses: TokenAnalysis[],
-  tokenAnalysisLinks: TokenAnalysisLink[],
-): TextAnalysis {
-  return { ...emptyAnalysis(), tokenAnalyses, tokenAnalysisLinks };
-}
-
-const TOKEN = 'GEN 1:1:0';
-const OTHER_TOKEN = 'GEN 1:2:0';
-
-type ParityCase<Input> = {
-  analysis: TextAnalysis;
-  input: Input;
-  /** What the reducer's result must show, so the case exercises the path it names. */
-  expectStore: (store: TextAnalysis) => void;
-};
+import {
+  analysisOf,
+  EARLIER,
+  expectParity,
+  ids,
+  LATER,
+  link,
+  NOW,
+  OTHER_TOKEN,
+  type ParityCase,
+  payload,
+  runParity,
+  TOKEN,
+} from './parity';
 
 type GlossInput = { surfaceText?: string; value: string };
-
-const ids = (records: readonly { id: string }[]) => records.map(({ id }) => id).sort();
 
 describe('writeGloss parity with the reducer', () => {
   const cases: [string, ParityCase<GlossInput>][] = [
@@ -73,7 +41,7 @@ describe('writeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'in', { gloss: { en: 'at' } })],
-          [link('tl-other', 'ta-in', OTHER_TOKEN)],
+          [link('tl-other', 'ta-in', OTHER_TOKEN, 'in')],
         ),
         input: { value: 'at' },
         expectStore: (store) => {
@@ -89,7 +57,7 @@ describe('writeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'in', { gloss: { en: 'at' } })],
-          [link('tl-held', 'ta-in', TOKEN, { status: 'suggested', confidence: 'low' })],
+          [link('tl-held', 'ta-in', TOKEN, 'in', { status: 'suggested', confidence: 'low' })],
         ),
         input: { value: 'at' },
         expectStore: (store) => {
@@ -108,7 +76,7 @@ describe('writeGloss parity with the reducer', () => {
               glossSenseRef: { authority: 'fwlite', senseId: 's-at' },
             }),
           ],
-          [link('tl-in', 'ta-in', TOKEN)],
+          [link('tl-in', 'ta-in', TOKEN, 'in')],
         ),
         input: { surfaceText: 'In,', value: 'at first' },
         expectStore: (store) => {
@@ -127,7 +95,7 @@ describe('writeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
-          [link('tl-in', 'ta-in', TOKEN), link('tl-other', 'ta-in', OTHER_TOKEN)],
+          [link('tl-in', 'ta-in', TOKEN, 'in'), link('tl-other', 'ta-in', OTHER_TOKEN, 'in')],
         ),
         input: { value: 'start' },
         expectStore: (store) => {
@@ -147,7 +115,7 @@ describe('writeGloss parity with the reducer', () => {
               morphemesStale: true,
             }),
           ],
-          [link('tl-in', 'ta-at', TOKEN), link('tl-other', 'ta-within', OTHER_TOKEN)],
+          [link('tl-in', 'ta-at', TOKEN, 'in'), link('tl-other', 'ta-within', OTHER_TOKEN, 'in')],
         ),
         input: { value: 'within' },
         expectStore: (store) => {
@@ -165,8 +133,8 @@ describe('writeGloss parity with the reducer', () => {
             payload('ta-within', 'In', { ...EARLIER, gloss: { en: 'within' } }),
           ],
           [
-            link('tl-in', 'ta-at', TOKEN, LATER),
-            link('tl-offered', 'ta-within', TOKEN, { ...EARLIER, status: 'suggested' }),
+            link('tl-in', 'ta-at', TOKEN, 'in', LATER),
+            link('tl-offered', 'ta-within', TOKEN, 'in', { ...EARLIER, status: 'suggested' }),
           ],
         ),
         input: { value: 'within' },
@@ -189,8 +157,8 @@ describe('writeGloss parity with the reducer', () => {
             payload('ta-within', 'In', { ...EARLIER, gloss: { en: 'within' } }),
           ],
           [
-            link('tl-in', 'ta-at', TOKEN),
-            link('tl-offered', 'ta-within', OTHER_TOKEN, { status: 'suggested' }),
+            link('tl-in', 'ta-at', TOKEN, 'in'),
+            link('tl-offered', 'ta-within', OTHER_TOKEN, 'in', { status: 'suggested' }),
           ],
         ),
         input: { value: 'within' },
@@ -209,7 +177,7 @@ describe('writeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
-          [link('tl-in', 'ta-in', TOKEN)],
+          [link('tl-in', 'ta-in', TOKEN, 'in')],
         ),
         input: { value: '' },
         expectStore: (store) => {
@@ -227,7 +195,7 @@ describe('writeGloss parity with the reducer', () => {
               glossSenseRef: { authority: 'fwlite', senseId: 's-at' },
             }),
           ],
-          [link('tl-in', 'ta-in', TOKEN)],
+          [link('tl-in', 'ta-in', TOKEN, 'in')],
         ),
         input: { value: '  ' },
         expectStore: (store) => {
@@ -241,7 +209,7 @@ describe('writeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
-          [link('tl-in', 'ta-in', TOKEN), link('tl-other', 'ta-in', OTHER_TOKEN)],
+          [link('tl-in', 'ta-in', TOKEN, 'in'), link('tl-other', 'ta-in', OTHER_TOKEN, 'in')],
         ),
         input: { value: '' },
         expectStore: (store) => {
@@ -256,8 +224,8 @@ describe('writeGloss parity with the reducer', () => {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
           [
-            link('tl-in', 'ta-in', TOKEN),
-            link('tl-rejected', 'ta-in', TOKEN, { status: 'rejected' }),
+            link('tl-in', 'ta-in', TOKEN, 'in'),
+            link('tl-rejected', 'ta-in', TOKEN, 'in', { status: 'rejected' }),
           ],
         ),
         input: { value: '' },
@@ -275,7 +243,7 @@ describe('writeGloss parity with the reducer', () => {
             payload('ta-in', 'In', { gloss: { en: 'at' }, pos: 'prep' }),
             payload('ta-bare', 'in', { ...EARLIER, pos: 'prep' }),
           ],
-          [link('tl-in', 'ta-in', TOKEN)],
+          [link('tl-in', 'ta-in', TOKEN, 'in')],
         ),
         input: { value: '' },
         expectStore: (store) => {
@@ -289,7 +257,7 @@ describe('writeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
-          [link('tl-in', 'ta-in', TOKEN), link('tl-other', 'ta-in', OTHER_TOKEN)],
+          [link('tl-in', 'ta-in', TOKEN, 'in'), link('tl-other', 'ta-in', OTHER_TOKEN, 'in')],
         ),
         input: { value: 'at' },
         expectStore: (store) => {
@@ -308,7 +276,10 @@ describe('writeGloss parity with the reducer', () => {
             payload('ta-old', 'In', { gloss: { en: 'old' } }),
             payload('ta-new', 'In', { gloss: { en: 'new' } }),
           ],
-          [link('tl-old', 'ta-old', TOKEN, EARLIER), link('tl-new', 'ta-new', TOKEN, LATER)],
+          [
+            link('tl-old', 'ta-old', TOKEN, 'in', EARLIER),
+            link('tl-new', 'ta-new', TOKEN, 'in', LATER),
+          ],
         ),
         input: { value: 'newer' },
         expectStore: (store) => {
@@ -331,7 +302,7 @@ describe('writeGloss parity with the reducer', () => {
     [
       'removes an approved link whose payload is gone before writing',
       {
-        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN)]),
+        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'in')]),
         input: { value: 'at' },
         expectStore: (store) => {
           expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['new-link']);
@@ -341,7 +312,7 @@ describe('writeGloss parity with the reducer', () => {
     [
       'removes an approved link whose payload is gone even on a blank write',
       {
-        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN)]),
+        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'in')]),
         input: { value: '' },
         expectStore: (store) => {
           expect(store).toStrictEqual(emptyAnalysis());
@@ -378,9 +349,7 @@ describe('writeGloss parity with the reducer', () => {
         }),
     );
 
-    expectStore(outcome.store);
-    expect(outcome.host).toStrictEqual(outcome.store);
-    expect(outcome.indexDifferences).toStrictEqual([]);
+    expectParity(outcome, expectStore);
   });
 });
 
@@ -412,7 +381,7 @@ describe('approveAnalysisForToken parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
-          [link('tl-held', 'ta-in', TOKEN, { status: 'candidate', confidence: 'guess' })],
+          [link('tl-held', 'ta-in', TOKEN, 'in', { status: 'candidate', confidence: 'guess' })],
         ),
         input: { analysisId: 'ta-in' },
         expectStore: (store) => {
@@ -432,7 +401,7 @@ describe('approveAnalysisForToken parity with the reducer', () => {
             payload('ta-at', 'In', { gloss: { en: 'at' } }),
             payload('ta-on', 'In', { gloss: { en: 'on' } }),
           ],
-          [link('tl-in', 'ta-at', TOKEN)],
+          [link('tl-in', 'ta-at', TOKEN, 'in')],
         ),
         input: { analysisId: 'ta-on' },
         expectStore: (store) => {
@@ -449,7 +418,7 @@ describe('approveAnalysisForToken parity with the reducer', () => {
             payload('ta-at', 'In', { gloss: { en: 'at' } }),
             payload('ta-on', 'In', { gloss: { en: 'on' } }),
           ],
-          [link('tl-in', 'ta-at', TOKEN), link('tl-other', 'ta-at', OTHER_TOKEN)],
+          [link('tl-in', 'ta-at', TOKEN, 'in'), link('tl-other', 'ta-at', OTHER_TOKEN, 'in')],
         ),
         input: { analysisId: 'ta-on' },
         expectStore: (store) => {
@@ -466,8 +435,8 @@ describe('approveAnalysisForToken parity with the reducer', () => {
             payload('ta-on', 'In', { gloss: { en: 'on' } }),
           ],
           [
-            link('tl-in', 'ta-at', TOKEN, EARLIER),
-            link('tl-held', 'ta-on', TOKEN, { ...LATER, status: 'suggested' }),
+            link('tl-in', 'ta-at', TOKEN, 'in', EARLIER),
+            link('tl-held', 'ta-on', TOKEN, 'in', { ...LATER, status: 'suggested' }),
           ],
         ),
         input: { analysisId: 'ta-on' },
@@ -486,7 +455,7 @@ describe('approveAnalysisForToken parity with the reducer', () => {
     [
       'stages nothing for a payload not stored',
       {
-        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN)]),
+        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'in')]),
         input: { analysisId: 'ta-unknown' },
         expectStore: (store) => {
           expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-orphan']);
@@ -498,7 +467,10 @@ describe('approveAnalysisForToken parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
-          [link('tl-in', 'ta-in', TOKEN, LATER), link('tl-orphan', 'ta-missing', TOKEN, EARLIER)],
+          [
+            link('tl-in', 'ta-in', TOKEN, 'in', LATER),
+            link('tl-orphan', 'ta-missing', TOKEN, 'in', EARLIER),
+          ],
         ),
         input: { analysisId: 'ta-in' },
         expectStore: (store) => {
@@ -511,7 +483,7 @@ describe('approveAnalysisForToken parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
-          [link('tl-orphan', 'ta-missing', TOKEN)],
+          [link('tl-orphan', 'ta-missing', TOKEN, 'in')],
         ),
         input: { analysisId: 'ta-in' },
         expectStore: (store) => {
@@ -545,8 +517,6 @@ describe('approveAnalysisForToken parity with the reducer', () => {
         }),
     );
 
-    expectStore(outcome.store);
-    expect(outcome.host).toStrictEqual(outcome.store);
-    expect(outcome.indexDifferences).toStrictEqual([]);
+    expectParity(outcome, expectStore);
   });
 });

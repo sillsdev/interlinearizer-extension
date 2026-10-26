@@ -1,11 +1,6 @@
 /// <reference types="jest" />
 
-import type {
-  MorphemeAnalysis,
-  TextAnalysis,
-  TokenAnalysis,
-  TokenAnalysisLink,
-} from 'interlinearizer';
+import type { MorphemeAnalysis } from 'interlinearizer';
 import {
   deleteMorphemes as deleteMorphemesCommand,
   writeMorphemeGloss as writeMorphemeGlossCommand,
@@ -14,58 +9,28 @@ import {
 import { deleteMorphemes, writeMorphemeGloss, writeMorphemes } from '../../../store/analysisSlice';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../../test-helpers';
-import { runParity } from './parity';
-
-const NOW = '2026-06-01T00:00:00.000Z';
-const EARLIER = { createdAt: '2025-06-01T00:00:00.000Z', updatedAt: '2025-06-01T00:00:00.000Z' };
-const LATER = { createdAt: '2026-03-01T00:00:00.000Z', updatedAt: '2026-03-01T00:00:00.000Z' };
-
-function payload(id: string, surfaceText: string, fields: Partial<TokenAnalysis> = {}) {
-  return { id, ...FIXTURE_STAMPS, surfaceText, ...fields };
-}
+import {
+  analysisOf,
+  EARLIER,
+  expectParity,
+  ids,
+  LATER,
+  link,
+  NOW,
+  OTHER_TOKEN,
+  type ParityCase,
+  payload,
+  runParity,
+  TOKEN,
+} from './parity';
 
 function morpheme(id: string, form: string, fields: Partial<MorphemeAnalysis> = {}) {
   return { id, form, writingSystem: 'en', ...fields };
 }
 
-function link(
-  id: string,
-  analysisId: string,
-  tokenRef: string,
-  fields: Partial<TokenAnalysisLink> = {},
-): TokenAnalysisLink {
-  return {
-    id,
-    analysisId,
-    ...FIXTURE_STAMPS,
-    status: 'approved',
-    token: { tokenRef, surfaceText: 'cats' },
-    ...fields,
-  };
-}
-
-function analysisOf(
-  tokenAnalyses: TokenAnalysis[],
-  tokenAnalysisLinks: TokenAnalysisLink[],
-): TextAnalysis {
-  return { ...emptyAnalysis(), tokenAnalyses, tokenAnalysisLinks };
-}
-
-const TOKEN = 'GEN 1:1:0';
-const OTHER_TOKEN = 'GEN 1:2:0';
-
 /** A breakdown as the WebView prepares one: a fresh id per form. */
 const forms = (...list: string[]) => list.map((form, i) => ({ id: `new-m-${i}`, form }));
 const CAT_S = [morpheme('m-cat', 'cat'), morpheme('m-s', '-s')];
-
-type ParityCase<Input> = {
-  analysis: TextAnalysis;
-  input: Input;
-  /** What the reducer's result must show, so the case exercises the path it names. */
-  expectStore: (store: TextAnalysis) => void;
-};
-
-const ids = (records: readonly { id: string }[]) => records.map(({ id }) => id).sort();
 
 type MorphemesInput = {
   surfaceText?: string;
@@ -97,7 +62,7 @@ describe('writeMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
-          [link('tl-other', 'ta-cats', OTHER_TOKEN)],
+          [link('tl-other', 'ta-cats', OTHER_TOKEN, 'cats')],
         ),
         input: { morphemes: forms('cat', '-s') },
         expectStore: (store) => {
@@ -113,7 +78,7 @@ describe('writeMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
-          [link('tl-held', 'ta-cats', TOKEN, { status: 'suggested', confidence: 'low' })],
+          [link('tl-held', 'ta-cats', TOKEN, 'cats', { status: 'suggested', confidence: 'low' })],
         ),
         input: { morphemes: forms('cat', '-s') },
         expectStore: (store) => {
@@ -128,7 +93,7 @@ describe('writeMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { gloss: { en: 'cats' } })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         input: { morphemes: forms('cat', '-s') },
         expectStore: (store) => {
@@ -158,7 +123,7 @@ describe('writeMorphemes parity with the reducer', () => {
               morphemesStale: true,
             }),
           ],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         input: { surfaceText: 'cats,', morphemes: forms('cat', 's') },
         expectStore: (store) => {
@@ -190,7 +155,7 @@ describe('writeMorphemes parity with the reducer', () => {
               ],
             }),
           ],
-          [link('tl-baba', 'ta-baba', TOKEN, { token: { tokenRef: TOKEN, surfaceText: 'baba' } })],
+          [link('tl-baba', 'ta-baba', TOKEN, 'baba')],
         ),
         input: { surfaceText: 'baba', morphemes: forms('ba', 'ba', 'ba') },
         expectStore: (store) => {
@@ -211,7 +176,7 @@ describe('writeMorphemes parity with the reducer', () => {
               morphemes: [morpheme('m-cat', 'cat', { gloss: { en: 'feline' } })],
             }),
           ],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         input: { writingSystem: 'en-Latn', morphemes: forms('cat', '-s') },
         expectStore: (store) => {
@@ -227,7 +192,10 @@ describe('writeMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
-          [link('tl-cats', 'ta-cats', TOKEN), link('tl-other', 'ta-cats', OTHER_TOKEN)],
+          [
+            link('tl-cats', 'ta-cats', TOKEN, 'cats'),
+            link('tl-other', 'ta-cats', OTHER_TOKEN, 'cats'),
+          ],
         ),
         input: { morphemes: forms('ca', 'ts') },
         expectStore: (store) => {
@@ -243,7 +211,10 @@ describe('writeMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
-          [link('tl-cats', 'ta-cats', TOKEN), link('tl-other', 'ta-cats', OTHER_TOKEN)],
+          [
+            link('tl-cats', 'ta-cats', TOKEN, 'cats'),
+            link('tl-other', 'ta-cats', OTHER_TOKEN, 'cats'),
+          ],
         ),
         input: { morphemes: forms('cat', '-s') },
         expectStore: (store) => {
@@ -264,7 +235,10 @@ describe('writeMorphemes parity with the reducer', () => {
             }),
             payload('ta-cats', 'Cats', { ...EARLIER, morphemes: CAT_S, morphemesStale: true }),
           ],
-          [link('tl-split', 'ta-split', TOKEN), link('tl-other', 'ta-cats', OTHER_TOKEN)],
+          [
+            link('tl-split', 'ta-split', TOKEN, 'cats'),
+            link('tl-other', 'ta-cats', OTHER_TOKEN, 'cats'),
+          ],
         ),
         input: { morphemes: forms('cat', '-s') },
         expectStore: (store) => {
@@ -287,8 +261,8 @@ describe('writeMorphemes parity with the reducer', () => {
             payload('ta-cats', 'cats', { ...EARLIER, morphemes: CAT_S }),
           ],
           [
-            link('tl-split', 'ta-split', TOKEN, LATER),
-            link('tl-offered', 'ta-cats', TOKEN, { ...EARLIER, status: 'suggested' }),
+            link('tl-split', 'ta-split', TOKEN, 'cats', LATER),
+            link('tl-offered', 'ta-cats', TOKEN, 'cats', { ...EARLIER, status: 'suggested' }),
           ],
         ),
         input: { morphemes: forms('cat', '-s') },
@@ -311,7 +285,10 @@ describe('writeMorphemes parity with the reducer', () => {
             payload('ta-old', 'cats', { morphemes: [morpheme('m-old', 'cats')] }),
             payload('ta-new', 'cats', { morphemes: CAT_S }),
           ],
-          [link('tl-old', 'ta-old', TOKEN, EARLIER), link('tl-new', 'ta-new', TOKEN, LATER)],
+          [
+            link('tl-old', 'ta-old', TOKEN, 'cats', EARLIER),
+            link('tl-new', 'ta-new', TOKEN, 'cats', LATER),
+          ],
         ),
         input: { morphemes: forms('ca', 'ts') },
         expectStore: (store) => {
@@ -329,7 +306,7 @@ describe('writeMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { gloss: { en: 'cats' }, morphemes: CAT_S })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         input: { morphemes: [] },
         expectStore: (store) => {
@@ -340,7 +317,7 @@ describe('writeMorphemes parity with the reducer', () => {
     [
       'removes an approved link whose payload is gone before writing',
       {
-        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN)]),
+        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'cats')]),
         input: { morphemes: forms('cat', '-s') },
         expectStore: (store) => {
           expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['new-link']);
@@ -379,9 +356,7 @@ describe('writeMorphemes parity with the reducer', () => {
         }),
     );
 
-    expectStore(outcome.store);
-    expect(outcome.host).toStrictEqual(outcome.store);
-    expect(outcome.indexDifferences).toStrictEqual([]);
+    expectParity(outcome, expectStore);
   });
 });
 
@@ -394,7 +369,7 @@ describe('writeMorphemeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S, morphemesStale: true })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         input: { value: 'feline' },
         expectStore: (store) => {
@@ -421,7 +396,7 @@ describe('writeMorphemeGloss parity with the reducer', () => {
               morphemes: [morpheme('m-cat', 'cat', { gloss: { en: 'feline', fr: 'chat' } })],
             }),
           ],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         input: { value: 'cat' },
         expectStore: (store) => {
@@ -441,7 +416,7 @@ describe('writeMorphemeGloss parity with the reducer', () => {
               morphemes: [morpheme('m-cat', 'cat', { gloss: { en: 'feline' } })],
             }),
           ],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         input: { value: '  ' },
         expectStore: (store) => {
@@ -460,7 +435,7 @@ describe('writeMorphemeGloss parity with the reducer', () => {
               morphemes: [morpheme('m-cat', 'cat', { gloss: { en: 'feline', fr: 'chat' } })],
             }),
           ],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         input: { value: '' },
         expectStore: (store) => {
@@ -473,7 +448,7 @@ describe('writeMorphemeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         input: { value: '' },
         expectStore: (store) => {
@@ -487,7 +462,10 @@ describe('writeMorphemeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
-          [link('tl-cats', 'ta-cats', TOKEN), link('tl-other', 'ta-cats', OTHER_TOKEN)],
+          [
+            link('tl-cats', 'ta-cats', TOKEN, 'cats'),
+            link('tl-other', 'ta-cats', OTHER_TOKEN, 'cats'),
+          ],
         ),
         input: { value: 'feline' },
         expectStore: (store) => {
@@ -516,7 +494,10 @@ describe('writeMorphemeGloss parity with the reducer', () => {
               morphemesStale: true,
             }),
           ],
-          [link('tl-bare', 'ta-bare', TOKEN), link('tl-other', 'ta-glossed', OTHER_TOKEN)],
+          [
+            link('tl-bare', 'ta-bare', TOKEN, 'cats'),
+            link('tl-other', 'ta-glossed', OTHER_TOKEN, 'cats'),
+          ],
         ),
         input: { value: 'feline' },
         expectStore: (store) => {
@@ -544,7 +525,10 @@ describe('writeMorphemeGloss parity with the reducer', () => {
               morphemes: [morpheme('m-cat-2', 'cat'), morpheme('m-s-2', '-s')],
             }),
           ],
-          [link('tl-glossed', 'ta-glossed', TOKEN), link('tl-other', 'ta-bare', OTHER_TOKEN)],
+          [
+            link('tl-glossed', 'ta-glossed', TOKEN, 'cats'),
+            link('tl-other', 'ta-bare', OTHER_TOKEN, 'cats'),
+          ],
         ),
         input: { value: '' },
         expectStore: (store) => {
@@ -560,7 +544,7 @@ describe('writeMorphemeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
-          [link('tl-other', 'ta-cats', OTHER_TOKEN)],
+          [link('tl-other', 'ta-cats', OTHER_TOKEN, 'cats')],
         ),
         input: { value: 'feline' },
         expectStore: (store) => {
@@ -573,7 +557,7 @@ describe('writeMorphemeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         input: { morphemeId: 'm-missing', value: 'feline' },
         expectStore: (store) => {
@@ -586,7 +570,7 @@ describe('writeMorphemeGloss parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { gloss: { en: 'cats' } })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         input: { value: 'feline' },
         expectStore: (store) => {
@@ -597,7 +581,7 @@ describe('writeMorphemeGloss parity with the reducer', () => {
     [
       'removes an approved link whose payload is gone, and nothing else',
       {
-        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN)]),
+        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'cats')]),
         input: { value: 'feline' },
         expectStore: (store) => {
           expect(store).toStrictEqual(emptyAnalysis());
@@ -626,9 +610,7 @@ describe('writeMorphemeGloss parity with the reducer', () => {
         }),
     );
 
-    expectStore(outcome.store);
-    expect(outcome.host).toStrictEqual(outcome.store);
-    expect(outcome.indexDifferences).toStrictEqual([]);
+    expectParity(outcome, expectStore);
   });
 });
 
@@ -645,7 +627,7 @@ describe('deleteMorphemes parity with the reducer', () => {
               morphemesStale: true,
             }),
           ],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         expectStore: (store) => {
           expect(store.tokenAnalyses).toStrictEqual([
@@ -660,7 +642,7 @@ describe('deleteMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         expectStore: (store) => {
           expect(store).toStrictEqual(emptyAnalysis());
@@ -672,7 +654,7 @@ describe('deleteMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { gloss: { en: 'cats' }, morphemes: [] })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         expectStore: (store) => {
           expect(store.tokenAnalyses).toStrictEqual([
@@ -687,8 +669,8 @@ describe('deleteMorphemes parity with the reducer', () => {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
           [
-            link('tl-cats', 'ta-cats', TOKEN),
-            link('tl-rejected', 'ta-cats', TOKEN, { status: 'rejected' }),
+            link('tl-cats', 'ta-cats', TOKEN, 'cats'),
+            link('tl-rejected', 'ta-cats', TOKEN, 'cats', { status: 'rejected' }),
           ],
         ),
         expectStore: (store) => {
@@ -704,7 +686,7 @@ describe('deleteMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { gloss: {}, morphemes: CAT_S })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         expectStore: (store) => {
           expect(store).toStrictEqual(emptyAnalysis());
@@ -716,7 +698,7 @@ describe('deleteMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S, pos: 'n' })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         expectStore: (store) => {
           expect(store.tokenAnalyses).toStrictEqual([
@@ -730,7 +712,7 @@ describe('deleteMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S, features: { Number: 'Pl' } })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         expectStore: (store) => {
           expect(store.tokenAnalyses).toStrictEqual([
@@ -749,7 +731,7 @@ describe('deleteMorphemes parity with the reducer', () => {
               glossSenseRef: { authority: 'fwlite', senseId: 's-cat' },
             }),
           ],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         expectStore: (store) => {
           expect(store.tokenAnalyses).toStrictEqual([
@@ -766,7 +748,10 @@ describe('deleteMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { gloss: { en: 'cats' }, morphemes: CAT_S })],
-          [link('tl-cats', 'ta-cats', TOKEN), link('tl-other', 'ta-cats', OTHER_TOKEN)],
+          [
+            link('tl-cats', 'ta-cats', TOKEN, 'cats'),
+            link('tl-other', 'ta-cats', OTHER_TOKEN, 'cats'),
+          ],
         ),
         expectStore: (store) => {
           expect(ids(store.tokenAnalyses)).toStrictEqual(['new-analysis', 'ta-cats']);
@@ -781,7 +766,10 @@ describe('deleteMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
-          [link('tl-cats', 'ta-cats', TOKEN), link('tl-other', 'ta-cats', OTHER_TOKEN)],
+          [
+            link('tl-cats', 'ta-cats', TOKEN, 'cats'),
+            link('tl-other', 'ta-cats', OTHER_TOKEN, 'cats'),
+          ],
         ),
         expectStore: (store) => {
           expect(store.tokenAnalyses).toStrictEqual([
@@ -799,7 +787,10 @@ describe('deleteMorphemes parity with the reducer', () => {
             payload('ta-split', 'cats', { gloss: { en: 'cats' }, morphemes: CAT_S }),
             payload('ta-plain', 'Cats', { ...EARLIER, gloss: { en: 'cats' } }),
           ],
-          [link('tl-split', 'ta-split', TOKEN), link('tl-other', 'ta-plain', OTHER_TOKEN)],
+          [
+            link('tl-split', 'ta-split', TOKEN, 'cats'),
+            link('tl-other', 'ta-plain', OTHER_TOKEN, 'cats'),
+          ],
         ),
         expectStore: (store) => {
           expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-plain']);
@@ -814,7 +805,7 @@ describe('deleteMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { morphemes: CAT_S })],
-          [link('tl-other', 'ta-cats', OTHER_TOKEN)],
+          [link('tl-other', 'ta-cats', OTHER_TOKEN, 'cats')],
         ),
         expectStore: (store) => {
           expect(store.tokenAnalyses[0].updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
@@ -826,7 +817,7 @@ describe('deleteMorphemes parity with the reducer', () => {
       {
         analysis: analysisOf(
           [payload('ta-cats', 'cats', { gloss: { en: 'cats' } })],
-          [link('tl-cats', 'ta-cats', TOKEN)],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
         ),
         expectStore: (store) => {
           expect(store.tokenAnalyses[0].updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
@@ -836,7 +827,7 @@ describe('deleteMorphemes parity with the reducer', () => {
     [
       'removes an approved link whose payload is gone, and nothing else',
       {
-        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN)]),
+        analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'cats')]),
         expectStore: (store) => {
           expect(store).toStrictEqual(emptyAnalysis());
         },
@@ -853,8 +844,6 @@ describe('deleteMorphemes parity with the reducer', () => {
         deleteMorphemesCommand(buffer, { tokenRef: TOKEN, analysisId: 'new-analysis', now: NOW }),
     );
 
-    expectStore(outcome.store);
-    expect(outcome.host).toStrictEqual(outcome.store);
-    expect(outcome.indexDifferences).toStrictEqual([]);
+    expectParity(outcome, expectStore);
   });
 });

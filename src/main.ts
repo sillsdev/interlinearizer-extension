@@ -847,7 +847,7 @@ async function runSessionEdit(
   }
 }
 
-/** Ids a new record or link would take, and the time an edit lands. */
+/** Ids that a new record or link would take, and the time an edit lands. */
 function editStamp() {
   return {
     analysisId: crypto.randomUUID(),
@@ -880,7 +880,7 @@ function writeGloss(
 }
 
 /**
- * Approves a stored token analysis for a token, in place of any approval it held.
+ * Approves a stored token analysis for a token, in place of any approval the token held.
  *
  * @returns The changes it applied, as JSON.
  * @throws As {@link runSessionEdit} does.
@@ -1554,7 +1554,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     approveAnalysisForToken,
     {
       method: {
-        summary: 'Approve a stored token analysis for a token, in place of any approval it held',
+        summary:
+          'Approve a stored token analysis for a token, in place of any approval the token held',
         params: [
           sessionIdParam,
           ...tokenParams,

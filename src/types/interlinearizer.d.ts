@@ -405,7 +405,7 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
-     * Approves a stored token analysis for a token, in place of any approval it held.
+     * Approves a stored token analysis for a token, in place of any approval the token held.
      *
      * @returns A JSON string of the changes it applied.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged

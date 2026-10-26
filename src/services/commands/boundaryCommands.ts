@@ -83,7 +83,7 @@ async function stageSegmentation(
 
 /**
  * Splits every approved phrase that a boundary before `boundaryRef` would cut, so that no phrase
- * spans two segments. A phrase is cut where it has tokens both before the boundary and at or after
+ * spans two segments. A phrase is cut when it has tokens both before the boundary and at or after
  * it, in document order. Each piece lands wholly on its own side. Phrases are broken in id order.
  */
 async function breakStraddledPhrases(
@@ -110,9 +110,9 @@ async function breakStraddledPhrases(
 }
 
 /**
- * Stages merging a segment into the one before it. A segment with no run before it to merge into,
- * such as the book's first, is left as it is. No phrase is broken, because removing a boundary cuts
- * none.
+ * Stages merging a segment into the one before it. A segment with no verse text directly before it,
+ * such as the book's first or one after a heading, is left as it is. No phrase is broken, because
+ * removing a boundary cuts none.
  */
 export async function mergeSegments(
   buffer: ChangeBuffer,

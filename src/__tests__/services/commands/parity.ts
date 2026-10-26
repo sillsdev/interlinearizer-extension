@@ -113,7 +113,7 @@ export async function runParity(
   return { store: normalized(store), host: normalized(draft.analysis), changes, indexDifferences };
 }
 
-/** A boundary edit, named as the WebView's segmentation dispatch names it. */
+/** A boundary edit to run both ways. */
 export type BoundaryEdit =
   | { kind: 'merge'; secondSegmentStartRef: string }
   | { kind: 'split'; tokenRef: string }
@@ -140,10 +140,10 @@ function idSequence(): () => string {
 }
 
 /**
- * The reducer actions and the boundaries the WebView's boundary dispatch gives for `edit`. A split,
- * and the add half of a move, first breaks every approved phrase the new boundary would cut, in the
- * document order of the book the view renders. Ids come from `newId`, three for each phrase it
- * breaks.
+ * The reducer actions and the boundaries that the WebView gives for `edit`. A split, and the add
+ * half of a move, first breaks every approved phrase the new boundary would cut, in the document
+ * order of the book the view renders. Ids come from `newId`, spent for each broken phrase as the
+ * host command spends them.
  */
 function webViewBoundaryEdit(
   verseBook: Book,
@@ -209,7 +209,7 @@ function webViewBoundaryEdit(
  * does for `edit` over `verseBook`: its boundary transform, and the reducer actions that break the
  * phrases the edit would cut. The other way stages `command`'s changes over a draft holding the
  * same analysis and boundaries, then applies them and reloads the draft from storage. Each way
- * makes ids from its own sequence, which `command` receives as `newId`.
+ * makes ids from its own sequence. The host way's sequence reaches `command` as `newId`.
  */
 export async function runBoundaryParity(
   verseBook: Book,

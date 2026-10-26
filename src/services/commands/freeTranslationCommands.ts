@@ -17,8 +17,8 @@ export type WriteSegmentFreeTranslationRequest = {
   /** BCP 47 tag of the language the translation is written in. */
   analysisLanguage: string;
   /**
-   * The stale translation the value was typed over. The write adopts it when the segment holds no
-   * approved translation. Absent when the value was typed over none.
+   * `SegmentAnalysis.id` of the stale translation the value was typed over. The write adopts that
+   * translation when the segment holds no approved one. Absent when the value was typed over none.
    */
   adoptStaleAnalysisId?: string;
   /** Id a new segment analysis takes, spent only when the write makes one. */
@@ -55,8 +55,8 @@ async function resolveApprovedSegmentAnalysis(
 }
 
 /**
- * The stale translation `analysisId`, with the stale link an approval tie picks among those naming
- * it, or `undefined` when no stale link names a stored analysis by that id.
+ * The stale translation that `analysisId` names, with the stale link an approval tie picks among
+ * those naming it. Resolves to `undefined` when no stale link names a stored analysis by that id.
  */
 async function findStaleSegmentAnalysis(
   buffer: ChangeBuffer,
@@ -75,7 +75,6 @@ function isEmptySegmentAnalysis(analysis: SegmentAnalysis): boolean {
   );
 }
 
-/** Removes a segment analysis together with the link that places it. */
 function removeSegmentAnalysis(buffer: ChangeBuffer, { analysis, link }: PlacedSegmentAnalysis) {
   buffer.delete('segmentAnalyses', analysis);
   buffer.delete('segmentAnalysisLinks', link);
@@ -104,11 +103,12 @@ function clearFreeTranslation(
 }
 
 /**
- * Re-approves the stale translation `analysisId` for `segmentId`, moving its link there, so that
- * one whose own segment has vanished lands where it was shown. The link is staged.
+ * Re-approves the stale translation that `analysisId` names, moving its link to `segmentId`, so
+ * that a translation whose own segment has vanished lands where it was shown. It stages the link
+ * but not the analysis.
  *
- * @returns The translation with its approved link, or `undefined` when `analysisId` names no stale
- *   translation or `segmentId` already holds an approved one.
+ * Resolves to the translation with its approved link. Resolves to `undefined` when `analysisId`
+ * names no stale translation, or when `segmentId` already holds an approved one.
  */
 async function approveStaleSegmentAnalysis(
   buffer: ChangeBuffer,
@@ -133,12 +133,12 @@ async function approveStaleSegmentAnalysis(
  *
  * - The segment's approved translation is updated in place, and its surface text refreshed.
  * - A segment with none adopts the stale translation `adoptStaleAnalysisId` names, approving it for
- *   the segment, so that its other languages carry over.
+ *   the segment, so that the stale translation's other languages carry over.
  * - Otherwise, a new approved translation is made.
  *
  * A blank value clears the language's translation, removing the analysis and its link once nothing
- * is left. On a segment with no approved translation, a blank value clears the stale translation
- * the same way, leaving it stale, and never makes a record.
+ * is left. On a segment with no approved translation, a blank value clears the named stale
+ * translation the same way and leaves it stale. A blank value never makes a record.
  *
  * Approved links on the segment that name no stored analysis are removed.
  */

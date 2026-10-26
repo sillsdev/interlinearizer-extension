@@ -1147,8 +1147,9 @@ function splitPhrase(
  * @param surfaceText - The segment's current baseline text, refreshed on the translation.
  * @param value - The free translation. A blank value clears the translation in the session's
  *   analysis language.
- * @param adoptStaleAnalysisId - The stale translation the value was typed over, adopted when the
- *   segment has no approved translation. Absent or `null` when there is none.
+ * @param adoptStaleAnalysisId - Id of the stale translation the value was typed over. The write
+ *   adopts that translation when the segment has no approved one. Absent or `null` when the value
+ *   was typed over none.
  * @returns The changes it applied, as JSON.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.

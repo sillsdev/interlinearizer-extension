@@ -40,9 +40,8 @@ export interface BookIndexes {
 }
 
 /**
- * Builds the book-wide lookup indexes over a book's `segments`, in a single pass. Custom boundaries
- * regroup a book's tokens without reordering them, so the document orders come out the same for
- * every segmentation of one text.
+ * Builds the book-wide lookup indexes over a book's `segments`. Every segmentation of one text
+ * gives the same token orders; custom boundaries regroup a book's tokens without reordering them.
  */
 export function buildBookIndexes(segments: readonly Segment[]): BookIndexes {
   const segmentById = new Map<string, Segment>();

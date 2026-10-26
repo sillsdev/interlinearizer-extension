@@ -77,7 +77,7 @@ const tokensOf = (store: TextAnalysis) =>
 
 const refs = (...tokens: TokenSnapshot[]) => tokens.map(({ tokenRef }) => tokenRef);
 
-/** The host command `edit` names, as the WebView's dispatch names it. */
+/** The host command for `edit`. */
 function commandFor(edit: BoundaryEdit) {
   return (buffer: ChangeBuffer, newId: () => string) => {
     if (edit.kind === 'merge') return mergeSegments(buffer, { ...edit, verseBook: VERSE_BOOK });

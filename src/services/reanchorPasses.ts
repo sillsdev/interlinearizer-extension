@@ -8,10 +8,8 @@ import type { ReanchorBooks } from './editHistory';
 
 /**
  * The stored draft as a pass over `bookCodes` needs it: the draft's record, the links into those
- * books, and the segment analyses those links reference, along with those `alsoLinked` names. Reads
- * one call at a time, since calls for one draft must not overlap.
- *
- * @param alsoLinked - Segment links not yet stored, whose payloads the pass will compare against.
+ * books, and the segment analyses referenced by those links or by the links in `alsoLinked`, which
+ * are not yet stored. Reads one call at a time, since calls for one draft must not overlap.
  */
 async function readBooks(
   repository: AnalysisRepository,

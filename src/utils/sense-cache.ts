@@ -7,7 +7,7 @@ const PENDING = Symbol('pending');
 
 /**
  * The senses resolved through one set of connected lexicons. A sense is asked for only when
- * requested, never in bulk. It is asked for again only when no answer could be had.
+ * requested, never in bulk. It is asked for again only after a look-up for it rejects.
  *
  * The answers hold only for the lexicons the cache was created over, so a change of lexicon calls
  * for a fresh cache.
@@ -17,13 +17,14 @@ export type SenseCache = {
    * Reads what is known of `ref` without asking for it.
    *
    * @returns The sense, or `undefined` while it is being asked for, when nothing has asked for it,
-   *   when no answer could be had, or when the lexicon has no such sense.
+   *   after its look-up rejected, or when the lexicon has no such sense.
    */
   peek: (ref: SenseRef) => ResolvedSense | undefined;
 
   /**
-   * Asks the lexicon for `ref` unless `ref` has been asked for already. When the lexicon is
-   * unreachable or faulting, nothing is kept, and the next request for `ref` asks again.
+   * Asks the lexicon for `ref` unless `ref` has been asked for already. A look-up that rejects
+   * leaves nothing behind, so the next request for `ref` asks again. A look-up that answers
+   * `undefined` is kept as a miss.
    */
   request: (ref: SenseRef) => void;
 

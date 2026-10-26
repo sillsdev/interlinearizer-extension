@@ -940,9 +940,8 @@ const analysisSlice = createSlice({
        * stranded on an emptied payload. A blank write to a token with no approved analysis is a
        * no-op, so a focus/blur cycle on an empty gloss never creates a record.
        *
-       * A rewrite keeps the payload's `glossSenseRef`. A clear drops it only once no language still
-       * holds usable gloss text, the sense belonging to the analysis rather than to the emptied
-       * language.
+       * Neither a rewrite nor a clear touches the payload's `glossSenseRef`, so a linked payload
+       * survives a clear.
        */
       reducer(state, action: PayloadAction<WriteGlossPayload>) {
         const { tokenRef, surfaceText, value, id, linkId, now } = action.payload;
@@ -1209,9 +1208,8 @@ const analysisSlice = createSlice({
      * removes it and every link to it. An edit that makes the record identical to a sibling
      * collapses it into that sibling, so the edited row disappears from the catalog.
      *
-     * A rewrite keeps the record's `glossSenseRef`. A clear drops it only once no language still
-     * holds usable gloss text, the sense belonging to the analysis rather than to the emptied
-     * language.
+     * Neither a rewrite nor a clear touches the record's `glossSenseRef`, so a linked record
+     * survives a clear.
      */
     writeAnalysisGloss: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */

@@ -117,11 +117,8 @@ export function TokenChip({
 }>) {
   const analysisLanguage = useAnalysisLanguage();
   const storedGloss = useGloss(token.ref);
-  const { text: committedGloss } = useDisplayedGloss(
-    storedGloss,
-    useGlossSenseRef(token.ref),
-    analysisLanguage,
-  );
+  const glossSenseRef = useGlossSenseRef(token.ref);
+  const { text: committedGloss } = useDisplayedGloss(storedGloss, glossSenseRef, analysisLanguage);
   const onGlossChange = useGlossDispatch();
   const morphemes = useMorphemes(token.ref);
   const dispatchMorphemeBreakdown = useMorphemeBreakdownDispatch();
@@ -141,12 +138,14 @@ export function TokenChip({
     analysisLanguage,
   );
   const approveAnalysis = useApproveAnalysisDispatch();
-  const [draft, setDraft] = useGlossDraft(storedGloss, committedGloss);
+  const [draft, setDraft, draftWrites] = useGlossDraft(storedGloss, committedGloss);
   // While the user has emptied an approved token's gloss, the deletion only commits on blur, so the
   // store still reports the token as approved. Preview the post-commit suggestion now — derived as
   // if this token's approval were already gone — so the row and ghost placeholder stay consistent
   // across the blur. Gated to the one token being cleared so no other chip does the extra lookup.
-  const clearingApprovedGloss = !disabled && resolved?.status === 'approved' && draft === '';
+  // A lexicon link survives the clear and keeps the approval, so a linked token previews nothing.
+  const clearingApprovedGloss =
+    !disabled && resolved?.status === 'approved' && draft === '' && glossSenseRef === undefined;
   const clearedSuggestion = useSuggestionAfterClearing(
     token.ref,
     token.surfaceText,
@@ -178,16 +177,15 @@ export function TokenChip({
     }
   }, [onRemove, isRemoveHovered]);
 
-  /** Commits the draft gloss only when it differs from the committed value. */
+  /** Commits the draft gloss when it has anything to write, and otherwise puts the shown gloss back. */
   const commitDraft = () => {
-    if (draft !== committedGloss) {
-      onGlossChange(token.ref, token.surfaceText, draft);
-    }
+    if (draftWrites) onGlossChange(token.ref, token.surfaceText, draft);
+    else setDraft(committedGloss);
   };
 
   // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur, and flush
   // the draft if the input unmounts mid-edit. A read-only chip has no input, so it never reports.
-  useReportGlossEditing(!disabled && !readOnly && draft !== committedGloss, commitDraft);
+  useReportGlossEditing(!disabled && !readOnly && draftWrites, commitDraft);
 
   // Clear popover-open state when the morpheme row unmounts (showMorphology off), since it lives on
   // the chip and would otherwise survive to silently reopen the popover when morphology returns.

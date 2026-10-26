@@ -1114,6 +1114,21 @@ describe('PhraseBox', () => {
 
       expect(dispatchSpy).not.toHaveBeenCalled();
     });
+
+    it('writes nothing when the sense gloss is emptied, and shows it again on blur', async () => {
+      const dispatchSpy = jest.fn();
+      mockUsePhraseGlossDispatch.mockReturnValue(dispatchSpy);
+      const { ui } = withLexicon(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+        's-1': { gloss: { en: 'in the' } },
+      });
+      renderBox(ui);
+
+      await userEvent.clear(await screen.findByDisplayValue('in the'));
+      await userEvent.tab();
+
+      expect(dispatchSpy).not.toHaveBeenCalled();
+      expect(screen.getByTestId('phrase-gloss-input')).toHaveValue('in the');
+    });
   });
 
   it('ignores non-Enter/Space keys on the box container', async () => {

@@ -785,4 +785,19 @@ describe('morphemes linked to a lexicon sense', () => {
     await screen.findByText('hel gloss');
     expect(container.querySelector('[data-testid="morpheme-lexicon-mark"]')).toBeNull();
   });
+
+  it('writes nothing when a sense gloss is emptied, and shows it again on blur', async () => {
+    const dispatchMock = jest.fn();
+    jest.spyOn(AnalysisStore, 'useMorphemeGlossDispatch').mockReturnValue(dispatchMock);
+    renderLinkedBox();
+    const field = screen.getByRole('textbox', { name: 'Gloss for morpheme hel' });
+    await waitFor(() => expect(field).toHaveValue('greet'));
+
+    await userEvent.clear(field);
+    fireEvent.blur(field);
+
+    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(field).toHaveValue('greet');
+    expect(field).toHaveAttribute('data-draft-field', 'committed');
+  });
 });

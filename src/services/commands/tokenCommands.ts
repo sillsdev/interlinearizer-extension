@@ -206,9 +206,9 @@ async function appendApprovedAnalysis(
  * Stages writing a token's gloss.
  *
  * The edit is per token: a payload that other tokens share is forked first. An edit that makes the
- * payload identical to another folds it into that one. A rewrite keeps the payload's
- * `glossSenseRef`. A token with no approved analysis takes a content-identical stored one, or a new
- * one.
+ * payload identical to another folds it into that one. Neither a rewrite nor a clear touches the
+ * payload's `glossSenseRef`. A token with no approved analysis takes a content-identical stored
+ * one, or a new one.
  *
  * A blank value clears the gloss. A payload that the clear leaves empty goes once nothing links it.
  * A blank write to a token with no approved analysis stages nothing.

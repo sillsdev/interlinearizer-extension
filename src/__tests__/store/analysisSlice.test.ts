@@ -234,7 +234,7 @@ describe('writeGloss', () => {
     });
   });
 
-  it('drops the sense reference when the reader clears the gloss', () => {
+  it('keeps the sense reference when the reader clears the gloss', () => {
     const store = createAnalysisStore({
       analysis: {
         analysis: makeAnalysis({
@@ -252,7 +252,11 @@ describe('writeGloss', () => {
     store.dispatch(writeGloss('tok-1', 'word', ''));
 
     const { tokenAnalyses } = store.getState().analysis.analysis;
-    expect(tokenAnalyses[0].glossSenseRef).toBeUndefined();
+    expect(tokenAnalyses[0].gloss).toBeUndefined();
+    expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({
+      authority: 'x-test',
+      senseId: 'sense-run',
+    });
   });
 
   it('keeps the sense reference when clearing one language leaves another glossed', () => {
@@ -279,7 +283,7 @@ describe('writeGloss', () => {
     });
   });
 
-  it('drops the sense reference when clearing one language leaves only a blank gloss', () => {
+  it('keeps the sense reference when clearing one language leaves only a blank gloss', () => {
     const store = createAnalysisStore({
       analysis: {
         analysis: makeAnalysis({
@@ -298,10 +302,13 @@ describe('writeGloss', () => {
 
     const { tokenAnalyses } = store.getState().analysis.analysis;
     expect(tokenAnalyses[0].gloss).toBeUndefined();
-    expect(tokenAnalyses[0].glossSenseRef).toBeUndefined();
+    expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({
+      authority: 'x-test',
+      senseId: 'sense-run',
+    });
   });
 
-  it('removes a record a blank-gloss clear leaves with nothing but its sense reference', () => {
+  it('keeps a record a clear leaves holding only its sense reference, still approved', () => {
     const store = createAnalysisStore({
       analysis: {
         analysis: makeAnalysis({
@@ -318,8 +325,13 @@ describe('writeGloss', () => {
     store.dispatch(writeGloss('tok-1', 'word', ''));
 
     const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
-    expect(tokenAnalyses).toHaveLength(0);
-    expect(tokenAnalysisLinks).toHaveLength(0);
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({
+      authority: 'x-test',
+      senseId: 'sense-run',
+    });
+    expect(tokenAnalysisLinks).toHaveLength(1);
+    expect(tokenAnalysisLinks[0].status).toBe('approved');
   });
 
   it('refreshes the surface text on the analysis and the link snapshot when the token text changed', () => {
@@ -5219,7 +5231,7 @@ describe('analysis-keyed reducers', () => {
       });
     });
 
-    it('drops the sense reference when the reader clears the gloss', () => {
+    it('keeps the sense reference when the reader clears the gloss', () => {
       const store = makeSharedStore({
         glossSenseRef: { authority: 'x-test', senseId: 'sense-run' },
         morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'en' }],
@@ -5227,7 +5239,10 @@ describe('analysis-keyed reducers', () => {
 
       store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: '' }));
 
-      expect(store.getState().analysis.analysis.tokenAnalyses[0].glossSenseRef).toBeUndefined();
+      expect(store.getState().analysis.analysis.tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        authority: 'x-test',
+        senseId: 'sense-run',
+      });
     });
 
     it('keeps the sense reference when clearing one language leaves another glossed', () => {
@@ -5246,7 +5261,7 @@ describe('analysis-keyed reducers', () => {
       });
     });
 
-    it('drops the sense reference when clearing one language leaves only a blank gloss', () => {
+    it('keeps the sense reference when clearing one language leaves only a blank gloss', () => {
       const store = makeSharedStore({
         gloss: { und: 'run', fr: '  ' },
         glossSenseRef: { authority: 'x-test', senseId: 'sense-run' },
@@ -5257,20 +5272,28 @@ describe('analysis-keyed reducers', () => {
 
       const { tokenAnalyses } = store.getState().analysis.analysis;
       expect(tokenAnalyses[0].gloss).toBeUndefined();
-      expect(tokenAnalyses[0].glossSenseRef).toBeUndefined();
+      expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        authority: 'x-test',
+        senseId: 'sense-run',
+      });
     });
 
-    it('removes a record a blank-gloss clear leaves with nothing but its sense reference', () => {
+    it('keeps a record a clear leaves holding only its sense reference, with its links', () => {
       const store = makeSharedStore({
         gloss: { und: 'run', fr: '  ' },
         glossSenseRef: { authority: 'x-test', senseId: 'sense-run' },
       });
+      const linksBefore = store.getState().analysis.analysis.tokenAnalysisLinks.length;
 
       store.dispatch(writeAnalysisGloss({ analysisId: 'ta-shared', value: '' }));
 
       const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
-      expect(tokenAnalyses).toHaveLength(0);
-      expect(tokenAnalysisLinks).toHaveLength(0);
+      expect(tokenAnalyses).toHaveLength(1);
+      expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        authority: 'x-test',
+        senseId: 'sense-run',
+      });
+      expect(tokenAnalysisLinks).toHaveLength(linksBefore);
     });
 
     it('glosses a record that carried none, a breakdown having been entered first', () => {

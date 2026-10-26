@@ -24,11 +24,11 @@ import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import { formatTemplate } from '../utils/format-template';
 
 /**
- * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
- * Separated into its own component so hooks are always called unconditionally. The placeholder
- * comes from strip context (fetched once per strip) rather than a per-instance
- * `useLocalizedStrings`, so the `field-sizing: content` input renders at its final width on its
- * first frame.
+ * Inline gloss input for a phrase. Writes the phrase-level gloss to the analysis store, and shows
+ * the stored gloss or, where none is stored, the gloss of the phrase's lexicon sense. Separated
+ * into its own component so hooks are always called unconditionally. The placeholder comes from
+ * strip context (fetched once per strip) rather than a per-instance `useLocalizedStrings`, so the
+ * `field-sizing: content` input renders at its final width on its first frame.
  */
 function PhraseGlossInput({
   phraseId,
@@ -50,16 +50,17 @@ function PhraseGlossInput({
   const dispatchPhraseGloss = usePhraseGlossDispatch();
   const { glossPlaceholder, phraseGlossLabel } = usePhraseStripContext();
   const readOnly = useAnalysisReadOnly();
-  const [draft, setDraft] = useGlossDraft(stored, committed);
+  const [draft, setDraft, draftWrites] = useGlossDraft(stored, committed);
 
-  /** Writes the draft gloss only when it differs from the committed value. */
+  /** Writes the draft gloss when it has anything to write, and otherwise puts the shown gloss back. */
   const commitDraft = () => {
-    if (!disabled && draft !== committed) dispatchPhraseGloss(phraseId, draft);
+    if (!disabled && draftWrites) dispatchPhraseGloss(phraseId, draft);
+    else setDraft(committed);
   };
 
   // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur, and flush
   // the draft if the input unmounts mid-edit. A read-only phrase has no input, so it never reports.
-  useReportGlossEditing(!disabled && !readOnly && draft !== committed, commitDraft);
+  useReportGlossEditing(!disabled && !readOnly && draftWrites, commitDraft);
 
   // A read-only analysis shows the phrase gloss as plain text, not as an input; an empty gloss still
   // holds its line.

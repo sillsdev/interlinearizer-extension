@@ -38,7 +38,7 @@ describe('clearAnalysisGloss', () => {
     );
   });
 
-  it('drops the gloss and the sense once no language holds usable text', () => {
+  it('drops the gloss once no language holds usable text, keeping the sense', () => {
     const record = analysis({
       gloss: { en: 'at', fr: ' ' },
       glossSenseRef: { authority: 'fwlite', senseId: 's-1' },
@@ -46,14 +46,18 @@ describe('clearAnalysisGloss', () => {
 
     clearAnalysisGloss(record, 'en');
 
-    expect(record).toStrictEqual(analysis());
+    expect(record).toStrictEqual(
+      analysis({ glossSenseRef: { authority: 'fwlite', senseId: 's-1' } }),
+    );
   });
 
-  it('drops a sense left with no gloss at all', () => {
+  it('leaves a record holding only a sense as it is', () => {
     const record = analysis({ glossSenseRef: { authority: 'fwlite', senseId: 's-1' } });
 
     clearAnalysisGloss(record, 'en');
 
-    expect(record).toStrictEqual(analysis());
+    expect(record).toStrictEqual(
+      analysis({ glossSenseRef: { authority: 'fwlite', senseId: 's-1' } }),
+    );
   });
 });

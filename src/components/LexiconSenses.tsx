@@ -33,13 +33,14 @@ export function LexiconSensesProvider({
 export type DisplayedGloss = Readonly<{
   /** The gloss text, `''` when there is none to show. */
   text: string;
-  /** Whether `text` comes from the sense the ref names, rather than from the analysis's own gloss. */
+  /** Whether `text` is the gloss of the referenced sense, rather than the analysis's own gloss. */
   fromLexicon: boolean;
 }>;
 
 /**
  * The gloss to show in `language` for an analysis that stores `gloss` and carries `senseRef`. That
- * is the stored gloss where there is one, else the gloss of the sense `senseRef` names, else none.
+ * is the stored gloss where there is one, else the gloss of the sense `senseRef` points to, else
+ * none.
  *
  * A ref that cannot be resolved shows the same as no ref. That covers an unreachable lexicon, a
  * sense that is gone, and a lexicon that is not connected. The ref itself is never changed.

@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import { act, renderHook } from '@testing-library/react';
+import { useEffect } from 'react';
 import useGlossDraft from '../../hooks/useGlossDraft';
 
 /** Renders the hook over a gloss that a test can change, as the store or the lexicon would. */
@@ -50,5 +51,49 @@ describe('useGlossDraft', () => {
     rerender({ stored: 'stream', displayed: 'stream' });
 
     expect(result.current[0]).toBe('stream');
+  });
+
+  it('never commits a draft behind an arriving lexicon gloss', () => {
+    const committed: string[] = [];
+    const { rerender } = renderHook(
+      (props) => {
+        const [draft] = useGlossDraft(props.stored, props.displayed);
+        useEffect(() => {
+          committed.push(draft);
+        });
+      },
+      { initialProps: { stored: '', displayed: '' } },
+    );
+
+    rerender({ stored: '', displayed: 'water' });
+
+    expect(committed).toEqual(['', 'water']);
+  });
+
+  it('writes a typed change', () => {
+    const { result } = renderDraft('river', 'river');
+    act(() => result.current[1]('stream'));
+
+    expect(result.current[2]).toBe(true);
+  });
+
+  it('writes an emptied stored gloss', () => {
+    const { result } = renderDraft('river', 'river');
+    act(() => result.current[1](''));
+
+    expect(result.current[2]).toBe(true);
+  });
+
+  it('writes nothing for an emptied gloss that only the lexicon supplies', () => {
+    const { result } = renderDraft('', 'water');
+    act(() => result.current[1]('  '));
+
+    expect(result.current[2]).toBe(false);
+  });
+
+  it('writes nothing for an untouched draft', () => {
+    const { result } = renderDraft('', 'water');
+
+    expect(result.current[2]).toBe(false);
   });
 });

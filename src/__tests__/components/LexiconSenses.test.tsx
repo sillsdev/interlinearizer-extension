@@ -8,7 +8,7 @@ import { stubLexiconRegistry, testSenseRef } from './test-helpers';
 
 const SENSES = { 's-1': { gloss: { en: 'water', fr: 'eau' } } };
 
-/** Renders the ladder inside a lexicon holding {@link SENSES}. */
+/** Renders {@link useDisplayedGloss} inside a lexicon holding {@link SENSES}. */
 function renderDisplayedGloss(gloss: string, senseRef: SenseRef | undefined, language = 'en') {
   const { registry, resolveSense } = stubLexiconRegistry(SENSES);
   const wrapper = ({ children }: Readonly<{ children: ReactNode }>) => (

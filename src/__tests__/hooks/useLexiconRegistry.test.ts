@@ -100,7 +100,7 @@ beforeEach(() => {
  * Lets the watches' reports land inside `act`, so a test that asserts on the registry after they
  * settle does not race the state updates they make.
  */
-async function settleProbe() {
+async function settleReports() {
   await act(async () => {});
 }
 
@@ -415,7 +415,7 @@ describe('useLexiconRegistry', () => {
       });
       const { result } = renderHook(() => useLexiconRegistry('project-1'));
       await waitFor(() => expect(provider.subscribeToLink).toHaveBeenCalled());
-      await settleProbe();
+      await settleReports();
 
       expect(result.current.isForeign({ authority: FW_LITE_AUTHORITY })).toBe(false);
       expect(result.current.openChooser).toBeUndefined();
@@ -431,7 +431,7 @@ describe('useLexiconRegistry', () => {
       provider.subscribeToLink.mockRejectedValue(new Error('no such project'));
       const { result } = renderHook(() => useLexiconRegistry('project-1'));
       await waitFor(() => expect(provider.subscribeToLink).toHaveBeenCalled());
-      await settleProbe();
+      await settleReports();
 
       expect(result.current.openChooser).toBeUndefined();
     });
@@ -445,7 +445,7 @@ describe('useLexiconRegistry', () => {
       provider.subscribeToLink.mockImplementation(async () => unsubscribe);
 
       rerender({ id: 'project-2' });
-      await settleProbe();
+      await settleReports();
 
       expect(result.current.openChooser).toBeUndefined();
     });
@@ -458,7 +458,7 @@ describe('useLexiconRegistry', () => {
       await reportAvailable(false);
       provider.subscribeToLink.mockImplementation(async () => unsubscribe);
       await reportAvailable(true);
-      await settleProbe();
+      await settleReports();
 
       expect(provider.subscribeToLink).toHaveBeenCalledTimes(2);
       expect(result.current.openChooser).toBeUndefined();
@@ -468,7 +468,7 @@ describe('useLexiconRegistry', () => {
       availabilityReporting(false);
       watchReporting(undefined);
       const { result } = renderHook(() => useLexiconRegistry('project-1'));
-      await settleProbe();
+      await settleReports();
 
       expect(result.current.openChooser).toBeUndefined();
     });
@@ -479,7 +479,7 @@ describe('useLexiconRegistry', () => {
       availabilityReporting(false);
       watchReporting(undefined);
       const { result } = renderHook(() => useLexiconRegistry('project-1'));
-      await settleProbe();
+      await settleReports();
       expect(result.current.openChooser).toBeUndefined();
 
       await reportAvailable(true);

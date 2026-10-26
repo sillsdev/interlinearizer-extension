@@ -452,16 +452,17 @@ export function MorphemeGlossInput({
   const stored = morpheme.gloss?.[analysisLanguage] ?? '';
   const { text: committed } = useDisplayedGloss(stored, morpheme.senseRef, analysisLanguage);
   const dispatchMorphemeGloss = useMorphemeGlossDispatch();
-  const [draft, setDraft] = useGlossDraft(stored, committed);
+  const [draft, setDraft, draftWrites] = useGlossDraft(stored, committed);
 
-  /** Writes the draft gloss only when it differs from the committed value. */
+  /** Writes the draft gloss when it has anything to write, and otherwise puts the shown gloss back. */
   const commitDraft = () => {
-    if (!disabled && draft !== committed) dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
+    if (!disabled && draftWrites) dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
+    else setDraft(committed);
   };
 
   // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur, and flush
   // the draft if the input unmounts mid-edit.
-  useReportGlossEditing(!disabled && draft !== committed, commitDraft);
+  useReportGlossEditing(!disabled && draftWrites, commitDraft);
 
   return (
     <input

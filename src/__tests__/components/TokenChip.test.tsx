@@ -1040,6 +1040,24 @@ describe('TokenChip linked to a lexicon sense', () => {
     expect(onGlossChange).not.toHaveBeenCalled();
   });
 
+  it('writes nothing when the sense gloss is emptied, and shows it again on blur', async () => {
+    const onGlossChange = jest.fn();
+    const { ui } = withLexicon(
+      <AnalysisStoreProvider analysisLanguage="und" onGlossChange={onGlossChange}>
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+      SENSES,
+    );
+    render(ui);
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('greet'));
+
+    await userEvent.clear(screen.getByRole('textbox'));
+    await userEvent.tab();
+
+    expect(onGlossChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox')).toHaveValue('greet');
+  });
+
   it("shows an unapproved record's sense gloss where the record stores none", async () => {
     setMockAnalysisReadOnly(true);
     jest.spyOn(AnalysisStore, 'useUnapprovedTokenAnalysis').mockReturnValue({

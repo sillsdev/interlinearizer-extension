@@ -849,10 +849,7 @@ async function runSessionEdit(
   }
 }
 
-/**
- * Ids that a new record or link would take, the id a private copy of a shared payload would take,
- * and the time an edit lands.
- */
+/** Fresh ids for the records an edit may make, and the time the edit lands. */
 function editStamp() {
   return {
     analysisId: crypto.randomUUID(),
@@ -991,7 +988,8 @@ function discardStaleFreeTranslation(sessionId: string, analysisId: string): Pro
  * where one exists.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<string> {
   return runSessionEdit(sessionId, 'createPhrase', (buffer) =>
@@ -1000,11 +998,12 @@ function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<strin
 }
 
 /**
- * Gives a phrase occurrence a new token run, keeping its gloss; an empty run removes the
+ * Gives a phrase occurrence a new token run, keeping its gloss. An empty run removes the
  * occurrence.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function updatePhrase(
   sessionId: string,
@@ -1017,10 +1016,11 @@ function updatePhrase(
 }
 
 /**
- * Removes a phrase occurrence, with its payload unless another occurrence shares it.
+ * Removes a phrase occurrence, with its payload unless another occurrence shares that payload.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function deletePhrase(sessionId: string, phraseId: string): Promise<string> {
   return runSessionEdit(sessionId, 'deletePhrase', (buffer) =>
@@ -1029,11 +1029,12 @@ function deletePhrase(sessionId: string, phraseId: string): Promise<string> {
 }
 
 /**
- * Merges a neighbor into a phrase occurrence as one edit: the target takes the merged token run,
- * and the absorbed occurrence, when named, is removed.
+ * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token run.
+ * The absorbed occurrence, when named, is removed.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function mergePhrases(
   sessionId: string,
@@ -1055,7 +1056,8 @@ function mergePhrases(
  * Writes a phrase occurrence's gloss in the session's analysis language; a blank value clears it.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function writePhraseGloss(sessionId: string, phraseId: string, value: string): Promise<string> {
   return runSessionEdit(sessionId, 'writePhraseGloss', (buffer, session) =>
@@ -1072,7 +1074,8 @@ function writePhraseGloss(sessionId: string, phraseId: string, value: string): P
  * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function approvePhrase(sessionId: string, phraseId: string): Promise<string> {
   return runSessionEdit(sessionId, 'approvePhrase', (buffer) =>
@@ -1085,7 +1088,8 @@ function approvePhrase(sessionId: string, phraseId: string): Promise<string> {
  * leaves that token in no phrase.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function splitPhrase(
   sessionId: string,

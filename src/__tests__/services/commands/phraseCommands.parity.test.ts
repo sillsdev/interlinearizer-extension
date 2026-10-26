@@ -82,8 +82,8 @@ type ParityCase<Input> = {
 };
 
 /**
- * Runs `analysis` through both `action` and `command`, checking the reducer's result with
- * `expectStore` and that the command leaves the same analysis and consistent indexes.
+ * Runs `analysis` through both `action` and `command`. Checks the reducer's result with
+ * `expectStore`, then checks that the command leaves the same analysis with consistent indexes.
  */
 async function expectParity(
   { analysis, expectStore }: Omit<ParityCase<unknown>, 'input'>,

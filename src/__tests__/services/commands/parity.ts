@@ -38,7 +38,7 @@ function normalized(analysis: TextAnalysis): TextAnalysis {
 
 /**
  * Runs one input both ways over `analysis`. One way runs `action` through the store's reducer,
- * working in `analysisLanguage`; several actions run in turn. The other way stages `command`'s
+ * working in `analysisLanguage`. An array of actions runs in turn. The other way stages `command`'s
  * changes over a draft holding the same analysis, then applies them and reloads the draft from
  * storage.
  */

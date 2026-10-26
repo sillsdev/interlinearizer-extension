@@ -8,7 +8,7 @@ import type { ChangeBuffer } from './changeBuffer';
 
 /** What every edit that may fork a phrase occurrence's payload needs. */
 type PhraseEditStamp = {
-  /** ISO 8601 time of the edit, stamped on the records it touches. */
+  /** ISO 8601 time of the edit, stamped on the records the edit touches. */
   now: string;
   /** Id a private copy of a shared payload takes, spent only when the edit forks one. */
   forkId: string;
@@ -22,7 +22,7 @@ export type CreatePhraseRequest = {
   linkId: string;
   /** Id a new payload takes, spent only when no content-identical payload is stored. */
   analysisId: string;
-  /** ISO 8601 time of the edit, stamped on the records it makes. */
+  /** ISO 8601 time of the edit, stamped on the records the edit makes. */
   now: string;
 };
 
@@ -30,7 +30,7 @@ export type CreatePhraseRequest = {
 export type UpdatePhraseRequest = PhraseEditStamp & {
   /** `PhraseAnalysisLink.id` of the occurrence. */
   phraseId: string;
-  /** The new token run, in document order; an empty run removes the occurrence. */
+  /** The new token run, in document order. An empty run removes the occurrence. */
   tokens: TokenSnapshot[];
 };
 
@@ -47,8 +47,8 @@ export type MergePhrasesRequest = PhraseEditStamp & {
   /** The merged token run, in document order. */
   tokens: TokenSnapshot[];
   /**
-   * `PhraseAnalysisLink.id` of the neighboring occurrence folded into `tokens`, which the merge
-   * removes. Absent when the neighbor is a token in no phrase.
+   * `PhraseAnalysisLink.id` of the neighboring occurrence folded into `tokens`. The merge removes
+   * that occurrence. Absent when the neighbor is a token in no phrase.
    */
   absorbedPhraseId?: string;
 };
@@ -57,7 +57,7 @@ export type MergePhrasesRequest = PhraseEditStamp & {
 export type WritePhraseGlossRequest = PhraseEditStamp & {
   /** `PhraseAnalysisLink.id` of the occurrence. */
   phraseId: string;
-  /** The gloss; blank clears the occurrence's gloss in `analysisLanguage`. */
+  /** The gloss. A blank value clears the occurrence's gloss in `analysisLanguage`. */
   value: string;
   /** BCP 47 tag of the language the gloss is written in. */
   analysisLanguage: string;
@@ -67,7 +67,7 @@ export type WritePhraseGlossRequest = PhraseEditStamp & {
 export type ApprovePhraseRequest = {
   /** `PhraseAnalysisLink.id` of the occurrence. */
   phraseId: string;
-  /** ISO 8601 time of the edit, stamped on the link it approves. */
+  /** ISO 8601 time of the edit, stamped on the link the edit approves. */
   now: string;
 };
 
@@ -78,7 +78,7 @@ export type SplitPhraseRequest = PhraseEditStamp & {
   /** `Token.ref` of the token the first half ends with. */
   splitAfterTokenRef: string;
   /**
-   * Each token's place in document order, by `Token.ref`. A token it does not place sorts as if at
+   * Each token's place in document order, by `Token.ref`. A token the map leaves out sorts as if at
    * place zero.
    */
   tokenDocOrder: ReadonlyMap<string, number>;
@@ -116,9 +116,12 @@ async function isPhrasePayloadShared(
 }
 
 /**
- * The payload an edit to `link`'s occurrence writes to: its own, or a private copy when other
- * occurrences share it, so that they keep reading what they did. The copy is dated by the edit and
- * staged. Staging `link` is left to the caller.
+ * The payload an edit to `link`'s occurrence writes to. That is the occurrence's own payload, or a
+ * private copy when other occurrences share the payload, so that those occurrences keep reading
+ * what they did.
+ *
+ * The copy is dated by the edit and staged. Forking repoints `link` at the copy. Staging `link` is
+ * left to the caller.
  *
  * @returns `undefined` when the link names no stored payload.
  */
@@ -137,9 +140,9 @@ async function editablePhraseAnalysis(
 }
 
 /**
- * When the edit made the staged `analysis` identical to another payload, folds it into that one, so
- * that an edit never leaves a duplicate. Every occurrence of `analysis` moves to the survivor. The
- * survivor and the moved links keep their timestamps.
+ * When the edit made the staged `analysis` identical to another payload, folds `analysis` into that
+ * payload, so that an edit never leaves a duplicate. Every occurrence of `analysis` moves to the
+ * survivor. The survivor and the moved links keep their timestamps.
  */
 async function mergeIntoIdenticalPhrase(
   buffer: ChangeBuffer,
@@ -161,7 +164,7 @@ async function mergeIntoIdenticalPhrase(
 
 /**
  * Gives a phrase occurrence a new token run and re-derives its payload's surface text, so that the
- * text never goes stale. Other occurrences sharing the payload keep theirs. An occurrence whose
+ * text never goes stale. Other occurrences sharing the payload are unaffected. An occurrence whose
  * link names no stored payload still takes the new run.
  */
 async function reshapePhrase(
@@ -182,8 +185,8 @@ async function reshapePhrase(
 }
 
 /**
- * Stages an approved phrase occurrence over `tokens`. It shares a content-identical stored payload
- * as that payload stands, where one exists, and otherwise gets a new one.
+ * Stages an approved phrase occurrence over `tokens`. Where a content-identical payload is stored,
+ * the occurrence shares that payload unchanged. Otherwise the occurrence gets a new payload.
  */
 export async function createPhrase(
   buffer: ChangeBuffer,
@@ -213,13 +216,13 @@ export async function createPhrase(
 }
 
 /**
- * Stages giving a phrase occurrence a new token run. The occurrence keeps its gloss, and its
- * payload's surface text is re-derived. The edit is per occurrence: a payload other occurrences
- * share is forked first. An edit that makes the payload identical to another folds it into that
- * one.
+ * Stages giving a phrase occurrence a new token run. The occurrence keeps its gloss. Its payload's
+ * surface text is re-derived. The edit is per occurrence: a payload other occurrences share is
+ * forked first. An edit that makes the payload identical to another folds the edited payload into
+ * the other.
  *
- * An empty run removes the occurrence, as {@link deletePhrase} does, so that no phrase holds no
- * tokens. Nothing is staged for an unknown occurrence.
+ * An empty run removes the occurrence, so that no phrase holds no tokens. Its payload goes too,
+ * unless another occurrence shares it. Nothing is staged for an unknown occurrence.
  */
 export async function updatePhrase(
   buffer: ChangeBuffer,
@@ -245,11 +248,12 @@ export async function deletePhrase(
 
 /**
  * Stages merging a neighbor into a phrase occurrence as one edit. The target takes the merged run,
- * as {@link updatePhrase} gives it. The absorbed occurrence, when named, is removed as
- * {@link deletePhrase} removes it.
+ * keeping its gloss. The absorbed occurrence, when named, is removed. Its payload goes too, unless
+ * another occurrence shares it.
  *
- * The absorbed occurrence goes first, so that a payload only the two shared stays with the target
- * rather than forking. Nothing is staged when the absorbed occurrence is the target.
+ * A payload only the two shared stays with the target rather than forking. Other occurrences
+ * sharing either payload are unaffected. Nothing is staged when the absorbed occurrence is the
+ * target.
  */
 export async function mergePhrases(
   buffer: ChangeBuffer,
@@ -267,7 +271,7 @@ export async function mergePhrases(
 /**
  * Stages writing a phrase occurrence's gloss in `analysisLanguage`. The edit is per occurrence: a
  * payload other occurrences share is forked first. An edit that makes the payload identical to
- * another folds it into that one.
+ * another folds the edited payload into the other.
  *
  * A blank value clears the language's gloss, leaving the phrase in place. Nothing is staged for an
  * unknown occurrence, or one whose payload isn't stored.
@@ -294,7 +298,7 @@ export async function writePhraseGloss(
 }
 
 /**
- * Stages approving a phrase occurrence, leaving its `confidence` as recorded. Refused while any of
+ * Stages approving a phrase occurrence, leaving its `confidence` as recorded. Refused when any of
  * its tokens is in an approved phrase, so that no token ends up in two. Nothing is staged for an
  * unknown or already approved occurrence.
  */
@@ -317,14 +321,16 @@ export async function approvePhrase(
  * Stages splitting a phrase occurrence just after `splitAfterTokenRef`, in document order. The
  * first half runs up to and including that token.
  *
- * - When both halves keep two or more tokens, the occurrence shrinks to the first half and the second
- *   becomes a new occurrence, as {@link createPhrase} makes one.
- * - When one half keeps a single token, the occurrence shrinks to the other half and that token is
- *   left in no phrase.
- * - When neither half keeps two tokens, the occurrence is removed.
+ * - When both halves keep two or more tokens, the occurrence shrinks to the first half. The second
+ *   half becomes a new approved occurrence, sharing a content-identical stored payload where one
+ *   exists.
+ * - When one half keeps a single token, the occurrence shrinks to the other half. That token is left
+ *   in no phrase.
+ * - When neither half keeps two tokens, the occurrence is removed. Its payload goes too, unless
+ *   another occurrence shares it.
  *
- * The occurrence shrinks as {@link updatePhrase} reshapes one, and is removed as {@link deletePhrase}
- * removes one. Nothing is staged for an unknown occurrence, a token not in it, or its last token.
+ * A shrunk occurrence keeps its gloss. Other occurrences sharing its payload are unaffected.
+ * Nothing is staged for an unknown occurrence, a token not in it, or its last token.
  */
 export async function splitPhrase(
   buffer: ChangeBuffer,

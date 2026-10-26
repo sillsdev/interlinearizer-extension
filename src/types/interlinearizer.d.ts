@@ -502,7 +502,7 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
-     * Removes a phrase occurrence, with its payload unless another occurrence shares it.
+     * Removes a phrase occurrence, with its payload unless another occurrence shares that payload.
      *
      * @returns A JSON string of the changes it applied.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
@@ -550,8 +550,8 @@ declare module 'papi-shared-types' {
 
     /**
      * Splits a phrase occurrence just after `splitAfterTokenRef`, in the document order
-     * `tokenDocOrder` gives by `Token.ref`. A token it leaves out sorts as if at place zero. A half
-     * left with a single token leaves that token in no phrase.
+     * `tokenDocOrder` gives by `Token.ref`. A token `tokenDocOrder` leaves out sorts as if at place
+     * zero. A half left with a single token leaves that token in no phrase.
      *
      * @returns A JSON string of the changes it applied.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged

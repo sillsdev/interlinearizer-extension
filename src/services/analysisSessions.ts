@@ -229,7 +229,7 @@ export class AnalysisSessions {
       const changes = buffer.toChangeSet(intent);
       if (isEmptyChangeSet(changes)) return changes;
       await assertApprovalRule(buffer, session.repository);
-      const scope = await session.repository.getScope();
+      const scope = changes.scope ?? (await session.repository.getScope());
       if (scope.analysisLanguages.length === 0) {
         changes.scope = { ...scope, analysisLanguages: [session.analysisLanguage] };
       }

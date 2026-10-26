@@ -549,19 +549,79 @@ declare module 'papi-shared-types' {
     'interlinearizer.approvePhrase': (sessionId: string, phraseId: string) => Promise<string>;
 
     /**
-     * Splits a phrase occurrence just after `splitAfterTokenRef`, in the document order
-     * `tokenDocOrder` gives by `Token.ref`. A token `tokenDocOrder` leaves out sorts as if at place
-     * zero. A half left with a single token leaves that token in no phrase.
+     * Splits a phrase occurrence just after `splitAfterTokenRef`, in the document order of that
+     * token's book as the session's source project holds it. A half left with a single token leaves
+     * that token in no phrase.
      *
      * @returns A JSON string of the changes it applied.
-     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
-     *   before rethrowing).
+     * @throws If the project has no text for the token's book, the session is read-only or not
+     *   open, or the edit is refused or fails (logged before rethrowing).
      */
     'interlinearizer.splitPhrase': (
       sessionId: string,
       phraseId: string,
       splitAfterTokenRef: string,
-      tokenDocOrder: Record<string, number>,
+    ) => Promise<string>;
+
+    /**
+     * Writes a segment's free translation in a session's analysis language, refreshing the surface
+     * text stored with it. A blank value clears the translation, removing it once nothing is left.
+     *
+     * A segment with no approved translation adopts the stale translation `adoptStaleAnalysisId`
+     * names, approving it for the segment, so that its other languages carry over. A value typed
+     * over no stale translation leaves `adoptStaleAnalysisId` out, or passes `null`.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.writeSegmentFreeTranslation': (
+      sessionId: string,
+      segmentId: string,
+      surfaceText: string,
+      value: string,
+      adoptStaleAnalysisId?: string | null,
+    ) => Promise<string>;
+
+    /**
+     * Merges the segment beginning at `secondSegmentStartRef` into the one before it. A segment
+     * with no run before it to merge into, such as the book's first, is left as it is.
+     *
+     * @returns A JSON string of the changes it applied, which carry the draft's boundaries in its
+     *   scope record.
+     * @throws If the project has no text for the token's book, the session is read-only or not
+     *   open, or the edit fails (logged before rethrowing).
+     */
+    'interlinearizer.mergeSegments': (
+      sessionId: string,
+      secondSegmentStartRef: string,
+    ) => Promise<string>;
+
+    /**
+     * Splits a segment so a new one begins at `tokenRef`. Every approved phrase the new boundary
+     * would cut is split first, in the same edit, so that no phrase spans two segments.
+     *
+     * @returns A JSON string of the changes it applied, which carry the draft's boundaries in its
+     *   scope record.
+     * @throws If the project has no text for the token's book, the session is read-only or not
+     *   open, or the edit is refused or fails (logged before rethrowing).
+     */
+    'interlinearizer.splitSegment': (sessionId: string, tokenRef: string) => Promise<string>;
+
+    /**
+     * Moves a segment boundary from `fromRef` to `toRef`, as pulling an edge token across a
+     * boundary does. Every approved phrase a boundary before `toRef` would cut is split first, in
+     * the same edit.
+     *
+     * @returns A JSON string of the changes it applied, which carry the draft's boundaries in its
+     *   scope record.
+     * @throws If the project has no text for the book of `toRef`, the session is read-only or not
+     *   open, or the edit is refused or fails (logged before rethrowing).
+     */
+    'interlinearizer.moveBoundary': (
+      sessionId: string,
+      fromRef: string,
+      toRef: string,
     ) => Promise<string>;
 
     /**

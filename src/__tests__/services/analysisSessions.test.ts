@@ -524,6 +524,24 @@ describe('AnalysisSessions', () => {
       await expect(stored(storage)).resolves.toMatchObject({ analysisLanguages: [] });
     });
 
+    it("keeps the scope the command staged when listing the session's analysis language", async () => {
+      const { host, sessions, storage } = makeSessions();
+      host.getInterfaceLanguages.mockResolvedValue(['de']);
+      const { sessionId } = await sessions.open(SOURCE);
+      const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+
+      await sessions.edit(sessionId, 'merge', async (buffer) => {
+        buffer.putScope({ ...(await buffer.getScope()), segmentation });
+      });
+
+      await expect(stored(storage)).resolves.toMatchObject({
+        analysisLanguages: ['de'],
+        segmentation,
+      });
+      await sessions.undo(sessionId);
+      await expect(stored(storage)).resolves.not.toHaveProperty('segmentation');
+    });
+
     it('leaves the analysis languages of a draft listing some', async () => {
       const { sessions, storage, saveDraft } = makeSessions();
       await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['fr', 'en'] });

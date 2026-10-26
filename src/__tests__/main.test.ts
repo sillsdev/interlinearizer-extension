@@ -4,7 +4,13 @@ import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } fr
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
-import type { DraftProject, ProjectConfig, TextAnalysis, TokenSnapshot } from 'interlinearizer';
+import type {
+  DraftProject,
+  PhraseAnalysisLink,
+  ProjectConfig,
+  TextAnalysis,
+  TokenSnapshot,
+} from 'interlinearizer';
 import { AnalysisSessions } from '../services/analysisSessions';
 import * as bookService from '../services/bookService';
 import { DraftRepository } from '../services/draftRepository';
@@ -19,6 +25,7 @@ import {
   createTestActivationContext,
   FIXTURE_STAMPS,
   makeStubProject,
+  makeVerseBook,
   memoryStorage,
   silentLogger,
 } from './test-helpers';
@@ -422,6 +429,10 @@ describe('main', () => {
           'interlinearizer.writePhraseGloss',
           'interlinearizer.approvePhrase',
           'interlinearizer.splitPhrase',
+          'interlinearizer.writeSegmentFreeTranslation',
+          'interlinearizer.mergeSegments',
+          'interlinearizer.splitSegment',
+          'interlinearizer.moveBoundary',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
           'interlinearizer.openProjectInfoModal',
@@ -1963,13 +1974,26 @@ describe('main', () => {
           'interlinearizer.approvePhrase',
         ),
         splitPhrase: handler<
+          (sessionId: string, phraseId: string, splitAfterTokenRef: string) => Promise<string>
+        >('interlinearizer.splitPhrase'),
+        writeSegmentFreeTranslation: handler<
           (
             sessionId: string,
-            phraseId: string,
-            splitAfterTokenRef: string,
-            tokenDocOrder: Record<string, number>,
+            segmentId: string,
+            surfaceText: string,
+            value: string,
+            adoptStaleAnalysisId?: string | null,
           ) => Promise<string>
-        >('interlinearizer.splitPhrase'),
+        >('interlinearizer.writeSegmentFreeTranslation'),
+        mergeSegments: handler<
+          (sessionId: string, secondSegmentStartRef: string) => Promise<string>
+        >('interlinearizer.mergeSegments'),
+        splitSegment: handler<(sessionId: string, tokenRef: string) => Promise<string>>(
+          'interlinearizer.splitSegment',
+        ),
+        moveBoundary: handler<
+          (sessionId: string, fromRef: string, toRef: string) => Promise<string>
+        >('interlinearizer.moveBoundary'),
       };
     }
 
@@ -2016,6 +2040,12 @@ describe('main', () => {
       ],
     };
 
+    /** Two verses of Genesis, standing in for the source project's text. */
+    const VERSE_BOOK = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 1:2', text: 'And the earth' },
+    ]);
+
     beforeEach(() => {
       jest
         .mocked(projectStorage.openDraftRepository)
@@ -2023,6 +2053,7 @@ describe('main', () => {
           stubRepository({ ...emptyDraft('src-project'), analysisLanguages: ['en'] }),
         );
       __mockSettingsGet.mockResolvedValue(['en']);
+      jest.mocked(bookService.getVerseBook).mockResolvedValue(VERSE_BOOK);
     });
 
     it("opens a session on the source project's draft", async () => {
@@ -2382,8 +2413,35 @@ describe('main', () => {
       [
         'splitPhrase',
         'splitPhrase',
+        (c: SessionCommands, id: string) => c.splitPhrase(id, 'pl-1', 'GEN 1:1:0'),
+      ],
+      [
+        'writeSegmentFreeTranslation clearing nothing',
+        'writeSegmentFreeTranslation',
         (c: SessionCommands, id: string) =>
-          c.splitPhrase(id, 'pl-1', 'GEN 1:1:0', { 'GEN 1:1:0': 0, 'GEN 1:1:1': 1 }),
+          c.writeSegmentFreeTranslation(id, 'GEN 1:1', 'In the beginning', '', 'sa-stale'),
+      ],
+      [
+        'writeSegmentFreeTranslation clearing nothing, adopting a translation named null',
+        'writeSegmentFreeTranslation',
+        (c: SessionCommands, id: string) =>
+          // eslint-disable-next-line no-null/no-null -- PAPI delivers an omitted argument as null
+          c.writeSegmentFreeTranslation(id, 'GEN 1:1', 'In the beginning', '', null),
+      ],
+      [
+        "mergeSegments on the book's first segment",
+        'mergeSegments',
+        (c: SessionCommands, id: string) => c.mergeSegments(id, 'GEN 1:1:0'),
+      ],
+      [
+        'splitSegment before a segment start',
+        'splitSegment',
+        (c: SessionCommands, id: string) => c.splitSegment(id, 'GEN 1:2:0'),
+      ],
+      [
+        'moveBoundary onto the token it is at',
+        'moveBoundary',
+        (c: SessionCommands, id: string) => c.moveBoundary(id, 'GEN 1:2:0', 'GEN 1:2:0'),
       ],
     ])(
       'runs %s as an edit of the session, replying with the changes',
@@ -2412,6 +2470,116 @@ describe('main', () => {
         expect.any(Error),
       );
     });
+
+    it("writes a segment's free translation in the session's language, replying with the changes", async () => {
+      const { openSession, setAnalysisLanguage, writeSegmentFreeTranslation } =
+        await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+      await setAnalysisLanguage(sessionId, 'fr');
+
+      const changes = JSON.parse(
+        await writeSegmentFreeTranslation(
+          sessionId,
+          'GEN 1:1',
+          'In the beginning',
+          'Au commencement',
+        ),
+      );
+
+      expect(changes).toMatchObject({
+        intent: 'writeSegmentFreeTranslation',
+        segmentAnalyses: {
+          puts: [{ surfaceText: 'In the beginning', freeTranslation: { fr: 'Au commencement' } }],
+          deletes: [],
+        },
+        segmentAnalysisLinks: { puts: [{ status: 'approved', segmentId: 'GEN 1:1' }], deletes: [] },
+      });
+    });
+
+    it.each([
+      [
+        'mergeSegments',
+        (c: SessionCommands, id: string) => c.mergeSegments(id, 'GEN 1:2:0'),
+        { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+      ],
+      [
+        'splitSegment',
+        (c: SessionCommands, id: string) => c.splitSegment(id, 'GEN 1:1:3'),
+        { removedVerseStarts: [], addedStarts: [{ tokenRef: 'GEN 1:1:3', surfaceText: 'the' }] },
+      ],
+      [
+        'moveBoundary',
+        (c: SessionCommands, id: string) => c.moveBoundary(id, 'GEN 1:2:0', 'GEN 1:2:4'),
+        {
+          removedVerseStarts: ['GEN 1:2:0'],
+          addedStarts: [{ tokenRef: 'GEN 1:2:4', surfaceText: 'the' }],
+        },
+      ],
+    ])(
+      "runs %s over the token's book of the session's project, replying with the boundaries",
+      async (intent, command, segmentation) => {
+        const commands = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+
+        const changes = JSON.parse(await command(commands, sessionId));
+
+        expect(changes).toMatchObject({ intent, scope: { segmentation } });
+        expect(bookService.getVerseBook).toHaveBeenCalledWith('src-project', 'GEN');
+      },
+    );
+
+    it('splits a segment and the phrase its new boundary cuts as one edit', async () => {
+      const phrase: PhraseAnalysisLink = {
+        id: 'pl-1',
+        analysisId: 'pa-1',
+        ...FIXTURE_STAMPS,
+        status: 'approved',
+        tokens: [
+          { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+          { tokenRef: 'GEN 1:1:3', surfaceText: 'the' },
+          { tokenRef: 'GEN 1:1:7', surfaceText: 'beginning' },
+        ],
+      };
+      await storeDraftHolding({
+        phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the beginning' }],
+        phraseAnalysisLinks: [phrase],
+      });
+      const { openSession, splitSegment } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(await splitSegment(sessionId, 'GEN 1:1:3'));
+
+      expect(changes).toMatchObject({
+        intent: 'splitSegment',
+        phraseAnalysisLinks: { puts: [{ id: 'pl-1', tokens: phrase.tokens.slice(1) }] },
+        scope: { segmentation: { addedStarts: [{ tokenRef: 'GEN 1:1:3' }] } },
+      });
+    });
+
+    it.each([
+      ['splitPhrase', (c: SessionCommands, id: string) => c.splitPhrase(id, 'pl-1', 'EXO 1:1:0')],
+      ['mergeSegments', (c: SessionCommands, id: string) => c.mergeSegments(id, 'EXO 1:2:0')],
+      ['splitSegment', (c: SessionCommands, id: string) => c.splitSegment(id, 'EXO 1:1:3')],
+      [
+        'moveBoundary',
+        (c: SessionCommands, id: string) => c.moveBoundary(id, 'EXO 1:2:0', 'EXO 1:2:4'),
+      ],
+    ])(
+      'refuses %s in a book the project has no text for, logging the error',
+      async (intent, command) => {
+        jest.mocked(bookService.getVerseBook).mockResolvedValue(undefined);
+        const commands = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+
+        await expect(command(commands, sessionId)).rejects.toThrow(
+          'project src-project has no text for book EXO',
+        );
+        expect(__mockLogger.error).toHaveBeenCalledWith(
+          `Interlinearizer: failed to ${intent} in session ${sessionId}`,
+          expect.any(Error),
+        );
+      },
+    );
 
     it('closes every session on deactivation', async () => {
       const { openSession } = await activateSessionCommands();

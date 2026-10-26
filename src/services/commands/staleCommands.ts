@@ -148,7 +148,8 @@ export type KeepStaleFreeTranslationRequest = {
 
 /**
  * The stale translation `analysisId` with its stale link, or `undefined` when there is none. The
- * link is the translation's only one, because a segment analysis has a single link.
+ * link is the translation's only one: every writer gives a segment analysis exactly one link.
+ * Nothing checks this convention.
  */
 async function findStaleTranslation(
   buffer: ChangeBuffer,

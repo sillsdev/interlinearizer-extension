@@ -93,8 +93,7 @@ async function breakStraddledPhrases(
 ): Promise<void> {
   const { tokenDocOrder, fullTokenOrder } = buildBookIndexes(verseBook.segments);
   const { phraseAnalysisLinks } = await buffer.findLinksInBooks([verseBook.bookRef], ['approved']);
-  const byId = [...phraseAnalysisLinks].sort((a, b) => a.id.localeCompare(b.id));
-  const straddled = phrasesStraddlingBoundary(boundaryRef, byId, fullTokenOrder);
+  const straddled = phrasesStraddlingBoundary(boundaryRef, phraseAnalysisLinks, fullTokenOrder);
   await straddled.reduce(async (previous, { link, splitAfterTokenRef }) => {
     await previous;
     await splitPhrase(buffer, {

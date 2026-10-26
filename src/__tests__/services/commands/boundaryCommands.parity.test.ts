@@ -50,6 +50,14 @@ const EARTH = word(2, 8);
 const WAS = word(2, 14);
 const LIGHT = word(3, 0);
 
+/** A token of an earlier text of verse 1, which the current text lacks. */
+const GONE: TokenSnapshot = { tokenRef: 'GEN 1:1:40', surfaceText: 'formless' };
+
+// Tokens of verse 1 of another book, spelled as GEN 1:1 spells them.
+const EXO_THE: TokenSnapshot = { tokenRef: 'EXO 1:1:3', surfaceText: 'the' };
+const EXO_BEGINNING: TokenSnapshot = { tokenRef: 'EXO 1:1:7', surfaceText: 'beginning' };
+const EXO_GOD: TokenSnapshot = { tokenRef: 'EXO 1:1:17', surfaceText: 'God' };
+
 /** Verse 2 merged into verse 1. */
 const MERGED: SegmentationDelta = { removedVerseStarts: [AND.tokenRef], addedStarts: [] };
 
@@ -70,12 +78,35 @@ function analysisOf(...phrases: [PhraseAnalysis, PhraseAnalysisLink][]): TextAna
   };
 }
 
+/**
+ * An analysis whose phrase occurrences, each an id and its tokens, share the payload `pa-shared`.
+ * The links come in the order given.
+ */
+function sharingOnePayload(...occurrences: [string, TokenSnapshot[]][]): TextAnalysis {
+  return {
+    ...emptyAnalysis(),
+    phraseAnalyses: [
+      { id: 'pa-shared', ...FIXTURE_STAMPS, surfaceText: phraseSurfaceText(occurrences[0][1]) },
+    ],
+    phraseAnalysisLinks: occurrences.map(([id, tokens]) => ({
+      id,
+      analysisId: 'pa-shared',
+      ...FIXTURE_STAMPS,
+      status: 'approved',
+      tokens,
+    })),
+  };
+}
+
 const tokensOf = (store: TextAnalysis) =>
   Object.fromEntries(
     store.phraseAnalysisLinks.map(({ id, tokens }) => [id, tokens.map(({ tokenRef }) => tokenRef)]),
   );
 
 const refs = (...tokens: TokenSnapshot[]) => tokens.map(({ tokenRef }) => tokenRef);
+
+const payloadsOf = (store: TextAnalysis) =>
+  Object.fromEntries(store.phraseAnalysisLinks.map(({ id, analysisId }) => [id, analysisId]));
 
 /** The host command for `edit`. */
 function commandFor(edit: BoundaryEdit) {
@@ -167,6 +198,51 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
       },
     ],
     [
+      'breaks two cut phrases sharing a payload in id order, the first forking, whatever order they are stored in',
+      {
+        analysis: sharingOnePayload(['pl-b', [BEGINNING, CREATED, AND]], ['pl-a', [IN, THE, GOD]]),
+        segmentation: MERGED,
+        edit: { kind: 'split', tokenRef: GOD.tokenRef },
+        expectStore: (store) => {
+          expect(tokensOf(store)).toStrictEqual({
+            'pl-a': refs(IN, THE),
+            'pl-b': refs(CREATED, AND),
+          });
+          expect(payloadsOf(store)).toStrictEqual({ 'pl-a': 'id-1', 'pl-b': 'pa-shared' });
+        },
+      },
+    ],
+    [
+      'leaves alone a phrase in another book, forking the cut phrase that shares its payload',
+      {
+        analysis: sharingOnePayload(
+          ['pl-gen', [THE, BEGINNING, GOD]],
+          ['pl-exo', [EXO_THE, EXO_BEGINNING, EXO_GOD]],
+        ),
+        edit: { kind: 'split', tokenRef: GOD.tokenRef },
+        expectStore: (store) => {
+          expect(tokensOf(store)).toStrictEqual({
+            'pl-exo': refs(EXO_THE, EXO_BEGINNING, EXO_GOD),
+            'pl-gen': refs(THE, BEGINNING),
+          });
+          expect(payloadsOf(store)).toStrictEqual({ 'pl-exo': 'pa-shared', 'pl-gen': 'id-1' });
+        },
+      },
+    ],
+    [
+      'breaks a cut phrase holding a token the current text lacks',
+      {
+        analysis: analysisOf(phrase('pl-1', [THE, BEGINNING, GONE, GOD, CREATED])),
+        edit: { kind: 'split', tokenRef: GOD.tokenRef },
+        expectStore: (store) => {
+          expect(tokensOf(store)).toStrictEqual({
+            'pl-1': refs(GONE, THE, BEGINNING),
+            'id-2': refs(GOD, CREATED),
+          });
+        },
+      },
+    ],
+    [
       'removes a discontiguous phrase whose gap alone holds the new boundary',
       {
         analysis: analysisOf(phrase('pl-1', [THE, AND])),
@@ -224,6 +300,18 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
             removedVerseStarts: [AND.tokenRef],
             addedStarts: [THE_2],
           });
+        },
+      },
+    ],
+    [
+      'moves a boundary into the gap of a discontiguous phrase, breaking the phrase',
+      {
+        analysis: analysisOf(phrase('pl-1', [THE, GOD, CREATED])),
+        segmentation: { removedVerseStarts: [], addedStarts: [THE] },
+        edit: { kind: 'move', fromRef: THE.tokenRef, toRef: BEGINNING.tokenRef },
+        expectStore: (store, segmentation) => {
+          expect(tokensOf(store)).toStrictEqual({ 'pl-1': refs(GOD, CREATED) });
+          expect(segmentation).toStrictEqual({ removedVerseStarts: [], addedStarts: [BEGINNING] });
         },
       },
     ],

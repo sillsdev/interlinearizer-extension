@@ -12,16 +12,17 @@ Explicit questions and/or clear list of options. Use multiple questions as neede
 
 List of relevant GitHub issues/prs/commits.
 
-## Draft project, Save / Save As, and Wipe
+## Draft project, Save / Save As, and Discard Unsaved Changes
 
 The Interlinearizer now keeps an always-present **draft** per source project that auto-saves every
 edit (so work is never lost), decoupled from the user's saved projects. Editing no longer writes to a
 project automatically; instead the user explicitly **Save**s (writes the draft to the active project)
 or **Save As**es (new project, or overwrite an existing one). **New** starts an empty draft (a project
 is only created on Save As), and **Open** loads a project into the draft as a working copy. Users can
-**Wipe** the draft via a single **Wipe…** dialog where they choose the scope — the whole draft or just
-the current book. The tab title shows a `●` marker while the draft has unsaved changes (Platform.Bible
-exposes no native "unsaved" tab indicator).
+discard the draft's unsaved changes via a single **Discard Unsaved Changes…** dialog where they choose
+the scope — the whole draft or just the current book. Discarding returns that scope to the active
+project's saved analysis, or empties it when no project is active. The tab title shows a `●` marker
+while the draft has unsaved changes (Platform.Bible exposes no native "unsaved" tab indicator).
 
 Decisions made during development that we'd like reviewed:
 
@@ -33,9 +34,10 @@ Decisions made during development that we'd like reviewed:
    changes shows a two-button confirm (Discard / Cancel). Should it instead offer a three-way choice
    ("Save As first" / Discard / Cancel) so the in-progress draft can be kept?
 
-3. **"Wipe book" scope.** The Wipe dialog's "Current book" option targets the book currently in view.
-   A future option — a picker of the books that have draft analysis — is the likely direction but is
-   not yet confirmed; "current book only" is a deliberate interim choice to keep this PR scoped.
+3. **"Current book" discard scope.** The Discard Unsaved Changes dialog's "Current book" option
+   targets the book currently in view. A future option — a picker of the books that have draft
+   analysis — is the likely direction but is not yet confirmed; "current book only" is a deliberate
+   interim choice to keep this PR scoped.
 
 4. **Unsaved indicator + Save feedback.** The unsaved state is shown as a `●` appended to the tab
    title. Options: a different glyph, swapping the tab icon to a "modified" badge, and/or whether a
@@ -57,11 +59,11 @@ Decisions made during development that we'd like reviewed:
    blur — only the indicator is eager). Is reflecting in-progress typing as "unsaved" the right
    behavior, or should the marker wait until an edit is actually committed?
 
-8. **Wipe and the unsaved indicator.** Wiping the **entire draft** is treated as a clean baseline: it
-   clears the `●` marker (the empty draft is not flagged as unsaved) while keeping the active project
-   as the Save target, so a subsequent Save still writes the (now empty) draft to it. Wiping the
-   **current book** stays flagged as unsaved, since it is a partial edit the user will usually want to
-   save. Is this split right, or should both wipes behave the same?
+8. **Discarding and the unsaved indicator.** Discarding the **entire draft's** changes clears the `●`
+   marker, since the draft then matches the active project (or is empty when none is active).
+   Discarding the **current book's** changes leaves the marker as it was, because other books may
+   still hold unsaved changes; the marker can therefore stay lit when that book held the only ones.
+   Is this split right, or should a book discard check whether anything unsaved remains?
 
 9. **Save As → Overwrite and the target's metadata.** "Save As → Overwrite an existing project"
    replaces that project's analysis with the draft's. The draft's _config_ (analysis languages and
@@ -80,12 +82,11 @@ Decisions made during development that we'd like reviewed:
    - Should the Overwrite confirmation surface when the draft's languages differ from the target's,
      so the user is aware their language tags are about to change?
 
-10. **Single "Wipe…" menu item with a scope picker.** The two former menu items ("Wipe Current Book…"
-    and "Wipe Draft…") were collapsed into one **Wipe…** item that opens a dialog where the user picks
-    the scope — current book or entire draft — then confirms. The dialog defaults to "Current book"
-    (the less destructive option) and disables that option when no book is loaded. Alternative: keep
-    two separate menu items (each a single click, no scope step). Current choice: one menu item plus a
-    scope-picker dialog.
+10. **Single "Discard Unsaved Changes…" menu item with a scope picker.** One **Discard Unsaved
+    Changes…** item opens a dialog where the user picks the scope — current book or entire draft —
+    then confirms. The dialog defaults to "Current book" (the less destructive option) and disables
+    that option when no book is loaded. Alternative: two separate menu items (each a single click, no
+    scope step). Current choice: one menu item plus a scope-picker dialog.
 
 11. **In-progress typing guards a project swap.** Switching projects (New / Open) shows the discard
     confirm (item 2) whenever the draft has unsaved changes. This now also fires when a gloss field

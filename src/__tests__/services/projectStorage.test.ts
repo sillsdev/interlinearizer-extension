@@ -1517,7 +1517,7 @@ describe('projectStorage', () => {
         expect(storedProject(stored, 'proj-id')).toEqual(project);
       });
 
-      it('keeps refusing after Wipe All, since the damaged book is still stored', async () => {
+      it('keeps refusing after discarding all changes, since the damaged book is still stored', async () => {
         const { stored, project, loaded } = await damagedJhn();
         await saveDraft(token, 'src-proj', { ...loaded, analysis: emptyAnalysis() });
 

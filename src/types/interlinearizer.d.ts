@@ -144,12 +144,12 @@ declare module 'papi-shared-types' {
     'interlinearizer.openSaveAsModal': () => Promise<void>;
 
     /**
-     * Opens the wipe dialog in the Interlinearizer WebView, where the user chooses to remove the
-     * currently viewed book's analysis or the entire draft's analysis and confirms. The backend
+     * Opens the discard-changes dialog in the Interlinearizer WebView, where the user chooses to
+     * discard the unsaved analysis of the currently viewed book or of the entire draft. The backend
      * registers this command to make it visible to the platform menu system; all logic executes in
      * the WebView.
      */
-    'interlinearizer.wipe': () => Promise<void>;
+    'interlinearizer.openDiscardChangesModal': () => Promise<void>;
 
     /**
      * Opens the analysis catalog panel in the Interlinearizer WebView, listing every analysis the
@@ -315,9 +315,9 @@ declare module 'papi-shared-types' {
 
     /**
      * Persists the draft working buffer for the given source project. Called from the WebView after
-     * every edit (auto-save) and whenever the draft is reset (New), opened from a project, or
-     * wiped. Analysis for a book whose stored analysis could not be read is left out of the write,
-     * and the user is told which books.
+     * every edit (auto-save) and whenever the draft is reset (New), opened from a project, or has
+     * its changes discarded. Analysis for a book whose stored analysis could not be read is left
+     * out of the write, and the user is told which books.
      *
      * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
      * @param draftJson - JSON-stringified `DraftProject` to persist.

@@ -12,8 +12,11 @@ import {
   mergeAnalyses,
   removeBookFromAnalysis,
   removeBookFromSegmentation,
+  restoreBookInAnalysis,
+  restoreBookInSegmentation,
   splitAnalysisByBook,
 } from '../../utils/analysis-book';
+import { emptyAnalysis } from '../../types/empty-factories';
 import { makePhraseLink, makeTokenLink, FIXTURE_STAMPS } from '../test-helpers';
 
 /**
@@ -481,5 +484,106 @@ describe('removeBookFromSegmentation', () => {
     const snapshot = JSON.parse(JSON.stringify(input));
     removeBookFromSegmentation(input, 'GEN');
     expect(input).toEqual(snapshot);
+  });
+});
+
+describe('restoreBookInAnalysis', () => {
+  /** Builds an analysis that links each token ref to the payload `analysisId`, one payload per id. */
+  function analysisOf(...links: [analysisId: string, tokenRef: string][]): TextAnalysis {
+    const ids = [...new Set(links.map(([id]) => id))];
+    return {
+      ...emptyAnalysis(),
+      tokenAnalyses: ids.map((id) => mkTokenAnalysis(id)),
+      tokenAnalysisLinks: links.map(([id, tokenRef]) => makeTokenLink(id, tokenRef)),
+    };
+  }
+
+  /** Lists each token link in `analysis` as `tokenRef=analysisId`, sorted. */
+  function linksIn(analysis: TextAnalysis): string[] {
+    return analysis.tokenAnalysisLinks.map((l) => `${l.token.tokenRef}=${l.analysisId}`).sort();
+  }
+
+  it("replaces the book's records with those the source holds for it", () => {
+    const result = restoreBookInAnalysis(
+      analysisOf(['gen-draft', 'GEN 1:1:0']),
+      analysisOf(['gen-saved', 'GEN 1:1:0'], ['exo-saved', 'EXO 2:2:0']),
+      'GEN',
+    );
+
+    expect(linksIn(result)).toEqual(['GEN 1:1:0=gen-saved']);
+    expect(result.tokenAnalyses.map((a) => a.id)).toEqual(['gen-saved']);
+  });
+
+  it("keeps other books' records", () => {
+    const result = restoreBookInAnalysis(
+      analysisOf(['gen-draft', 'GEN 1:1:0'], ['exo-draft', 'EXO 2:2:0']),
+      analysisOf(['gen-saved', 'GEN 1:1:0']),
+      'GEN',
+    );
+
+    expect(linksIn(result)).toEqual(['EXO 2:2:0=exo-draft', 'GEN 1:1:0=gen-saved']);
+  });
+
+  it("keeps the analysis's version of a payload the book shares with another book", () => {
+    const draft = analysisOf(['shared', 'GEN 1:1:0'], ['shared', 'EXO 2:2:0']);
+    draft.tokenAnalyses = [mkTokenAnalysis('shared', 'edited')];
+    const saved = analysisOf(['shared', 'GEN 1:1:0'], ['shared', 'EXO 2:2:0']);
+
+    const result = restoreBookInAnalysis(draft, saved, 'GEN');
+
+    expect(result.tokenAnalyses).toEqual([mkTokenAnalysis('shared', 'edited')]);
+  });
+
+  it('removes the book when the source holds nothing for it', () => {
+    const result = restoreBookInAnalysis(
+      analysisOf(['gen-draft', 'GEN 1:1:0'], ['exo-draft', 'EXO 2:2:0']),
+      analysisOf(['exo-saved', 'EXO 2:2:0']),
+      'GEN',
+    );
+
+    expect(linksIn(result)).toEqual(['EXO 2:2:0=exo-draft']);
+  });
+
+  it('removes the book when there is no source', () => {
+    const result = restoreBookInAnalysis(analysisOf(['gen-draft', 'GEN 1:1:0']), undefined, 'GEN');
+
+    expect(result).toEqual(emptyAnalysis());
+  });
+});
+
+describe('restoreBookInSegmentation', () => {
+  it("replaces the book's anchors with those the source holds for it", () => {
+    const savedStart = { tokenRef: 'GEN 1:3:5', surfaceText: 'word' };
+
+    const result = restoreBookInSegmentation(
+      { removedVerseStarts: ['GEN 1:2:0', 'EXO 3:4:0'], addedStarts: [] },
+      { removedVerseStarts: ['GEN 1:5:0', 'EXO 9:9:0'], addedStarts: [savedStart] },
+      'GEN',
+    );
+
+    expect(result).toEqual({
+      removedVerseStarts: ['EXO 3:4:0', 'GEN 1:5:0'],
+      addedStarts: [savedStart],
+    });
+  });
+
+  it('returns undefined when no anchor remains', () => {
+    const result = restoreBookInSegmentation(
+      { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+      { removedVerseStarts: ['EXO 9:9:0'], addedStarts: [] },
+      'GEN',
+    );
+
+    expect(result).toBeUndefined();
+  });
+
+  it("keeps other books' anchors when there is no source", () => {
+    const result = restoreBookInSegmentation(
+      { removedVerseStarts: ['GEN 1:2:0', 'EXO 3:4:0'], addedStarts: [] },
+      undefined,
+      'GEN',
+    );
+
+    expect(result).toEqual({ removedVerseStarts: ['EXO 3:4:0'], addedStarts: [] });
   });
 });

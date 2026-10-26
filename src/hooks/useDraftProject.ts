@@ -8,7 +8,7 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
-import { removeBookFromAnalysis, removeBookFromSegmentation } from '../utils/analysis-book';
+import { restoreBookInAnalysis, restoreBookInSegmentation } from '../utils/analysis-book';
 import { DebouncedWriter } from '../utils/debounced-writer';
 import { perfTime, perfTrack } from '../utils/perf-marks';
 import { isEmptyDelta } from '../utils/segmentation';
@@ -116,8 +116,8 @@ export type StepSummary = Readonly<
       /** How many analyses had their gloss cleared. */
       count: number;
     }
-  | { kind: 'wipeBook'; book: string }
-  | { kind: 'wipeAll' }
+  | { kind: 'discardBook'; book: string }
+  | { kind: 'discardAll' }
 >;
 
 /** An undo step, as recorded. */
@@ -159,9 +159,9 @@ export type UseDraftProjectResult = {
    */
   draft: DraftProject | undefined;
   /**
-   * Monotonic counter bumped on every wholesale analysis replacement (New / Open / Wipe). Include
-   * it in the editor's React `key` so the analysis store reseeds from the new draft; per-edit
-   * auto-saves deliberately do not bump it, so editing never remounts the editor.
+   * Monotonic counter bumped on every wholesale analysis replacement (New / Open / Discard).
+   * Include it in the editor's React `key` so the analysis store reseeds from the new draft;
+   * per-edit auto-saves deliberately do not bump it, so editing never remounts the editor.
    */
   draftVersion: number;
   /**
@@ -186,7 +186,7 @@ export type UseDraftProjectResult = {
   getDraftSnapshot: () => DraftProject | undefined;
   /**
    * True while {@link UseDraftProjectResult.commitDraft} runs. Wholesale replacements (New / Open /
-   * Wipe) must be held off while it is, so the draft being saved stays the one the save copies.
+   * Discard) must be held off while it is, so the draft being saved stays the one the save copies.
    */
   isSaving: boolean;
   /**
@@ -226,13 +226,18 @@ export type UseDraftProjectResult = {
    * first edit. The caller is responsible for immediately persisting the project to the backend.
    */
   newDraft: (config: NewDraftConfig) => void;
-  /** Removes one book's analysis from the draft, by 3-letter book code, and marks it dirty. */
-  wipeBook: (bookCode: string) => void;
   /**
-   * Clears the draft's analysis entirely and marks it **not** dirty — a wiped draft is treated as a
-   * clean baseline, so the unsaved-changes indicator clears. The active project is left untouched.
+   * Discards one book's unsaved changes, by 3-letter book code: resets its analysis and boundaries
+   * to those in `saved`, or removes them when `saved` is absent. Leaves the draft as dirty as it
+   * was.
    */
-  wipeAll: () => void;
+  discardBook: (bookCode: string, saved?: DraftContent) => void;
+  /**
+   * Discards the draft's unsaved changes: resets its analysis and boundaries to those in `saved`,
+   * or empties them when `saved` is absent. Marks the draft clean. Keeps its languages and
+   * alignment target.
+   */
+  discardAll: (saved?: DraftContent) => void;
   canUndo: boolean;
   canRedo: boolean;
   /**
@@ -280,7 +285,7 @@ export type UseDraftProjectResult = {
 /**
  * Owns the always-present, auto-saved draft for one source project. Loads the draft on mount, seeds
  * a gloss language when none is stored, and exposes callbacks to auto-save edits, to undo and redo
- * them, and to replace the draft wholesale (New / Open / Wipe).
+ * them, and to replace the draft wholesale (New / Open / Discard).
  *
  * The full draft lives in a ref — the synchronous source of truth for persistence and Save — while
  * a small amount of state (`isDraftLoading`, `draftVersion`, `dirty`) drives re-renders, so
@@ -302,7 +307,7 @@ export default function useDraftProject(
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   // The history states that read clean: the one the draft last started from or was saved at, and
-  // any whole-draft wipe since.
+  // any discard since that left it clean.
   const cleanStatesRef = useRef(new Set<number>());
   const replacementListenersRef = useRef(new Set<(analysis: TextAnalysis) => void>());
   const historyRevisionRef = useRef(0);
@@ -545,49 +550,48 @@ export default function useDraftProject(
     [applyReplacement, sourceProjectId],
   );
 
-  const wipeBook = useCallback(
-    (bookCode: string) => {
+  const discardBook = useCallback(
+    (bookCode: string, saved?: DraftContent) => {
       const { current } = draftRef;
-      /* v8 ignore next -- wipe is only reachable from the mounted editor */
+      /* v8 ignore next -- discarding is only reachable from the mounted editor */
       if (!current) return;
 
-      // Drop the book's custom segment boundaries alongside its analysis: the anchors are working
-      // state keyed by book, so keeping them would re-apply the wiped book's merges/splits on
-      // reload. Clear the field when nothing remains for any other book.
-      const segmentation = removeBookFromSegmentation(current.segmentation, bookCode);
-      const next: DraftProject = {
-        ...current,
-        analysis: removeBookFromAnalysis(current.analysis, bookCode),
-        dirty: true,
+      const restored: DraftContent = {
+        analysis: restoreBookInAnalysis(current.analysis, saved?.analysis, bookCode),
+        segmentation: restoreBookInSegmentation(
+          current.segmentation,
+          saved?.segmentation,
+          bookCode,
+        ),
       };
-      if (segmentation !== undefined) next.segmentation = segmentation;
-      else delete next.segmentation;
+      // Left as dirty as it was: other books may still differ from the saved project.
       applyReplacement(
-        next,
+        withContent(current, restored, current.dirty),
         recordStep(historyRef.current, contentOf(current), {
-          summary: { kind: 'wipeBook', book: bookCode },
+          summary: { kind: 'discardBook', book: bookCode },
         }),
       );
     },
     [applyReplacement],
   );
 
-  const wipeAll = useCallback(() => {
-    const { current } = draftRef;
-    /* v8 ignore next -- wipe is only reachable from the mounted editor */
-    if (!current) return;
+  const discardAll = useCallback(
+    (saved?: DraftContent) => {
+      const { current } = draftRef;
+      /* v8 ignore next -- discarding is only reachable from the mounted editor */
+      if (!current) return;
 
-    // Wiping the whole draft is treated as a clean baseline (dirty: false) so the user is not nagged
-    // to save an empty draft. The active project is left untouched, so a subsequent Save still
-    // targets it. Custom segment boundaries are working state, so a whole-draft wipe clears them too.
-    // (Per-book wipe stays dirty, as it is a partial edit the user will usually want to save.)
-    const next: DraftProject = { ...current, analysis: emptyAnalysis(), dirty: false };
-    delete next.segmentation;
-    applyReplacement(
-      next,
-      recordStep(historyRef.current, contentOf(current), { summary: { kind: 'wipeAll' } }),
-    );
-  }, [applyReplacement]);
+      applyReplacement(
+        withContent(
+          current,
+          saved ?? { analysis: emptyAnalysis(), segmentation: undefined },
+          false,
+        ),
+        recordStep(historyRef.current, contentOf(current), { summary: { kind: 'discardAll' } }),
+      );
+    },
+    [applyReplacement],
+  );
 
   /**
    * Marks the draft synced once `saved` has been copied into a project, unless an edit landed
@@ -737,8 +741,8 @@ export default function useDraftProject(
     autosaveSegmentation,
     loadFromProject,
     newDraft,
-    wipeBook,
-    wipeAll,
+    discardBook,
+    discardAll,
     canUndo,
     canRedo,
     getHistoryRevision,

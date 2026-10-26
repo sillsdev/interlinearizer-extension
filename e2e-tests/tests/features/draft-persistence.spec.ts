@@ -6,7 +6,7 @@ import {
   getInterlinearizerFrame,
   navigateToScriptureRef,
   waitForAppAndInterlinearizerReady,
-  wipeDraft,
+  discardAllChanges,
 } from '../../fixtures/helpers';
 
 test.describe('Draft persistence', () => {
@@ -21,7 +21,7 @@ test.describe('Draft persistence', () => {
     await ensureInterlinearizerOpenOnWeb(mainPage);
     await ensureE2eProjectActive(mainPage);
     await navigateToScriptureRef(mainPage, 'GEN 1:1');
-    await wipeDraft(mainPage);
+    await discardAllChanges(mainPage);
 
     const frame = getInterlinearizerFrame(mainPage);
     const glossInput = frame.getByLabel('Gloss for beginning', { exact: true }).first();

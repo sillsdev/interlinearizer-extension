@@ -36,7 +36,7 @@ import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useLatestRef from '../hooks/useLatestRef';
 import useUndoRedoKeys from '../hooks/useUndoRedoKeys';
 import useWholeTextReanchor from '../hooks/useWholeTextReanchor';
-import useDraftProject, { type EditStep } from '../hooks/useDraftProject';
+import useDraftProject, { type DraftContent, type EditStep } from '../hooks/useDraftProject';
 import { formatTemplate } from '../utils/format-template';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../hooks/useLexiconRegistry';
@@ -57,6 +57,7 @@ import {
 import { perfTrack } from '../utils/perf-marks';
 import { reanchorDraftToBook } from '../utils/reanchor-draft';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
+import { readOpenableProject } from '../utils/read-openable-project';
 import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import useSubmitGuard from '../hooks/useSubmitGuard';
@@ -82,7 +83,7 @@ import { Pt9ImportModal, type Pt9ImportModalPhase } from './modals/Pt9ImportModa
 import { Pt9CheckingModal, Pt9ConvertPromptModal } from './modals/Pt9ConvertPromptModal';
 import { Pt9ReadOnlyIntroModal } from './modals/Pt9ReadOnlyIntroModal';
 import { usePt9ImportProbe } from '../hooks/usePt9ImportAvailability';
-import { WipeModal, type WipeScope } from './modals/WipeModal';
+import { DiscardChangesModal, type DiscardScope } from './modals/DiscardChangesModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav, type FadePhase } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
@@ -283,10 +284,10 @@ const STRING_KEYS = [
   '%interlinearizer_redone_catalogDeleteChecked%',
   '%interlinearizer_undone_catalogClearGlossChecked%',
   '%interlinearizer_redone_catalogClearGlossChecked%',
-  '%interlinearizer_undone_wipeBook%',
-  '%interlinearizer_redone_wipeBook%',
-  '%interlinearizer_undone_wipeAll%',
-  '%interlinearizer_redone_wipeAll%',
+  '%interlinearizer_undone_discardBook%',
+  '%interlinearizer_redone_discardBook%',
+  '%interlinearizer_undone_discardAll%',
+  '%interlinearizer_redone_discardAll%',
   '%interlinearizer_error_load_book_heading%',
   '%interlinearizer_error_pt9Import_load_failed%',
   '%interlinearizer_loading%',
@@ -496,8 +497,8 @@ function InterlinearizerLoaderInner({
     getDraftSnapshot,
     isSaving,
     commitDraft,
-    wipeBook,
-    wipeAll,
+    discardBook,
+    discardAll,
     reanchorBook,
     asOneStep,
     subscribeToAnalysisReplacements,
@@ -703,11 +704,11 @@ function InterlinearizerLoaderInner({
    *
    * `draft.segmentation` is read fresh from the ref-held draft at recompute time; the deps are the
    * two version counters that cover every path that can change it — `segmentationVersion` for
-   * boundary edits, `draftVersion` for wholesale replacements (New / Open / Wipe). The draft object
-   * itself is deliberately NOT a dep: gloss auto-saves replace its identity on every write without
-   * touching the boundaries, so keying on it would re-run the full re-segmentation after every
-   * gloss edit. `isDraftLoading` covers the one replacement that bumps neither counter: the initial
-   * draft load.
+   * boundary edits, `draftVersion` for wholesale replacements (New / Open / Discard). The draft
+   * object itself is deliberately NOT a dep: gloss auto-saves replace its identity on every write
+   * without touching the boundaries, so keying on it would re-run the full re-segmentation after
+   * every gloss edit. `isDraftLoading` covers the one replacement that bumps neither counter: the
+   * initial draft load.
    */
   const segmentation = useMemo(
     () => (verseBook ? reanchorSegmentation(verseBook, draft?.segmentation) : draft?.segmentation),
@@ -964,13 +965,13 @@ function InterlinearizerLoaderInner({
    */
   const modalRef = useLatestRef(modal);
 
-  /** Whether the destructive wipe dialog (book / whole-draft scope picker) is open. */
-  const [wipeModalOpen, setWipeModalOpen] = useState(false);
+  /** Whether the discard-changes dialog (book / whole-draft scope picker) is open. */
+  const [discardChangesModalOpen, setDiscardChangesModalOpen] = useState(false);
 
   const [phraseMode, setPhraseMode] = useState<PhraseMode>(VIEW_PHRASE_MODE);
 
-  // Reset phraseMode whenever the draft is replaced wholesale (New / Open / Wipe), and whenever the
-  // view crosses between the draft and an import, so stale edit/confirm-unlink state is never
+  // Reset phraseMode whenever the draft is replaced wholesale (New / Open / Discard), and whenever
+  // the view crosses between the draft and an import, so stale edit/confirm-unlink state is never
   // passed to the newly mounted Interlinearizer. An import opens without touching the draft or its
   // version, and a mode carried into that read-only view renders its edit-target affordances.
   // Crossing into the import is all this covers; the render below pins the import view's mode
@@ -1417,25 +1418,41 @@ function InterlinearizerLoaderInner({
   }, [activeProject, commitDraft, projectId, setActiveProject, setModal]);
 
   /**
-   * Performs the confirmed wipe for the chosen scope (current book or whole draft) and dismisses
-   * the dialog.
+   * Dismisses the dialog, then resets the chosen scope to the active project's stored content, or
+   * empties it when no project is active. When the stored content can't be read, it notifies the
+   * user and leaves the draft untouched.
    */
-  const handleWipeConfirm = useCallback(
-    (scope: WipeScope) => {
+  const handleDiscardChangesConfirm = useCallback(
+    async (scope: DiscardScope) => {
+      setDiscardChangesModalOpen(false);
+      const bookCode = book?.bookRef;
+      let saved: DraftContent | undefined;
+      if (activeProject) {
+        const project = await readOpenableProject(activeProject.id).catch((e) => {
+          logger.error('Interlinearizer: failed to read the project to discard changes', e);
+          return undefined;
+        });
+        if (!project) {
+          await papi.notifications
+            .send({ message: '%interlinearizer_error_discardChanges_failed%', severity: 'error' })
+            .catch(() => {});
+          return;
+        }
+        saved = { analysis: project.analysis, segmentation: project.segmentation };
+      }
       if (scope === 'book') {
         /* v8 ignore next -- defensive: the dialog disables the book scope unless a book is loaded */
-        if (book) wipeBook(book.bookRef);
+        if (bookCode) discardBook(bookCode, saved);
       }
-      // Match 'all' explicitly rather than via an else, so a future wipe scope can't fall through to
-      // the destructive whole-draft wipe.
-      if (scope === 'all') wipeAll();
-      setWipeModalOpen(false);
+      // Match 'all' explicitly rather than via an else, so a future scope can't fall through to the
+      // whole-draft discard.
+      if (scope === 'all') discardAll(saved);
     },
-    [book, wipeBook, wipeAll],
+    [activeProject, book, discardBook, discardAll],
   );
 
-  /** Dismisses the wipe dialog, leaving the draft untouched. */
-  const handleWipeCancel = useCallback(() => setWipeModalOpen(false), []);
+  /** Dismisses the discard dialog, leaving the draft untouched. */
+  const handleDiscardChangesCancel = useCallback(() => setDiscardChangesModalOpen(false), []);
 
   const handleSidePanelClose = useCallback(() => setSidePanel('closed'), [setSidePanel]);
   const handleShowCatalog = useCallback(() => setSidePanel('catalog'), [setSidePanel]);
@@ -1587,7 +1604,7 @@ function InterlinearizerLoaderInner({
 
   /**
    * Routes top-menu commands to the appropriate action. The project commands open their modals; the
-   * file commands save (or open Save As); the draft command opens the wipe dialog.
+   * file commands save (or open Save As); the draft command opens the discard-changes dialog.
    */
   const menuCommandHandler = useCallback<SelectMenuItemHandler>(
     (item) => {
@@ -1598,7 +1615,7 @@ function InterlinearizerLoaderInner({
         isImportView &&
         (item.command === 'interlinearizer.save' ||
           item.command === 'interlinearizer.openSaveAsModal' ||
-          item.command === 'interlinearizer.wipe');
+          item.command === 'interlinearizer.openDiscardChangesModal');
       if (draftCommandsInert) return;
       // A save copies the draft as it stood when it began, so nothing may replace or save the draft
       // until it ends. The toolbar shows the save running; the notification says why the command
@@ -1609,7 +1626,7 @@ function InterlinearizerLoaderInner({
           item.command === 'interlinearizer.openNewProjectModal' ||
           item.command === 'interlinearizer.save' ||
           item.command === 'interlinearizer.openSaveAsModal' ||
-          item.command === 'interlinearizer.wipe');
+          item.command === 'interlinearizer.openDiscardChangesModal');
       if (heldWhileSaving) {
         papi.notifications
           .send({ message: '%interlinearizer_info_save_in_progress%', severity: 'info' })
@@ -1628,8 +1645,8 @@ function InterlinearizerLoaderInner({
         handleSave();
       } else if (item.command === 'interlinearizer.openSaveAsModal') {
         setModal('saveAs');
-      } else if (item.command === 'interlinearizer.wipe') {
-        setWipeModalOpen(true);
+      } else if (item.command === 'interlinearizer.openDiscardChangesModal') {
+        setDiscardChangesModalOpen(true);
       } else if (item.command === 'interlinearizer.openAnalysisCatalog') {
         setSidePanel('catalog');
       } else if (item.command === 'interlinearizer.openConcordance') {
@@ -1850,7 +1867,7 @@ function InterlinearizerLoaderInner({
   } else {
     // The store's lifetime is the draft's, not the loaded book's - it holds every book. Keyed on
     // the draft version because the seed is not reactive, so a wholesale replacement (New / Open /
-    // Wipe) reseeds by remounting. Wrapping the loading and error branches too keeps it alive
+    // Discard) reseeds by remounting. Wrapping the loading and error branches too keeps it alive
     // across the gap while the next book's USJ is in flight.
     viewArea = (
       <AnalysisStoreProvider
@@ -2101,11 +2118,11 @@ function InterlinearizerLoaderInner({
         />
       )}
 
-      {wipeModalOpen && (
-        <WipeModal
+      {discardChangesModalOpen && (
+        <DiscardChangesModal
           hasActiveBook={!!book}
-          onConfirm={handleWipeConfirm}
-          onCancel={handleWipeCancel}
+          onConfirm={handleDiscardChangesConfirm}
+          onCancel={handleDiscardChangesCancel}
         />
       )}
     </div>

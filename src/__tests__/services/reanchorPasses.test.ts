@@ -82,6 +82,17 @@ describe('reanchorStoredBook', () => {
     expect(changes?.tokenAnalysisLinks?.puts.map(({ id }) => id)).toEqual(['tl-gen']);
   });
 
+  it.each([false, true])(
+    'leaves a draft whose unsaved mark is %s as it was, a pass being no edit',
+    async (dirty) => {
+      const { repository, stored } = await storedDraft({ dirty });
+
+      await reanchorStoredBook(repository, verseBook('GEN 1:1', 'alpha and beta'));
+
+      await expect(stored()).resolves.toMatchObject({ dirty });
+    },
+  );
+
   it('applies nothing when the draft already reads as the book does', async () => {
     const { repository } = await storedDraft();
     const apply = jest.spyOn(repository, 'apply');

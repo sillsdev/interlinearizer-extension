@@ -146,7 +146,10 @@ export type KeepStaleFreeTranslationRequest = {
   now: string;
 };
 
-/** The stale translation `analysisId` with its stale link, or `undefined` when there is none. */
+/**
+ * The stale translation `analysisId` with its stale link, or `undefined` when there is none. The
+ * link is the translation's only one, because a segment analysis has a single link.
+ */
 async function findStaleTranslation(
   buffer: ChangeBuffer,
   analysisId: string,
@@ -160,8 +163,9 @@ async function findStaleTranslation(
 /**
  * Stages keeping the stale free translation `analysisId` as a claim about the current text of
  * `segmentId`, the segment it was shown in. The translation is approved for that segment and
- * restamped with the segment's text. Nothing is staged when the segment already holds an approved
- * translation, or `analysisId` names no stale one.
+ * restamped with the segment's text. The translation's link moves to `segmentId`, so a translation
+ * whose own segment has vanished lands where it was shown. Nothing is staged when the segment
+ * already holds an approved translation, or `analysisId` names no stale one.
  */
 export async function keepStaleFreeTranslation(
   buffer: ChangeBuffer,

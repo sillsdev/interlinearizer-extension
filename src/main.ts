@@ -964,7 +964,7 @@ function keepStaleFreeTranslation(
       analysisId,
       segmentId,
       surfaceText,
-      now: new Date().toISOString(),
+      now: editStamp().now,
     }),
   );
 }

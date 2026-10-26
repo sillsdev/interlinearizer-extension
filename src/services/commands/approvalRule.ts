@@ -39,9 +39,8 @@ function breaches<Link extends { status: string }>(
 }
 
 /**
- * Refuses the changes staged in `buffer` over `repository` when they would leave a token or segment
- * holding more approved links than one, and more than it held before them. A place the stored
- * analysis already breaches is left to the edits that repair it.
+ * Refuses the staged changes where they would give a token or segment more than one approved link,
+ * and more than it has now.
  *
  * @throws {ApprovalRuleError} If the changes breach the rule anywhere.
  */

@@ -4,7 +4,7 @@ import { preferredLink, preferredPayload } from '../../utils/pick-rules';
 import { clearAnalysisGloss, isEmptyTokenAnalysis } from '../../utils/token-analysis-content';
 import type { ChangeBuffer } from './changeBuffer';
 
-/** Where and when a token edit lands. */
+/** What every token edit needs. */
 export type TokenEdit = {
   /** `Token.ref` of the token edited. */
   tokenRef: string;
@@ -33,8 +33,9 @@ export type ApproveAnalysisRequest = TokenEdit & {
 };
 
 /**
- * The token's approved link an approval tie picks, with its payload. Approved links naming no
- * stored payload are removed first, so they never persist or crowd the pick.
+ * The token's approved link that an approval tie picks, with its payload, or `undefined` when there
+ * is none. Approved links that name no stored payload are removed first, so that they never persist
+ * or crowd the pick.
  */
 export async function resolveApprovedAnalysis(
   buffer: ChangeBuffer,
@@ -66,10 +67,10 @@ export async function isSharedByOtherTokens(
 }
 
 /**
- * Moves `link` onto a private copy of its shared payload, so an edit aimed at its token leaves the
- * others reading what they did. The copy is dated by the edit, being a record of its own.
+ * Repoints `link` to a private copy of its shared payload, so that editing the link's token leaves
+ * the other tokens alone. The copy is dated by the edit. Staging `link` is left to the caller.
  *
- * @returns The copy, staged; `link` is repointed but left for the caller to stage.
+ * @returns The copy, staged.
  */
 export function forkSharedAnalysis(
   buffer: ChangeBuffer,
@@ -131,9 +132,9 @@ async function reclaimIfUnlinked(buffer: ChangeBuffer, analysis: TokenAnalysis):
 }
 
 /**
- * Leaves each token holding one link to `analysisId` where it held several. The token keeps its
- * approved link over any other, then the one an approval tie picks, and the survivor keeps the
- * token's first annotation date.
+ * Leaves each token holding one link to `analysisId` where it held several. An approval tie picks
+ * the survivor from the token's approved links, or from all the token's links when none is
+ * approved. The survivor takes the earliest creation date among the token's links to `analysisId`.
  */
 async function coalesceLinksPerToken(buffer: ChangeBuffer, analysisId: string): Promise<void> {
   const { tokenAnalysisLinks } = await buffer.findLinksToAnalyses([analysisId]);
@@ -158,10 +159,12 @@ async function coalesceLinksPerToken(buffer: ChangeBuffer, analysisId: string): 
 }
 
 /**
- * Folds the just-edited payload into a content-identical one where the edit made one, so an edit
- * never leaves the duplicate a first write's find-or-create avoids. Every link to the edited
- * payload moves to the survivor, which keeps its own timestamps, and a token linking both keeps one
- * link. The survivor's breakdown stays stale only when both payloads' were.
+ * When the edit made `analysis` identical to another payload, folds it into that one, so that an
+ * edit never leaves a duplicate.
+ *
+ * Every link to `analysis` moves to the survivor. The survivor keeps its own timestamps. A token
+ * that links both keeps one link. The survivor's breakdown stays stale only when both payloads'
+ * were.
  */
 export async function mergeIntoIdenticalPayload(
   buffer: ChangeBuffer,
@@ -189,9 +192,9 @@ export async function mergeIntoIdenticalPayload(
 }
 
 /**
- * Links a token to an approved payload holding `analysis`'s content, sharing a content-identical
- * stored one where there is one and staging `analysis` otherwise. A non-approved link the token
- * holds to the shared payload is approved rather than joined by a second.
+ * Gives a token an approved link to a payload that holds `analysis`'s content. A content-identical
+ * stored payload is shared where one exists. Otherwise `analysis` is staged. A non-approved link
+ * that the token holds to the shared payload is approved, rather than joined by a second link.
  */
 export async function appendApprovedAnalysis(
   buffer: ChangeBuffer,
@@ -215,11 +218,15 @@ export async function appendApprovedAnalysis(
 }
 
 /**
- * Stages writing a token's gloss. The edit is per token: a payload other tokens share is forked
- * first. An edit that makes the payload identical to another folds it in. A token with no approved
- * analysis takes a content-identical stored one, or a new one. A rewrite keeps the payload's
- * `glossSenseRef`. A blank value clears the gloss, and a payload left empty goes once nothing links
- * it; a blank write to a token with no approved analysis stages nothing.
+ * Stages writing a token's gloss.
+ *
+ * The edit is per token: a payload that other tokens share is forked first. An edit that makes the
+ * payload identical to another folds it into that one. A rewrite keeps the payload's
+ * `glossSenseRef`. A token with no approved analysis takes a content-identical stored one, or a new
+ * one.
+ *
+ * A blank value clears the gloss. A payload that the clear leaves empty goes once nothing links it.
+ * A blank write to a token with no approved analysis stages nothing.
  */
 export async function writeGloss(buffer: ChangeBuffer, request: WriteGlossRequest): Promise<void> {
   const { tokenRef, surfaceText, value, analysisLanguage: lang, analysisId, now } = request;
@@ -259,11 +266,13 @@ export async function writeGloss(buffer: ChangeBuffer, request: WriteGlossReques
 }
 
 /**
- * Stages approving the stored payload `analysisId` for a token, in place of any approval it held.
- * The payload that approval named goes once nothing links it. A token holding a non-approved link
- * to the payload has that link approved, keeping the earlier creation date of the two; one holding
- * neither gets a new link. It stages nothing for a payload not stored, or one already approved for
- * the token.
+ * Stages approving the stored payload `analysisId` for a token, in place of any approval the token
+ * held. Nothing is staged for a payload that isn't stored, or one already approved for the token.
+ *
+ * A token that holds a non-approved link to the payload has that link approved. The approved link
+ * keeps the earlier of its own creation date and the replaced approval's. A token with no approval
+ * and no link to the payload gets a new link. The payload that the replaced approval named goes
+ * once nothing links it.
  */
 export async function approveAnalysisForToken(
   buffer: ChangeBuffer,

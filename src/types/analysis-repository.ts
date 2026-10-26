@@ -207,8 +207,7 @@ export interface AnalysisRepository {
   apply(changes: ChangeSet): Promise<ApplyResult>;
 
   /**
-   * The draft's own record, as {@link AnalysisRepository.exportAll} would load it without its
-   * analysis.
+   * The draft's own record, as {@link AnalysisRepository.exportAll} would load it.
    *
    * @throws Whatever {@link AnalysisRepository.exportAll} throws.
    */

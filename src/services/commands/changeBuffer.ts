@@ -19,7 +19,7 @@ export type RecordOf<Kind extends RecordKind> = TextAnalysis[Kind][number];
 type Staged<T> = {
   /** Records to store, by id. */
   puts: Map<string, T>;
-  /** Records to remove, as they stood before the removal, by id. */
+  /** Records to remove, as they were staged, by id. */
   deletes: Map<string, T>;
   /** Ids of the staged puts that no stored record shares, so removing one stages nothing. */
   created: Set<string>;
@@ -30,9 +30,8 @@ function emptyStaged<T>(): Staged<T> {
 }
 
 /**
- * Changes a command stages before they apply, over a repository it reads through. Every read
- * answers as the repository would once the staged changes applied, and hands out copies the command
- * may change before staging them.
+ * A command's changes, staged over a repository until they apply. Reads through the buffer answer
+ * as if the changes had applied. Each read returns copies that the command may change.
  */
 export class ChangeBuffer {
   private readonly repository: AnalysisRepository;
@@ -158,7 +157,10 @@ export class ChangeBuffer {
     staged.deletes.set(record.id, jsonCopy(record));
   }
 
-  /** Every record of `kind` the staged changes put or remove, as each stood before or will stand. */
+  /**
+   * Every staged record of `kind`: those to store as they will be stored, those to remove as they
+   * were staged.
+   */
   touched<Kind extends RecordKind>(kind: Kind): RecordOf<Kind>[] {
     const staged = this.stagedOf(kind);
     return [...staged.puts.values(), ...staged.deletes.values()].map((record) => jsonCopy(record));

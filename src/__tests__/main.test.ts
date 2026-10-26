@@ -1953,7 +1953,7 @@ describe('main', () => {
             sessionId: string,
             targetPhraseId: string,
             tokens: TokenSnapshot[],
-            absorbedPhraseId?: string,
+            absorbedPhraseId?: string | null,
           ) => Promise<string>
         >('interlinearizer.mergePhrases'),
         writePhraseGloss: handler<
@@ -2368,6 +2368,13 @@ describe('main', () => {
         (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', inThe),
       ],
       [
+        'mergePhrases absorbing a token in no phrase, named null',
+        'mergePhrases',
+        (c: SessionCommands, id: string) =>
+          // eslint-disable-next-line no-null/no-null -- PAPI delivers an omitted argument as null
+          c.mergePhrases(id, 'pl-1', inThe, null),
+      ],
+      [
         'approvePhrase',
         'approvePhrase',
         (c: SessionCommands, id: string) => c.approvePhrase(id, 'pl-1'),
@@ -2389,6 +2396,22 @@ describe('main', () => {
         });
       },
     );
+
+    it.each([
+      ['createPhrase', (c: SessionCommands, id: string) => c.createPhrase(id, [])],
+      ['mergePhrases', (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', [])],
+    ])('refuses %s over no tokens, logging the error', async (intent, command) => {
+      const commands = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+
+      await expect(command(commands, sessionId)).rejects.toThrow(
+        'a phrase needs at least one token',
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        `Interlinearizer: failed to ${intent} in session ${sessionId}`,
+        expect.any(Error),
+      );
+    });
 
     it('closes every session on deactivation', async () => {
       const { openSession } = await activateSessionCommands();

@@ -479,8 +479,8 @@ declare module 'papi-shared-types' {
      * content-identical stored payload where one exists.
      *
      * @returns A JSON string of the changes it applied.
-     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
-     *   before rethrowing).
+     * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
      */
     'interlinearizer.createPhrase': (
       sessionId: string,
@@ -513,17 +513,17 @@ declare module 'papi-shared-types' {
     /**
      * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token
      * run, in document order. The absorbed occurrence, when named, is removed. A neighbor that is a
-     * token in no phrase goes unnamed.
+     * token in no phrase goes unnamed, or is named `null`.
      *
      * @returns A JSON string of the changes it applied.
-     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
-     *   before rethrowing).
+     * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
      */
     'interlinearizer.mergePhrases': (
       sessionId: string,
       targetPhraseId: string,
       tokens: import('interlinearizer').TokenSnapshot[],
-      absorbedPhraseId?: string,
+      absorbedPhraseId?: string | null,
     ) => Promise<string>;
 
     /**

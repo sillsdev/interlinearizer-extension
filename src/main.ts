@@ -984,17 +984,28 @@ function discardStaleFreeTranslation(sessionId: string, analysisId: string): Pro
 }
 
 /**
+ * Refuses a phrase occurrence with no tokens. The store files an occurrence under its first token,
+ * so one with none can't be stored.
+ *
+ * @throws If `tokens` is empty.
+ */
+function assertTokenRun(tokens: readonly TokenSnapshot[]): void {
+  if (tokens.length === 0) throw new Error('Interlinearizer: a phrase needs at least one token');
+}
+
+/**
  * Adds an approved phrase occurrence over `tokens`, sharing a content-identical stored payload
  * where one exists.
  *
  * @returns The changes it applied, as JSON.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
+ * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
+ *   fails. The error is logged before rethrowing.
  */
 function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<string> {
-  return runSessionEdit(sessionId, 'createPhrase', (buffer) =>
-    phraseCommands.createPhrase(buffer, { ...editStamp(), tokens }),
-  );
+  return runSessionEdit(sessionId, 'createPhrase', (buffer) => {
+    assertTokenRun(tokens);
+    return phraseCommands.createPhrase(buffer, { ...editStamp(), tokens });
+  });
 }
 
 /**
@@ -1032,24 +1043,26 @@ function deletePhrase(sessionId: string, phraseId: string): Promise<string> {
  * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token run.
  * The absorbed occurrence, when named, is removed.
  *
+ * @param absorbedPhraseId Absent or `null` when the neighbor is a token in no phrase.
  * @returns The changes it applied, as JSON.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
+ * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
+ *   fails. The error is logged before rethrowing.
  */
 function mergePhrases(
   sessionId: string,
   targetPhraseId: string,
   tokens: TokenSnapshot[],
-  absorbedPhraseId?: string,
+  absorbedPhraseId?: string | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'mergePhrases', (buffer) =>
-    phraseCommands.mergePhrases(buffer, {
+  return runSessionEdit(sessionId, 'mergePhrases', (buffer) => {
+    assertTokenRun(tokens);
+    return phraseCommands.mergePhrases(buffer, {
       ...editStamp(),
       targetPhraseId,
       tokens,
-      ...(absorbedPhraseId ? { absorbedPhraseId } : {}),
-    }),
-  );
+      absorbedPhraseId: absorbedPhraseId ?? undefined,
+    });
+  });
 }
 
 /**

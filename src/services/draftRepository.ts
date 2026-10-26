@@ -20,7 +20,10 @@ import {
 import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
 import { reportAnalysisViolations } from '../utils/analysis-violations';
 import { applyChangeSet } from '../utils/change-set';
+import { jsonCopy } from '../utils/json-copy';
 import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
+import { AnalysisIndex } from './analysisIndex';
+import { IndexedRepository, type IndexedDraft } from './indexedRepository';
 import { draftAnalysisKey, draftJournalKey, draftKey } from './storageKeys';
 
 /**
@@ -104,7 +107,7 @@ type LoadedShard = {
  *
  * Calls on one instance must not overlap.
  */
-export class DraftRepository implements AnalysisRepository {
+export class DraftRepository extends IndexedRepository implements AnalysisRepository {
   readonly capabilities: RepositoryCapabilities = { readOnly: false };
 
   private readonly storage: KeyValueStorage;
@@ -129,12 +132,14 @@ export class DraftRepository implements AnalysisRepository {
   private loaded = false;
 
   /**
-   * The draft as this instance's last apply left it, which the next apply builds on. Dropped by
-   * every load and every whole save, since either may come from a caller holding another draft.
+   * The draft this instance last applied changes to or answered a lookup from, with the index over
+   * its records. A whole save drops it, since its caller may hold another draft, and so does
+   * {@link exportAll}, which reads storage afresh.
    */
-  private current: DraftProject | undefined;
+  private current: IndexedDraft | undefined;
 
   constructor(storage: KeyValueStorage, sourceProjectId: string, logger: WarningLogger) {
+    super();
     this.storage = storage;
     this.logger = logger;
     this.sourceProjectId = sourceProjectId;
@@ -163,14 +168,13 @@ export class DraftRepository implements AnalysisRepository {
    */
   async exportAll(): Promise<DraftExport> {
     this.current = undefined;
-    const exported = await this.readDraft(false);
-    this.loaded = true;
-    return exported;
+    return this.read(false);
   }
 
   /**
-   * Loads the stored draft as {@link exportAll} does, for copying into a project. A draft never
-   * saved exports as a fresh empty one.
+   * Loads the stored draft as {@link exportAll} does, for copying into a project, without refreshing
+   * the draft that lookups and {@link apply} work from. A draft never saved exports as a fresh empty
+   * one.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
@@ -179,10 +183,7 @@ export class DraftRepository implements AnalysisRepository {
    * @throws If storage rejects a read.
    */
   async exportForCopy(): Promise<DraftExport> {
-    this.current = undefined;
-    const exported = await this.readDraft(true);
-    this.loaded = true;
-    return exported;
+    return this.read(true);
   }
 
   /**
@@ -240,7 +241,7 @@ export class DraftRepository implements AnalysisRepository {
     this.current = undefined;
     if (!this.loaded) {
       try {
-        await this.exportAll();
+        await this.read(false);
       } catch (e) {
         // An unparseable draft names no shard to keep, and this save replaces it.
         if (!(e instanceof SyntaxError)) throw e;
@@ -250,9 +251,9 @@ export class DraftRepository implements AnalysisRepository {
   }
 
   /**
-   * Applies the changes to the draft as this instance's last apply left it, or to the stored draft
-   * when it has made none since its last whole load or save. Only the books whose content the
-   * changes alter are rewritten, so an edit to a payload rewrites every book linking it.
+   * Applies the changes to the draft this instance keeps, loading the stored draft first when it
+   * keeps none, as after {@link exportAll} or a whole save. Only the books whose content the changes
+   * alter are rewritten, so an edit to a payload rewrites every book linking it.
    *
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project; nothing is written.
@@ -263,11 +264,42 @@ export class DraftRepository implements AnalysisRepository {
    *   is left as it was.
    */
   async apply(changes: ChangeSet): Promise<ApplyResult> {
-    this.current ??= (await this.exportAll()).draft;
-    const { draft, inverse } = applyChangeSet(this.current, changes);
+    const { draft: base, index } = await this.indexed();
+    const copied = jsonCopy(changes);
+    const { draft, inverse } = applyChangeSet(base, copied);
     await this.writeDraft(draft, undefined, { refuseUnreadable: true });
-    this.current = draft;
+    index.apply(copied);
+    this.current = { draft, index };
     return { inverse };
+  }
+
+  /**
+   * The draft this instance keeps and the index over its records, loading the draft from storage
+   * and building the index when none is kept.
+   *
+   * @throws Whatever {@link exportAll} throws.
+   */
+  protected async indexed(): Promise<IndexedDraft> {
+    if (!this.current) {
+      const { draft } = await this.read(false);
+      this.current = { draft, index: new AnalysisIndex(draft.analysis) };
+    }
+    return this.current;
+  }
+
+  protected keptIndex(): IndexedDraft | undefined {
+    return this.current;
+  }
+
+  /**
+   * Loads the stored draft as {@link readDraft} does, noting that this instance has loaded it.
+   *
+   * @throws Whatever {@link readDraft} throws.
+   */
+  private async read(strictEnvelope: boolean): Promise<DraftExport> {
+    const exported = await this.readDraft(strictEnvelope);
+    this.loaded = true;
+    return exported;
   }
 
   /**

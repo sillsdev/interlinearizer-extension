@@ -90,10 +90,14 @@ describeAnalysisRepositoryConformance('DraftRepository with Pt9ImportRepository'
         pt9Import: { fileHashes: {}, importedAt: '2026-01-01T00:00:00.000Z' },
       };
       await memory.write(projectKey(IMPORT_ID), JSON.stringify(project));
-      return new Pt9ImportRepository(IMPORT_ID, async () => {
-        const raw = await memory.read(projectKey(IMPORT_ID));
-        return raw === undefined ? undefined : JSON.parse(raw);
-      });
+      return new Pt9ImportRepository(
+        IMPORT_ID,
+        async () => {
+          const raw = await memory.read(projectKey(IMPORT_ID));
+          return raw === undefined ? undefined : JSON.parse(raw);
+        },
+        () => 0,
+      );
     },
   };
 });

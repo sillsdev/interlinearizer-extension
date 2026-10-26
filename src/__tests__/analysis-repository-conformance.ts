@@ -1,10 +1,16 @@
 /// <reference types="jest" />
 
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
-import type { AnalysisRepository, ChangeSet, DraftExport } from '../types/analysis-repository';
+import type {
+  AnalysisLinks,
+  AnalysisRepository,
+  ChangeSet,
+  DraftExport,
+} from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
+import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { scopeRecordOf } from '../utils/change-set';
 import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from './test-helpers';
 
@@ -391,6 +397,22 @@ function changeInPlace(draft: DraftProject): void {
   segmentation?.addedStarts.forEach((start) => {
     start.surfaceText = 'changed';
   });
+}
+
+/** The ids of `records`, sorted, since lookups promise no order. */
+function idsOf(records: readonly { id: string }[]): string[] {
+  return records.map(({ id }) => id).sort();
+}
+
+/** The ids of each kind of link in `links`, sorted, since lookups promise no order. */
+function linkIdsOf(links: Partial<AnalysisLinks>) {
+  return {
+    ...(links.tokenAnalysisLinks && { tokenAnalysisLinks: idsOf(links.tokenAnalysisLinks) }),
+    ...(links.phraseAnalysisLinks && { phraseAnalysisLinks: idsOf(links.phraseAnalysisLinks) }),
+    ...(links.segmentAnalysisLinks && {
+      segmentAnalysisLinks: idsOf(links.segmentAnalysisLinks),
+    }),
+  };
 }
 
 /** Expects `value` to survive a JSON round trip unchanged and to hold no `null`. */
@@ -1197,6 +1219,260 @@ export function describeAnalysisRepositoryConformance(
       });
     });
 
+    describe('lookups', () => {
+      /**
+       * A repository over {@link fullDraft}, saved by another repository so its first lookup loads
+       * the draft from storage.
+       */
+      async function overFullDraft(): Promise<AnalysisRepository> {
+        await (await store.open(SOURCE)).replaceAll(fullDraft());
+        return store.open(SOURCE);
+      }
+
+      it("reads the draft's own record", async () => {
+        const repository = await overFullDraft();
+
+        await expect(repository.getScope()).resolves.toStrictEqual(scopeRecordOf(fullDraft()));
+      });
+
+      it("reads the record of a draft never saved as an empty draft's", async () => {
+        await expect((await store.open(SOURCE)).getScope()).resolves.toStrictEqual(
+          scopeRecordOf(emptyDraft(SOURCE)),
+        );
+      });
+
+      it('reads the record the applied changes leave', async () => {
+        const repository = await overFullDraft();
+        const scope = { ...scopeRecordOf(fullDraft()), analysisLanguages: ['de'] };
+
+        await repository.apply({ intent: 'rescope', scope });
+
+        await expect(repository.getScope()).resolves.toStrictEqual(scope);
+      });
+
+      it('gets each payload kind by id, once per id, skipping ids with nothing stored', async () => {
+        const repository = await overFullDraft();
+
+        await expect(
+          repository.getTokenAnalyses(['ta-and', 'ta-missing', 'ta-and']).then(idsOf),
+        ).resolves.toStrictEqual(['ta-and']);
+        await expect(repository.getPhraseAnalyses(['pa-in-the'])).resolves.toStrictEqual(
+          fullAnalysis().phraseAnalyses,
+        );
+        await expect(
+          repository.getSegmentAnalyses(['sa-exo', 'sa-missing']),
+        ).resolves.toStrictEqual(fullAnalysis().segmentAnalyses);
+      });
+
+      it('finds the token links on tokens, and the phrase links touching them, each once', async () => {
+        const repository = await overFullDraft();
+
+        await expect(
+          repository.findLinksByToken(['GEN 1:1:0', 'GEN 1:1:2', 'GEN 1:1:4']).then(linkIdsOf),
+        ).resolves.toStrictEqual({
+          tokenAnalysisLinks: ['tl-gen-and'],
+          phraseAnalysisLinks: ['pa-in-the'],
+        });
+      });
+
+      it('finds the segment links on segments', async () => {
+        const repository = await overFullDraft();
+
+        await expect(
+          repository.findLinksBySegment(['EXO 1:1', 'GEN 1:1']).then(idsOf),
+        ).resolves.toStrictEqual(['sl-exo']);
+      });
+
+      it('finds the links of every kind to analyses', async () => {
+        const repository = await overFullDraft();
+
+        await expect(
+          repository.findLinksToAnalyses(['ta-and', 'pa-in-the', 'sa-exo']).then(linkIdsOf),
+        ).resolves.toStrictEqual({
+          tokenAnalysisLinks: ['tl-exo-and', 'tl-gen-and'],
+          phraseAnalysisLinks: ['pa-in-the'],
+          segmentAnalysisLinks: ['sl-exo'],
+        });
+      });
+
+      it('finds the links of every kind into books', async () => {
+        const repository = await overFullDraft();
+
+        await expect(repository.findLinksInBooks(['GEN']).then(linkIdsOf)).resolves.toStrictEqual({
+          tokenAnalysisLinks: ['tl-gen-and', 'tl-gen-beginning'],
+          phraseAnalysisLinks: ['pa-in-the'],
+          segmentAnalysisLinks: [],
+        });
+      });
+
+      it('finds the links into books with the statuses asked for', async () => {
+        const repository = await overFullDraft();
+
+        await expect(
+          repository.findLinksInBooks(['GEN', 'EXO'], ['suggested']).then(linkIdsOf),
+        ).resolves.toStrictEqual({
+          tokenAnalysisLinks: ['tl-gen-beginning'],
+          phraseAnalysisLinks: [],
+          segmentAnalysisLinks: [],
+        });
+      });
+
+      it('finds the payloads whose surface text normalizes to a form', async () => {
+        const repository = await overFullDraft();
+        await repository.apply({
+          intent: 'addCapitalized',
+          tokenAnalyses: {
+            puts: [{ id: 'ta-And', ...FIXTURE_STAMPS, surfaceText: 'And' }],
+            deletes: [],
+          },
+        });
+
+        await expect(
+          repository.findTokenAnalysesByForm([normalizeSurfaceForm('AND')]).then(idsOf),
+        ).resolves.toStrictEqual(['ta-And', 'ta-and']);
+        await expect(
+          repository.findPhraseAnalysesByForm([normalizeSurfaceForm('In The')]).then(idsOf),
+        ).resolves.toStrictEqual(['pa-in-the']);
+      });
+
+      it('finds nothing in a draft never saved', async () => {
+        const repository = await store.open(SOURCE);
+
+        await expect(repository.findLinksInBooks(['GEN']).then(linkIdsOf)).resolves.toStrictEqual({
+          tokenAnalysisLinks: [],
+          phraseAnalysisLinks: [],
+          segmentAnalysisLinks: [],
+        });
+        await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([]);
+      });
+
+      it('answers from the records the applied changes leave', async () => {
+        const repository = await overFullDraft();
+        await repository.findLinksInBooks(['GEN']);
+
+        await repository.apply(mixedChanges());
+
+        await expect(
+          repository.findLinksToAnalyses(['ta-beginning', 'ta-god']).then(linkIdsOf),
+        ).resolves.toStrictEqual({
+          tokenAnalysisLinks: ['tl-gen-god'],
+          phraseAnalysisLinks: [],
+          segmentAnalysisLinks: [],
+        });
+        await expect(
+          repository.findLinksBySegment(['GEN 1:1', 'EXO 1:1']).then(idsOf),
+        ).resolves.toStrictEqual(['sl-gen']);
+        await expect(
+          repository.findLinksByToken(['GEN 1:1:2', 'GEN 1:1:13']).then(linkIdsOf),
+        ).resolves.toStrictEqual({
+          tokenAnalysisLinks: [],
+          phraseAnalysisLinks: ['pa-the-beginning'],
+        });
+        await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([
+          { ...fullAnalysis().tokenAnalyses[0], gloss: { en: 'and then' } },
+        ]);
+      });
+
+      it('files an edited record under its new keys only', async () => {
+        const repository = await overFullDraft();
+        await repository.findLinksInBooks(['GEN']);
+        const [, , beginning] = fullAnalysis().tokenAnalysisLinks;
+
+        await repository.apply({
+          intent: 'approve',
+          tokenAnalysisLinks: { puts: [{ ...beginning, status: 'approved' }], deletes: [] },
+        });
+
+        await expect(
+          repository.findLinksInBooks(['GEN'], ['suggested']).then(linkIdsOf),
+        ).resolves.toMatchObject({ tokenAnalysisLinks: [] });
+        await expect(
+          repository.findLinksInBooks(['GEN'], ['approved']).then(linkIdsOf),
+        ).resolves.toMatchObject({ tokenAnalysisLinks: ['tl-gen-and', 'tl-gen-beginning'] });
+      });
+
+      it('answers from a draft another repository replaced, once reloaded', async () => {
+        const repository = await overFullDraft();
+        await repository.findLinksInBooks(['GEN']);
+        await (await store.open(SOURCE)).replaceAll(exodusOnlyDraft());
+
+        await repository.exportAll();
+
+        await expect(
+          repository.findLinksInBooks(['GEN', 'EXO']).then(linkIdsOf),
+        ).resolves.toStrictEqual({
+          tokenAnalysisLinks: ['tl-exo-and'],
+          phraseAnalysisLinks: [],
+          segmentAnalysisLinks: ['sl-exo'],
+        });
+      });
+
+      it('keeps the records of different source projects apart', async () => {
+        await overFullDraft();
+
+        const other = await store.open('other-project');
+
+        await expect(other.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([]);
+      });
+
+      it('returns records the caller may change without changing what is stored', async () => {
+        const repository = await overFullDraft();
+
+        const [and] = await repository.getTokenAnalyses(['ta-and']);
+        and.surfaceText = 'changed';
+        const { tokenAnalysisLinks } = await repository.findLinksToAnalyses(['ta-and']);
+        tokenAnalysisLinks[0].status = 'rejected';
+
+        await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([
+          fullAnalysis().tokenAnalyses[0],
+        ]);
+        await expect(
+          repository.findLinksInBooks(['GEN', 'EXO'], ['rejected']).then(linkIdsOf),
+        ).resolves.toMatchObject({ tokenAnalysisLinks: [] });
+      });
+
+      it('answers and applies unaffected by changes to a draft it exported', async () => {
+        const repository = await overFullDraft();
+        changeInPlace((await repository.exportAll()).draft);
+
+        await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([
+          fullAnalysis().tokenAnalyses[0],
+        ]);
+        await repository.apply(puttingNewRecords());
+
+        await expect(
+          reload(store).then(({ analysis }) =>
+            analysis.tokenAnalyses.find(({ id }) => id === 'ta-and'),
+          ),
+        ).resolves.toStrictEqual(fullAnalysis().tokenAnalyses[0]);
+      });
+
+      it('keeps indexes that match its records through applies, undo and redo', async () => {
+        const repository = await overFullDraft();
+        await repository.findLinksInBooks(['GEN']);
+
+        const { inverse } = await repository.apply(mixedChanges());
+        const { inverse: redo } = await repository.apply(inverse);
+        await repository.apply(redo);
+        await repository.apply(puttingNewRecords());
+
+        await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
+      });
+
+      it('answers from a read-only repository', async () => {
+        const repository = await store.openReadOnly(fullDraft());
+
+        await expect(
+          repository.findLinksToAnalyses(['ta-and']).then(linkIdsOf),
+        ).resolves.toStrictEqual({
+          tokenAnalysisLinks: ['tl-exo-and', 'tl-gen-and'],
+          phraseAnalysisLinks: [],
+          segmentAnalysisLinks: [],
+        });
+        await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
+      });
+    });
+
     describe('capabilities', () => {
       it("lets a source project's draft be written", async () => {
         expect((await store.open(SOURCE)).capabilities.readOnly).toBe(false);
@@ -1234,6 +1510,16 @@ export function describeAnalysisRepositoryConformance(
         await expect(analysisOf(repository)).resolves.toStrictEqual(
           inIdOrder(fullDraft()).analysis,
         );
+      });
+
+      it('answers lookups unaffected by changes to a draft it exported', async () => {
+        const repository = await store.openReadOnly(fullDraft());
+
+        changeInPlace((await repository.exportAll()).draft);
+
+        await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([
+          fullAnalysis().tokenAnalyses[0],
+        ]);
       });
 
       it('refuses a save, leaving what it loads unchanged', async () => {

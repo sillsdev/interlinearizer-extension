@@ -22,6 +22,7 @@ import {
 import { buildCatalogRows, type HeadingPlacement } from '../utils/analysis-query';
 import type { StaleFreeTranslation } from '../utils/stale-free-translations';
 import { isEmptyMultiString } from '../utils/multi-string';
+import { clearAnalysisGloss, isEmptyTokenAnalysis } from '../utils/token-analysis-content';
 import {
   preferredLink,
   preferredLinkByKey,
@@ -856,7 +857,6 @@ function writeGlossOntoAnalysis(
   } else {
     if (!analysis.gloss) analysis.gloss = {};
     analysis.gloss[lang] = value;
-    delete analysis.glossSenseRef;
   }
   analysis.updatedAt = now;
 
@@ -866,46 +866,6 @@ function writeGlossOntoAnalysis(
     return;
   }
   mergeIntoIdenticalPayload(state, analysis, now);
-}
-
-/**
- * Determines whether a `TokenAnalysis` carries no analysis content, so a reducer that just emptied
- * one field can decide to drop the whole record instead of letting empty records accumulate in
- * storage. Checks every content field of the type — `gloss`, `morphemes`, `pos`, `features`, and
- * `glossSenseRef` — not only the field the caller emptied, so records carrying imported
- * morphosyntactic or lexicon data are never discarded by an unrelated edit. A gloss counts as empty
- * when it has no entries or every entry is blank, so a record left holding only whitespace glosses
- * (junk from clearing a gloss field) is treated the same as one with no gloss at all.
- *
- * Provenance fields (`confidence`, `producer`, `sourceUser`) are intentionally NOT treated as
- * content: they describe who/what produced an analysis, not an analysis worth keeping on their own.
- * A record holding only provenance and no glosses/morphemes/pos/features is therefore considered
- * empty and may be dropped when its last content field is cleared. This is a deliberate choice — if
- * a future workflow needs provenance-only records (e.g. imported parser metadata) to survive a
- * gloss clear, add the relevant fields to the check below.
- */
-function isEmptyTokenAnalysis(analysis: TokenAnalysis): boolean {
-  return (
-    isEmptyMultiString(analysis.gloss) &&
-    /* v8 ignore next -- the length===0 sub-branch needs an empty-but-defined morphemes array, which no caller produces */
-    (!analysis.morphemes || analysis.morphemes.length === 0) &&
-    analysis.pos === undefined &&
-    analysis.features === undefined &&
-    analysis.glossSenseRef === undefined
-  );
-}
-
-/**
- * Empties one language's gloss, dropping the gloss and the analysis-wide `glossSenseRef` once no
- * language is left holding usable text — a sibling left holding only whitespace counts for neither,
- * so the sense is never stranded on a gloss nothing renders.
- */
-function clearAnalysisGloss(analysis: TokenAnalysis, lang: string): void {
-  if (analysis.gloss) {
-    delete analysis.gloss[lang];
-    if (isEmptyMultiString(analysis.gloss)) delete analysis.gloss;
-  }
-  if (!analysis.gloss) delete analysis.glossSenseRef;
 }
 
 /**
@@ -979,9 +939,9 @@ const analysisSlice = createSlice({
        * stranded on an emptied payload. A blank write to a token with no approved analysis is a
        * no-op, so a focus/blur cycle on an empty gloss never creates a record.
        *
-       * A gloss the reader typed resolves through no lexicon sense of theirs, so a rewrite drops
-       * the payload's `glossSenseRef`. A clear drops it only once no language still holds usable
-       * gloss text, the sense belonging to the analysis rather than to the emptied language.
+       * A rewrite keeps the payload's `glossSenseRef`. A clear drops it only once no language still
+       * holds usable gloss text, the sense belonging to the analysis rather than to the emptied
+       * language.
        */
       reducer(state, action: PayloadAction<WriteGlossPayload>) {
         const { tokenRef, surfaceText, value, id, linkId, now } = action.payload;
@@ -1016,7 +976,6 @@ const analysisSlice = createSlice({
           }
           if (!target.gloss) target.gloss = {};
           target.gloss[lang] = value;
-          delete target.glossSenseRef;
           // An in-place edit can make this payload identical to an existing one (e.g. a homograph
           // instance re-glossed to match its sibling); re-converge so the dedupe the create path
           // guarantees on first write also holds after edits.
@@ -1249,9 +1208,9 @@ const analysisSlice = createSlice({
      * removes it and every link to it. An edit that makes the record identical to a sibling
      * collapses it into that sibling, so the edited row disappears from the catalog.
      *
-     * A gloss the reader typed resolves through no lexicon sense of theirs, so a rewrite drops the
-     * record's `glossSenseRef`. A clear drops it only once no language still holds usable gloss
-     * text, the sense belonging to the analysis rather than to the emptied language.
+     * A rewrite keeps the record's `glossSenseRef`. A clear drops it only once no language still
+     * holds usable gloss text, the sense belonging to the analysis rather than to the emptied
+     * language.
      */
     writeAnalysisGloss: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */

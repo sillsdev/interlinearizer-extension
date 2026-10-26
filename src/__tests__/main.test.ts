@@ -12,6 +12,7 @@ import * as projectStorage from '../services/projectStorage';
 import * as pt9ImportService from '../services/pt9ImportService';
 import { type AnalysisRepository, UnreadableBooksError } from '../types/analysis-repository';
 import { emptyDraft } from '../types/empty-factories';
+import { scopeRecordOf } from '../utils/change-set';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
 
@@ -401,6 +402,9 @@ describe('main', () => {
           'interlinearizer.setAnalysisLanguage',
           'interlinearizer.undoEdit',
           'interlinearizer.redoEdit',
+          'interlinearizer.checkIndexes',
+          'interlinearizer.writeGloss',
+          'interlinearizer.approveAnalysisForToken',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
           'interlinearizer.openProjectInfoModal',
@@ -1828,6 +1832,7 @@ describe('main', () => {
   describe('session commands', () => {
     /** A repository handing out `draft`, as storage would open one. */
     function stubRepository(draft: DraftProject, readOnly = false): AnalysisRepository {
+      const noLinks = { tokenAnalysisLinks: [], phraseAnalysisLinks: [], segmentAnalysisLinks: [] };
       return {
         capabilities: { readOnly },
         exportAll: async () => ({ draft, unreadableBooks: [] }),
@@ -1835,6 +1840,19 @@ describe('main', () => {
         replaceAll: async () => [],
         markClean: async () => {},
         apply: async (changes) => ({ inverse: changes }),
+        getTokenAnalyses: async () => [],
+        getPhraseAnalyses: async () => [],
+        getSegmentAnalyses: async () => [],
+        findLinksByToken: async () => noLinks,
+        findLinksBySegment: async () => [],
+        findLinksToAnalyses: async () => noLinks,
+        findLinksInBooks: async () => noLinks,
+        findTokenAnalysesByForm: async () => [],
+        findPhraseAnalysesByForm: async () => [],
+        checkIndexes: async () => [
+          { index: 'tokenAnalyses', key: 'ta-1', missing: ['ta-1'], extra: [] },
+        ],
+        getScope: async () => scopeRecordOf(draft),
       };
     }
 
@@ -1861,6 +1879,25 @@ describe('main', () => {
         redoEdit: handler<(sessionId: string) => Promise<string | undefined>>(
           'interlinearizer.redoEdit',
         ),
+        checkIndexes: handler<(sessionId: string) => Promise<string>>(
+          'interlinearizer.checkIndexes',
+        ),
+        writeGloss: handler<
+          (
+            sessionId: string,
+            tokenRef: string,
+            surfaceText: string,
+            value: string,
+          ) => Promise<string>
+        >('interlinearizer.writeGloss'),
+        approveAnalysisForToken: handler<
+          (
+            sessionId: string,
+            tokenRef: string,
+            surfaceText: string,
+            analysisId: string,
+          ) => Promise<string>
+        >('interlinearizer.approveAnalysisForToken'),
       };
     }
 
@@ -2021,6 +2058,65 @@ describe('main', () => {
         'Interlinearizer: failed to redo an edit in session not-a-session',
         expect.any(Error),
       );
+    });
+
+    it("replies with the differences the session's repository finds in its indexes", async () => {
+      const { openSession, checkIndexes } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(checkIndexes(sessionId)).resolves.toBe(
+        JSON.stringify([{ index: 'tokenAnalyses', key: 'ta-1', missing: ['ta-1'], extra: [] }]),
+      );
+    });
+
+    it('logs the error and rethrows when the indexes cannot be checked', async () => {
+      const { checkIndexes } = await activateSessionCommands();
+
+      await expect(checkIndexes('not-a-session')).rejects.toThrow(
+        'no session not-a-session is open',
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to check the indexes of session not-a-session',
+        expect.any(Error),
+      );
+    });
+
+    it("writes a token's gloss in the session's language, replying with the changes", async () => {
+      const { openSession, setAnalysisLanguage, writeGloss } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+      await setAnalysisLanguage(sessionId, 'fr');
+
+      const changes = JSON.parse(await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'au'));
+
+      expect(changes).toMatchObject({
+        intent: 'writeGloss',
+        tokenAnalyses: { puts: [{ surfaceText: 'In', gloss: { fr: 'au' } }], deletes: [] },
+        tokenAnalysisLinks: {
+          puts: [{ status: 'approved', token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' } }],
+          deletes: [],
+        },
+      });
+    });
+
+    it('logs the error and rethrows when an edit fails', async () => {
+      const { writeGloss } = await activateSessionCommands();
+
+      await expect(writeGloss('not-a-session', 'GEN 1:1:0', 'In', 'at')).rejects.toThrow(
+        'no session not-a-session is open',
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to writeGloss in session not-a-session',
+        expect.any(Error),
+      );
+    });
+
+    it('approves an analysis for a token, replying with the changes', async () => {
+      const { openSession, approveAnalysisForToken } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(
+        approveAnalysisForToken(sessionId, 'GEN 1:1:0', 'In', 'ta-unknown').then(JSON.parse),
+      ).resolves.toStrictEqual({ intent: 'approveAnalysisForToken' });
     });
 
     it('closes every session on deactivation', async () => {

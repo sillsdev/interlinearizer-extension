@@ -2,7 +2,7 @@
 
 import type { DraftProject, TokenAnalysis } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
-import { applyChangeSet, scopeRecordOf } from '../../utils/change-set';
+import { applyChangeSet, isEmptyChangeSet, scopeRecordOf } from '../../utils/change-set';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
 function payload(id: string, gloss?: string): TokenAnalysis {
@@ -113,22 +113,6 @@ describe('applyChangeSet', () => {
     expect(stored).toStrictEqual(draftOf(payload('a')));
   });
 
-  it('holds copies of the records the changes put', () => {
-    const put = payload('b');
-    const scope = scopeRecordOf(draftOf());
-    const { draft } = applyChangeSet(draftOf(), {
-      intent: 'add',
-      scope,
-      tokenAnalyses: { puts: [put], deletes: [] },
-    });
-
-    put.surfaceText = 'changed';
-    scope.analysisLanguages.push('fr');
-
-    expect(draft.analysis.tokenAnalyses).toStrictEqual([payload('b')]);
-    expect(draft.analysisLanguages).toStrictEqual(['en']);
-  });
-
   it('refuses an id both put and deleted', () => {
     expect(() =>
       applyChangeSet(draftOf(payload('a')), {
@@ -203,5 +187,21 @@ describe('applyChangeSet', () => {
         analysis.phraseAnalysisLinks,
       ].map((records) => records.map(({ id }) => id)),
     ).toStrictEqual([['sa'], ['sl'], ['a'], ['tl'], ['pa'], ['pl']]);
+  });
+});
+
+describe('isEmptyChangeSet', () => {
+  it('finds a change set naming only its intent empty', () => {
+    expect(isEmptyChangeSet({ intent: 'none' })).toBe(true);
+  });
+
+  it('finds a change set with record changes not empty', () => {
+    expect(isEmptyChangeSet({ intent: 'edit', tokenAnalyses: { puts: [], deletes: ['a'] } })).toBe(
+      false,
+    );
+  });
+
+  it("finds a change set putting the scope's record not empty", () => {
+    expect(isEmptyChangeSet({ intent: 'edit', scope: scopeRecordOf(draftOf()) })).toBe(false);
   });
 });

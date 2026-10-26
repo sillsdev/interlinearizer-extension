@@ -382,6 +382,43 @@ declare module 'papi-shared-types' {
     'interlinearizer.redoEdit': (sessionId: string) => Promise<string | undefined>;
 
     /**
+     * Reports where a session's derived indexes differ from ones built afresh from its records, for
+     * debugging.
+     *
+     * @returns A JSON string of the index differences; `"[]"` when none differ.
+     * @throws If the session is not open (logged before rethrowing).
+     */
+    'interlinearizer.checkIndexes': (sessionId: string) => Promise<string>;
+
+    /**
+     * Writes a token's gloss in a session's analysis language; a blank value clears it.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.writeGloss': (
+      sessionId: string,
+      tokenRef: string,
+      surfaceText: string,
+      value: string,
+    ) => Promise<string>;
+
+    /**
+     * Approves a stored token analysis for a token, in place of any approval the token held.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.approveAnalysisForToken': (
+      sessionId: string,
+      tokenRef: string,
+      surfaceText: string,
+      analysisId: string,
+    ) => Promise<string>;
+
+    /**
      * Served by the interlinearizer's C# host rather than the extension, to show the two can talk.
      *
      * @returns The message, echoed back, with the .NET runtime version and process id that

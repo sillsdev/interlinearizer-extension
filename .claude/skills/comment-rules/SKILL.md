@@ -30,8 +30,8 @@ Omit `@param`/`@returns` that only restate the signature and type. Keep ones car
 
 **All-or-nothing (overrides the omit rule):** never document only some of a method's parameters. When one deserves a note, either:
 
-- **Document every parameter**, when each has something real to say.
-- **Fold the note into the summary prose** and drop the tag, when the other tags would be padding. Folding means rewriting the summary to carry the note, so a summary that lacks it is no reason to keep the tag.
+- **Document every parameter**, including ones you would otherwise omit - when a note is too much to fold into the summary. Each tag still says something real; never pad.
+- **Fold the note into the summary prose** and drop the tag - when the summary can carry it. Folding edits the summary: rewrite it to take the note. "The summary doesn't already say this" is no reason to keep the tag.
 
 A fold is prose about what the function does. A parameter name may appear as the thing the function acts on: "Removes the record matching `phraseId`". The name may not be the sentence's subject. "`link` overrides the joining link" is an `@param` minus the tag. If the sentence would read the same with `@param` in front, document every parameter instead.
 

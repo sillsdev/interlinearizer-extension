@@ -16,8 +16,8 @@ export interface BookIndexes {
    * Maps every token ref — words and punctuation — to its flat book-level index. The canonical
    * document order for boundary refs, which can name punctuation tokens (e.g. the move target of a
    * cross-segment pull) that the word-only {@link BookIndexes.tokenDocOrder} cannot resolve. Word
-   * tokens rank consistently in both maps (both are ascending document positions), so comparing a
-   * word-only order against this map's values is safe.
+   * tokens fall in the same relative order in both maps. Values from the two maps are not
+   * comparable.
    */
   fullTokenOrder: ReadonlyMap<string, number>;
   /**

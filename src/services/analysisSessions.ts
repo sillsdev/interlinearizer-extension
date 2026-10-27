@@ -3,7 +3,7 @@ import type { Book } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
-import { isEmptyChangeSet } from '../utils/change-set';
+import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { missingBook } from '../utils/reanchor-draft';
 import { assertApprovalRule } from './commands/approvalRule';
@@ -231,29 +231,37 @@ export class AnalysisSessions {
    * applies as one undo step, marking the draft dirty; a command staging nothing applies nothing.
    * When the draft lists no analysis languages, that step adds the session's analysis language.
    *
+   * When `command` returns books, the step also re-anchors the draft, as the staged changes leave
+   * it, to each book's text in turn.
+   *
    * @returns The changes applied, naming `intent`.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {ApprovalRuleError} If the changes would give a token or segment a second approved
    *   link, or put a token in a second approved phrase; nothing is applied.
    * @throws {Error} If the session is not open.
-   * @throws Whatever the command, reading the draft's record, or applying its changes throws;
-   *   nothing is applied.
+   * @throws Whatever the command, reading the draft, or applying its changes throws; nothing is
+   *   applied.
    */
   edit(
     sessionId: string,
     intent: string,
-    command: (buffer: ChangeBuffer, session: Session) => Promise<void>,
+    command: (buffer: ChangeBuffer, session: Session) => Promise<void | readonly Book[]>,
   ): Promise<ChangeSet> {
     return this.runEdit(sessionId, async (session) => {
       const buffer = new ChangeBuffer(session.repository);
-      await command(buffer, session);
-      const changes = buffer.toChangeSet(intent);
-      if (isEmptyChangeSet(changes)) return changes;
+      const reanchorTo = await command(buffer, session);
+      const staged = buffer.toChangeSet(intent);
+      if (isEmptyChangeSet(staged)) return staged;
       await assertApprovalRule(buffer, session.repository);
-      const scope = changes.scope ?? (await session.repository.getScope());
+      const scope = staged.scope ?? (await session.repository.getScope());
       if (scope.analysisLanguages.length === 0) {
-        changes.scope = { ...scope, analysisLanguages: [session.analysisLanguage] };
+        staged.scope = { ...scope, analysisLanguages: [session.analysisLanguage] };
       }
+      const reanchored =
+        reanchorTo && reanchorTo.length > 0
+          ? await reanchorRestored(session.repository)(staged, reanchorTo)
+          : undefined;
+      const changes = reanchored ? mergeChangeSets(staged, reanchored) : staged;
       await session.history.apply(changes);
       return changes;
     });

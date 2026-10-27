@@ -2844,6 +2844,38 @@ describe('main', () => {
       });
     });
 
+    it("stales the free translation of a segment it splits, in the split's edit", async () => {
+      await storeDraftHolding({
+        segmentAnalyses: [
+          {
+            id: 'sa-1',
+            ...FIXTURE_STAMPS,
+            surfaceText: 'In the beginning God',
+            freeTranslation: { en: 'At first God' },
+          },
+        ],
+        segmentAnalysisLinks: [
+          {
+            id: 'sl-1',
+            analysisId: 'sa-1',
+            ...FIXTURE_STAMPS,
+            status: 'approved',
+            segmentId: 'GEN 1:1',
+          },
+        ],
+      });
+      const { openSession, splitSegment } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(await splitSegment(sessionId, 'GEN 1:1:3'));
+
+      expect(changes).toMatchObject({
+        intent: 'splitSegment',
+        segmentAnalysisLinks: { puts: [{ id: 'sl-1', status: 'stale' }] },
+        scope: { segmentation: { addedStarts: [{ tokenRef: 'GEN 1:1:3' }] } },
+      });
+    });
+
     const exodus: TokenSnapshot[] = [
       { tokenRef: 'EXO 1:1:0', surfaceText: 'Now' },
       { tokenRef: 'EXO 1:1:4', surfaceText: 'these' },

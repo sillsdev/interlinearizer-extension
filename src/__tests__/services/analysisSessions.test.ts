@@ -722,6 +722,38 @@ describe('AnalysisSessions', () => {
       );
     });
 
+    it("re-anchors an edit to the books its command returns, in the edit's undo step", async () => {
+      const { sessions, sessionId, storage } = await sessionGlossingBeta();
+
+      const changes = await sessions.edit(sessionId, 'relink', async (buffer) => {
+        buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
+        return [AFTER];
+      });
+
+      expect(changes.tokenAnalysisLinks?.puts).toEqual([
+        expect.objectContaining({ analysisId: 'ta-2', token: betaLink(AFTER, 'ta-2').token }),
+      ]);
+      expect(await storedLink(storage)).toEqual(
+        expect.objectContaining({ analysisId: 'ta-2', token: betaLink(AFTER, 'ta-2').token }),
+      );
+      await sessions.undo(sessionId);
+      expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-1'));
+    });
+
+    it.each([
+      ['no books', []],
+      ['books it needs no re-anchoring to', [BEFORE]],
+    ])('applies an edit as staged when its command returns %s', async (_case, books) => {
+      const { sessions, sessionId, storage } = await sessionGlossingBeta();
+
+      await sessions.edit(sessionId, 'relink', async (buffer) => {
+        buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
+        return books;
+      });
+
+      expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-2'));
+    });
+
     it('stales the links into the books the text lacks', async () => {
       const { sessions, storage } = await sessionGlossingBeta();
 

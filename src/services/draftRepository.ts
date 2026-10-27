@@ -260,7 +260,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * Applies the changes to the draft this instance keeps, loading the stored draft first when it
    * keeps none, as after {@link exportAll} or a whole save. Only the books whose content the changes
    * alter are rewritten, so an edit to a payload rewrites every book linking it. Marks the draft
-   * unsaved, unless the options ask to leave its unsaved mark as it was.
+   * unsaved unless `options` keeps the mark.
    *
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project; nothing is written.

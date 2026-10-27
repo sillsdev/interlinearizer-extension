@@ -785,13 +785,11 @@ async function setAnalysisLanguage(sessionId: string, analysisLanguage: string):
 }
 
 /**
- * Reverts a session's latest edit not yet undone, re-anchoring what it restores to the current text
- * of each book passed over since.
+ * Reverts a session's latest edit not yet undone.
  *
- * @returns The changes that reverted the edit and re-anchored what the edit restored, as JSON, or
- *   `undefined` when there is none.
- * @throws If the session is read-only or not open, or re-anchoring or applying the changes fails.
- *   The error is logged before rethrowing.
+ * @returns The changes it applied, as JSON, or `undefined` when there is none.
+ * @throws If the session is read-only or not open, or the undo fails. The error is logged before
+ *   rethrowing.
  */
 async function undoEdit(sessionId: string): Promise<string | undefined> {
   try {
@@ -804,13 +802,11 @@ async function undoEdit(sessionId: string): Promise<string | undefined> {
 }
 
 /**
- * Redoes a session's latest undone edit, re-anchoring what it restores to the current text of each
- * book passed over since.
+ * Redoes a session's latest undone edit.
  *
- * @returns The changes that redid the edit and re-anchored what the edit restored, as JSON, or
- *   `undefined` when there is none.
- * @throws If the session is read-only or not open, or re-anchoring or applying the changes fails.
- *   The error is logged before rethrowing.
+ * @returns The changes it applied, as JSON, or `undefined` when there is none.
+ * @throws If the session is read-only or not open, or the redo fails. The error is logged before
+ *   rethrowing.
  */
 async function redoEdit(sessionId: string): Promise<string | undefined> {
   try {
@@ -850,7 +846,7 @@ async function checkIndexes(sessionId: string): Promise<string> {
 async function runSessionEdit(
   sessionId: string,
   intent: string,
-  command: (buffer: ChangeBuffer, session: Session) => Promise<void>,
+  command: (buffer: ChangeBuffer, session: Session) => Promise<void | readonly Book[]>,
 ): Promise<string> {
   try {
     return JSON.stringify(await sessions.edit(sessionId, intent, command));
@@ -1245,12 +1241,11 @@ function boundaryEditStamp() {
  *   the edit fails. The error is logged before rethrowing.
  */
 function mergeSegments(sessionId: string, secondSegmentStartRef: string): Promise<string> {
-  return runSessionEdit(sessionId, 'mergeSegments', async (buffer, session) =>
-    boundaryCommands.mergeSegments(buffer, {
-      verseBook: await verseBookOf(session, secondSegmentStartRef),
-      secondSegmentStartRef,
-    }),
-  );
+  return runSessionEdit(sessionId, 'mergeSegments', async (buffer, session) => {
+    const verseBook = await verseBookOf(session, secondSegmentStartRef);
+    await boundaryCommands.mergeSegments(buffer, { verseBook, secondSegmentStartRef });
+    return [verseBook];
+  });
 }
 
 /**
@@ -1262,13 +1257,11 @@ function mergeSegments(sessionId: string, secondSegmentStartRef: string): Promis
  *   the edit is refused or fails. The error is logged before rethrowing.
  */
 function splitSegment(sessionId: string, tokenRef: string): Promise<string> {
-  return runSessionEdit(sessionId, 'splitSegment', async (buffer, session) =>
-    boundaryCommands.splitSegment(buffer, {
-      ...boundaryEditStamp(),
-      verseBook: await verseBookOf(session, tokenRef),
-      tokenRef,
-    }),
-  );
+  return runSessionEdit(sessionId, 'splitSegment', async (buffer, session) => {
+    const verseBook = await verseBookOf(session, tokenRef);
+    await boundaryCommands.splitSegment(buffer, { ...boundaryEditStamp(), verseBook, tokenRef });
+    return [verseBook];
+  });
 }
 
 /**
@@ -1281,14 +1274,16 @@ function splitSegment(sessionId: string, tokenRef: string): Promise<string> {
  *   rethrowing.
  */
 function moveBoundary(sessionId: string, fromRef: string, toRef: string): Promise<string> {
-  return runSessionEdit(sessionId, 'moveBoundary', async (buffer, session) =>
-    boundaryCommands.moveBoundary(buffer, {
+  return runSessionEdit(sessionId, 'moveBoundary', async (buffer, session) => {
+    const verseBook = await verseBookOf(session, toRef);
+    await boundaryCommands.moveBoundary(buffer, {
       ...boundaryEditStamp(),
-      verseBook: await verseBookOf(session, toRef),
+      verseBook,
       fromRef,
       toRef,
-    }),
-  );
+    });
+    return [verseBook];
+  });
 }
 
 /**

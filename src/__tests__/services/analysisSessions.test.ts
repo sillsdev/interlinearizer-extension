@@ -703,10 +703,33 @@ describe('AnalysisSessions', () => {
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
     });
 
+    /** A session over a draft that links into no book, and splits Genesis 1:1 at "beta". */
+    async function sessionSplittingBeta() {
+      const made = makeSessions();
+      await made.saveDraft({
+        ...emptyDraft(SOURCE),
+        segmentation: {
+          removedVerseStarts: [],
+          addedStarts: [{ tokenRef: tokenRefOf(BEFORE, 'beta'), surfaceText: 'beta' }],
+        },
+      });
+      const { sessionId } = await made.sessions.open(SOURCE);
+      return { ...made, sessionId };
+    }
+
+    it('moves the splits of a book the draft does not link into', async () => {
+      const { sessions, storage } = await sessionSplittingBeta();
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      const { draft } = await new DraftRepository(storage, SOURCE, silentLogger()).exportAll();
+      expect(draft.segmentation?.addedStarts).toEqual([
+        { tokenRef: tokenRefOf(AFTER, 'beta'), surfaceText: 'beta' },
+      ]);
+    });
+
     it('records no pass over a book the draft does not link into', async () => {
-      const { sessions, saveDraft } = makeSessions();
-      await saveDraft(emptyDraft(SOURCE));
-      const { sessionId } = await sessions.open(SOURCE);
+      const { sessions, sessionId } = await sessionSplittingBeta();
       const recordPass = jest.fn();
       await sessions.run(sessionId, async (session) => {
         jest.spyOn(session.history, 'recordPass').mockImplementation(recordPass);

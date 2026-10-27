@@ -80,10 +80,14 @@ export interface SessionHost {
   stopTextRead(sourceProjectId: string): Promise<void>;
 }
 
-/** Re-anchors the session's draft to `book`, recording the pass in its history. */
+/**
+ * Re-anchors the session's draft to `book`. Records the pass in the session's history only when the
+ * draft links into the book, so an undo or redo re-anchors to no book without links.
+ */
 async function reanchorNow(session: Session, book: Book): Promise<void> {
+  const linked = await booksLinkedAmong(session.repository, [book.bookRef]);
   await reanchorStoredBook(session.repository, book);
-  session.history.recordPass(book);
+  if (linked.length > 0) session.history.recordPass(book);
 }
 
 type OpenSession = {
@@ -299,17 +303,14 @@ export class AnalysisSessions {
 
   /**
    * Re-anchors the draft of the source project's session to `book`'s current text, in the session's
-   * turn and as no undo step, so that what a later undo or redo restores is re-anchored to it too.
-   * A book the text lacks is passed as a book with no segments. Does nothing for a book the draft
-   * does not link into, or when the source has no session open, or only a read-only one.
+   * turn and as no undo step. Where the draft links into the book, what a later undo or redo
+   * restores is re-anchored to it too. A book the text lacks is passed as a book with no segments.
+   * Does nothing when the source has no session open, or only a read-only one.
    *
    * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
    */
   reanchorBook(sourceProjectId: string, book: Book): Promise<void> {
-    return this.runOnWritable(sourceProjectId, async (session) => {
-      const linked = await booksLinkedAmong(session.repository, [book.bookRef]);
-      if (linked.length > 0) await reanchorNow(session, book);
-    });
+    return this.runOnWritable(sourceProjectId, (session) => reanchorNow(session, book));
   }
 
   /**

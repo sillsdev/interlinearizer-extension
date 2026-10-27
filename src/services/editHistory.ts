@@ -1,5 +1,5 @@
 import type { Book } from 'interlinearizer';
-import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
+import type { AnalysisRepository, ApplyOptions, ChangeSet } from '../types/analysis-repository';
 import { mergeChangeSets } from '../utils/change-set';
 import { MAX_UNDO_STEPS } from '../utils/undo-history';
 
@@ -60,12 +60,12 @@ export class EditHistory {
   }
 
   /**
-   * Applies `changes` as one undo step.
+   * Applies `changes` as one undo step, marked unsaved unless `options` keeps the mark.
    *
    * @throws Whatever applying the changes throws; the history is left as it was.
    */
-  async apply(changes: ChangeSet): Promise<void> {
-    const { inverse } = await this.repository.apply(changes);
+  async apply(changes: ChangeSet, options?: ApplyOptions): Promise<void> {
+    const { inverse } = await this.repository.apply(changes, options);
     this.undoable.push({ changes: inverse, passesSeen: this.passCount });
     if (this.undoable.length > MAX_UNDO_STEPS) this.undoable.shift();
     this.redoable.length = 0;

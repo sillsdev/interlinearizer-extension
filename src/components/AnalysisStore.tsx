@@ -1,5 +1,6 @@
 import type {
   Book,
+  MergedContent,
   MorphemeAnalysis,
   PhraseAnalysisLink,
   SenseRef,
@@ -70,7 +71,6 @@ import analysisReducer, {
   replaceAnalysis,
   setAnalysisLanguage,
   type AnalysisDeletionOutcome,
-  type MergedContent,
 } from '../store/analysisSlice';
 import useLatestRef from '../hooks/useLatestRef';
 import { emptyAnalysis } from '../types/empty-factories';

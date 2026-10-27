@@ -139,7 +139,10 @@ export async function reclaimIfUnlinked(
  * the survivor from the token's approved links, or from all the token's links when none is
  * approved. The survivor takes the earliest creation date among the token's links to `analysisId`.
  */
-async function coalesceLinksPerToken(buffer: ChangeBuffer, analysisId: string): Promise<void> {
+export async function coalesceLinksPerToken(
+  buffer: ChangeBuffer,
+  analysisId: string,
+): Promise<void> {
   const { tokenAnalysisLinks } = await buffer.findLinksToAnalyses([analysisId]);
   const byToken = new Map<string, TokenAnalysisLink[]>();
   tokenAnalysisLinks.forEach((link) => {
@@ -165,14 +168,18 @@ async function coalesceLinksPerToken(buffer: ChangeBuffer, analysisId: string): 
  * When the edit made `analysis` identical to another payload, folds it into that one, so that an
  * edit never leaves a duplicate.
  *
- * Every link to `analysis` moves to the survivor. The survivor keeps its own timestamps. A token
- * that links both keeps one link. The survivor's breakdown stays stale only when both payloads'
- * were.
+ * Every link to `analysis` moves to the survivor. The survivor keeps its own timestamps unless
+ * `settleProvenance` is set. A token that links both keeps one link. The survivor's breakdown stays
+ * stale only when both payloads' were.
+ *
+ * Set `settleProvenance` when the edit chose the payload's confidence; the survivor then takes
+ * `analysis`'s confidence.
  */
 export async function mergeIntoIdenticalPayload(
   buffer: ChangeBuffer,
   analysis: TokenAnalysis,
   now: string,
+  settleProvenance = false,
 ): Promise<void> {
   const candidates = await buffer.findTokenAnalysesByForm([
     normalizeSurfaceForm(analysis.surfaceText),
@@ -181,8 +188,13 @@ export async function mergeIntoIdenticalPayload(
     candidates.filter((ta) => ta.id !== analysis.id && analysesAreIdentical(ta, analysis)),
   );
   if (!other) return;
-  if (other.morphemesStale && !analysis.morphemesStale) {
-    delete other.morphemesStale;
+  const settlesStaleMark = other.morphemesStale && !analysis.morphemesStale;
+  if (settleProvenance) {
+    if (analysis.confidence === undefined) delete other.confidence;
+    else other.confidence = analysis.confidence;
+  }
+  if (settlesStaleMark) delete other.morphemesStale;
+  if (settleProvenance || settlesStaleMark) {
     other.updatedAt = now;
     buffer.put('tokenAnalyses', other);
   }

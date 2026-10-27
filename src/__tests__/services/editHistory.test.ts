@@ -46,6 +46,15 @@ describe('EditHistory', () => {
     await expect(storedIds()).resolves.toStrictEqual(['a']);
   });
 
+  it('applies an edit with the options it is given', async () => {
+    const { history, repository } = makeHistory();
+    const apply = jest.spyOn(repository, 'apply');
+
+    await history.apply(putting('a'), { keepDirty: true });
+
+    expect(apply).toHaveBeenCalledWith(putting('a'), { keepDirty: true });
+  });
+
   it('undoes edits latest first, returning what reverted each', async () => {
     const { history, storedIds } = makeHistory();
     await history.apply(putting('a'));

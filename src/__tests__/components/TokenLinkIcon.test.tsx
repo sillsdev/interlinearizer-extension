@@ -459,6 +459,46 @@ describe('TokenLinkIcon', () => {
     );
   });
 
+  describe('when the bridging token between two fragments of the focused phrase is in a phrase', () => {
+    // p2 (tok-b, tok-c) sits in the gap of p1 (tok-a, tok-d); the slot is between tok-c and tok-d.
+    const focusedPhrase = makePhraseLink('p1', ['tok-a', 'tok-d']);
+    const bridgingPhrase = makePhraseLink('p2', ['tok-b', 'tok-c']);
+    const tokenDocOrder = new Map([
+      ['tok-a', 0],
+      ['tok-b', 1],
+      ['tok-c', 2],
+      ['tok-d', 3],
+    ]);
+    const bridgedIcon = () => (
+      <TokenLinkIcon
+        {...requiredProps()}
+        prevToken={makeWordToken('tok-c')}
+        nextToken={makeWordToken('tok-d')}
+        slotFocus={slotFocus({ focusedSideIsPrev: true, focusedPhraseLink: focusedPhrase })}
+        prevPhraseLink={bridgingPhrase}
+        nextPhraseLink={focusedPhrase}
+      />
+    );
+
+    it('merges that phrase whole into the focused phrase', async () => {
+      renderIcon(bridgedIcon(), { tokenDocOrder });
+      await userEvent.click(screen.getByTestId('token-link-btn'));
+      expect(mockMergePhrases).toHaveBeenCalledWith(
+        'p1',
+        ['tok-a', 'tok-b', 'tok-c', 'tok-d'].map((ref) => ({ tokenRef: ref, surfaceText: ref })),
+        'p2',
+      );
+      expect(mockUpdatePhrase).not.toHaveBeenCalled();
+    });
+
+    it("highlights that phrase's tokens", async () => {
+      const onHoverCandidateTokens = jest.fn();
+      renderIcon(bridgedIcon(), { onHoverCandidateTokens, tokenDocOrder });
+      await userEvent.hover(screen.getByTestId('token-link-btn'));
+      expect(onHoverCandidateTokens).toHaveBeenCalledWith(['tok-b', 'tok-c']);
+    });
+  });
+
   it('does nothing when clicking link with no focused free token and no phrase', async () => {
     renderIcon(
       <TokenLinkIcon

@@ -300,13 +300,16 @@ export class AnalysisSessions {
   /**
    * Re-anchors the draft of the source project's session to `book`'s current text, in the session's
    * turn and as no undo step, so that what a later undo or redo restores is re-anchored to it too.
-   * A book the text lacks is passed as a book with no segments. Does nothing when the source has no
-   * session open, or only a read-only one.
+   * A book the text lacks is passed as a book with no segments. Does nothing for a book the draft
+   * does not link into, or when the source has no session open, or only a read-only one.
    *
    * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
    */
   reanchorBook(sourceProjectId: string, book: Book): Promise<void> {
-    return this.runOnWritable(sourceProjectId, (session) => reanchorNow(session, book));
+    return this.runOnWritable(sourceProjectId, async (session) => {
+      const linked = await booksLinkedAmong(session.repository, [book.bookRef]);
+      if (linked.length > 0) await reanchorNow(session, book);
+    });
   }
 
   /**

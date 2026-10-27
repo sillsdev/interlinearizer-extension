@@ -703,6 +703,20 @@ describe('AnalysisSessions', () => {
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
     });
 
+    it('records no pass over a book the draft does not link into', async () => {
+      const { sessions, saveDraft } = makeSessions();
+      await saveDraft(emptyDraft(SOURCE));
+      const { sessionId } = await sessions.open(SOURCE);
+      const recordPass = jest.fn();
+      await sessions.run(sessionId, async (session) => {
+        jest.spyOn(session.history, 'recordPass').mockImplementation(recordPass);
+      });
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      expect(recordPass).not.toHaveBeenCalled();
+    });
+
     it('undoes and redoes edits re-anchored to the current text', async () => {
       const { sessions, sessionId, storage } = await sessionGlossingBeta();
       const relinking = (analysisId: string) => ({

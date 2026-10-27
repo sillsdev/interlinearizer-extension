@@ -214,7 +214,7 @@ describe('writeGloss parity with the reducer', () => {
               glossSenseRef: { authority: 'fwlite', senseId: 's-at' },
             }),
           ],
-          [link('tl-in', 'ta-in', TOKEN)],
+          [link('tl-in', 'ta-in', TOKEN, 'in')],
         ),
         input: { value: '' },
         expectStore: (store) => {

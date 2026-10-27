@@ -907,8 +907,7 @@ function approveAnalysisForToken(
  * Writes a token's morpheme breakdown, each form in `writingSystem`.
  *
  * @returns The changes it applied, as JSON.
- * @throws If the session is read-only or not open, or the edit is refused or fails (logged before
- *   rethrowing).
+ * @throws As {@link runSessionEdit} does.
  */
 function writeMorphemes(
   sessionId: string,
@@ -932,8 +931,7 @@ function writeMorphemes(
  * Removes a token's morpheme breakdown.
  *
  * @returns The changes it applied, as JSON.
- * @throws If the session is read-only or not open, or the edit is refused or fails (logged before
- *   rethrowing).
+ * @throws As {@link runSessionEdit} does.
  */
 function deleteMorphemes(sessionId: string, tokenRef: string): Promise<string> {
   return runSessionEdit(sessionId, 'deleteMorphemes', (buffer) =>
@@ -946,8 +944,7 @@ function deleteMorphemes(sessionId: string, tokenRef: string): Promise<string> {
  * clears it.
  *
  * @returns The changes it applied, as JSON.
- * @throws If the session is read-only or not open, or the edit is refused or fails (logged before
- *   rethrowing).
+ * @throws As {@link runSessionEdit} does.
  */
 function writeMorphemeGloss(
   sessionId: string,

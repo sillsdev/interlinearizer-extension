@@ -19,9 +19,13 @@ import { DraftRepository } from '../services/draftRepository';
 import * as hostPerf from '../services/hostPerf';
 import * as projectStorage from '../services/projectStorage';
 import * as pt9ImportService from '../services/pt9ImportService';
-import { type AnalysisRepository, UnreadableBooksError } from '../types/analysis-repository';
+import {
+  type IndexDifference,
+  type KeyValueStorage,
+  type RepositoryCapabilities,
+  UnreadableBooksError,
+} from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
-import { scopeRecordOf } from '../utils/change-set';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import {
   createTestActivationContext,
@@ -515,6 +519,9 @@ describe('main', () => {
           'interlinearizer.checkIndexes',
           'interlinearizer.writeGloss',
           'interlinearizer.approveAnalysisForToken',
+          'interlinearizer.writeMorphemes',
+          'interlinearizer.deleteMorphemes',
+          'interlinearizer.writeMorphemeGloss',
           'interlinearizer.discardStaleAnalysis',
           'interlinearizer.reapplyStaleAnalysis',
           'interlinearizer.keepStaleFreeTranslation',
@@ -1955,31 +1962,67 @@ describe('main', () => {
   });
 
   describe('session commands', () => {
-    /** A repository handing out `draft`, as storage would open one. */
-    function stubRepository(draft: DraftProject, readOnly = false): AnalysisRepository {
-      const noLinks = { tokenAnalysisLinks: [], phraseAnalysisLinks: [], segmentAnalysisLinks: [] };
-      return {
-        capabilities: { readOnly },
-        exportAll: async () => ({ draft, unreadableBooks: [] }),
-        exportForCopy: async () => ({ draft, unreadableBooks: [] }),
-        replaceAll: async () => [],
-        markClean: async () => {},
-        apply: async (changes) => ({ inverse: changes }),
-        getTokenAnalyses: async () => [],
-        getPhraseAnalyses: async () => [],
-        getSegmentAnalyses: async () => [],
-        getPhraseAnalysisLinks: async () => [],
-        findLinksByToken: async () => noLinks,
-        findLinksBySegment: async () => [],
-        findLinksToAnalyses: async () => noLinks,
-        findLinksInBooks: async () => noLinks,
-        findTokenAnalysesByForm: async () => [],
-        findPhraseAnalysesByForm: async () => [],
-        checkIndexes: async () => [
-          { index: 'tokenAnalyses', key: 'ta-1', missing: ['ta-1'], extra: [] },
-        ],
-        getScope: async () => scopeRecordOf(draft),
-      };
+    /** A draft repository in memory whose indexes always report one difference. */
+    class StubRepository extends DraftRepository {
+      override readonly capabilities: RepositoryCapabilities;
+
+      constructor(storage: KeyValueStorage, sourceProjectId: string, readOnly: boolean) {
+        super(storage, sourceProjectId, silentLogger());
+        this.capabilities = { readOnly };
+      }
+
+      override async checkIndexes(): Promise<IndexDifference[]> {
+        return [{ index: 'tokenAnalyses', key: 'ta-1', missing: ['ta-1'], extra: [] }];
+      }
+    }
+
+    /** A repository holding `draft`, as storage would open one. */
+    async function stubRepository(draft: DraftProject, readOnly = false): Promise<StubRepository> {
+      const { storage } = memoryStorage();
+      await new DraftRepository(storage, draft.sourceProjectId, silentLogger()).replaceAll(draft);
+      return new StubRepository(storage, draft.sourceProjectId, readOnly);
+    }
+
+    /** "cats" on GEN 1:1:0, approved with a breakdown and nothing else. */
+    const CATS_BREAKDOWN: Partial<TextAnalysis> = {
+      tokenAnalyses: [
+        {
+          id: 'ta-cats',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'cats',
+          morphemes: [
+            { id: 'm-cat', form: 'cat', writingSystem: 'en' },
+            { id: 'm-s', form: '-s', writingSystem: 'en' },
+          ],
+        },
+      ],
+      tokenAnalysisLinks: [
+        {
+          id: 'tl-cats',
+          analysisId: 'ta-cats',
+          ...FIXTURE_STAMPS,
+          status: 'approved',
+          token: { tokenRef: 'GEN 1:1:0', surfaceText: 'cats' },
+        },
+      ],
+    };
+
+    /**
+     * Gives sessions a draft of `src-project` to open. The draft holds `analysis` and
+     * `segmentation`, with English as its analysis language.
+     */
+    async function seedDraft(
+      analysis: Partial<TextAnalysis>,
+      segmentation?: SegmentationDelta,
+    ): Promise<void> {
+      jest.mocked(projectStorage.openDraftRepository).mockReturnValue(
+        await stubRepository({
+          ...emptyDraft('src-project'),
+          analysisLanguages: ['en'],
+          analysis: { ...emptyAnalysis(), ...analysis },
+          ...(segmentation && { segmentation }),
+        }),
+      );
     }
 
     /** Activates the extension and returns the session commands' handlers. */
@@ -2024,6 +2067,26 @@ describe('main', () => {
             analysisId: string,
           ) => Promise<string>
         >('interlinearizer.approveAnalysisForToken'),
+        writeMorphemes: handler<
+          (
+            sessionId: string,
+            tokenRef: string,
+            surfaceText: string,
+            forms: string[],
+            writingSystem: string,
+          ) => Promise<string>
+        >('interlinearizer.writeMorphemes'),
+        deleteMorphemes: handler<(sessionId: string, tokenRef: string) => Promise<string>>(
+          'interlinearizer.deleteMorphemes',
+        ),
+        writeMorphemeGloss: handler<
+          (
+            sessionId: string,
+            tokenRef: string,
+            morphemeId: string,
+            value: string,
+          ) => Promise<string>
+        >('interlinearizer.writeMorphemeGloss'),
         discardStaleAnalysis: handler<
           (sessionId: string, analysisId: string, tokenRef: string) => Promise<string>
         >('interlinearizer.discardStaleAnalysis'),
@@ -2094,25 +2157,6 @@ describe('main', () => {
       };
     }
 
-    /** Stores a draft of `src-project` holding `analysis` and `segmentation`, for sessions to open. */
-    async function storeDraftHolding(
-      analysis: Partial<TextAnalysis>,
-      segmentation?: SegmentationDelta,
-    ): Promise<void> {
-      const repository = new DraftRepository(
-        memoryStorage().storage,
-        'src-project',
-        silentLogger(),
-      );
-      await repository.replaceAll({
-        ...emptyDraft('src-project'),
-        analysisLanguages: ['en'],
-        analysis: { ...emptyAnalysis(), ...analysis },
-        ...(segmentation && { segmentation }),
-      });
-      jest.mocked(projectStorage.openDraftRepository).mockReturnValue(repository);
-    }
-
     const staleToken = {
       tokenAnalyses: [{ id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'at' } }],
       tokenAnalysisLinks: [
@@ -2147,12 +2191,8 @@ describe('main', () => {
       { sid: 'GEN 1:2', text: 'And the earth' },
     ]);
 
-    beforeEach(() => {
-      jest
-        .mocked(projectStorage.openDraftRepository)
-        .mockReturnValue(
-          stubRepository({ ...emptyDraft('src-project'), analysisLanguages: ['en'] }),
-        );
+    beforeEach(async () => {
+      await seedDraft({});
       __mockSettingsGet.mockResolvedValue(['en']);
       jest.mocked(bookService.getVerseBook).mockResolvedValue(VERSE_BOOK);
       jest.mocked(bookService.getBookSegments).mockResolvedValue(VERSE_BOOK.segments);
@@ -2187,7 +2227,7 @@ describe('main', () => {
         ]);
       jest
         .mocked(projectStorage.openPt9ImportRepository)
-        .mockReturnValue(stubRepository(emptyDraft('src-project'), true));
+        .mockReturnValue(await stubRepository(emptyDraft('src-project'), true));
       const { openSession } = await activateSessionCommands();
 
       const opened = JSON.parse(await openSession('src-project', 'import-id'));
@@ -2206,7 +2246,7 @@ describe('main', () => {
     it('reads the interface languages for a draft that lists no analysis language', async () => {
       jest
         .mocked(projectStorage.openDraftRepository)
-        .mockReturnValue(stubRepository(emptyDraft('src-project')));
+        .mockReturnValue(await stubRepository(emptyDraft('src-project')));
       __mockSettingsGet.mockResolvedValue(['fr']);
       const { openSession } = await activateSessionCommands();
 
@@ -2359,16 +2399,96 @@ describe('main', () => {
     });
 
     it('approves an analysis for a token, replying with the changes', async () => {
+      await seedDraft({
+        tokenAnalyses: [{ id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'at' } }],
+      });
       const { openSession, approveAnalysisForToken } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      await expect(
-        approveAnalysisForToken(sessionId, 'GEN 1:1:0', 'In', 'ta-unknown').then(JSON.parse),
-      ).resolves.toStrictEqual({ intent: 'approveAnalysisForToken' });
+      const changes = JSON.parse(
+        await approveAnalysisForToken(sessionId, 'GEN 1:1:0', 'In', 'ta-in'),
+      );
+
+      expect(changes).toMatchObject({
+        intent: 'approveAnalysisForToken',
+        tokenAnalysisLinks: {
+          puts: [
+            {
+              analysisId: 'ta-in',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+          ],
+          deletes: [],
+        },
+      });
+    });
+
+    it("writes a token's morpheme breakdown, replying with the changes", async () => {
+      const { openSession, writeMorphemes } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(
+        await writeMorphemes(sessionId, 'GEN 1:1:0', 'cats', ['cat', '-s'], 'en'),
+      );
+
+      expect(changes).toMatchObject({
+        intent: 'writeMorphemes',
+        tokenAnalyses: {
+          puts: [
+            {
+              surfaceText: 'cats',
+              morphemes: [
+                { id: expect.any(String), form: 'cat', writingSystem: 'en' },
+                { id: expect.any(String), form: '-s', writingSystem: 'en' },
+              ],
+            },
+          ],
+          deletes: [],
+        },
+        tokenAnalysisLinks: {
+          puts: [{ status: 'approved', token: { tokenRef: 'GEN 1:1:0', surfaceText: 'cats' } }],
+          deletes: [],
+        },
+      });
+    });
+
+    it("removes a token's morpheme breakdown, replying with the changes", async () => {
+      await seedDraft(CATS_BREAKDOWN);
+      const { openSession, deleteMorphemes } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(await deleteMorphemes(sessionId, 'GEN 1:1:0'));
+
+      expect(changes).toMatchObject({
+        intent: 'deleteMorphemes',
+        tokenAnalyses: { puts: [], deletes: ['ta-cats'] },
+        tokenAnalysisLinks: { puts: [], deletes: ['tl-cats'] },
+      });
+    });
+
+    it("glosses a morpheme in the session's language, replying with the changes", async () => {
+      await seedDraft(CATS_BREAKDOWN);
+      const { openSession, setAnalysisLanguage, writeMorphemeGloss } =
+        await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+      await setAnalysisLanguage(sessionId, 'fr');
+
+      const changes = JSON.parse(await writeMorphemeGloss(sessionId, 'GEN 1:1:0', 'm-cat', 'chat'));
+
+      expect(changes).toMatchObject({
+        intent: 'writeMorphemeGloss',
+        tokenAnalyses: {
+          puts: [
+            { id: 'ta-cats', morphemes: [{ id: 'm-cat', gloss: { fr: 'chat' } }, { id: 'm-s' }] },
+          ],
+          deletes: [],
+        },
+      });
     });
 
     it('discards the place an analysis went stale at, replying with the changes', async () => {
-      await storeDraftHolding(staleToken);
+      await seedDraft(staleToken);
       const { openSession, discardStaleAnalysis } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
@@ -2382,7 +2502,7 @@ describe('main', () => {
     });
 
     it('reapplies a stale analysis on a token, replying with the changes', async () => {
-      await storeDraftHolding(staleToken);
+      await seedDraft(staleToken);
       const { openSession, reapplyStaleAnalysis } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
@@ -2406,7 +2526,7 @@ describe('main', () => {
     });
 
     it('keeps a stale free translation for a segment, replying with the changes', async () => {
-      await storeDraftHolding(staleTranslation);
+      await seedDraft(staleTranslation);
       const { openSession, keepStaleFreeTranslation } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
@@ -2425,7 +2545,7 @@ describe('main', () => {
     });
 
     it('discards a stale free translation, replying with the changes', async () => {
-      await storeDraftHolding(staleTranslation);
+      await seedDraft(staleTranslation);
       const { openSession, discardStaleFreeTranslation } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
@@ -2463,10 +2583,7 @@ describe('main', () => {
     });
 
     it("checks a phrase against the segments the draft's boundaries in its book make", async () => {
-      await storeDraftHolding(
-        {},
-        { removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'], addedStarts: [] },
-      );
+      await seedDraft({}, { removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'], addedStarts: [] });
       const { openSession, createPhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
@@ -2497,7 +2614,7 @@ describe('main', () => {
       ['mergePhrases', (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', godAnd)],
       ['approvePhrase', (c: SessionCommands, id: string) => c.approvePhrase(id, 'pl-1')],
     ])('refuses %s over tokens in two segments, logging the error', async (intent, command) => {
-      await storeDraftHolding(suggested(godAnd));
+      await seedDraft(suggested(godAnd));
       const commands = await activateSessionCommands();
       const { sessionId } = JSON.parse(await commands.openSession('src-project'));
 
@@ -2520,7 +2637,7 @@ describe('main', () => {
     });
 
     it('approves a suggested phrase within one segment, replying with the changes', async () => {
-      await storeDraftHolding(suggested(inThe));
+      await seedDraft(suggested(inThe));
       const { openSession, approvePhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
@@ -2531,7 +2648,7 @@ describe('main', () => {
     });
 
     it('leaves an approved phrase approved without reading the text', async () => {
-      await storeDraftHolding({
+      await seedDraft({
         ...suggested(godAnd),
         phraseAnalysisLinks: [
           { id: 'pl-1', analysisId: 'pa-1', ...FIXTURE_STAMPS, status: 'approved', tokens: godAnd },
@@ -2547,7 +2664,7 @@ describe('main', () => {
     });
 
     it('removes a phrase given no tokens without reading the text', async () => {
-      await storeDraftHolding(suggested(godAnd));
+      await seedDraft(suggested(godAnd));
       const { openSession, updatePhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
@@ -2559,7 +2676,7 @@ describe('main', () => {
     });
 
     it("writes a phrase's gloss in the session's language, replying with the changes", async () => {
-      await storeDraftHolding({
+      await seedDraft({
         phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the' }],
         phraseAnalysisLinks: [
           { id: 'pl-1', analysisId: 'pa-1', ...FIXTURE_STAMPS, status: 'approved', tokens: inThe },
@@ -2580,7 +2697,7 @@ describe('main', () => {
     });
 
     it('merges a token into a phrase when PAPI names no absorbed phrase, replying with the changes', async () => {
-      await storeDraftHolding({
+      await seedDraft({
         phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the' }],
         phraseAnalysisLinks: [
           { id: 'pl-1', analysisId: 'pa-1', ...FIXTURE_STAMPS, status: 'approved', tokens: inThe },
@@ -2611,7 +2728,7 @@ describe('main', () => {
         { tokenRef: 'GEN 1:1:7', surfaceText: 'beginning' },
         { tokenRef: 'GEN 1:2:0', surfaceText: 'And' },
       ];
-      await storeDraftHolding({
+      await seedDraft({
         phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the beginning And' }],
         phraseAnalysisLinks: [
           {
@@ -2738,7 +2855,7 @@ describe('main', () => {
         (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-2', [inThe[1], ...beginningGod]),
       ],
     ])('refuses %s over a token in another approved phrase', async (_intent, command) => {
-      await storeDraftHolding({
+      await seedDraft({
         phraseAnalyses: [
           { id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the' },
           { id: 'pa-2', ...FIXTURE_STAMPS, surfaceText: 'beginning God' },
@@ -2829,7 +2946,7 @@ describe('main', () => {
           { tokenRef: 'GEN 1:1:7', surfaceText: 'beginning' },
         ],
       };
-      await storeDraftHolding({
+      await seedDraft({
         phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the beginning' }],
         phraseAnalysisLinks: [phrase],
       });
@@ -2846,7 +2963,7 @@ describe('main', () => {
     });
 
     it("stales the free translation of a segment it splits, in the split's edit", async () => {
-      await storeDraftHolding({
+      await seedDraft({
         segmentAnalyses: [
           {
             id: 'sa-1',
@@ -2897,7 +3014,7 @@ describe('main', () => {
     ])(
       'refuses %s in a book the project has no text for, logging the error',
       async (intent, command) => {
-        await storeDraftHolding(suggested(exodus));
+        await seedDraft(suggested(exodus));
         jest.mocked(bookService.getVerseBook).mockResolvedValue(undefined);
         jest.mocked(bookService.getBookSegments).mockResolvedValue(undefined);
         const commands = await activateSessionCommands();

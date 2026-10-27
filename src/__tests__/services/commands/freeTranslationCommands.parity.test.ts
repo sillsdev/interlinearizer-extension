@@ -5,10 +5,8 @@ import { writeSegmentFreeTranslation as writeCommand } from '../../../services/c
 import { writeSegmentFreeTranslation } from '../../../store/analysisSlice';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../../test-helpers';
-import { runParity } from './parity';
+import { ids, LATER, NOW, type ParityCase, runParity } from './parity';
 
-const NOW = '2026-06-01T00:00:00.000Z';
-const LATER = { createdAt: '2026-03-01T00:00:00.000Z', updatedAt: '2026-03-01T00:00:00.000Z' };
 const NEW = { linkId: 'new-link', analysisId: 'new-analysis' };
 
 const SEGMENT = 'GEN 1:1';
@@ -34,8 +32,6 @@ function analysisOf(
   return { ...emptyAnalysis(), segmentAnalyses, segmentAnalysisLinks };
 }
 
-const ids = (records: readonly { id: string }[]) => records.map(({ id }) => id).sort();
-
 const translationOf = (store: TextAnalysis, id: string) =>
   store.segmentAnalyses.find((sa) => sa.id === id);
 
@@ -44,15 +40,8 @@ const linkOf = (store: TextAnalysis, id: string) =>
 
 type WriteInput = { value: string; adoptStaleAnalysisId?: string };
 
-type ParityCase = {
-  analysis: TextAnalysis;
-  input: WriteInput;
-  /** What the reducer's result must show, so the case exercises the path it names. */
-  expectStore: (store: TextAnalysis) => void;
-};
-
 describe('writeSegmentFreeTranslation parity with the reducer', () => {
-  const cases: [string, ParityCase][] = [
+  const cases: [string, ParityCase<WriteInput>][] = [
     [
       'makes an approved translation for a segment with none',
       {

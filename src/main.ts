@@ -15,6 +15,7 @@ import { AnalysisSessions, type OpenedSession, type Session } from './services/a
 import * as bookService from './services/bookService';
 import * as boundaryCommands from './services/commands/boundaryCommands';
 import type { ChangeBuffer } from './services/commands/changeBuffer';
+import * as morphemeCommands from './services/commands/morphemeCommands';
 import * as staleCommands from './services/commands/staleCommands';
 import * as freeTranslationCommands from './services/commands/freeTranslationCommands';
 import * as phraseCommands from './services/commands/phraseCommands';
@@ -871,7 +872,8 @@ function editStamp() {
  * Writes a token's gloss in the session's analysis language; a blank value clears it.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function writeGloss(
   sessionId: string,
@@ -894,7 +896,8 @@ function writeGloss(
  * Approves a stored token analysis for a token, in place of any approval the token held.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function approveAnalysisForToken(
   sessionId: string,
@@ -913,10 +916,74 @@ function approveAnalysisForToken(
 }
 
 /**
+ * Writes a token's morpheme breakdown, each form in `writingSystem`.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
+ */
+function writeMorphemes(
+  sessionId: string,
+  tokenRef: string,
+  surfaceText: string,
+  forms: string[],
+  writingSystem: string,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'writeMorphemes', (buffer) =>
+    morphemeCommands.writeMorphemes(buffer, {
+      ...editStamp(),
+      tokenRef,
+      surfaceText,
+      writingSystem,
+      morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
+    }),
+  );
+}
+
+/**
+ * Removes a token's morpheme breakdown.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
+ */
+function deleteMorphemes(sessionId: string, tokenRef: string): Promise<string> {
+  return runSessionEdit(sessionId, 'deleteMorphemes', (buffer) =>
+    morphemeCommands.deleteMorphemes(buffer, { ...editStamp(), tokenRef }),
+  );
+}
+
+/**
+ * Glosses one morpheme of a token's breakdown in the session's analysis language; a blank value
+ * clears the morpheme's gloss.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
+ */
+function writeMorphemeGloss(
+  sessionId: string,
+  tokenRef: string,
+  morphemeId: string,
+  value: string,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'writeMorphemeGloss', (buffer, session) =>
+    morphemeCommands.writeMorphemeGloss(buffer, {
+      ...editStamp(),
+      tokenRef,
+      morphemeId,
+      value,
+      analysisLanguage: session.analysisLanguage,
+    }),
+  );
+}
+
+/**
  * Gives up the place an analysis went stale at, leaving its other places alone.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function discardStaleAnalysis(
   sessionId: string,
@@ -933,7 +1000,8 @@ function discardStaleAnalysis(
  * whatever that token held.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function reapplyStaleAnalysis(
   sessionId: string,
@@ -961,7 +1029,8 @@ function reapplyStaleAnalysis(
  * segment.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function keepStaleFreeTranslation(
   sessionId: string,
@@ -983,7 +1052,8 @@ function keepStaleFreeTranslation(
  * Drops a stale free translation, even one whose verse the book no longer holds.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function discardStaleFreeTranslation(sessionId: string, analysisId: string): Promise<string> {
   return runSessionEdit(sessionId, 'discardStaleFreeTranslation', (buffer) =>
@@ -1960,6 +2030,73 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const writeMorphemesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.writeMorphemes',
+    writeMorphemes,
+    {
+      method: {
+        summary: "Write a token's morpheme breakdown",
+        params: [
+          sessionIdParam,
+          ...tokenParams,
+          {
+            name: 'forms',
+            required: true,
+            summary: 'The morpheme forms, in order',
+            schema: { type: 'array', items: { type: 'string' } },
+          },
+          {
+            name: 'writingSystem',
+            required: true,
+            summary: 'BCP 47 tag of the writing system the forms are in',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const deleteMorphemesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.deleteMorphemes',
+    deleteMorphemes,
+    {
+      method: {
+        summary: "Remove a token's morpheme breakdown",
+        params: [sessionIdParam, tokenParams[0]],
+        result: editResult,
+      },
+    },
+  );
+
+  const writeMorphemeGlossCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.writeMorphemeGloss',
+    writeMorphemeGloss,
+    {
+      method: {
+        summary:
+          "Gloss one morpheme of a token's breakdown in a session's analysis language; a blank value clears the morpheme's gloss",
+        params: [
+          sessionIdParam,
+          tokenParams[0],
+          {
+            name: 'morphemeId',
+            required: true,
+            summary: 'MorphemeAnalysis.id of the morpheme glossed',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'value',
+            required: true,
+            summary: 'The gloss',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
   const staleAnalysisParam = {
     name: 'analysisId',
     required: true,
@@ -2749,6 +2886,9 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     checkIndexesCommandRegistration,
     writeGlossCommandRegistration,
     approveAnalysisForTokenCommandRegistration,
+    writeMorphemesCommandRegistration,
+    deleteMorphemesCommandRegistration,
+    writeMorphemeGlossCommandRegistration,
     discardStaleAnalysisCommandRegistration,
     reapplyStaleAnalysisCommandRegistration,
     keepStaleFreeTranslationCommandRegistration,

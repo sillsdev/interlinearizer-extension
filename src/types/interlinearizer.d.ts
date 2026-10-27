@@ -423,6 +423,45 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Writes a token's morpheme breakdown, each form in `writingSystem`.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.writeMorphemes': (
+      sessionId: string,
+      tokenRef: string,
+      surfaceText: string,
+      forms: string[],
+      writingSystem: string,
+    ) => Promise<string>;
+
+    /**
+     * Removes a token's morpheme breakdown.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.deleteMorphemes': (sessionId: string, tokenRef: string) => Promise<string>;
+
+    /**
+     * Glosses one morpheme of a token's breakdown in a session's analysis language; a blank value
+     * clears the morpheme's gloss.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.writeMorphemeGloss': (
+      sessionId: string,
+      tokenRef: string,
+      morphemeId: string,
+      value: string,
+    ) => Promise<string>;
+
+    /**
      * Gives up the place an analysis went stale at, leaving its other places alone.
      *
      * @returns A JSON string of the changes it applied.

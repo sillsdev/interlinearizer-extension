@@ -28,10 +28,8 @@ import {
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { splitPhraseAtBoundary } from '../../../utils/phrase-arc';
 import { FIXTURE_STAMPS } from '../../test-helpers';
-import { runParity } from './parity';
+import { EARLIER, ids, NOW, type ParityCase, runParity } from './parity';
 
-const NOW = '2026-06-01T00:00:00.000Z';
-const EARLIER = { createdAt: '2025-06-01T00:00:00.000Z', updatedAt: '2025-06-01T00:00:00.000Z' };
 const STAMP = { forkId: 'fork', now: NOW };
 const NEW = { linkId: 'new-link', analysisId: 'new-analysis' };
 const SENSE = { authority: 'fwlite', senseId: 's-beginning' } as const;
@@ -67,20 +65,11 @@ function analysisOf(
   return { ...emptyAnalysis(), phraseAnalyses, phraseAnalysisLinks };
 }
 
-const ids = (records: readonly { id: string }[]) => records.map(({ id }) => id).sort();
-
 const linkOf = (store: TextAnalysis, id: string) =>
   store.phraseAnalysisLinks.find((l) => l.id === id);
 
 const payloadOf = (store: TextAnalysis, id: string) =>
   store.phraseAnalyses.find((pa) => pa.id === id);
-
-type ParityCase<Input> = {
-  analysis: TextAnalysis;
-  input: Input;
-  /** What the reducer's result must show, so the case exercises the path it names. */
-  expectStore: (store: TextAnalysis) => void;
-};
 
 /**
  * Runs `analysis` through both `action` and `command`. Checks the reducer's result with

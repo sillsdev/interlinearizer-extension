@@ -57,7 +57,7 @@ export async function resolveApprovedAnalysis(
 }
 
 /** Whether a token other than `link`'s links the payload `analysisId`, at any status. */
-async function isSharedByOtherTokens(
+export async function isSharedByOtherTokens(
   buffer: ChangeBuffer,
   link: TokenAnalysisLink,
   analysisId: string,
@@ -72,7 +72,7 @@ async function isSharedByOtherTokens(
  *
  * @returns The copy, staged.
  */
-function forkSharedAnalysis(
+export function forkSharedAnalysis(
   buffer: ChangeBuffer,
   link: TokenAnalysisLink,
   analysis: TokenAnalysis,
@@ -108,6 +108,21 @@ async function approveHeldLink(
   held.updatedAt = now;
   buffer.put('tokenAnalysisLinks', held);
   return held;
+}
+
+/**
+ * Removes `link` after an edit through it emptied its payload. The payload goes too when no other
+ * link names it, and otherwise stays, emptied, as the edit left it.
+ */
+export async function detachEmptiedAnalysis(
+  buffer: ChangeBuffer,
+  analysis: TokenAnalysis,
+  link: TokenAnalysisLink,
+): Promise<void> {
+  buffer.delete('tokenAnalysisLinks', link);
+  const { tokenAnalysisLinks } = await buffer.findLinksToAnalyses([analysis.id]);
+  if (tokenAnalysisLinks.length === 0) buffer.delete('tokenAnalyses', analysis);
+  else buffer.put('tokenAnalyses', analysis);
 }
 
 /** Removes the payload once no link of any status names it. */
@@ -154,7 +169,7 @@ async function coalesceLinksPerToken(buffer: ChangeBuffer, analysisId: string): 
  * that links both keeps one link. The survivor's breakdown stays stale only when both payloads'
  * were.
  */
-async function mergeIntoIdenticalPayload(
+export async function mergeIntoIdenticalPayload(
   buffer: ChangeBuffer,
   analysis: TokenAnalysis,
   now: string,
@@ -184,7 +199,7 @@ async function mergeIntoIdenticalPayload(
  * stored payload is shared where one exists. Otherwise `analysis` is staged. A non-approved link
  * that the token holds to the shared payload is approved, rather than joined by a second link.
  */
-async function appendApprovedAnalysis(
+export async function appendApprovedAnalysis(
   buffer: ChangeBuffer,
   analysis: TokenAnalysis,
   { tokenRef, now, linkId }: TokenEdit,
@@ -233,10 +248,7 @@ export async function writeGloss(buffer: ChangeBuffer, request: WriteGlossReques
     if (isBlank) {
       clearAnalysisGloss(target, lang);
       if (isEmptyTokenAnalysis(target)) {
-        buffer.delete('tokenAnalysisLinks', link);
-        const { tokenAnalysisLinks } = await buffer.findLinksToAnalyses([target.id]);
-        if (tokenAnalysisLinks.length === 0) buffer.delete('tokenAnalyses', target);
-        else buffer.put('tokenAnalyses', target);
+        await detachEmptiedAnalysis(buffer, target, link);
         return;
       }
     } else {

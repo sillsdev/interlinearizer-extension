@@ -70,9 +70,10 @@ export interface SessionHost {
   /** The platform's interface languages, most preferred first. */
   getInterfaceLanguages(): Promise<string[]>;
   /**
-   * Starts reading the source project's whole text afresh, without waiting on it, so that every
-   * book reaches {@link AnalysisSessions.reanchorBook} and the books holding text reach
-   * {@link AnalysisSessions.reanchorMissingBooks}.
+   * Starts reading the source project's whole text afresh, without waiting on the read. Each book
+   * holding text reaches {@link AnalysisSessions.reanchorBook} once read. Once every book is read
+   * with none failed, the books holding text reach {@link AnalysisSessions.reanchorMissingBooks}. A
+   * book that fails to read reaches neither until a later read of that book succeeds.
    */
   startTextRead(sourceProjectId: string): Promise<void>;
   /** Ends the source project's whole-text read. */
@@ -259,24 +260,30 @@ export class AnalysisSessions {
   }
 
   /**
-   * Reverts the session's latest edit not yet undone.
+   * Reverts the session's latest edit not yet undone, re-anchoring what it restores to the current
+   * text of each book passed over since.
    *
-   * @returns The changes that reverted it, or `undefined` when there is none.
+   * @returns The changes that reverted the edit and re-anchored what the edit restored, or
+   *   `undefined` when there is none.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
-   * @throws Whatever applying the changes throws; the edit stays the next to undo.
+   * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit
+   *   stays the next to undo.
    */
   undo(sessionId: string): Promise<ChangeSet | undefined> {
     return this.runEdit(sessionId, (session) => session.history.undo());
   }
 
   /**
-   * Redoes the session's latest undone edit.
+   * Redoes the session's latest undone edit, re-anchoring what it restores to the current text of
+   * each book passed over since.
    *
-   * @returns The changes that redid it, or `undefined` when there is none.
+   * @returns The changes that redid the edit and re-anchored what the edit restored, or `undefined`
+   *   when there is none.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
-   * @throws Whatever applying the changes throws; the edit stays the next to redo.
+   * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit
+   *   stays the next to redo.
    */
   redo(sessionId: string): Promise<ChangeSet | undefined> {
     return this.runEdit(sessionId, (session) => session.history.redo());

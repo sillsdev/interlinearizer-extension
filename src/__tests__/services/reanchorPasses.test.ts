@@ -68,7 +68,7 @@ describe('reanchorStoredBook', () => {
     const { repository, stored } = await storedDraft();
     const edited = verseBook('GEN 1:1', 'alpha and beta');
 
-    const changes = await reanchorStoredBook(repository, edited);
+    const { changes } = await reanchorStoredBook(repository, edited);
 
     const draft = await stored();
     expect(linkNamed(draft, 'tl-gen').token.tokenRef).toBe(tokenRefOf(edited, 'beta'));
@@ -93,7 +93,7 @@ describe('reanchorStoredBook', () => {
 
     await expect(
       reanchorStoredBook(repository, verseBook('GEN 1:1', 'alpha beta')),
-    ).resolves.toBeUndefined();
+    ).resolves.toStrictEqual({ heldAnalysis: true });
 
     expect(apply).not.toHaveBeenCalled();
   });
@@ -126,6 +126,28 @@ describe('reanchorStoredBook', () => {
     const draft = await stored();
     expect(linkNamed(draft, 'tl-gen').status).toBe('stale');
     expect(linkNamed(draft, 'tl-exo').status).toBe('approved');
+  });
+
+  it('tells that the draft held no analysis in a book it neither links into nor splits', async () => {
+    const { repository } = await storedDraft();
+
+    await expect(
+      reanchorStoredBook(repository, verseBook('LEV 1:1', 'epsilon zeta')),
+    ).resolves.toStrictEqual({ heldAnalysis: false });
+  });
+
+  it('tells that the draft held analysis in a book it only splits', async () => {
+    const leviticus = verseBook('LEV 1:1', 'epsilon zeta');
+    const { repository } = await storedDraft({
+      segmentation: {
+        removedVerseStarts: [],
+        addedStarts: [{ tokenRef: tokenRefOf(leviticus, 'zeta'), surfaceText: 'zeta' }],
+      },
+    });
+
+    await expect(reanchorStoredBook(repository, leviticus)).resolves.toMatchObject({
+      heldAnalysis: true,
+    });
   });
 });
 

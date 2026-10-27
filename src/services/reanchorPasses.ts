@@ -4,6 +4,7 @@ import { emptyAnalysis } from '../types/empty-factories';
 import { booksLinkedIn } from '../utils/analysis-book';
 import { applyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { reanchorChangesForBook } from '../utils/reanchor-changes';
+import { segmentationForBook } from '../utils/segmentation';
 import type { ReanchorBooks } from './editHistory';
 
 /**
@@ -37,21 +38,32 @@ function reanchorInTurn(draft: DraftProject, books: readonly Book[]): ChangeSet 
   return changes;
 }
 
+/** What a pass over one book of the stored draft found and applied. */
+export type StoredBookPass = {
+  /** Whether the draft linked into the book or held boundary edits in it before the pass. */
+  heldAnalysis: boolean;
+  /** The changes applied; absent when the draft already read as re-anchored. */
+  changes?: ChangeSet;
+};
+
 /**
  * Re-anchors the stored draft to `book`'s current text, outside any undo history. The draft stays
  * as saved or unsaved as it was, because a pass is bookkeeping rather than an edit. A book the text
  * lacks is passed as a book with no segments.
  *
- * @returns The changes applied, or `undefined` when the draft already read as re-anchored.
  * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
  */
 export async function reanchorStoredBook(
   repository: AnalysisRepository,
   book: Book,
-): Promise<ChangeSet | undefined> {
-  const changes = reanchorInTurn(await readBooks(repository, [book.bookRef]), [book]);
+): Promise<StoredBookPass> {
+  const draft = await readBooks(repository, [book.bookRef]);
+  const heldAnalysis =
+    booksLinkedIn(draft.analysis).has(book.bookRef) ||
+    segmentationForBook(draft.segmentation, book.bookRef) !== undefined;
+  const changes = reanchorInTurn(draft, [book]);
   if (changes) await repository.apply(changes, { keepDirty: true });
-  return changes;
+  return { heldAnalysis, ...(changes && { changes }) };
 }
 
 /**

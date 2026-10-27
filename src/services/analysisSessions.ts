@@ -81,13 +81,13 @@ export interface SessionHost {
 }
 
 /**
- * Re-anchors the session's draft to `book`. Records the pass in the session's history only when the
- * draft links into the book, so an undo or redo re-anchors to no book without links.
+ * Re-anchors the session's draft to `book`. The pass is recorded in the session's history only when
+ * the draft linked into the book or held boundary edits in it, so an undo or redo re-anchors only
+ * those books.
  */
 async function reanchorNow(session: Session, book: Book): Promise<void> {
-  const linked = await booksLinkedAmong(session.repository, [book.bookRef]);
-  await reanchorStoredBook(session.repository, book);
-  if (linked.length > 0) session.history.recordPass(book);
+  const { heldAnalysis } = await reanchorStoredBook(session.repository, book);
+  if (heldAnalysis) session.history.recordPass(book);
 }
 
 type OpenSession = {
@@ -303,9 +303,10 @@ export class AnalysisSessions {
 
   /**
    * Re-anchors the draft of the source project's session to `book`'s current text, in the session's
-   * turn and as no undo step. Where the draft links into the book, what a later undo or redo
-   * restores is re-anchored to it too. A book the text lacks is passed as a book with no segments.
-   * Does nothing when the source has no session open, or only a read-only one.
+   * turn and as no undo step. Where the draft links into the book or holds boundary edits in it,
+   * what a later undo or redo restores is re-anchored to it too. A book the text lacks is passed as
+   * a book with no segments. Does nothing when the source has no session open, or only a read-only
+   * one.
    *
    * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
    */

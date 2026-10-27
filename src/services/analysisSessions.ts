@@ -1,11 +1,15 @@
+import { Canon } from '@sillsdev/scripture';
+import type { Book } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
-import { isEmptyChangeSet } from '../utils/change-set';
+import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
+import { missingBook } from '../utils/reanchor-draft';
 import { assertApprovalRule } from './commands/approvalRule';
 import { ChangeBuffer } from './commands/changeBuffer';
 import { EditHistory } from './editHistory';
+import { booksLinkedAmong, reanchorRestored, reanchorStoredBook } from './reanchorPasses';
 
 /** BCP 47 tag for a language that cannot be determined. */
 export const UNDETERMINED_LANGUAGE = 'und';
@@ -65,6 +69,20 @@ export interface SessionHost {
   openPt9ImportRepository(interlinearProjectId: string): AnalysisRepository;
   /** The platform's interface languages, most preferred first. */
   getInterfaceLanguages(): Promise<string[]>;
+  /** Starts reading the source project's whole text afresh, without waiting on the read. */
+  startTextRead(sourceProjectId: string): Promise<void>;
+  /** Ends the source project's whole-text read. */
+  stopTextRead(sourceProjectId: string): Promise<void>;
+}
+
+/**
+ * Re-anchors the session's draft to `book`. The pass is recorded in the session's history only when
+ * the draft linked into the book or held boundary edits in it, so an undo or redo re-anchors only
+ * those books.
+ */
+async function reanchorNow(session: Session, book: Book): Promise<void> {
+  const { heldAnalysis } = await reanchorStoredBook(session.repository, book);
+  if (heldAnalysis) session.history.recordPass(book);
 }
 
 type OpenSession = {
@@ -99,8 +117,9 @@ export class AnalysisSessions {
   /**
    * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
    * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
-   * Opening closes the source's earlier session, if any, and starts the new one on what storage
-   * holds, with nothing to undo.
+   * Opening closes the source's earlier session, if any. The new session starts on what storage
+   * holds, with nothing to undo. Opening also starts a fresh read of the source's whole text, which
+   * lasts until the session closes.
    *
    * The session starts on the opened draft's first analysis language. When the draft lists none, it
    * starts on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the
@@ -125,7 +144,7 @@ export class AnalysisSessions {
         id: crypto.randomUUID(),
         scope,
         repository,
-        history: new EditHistory(repository),
+        history: new EditHistory(repository, reanchorRestored(repository)),
         analysisLanguage:
           opened.analysisLanguages[0] ??
           ((await this.host.getInterfaceLanguages())[0] || UNDETERMINED_LANGUAGE),
@@ -133,6 +152,7 @@ export class AnalysisSessions {
       const entry: OpenSession = { session, queue: Promise.resolve() };
       this.sessions.set(session.id, entry);
       this.sessionsBySource.set(sourceProjectId, entry);
+      await this.host.startTextRead(sourceProjectId);
       return {
         sessionId: session.id,
         readOnly: repository.capabilities.readOnly,
@@ -210,56 +230,122 @@ export class AnalysisSessions {
    * applies as one undo step, marking the draft dirty; a command staging nothing applies nothing.
    * When the draft lists no analysis languages, that step adds the session's analysis language.
    *
+   * When `command` returns books, the step also re-anchors the draft, as the staged changes leave
+   * it, to each book's text in turn.
+   *
    * @returns The changes applied, naming `intent`.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {ApprovalRuleError} If the changes would give a token or segment a second approved
    *   link, or put a token in a second approved phrase; nothing is applied.
    * @throws {Error} If the session is not open.
-   * @throws Whatever the command, reading the draft's record, or applying its changes throws;
-   *   nothing is applied.
+   * @throws Whatever the command, reading the draft, or applying its changes throws; nothing is
+   *   applied.
    */
   edit(
     sessionId: string,
     intent: string,
-    command: (buffer: ChangeBuffer, session: Session) => Promise<void>,
+    command: (buffer: ChangeBuffer, session: Session) => Promise<void | readonly Book[]>,
   ): Promise<ChangeSet> {
     return this.runEdit(sessionId, async (session) => {
       const buffer = new ChangeBuffer(session.repository);
-      await command(buffer, session);
-      const changes = buffer.toChangeSet(intent);
-      if (isEmptyChangeSet(changes)) return changes;
+      const reanchorTo = await command(buffer, session);
+      const staged = buffer.toChangeSet(intent);
+      if (isEmptyChangeSet(staged)) return staged;
       await assertApprovalRule(buffer, session.repository);
-      const scope = changes.scope ?? (await session.repository.getScope());
+      const scope = staged.scope ?? (await session.repository.getScope());
       if (scope.analysisLanguages.length === 0) {
-        changes.scope = { ...scope, analysisLanguages: [session.analysisLanguage] };
+        staged.scope = { ...scope, analysisLanguages: [session.analysisLanguage] };
       }
+      const reanchored =
+        reanchorTo && reanchorTo.length > 0
+          ? await reanchorRestored(session.repository)(staged, reanchorTo)
+          : undefined;
+      const changes = reanchored ? mergeChangeSets(staged, reanchored) : staged;
       await session.history.apply(changes);
       return changes;
     });
   }
 
   /**
-   * Reverts the session's latest edit not yet undone.
+   * Reverts the session's latest edit not yet undone, re-anchoring what it restores to the current
+   * text of each book re-anchored since.
    *
-   * @returns The changes that reverted it, or `undefined` when there is none.
+   * @returns The changes that reverted the edit and re-anchored what the undo restored, or
+   *   `undefined` when there is none.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
-   * @throws Whatever applying the changes throws; the edit stays the next to undo.
+   * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit
+   *   stays the next to undo.
    */
   undo(sessionId: string): Promise<ChangeSet | undefined> {
     return this.runEdit(sessionId, (session) => session.history.undo());
   }
 
   /**
-   * Redoes the session's latest undone edit.
+   * Redoes the session's latest undone edit, re-anchoring what it restores to the current text of
+   * each book re-anchored since.
    *
-   * @returns The changes that redid it, or `undefined` when there is none.
+   * @returns The changes that redid the edit and re-anchored what the redo restored, or `undefined`
+   *   when there is none.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
-   * @throws Whatever applying the changes throws; the edit stays the next to redo.
+   * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit
+   *   stays the next to redo.
    */
   redo(sessionId: string): Promise<ChangeSet | undefined> {
     return this.runEdit(sessionId, (session) => session.history.redo());
+  }
+
+  /**
+   * Re-anchors the draft of the source project's session to `book`'s current text, in the session's
+   * turn and as no undo step. Where the draft links into the book or holds boundary edits in it,
+   * what a later undo or redo restores is re-anchored to it too. A book the text lacks is passed as
+   * a book with no segments. Does nothing when the source has no session open, or only a read-only
+   * one.
+   *
+   * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
+   */
+  reanchorBook(sourceProjectId: string, book: Book): Promise<void> {
+    return this.runOnWritable(sourceProjectId, (session) => reanchorNow(session, book));
+  }
+
+  /**
+   * Re-anchors the draft of the source project's session, as {@link reanchorBook} does, to each book
+   * the text lacks. A book the text lacks is a linked book that `textBookIds` does not list.
+   *
+   * @throws Whatever reading the draft or applying the changes throws; the books before stay
+   *   re-anchored.
+   */
+  reanchorMissingBooks(sourceProjectId: string, textBookIds: readonly string[]): Promise<void> {
+    return this.runOnWritable(sourceProjectId, async (session) => {
+      const present = new Set(textBookIds);
+      const missing = await booksLinkedAmong(
+        session.repository,
+        Canon.allBookIds.filter((bookCode) => !present.has(bookCode)),
+      );
+      await missing.reduce<Promise<void>>(
+        (previous, bookCode) => previous.then(() => reanchorNow(session, missingBook(bookCode))),
+        Promise.resolve(),
+      );
+    });
+  }
+
+  /**
+   * Settles once every command sent so far to the source project's session has settled, at once
+   * when the source has no session open. Never rejects.
+   */
+  async settled(sourceProjectId: string): Promise<void> {
+    await this.sessionsBySource.get(sourceProjectId)?.queue;
+  }
+
+  /** Runs `command` on the source project's session unless it has none open or only a read-only one. */
+  private runOnWritable(
+    sourceProjectId: string,
+    command: (session: Session) => Promise<void>,
+  ): Promise<void> {
+    const entry = this.sessionsBySource.get(sourceProjectId);
+    if (!entry || entry.session.repository.capabilities.readOnly) return Promise.resolve();
+    return this.run(entry.session.id, command);
   }
 
   /**
@@ -287,9 +373,9 @@ export class AnalysisSessions {
   }
 
   /**
-   * Makes the session unreachable by id or source, then, for a draft, releases its repository once
-   * the commands sent to it have settled. A session that an earlier step already closed is left
-   * alone, so its repository is released only once.
+   * Makes the session unreachable by id or source, then, once the commands sent to it have settled,
+   * ends the source's whole-text read and, for a draft, releases its repository. A session that an
+   * earlier step already closed is left alone, so its repository is released only once.
    */
   private async closeNow(entry: OpenSession): Promise<void> {
     const { id, scope } = entry.session;
@@ -297,6 +383,7 @@ export class AnalysisSessions {
     this.sessions.delete(id);
     this.sessionsBySource.delete(scope.sourceProjectId);
     await entry.queue;
+    await this.host.stopTextRead(scope.sourceProjectId);
     if (scope.kind === 'draft') await this.host.releaseDraftRepository(scope.sourceProjectId);
   }
 

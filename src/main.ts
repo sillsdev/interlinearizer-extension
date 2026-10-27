@@ -150,6 +150,8 @@ const sessions = new AnalysisSessions({
   openPt9ImportRepository: (interlinearProjectId) =>
     projectStorage.openPt9ImportRepository(executionToken, interlinearProjectId),
   getInterfaceLanguages: () => papi.settings.get('platform.interfaceLanguage'),
+  startTextRead: (sourceProjectId) => bookService.startTextRead(sourceProjectId),
+  stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
 });
 
 // #endregion
@@ -787,9 +789,9 @@ async function setAnalysisLanguage(sessionId: string, analysisLanguage: string):
 /**
  * Reverts a session's latest edit not yet undone.
  *
- * @returns The changes that reverted it, as JSON, or `undefined` when there is none.
- * @throws If the session is read-only or not open, or the changes cannot be applied. The error is
- *   logged before rethrowing.
+ * @returns The changes it applied, as JSON, or `undefined` when there is none.
+ * @throws If the session is read-only or not open, or the undo fails. The error is logged before
+ *   rethrowing.
  */
 async function undoEdit(sessionId: string): Promise<string | undefined> {
   try {
@@ -804,9 +806,9 @@ async function undoEdit(sessionId: string): Promise<string | undefined> {
 /**
  * Redoes a session's latest undone edit.
  *
- * @returns The changes that redid it, as JSON, or `undefined` when there is none.
- * @throws If the session is read-only or not open, or the changes cannot be applied. The error is
- *   logged before rethrowing.
+ * @returns The changes it applied, as JSON, or `undefined` when there is none.
+ * @throws If the session is read-only or not open, or the redo fails. The error is logged before
+ *   rethrowing.
  */
 async function redoEdit(sessionId: string): Promise<string | undefined> {
   try {
@@ -846,7 +848,7 @@ async function checkIndexes(sessionId: string): Promise<string> {
 async function runSessionEdit(
   sessionId: string,
   intent: string,
-  command: (buffer: ChangeBuffer, session: Session) => Promise<void>,
+  command: (buffer: ChangeBuffer, session: Session) => Promise<void | readonly Book[]>,
 ): Promise<string> {
   try {
     return JSON.stringify(await sessions.edit(sessionId, intent, command));
@@ -1301,12 +1303,11 @@ function boundaryEditStamp() {
  *   the edit fails. The error is logged before rethrowing.
  */
 function mergeSegments(sessionId: string, secondSegmentStartRef: string): Promise<string> {
-  return runSessionEdit(sessionId, 'mergeSegments', async (buffer, session) =>
-    boundaryCommands.mergeSegments(buffer, {
-      verseBook: await verseBookOf(session, secondSegmentStartRef),
-      secondSegmentStartRef,
-    }),
-  );
+  return runSessionEdit(sessionId, 'mergeSegments', async (buffer, session) => {
+    const verseBook = await verseBookOf(session, secondSegmentStartRef);
+    await boundaryCommands.mergeSegments(buffer, { verseBook, secondSegmentStartRef });
+    return [verseBook];
+  });
 }
 
 /**
@@ -1318,13 +1319,11 @@ function mergeSegments(sessionId: string, secondSegmentStartRef: string): Promis
  *   the edit is refused or fails. The error is logged before rethrowing.
  */
 function splitSegment(sessionId: string, tokenRef: string): Promise<string> {
-  return runSessionEdit(sessionId, 'splitSegment', async (buffer, session) =>
-    boundaryCommands.splitSegment(buffer, {
-      ...boundaryEditStamp(),
-      verseBook: await verseBookOf(session, tokenRef),
-      tokenRef,
-    }),
-  );
+  return runSessionEdit(sessionId, 'splitSegment', async (buffer, session) => {
+    const verseBook = await verseBookOf(session, tokenRef);
+    await boundaryCommands.splitSegment(buffer, { ...boundaryEditStamp(), verseBook, tokenRef });
+    return [verseBook];
+  });
 }
 
 /**
@@ -1337,14 +1336,16 @@ function splitSegment(sessionId: string, tokenRef: string): Promise<string> {
  *   rethrowing.
  */
 function moveBoundary(sessionId: string, fromRef: string, toRef: string): Promise<string> {
-  return runSessionEdit(sessionId, 'moveBoundary', async (buffer, session) =>
-    boundaryCommands.moveBoundary(buffer, {
+  return runSessionEdit(sessionId, 'moveBoundary', async (buffer, session) => {
+    const verseBook = await verseBookOf(session, toRef);
+    await boundaryCommands.moveBoundary(buffer, {
       ...boundaryEditStamp(),
-      verseBook: await verseBookOf(session, toRef),
+      verseBook,
       fromRef,
       toRef,
-    }),
-  );
+    });
+    return [verseBook];
+  });
 }
 
 /**
@@ -2766,12 +2767,35 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const analysisChangedEmitter = await papi.network.createNetworkEventEmitterAsync(
     'interlinearizer.onAnalysisChanged',
   );
+  const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book) =>
+    sessions
+      .reanchorBook(sourceProjectId, book)
+      .catch((e) =>
+        logger.warn(
+          `Interlinearizer: could not re-anchor ${book.bookRef} of project ${sourceProjectId}`,
+          e,
+        ),
+      ),
+  );
+  const textReadUnsubscriber = bookService.onTextRead((sourceProjectId, textBookIds) =>
+    sessions
+      .reanchorMissingBooks(sourceProjectId, textBookIds)
+      .catch((e) =>
+        logger.warn(
+          `Interlinearizer: could not re-anchor the books project ${sourceProjectId} lacks`,
+          e,
+        ),
+      ),
+  );
+  // A book's new text reaches its pass before its edit is reported, so the event waits for the pass.
   const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
-    analysisChangedEmitter.emit({
-      sourceProjectId,
-      changeId: crypto.randomUUID(),
-      scriptureEdit: { bookId },
-    }),
+    sessions.settled(sourceProjectId).then(() =>
+      analysisChangedEmitter.emit({
+        sourceProjectId,
+        changeId: crypto.randomUUID(),
+        scriptureEdit: { bookId },
+      }),
+    ),
   );
 
   const openLexiconChooserCommandRegistration = await papi.commands.registerCommand(
@@ -2887,6 +2911,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     undoFromNotificationEmitter,
     undoFromNotificationCommandRegistration,
     analysisChangedEmitter,
+    bookReadUnsubscriber,
+    textReadUnsubscriber,
     bookTextUnsubscriber,
     openLexiconChooserCommandRegistration,
     saveCommandRegistration,

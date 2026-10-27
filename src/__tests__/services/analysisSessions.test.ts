@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import type { DraftProject, InterlinearProject, TextAnalysis } from 'interlinearizer';
+import type { Book, DraftProject, InterlinearProject, TextAnalysis } from 'interlinearizer';
 import {
   AnalysisSessions,
   type SessionHost,
@@ -14,7 +14,15 @@ import { ReadOnlyAnalysisError } from '../../types/read-only-analysis-error';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
-import { FIXTURE_STAMPS, makeStubProject, memoryStorage, silentLogger } from '../test-helpers';
+import {
+  FIXTURE_STAMPS,
+  makeStubProject,
+  makeTokenLink,
+  makeVerseBook,
+  memoryStorage,
+  silentLogger,
+  tokenRefOf,
+} from '../test-helpers';
 
 const SOURCE = 'src-project';
 const OTHER_SOURCE = 'other-project';
@@ -67,6 +75,8 @@ function makeSessions(projects: InterlinearProject[] = []) {
         ),
     ),
     getInterfaceLanguages: jest.fn(async (): Promise<string[]> => []),
+    startTextRead: jest.fn<Promise<void>, [string]>(async () => {}),
+    stopTextRead: jest.fn<Promise<void>, [string]>(async () => {}),
   } satisfies SessionHost;
   const saveDraft = (draft: DraftProject) =>
     new DraftRepository(storage, draft.sourceProjectId, logger).replaceAll(draft);
@@ -601,6 +611,291 @@ describe('AnalysisSessions', () => {
 
       await expect(sessions.edit(sessionId, 'add', command)).rejects.toThrow(ReadOnlyAnalysisError);
       expect(command).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the whole-text read', () => {
+    it("starts reading the source's whole text afresh when a session opens", async () => {
+      const { host, sessions } = makeSessions();
+
+      await sessions.open(SOURCE);
+
+      expect(host.startTextRead).toHaveBeenCalledWith(SOURCE);
+    });
+
+    it('ends the read once the commands sent before the close settle', async () => {
+      const { host, sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      const command = deferred();
+      const running = sessions.run(sessionId, () => command.promise);
+
+      const closing = sessions.close(sessionId);
+      await flushPromises();
+      expect(host.stopTextRead).not.toHaveBeenCalled();
+      command.resolve();
+      await Promise.all([running, closing]);
+
+      expect(host.stopTextRead).toHaveBeenCalledWith(SOURCE);
+    });
+
+    it("reads a reopened source's text again", async () => {
+      const { host, sessions } = makeSessions();
+      await sessions.open(SOURCE);
+
+      await sessions.open(SOURCE);
+
+      expect(host.stopTextRead).toHaveBeenCalledTimes(1);
+      expect(host.startTextRead).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('re-anchoring', () => {
+    /** Genesis 1:1 reading `text`, versioned by its text as a book's content hash would be. */
+    function genesis(text: string): Book {
+      return { ...makeVerseBook([{ sid: 'GEN 1:1', text }]), textVersion: text };
+    }
+
+    /** A link to the payload `analysisId` on "beta" where `book` has it. */
+    function betaLink(book: Book, analysisId: string) {
+      return makeTokenLink(analysisId, tokenRefOf(book, 'beta'), {
+        surfaceText: 'beta',
+        id: 'tl-beta',
+      });
+    }
+
+    const BEFORE = genesis('alpha beta');
+    const AFTER = genesis('alpha and beta');
+
+    /** The stored link on "beta". */
+    async function storedLink(storage: ReturnType<typeof makeSessions>['storage']) {
+      const { draft } = await new DraftRepository(storage, SOURCE, silentLogger()).exportAll();
+      return draft.analysis.tokenAnalysisLinks[0];
+    }
+
+    /** A session over a draft glossing "beta" as `BEFORE` reads it. */
+    async function sessionGlossingBeta() {
+      const made = makeSessions();
+      await made.saveDraft({
+        ...emptyDraft(SOURCE),
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'beta' }],
+          tokenAnalysisLinks: [betaLink(BEFORE, 'ta-1')],
+        },
+      });
+      const { sessionId } = await made.sessions.open(SOURCE);
+      return { ...made, sessionId };
+    }
+
+    it("re-anchors the session's draft to a book's current text", async () => {
+      const { sessions, storage } = await sessionGlossingBeta();
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
+    });
+
+    it('adds no undo step', async () => {
+      const { sessions, sessionId } = await sessionGlossingBeta();
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
+    });
+
+    /** A session over a draft that links into no book, and splits Genesis 1:1 at "beta". */
+    async function sessionSplittingBeta() {
+      const made = makeSessions();
+      await made.saveDraft({
+        ...emptyDraft(SOURCE),
+        segmentation: {
+          removedVerseStarts: [],
+          addedStarts: [{ tokenRef: tokenRefOf(BEFORE, 'beta'), surfaceText: 'beta' }],
+        },
+      });
+      const { sessionId } = await made.sessions.open(SOURCE);
+      return { ...made, sessionId };
+    }
+
+    it('moves the splits of a book the draft does not link into', async () => {
+      const { sessions, storage } = await sessionSplittingBeta();
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      const { draft } = await new DraftRepository(storage, SOURCE, silentLogger()).exportAll();
+      expect(draft.segmentation?.addedStarts).toEqual([
+        { tokenRef: tokenRefOf(AFTER, 'beta'), surfaceText: 'beta' },
+      ]);
+    });
+
+    it('records the pass over a book the draft only splits', async () => {
+      const { sessions, sessionId } = await sessionSplittingBeta();
+      const recordPass = await sessions.run(sessionId, async (session) =>
+        jest.spyOn(session.history, 'recordPass'),
+      );
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      expect(recordPass).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['records', 'it links into', AFTER, 1],
+      ['records no', 'it holds no analysis in', makeVerseBook([{ sid: 'EXO 1:1', text: 'x' }]), 0],
+    ])('%s the pass over a book %s', async (_records, _holds, book, recorded) => {
+      const { sessions, sessionId } = await sessionGlossingBeta();
+      const recordPass = await sessions.run(sessionId, async (session) =>
+        jest.spyOn(session.history, 'recordPass'),
+      );
+
+      await sessions.reanchorBook(SOURCE, book);
+
+      expect(recordPass).toHaveBeenCalledTimes(recorded);
+    });
+
+    it('undoes and redoes edits re-anchored to the current text', async () => {
+      const { sessions, sessionId, storage } = await sessionGlossingBeta();
+      const relinking = (analysisId: string) => ({
+        intent: `link ${analysisId}`,
+        tokenAnalysisLinks: { puts: [betaLink(BEFORE, analysisId)], deletes: [] },
+      });
+      await sessions.runEdit(sessionId, (session) => session.history.apply(relinking('ta-2')));
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      await sessions.undo(sessionId);
+      expect(await storedLink(storage)).toEqual(
+        expect.objectContaining({ analysisId: 'ta-1', token: betaLink(AFTER, 'ta-1').token }),
+      );
+      await sessions.redo(sessionId);
+      expect(await storedLink(storage)).toEqual(
+        expect.objectContaining({ analysisId: 'ta-2', token: betaLink(AFTER, 'ta-2').token }),
+      );
+    });
+
+    it("re-anchors an edit to the books its command returns, in the edit's undo step", async () => {
+      const { sessions, sessionId, storage } = await sessionGlossingBeta();
+
+      const changes = await sessions.edit(sessionId, 'relink', async (buffer) => {
+        buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
+        return [AFTER];
+      });
+
+      expect(changes.tokenAnalysisLinks?.puts).toEqual([
+        expect.objectContaining({ analysisId: 'ta-2', token: betaLink(AFTER, 'ta-2').token }),
+      ]);
+      expect(await storedLink(storage)).toEqual(
+        expect.objectContaining({ analysisId: 'ta-2', token: betaLink(AFTER, 'ta-2').token }),
+      );
+      await sessions.undo(sessionId);
+      expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-1'));
+    });
+
+    it.each([
+      ['no books', []],
+      ['books it needs no re-anchoring to', [BEFORE]],
+    ])('applies an edit as staged when its command returns %s', async (_case, books) => {
+      const { sessions, sessionId, storage } = await sessionGlossingBeta();
+
+      await sessions.edit(sessionId, 'relink', async (buffer) => {
+        buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
+        return books;
+      });
+
+      expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-2'));
+    });
+
+    it('stales the links into the books the text lacks', async () => {
+      const { sessions, storage } = await sessionGlossingBeta();
+
+      await sessions.reanchorMissingBooks(SOURCE, ['EXO']);
+
+      expect((await storedLink(storage)).status).toBe('stale');
+    });
+
+    it('leaves the links into the books holding text', async () => {
+      const { sessions, storage } = await sessionGlossingBeta();
+
+      await sessions.reanchorMissingBooks(SOURCE, ['GEN']);
+
+      expect((await storedLink(storage)).status).toBe('approved');
+    });
+
+    it('re-anchors in the session turn, after the commands sent before', async () => {
+      const { sessions, sessionId, storage } = await sessionGlossingBeta();
+      const command = deferred();
+      const running = sessions.run(sessionId, () => command.promise);
+
+      const reanchoring = sessions.reanchorBook(SOURCE, AFTER);
+      await flushPromises();
+      expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(BEFORE, 'beta'));
+      command.resolve();
+      await Promise.all([running, reanchoring]);
+
+      expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
+    });
+
+    it('does nothing for a source with no session open', async () => {
+      const { sessions, saveDraft, storage } = makeSessions();
+      await saveDraft({
+        ...emptyDraft(SOURCE),
+        analysis: { ...emptyAnalysis(), tokenAnalysisLinks: [betaLink(BEFORE, 'ta-1')] },
+      });
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+      await sessions.reanchorMissingBooks(SOURCE, []);
+
+      expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-1'));
+    });
+
+    it("does nothing for a Paratext 9 import's session", async () => {
+      const { sessions } = makeSessions([makeImport()]);
+      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+      const applied = jest.fn();
+      await sessions.run(sessionId, async (session) => {
+        jest.spyOn(session.repository, 'apply').mockImplementation(applied);
+      });
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+      await sessions.reanchorMissingBooks(SOURCE, []);
+
+      expect(applied).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('settled', () => {
+    it("settles once the source's session has run what was sent before", async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      const command = deferred();
+      sessions.run(sessionId, () => command.promise);
+      let isSettled = false;
+
+      const settling = sessions.settled(SOURCE).then(() => {
+        isSettled = true;
+        return isSettled;
+      });
+      await flushPromises();
+      expect(isSettled).toBe(false);
+      command.resolve();
+      await settling;
+
+      expect(isSettled).toBe(true);
+    });
+
+    it('settles even when a command sent before fails', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      sessions
+        .run(sessionId, async () => {
+          throw new Error('failed');
+        })
+        .catch(() => {});
+
+      await expect(sessions.settled(SOURCE)).resolves.toBeUndefined();
+    });
+
+    it('settles at once for a source with no session open', async () => {
+      await expect(makeSessions().sessions.settled(SOURCE)).resolves.toBeUndefined();
     });
   });
 

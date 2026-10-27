@@ -62,6 +62,8 @@ describe('splitSegment', () => {
         throw new Error('no import in this test');
       },
       getInterfaceLanguages: async () => [],
+      startTextRead: async () => {},
+      stopTextRead: async () => {},
     });
     const stored = async () => {
       const { draft } = await new DraftRepository(storage, SOURCE, logger).exportAll();

@@ -16,7 +16,11 @@ import {
   getVerseBook,
   getWritingSystem,
   isFormInText,
+  onBookRead,
   onBookTextChanged,
+  onTextRead,
+  startTextRead,
+  stopTextRead,
 } from '../../services/bookService';
 import type { BookOutline, SegmentPage } from '../../types/segment-pages';
 import type { TextReadStatus } from '../../types/text-read-status';
@@ -755,6 +759,7 @@ describe('onBookTextChanged', () => {
     await getBookOutline('src', 'GEN');
 
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await settle();
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith('src', 'GEN');
@@ -766,6 +771,7 @@ describe('onBookTextChanged', () => {
     await getBookOutline('src', 'GEN');
 
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await settle();
 
     listeners.forEach((listener) => expect(listener).toHaveBeenCalledTimes(1));
   });
@@ -819,6 +825,7 @@ describe('onBookTextChanged', () => {
     await settle();
 
     subscriptionsTo(project, 'GEN')[1].deliver(usj('GEN', 'v3'));
+    await settle();
 
     expect(listener).toHaveBeenCalledTimes(2);
   });
@@ -854,6 +861,7 @@ describe('onBookTextChanged', () => {
 
     await getBookOutline('src', 'GEN');
     subscriptionsTo(project, 'GEN')[1].deliver(usj('GEN', 'v2'));
+    await settle();
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith('src', 'GEN');
@@ -906,6 +914,7 @@ describe('onBookTextChanged', () => {
     await getBookOutline('src', 'EXO');
 
     subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO', 'v2'));
+    await settle();
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith('src', 'EXO');
@@ -924,6 +933,7 @@ describe('onBookTextChanged', () => {
     await earlier;
 
     subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO', 'v2'));
+    await settle();
 
     expect(listener).toHaveBeenCalledWith('src', 'EXO');
   });
@@ -1227,6 +1237,411 @@ describe('onBookTextChanged', () => {
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
 
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('onBookRead', () => {
+  const unsubscribers: Array<() => boolean> = [];
+
+  /** A listener for books read, registered for the test and removed once it ends. */
+  function listenForBooks(onCall?: (sourceProjectId: string, book: Book) => void) {
+    const listener = jest.fn(onCall);
+    unsubscribers.push(onBookRead(listener));
+    return listener;
+  }
+
+  beforeEach(() => {
+    segmentStandIns();
+  });
+
+  afterEach(() => {
+    unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
+  });
+
+  it('passes each book the whole-text read reads, tokenized, with its project', async () => {
+    tokenizeToWords();
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '101';
+    const listener = listenForBooks();
+
+    readStatus();
+    await settle();
+
+    expect(
+      listener.mock.calls.map(([sourceProjectId, book]) => [sourceProjectId, book.id]),
+    ).toEqual([
+      ['src', 'GEN'],
+      ['src', 'LEV'],
+    ]);
+    expect(listener.mock.calls[0][1].segments[0].tokens[1].surfaceText).toBe('GEN-v1');
+  });
+
+  it('passes no book that fails to read or has no text', async () => {
+    const project = serveProject((bookId) =>
+      bookId === 'GEN' ? platformError('busy') : undefined,
+    );
+    project.booksPresent = '11';
+    const listener = listenForBooks();
+
+    readStatus();
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('passes an edited book again before the edit is reported', async () => {
+    let version = 'v1';
+    const project = serveProject((bookId) => usj(bookId, version));
+    project.booksPresent = '1';
+    const heard: string[] = [];
+    listenForBooks((_, book) => heard.push(`read ${book.textVersion}`));
+    unsubscribers.push(onBookTextChanged(() => heard.push('edited')));
+    readStatus();
+    await settle();
+
+    version = 'v2';
+    project.subscriptions[0].deliver(usj('GEN', version));
+    await settle();
+
+    expect(heard).toEqual(['read v1@en', 'read v2@en', 'edited']);
+  });
+
+  it('passes the edited open book before the edit is reported, ahead of the read', async () => {
+    let version = 'v1';
+    const project = serveProject((bookId) => usj(bookId, version));
+    const heard: string[] = [];
+    listenForBooks((_, book) => heard.push(`read ${book.textVersion}`));
+    unsubscribers.push(onBookTextChanged(() => heard.push('edited')));
+    await getBookOutline('src', 'GEN');
+
+    version = 'v2';
+    project.subscriptions[0].deliver(usj('GEN', version));
+    await settle();
+
+    expect(heard).toEqual(['read v2@en', 'edited']);
+  });
+
+  it('reports an edit to the open book that no longer reads, passing nothing', async () => {
+    let delivery: Delivery = usj('GEN');
+    const project = serveProject(() => delivery);
+    const listener = listenForBooks();
+    const edits = jest.fn();
+    unsubscribers.push(onBookTextChanged(edits));
+    await getBookOutline('src', 'GEN');
+
+    delivery = platformError('busy');
+    project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(edits).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes and reports nothing for an open book edited as the project closes', async () => {
+    const project = serveProject();
+    const listener = listenForBooks();
+    const edits = jest.fn();
+    unsubscribers.push(onBookTextChanged(edits));
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    project.subscriptions[0].deliver(usj('GEN'));
+    await outline;
+
+    project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    const closed = closeProject('src');
+    await settle();
+    subscriptionsTo(project, 'GEN')[1].deliver(usj('GEN', 'v2'));
+    await closed;
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(edits).not.toHaveBeenCalled();
+  });
+
+  it('passes a book that failed to read once it reads', async () => {
+    let delivery: Delivery = platformError('busy');
+    const project = serveProject(() => delivery);
+    project.booksPresent = '1';
+    const listener = listenForBooks();
+    readStatus();
+    await settle();
+
+    delivery = usj('GEN', 'v2');
+    subscriptionsTo(project, 'GEN').at(-1)?.deliver(delivery);
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][1].textVersion).toBe('v2@en');
+  });
+
+  it('passes nothing once the project closes', async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    const listener = listenForBooks();
+    readStatus();
+    await settle();
+
+    const closed = closeProject('src');
+    project.subscriptions[0].deliver(usj('GEN'));
+    await closed;
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('does not call a listener once it is removed', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const listener = jest.fn();
+    onBookRead(listener)();
+
+    readStatus();
+    await settle();
+
+    expect(project.subscriptions).toHaveLength(1);
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('onTextRead', () => {
+  const unsubscribers: Array<() => boolean> = [];
+
+  /** A listener for the books holding text, registered for the test and removed once it ends. */
+  function listenForText() {
+    const listener = jest.fn();
+    unsubscribers.push(onTextRead(listener));
+    return listener;
+  }
+
+  afterEach(() => {
+    unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
+  });
+
+  it('reports the books holding text once every book is read', async () => {
+    const project = serveProject((bookId) => (bookId === 'EXO' ? undefined : usj(bookId)));
+    project.booksPresent = '111';
+    const listener = listenForText();
+
+    readStatus();
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0]).toBe('src');
+    expect([...listener.mock.calls[0][1]].sort()).toEqual(['GEN', 'LEV']);
+  });
+
+  it('reports nothing while some books are still being read', async () => {
+    const project = serveProject();
+    project.booksPresent = '11';
+    const listener = listenForText();
+    readStatus();
+    await settle();
+
+    project.subscriptions[0].deliver(usj('GEN'));
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+    await finishReading(project);
+  });
+
+  it('reports nothing while a book has failed to read, then reports once it reads', async () => {
+    let delivery: Delivery = platformError('busy');
+    const project = serveProject((bookId) => (bookId === 'GEN' ? delivery : usj(bookId)));
+    project.booksPresent = '11';
+    const listener = listenForText();
+    readStatus();
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+
+    delivery = usj('GEN');
+    subscriptionsTo(project, 'GEN').at(-1)?.deliver(delivery);
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports again when an edit takes away the text of a book', async () => {
+    let delivery: Delivery = usj('GEN');
+    const project = serveProject((bookId) => (bookId === 'GEN' ? delivery : usj(bookId)));
+    project.booksPresent = '11';
+    const listener = listenForText();
+    readStatus();
+    await settle();
+
+    delivery = undefined;
+    subscriptionsTo(project, 'GEN').at(-1)?.deliver(delivery);
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener.mock.calls[1][1]).toEqual(['EXO']);
+  });
+
+  it('reports nothing again for an edit that leaves the same books holding text', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const listener = listenForText();
+    readStatus();
+    await settle();
+
+    project.subscriptions[0].deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call a listener once it is removed', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const listener = jest.fn();
+    onTextRead(listener)();
+
+    readStatus();
+    await settle();
+
+    expect(project.subscriptions).toHaveLength(1);
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('startTextRead and stopTextRead', () => {
+  const unsubscribers: Array<() => boolean> = [];
+
+  afterEach(() => {
+    unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
+  });
+
+  it('starts reading the whole text without waiting for it', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '11';
+    const listener = jest.fn();
+    unsubscribers.push(onBookRead(listener));
+
+    await startTextRead('src');
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(await readStatus()).toEqual({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+  });
+
+  it('reads the text again when a read is already done, passing every book again', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const listener = jest.fn();
+    unsubscribers.push(onBookRead(listener));
+    readStatus();
+    await settle();
+
+    await startTextRead('src');
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops watching the books of the read it replaces', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+    const [replaced] = project.subscriptions;
+
+    await startTextRead('src');
+
+    expect(replaced.unsubscribe).toHaveBeenCalled();
+  });
+
+  it('leaves listing failures for the status to report', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = new Error('offline');
+
+    await expect(startTextRead('src')).resolves.toBeUndefined();
+    await settle();
+
+    await expect(readStatus()).rejects.toThrow('offline');
+  });
+
+  it('ends the read, stopping its watches and its answers', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    await stopTextRead('src');
+
+    expect(project.subscriptions[0].unsubscribe).toHaveBeenCalled();
+    expect(isFormInText('src', 'shared')).toBeUndefined();
+  });
+
+  it('keeps the outlined book while ending the read', async () => {
+    segmentStandIns();
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    await getBookOutline('src', 'EXO');
+    readStatus();
+    await settle();
+
+    await stopTextRead('src');
+
+    expect(subscriptionsTo(project, 'EXO')[0].unsubscribe).not.toHaveBeenCalled();
+  });
+
+  it('does nothing for a project whose text is not being read', async () => {
+    await expect(stopTextRead('src')).resolves.toBeUndefined();
+  });
+
+  it('keeps reading when the project closes, passing each edited book', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const listener = jest.fn();
+    unsubscribers.push(onBookRead(listener));
+    await startTextRead('src');
+    await settle();
+
+    await closeProject('src');
+    subscriptionsTo(project, 'GEN')[0].deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(await readStatus()).toEqual({ booksRead: 1, bookCount: 1, failedBookIds: [] });
+  });
+
+  it('lets go of the kept books when the project closes during its read', async () => {
+    segmentStandIns();
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    await getBookOutline('src', 'EXO');
+    await startTextRead('src');
+    await settle();
+
+    await closeProject('src');
+
+    expect(subscriptionsTo(project, 'EXO')[0].unsubscribe).toHaveBeenCalled();
+    expect(subscriptionsTo(project, 'GEN')[0].unsubscribe).not.toHaveBeenCalled();
+  });
+
+  it('ends a stopped read when the project closes', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    await startTextRead('src');
+    await stopTextRead('src');
+    readStatus();
+    await settle();
+
+    await closeProject('src');
+
+    expect(project.subscriptions.every((s) => s.unsubscribe.mock.calls.length === 1)).toBe(true);
+  });
+
+  it('ends the read once all projects close', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    await startTextRead('src');
+    await settle();
+
+    await closeAllProjects();
+
+    expect(project.subscriptions[0].unsubscribe).toHaveBeenCalled();
+    expect(isFormInText('src', 'shared')).toBeUndefined();
   });
 });
 

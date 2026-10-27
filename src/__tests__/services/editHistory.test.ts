@@ -1,11 +1,20 @@
 /// <reference types="jest" />
 
-import type { TokenAnalysis } from 'interlinearizer';
+import type { Book, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
-import { EditHistory } from '../../services/editHistory';
+import { EditHistory, type ReanchorBooks } from '../../services/editHistory';
 import type { ChangeSet } from '../../types/analysis-repository';
+import { applyChangeSet, mergeChangeSets } from '../../utils/change-set';
+import { reanchorChangesForBook } from '../../utils/reanchor-changes';
 import { MAX_UNDO_STEPS } from '../../utils/undo-history';
-import { FIXTURE_STAMPS, memoryStorage, silentLogger } from '../test-helpers';
+import {
+  FIXTURE_STAMPS,
+  makeTokenLink,
+  makeVerseBook,
+  memoryStorage,
+  silentLogger,
+  tokenRefOf,
+} from '../test-helpers';
 
 function payload(id: string): TokenAnalysis {
   return { id, ...FIXTURE_STAMPS, surfaceText: id };
@@ -133,5 +142,237 @@ describe('EditHistory', () => {
 
     await history.redo();
     await expect(storedIds()).resolves.toStrictEqual(['a']);
+  });
+});
+
+describe('EditHistory re-anchoring', () => {
+  /** A book of one verse reading `text`, versioned by its text as a book's content hash would. */
+  function verseBook(sid: string, text: string): Book {
+    return { ...makeVerseBook([{ sid, text }]), textVersion: text };
+  }
+
+  function genesis(text: string): Book {
+    return verseBook('GEN 1:1', text);
+  }
+
+  /** A link to the payload `analysisId` on the word `beta` where `book` has it. */
+  function betaLink(book: Book, analysisId: string): TokenAnalysisLink {
+    return makeTokenLink(analysisId, tokenRefOf(book, 'beta'), {
+      surfaceText: 'beta',
+      id: 'tl-beta',
+    });
+  }
+
+  function linking(link: TokenAnalysisLink): ChangeSet {
+    return { intent: `link ${link.analysisId}`, tokenAnalysisLinks: { puts: [link], deletes: [] } };
+  }
+
+  /**
+   * A history over a draft in memory whose re-anchoring applies each book's pass in turn, with a
+   * way to run a pass the history records, as the session does, and to read back the stored link.
+   */
+  function makeReanchoringHistory() {
+    const { storage } = memoryStorage();
+    const repository = new DraftRepository(storage, 'src', silentLogger());
+    const reanchorBooks = jest.fn<ReturnType<ReanchorBooks>, Parameters<ReanchorBooks>>(
+      async (changes, books) => {
+        let { draft } = applyChangeSet((await repository.exportAll()).draft, changes);
+        let reanchored: ChangeSet | undefined;
+        books.forEach((book) => {
+          const bookChanges = reanchorChangesForBook(draft, book);
+          if (!bookChanges) return;
+          draft = applyChangeSet(draft, bookChanges).draft;
+          reanchored = reanchored ? mergeChangeSets(reanchored, bookChanges) : bookChanges;
+        });
+        return reanchored;
+      },
+    );
+    const history = new EditHistory(repository, reanchorBooks);
+    const pass = async (book: Book) => {
+      const changes = reanchorChangesForBook((await repository.exportAll()).draft, book);
+      if (changes) await repository.apply(changes);
+      history.recordPass(book);
+    };
+    const storedLink = async () =>
+      (await new DraftRepository(storage, 'src', silentLogger()).exportAll()).draft.analysis
+        .tokenAnalysisLinks[0];
+    return { history, repository, reanchorBooks, pass, storedLink };
+  }
+
+  it('undoes an edit to the text a pass re-anchored to since', async () => {
+    const { history, pass, storedLink } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await history.apply(linking(betaLink(before, 'ta-2')));
+    await pass(after);
+
+    await history.undo();
+
+    const restored = await storedLink();
+    expect(restored.analysisId).toBe('ta-1');
+    expect(restored.token.tokenRef).toBe(tokenRefOf(after, 'beta'));
+  });
+
+  it('redoes an edit to the text a pass re-anchored to since the undo', async () => {
+    const { history, pass, storedLink } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await history.apply(linking(betaLink(before, 'ta-2')));
+    await history.undo();
+    await pass(after);
+
+    await history.redo();
+
+    const restored = await storedLink();
+    expect(restored.analysisId).toBe('ta-2');
+    expect(restored.token.tokenRef).toBe(tokenRefOf(after, 'beta'));
+  });
+
+  it('returns the changes that reverted the edit with those that re-anchored them', async () => {
+    const { history, pass } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await history.apply(linking(betaLink(before, 'ta-2')));
+    await pass(after);
+
+    const undone = await history.undo();
+
+    expect(undone?.intent).toBe('link ta-2');
+    expect(undone?.tokenAnalysisLinks?.puts).toEqual([
+      expect.objectContaining({
+        analysisId: 'ta-1',
+        token: { tokenRef: tokenRefOf(after, 'beta'), surfaceText: 'beta' },
+      }),
+    ]);
+  });
+
+  it('re-anchors nothing for a pass the undone step already reflects', async () => {
+    const { history, reanchorBooks, pass } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await pass(after);
+    await history.apply(linking(betaLink(after, 'ta-2')));
+
+    await history.undo();
+
+    expect(reanchorBooks).not.toHaveBeenCalled();
+  });
+
+  it('records no pass run while there is nothing to undo or redo', async () => {
+    const { history, reanchorBooks, pass } = makeReanchoringHistory();
+    await pass(genesis('new alpha beta'));
+    await history.apply(linking(betaLink(genesis('new alpha beta'), 'ta-1')));
+
+    await history.undo();
+
+    expect(reanchorBooks).not.toHaveBeenCalled();
+  });
+
+  it("re-anchors to each book's latest text, in the order the passes ran", async () => {
+    const { history, reanchorBooks, pass } = makeReanchoringHistory();
+    const exodus = verseBook('EXO 1:1', 'delta');
+    const latest = genesis('newer alpha beta');
+    await history.apply(linking(betaLink(genesis('alpha beta'), 'ta-1')));
+    await pass(genesis('new alpha beta'));
+    await pass(exodus);
+    await pass(latest);
+
+    await history.undo();
+
+    expect(reanchorBooks).toHaveBeenCalledWith(expect.anything(), [exodus, latest]);
+  });
+
+  it('records nothing for a pass over text the book last read', async () => {
+    const { history, reanchorBooks, pass } = makeReanchoringHistory();
+    const exodus = verseBook('EXO 1:1', 'delta');
+    await history.apply(linking(betaLink(genesis('alpha beta'), 'ta-1')));
+    await pass(genesis('new alpha beta'));
+    await pass(exodus);
+    await pass(genesis('new alpha beta'));
+
+    await history.undo();
+
+    expect(reanchorBooks.mock.calls[0][1].map(({ bookRef }) => bookRef)).toEqual(['GEN', 'EXO']);
+  });
+
+  it('forgets a pass once no step to undo or redo predates it', async () => {
+    const { history, reanchorBooks, pass } = makeReanchoringHistory();
+    await history.apply(linking(betaLink(genesis('alpha beta'), 'ta-1')));
+    await pass(genesis('new alpha beta'));
+    await history.undo();
+    reanchorBooks.mockClear();
+
+    await history.apply(linking(betaLink(genesis('new alpha beta'), 'ta-2')));
+    await history.undo();
+
+    expect(reanchorBooks).not.toHaveBeenCalled();
+  });
+
+  it('applies nothing and keeps the edit to undo when re-anchoring what it restores fails', async () => {
+    const { history, reanchorBooks, pass, storedLink } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await history.apply(linking(betaLink(before, 'ta-2')));
+    await pass(after);
+    reanchorBooks.mockRejectedValueOnce(new Error('busy'));
+
+    await expect(history.undo()).rejects.toThrow('busy');
+
+    expect((await storedLink()).analysisId).toBe('ta-2');
+    await history.undo();
+    expect(await storedLink()).toEqual(
+      expect.objectContaining({
+        analysisId: 'ta-1',
+        token: { tokenRef: tokenRefOf(after, 'beta'), surfaceText: 'beta' },
+      }),
+    );
+  });
+
+  it('applies the edit and its re-anchoring as one', async () => {
+    const { history, pass, repository } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await history.apply(linking(betaLink(before, 'ta-2')));
+    await pass(genesis('new alpha beta'));
+    const apply = jest.spyOn(repository, 'apply');
+
+    await history.undo();
+
+    expect(apply).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-anchors what it restores from the draft as the step would leave it', async () => {
+    const { history, reanchorBooks, pass } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await history.apply(linking(betaLink(before, 'ta-2')));
+    await pass(genesis('new alpha beta'));
+
+    await history.undo();
+
+    expect(reanchorBooks).toHaveBeenCalledWith(
+      {
+        intent: 'link ta-2',
+        tokenAnalysisLinks: { puts: [betaLink(before, 'ta-1')], deletes: [] },
+      },
+      [genesis('new alpha beta')],
+    );
+  });
+
+  it('re-anchors nothing restored when it has no way to', async () => {
+    const { storage } = memoryStorage();
+    const history = new EditHistory(new DraftRepository(storage, 'src', silentLogger()));
+    await history.apply(linking(betaLink(genesis('alpha beta'), 'ta-1')));
+    history.recordPass(genesis('new alpha beta'));
+
+    await expect(history.undo()).resolves.toStrictEqual({
+      intent: 'link ta-1',
+      tokenAnalysisLinks: { puts: [], deletes: ['tl-beta'] },
+    });
   });
 });

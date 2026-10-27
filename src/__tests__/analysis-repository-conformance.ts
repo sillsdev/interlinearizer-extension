@@ -1169,6 +1169,17 @@ export function describeAnalysisRepositoryConformance(
         },
       );
 
+      it.each([false, true])(
+        'reports whether the draft was marked unsaved before the apply, when that mark was %s',
+        async (dirty) => {
+          await (await store.open(SOURCE)).replaceAll({ ...exodusOnlyDraft(), dirty });
+
+          await expect(
+            (await store.open(SOURCE)).apply(translatingExodus()),
+          ).resolves.toMatchObject({ wasDirty: dirty });
+        },
+      );
+
       it('keeps the clean mark markClean left when asked to keep the mark', async () => {
         const repository = await store.open(SOURCE);
         await repository.replaceAll(exodusOnlyDraft());

@@ -4,6 +4,7 @@ import type { Book, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
 import { EditHistory, type ReanchorBooks } from '../../services/editHistory';
 import type { ChangeSet } from '../../types/analysis-repository';
+import { emptyDraft } from '../../types/empty-factories';
 import { applyChangeSet, mergeChangeSets } from '../../utils/change-set';
 import { reanchorChangesForBook } from '../../utils/reanchor-changes';
 import { MAX_UNDO_STEPS } from '../../utils/undo-history';
@@ -24,17 +25,18 @@ function putting(id: string): ChangeSet {
   return { intent: `put ${id}`, tokenAnalyses: { puts: [payload(id)], deletes: [] } };
 }
 
-/** A history over an empty draft in memory, with a way to read back the stored payload ids. */
+/**
+ * A history over an empty draft in memory, with ways to read back the stored payload ids and
+ * whether the stored draft is marked unsaved.
+ */
 function makeHistory() {
   const { storage } = memoryStorage();
   const repository = new DraftRepository(storage, 'src', silentLogger());
-  const storedIds = async () =>
-    (
-      await new DraftRepository(storage, 'src', silentLogger()).exportAll()
-    ).draft.analysis.tokenAnalyses
-      .map(({ id }) => id)
-      .sort();
-  return { history: new EditHistory(repository), repository, storedIds };
+  const stored = async () =>
+    (await new DraftRepository(storage, 'src', silentLogger()).exportAll()).draft;
+  const storedIds = async () => (await stored()).analysis.tokenAnalyses.map(({ id }) => id).sort();
+  const storedDirty = async () => (await stored()).dirty;
+  return { history: new EditHistory(repository), repository, storedIds, storedDirty };
 }
 
 describe('EditHistory', () => {
@@ -46,13 +48,29 @@ describe('EditHistory', () => {
     await expect(storedIds()).resolves.toStrictEqual(['a']);
   });
 
-  it('applies an edit with the options it is given', async () => {
-    const { history, repository } = makeHistory();
-    const apply = jest.spyOn(repository, 'apply');
+  it('marks the draft unsaved', async () => {
+    const { history, storedDirty } = makeHistory();
 
-    await history.apply(putting('a'), { keepDirty: true });
+    await history.apply(putting('a'));
 
-    expect(apply).toHaveBeenCalledWith(putting('a'), { keepDirty: true });
+    await expect(storedDirty()).resolves.toBe(true);
+  });
+
+  it('leaves the draft saved when the edit keeps the mark', async () => {
+    const { history, storedDirty } = makeHistory();
+
+    await history.apply(putting('a'), { unsavedMark: 'keep' });
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
+  it('marks the draft saved when the edit clears the mark', async () => {
+    const { history, repository, storedDirty } = makeHistory();
+    await repository.replaceAll({ ...emptyDraft('src'), dirty: true });
+
+    await history.apply(putting('a'), { unsavedMark: 'clear' });
+
+    await expect(storedDirty()).resolves.toBe(false);
   });
 
   it('undoes edits latest first, returning what reverted each', async () => {
@@ -151,6 +169,82 @@ describe('EditHistory', () => {
 
     await history.redo();
     await expect(storedIds()).resolves.toStrictEqual(['a']);
+  });
+});
+
+describe("EditHistory's unsaved mark", () => {
+  it('marks the draft saved when an undo leads back to content it was saved with', async () => {
+    const { history, storedDirty } = makeHistory();
+    await history.apply(putting('a'));
+
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
+  it('marks the draft unsaved when an undo leads away from content it was saved with', async () => {
+    const { history, repository, storedDirty } = makeHistory();
+    await repository.replaceAll({ ...emptyDraft('src'), dirty: true });
+    await history.apply(putting('a'), { unsavedMark: 'clear' });
+
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(true);
+  });
+
+  it('marks the draft saved when a redo leads back to content an edit cleared the mark on', async () => {
+    const { history, repository, storedDirty } = makeHistory();
+    await repository.replaceAll({ ...emptyDraft('src'), dirty: true });
+    await history.apply(putting('a'), { unsavedMark: 'clear' });
+    await history.undo();
+
+    await history.redo();
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
+  it('marks the draft saved when an undo or redo crosses an edit that kept the saved mark', async () => {
+    const { history, storedDirty } = makeHistory();
+    await history.apply(putting('a'), { unsavedMark: 'keep' });
+
+    await history.undo();
+    await expect(storedDirty()).resolves.toBe(false);
+    await history.redo();
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
+  it('marks the draft saved when an undo leads back to content that markClean marked saved', async () => {
+    const { history, storedDirty } = makeHistory();
+    await history.apply(putting('a'));
+    await history.markClean();
+    await history.apply(putting('b'));
+
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
+  it('takes a save made outside the history as the only saved content once it next applies', async () => {
+    const { history, repository, storedDirty } = makeHistory();
+    await history.apply(putting('a'));
+    await repository.markClean();
+
+    await history.undo();
+    await expect(storedDirty()).resolves.toBe(true);
+    await history.redo();
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
+  it('keeps an undo applied, and the draft unsaved, when marking the draft saved fails', async () => {
+    const { history, repository, storedIds, storedDirty } = makeHistory();
+    await history.apply(putting('a'));
+    jest.spyOn(repository, 'markClean').mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(history.undo()).rejects.toThrow('disk full');
+
+    await expect(storedIds()).resolves.toStrictEqual([]);
+    await expect(storedDirty()).resolves.toBe(true);
+    await expect(history.redo()).resolves.toBeDefined();
   });
 });
 

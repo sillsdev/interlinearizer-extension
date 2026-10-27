@@ -8,7 +8,7 @@ import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { missingBook } from '../utils/reanchor-draft';
 import { assertApprovalRule } from './commands/approvalRule';
 import { ChangeBuffer } from './commands/changeBuffer';
-import { EditHistory } from './editHistory';
+import { EditHistory, type EditOptions } from './editHistory';
 import { booksLinkedAmong, reanchorRestored, reanchorStoredBook } from './reanchorPasses';
 
 /** BCP 47 tag for a language that cannot be determined. */
@@ -35,15 +35,6 @@ export type OpenedSession = {
   readOnly: boolean;
   /** Whether any segment of the opened analysis had a free translation when it opened. */
   hasFreeTranslations: boolean;
-};
-
-/** How an edit leaves the draft's unsaved mark. */
-export type EditOptions = {
-  /**
-   * `'keep'` leaves the draft as saved or unsaved as it was. `'clear'` marks it saved, even when
-   * the edit changes nothing. Absent, an edit that changes something marks the draft unsaved.
-   */
-  unsavedMark?: 'keep' | 'clear';
 };
 
 /** An open session, as seen by the commands sent to it. */
@@ -117,10 +108,7 @@ async function applyStaged(
       ? await reanchorRestored(session.repository)(staged, reanchorTo)
       : undefined;
   const changes = reanchored ? mergeChangeSets(staged, reanchored) : staged;
-  await session.history.apply(
-    changes,
-    options?.unsavedMark === 'keep' ? { keepDirty: true } : undefined,
-  );
+  await session.history.apply(changes, options);
   return changes;
 }
 
@@ -292,11 +280,10 @@ export class AnalysisSessions {
       const buffer = new ChangeBuffer(session.repository);
       const reanchorTo = await command(buffer, session);
       const staged = buffer.toChangeSet(intent);
-      const changes = isEmptyChangeSet(staged)
-        ? staged
-        : await applyStaged(session, buffer, staged, reanchorTo, options);
-      if (options?.unsavedMark === 'clear') await session.repository.markClean();
-      return changes;
+      if (!isEmptyChangeSet(staged))
+        return applyStaged(session, buffer, staged, reanchorTo, options);
+      if (options?.unsavedMark === 'clear') await session.history.markClean();
+      return staged;
     });
   }
 
@@ -322,7 +309,8 @@ export class AnalysisSessions {
 
   /**
    * Reverts the session's latest edit not yet undone, re-anchoring what it restores to the current
-   * text of each book re-anchored since.
+   * text of each book re-anchored since. Marks the draft saved when it restores content the draft
+   * was saved with, and unsaved otherwise.
    *
    * @returns The changes that reverted the edit and re-anchored what the undo restored, or
    *   `undefined` when there is none.
@@ -330,6 +318,7 @@ export class AnalysisSessions {
    * @throws {Error} If the session is not open.
    * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit
    *   stays the next to undo.
+   * @throws Whatever marking the draft saved throws; the undo stays applied.
    */
   undo(sessionId: string): Promise<ChangeSet | undefined> {
     return this.runEdit(sessionId, (session) => session.history.undo());
@@ -337,7 +326,8 @@ export class AnalysisSessions {
 
   /**
    * Redoes the session's latest undone edit, re-anchoring what it restores to the current text of
-   * each book re-anchored since.
+   * each book re-anchored since. Marks the draft saved when it restores content the draft was saved
+   * with, and unsaved otherwise.
    *
    * @returns The changes that redid the edit and re-anchored what the redo restored, or `undefined`
    *   when there is none.
@@ -345,6 +335,7 @@ export class AnalysisSessions {
    * @throws {Error} If the session is not open.
    * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit
    *   stays the next to redo.
+   * @throws Whatever marking the draft saved throws; the redo stays applied.
    */
   redo(sessionId: string): Promise<ChangeSet | undefined> {
     return this.runEdit(sessionId, (session) => session.history.redo());

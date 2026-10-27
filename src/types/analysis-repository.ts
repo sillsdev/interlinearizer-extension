@@ -107,6 +107,8 @@ export type ApplyOptions = {
 export type ApplyResult = {
   /** Restores what the applied changes replaced; applying it undoes them. */
   inverse: ChangeSet;
+  /** Whether the draft was marked unsaved before the changes applied. */
+  wasDirty: boolean;
 };
 
 /** Links of every kind, one list per kind. */

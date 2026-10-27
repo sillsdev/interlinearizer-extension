@@ -17,12 +17,7 @@ import type {
 import { formatReplacementString, type LocalizeKey } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-import {
-  AnalysisSessions,
-  type EditOptions,
-  type OpenedSession,
-  type Session,
-} from './services/analysisSessions';
+import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
 import type { DraftContent } from './hooks/useDraftProject';
 import * as bookService from './services/bookService';
 import * as boundaryCommands from './services/commands/boundaryCommands';
@@ -35,6 +30,7 @@ import * as freeTranslationCommands from './services/commands/freeTranslationCom
 import * as phraseCommands from './services/commands/phraseCommands';
 import * as tokenCommands from './services/commands/tokenCommands';
 import { startCSharpHost } from './services/csharpHost';
+import type { EditOptions } from './services/editHistory';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';

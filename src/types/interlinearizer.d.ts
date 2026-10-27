@@ -365,23 +365,25 @@ declare module 'papi-shared-types' {
 
     /**
      * Reverts a session's latest edit not yet undone, re-anchoring what it restores to the current
-     * text of each book re-anchored since.
+     * text of each book re-anchored since. Marks the draft saved when it restores content the draft
+     * was saved with, and unsaved otherwise.
      *
      * @returns The changes that reverted the edit and re-anchored what the undo restored, as JSON,
      *   or `undefined` when there is none.
-     * @throws If the session is read-only or not open, or re-anchoring or applying the changes
-     *   fails (logged before rethrowing).
+     * @throws If the session is read-only or not open, or re-anchoring, applying the changes or
+     *   marking the draft saved fails (logged before rethrowing).
      */
     'interlinearizer.undoEdit': (sessionId: string) => Promise<string | undefined>;
 
     /**
      * Redoes a session's latest undone edit, re-anchoring what it restores to the current text of
-     * each book re-anchored since.
+     * each book re-anchored since. Marks the draft saved when it restores content the draft was
+     * saved with, and unsaved otherwise.
      *
      * @returns The changes that redid the edit and re-anchored what the redo restored, as JSON, or
      *   `undefined` when there is none.
-     * @throws If the session is read-only or not open, or re-anchoring or applying the changes
-     *   fails (logged before rethrowing).
+     * @throws If the session is read-only or not open, or re-anchoring, applying the changes or
+     *   marking the draft saved fails (logged before rethrowing).
      */
     'interlinearizer.redoEdit': (sessionId: string) => Promise<string | undefined>;
 

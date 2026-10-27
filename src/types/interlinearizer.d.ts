@@ -480,8 +480,8 @@ declare module 'papi-shared-types' {
      *
      * @returns A JSON string of the changes it applied.
      * @throws If `tokens` is empty or not within one segment of the text, the project has no text
-     *   for its book, the session is read-only or not open, or the edit is refused or fails (logged
-     *   before rethrowing).
+     *   for the first token's book, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
      */
     'interlinearizer.createPhrase': (
       sessionId: string,
@@ -493,9 +493,9 @@ declare module 'papi-shared-types' {
      * removes the occurrence.
      *
      * @returns A JSON string of the changes it applied.
-     * @throws If `tokens` is not within one segment of the text, the project has no text for its
-     *   book, the session is read-only or not open, or the edit is refused or fails (logged before
-     *   rethrowing).
+     * @throws If `tokens` is not within one segment of the text, the project has no text for the
+     *   first token's book, the session is read-only or not open, or the edit is refused or fails
+     *   (logged before rethrowing).
      */
     'interlinearizer.updatePhrase': (
       sessionId: string,
@@ -523,8 +523,8 @@ declare module 'papi-shared-types' {
      *   neighbor is a token in no phrase.
      * @returns A JSON string of the changes it applied.
      * @throws If `tokens` is empty or not within one segment of the text, the project has no text
-     *   for its book, the session is read-only or not open, or the edit is refused or fails (logged
-     *   before rethrowing).
+     *   for the first token's book, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
      */
     'interlinearizer.mergePhrases': (
       sessionId: string,
@@ -600,8 +600,8 @@ declare module 'papi-shared-types' {
      * with no verse text directly before it, such as the book's first or one after a heading, is
      * left as it is.
      *
-     * @returns A JSON string of the changes it applied. Their scope record carries the draft's
-     *   boundaries.
+     * @returns A JSON string of the changes it applied, with a scope record carrying the new
+     *   boundaries when they change.
      * @throws If the project has no text for the token's book, the session is read-only or not
      *   open, or the edit fails (logged before rethrowing).
      */
@@ -614,8 +614,8 @@ declare module 'papi-shared-types' {
      * Splits a segment so a new one begins at `tokenRef`. Every approved phrase the new boundary
      * would cut is split first, in the same edit, so that no phrase spans two segments.
      *
-     * @returns A JSON string of the changes it applied. Their scope record carries the draft's
-     *   boundaries.
+     * @returns A JSON string of the changes it applied, with a scope record carrying the new
+     *   boundaries when they change.
      * @throws If the project has no text for the token's book, the session is read-only or not
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
@@ -626,8 +626,8 @@ declare module 'papi-shared-types' {
      * boundary does. Every approved phrase a boundary before `toRef` would cut is split first, in
      * the same edit.
      *
-     * @returns A JSON string of the changes it applied. Their scope record carries the draft's
-     *   boundaries.
+     * @returns A JSON string of the changes it applied, with a scope record carrying the new
+     *   boundaries when they change.
      * @throws If the project has no text for the book of `toRef`, the session is read-only or not
      *   open, or the edit is refused or fails (logged before rethrowing).
      */

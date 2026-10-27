@@ -1047,8 +1047,8 @@ async function assertOneSegment(
  *
  * @returns The changes it applied, as JSON.
  * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
- *   its book, the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
+ *   the first token's book, the session is read-only or not open, or the edit is refused or fails.
+ *   The error is logged before rethrowing.
  */
 function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<string> {
   return runSessionEdit(sessionId, 'createPhrase', async (buffer, session) => {
@@ -1063,9 +1063,9 @@ function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<strin
  * occurrence.
  *
  * @returns The changes it applied, as JSON.
- * @throws If `tokens` is not within one segment of the text, the project has no text for its book,
- *   the session is read-only or not open, or the edit is refused or fails. The error is logged
- *   before rethrowing.
+ * @throws If `tokens` is not within one segment of the text, the project has no text for the first
+ *   token's book, the session is read-only or not open, or the edit is refused or fails. The error
+ *   is logged before rethrowing.
  */
 function updatePhrase(
   sessionId: string,
@@ -1102,8 +1102,8 @@ function deletePhrase(sessionId: string, phraseId: string): Promise<string> {
  *   is a token in no phrase.
  * @returns The changes it applied, as JSON.
  * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
- *   its book, the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
+ *   the first token's book, the session is read-only or not open, or the edit is refused or fails.
+ *   The error is logged before rethrowing.
  */
 function mergePhrases(
   sessionId: string,

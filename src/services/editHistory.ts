@@ -107,8 +107,8 @@ export class EditHistory {
   }
 
   /**
-   * Marks the draft saved, superseding any earlier save. Any later undo or redo that leads back to
-   * its current content marks it saved too.
+   * Marks the draft saved, superseding any earlier save unless the draft was already saved. Any
+   * later undo or redo that leads back to its current content marks it saved too.
    *
    * @throws Whatever the repository's `markClean` throws.
    */

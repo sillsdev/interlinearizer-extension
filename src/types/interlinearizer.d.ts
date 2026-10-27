@@ -364,20 +364,24 @@ declare module 'papi-shared-types' {
     ) => Promise<void>;
 
     /**
-     * Reverts a session's latest edit not yet undone.
+     * Reverts a session's latest edit not yet undone, re-anchoring what it restores to the current
+     * text of each book re-anchored since.
      *
-     * @returns The changes that reverted it, as JSON, or `undefined` when there is none.
-     * @throws If the session is read-only or not open, or the changes cannot be applied (logged
-     *   before rethrowing).
+     * @returns The changes that reverted the edit and re-anchored what the undo restored, as JSON,
+     *   or `undefined` when there is none.
+     * @throws If the session is read-only or not open, or re-anchoring or applying the changes
+     *   fails (logged before rethrowing).
      */
     'interlinearizer.undoEdit': (sessionId: string) => Promise<string | undefined>;
 
     /**
-     * Redoes a session's latest undone edit.
+     * Redoes a session's latest undone edit, re-anchoring what it restores to the current text of
+     * each book re-anchored since.
      *
-     * @returns The changes that redid it, as JSON, or `undefined` when there is none.
-     * @throws If the session is read-only or not open, or the changes cannot be applied (logged
-     *   before rethrowing).
+     * @returns The changes that redid the edit and re-anchored what the redo restored, as JSON, or
+     *   `undefined` when there is none.
+     * @throws If the session is read-only or not open, or re-anchoring or applying the changes
+     *   fails (logged before rethrowing).
      */
     'interlinearizer.redoEdit': (sessionId: string) => Promise<string | undefined>;
 
@@ -600,6 +604,9 @@ declare module 'papi-shared-types' {
      * with no verse text directly before it, such as the book's first or one after a heading, is
      * left as it is.
      *
+     * The same edit re-anchors the book's analysis to the new segments. A free translation whose
+     * segment changes goes stale.
+     *
      * @returns A JSON string of the changes it applied, with a scope record carrying the new
      *   boundaries when they change.
      * @throws If the project has no text for the token's book, the session is read-only or not
@@ -614,6 +621,9 @@ declare module 'papi-shared-types' {
      * Splits a segment so a new one begins at `tokenRef`. Every approved phrase the new boundary
      * would cut is split first, in the same edit, so that no phrase spans two segments.
      *
+     * The same edit re-anchors the book's analysis to the new segments. A free translation whose
+     * segment changes goes stale.
+     *
      * @returns A JSON string of the changes it applied, with a scope record carrying the new
      *   boundaries when they change.
      * @throws If the project has no text for the token's book, the session is read-only or not
@@ -625,6 +635,9 @@ declare module 'papi-shared-types' {
      * Moves a segment boundary from `fromRef` to `toRef`, as pulling an edge token across a
      * boundary does. Every approved phrase a boundary before `toRef` would cut is split first, in
      * the same edit.
+     *
+     * The same edit re-anchors the book's analysis to the new segments. A free translation whose
+     * segment changes goes stale.
      *
      * @returns A JSON string of the changes it applied, with a scope record carrying the new
      *   boundaries when they change.

@@ -1,6 +1,7 @@
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import type {
   AnalysisRepository,
+  ApplyOptions,
   ApplyResult,
   ChangeSet,
   DraftExport,
@@ -187,8 +188,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Records the stored draft as clean, rewriting only its envelope. A draft never saved, or already
-   * clean, is left alone.
+   * Records the stored draft, and the draft this instance keeps, as clean, rewriting only the
+   * stored envelope. A stored draft never saved, or already clean, is left alone.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON; nothing is written.
    * @throws {Error} If the stored draft was written by a newer build, fails validation, or belongs
@@ -205,11 +206,16 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       throw new Error(
         `Interlinearizer: stored draft for source project ${sourceProjectId} failed validation; not marking it clean`,
       );
-    if (!parsed.dirty) return;
-    await storage.write(
-      draftKey(sourceProjectId),
-      JSON.stringify({ ...parsed, modelVersion: CURRENT_MODEL_VERSION, dirty: false }),
-    );
+    if (parsed.dirty) {
+      await storage.write(
+        draftKey(sourceProjectId),
+        JSON.stringify({ ...parsed, modelVersion: CURRENT_MODEL_VERSION, dirty: false }),
+      );
+    }
+    // An apply that keeps the mark takes it from the kept draft, which must not still read unsaved.
+    if (this.current) {
+      this.current = { ...this.current, draft: { ...this.current.draft, dirty: false } };
+    }
   }
 
   /**
@@ -253,7 +259,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   /**
    * Applies the changes to the draft this instance keeps, loading the stored draft first when it
    * keeps none, as after {@link exportAll} or a whole save. Only the books whose content the changes
-   * alter are rewritten, so an edit to a payload rewrites every book linking it.
+   * alter are rewritten, so an edit to a payload rewrites every book linking it. Marks the draft
+   * unsaved unless `options` keeps the mark.
    *
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project; nothing is written.
@@ -263,10 +270,12 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects a read or a write, as {@link replaceAll} does; this instance's draft
    *   is left as it was.
    */
-  async apply(changes: ChangeSet): Promise<ApplyResult> {
+  async apply(changes: ChangeSet, options?: ApplyOptions): Promise<ApplyResult> {
     const { draft: base, index } = await this.indexed();
     const copied = jsonCopy(changes);
-    const { draft, inverse } = applyChangeSet(base, copied);
+    const applied = applyChangeSet(base, copied);
+    const { inverse } = applied;
+    const draft = options?.keepDirty ? { ...applied.draft, dirty: base.dirty } : applied.draft;
     await this.writeDraft(draft, undefined, { refuseUnreadable: true });
     index.apply(copied);
     this.current = { draft, index };

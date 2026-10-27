@@ -26,6 +26,7 @@ import { toProjectSummary } from '../types/interlinear-project-summary';
 import {
   createTestActivationContext,
   FIXTURE_STAMPS,
+  GEN_1_1_BOOK,
   makeStubProject,
   makeVerseBook,
   memoryStorage,
@@ -297,6 +298,13 @@ describe('main', () => {
       expect(emitter.emit).toHaveBeenCalledWith({ notificationId: 'notification-1' });
     });
 
+    /** Lets every pending promise callback run. */
+    function nextTick() {
+      return new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
+
     describe('interlinearizer.onAnalysisChanged', () => {
       /** Gives each event its own emitter, as the platform does. */
       function emittersByEvent() {
@@ -315,6 +323,7 @@ describe('main', () => {
         const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
 
         listener('src-project', 'GEN');
+        await nextTick();
 
         expect(emitters.get('interlinearizer.onAnalysisChanged')?.emit).toHaveBeenCalledWith({
           sourceProjectId: 'src-project',
@@ -330,22 +339,107 @@ describe('main', () => {
 
         listener('src-project', 'GEN');
         listener('src-project', 'GEN');
+        await nextTick();
 
         const emit = emitters.get('interlinearizer.onAnalysisChanged')?.emit;
         expect(emit?.mock.calls[0][0].changeId).not.toBe(emit?.mock.calls[1][0].changeId);
       });
 
+      it("emits an edit once the source's session has run what was sent before it", async () => {
+        const emitters = emittersByEvent();
+        let settle: () => void = () => {};
+        jest.spyOn(AnalysisSessions.prototype, 'settled').mockReturnValue(
+          new Promise<void>((resolve) => {
+            settle = resolve;
+          }),
+        );
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
+        const emit = emitters.get('interlinearizer.onAnalysisChanged')?.emit;
+
+        listener('src-project', 'GEN');
+        await nextTick();
+        expect(emit).not.toHaveBeenCalled();
+        settle();
+        await nextTick();
+
+        expect(AnalysisSessions.prototype.settled).toHaveBeenCalledWith('src-project');
+        expect(emit).toHaveBeenCalledTimes(1);
+      });
+
       it('disposes the emitter and stops listening on deactivation', async () => {
         const emitters = emittersByEvent();
-        const unsubscribe = jest.fn(() => true);
-        jest.mocked(bookService.onBookTextChanged).mockReturnValue(unsubscribe);
+        const unsubscribers = [jest.fn(() => true), jest.fn(() => true), jest.fn(() => true)];
+        jest.mocked(bookService.onBookTextChanged).mockReturnValue(unsubscribers[0]);
+        jest.mocked(bookService.onBookRead).mockReturnValue(unsubscribers[1]);
+        jest.mocked(bookService.onTextRead).mockReturnValue(unsubscribers[2]);
         const context = createTestActivationContext();
         await activate(context);
 
         await context.registrations.runAllUnsubscribers();
 
         expect(emitters.get('interlinearizer.onAnalysisChanged')?.dispose).toHaveBeenCalled();
-        expect(unsubscribe).toHaveBeenCalled();
+        unsubscribers.forEach((unsubscribe) => expect(unsubscribe).toHaveBeenCalled());
+      });
+    });
+
+    describe('re-anchoring', () => {
+      const book = GEN_1_1_BOOK;
+
+      it("re-anchors each book read to the source's session", async () => {
+        const reanchorBook = jest
+          .spyOn(AnalysisSessions.prototype, 'reanchorBook')
+          .mockResolvedValue(undefined);
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onBookRead).mock.calls[0];
+
+        listener('src-project', book);
+
+        expect(reanchorBook).toHaveBeenCalledWith('src-project', book);
+      });
+
+      it('logs a re-anchor that fails', async () => {
+        jest
+          .spyOn(AnalysisSessions.prototype, 'reanchorBook')
+          .mockRejectedValue(new Error('disk full'));
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onBookRead).mock.calls[0];
+
+        listener('src-project', book);
+        await nextTick();
+
+        expect(__mockLogger.warn).toHaveBeenCalledWith(
+          'Interlinearizer: could not re-anchor GEN of project src-project',
+          expect.any(Error),
+        );
+      });
+
+      it("re-anchors the books the text lacks to the source's session", async () => {
+        const reanchorMissingBooks = jest
+          .spyOn(AnalysisSessions.prototype, 'reanchorMissingBooks')
+          .mockResolvedValue(undefined);
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onTextRead).mock.calls[0];
+
+        listener('src-project', ['GEN']);
+
+        expect(reanchorMissingBooks).toHaveBeenCalledWith('src-project', ['GEN']);
+      });
+
+      it('logs a re-anchor of the books the text lacks that fails', async () => {
+        jest
+          .spyOn(AnalysisSessions.prototype, 'reanchorMissingBooks')
+          .mockRejectedValue(new Error('disk full'));
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onTextRead).mock.calls[0];
+
+        listener('src-project', ['GEN']);
+        await nextTick();
+
+        expect(__mockLogger.warn).toHaveBeenCalledWith(
+          'Interlinearizer: could not re-anchor the books project src-project lacks',
+          expect.any(Error),
+        );
       });
     });
 
@@ -2747,6 +2841,38 @@ describe('main', () => {
       expect(changes).toMatchObject({
         intent: 'splitSegment',
         phraseAnalysisLinks: { puts: [{ id: 'pl-1', tokens: phrase.tokens.slice(1) }] },
+        scope: { segmentation: { addedStarts: [{ tokenRef: 'GEN 1:1:3' }] } },
+      });
+    });
+
+    it("stales the free translation of a segment it splits, in the split's edit", async () => {
+      await storeDraftHolding({
+        segmentAnalyses: [
+          {
+            id: 'sa-1',
+            ...FIXTURE_STAMPS,
+            surfaceText: 'In the beginning God',
+            freeTranslation: { en: 'At first God' },
+          },
+        ],
+        segmentAnalysisLinks: [
+          {
+            id: 'sl-1',
+            analysisId: 'sa-1',
+            ...FIXTURE_STAMPS,
+            status: 'approved',
+            segmentId: 'GEN 1:1',
+          },
+        ],
+      });
+      const { openSession, splitSegment } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(await splitSegment(sessionId, 'GEN 1:1:3'));
+
+      expect(changes).toMatchObject({
+        intent: 'splitSegment',
+        segmentAnalysisLinks: { puts: [{ id: 'sl-1', status: 'stale' }] },
         scope: { segmentation: { addedStarts: [{ tokenRef: 'GEN 1:1:3' }] } },
       });
     });

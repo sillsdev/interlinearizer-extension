@@ -9,6 +9,8 @@
   "scripts": {
     "build:web-view": "webpack --config ./webpack/webpack.config.web-view.ts",
     "build:main": "webpack --config ./webpack/webpack.config.main.ts",
+    "build:c-sharp": "node scripts/publish-c-sharp.cjs",
+    "test:c-sharp": "node scripts/smoke-test-c-sharp-host.cjs",
     "build": "webpack",
     "watch": "npm run build -- --watch",
     "build:production": "cross-env NODE_ENV=production TS_NODE_TRANSPILE_ONLY=false webpack",

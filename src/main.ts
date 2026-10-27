@@ -19,6 +19,7 @@ import * as staleCommands from './services/commands/staleCommands';
 import * as freeTranslationCommands from './services/commands/freeTranslationCommands';
 import * as phraseCommands from './services/commands/phraseCommands';
 import * as tokenCommands from './services/commands/tokenCommands';
+import { startCSharpHost } from './services/csharpHost';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
@@ -1328,6 +1329,9 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   executionToken = context.executionToken;
   leftOutDraftBooks.clear();
+  context.registrations.add(
+    startCSharpHost(executionToken, context.elevatedPrivileges.createProcess),
+  );
 
   // Opportunistically retry deleting any project records orphaned by a failed rollback on a prior
   // run (see projectStorage.createProject). Fire-and-forget: a cleanup failure must never block or

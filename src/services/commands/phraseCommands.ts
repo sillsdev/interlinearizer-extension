@@ -115,6 +115,15 @@ async function isPhrasePayloadShared(
   return phraseAnalysisLinks.some(({ id }) => id !== link.id);
 }
 
+async function hasPhraseGlossIn(
+  buffer: ChangeBuffer,
+  link: PhraseAnalysisLink,
+  lang: string,
+): Promise<boolean> {
+  const [analysis] = await buffer.getPhraseAnalyses([link.analysisId]);
+  return analysis?.gloss?.[lang] !== undefined;
+}
+
 /**
  * The payload an edit to `link`'s occurrence writes to. That is the occurrence's own payload, or a
  * private copy when other occurrences share the payload, so that those occurrences keep reading
@@ -252,20 +261,21 @@ export async function deletePhrase(
  * another occurrence shares it.
  *
  * A payload only the two shared stays with the target rather than forking. Other occurrences
- * sharing either payload are unaffected. Nothing is staged when the absorbed occurrence is the
- * target.
+ * sharing either payload are unaffected. Nothing is staged for an unknown target, or when the
+ * absorbed occurrence is the target.
  */
 export async function mergePhrases(
   buffer: ChangeBuffer,
   { targetPhraseId, tokens, absorbedPhraseId, ...stamp }: MergePhrasesRequest,
 ): Promise<void> {
   if (absorbedPhraseId !== undefined && absorbedPhraseId === targetPhraseId) return;
+  const link = await findPhraseLink(buffer, targetPhraseId);
+  if (!link) return;
 
   const absorbed =
     absorbedPhraseId === undefined ? undefined : await findPhraseLink(buffer, absorbedPhraseId);
   if (absorbed) await detachPhraseLink(buffer, absorbed);
-  const link = await findPhraseLink(buffer, targetPhraseId);
-  if (link) await reshapePhrase(buffer, link, tokens, stamp);
+  await reshapePhrase(buffer, link, tokens, stamp);
 }
 
 /**
@@ -274,22 +284,23 @@ export async function mergePhrases(
  * another folds the edited payload into the other.
  *
  * A blank value clears the language's gloss, leaving the phrase in place. Nothing is staged for an
- * unknown occurrence, or one whose payload isn't stored.
+ * unknown occurrence, one whose payload isn't stored, or a blank value with no gloss to clear.
  */
 export async function writePhraseGloss(
   buffer: ChangeBuffer,
   { phraseId, value, analysisLanguage: lang, ...stamp }: WritePhraseGlossRequest,
 ): Promise<void> {
   const link = await findPhraseLink(buffer, phraseId);
-  const target = link && (await editablePhraseAnalysis(buffer, link, stamp));
-  if (!link || !target) return;
-  if (value.trim() !== '') {
-    if (!target.gloss) target.gloss = {};
-    target.gloss[lang] = value;
-  } else if (target.gloss) {
-    delete target.gloss[lang];
-    if (isEmptyMultiString(target.gloss)) delete target.gloss;
-  }
+  if (!link) return;
+  const clears = value.trim() === '';
+  if (clears && !(await hasPhraseGlossIn(buffer, link, lang))) return;
+  const target = await editablePhraseAnalysis(buffer, link, stamp);
+  if (!target) return;
+  const gloss = { ...target.gloss };
+  if (clears) delete gloss[lang];
+  else gloss[lang] = value;
+  if (isEmptyMultiString(gloss)) delete target.gloss;
+  else target.gloss = gloss;
   target.updatedAt = stamp.now;
   link.updatedAt = stamp.now;
   buffer.put('phraseAnalyses', target);

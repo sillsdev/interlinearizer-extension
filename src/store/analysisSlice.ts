@@ -1673,8 +1673,8 @@ const analysisSlice = createSlice({
      * it, and the absorbed neighbor, when given, is removed as {@link deletePhrase} would remove it.
      * One reducer means no save can observe the neighbor's tokens in two phrases at once.
      *
-     * No-ops when `absorbedPhraseId === targetPhraseId`, which would otherwise delete the phrase it
-     * grows.
+     * No-ops for an unknown target. Also no-ops when `absorbedPhraseId === targetPhraseId`; merging
+     * would otherwise delete the phrase it grows.
      */
     mergePhrases: {
       /**
@@ -1687,13 +1687,14 @@ const analysisSlice = createSlice({
       reducer(state, action: PayloadAction<MergePhrasesPayload & PhraseEditStamp>) {
         const { targetPhraseId, tokens, absorbedPhraseId } = action.payload;
         if (absorbedPhraseId !== undefined && absorbedPhraseId === targetPhraseId) return;
+        const link = findPhraseLink(state, targetPhraseId);
+        if (!link) return;
 
         // Removed first, so a payload only the two shared stays with the target rather than forking.
         const absorbed =
           absorbedPhraseId === undefined ? undefined : findPhraseLink(state, absorbedPhraseId);
         if (absorbed) detachPhraseLink(state, absorbed);
-        const link = findPhraseLink(state, targetPhraseId);
-        if (link) reshapePhrase(state, link, tokens, action.payload);
+        reshapePhrase(state, link, tokens, action.payload);
       },
     },
     /**
@@ -1701,7 +1702,7 @@ const analysisSlice = createSlice({
      * per-occurrence: other occurrences sharing the payload keep their gloss, and an edit that
      * matches another payload joins it. A blank `value` (empty or whitespace) clears the language's
      * gloss rather than storing junk, leaving the phrase itself in place. No-ops when the
-     * occurrence or its payload is not found.
+     * occurrence or its payload is not found, or when a blank value has no gloss to clear.
      */
     writePhraseGloss: {
       /**
@@ -1713,17 +1714,18 @@ const analysisSlice = createSlice({
       },
       reducer(state, action: PayloadAction<WritePhraseGlossPayload & PhraseEditStamp>) {
         const { phraseId, value, forkId, now } = action.payload;
-        const link = findPhraseLink(state, phraseId);
-        const target = link && editablePhraseAnalysis(state, link, forkId, now);
-        if (!link || !target) return;
         const lang = state.analysisLanguage;
-        if (value.trim() !== '') {
-          if (!target.gloss) target.gloss = {};
-          target.gloss[lang] = value;
-        } else if (target.gloss) {
-          delete target.gloss[lang];
-          if (isEmptyMultiString(target.gloss)) delete target.gloss;
-        }
+        const link = findPhraseLink(state, phraseId);
+        if (!link) return;
+        const clears = value.trim() === '';
+        if (clears && findPhraseAnalysis(state, link)?.gloss?.[lang] === undefined) return;
+        const target = editablePhraseAnalysis(state, link, forkId, now);
+        if (!target) return;
+        const gloss = { ...target.gloss };
+        if (clears) delete gloss[lang];
+        else gloss[lang] = value;
+        if (isEmptyMultiString(gloss)) delete target.gloss;
+        else target.gloss = gloss;
         target.updatedAt = now;
         link.updatedAt = now;
         mergeIntoIdenticalPhrase(state, target);

@@ -434,7 +434,7 @@ describe('mergePhrases parity with the reducer', () => {
       },
     ],
     [
-      'still removes the absorbed occurrence when the target is gone',
+      'leaves the analysis alone for an unknown target',
       {
         analysis: analysisOf(
           [payload('pa-1', 'In the'), payload('pa-2', 'beginning God')],
@@ -446,8 +446,12 @@ describe('mergePhrases parity with the reducer', () => {
           absorbedPhraseId: 'pl-2',
         },
         expectStore: (store) => {
-          expect(ids(store.phraseAnalyses)).toStrictEqual(['pa-1']);
-          expect(ids(store.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
+          expect(store).toStrictEqual(
+            analysisOf(
+              [payload('pa-1', 'In the'), payload('pa-2', 'beginning God')],
+              [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-2', run(1, 2, 3))],
+            ),
+          );
         },
       },
     ],
@@ -589,17 +593,19 @@ describe('writePhraseGloss parity with the reducer', () => {
       },
     ],
     [
-      'dates only the occurrence when a blank value leaves a shared payload as it was',
+      'leaves the analysis alone for a blank value when the language has no gloss to clear',
       {
         analysis: analysisOf(
-          [payload('pa-1', 'In the')],
+          [payload('pa-1', 'In the', { gloss: { fr: 'au' } })],
           [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-1', run(2, 0, 1))],
         ),
         input: { value: '' },
         expectStore: (store) => {
-          expect(store.phraseAnalyses).toStrictEqual([payload('pa-1', 'In the')]);
-          expect(linkOf(store, 'pl-1')).toStrictEqual(
-            link('pl-1', 'pa-1', run(1, 0, 1), { updatedAt: NOW }),
+          expect(store).toStrictEqual(
+            analysisOf(
+              [payload('pa-1', 'In the', { gloss: { fr: 'au' } })],
+              [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-1', run(2, 0, 1))],
+            ),
           );
         },
       },

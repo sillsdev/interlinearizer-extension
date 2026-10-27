@@ -33,7 +33,7 @@ async function bufferOver(analysis: Partial<TextAnalysis>): Promise<ChangeBuffer
 }
 
 describe('writePhraseGloss', () => {
-  it('stages only the dated link when a blank value leaves a shared payload as it was', async () => {
+  it('stages nothing for a blank value when the language has no gloss', async () => {
     const buffer = await bufferOver({
       phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the' }],
       phraseAnalysisLinks: [link('pl-1', 1), link('pl-2', 2)],
@@ -47,10 +47,7 @@ describe('writePhraseGloss', () => {
       now: NOW,
     });
 
-    expect(buffer.toChangeSet('writePhraseGloss')).toStrictEqual({
-      intent: 'writePhraseGloss',
-      phraseAnalysisLinks: { puts: [{ ...link('pl-1', 1), updatedAt: NOW }], deletes: [] },
-    });
+    expect(buffer.toChangeSet('writePhraseGloss')).toStrictEqual({ intent: 'writePhraseGloss' });
   });
 });
 

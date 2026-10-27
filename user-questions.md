@@ -59,14 +59,7 @@ Decisions made during development that we'd like reviewed:
    blur — only the indicator is eager). Is reflecting in-progress typing as "unsaved" the right
    behavior, or should the marker wait until an edit is actually committed?
 
-8. **Discarding and the unsaved indicator.** Discarding the **entire draft's** changes clears the `●`
-   marker, since the draft then matches the active project (or is empty when none is active).
-   Discarding the **current book's** changes leaves the marker as it was, because other books may
-   still hold unsaved changes; the marker can therefore stay lit when that book held the only ones.
-   With no active project, a book discard always lights the marker, since nothing it keeps is saved.
-   Is this split right, or should a book discard check whether anything unsaved remains?
-
-9. **Save As → Overwrite and the target's metadata.** "Save As → Overwrite an existing project"
+8. **Save As → Overwrite and the target's metadata.** "Save As → Overwrite an existing project"
    replaces that project's analysis with the draft's. The draft's _config_ (analysis languages and
    alignment target) can differ from the chosen project's — e.g. you Open project A (languages
    `[en]`), then Save As → Overwrite project B (languages `[fr]`). We currently push the draft's
@@ -83,13 +76,13 @@ Decisions made during development that we'd like reviewed:
    - Should the Overwrite confirmation surface when the draft's languages differ from the target's,
      so the user is aware their language tags are about to change?
 
-10. **Single "Discard Unsaved Changes…" menu item with a scope picker.** One **Discard Unsaved
-    Changes…** item opens a dialog where the user picks the scope — current book or entire draft —
-    then confirms. The dialog defaults to "Current book" (the less destructive option) and disables
-    that option when no book is loaded. Alternative: two separate menu items (each a single click, no
-    scope step). Current choice: one menu item plus a scope-picker dialog.
+9. **Single "Discard Unsaved Changes…" menu item with a scope picker.** One **Discard Unsaved
+   Changes…** item opens a dialog where the user picks the scope — current book or entire draft —
+   then confirms. The dialog defaults to "Current book" (the less destructive option) and disables
+   that option when no book is loaded. Alternative: two separate menu items (each a single click, no
+   scope step). Current choice: one menu item plus a scope-picker dialog.
 
-11. **In-progress typing guards a project swap.** Switching projects (New / Open) shows the discard
+10. **In-progress typing guards a project swap.** Switching projects (New / Open) shows the discard
     confirm (item 2) whenever the draft has unsaved changes. This now also fires when a gloss field
     holds **uncommitted** text — the same eager signal that lights the `●` marker (item 7) — not only
     after that text has committed on blur. Previously the guard checked committed changes only, so

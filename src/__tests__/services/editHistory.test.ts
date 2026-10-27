@@ -224,6 +224,28 @@ describe("EditHistory's unsaved mark", () => {
     await expect(storedDirty()).resolves.toBe(false);
   });
 
+  it('marks the draft unsaved when an undo leads back to content saved before a later save', async () => {
+    const { history, storedDirty } = makeHistory();
+    await history.apply(putting('a'));
+    await history.markClean();
+    await history.apply(putting('b'));
+    await history.markClean();
+
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(true);
+  });
+
+  it('marks the draft saved when an undo crosses an edit that kept the saved mark before markClean', async () => {
+    const { history, storedDirty } = makeHistory();
+    await history.apply(putting('a'), { unsavedMark: 'keep' });
+    await history.markClean();
+
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
   it('takes a save made outside the history as the only saved content once it next applies', async () => {
     const { history, repository, storedDirty } = makeHistory();
     await history.apply(putting('a'));

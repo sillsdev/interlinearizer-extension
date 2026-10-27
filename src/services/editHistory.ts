@@ -40,9 +40,9 @@ type Step = {
  * undo or redo restores is re-anchored to the current text of each book that a pass has re-anchored
  * since then.
  *
- * An undo or redo marks the draft saved when it leads back to content the draft was saved with, and
- * unsaved otherwise. The history learns of a save made elsewhere only when it next applies
- * changes.
+ * An undo or redo marks the draft saved when it leads back to content the draft was last saved
+ * with, and unsaved otherwise. The history learns of a save made elsewhere only when it next
+ * applies changes.
  */
 export class EditHistory {
   private readonly repository: AnalysisRepository;
@@ -107,14 +107,14 @@ export class EditHistory {
   }
 
   /**
-   * Marks the draft saved. Any later undo or redo that leads back to its current content marks it
-   * saved too.
+   * Marks the draft saved, superseding any earlier save. Any later undo or redo that leads back to
+   * its current content marks it saved too.
    *
    * @throws Whatever the repository's `markClean` throws.
    */
   async markClean(): Promise<void> {
     await this.repository.markClean();
-    this.cleanStates.add(this.state);
+    this.noteMark(false);
   }
 
   /**
@@ -183,7 +183,10 @@ export class EditHistory {
     return changes;
   }
 
-  /** Takes in a save made outside the history, which makes the current state the only clean one. */
+  /**
+   * Takes in a save of the current content unless `wasDirty`. When the current state is not already
+   * clean, it becomes the only clean one.
+   */
   private noteMark(wasDirty: boolean): void {
     if (!wasDirty && !this.cleanStates.has(this.state)) this.cleanStates = new Set([this.state]);
   }

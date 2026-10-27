@@ -7,14 +7,16 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type { ProjectConfig, TokenSnapshot } from 'interlinearizer';
+import type { Book, ProjectConfig, TokenSnapshot } from 'interlinearizer';
 import { formatReplacementString, type LocalizeKey } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
 import * as bookService from './services/bookService';
+import * as boundaryCommands from './services/commands/boundaryCommands';
 import type { ChangeBuffer } from './services/commands/changeBuffer';
 import * as staleCommands from './services/commands/staleCommands';
+import * as freeTranslationCommands from './services/commands/freeTranslationCommands';
 import * as phraseCommands from './services/commands/phraseCommands';
 import * as tokenCommands from './services/commands/tokenCommands';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
@@ -24,8 +26,10 @@ import type { Pt9ImportResult } from './services/pt9ImportService';
 import { toProjectSummary, type SavedAsProject } from './types/interlinear-project-summary';
 import { UnreadableBooksError } from './types/analysis-repository';
 import { isDraftProject } from './types/type-guards';
-import { BOOKLESS_PARTITION } from './utils/analysis-book';
+import { BOOKLESS_PARTITION, bookOfRef } from './utils/analysis-book';
+import { bookIndexesOf } from './utils/book-indexes';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
+import { segmentationForBook } from './utils/segmentation';
 
 // #region WebView provider
 
@@ -994,17 +998,63 @@ function assertTokenRun(tokens: readonly TokenSnapshot[]): void {
 }
 
 /**
+ * What `read` serves for the session's source project and the book that `tokenRef` falls in.
+ *
+ * @throws If the project has no text for that book, or `read` throws.
+ */
+async function readBookOf<T>(
+  session: Session,
+  tokenRef: string,
+  read: (sourceProjectId: string, bookId: string) => Promise<T | undefined>,
+): Promise<T> {
+  const bookId = bookOfRef(tokenRef);
+  const { sourceProjectId } = session.scope;
+  const found = await read(sourceProjectId, bookId);
+  if (found === undefined) {
+    throw new Error(`Interlinearizer: project ${sourceProjectId} has no text for book ${bookId}`);
+  }
+  return found;
+}
+
+/**
+ * Refuses a phrase occurrence over `tokens` unless they lie within one segment of the text, as the
+ * staged boundaries segment it.
+ *
+ * @throws If the tokens span segments or name a token the text lacks, the project has no text for
+ *   the first token's book, or the book cannot be read or tokenized.
+ */
+async function assertOneSegment(
+  buffer: ChangeBuffer,
+  session: Session,
+  tokens: readonly TokenSnapshot[],
+): Promise<void> {
+  const { segmentation } = await buffer.getScope();
+  const segments = await readBookOf(session, tokens[0].tokenRef, (sourceProjectId, bookId) => {
+    // Keyed as the WebView's page reads key it, so that the two share the book's segmentation.
+    const forBook = segmentationForBook(segmentation, bookId);
+    return bookService.getBookSegments(sourceProjectId, bookId, forBook && JSON.stringify(forBook));
+  });
+  const { tokenSegmentMap } = bookIndexesOf(segments);
+  const segmentIds = new Set(tokens.map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)));
+  if (segmentIds.size > 1 || segmentIds.has(undefined)) {
+    throw new Error("Interlinearizer: a phrase's tokens must lie within one segment of the text");
+  }
+}
+
+/**
  * Adds an approved phrase occurrence over `tokens`, sharing a content-identical stored payload
  * where one exists.
  *
  * @returns The changes it applied, as JSON.
- * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
- *   fails. The error is logged before rethrowing.
+ * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
+ *   the first token's book, the session is read-only or not open, or the edit is refused or fails.
+ *   The error is logged before rethrowing.
  */
 function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<string> {
-  return runSessionEdit(sessionId, 'createPhrase', (buffer) => {
+  return runSessionEdit(sessionId, 'createPhrase', async (buffer, session) => {
     assertTokenRun(tokens);
-    return phraseCommands.createPhrase(buffer, { ...editStamp(), tokens });
+    await assertOneSegment(buffer, session, tokens);
+    await phraseCommands.createPhrase(buffer, { ...editStamp(), tokens });
   });
 }
 
@@ -1013,17 +1063,19 @@ function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<strin
  * occurrence.
  *
  * @returns The changes it applied, as JSON.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
+ * @throws If `tokens` is not within one segment of the text, the project has no text for the first
+ *   token's book, the session is read-only or not open, or the edit is refused or fails. The error
+ *   is logged before rethrowing.
  */
 function updatePhrase(
   sessionId: string,
   phraseId: string,
   tokens: TokenSnapshot[],
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'updatePhrase', (buffer) =>
-    phraseCommands.updatePhrase(buffer, { ...editStamp(), phraseId, tokens }),
-  );
+  return runSessionEdit(sessionId, 'updatePhrase', async (buffer, session) => {
+    if (tokens.length > 0) await assertOneSegment(buffer, session, tokens);
+    await phraseCommands.updatePhrase(buffer, { ...editStamp(), phraseId, tokens });
+  });
 }
 
 /**
@@ -1049,8 +1101,9 @@ function deletePhrase(sessionId: string, phraseId: string): Promise<string> {
  * @param absorbedPhraseId - The absorbed occurrence's link ID. Absent or `null` when the neighbor
  *   is a token in no phrase.
  * @returns The changes it applied, as JSON.
- * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
- *   fails. The error is logged before rethrowing.
+ * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
+ *   the first token's book, the session is read-only or not open, or the edit is refused or fails.
+ *   The error is logged before rethrowing.
  */
 function mergePhrases(
   sessionId: string,
@@ -1058,9 +1111,10 @@ function mergePhrases(
   tokens: TokenSnapshot[],
   absorbedPhraseId?: string | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'mergePhrases', (buffer) => {
+  return runSessionEdit(sessionId, 'mergePhrases', async (buffer, session) => {
     assertTokenRun(tokens);
-    return phraseCommands.mergePhrases(buffer, {
+    await assertOneSegment(buffer, session, tokens);
+    await phraseCommands.mergePhrases(buffer, {
       ...editStamp(),
       targetPhraseId,
       tokens,
@@ -1091,35 +1145,141 @@ function writePhraseGloss(sessionId: string, phraseId: string, value: string): P
  * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
  *
  * @returns The changes it applied, as JSON.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
+ * @throws If the occurrence would be approved over tokens not within one segment of the text, the
+ *   project has no text for their book, the session is read-only or not open, or the edit is
+ *   refused or fails. The error is logged before rethrowing.
  */
 function approvePhrase(sessionId: string, phraseId: string): Promise<string> {
-  return runSessionEdit(sessionId, 'approvePhrase', (buffer) =>
-    phraseCommands.approvePhrase(buffer, { ...editStamp(), phraseId }),
-  );
+  return runSessionEdit(sessionId, 'approvePhrase', async (buffer, session) => {
+    const [link] = await buffer.getPhraseAnalysisLinks([phraseId]);
+    if (link && link.status !== 'approved') await assertOneSegment(buffer, session, link.tokens);
+    await phraseCommands.approvePhrase(buffer, { ...editStamp(), phraseId });
+  });
 }
 
 /**
- * Splits a phrase occurrence just after a token, in document order. A half left with a single token
- * leaves that token in no phrase.
+ * The book `tokenRef` falls in, read from the session's source project and tokenized one segment
+ * per verse.
+ *
+ * @throws If the project has no text for that book, or the book cannot be read or tokenized.
+ */
+function verseBookOf(session: Session, tokenRef: string): Promise<Book> {
+  return readBookOf(session, tokenRef, bookService.getVerseBook);
+}
+
+/**
+ * Splits a phrase occurrence just after a token, in the document order of the token's book. A half
+ * left with a single token leaves that token in no phrase.
  *
  * @returns The changes it applied, as JSON.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
+ * @throws If the project has no text for the token's book, the session is read-only or not open, or
+ *   the edit is refused or fails. The error is logged before rethrowing.
  */
 function splitPhrase(
   sessionId: string,
   phraseId: string,
   splitAfterTokenRef: string,
-  tokenDocOrder: Record<string, number>,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'splitPhrase', (buffer) =>
-    phraseCommands.splitPhrase(buffer, {
+  return runSessionEdit(sessionId, 'splitPhrase', async (buffer, session) => {
+    const verseBook = await verseBookOf(session, splitAfterTokenRef);
+    await phraseCommands.splitPhrase(buffer, {
       ...editStamp(),
       phraseId,
       splitAfterTokenRef,
-      tokenDocOrder: new Map(Object.entries(tokenDocOrder)),
+      tokenDocOrder: bookIndexesOf(verseBook.segments).tokenDocOrder,
+    });
+  });
+}
+
+/**
+ * Writes a segment's free translation in the session's analysis language.
+ *
+ * @param sessionId - The session whose draft the write edits.
+ * @param segmentId - `Segment.id` of the segment translated.
+ * @param surfaceText - The segment's current baseline text, refreshed on the translation.
+ * @param value - The free translation. A blank value clears the translation in the session's
+ *   analysis language.
+ * @param adoptStaleAnalysisId - Id of the stale translation the value was typed over. The write
+ *   adopts that translation when the segment has no approved one. Absent or `null` when the value
+ *   was typed over none.
+ * @returns The changes it applied, as JSON.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
+ */
+function writeSegmentFreeTranslation(
+  sessionId: string,
+  segmentId: string,
+  surfaceText: string,
+  value: string,
+  adoptStaleAnalysisId?: string | null,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'writeSegmentFreeTranslation', (buffer, session) =>
+    freeTranslationCommands.writeSegmentFreeTranslation(buffer, {
+      ...editStamp(),
+      segmentId,
+      surfaceText,
+      value,
+      analysisLanguage: session.analysisLanguage,
+      adoptStaleAnalysisId: adoptStaleAnalysisId ?? undefined,
+    }),
+  );
+}
+
+/** The time a boundary edit lands, and a maker of fresh ids for the records it may make. */
+function boundaryEditStamp() {
+  return { now: new Date().toISOString(), newId: () => crypto.randomUUID() };
+}
+
+/**
+ * Merges the segment beginning at a token into the one before it.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws If the project has no text for the token's book, the session is read-only or not open, or
+ *   the edit fails. The error is logged before rethrowing.
+ */
+function mergeSegments(sessionId: string, secondSegmentStartRef: string): Promise<string> {
+  return runSessionEdit(sessionId, 'mergeSegments', async (buffer, session) =>
+    boundaryCommands.mergeSegments(buffer, {
+      verseBook: await verseBookOf(session, secondSegmentStartRef),
+      secondSegmentStartRef,
+    }),
+  );
+}
+
+/**
+ * Splits a segment so a new one begins at a token, first splitting every approved phrase the new
+ * boundary would cut.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws If the project has no text for the token's book, the session is read-only or not open, or
+ *   the edit is refused or fails. The error is logged before rethrowing.
+ */
+function splitSegment(sessionId: string, tokenRef: string): Promise<string> {
+  return runSessionEdit(sessionId, 'splitSegment', async (buffer, session) =>
+    boundaryCommands.splitSegment(buffer, {
+      ...boundaryEditStamp(),
+      verseBook: await verseBookOf(session, tokenRef),
+      tokenRef,
+    }),
+  );
+}
+
+/**
+ * Moves a segment boundary from one token to another, first splitting every approved phrase the
+ * moved boundary would cut.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws If the project has no text for the book of the token the boundary moves to, the session
+ *   is read-only or not open, or the edit is refused or fails. The error is logged before
+ *   rethrowing.
+ */
+function moveBoundary(sessionId: string, fromRef: string, toRef: string): Promise<string> {
+  return runSessionEdit(sessionId, 'moveBoundary', async (buffer, session) =>
+    boundaryCommands.moveBoundary(buffer, {
+      ...boundaryEditStamp(),
+      verseBook: await verseBookOf(session, toRef),
+      fromRef,
+      toRef,
     }),
   );
 }
@@ -2040,7 +2200,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     splitPhrase,
     {
       method: {
-        summary: 'Split a phrase occurrence just after a token, in document order',
+        summary:
+          "Split a phrase occurrence just after a token, in the document order of the token's book",
         params: [
           sessionIdParam,
           phraseIdParam,
@@ -2050,12 +2211,113 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'Token.ref of the token the first half ends with',
             schema: { type: 'string' },
           },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const writeSegmentFreeTranslationCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.writeSegmentFreeTranslation',
+    writeSegmentFreeTranslation,
+    {
+      method: {
+        summary:
+          "Write a segment's free translation in a session's analysis language; a blank value clears it",
+        params: [
+          sessionIdParam,
           {
-            name: 'tokenDocOrder',
+            name: 'segmentId',
             required: true,
+            summary: 'Segment.id of the segment translated',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'surfaceText',
+            required: true,
+            summary: "The segment's current baseline text",
+            schema: { type: 'string' },
+          },
+          {
+            name: 'value',
+            required: true,
+            summary: 'The free translation',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'adoptStaleAnalysisId',
+            required: false,
             summary:
-              "Each of the phrase's tokens' place in document order, by Token.ref; a token left out sorts as if at place zero",
-            schema: { type: 'object', additionalProperties: { type: 'number' } },
+              'Id of the stale translation the value was typed over, adopted when the segment has no approved one; omit when there is none',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const mergeSegmentsCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.mergeSegments',
+    mergeSegments,
+    {
+      method: {
+        summary: 'Merge the segment beginning at a token into the one before it',
+        params: [
+          sessionIdParam,
+          {
+            name: 'secondSegmentStartRef',
+            required: true,
+            summary: 'Token.ref of the first token of the segment merged away',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const splitSegmentCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.splitSegment',
+    splitSegment,
+    {
+      method: {
+        summary:
+          'Split a segment so a new one begins at a token, first splitting every approved phrase the boundary would cut',
+        params: [
+          sessionIdParam,
+          {
+            name: 'tokenRef',
+            required: true,
+            summary: 'Token.ref of the token the new segment begins with',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const moveBoundaryCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.moveBoundary',
+    moveBoundary,
+    {
+      method: {
+        summary:
+          'Move a segment boundary from one token to another, first splitting every approved phrase the moved boundary would cut',
+        params: [
+          sessionIdParam,
+          {
+            name: 'fromRef',
+            required: true,
+            summary: 'Token.ref of the token that stops beginning a segment',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'toRef',
+            required: true,
+            summary: 'Token.ref of the token that begins a segment instead',
+            schema: { type: 'string' },
           },
         ],
         result: editResult,
@@ -2469,6 +2731,10 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     writePhraseGlossCommandRegistration,
     approvePhraseCommandRegistration,
     splitPhraseCommandRegistration,
+    writeSegmentFreeTranslationCommandRegistration,
+    mergeSegmentsCommandRegistration,
+    splitSegmentCommandRegistration,
+    moveBoundaryCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,

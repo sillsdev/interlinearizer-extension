@@ -260,7 +260,7 @@ function segmentsOf(
   held: HeldBook,
   book: Book,
   segmentationJson: string | undefined,
-  call: 'getBookOutline' | 'getSegments',
+  call: 'getBookOutline' | 'getSegments' | 'getBookSegments',
 ): readonly Segment[] {
   const key = segmentationJson || '';
   if (held.segmented?.key !== key) {
@@ -309,6 +309,19 @@ export async function getBookOutline(
 }
 
 /**
+ * Finds the source project's book as the project's open or latest book holds it, so that the book
+ * keeps the language tag it was last read under. A book the project keeps as neither is read under
+ * the project's language tag and kept as the project's latest.
+ */
+async function keptBook(sourceProjectId: string, bookId: string): Promise<HeldBook> {
+  return (
+    [openBooks.get(sourceProjectId), latestBooks.get(sourceProjectId)].find(
+      (kept) => kept?.bookId === bookId,
+    ) ?? heldBook(sourceProjectId, bookId)
+  );
+}
+
+/**
  * Serves the segments at outline indexes `[start, end)` of a book of the source project, segmented
  * by the boundaries `segmentationJson` names. Pages keep the language tag the book was last read
  * under, so they match its outline.
@@ -324,10 +337,7 @@ export async function getSegments(
   end: number,
   segmentationJson?: string,
 ): Promise<string | undefined> {
-  const held =
-    [openBooks.get(sourceProjectId), latestBooks.get(sourceProjectId)].find(
-      (kept) => kept?.bookId === bookId,
-    ) ?? (await heldBook(sourceProjectId, bookId));
+  const held = await keptBook(sourceProjectId, bookId);
   const book = await held.book;
   if (!book) return undefined;
   const segments = segmentsOf(held, book, segmentationJson, 'getSegments');
@@ -338,6 +348,41 @@ export async function getSegments(
     segments: segments.slice(from, Math.max(from, end)),
   };
   return perfTime('getSegments:serialize', () => JSON.stringify(page));
+}
+
+/**
+ * Reads a book of the source project, tokenized one segment per verse: the book that
+ * {@link getSegments} resegments into its pages. The book is shared, so the caller must not change
+ * it.
+ *
+ * @returns `undefined` when the project has no text for the book.
+ * @throws If the book's text or the project's language tag cannot be read, or the text cannot be
+ *   tokenized.
+ */
+export async function getVerseBook(
+  sourceProjectId: string,
+  bookId: string,
+): Promise<Book | undefined> {
+  return (await keptBook(sourceProjectId, bookId)).book;
+}
+
+/**
+ * Reads a book of the source project, segmented by the boundaries `segmentationJson` names, as
+ * {@link getSegments} pages it. The segments are shared, so the caller must not change them.
+ *
+ * @returns `undefined` when the project has no text for the book.
+ * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
+ *   `SegmentationDelta`.
+ */
+export async function getBookSegments(
+  sourceProjectId: string,
+  bookId: string,
+  segmentationJson?: string,
+): Promise<readonly Segment[] | undefined> {
+  const held = await keptBook(sourceProjectId, bookId);
+  const book = await held.book;
+  if (!book) return undefined;
+  return segmentsOf(held, book, segmentationJson, 'getBookSegments');
 }
 
 /** Lets go of the source project's kept copies of `bookId`, holding its open book again at once. */

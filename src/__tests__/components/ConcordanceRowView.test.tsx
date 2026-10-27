@@ -1,9 +1,10 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type { ResolvedSense } from 'interlinearizer/lexicon';
 import { Collator } from 'platform-bible-utils';
 import ConcordanceRowView, {
   CONCORDANCE_ROW_STRING_KEYS,
@@ -16,7 +17,7 @@ import {
   type ConcordanceOccurrence,
 } from '../../utils/concordance';
 import { FIXTURE_STAMPS, makeVerseBook } from '../test-helpers';
-import { withTooltipProvider } from './test-helpers';
+import { testSenseRef, withLexicon, withTooltipProvider } from './test-helpers';
 
 const localizedStrings = Object.fromEntries(CONCORDANCE_ROW_STRING_KEYS.map((k) => [k, k]));
 
@@ -44,6 +45,8 @@ type RowOptions = Partial<{
   isSelected: boolean;
   onOccurrenceSelect: (form: string, occurrence: ConcordanceOccurrence) => void;
   localizedStrings: Record<string, string>;
+  /** Senses in the connected lexicon, by sense id. */
+  senses: Record<string, ResolvedSense>;
 }>;
 
 /** Renders the row for the form "light" in the given text. */
@@ -57,21 +60,24 @@ function renderRow(options: RowOptions = {}) {
   );
   if (!row) throw new Error('the text has no "light" to list');
   return render(
-    withTooltipProvider(
-      <ul>
-        <ConcordanceRowView
-          analysesById={analysesById}
-          analysisLanguage="en"
-          approvedByToken={approvedByToken}
-          isSelected={options.isSelected ?? false}
-          localizedStrings={options.localizedStrings ?? localizedStrings}
-          occurrenceCountInBookLabel="in Genesis"
-          onOccurrenceSelect={options.onOccurrenceSelect ?? (() => {})}
-          row={row}
-          sourceLanguageTag="hbo"
-        />
-      </ul>,
-    ),
+    withLexicon(
+      withTooltipProvider(
+        <ul>
+          <ConcordanceRowView
+            analysesById={analysesById}
+            analysisLanguage="en"
+            approvedByToken={approvedByToken}
+            isSelected={options.isSelected ?? false}
+            localizedStrings={options.localizedStrings ?? localizedStrings}
+            occurrenceCountInBookLabel="in Genesis"
+            onOccurrenceSelect={options.onOccurrenceSelect ?? (() => {})}
+            row={row}
+            sourceLanguageTag="hbo"
+          />
+        </ul>,
+      ),
+      options.senses,
+    ).ui,
   );
 }
 
@@ -254,6 +260,21 @@ describe('ConcordanceRowView', () => {
       expect(screen.getByTestId('concordance-occurrence-gloss')).toHaveTextContent(
         '%interlinearizer_concordance_noGloss%',
       );
+    });
+
+    it("shows the lexicon sense's gloss for an analysis that stores none", async () => {
+      renderRow({
+        links: [link('a1', 'GEN 1:3:13')],
+        analyses: [{ ...analysis('a1'), glossSenseRef: testSenseRef('s-light') }],
+        senses: { 's-light': { gloss: { en: 'brightness' } } },
+      });
+
+      await expand();
+
+      await waitFor(() =>
+        expect(screen.getByTestId('concordance-tally')).toHaveTextContent('brightness'),
+      );
+      expect(screen.getByTestId('concordance-occurrence-gloss')).toHaveTextContent('brightness');
     });
 
     it('marks an unanalyzed occurrence', async () => {

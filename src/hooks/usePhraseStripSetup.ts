@@ -107,6 +107,7 @@ function useTokenChipLabels(): TokenChipLabels {
   const editMorphemes = strings[TOKEN_CHIP_LABEL_KEYS.editMorphemes];
   const editStaleMorphemes = strings[TOKEN_CHIP_LABEL_KEYS.editStaleMorphemes];
   const morphemeGloss = strings[TOKEN_CHIP_LABEL_KEYS.morphemeGloss];
+  const lexiconGloss = strings[TOKEN_CHIP_LABEL_KEYS.lexiconGloss];
   const acceptSuggestion = strings[TOKEN_CHIP_LABEL_KEYS.acceptSuggestion];
   const promoteSuggestion = strings[TOKEN_CHIP_LABEL_KEYS.promoteSuggestion];
   const suggestionBreakdown = strings[TOKEN_CHIP_LABEL_KEYS.suggestionBreakdown];
@@ -120,6 +121,7 @@ function useTokenChipLabels(): TokenChipLabels {
       editMorphemes,
       editStaleMorphemes,
       morphemeGloss,
+      lexiconGloss,
       acceptSuggestion,
       promoteSuggestion,
       suggestionBreakdown,
@@ -132,6 +134,7 @@ function useTokenChipLabels(): TokenChipLabels {
       editMorphemes,
       editStaleMorphemes,
       morphemeGloss,
+      lexiconGloss,
       acceptSuggestion,
       promoteSuggestion,
       suggestionBreakdown,

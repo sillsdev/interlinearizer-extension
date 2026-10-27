@@ -17,13 +17,11 @@ export function isEmptyTokenAnalysis(analysis: TokenAnalysis): boolean {
 }
 
 /**
- * Empties `lang`'s gloss, dropping `gloss` and `glossSenseRef` once no language holds non-blank
- * text.
+ * Empties `lang`'s gloss, dropping `gloss` once no language holds non-blank text. The lexicon link
+ * in `glossSenseRef` stays: clearing a gloss edits the free-form text, not the link.
  */
 export function clearAnalysisGloss(analysis: TokenAnalysis, lang: string): void {
-  if (analysis.gloss) {
-    delete analysis.gloss[lang];
-    if (isEmptyMultiString(analysis.gloss)) delete analysis.gloss;
-  }
-  if (!analysis.gloss) delete analysis.glossSenseRef;
+  if (!analysis.gloss) return;
+  delete analysis.gloss[lang];
+  if (isEmptyMultiString(analysis.gloss)) delete analysis.gloss;
 }

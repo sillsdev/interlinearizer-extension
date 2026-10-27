@@ -28,6 +28,7 @@ import {
   useApproveAnalysisDispatch,
   useConfirmMorphemesDispatch,
   useGloss,
+  useGlossSenseRef,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
   useMorphemeDeleteDispatch,
@@ -40,6 +41,8 @@ import {
   useSuggestionAfterClearing,
   useUnapprovedTokenAnalysis,
 } from './AnalysisStore';
+import useGlossDraft from '../hooks/useGlossDraft';
+import { useDisplayedGloss } from './LexiconSenses';
 import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover } from './MorphemeEditor';
 import { TOKEN_CHIP_LABEL_KEYS, type TokenChipLabels } from './PhraseStripContext';
@@ -112,10 +115,12 @@ export function TokenChip({
   glossPlaceholder?: string;
   labels?: TokenChipLabels;
 }>) {
-  const committedGloss = useGloss(token.ref);
+  const analysisLanguage = useAnalysisLanguage();
+  const storedGloss = useGloss(token.ref);
+  const glossSenseRef = useGlossSenseRef(token.ref);
+  const { text: committedGloss } = useDisplayedGloss(storedGloss, glossSenseRef, analysisLanguage);
   const onGlossChange = useGlossDispatch();
   const morphemes = useMorphemes(token.ref);
-  const analysisLanguage = useAnalysisLanguage();
   const dispatchMorphemeBreakdown = useMorphemeBreakdownDispatch();
   const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
   const resetLosesAnnotation = useMorphemeResetLosesAnnotation(token.ref);
@@ -127,13 +132,21 @@ export function TokenChip({
   const resolved = useResolvedTokenAnalysis(token.ref, token.surfaceText, !readOnly);
   // Read-only styles an unapproved token's own record as the suggestion that editing would offer.
   const unapproved = useUnapprovedTokenAnalysis(token.ref, readOnly);
+  const { text: unapprovedGloss } = useDisplayedGloss(
+    unapproved?.gloss?.[analysisLanguage] ?? '',
+    unapproved?.glossSenseRef,
+    analysisLanguage,
+  );
   const approveAnalysis = useApproveAnalysisDispatch();
-  const [draft, setDraft] = useState(committedGloss);
+  const [draft, setDraft, draftWrites] = useGlossDraft(storedGloss, committedGloss);
   // While the user has emptied an approved token's gloss, the deletion only commits on blur, so the
   // store still reports the token as approved. Preview the post-commit suggestion now — derived as
   // if this token's approval were already gone — so the row and ghost placeholder stay consistent
   // across the blur. Gated to the one token being cleared so no other chip does the extra lookup.
-  const clearingApprovedGloss = !disabled && resolved?.status === 'approved' && draft === '';
+  // A sense ref survives the clear and keeps the approval, so a token whose gloss carries one
+  // previews nothing.
+  const clearingApprovedGloss =
+    !disabled && resolved?.status === 'approved' && draft === '' && glossSenseRef === undefined;
   const clearedSuggestion = useSuggestionAfterClearing(
     token.ref,
     token.surfaceText,
@@ -165,21 +178,15 @@ export function TokenChip({
     }
   }, [onRemove, isRemoveHovered]);
 
-  // Keep local draft in sync when the committed value changes externally (e.g. project switch).
-  useEffect(() => {
-    setDraft(committedGloss);
-  }, [committedGloss]);
-
-  /** Commits the draft gloss only when it differs from the committed value. */
+  /** Commits the draft gloss when it has anything to write, and otherwise puts the shown gloss back. */
   const commitDraft = () => {
-    if (draft !== committedGloss) {
-      onGlossChange(token.ref, token.surfaceText, draft);
-    }
+    if (draftWrites) onGlossChange(token.ref, token.surfaceText, draft);
+    else setDraft(committedGloss);
   };
 
   // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur, and flush
   // the draft if the input unmounts mid-edit. A read-only chip has no input, so it never reports.
-  useReportGlossEditing(!disabled && !readOnly && draft !== committedGloss, commitDraft);
+  useReportGlossEditing(!disabled && !readOnly && draftWrites, commitDraft);
 
   // Clear popover-open state when the morpheme row unmounts (showMorphology off), since it lives on
   // the chip and would otherwise survive to silently reopen the popover when morphology returns.
@@ -275,9 +282,8 @@ export function TokenChip({
   }, []);
 
   /**
-   * Approves the chosen suggestion payload for this token and closes the dropdown. Any typed draft
-   * is discarded: the approval updates `committedGloss`, which the sync effect mirrors back into
-   * the input so the selection wins.
+   * Approves the chosen suggestion payload for this token and closes the dropdown. The approved
+   * gloss replaces a typed draft wherever it changes the stored gloss.
    *
    * @param id - The chosen payload's id (the suggested pick or a promoted candidate).
    */
@@ -520,7 +526,7 @@ export function TokenChip({
             data-testid="readonly-gloss"
             style={{ minWidth: '5ch' }}
           >
-            {unapproved ? (unapproved.gloss?.[analysisLanguage] ?? '') : committedGloss}
+            {unapproved ? unapprovedGloss : committedGloss}
           </span>
         )}
         {/* A second popover root, independent of the morpheme editor's above. Anchoring the panel on

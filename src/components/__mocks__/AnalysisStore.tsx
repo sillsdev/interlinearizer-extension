@@ -1,7 +1,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AssignmentStatus, MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
+import type { AssignmentStatus, MorphemeAnalysis, SenseRef, TokenAnalysis } from 'interlinearizer';
 import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 
 type GlossMap = Record<string, string>;
@@ -65,6 +65,11 @@ export function AnalysisStoreProvider({
  */
 export function useGloss(tokenRef: string) {
   return useContext(MockCtx).glosses[tokenRef] ?? '';
+}
+
+/** Reports no sense ref in mock context. */
+export function useGlossSenseRef(_tokenRef: string): SenseRef | undefined {
+  return undefined;
 }
 
 /**

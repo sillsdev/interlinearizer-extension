@@ -7,6 +7,7 @@ import { fwLiteLexiconProvider, resetEntryServiceForTesting } from '../../utils/
 import { FW_LITE_AUTHORITY } from '../../utils/lexicon-authorities';
 import {
   getMockedNetworkObjectGet,
+  getMockedOnDidCreateNetworkObject,
   getMockedPdpGet,
   getMockedSendCommand,
   getMockedWaitForNetworkObject,
@@ -15,6 +16,7 @@ import {
 const LEXICON = 'my-lexicon';
 
 const mockNetworkObjectGet = getMockedNetworkObjectGet(papi);
+const mockOnDidCreateNetworkObject = getMockedOnDidCreateNetworkObject(papi);
 const mockWaitForNetworkObject = getMockedWaitForNetworkObject(papi);
 const mockPdpGet = getMockedPdpGet(papi);
 const mockSendCommand = getMockedSendCommand(papi);
@@ -65,8 +67,51 @@ function senseRef(projectId?: string): SenseRef {
   return { authority: FW_LITE_AUTHORITY, projectId, senseId: 's-1' };
 }
 
+/** The handlers the provider registered for network-object creation, in registration order. */
+let creationHandlers: ((details: { id: string }) => void)[];
+
+/** Announces a network object registering, as the platform does for every one created. */
+function announce(id: string) {
+  creationHandlers.forEach((handler) => handler({ id }));
+}
+
+/**
+ * Watches availability, collecting every report.
+ *
+ * @returns The reports so far, and what closes the watch.
+ */
+async function watchAvailability() {
+  const reports: boolean[] = [];
+  const unsubscribe = await fwLiteLexiconProvider.subscribeToAvailability((available) => {
+    reports.push(available);
+  });
+  return { reports, unsubscribe };
+}
+
+/** The first availability report, from a watch closed straight after. */
+async function firstReport(): Promise<boolean | undefined> {
+  const { reports, unsubscribe } = await watchAvailability();
+  await unsubscribe();
+  return reports[0];
+}
+
+/** Lets pending look-ups settle. */
+async function flush() {
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 beforeEach(() => {
   resetEntryServiceForTesting();
+  creationHandlers = [];
+  mockOnDidCreateNetworkObject.mockImplementation((handler: (details: { id: string }) => void) => {
+    creationHandlers.push(handler);
+    return () => {
+      creationHandlers = creationHandlers.filter((h) => h !== handler);
+      return true;
+    };
+  });
 });
 
 describe('fwLiteLexiconProvider', () => {
@@ -74,31 +119,38 @@ describe('fwLiteLexiconProvider', () => {
     expect(fwLiteLexiconProvider.authority).toBe(FW_LITE_AUTHORITY);
   });
 
-  describe('isAvailable', () => {
-    it('is available once the lexicon service is registered', async () => {
+  describe('subscribeToAvailability', () => {
+    it('reports available once the lexicon service is registered', async () => {
       serve(stubService({}));
 
-      await expect(fwLiteLexiconProvider.isAvailable()).resolves.toBe(true);
+      await expect(firstReport()).resolves.toBe(true);
     });
 
-    it('is unavailable when nothing registers the service in time', async () => {
+    it('reports unavailable when nothing registers the service in time', async () => {
       serveNothing();
 
-      await expect(fwLiteLexiconProvider.isAvailable()).resolves.toBe(false);
+      await expect(firstReport()).resolves.toBe(false);
     });
 
-    it('is unavailable when the service is announced but cannot be fetched', async () => {
+    it('reports unavailable when the service is announced but cannot be fetched', async () => {
       mockWaitForNetworkObject.mockResolvedValue({ id: 'x' });
       mockNetworkObjectGet.mockResolvedValue(undefined);
 
-      await expect(fwLiteLexiconProvider.isAvailable()).resolves.toBe(false);
+      await expect(firstReport()).resolves.toBe(false);
+    });
+
+    it('reports a service found before the watch began', async () => {
+      serve(stubService({}));
+      await firstReport();
+
+      await expect(firstReport()).resolves.toBe(true);
     });
 
     it('waits for the service once, so a second lexicon action does not pay the wait again', async () => {
       serve(stubService({}));
 
-      await fwLiteLexiconProvider.isAvailable();
-      await fwLiteLexiconProvider.isAvailable();
+      await firstReport();
+      await firstReport();
 
       expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(1);
     });
@@ -106,7 +158,7 @@ describe('fwLiteLexiconProvider', () => {
     it('shares one wait between lexicon actions that start together', async () => {
       serve(stubService({}));
 
-      await Promise.all([fwLiteLexiconProvider.isAvailable(), fwLiteLexiconProvider.isAvailable()]);
+      await Promise.all([firstReport(), firstReport()]);
 
       expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(1);
       expect(mockNetworkObjectGet).toHaveBeenCalledTimes(1);
@@ -114,50 +166,87 @@ describe('fwLiteLexiconProvider', () => {
 
     it('starts over after a look-up that found nothing, rather than holding the miss', async () => {
       serveNothing();
-      await fwLiteLexiconProvider.isAvailable();
+      await firstReport();
 
       serve(stubService({}));
 
-      await expect(fwLiteLexiconProvider.isAvailable()).resolves.toBe(true);
+      await expect(firstReport()).resolves.toBe(true);
       expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(2);
     });
 
-    it('looks the service up again once the one it held was disposed', async () => {
+    it('reports the service once it registers after the first look-up gave up', async () => {
+      serveNothing();
+      const { reports } = await watchAvailability();
+
+      serve(stubService({}));
+      announce('lexicon.entryService');
+      await flush();
+
+      expect(reports).toEqual([false, true]);
+    });
+
+    it('ignores other network objects registering', async () => {
+      serveNothing();
+      const { reports } = await watchAvailability();
+
+      announce('someone.elsesService');
+      await flush();
+
+      expect(reports).toEqual([false]);
+      expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports unavailable once the service it held is disposed', async () => {
+      const service = stubService({});
+      serve(service);
+      const { reports } = await watchAvailability();
+
+      service.dispose();
+
+      expect(reports).toEqual([true, false]);
+    });
+
+    it('reports the service again once the Lexicon extension registers it anew', async () => {
       const first = stubService({});
       serve(first);
-      await fwLiteLexiconProvider.isAvailable();
-
+      const { reports } = await watchAvailability();
       first.dispose();
-      serve(stubService({}));
 
-      await expect(fwLiteLexiconProvider.isAvailable()).resolves.toBe(true);
-      expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(2);
+      serve(stubService({}));
+      announce('lexicon.entryService');
+      await flush();
+
+      expect(reports).toEqual([true, false, true]);
     });
 
     it('keeps the live service when a disposed one fires its handler again', async () => {
       const first = stubService({});
       serve(first);
-      await fwLiteLexiconProvider.isAvailable();
-
+      const { reports } = await watchAvailability();
       first.dispose();
       serve(stubService({}));
-      await fwLiteLexiconProvider.isAvailable();
+      announce('lexicon.entryService');
+      await flush();
 
       first.dispose();
 
-      await expect(fwLiteLexiconProvider.isAvailable()).resolves.toBe(true);
+      expect(reports).toEqual([true, false, true]);
+      await expect(firstReport()).resolves.toBe(true);
       expect(mockWaitForNetworkObject).toHaveBeenCalledTimes(2);
     });
 
-    it('reports unavailable once the service it held was disposed and none replaced it', async () => {
-      const first = stubService({});
-      serve(first);
-      await fwLiteLexiconProvider.isAvailable();
+    it('reports nothing once closed', async () => {
+      const service = stubService({});
+      serve(service);
+      const { reports, unsubscribe } = await watchAvailability();
 
-      first.dispose();
-      serveNothing();
+      await unsubscribe();
+      service.dispose();
+      announce('lexicon.entryService');
+      await flush();
 
-      await expect(fwLiteLexiconProvider.isAvailable()).resolves.toBe(false);
+      expect(reports).toEqual([true]);
+      expect(creationHandlers).toEqual([]);
     });
   });
 

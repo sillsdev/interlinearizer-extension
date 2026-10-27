@@ -6,6 +6,7 @@ import type {
   PhraseAnalysisLink,
   SegmentAnalysis,
   SegmentAnalysisLink,
+  SenseRef,
   TextAnalysis,
   TokenAnalysis,
   TokenAnalysisLink,
@@ -950,9 +951,8 @@ const analysisSlice = createSlice({
        * stranded on an emptied payload. A blank write to a token with no approved analysis is a
        * no-op, so a focus/blur cycle on an empty gloss never creates a record.
        *
-       * A rewrite keeps the payload's `glossSenseRef`. A clear drops it only once no language still
-       * holds usable gloss text, the sense belonging to the analysis rather than to the emptied
-       * language.
+       * Neither a rewrite nor a clear touches the payload's `glossSenseRef`. So a payload that
+       * carries a sense ref survives a clear.
        */
       reducer(state, action: PayloadAction<WriteGlossPayload>) {
         const { tokenRef, surfaceText, value, id, linkId, now } = action.payload;
@@ -1219,9 +1219,8 @@ const analysisSlice = createSlice({
      * removes it and every link to it. An edit that makes the record identical to a sibling
      * collapses it into that sibling, so the edited row disappears from the catalog.
      *
-     * A rewrite keeps the record's `glossSenseRef`. A clear drops it only once no language still
-     * holds usable gloss text, the sense belonging to the analysis rather than to the emptied
-     * language.
+     * Neither a rewrite nor a clear touches the record's `glossSenseRef`. So a record that carries
+     * a sense ref survives a clear.
      */
     writeAnalysisGloss: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */
@@ -2038,6 +2037,19 @@ export function selectApprovedGloss(state: AnalysisState, tokenRef: string): str
 }
 
 /**
+ * Returns the sense ref on `tokenRef`'s approved analysis, or `undefined` when the token has no
+ * approved analysis or the analysis has no sense ref.
+ */
+export function selectApprovedGlossSenseRef(
+  state: AnalysisState,
+  tokenRef: string,
+): SenseRef | undefined {
+  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
+  if (!approvedId) return undefined;
+  return selectAnalysisById(state).get(approvedId)?.glossSenseRef;
+}
+
+/**
  * Memoized selector mapping each approved `TokenAnalysis.id` to the number of distinct tokens whose
  * approved link points at it — the blast radius of a global edit to that payload. At most one
  * approved analysis per token is counted, so multiple approved links on the same token are never
@@ -2456,6 +2468,16 @@ export function selectPhraseGloss(state: AnalysisState, phraseId: string): strin
   if (!link) return '';
   const pa = state.analysis.phraseAnalyses.find((p) => p.id === link.analysisId);
   return pa?.gloss?.[state.analysisLanguage] ?? '';
+}
+
+/**
+ * Returns the sense ref on the payload of the phrase occurrence `phraseId`. Returns `undefined`
+ * when the occurrence or its payload is missing, or when the payload has no sense ref.
+ */
+export function selectPhraseSenseRef(state: AnalysisState, phraseId: string): SenseRef | undefined {
+  const link = state.analysis.phraseAnalysisLinks.find((l) => l.id === phraseId);
+  if (!link) return undefined;
+  return state.analysis.phraseAnalyses.find((p) => p.id === link.analysisId)?.senseRef;
 }
 
 /** Projects `segmentAnalysisLinks` out of `AnalysisState` for use as a `createSelector` input. */

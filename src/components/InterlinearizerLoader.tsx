@@ -40,6 +40,7 @@ import useDraftProject, { type DraftContent, type EditStep } from '../hooks/useD
 import { formatTemplate } from '../utils/format-template';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../hooks/useLexiconRegistry';
+import { LexiconSensesProvider, WithoutLexiconSenses } from './LexiconSenses';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../hooks/useProjectBookIds';
@@ -665,7 +666,8 @@ function InterlinearizerLoaderInner({
     hasFreeTranslations,
   );
 
-  const { openChooser: openLexiconChooser } = useLexiconRegistry(projectId);
+  const lexiconRegistry = useLexiconRegistry(projectId);
+  const { openChooser: openLexiconChooser } = lexiconRegistry;
 
   // The view's own copy of the morpheme-box setting, applied in a transition so the switch — which
   // reads the setting directly — paints without waiting on the chip re-render it triggers.
@@ -1817,21 +1819,24 @@ function InterlinearizerLoaderInner({
                 cross-book jump the view is mid-load, and counting against the book being left
                 would relabel every row for the duration. */}
             {sidePanel === 'catalog' ? (
-              <AnalysisCatalogPanel
-                ref={catalogPanelRef}
-                announceUndoable={announceUndoable}
-                asOneStep={asOneStep}
-                currentBook={scrRef.book}
-                currentBookName={currentBookName}
-                headingPlacements={headingPlacements}
-                liveSurfaceText={liveSurfaceText}
-                localizedStrings={localizedStrings}
-                onClose={handleSidePanelClose}
-                onShowConcordance={handleShowConcordance}
-                showMorphology={showMorphology}
-                sourceLanguageTag={writingSystem}
-                staleCoversDraft={wholeTextReanchor.staleCoversDraft}
-              />
+              // The catalog shows each analysis's stored glosses only.
+              <WithoutLexiconSenses>
+                <AnalysisCatalogPanel
+                  ref={catalogPanelRef}
+                  announceUndoable={announceUndoable}
+                  asOneStep={asOneStep}
+                  currentBook={scrRef.book}
+                  currentBookName={currentBookName}
+                  headingPlacements={headingPlacements}
+                  liveSurfaceText={liveSurfaceText}
+                  localizedStrings={localizedStrings}
+                  onClose={handleSidePanelClose}
+                  onShowConcordance={handleShowConcordance}
+                  showMorphology={showMorphology}
+                  sourceLanguageTag={writingSystem}
+                  staleCoversDraft={wholeTextReanchor.staleCoversDraft}
+                />
+              </WithoutLexiconSenses>
             ) : (
               <ConcordancePanel
                 currentBook={scrRef.book}
@@ -2073,7 +2078,7 @@ function InterlinearizerLoaderInner({
           shown={sidePanel === 'concordance'}
           writingSystem={writingSystem}
         >
-          {viewArea}
+          <LexiconSensesProvider registry={lexiconRegistry}>{viewArea}</LexiconSensesProvider>
         </SourceTextProvider>
       </div>
 

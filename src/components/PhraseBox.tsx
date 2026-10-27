@@ -1,26 +1,34 @@
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback } from 'react';
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { sortByDocOrder } from '../utils/phrase-arc';
 import { NO_SLOT_FOCUS } from '../utils/token-layout';
 import {
+  useAnalysisLanguage,
   useAnalysisReadOnly,
   usePhraseDispatch,
   usePhraseGloss,
   usePhraseGlossDispatch,
   usePhraseLinkForToken,
+  usePhraseSenseRef,
   useReportGlossEditing,
 } from './AnalysisStore';
+import useGlossDraft from '../hooks/useGlossDraft';
+import { useDisplayedGloss } from './LexiconSenses';
 import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import { formatTemplate } from '../utils/format-template';
 
 /**
- * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
+ * Inline gloss input for a phrase. Writes the phrase-level gloss to the analysis store.
+ *
+ * The input shows the stored gloss. Where none is stored, it shows the gloss of the phrase's
+ * lexicon sense.
+ *
  * Separated into its own component so hooks are always called unconditionally. The placeholder
  * comes from strip context (fetched once per strip) rather than a per-instance
  * `useLocalizedStrings`, so the `field-sizing: content` input renders at its final width on its
@@ -37,24 +45,26 @@ function PhraseGlossInput({
   /** Called when the input receives focus; used to center this phrase in the strip. */
   onFocus?: () => void;
 }>) {
-  const committed = usePhraseGloss(phraseId);
+  const stored = usePhraseGloss(phraseId);
+  const { text: committed } = useDisplayedGloss(
+    stored,
+    usePhraseSenseRef(phraseId),
+    useAnalysisLanguage(),
+  );
   const dispatchPhraseGloss = usePhraseGlossDispatch();
   const { glossPlaceholder, phraseGlossLabel } = usePhraseStripContext();
   const readOnly = useAnalysisReadOnly();
-  const [draft, setDraft] = useState(committed);
+  const [draft, setDraft, draftWrites] = useGlossDraft(stored, committed);
 
-  useEffect(() => {
-    setDraft(committed);
-  }, [committed]);
-
-  /** Writes the draft gloss only when it differs from the committed value. */
+  /** Writes the draft gloss when it has anything to write, and otherwise puts the shown gloss back. */
   const commitDraft = () => {
-    if (!disabled && draft !== committed) dispatchPhraseGloss(phraseId, draft);
+    if (!disabled && draftWrites) dispatchPhraseGloss(phraseId, draft);
+    else setDraft(committed);
   };
 
   // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur, and flush
   // the draft if the input unmounts mid-edit. A read-only phrase has no input, so it never reports.
-  useReportGlossEditing(!disabled && !readOnly && draft !== committed, commitDraft);
+  useReportGlossEditing(!disabled && !readOnly && draftWrites, commitDraft);
 
   // A read-only analysis shows the phrase gloss as plain text, not as an input; an empty gloss still
   // holds its line.

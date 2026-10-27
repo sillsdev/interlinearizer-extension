@@ -573,6 +573,16 @@ export function getMockedNetworkObjectGet(papiModule: unknown): jest.Mock {
 }
 
 /**
+ * Returns the papi-frontend mock's `networkObjects.onDidCreateNetworkObject` as the raw jest fn, so
+ * a test can announce a network object registering mid-session.
+ *
+ * @throws When the module is not the jest papi-frontend mock.
+ */
+export function getMockedOnDidCreateNetworkObject(papiModule: unknown): jest.Mock {
+  return getMockedPapiFn(papiModule, ['networkObjects', 'onDidCreateNetworkObject']);
+}
+
+/**
  * Returns the papi-frontend mock's `commands.sendCommand` as the raw jest fn, so a test can decide
  * what a command another extension registers answers, or that it is not registered at all.
  *

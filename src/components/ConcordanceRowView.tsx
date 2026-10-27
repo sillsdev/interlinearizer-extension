@@ -14,10 +14,12 @@ import {
   contextLine,
   tallyAnalyses,
   type ApprovedAnalyses,
+  type ConcordanceAnalysisTally,
   type ConcordanceOccurrence,
   type ConcordanceRow,
   type ConcordanceStatus,
 } from '../utils/concordance';
+import { useDisplayedGloss } from './LexiconSenses';
 import LocalizedTooltip from './LocalizedTooltip';
 
 /**
@@ -90,6 +92,19 @@ function occurrenceLabel(occurrence: ConcordanceOccurrence): string {
   });
 }
 
+/**
+ * The gloss shown for an analysis that occurrences of a form are approved to. Shows `noGloss` when
+ * the analysis has none to show.
+ */
+function TallyGloss({
+  tally,
+  analysisLanguage,
+  noGloss,
+}: Readonly<{ tally: ConcordanceAnalysisTally; analysisLanguage: string; noGloss: string }>) {
+  const { text } = useDisplayedGloss(tally.gloss, tally.glossSenseRef, analysisLanguage);
+  return text || noGloss;
+}
+
 /** Props for {@link ContextLineView}. */
 type ContextLineViewProps = Readonly<{
   occurrence: ConcordanceOccurrence;
@@ -158,8 +173,8 @@ function ConcordanceRowView({
     () => (isExpanded ? tallyAnalyses(entry, approvedByToken, analysesById, analysisLanguage) : []),
     [isExpanded, entry, approvedByToken, analysesById, analysisLanguage],
   );
-  const glossByAnalysisId = useMemo(
-    () => new Map(tallies.map((t) => [t.analysisId, t.gloss])),
+  const tallyByAnalysisId = useMemo(
+    () => new Map(tallies.map((t) => [t.analysisId, t])),
     [tallies],
   );
 
@@ -255,7 +270,7 @@ function ConcordanceRowView({
           <p className="tw:flex tw:flex-wrap tw:gap-x-3 tw:text-xs">
             {tallies.map((tally) => (
               <span data-testid="concordance-tally" key={tally.analysisId}>
-                {tally.gloss || noGloss}{' '}
+                <TallyGloss analysisLanguage={analysisLanguage} noGloss={noGloss} tally={tally} />{' '}
                 <span className="tw:tabular-nums tw:text-muted-foreground">{tally.count}</span>
               </span>
             ))}
@@ -270,8 +285,8 @@ function ConcordanceRowView({
           <ul className="tw:flex tw:flex-col">
             {visibleOccurrences.map((occurrence) => {
               const analysisId = approvedAnalysisOf(approvedByToken, entry, occurrence);
-              const gloss =
-                analysisId === undefined ? undefined : glossByAnalysisId.get(analysisId);
+              const tally =
+                analysisId === undefined ? undefined : tallyByAnalysisId.get(analysisId);
               return (
                 <li key={occurrence.tokenRef}>
                   <Button
@@ -291,11 +306,19 @@ function ConcordanceRowView({
                     <span
                       // End padding keeps an italic label's overhanging last letter clear of the clip.
                       className={`tw:shrink-0 tw:max-w-[40%] tw:truncate tw:pe-1 ${
-                        gloss === undefined ? 'tw:italic tw:text-muted-foreground' : ''
+                        tally === undefined ? 'tw:italic tw:text-muted-foreground' : ''
                       }`}
                       data-testid="concordance-occurrence-gloss"
                     >
-                      {gloss === undefined ? unanalyzedLabel : gloss || noGloss}
+                      {tally === undefined ? (
+                        unanalyzedLabel
+                      ) : (
+                        <TallyGloss
+                          analysisLanguage={analysisLanguage}
+                          noGloss={noGloss}
+                          tally={tally}
+                        />
+                      )}
                     </span>
                   </Button>
                 </li>

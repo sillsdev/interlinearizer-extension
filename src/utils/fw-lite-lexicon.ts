@@ -43,6 +43,15 @@ let entryService: LexiconEntryService | undefined;
  */
 let entryServiceLookup: Promise<LexiconEntryService | undefined> | undefined;
 
+/** Told whether the entry service can be reached, each time it is found or lost. */
+const availabilityListeners = new Set<(available: boolean) => void>();
+
+/** Caches `service` and tells every availability watch whether a service is now held. */
+function setEntryService(service: LexiconEntryService | undefined): void {
+  entryService = service;
+  availabilityListeners.forEach((listener) => listener(service !== undefined));
+}
+
 /** Waits for the entry service to be registered, and caches it until it is disposed. */
 async function lookUpEntryService(): Promise<LexiconEntryService | undefined> {
   try {
@@ -54,9 +63,9 @@ async function lookUpEntryService(): Promise<LexiconEntryService | undefined> {
     // The proxy is revoked as soon as this returns, so the handler only drops a reference. It
     // clears its own service, not whatever is cached, so a late fire cannot evict a replacement.
     service?.onDidDispose(() => {
-      if (entryService === service) entryService = undefined;
+      if (entryService === service) setEntryService(undefined);
     });
-    entryService = service;
+    if (service) setEntryService(service);
   } catch (e) {
     logger.debug('Interlinearizer: the lexicon entry service is unavailable', e);
   }
@@ -82,6 +91,39 @@ async function getEntryService(): Promise<LexiconEntryService | undefined> {
 export function resetEntryServiceForTesting(): void {
   entryService = undefined;
   entryServiceLookup = undefined;
+  availabilityListeners.clear();
+}
+
+/**
+ * Watches whether the entry service can be reached.
+ *
+ * The first look-up gives up after {@link AVAILABILITY_TIMEOUT_MS}, so FieldWorks Lite reads as
+ * absent promptly where it is not installed. After that, the service is looked up again whenever
+ * the network announces it. That catches a service that registers late, and one that the Lexicon
+ * extension disposes and registers again.
+ */
+async function subscribeToAvailability(
+  callback: (available: boolean) => void,
+): Promise<UnsubscriberAsync> {
+  let lastReported: boolean | undefined;
+  const report = (available: boolean) => {
+    if (available === lastReported) return;
+    lastReported = available;
+    callback(available);
+  };
+  availabilityListeners.add(report);
+  const stopWatchingCreation = papi.networkObjects.onDidCreateNetworkObject(({ id }) => {
+    if (id === ENTRY_SERVICE_ID) getEntryService();
+  });
+
+  // A service cached before this watch began was never reported to it. Where the look-up has just
+  // found the service, this report repeats one already made. The repeat is dropped as unchanged.
+  report((await getEntryService()) !== undefined);
+
+  return async () => {
+    availabilityListeners.delete(report);
+    return stopWatchingCreation();
+  };
 }
 
 /**
@@ -247,7 +289,7 @@ async function openChooser(projectId: string): Promise<boolean> {
 /** FieldWorks Lite, reached through the Lexicon extension. */
 export const fwLiteLexiconProvider: LexiconProvider = {
   authority: FW_LITE_AUTHORITY,
-  isAvailable: async () => (await getEntryService()) !== undefined,
+  subscribeToAvailability,
   subscribeToLink,
   connect: createResolver,
   openChooser,

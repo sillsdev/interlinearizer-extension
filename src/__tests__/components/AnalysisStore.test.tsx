@@ -12,7 +12,7 @@ import type {
 } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { FIXTURE_STAMPS, makePhraseLink, makeVerseBook } from '../test-helpers';
+import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink, makeVerseBook } from '../test-helpers';
 import type { AnalysisEditOutcome } from '../../components/AnalysisStore';
 import {
   AnalysisStoreProvider,
@@ -33,6 +33,7 @@ import {
   usePlacedStaleFreeTranslations,
   useStaleTokenLinks,
   useGloss,
+  useGlossSenseRef,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
   useMorphemeDeleteDispatch,
@@ -44,6 +45,7 @@ import {
   usePhraseLinkMap,
   usePhraseDispatch,
   usePhraseGloss,
+  usePhraseSenseRef,
   usePhraseGlossDispatch,
   useReportGlossEditing,
   useResolvedTokenAnalysis,
@@ -180,6 +182,21 @@ function renderStoreHook<T>(
   );
   return renderHook(useHook, { wrapper });
 }
+
+describe('useGlossSenseRef', () => {
+  it("returns the sense ref on the token's approved analysis", () => {
+    const glossSenseRef = { authority: 'fw-lite', projectId: 'lex', senseId: 's-1' };
+    const initialAnalysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'word', glossSenseRef }],
+      tokenAnalysisLinks: [makeTokenLink('ta-1', 'tok-1', { surfaceText: 'word' })],
+    };
+
+    const { result } = renderStoreHook(() => useGlossSenseRef('tok-1'), { initialAnalysis });
+
+    expect(result.current).toEqual(glossSenseRef);
+  });
+});
 
 describe('useGloss', () => {
   it('returns an empty string for an unknown token', () => {
@@ -980,6 +997,20 @@ describe('usePhraseGloss', () => {
     expect(() => render(<PhraseGlossUser />)).toThrow(
       'usePhraseGloss must be used inside an AnalysisStoreProvider',
     );
+  });
+});
+
+describe('usePhraseSenseRef', () => {
+  it("returns the sense ref on the phrase's payload", () => {
+    const senseRef = { authority: 'fw-lite', projectId: 'lex', senseId: 's-1' };
+    const initialAnalysis: TextAnalysis = {
+      ...PHRASE_ANALYSIS_WITH_GLOSS,
+      phraseAnalyses: [{ ...PHRASE_ANALYSIS_WITH_GLOSS.phraseAnalyses[0], senseRef }],
+    };
+
+    const { result } = renderStoreHook(() => usePhraseSenseRef('phrase-1'), { initialAnalysis });
+
+    expect(result.current).toEqual(senseRef);
   });
 });
 

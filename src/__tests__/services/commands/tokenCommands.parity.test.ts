@@ -237,6 +237,30 @@ describe('writeGloss parity with the reducer', () => {
       },
     ],
     [
+      'clears the last language, keeping the sense and the approval',
+      {
+        analysis: analysisOf(
+          [
+            payload('ta-in', 'In', {
+              gloss: { en: 'at' },
+              glossSenseRef: { authority: 'fwlite', senseId: 's-at' },
+            }),
+          ],
+          [link('tl-in', 'ta-in', TOKEN)],
+        ),
+        input: { value: '' },
+        expectStore: (store) => {
+          expect(store.tokenAnalyses).toHaveLength(1);
+          expect(store.tokenAnalyses[0].gloss).toBeUndefined();
+          expect(store.tokenAnalyses[0].glossSenseRef).toStrictEqual({
+            authority: 'fwlite',
+            senseId: 's-at',
+          });
+          expect(store.tokenAnalysisLinks[0].status).toBe('approved');
+        },
+      },
+    ],
+    [
       'clears a shared payload by dropping only this token’s link',
       {
         analysis: analysisOf(

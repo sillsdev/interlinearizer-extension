@@ -17,6 +17,7 @@ const mockGetLocalizedString = jest.fn();
 const mockGetNetworkEvent = jest.fn();
 const mockProjectDataProvidersGet = jest.fn();
 const mockNetworkObjectsGet = jest.fn();
+const mockOnDidCreateNetworkObject = jest.fn();
 const mockWaitForNetworkObject = jest.fn();
 
 const papi = {
@@ -41,6 +42,7 @@ const papi = {
   },
   networkObjects: {
     get: mockNetworkObjectsGet,
+    onDidCreateNetworkObject: mockOnDidCreateNetworkObject,
   },
   networkObjectStatus: {
     waitForNetworkObject: mockWaitForNetworkObject,

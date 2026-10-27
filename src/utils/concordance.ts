@@ -1,5 +1,5 @@
 import { Canon } from '@sillsdev/scripture';
-import type { Book, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type { Book, SenseRef, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { Collator } from 'platform-bible-utils';
 import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from './analysis-identity';
@@ -63,6 +63,8 @@ export interface ConcordanceAnalysisTally {
   analysisId: string;
   /** Gloss in the analysis language asked for; `''` when the analysis has none there. */
   gloss: string;
+  /** The lexicon sense the analysis's gloss resolves through, if any. */
+  glossSenseRef?: SenseRef;
   count: number;
 }
 
@@ -272,6 +274,7 @@ export function tallyAnalyses(
       return {
         analysisId,
         gloss: multiStringText(analysis?.gloss, analysisLanguage),
+        glossSenseRef: analysis?.glossSenseRef,
         count,
       };
     })

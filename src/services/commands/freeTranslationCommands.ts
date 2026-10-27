@@ -1,4 +1,4 @@
-import type { SegmentAnalysis } from 'interlinearizer';
+import type { SegmentAnalysis, SegmentAnalysisLink } from 'interlinearizer';
 import { isEmptyMultiString } from '../../utils/multi-string';
 import { preferredLink } from '../../utils/pick-rules';
 import type { ChangeBuffer } from './changeBuffer';
@@ -32,28 +32,28 @@ export type WriteSegmentFreeTranslationRequest = {
 };
 
 /**
- * The segment's approved link that an approval tie picks, with its analysis, or `undefined` when
- * there is none. Approved links that name no stored analysis are removed first, so that they never
- * persist or crowd the pick.
+ * Finds the segment's approved translation, as an approval tie picks it.
+ *
+ * @returns `approved`, absent when no approved link on the segment names a stored analysis.
+ *   `orphans` lists the segment's approved links that name none.
  */
-async function resolveApprovedSegmentAnalysis(
+async function findApprovedSegmentAnalysis(
   buffer: ChangeBuffer,
   segmentId: string,
-): Promise<PlacedTranslation | undefined> {
-  const approved = (await buffer.findLinksBySegment([segmentId])).filter(
+): Promise<{ approved?: PlacedTranslation; orphans: SegmentAnalysisLink[] }> {
+  const links = (await buffer.findLinksBySegment([segmentId])).filter(
     ({ status }) => status === 'approved',
   );
   const analyses = new Map(
-    (await buffer.getSegmentAnalyses(approved.map(({ analysisId }) => analysisId))).map(
-      (analysis) => [analysis.id, analysis],
-    ),
+    (await buffer.getSegmentAnalyses(links.map(({ analysisId }) => analysisId))).map((analysis) => [
+      analysis.id,
+      analysis,
+    ]),
   );
-  approved
-    .filter(({ analysisId }) => !analyses.has(analysisId))
-    .forEach((orphan) => buffer.delete('segmentAnalysisLinks', orphan));
-  const link = preferredLink(approved.filter(({ analysisId }) => analyses.has(analysisId)));
+  const orphans = links.filter(({ analysisId }) => !analyses.has(analysisId));
+  const link = preferredLink(links.filter(({ analysisId }) => analyses.has(analysisId)));
   const analysis = link && analyses.get(link.analysisId);
-  return link && analysis ? { link, analysis } : undefined;
+  return { approved: link && analysis ? { link, analysis } : undefined, orphans };
 }
 
 /** Whether a segment analysis carries neither a free nor a literal translation worth keeping. */
@@ -63,27 +63,30 @@ function isEmptySegmentAnalysis(analysis: SegmentAnalysis): boolean {
   );
 }
 
-function removeSegmentAnalysis(buffer: ChangeBuffer, { analysis, link }: PlacedTranslation) {
-  buffer.delete('segmentAnalyses', analysis);
-  buffer.delete('segmentAnalysisLinks', link);
-}
-
 /**
  * Removes the `lang` free translation from `placed`'s analysis, staging the analysis and its link
- * as they then stand. The two are removed instead once the analysis holds nothing.
+ * as they then stand. Once the analysis holds nothing, the link is removed instead, with the
+ * analysis unless another link names it.
  */
-function clearFreeTranslation(buffer: ChangeBuffer, placed: PlacedTranslation, lang: string): void {
+async function clearFreeTranslation(
+  buffer: ChangeBuffer,
+  placed: PlacedTranslation,
+  lang: string,
+): Promise<void> {
   const { analysis, link } = placed;
   if (analysis.freeTranslation) {
     delete analysis.freeTranslation[lang];
     if (Object.keys(analysis.freeTranslation).length === 0) delete analysis.freeTranslation;
   }
-  if (isEmptySegmentAnalysis(analysis)) {
-    removeSegmentAnalysis(buffer, placed);
+  if (!isEmptySegmentAnalysis(analysis)) {
+    buffer.put('segmentAnalyses', analysis);
+    buffer.put('segmentAnalysisLinks', link);
     return;
   }
-  buffer.put('segmentAnalyses', analysis);
-  buffer.put('segmentAnalysisLinks', link);
+  buffer.delete('segmentAnalysisLinks', link);
+  const { segmentAnalysisLinks } = await buffer.findLinksToAnalyses([analysis.id]);
+  if (segmentAnalysisLinks.length > 0) buffer.put('segmentAnalyses', analysis);
+  else buffer.delete('segmentAnalyses', analysis);
 }
 
 /**
@@ -95,10 +98,13 @@ function clearFreeTranslation(buffer: ChangeBuffer, placed: PlacedTranslation, l
  * - Otherwise, a new approved translation is made.
  *
  * A blank value clears the language's translation, removing the analysis and its link once nothing
- * is left. On a segment with no approved translation, a blank value clears the named stale
- * translation the same way and leaves it stale. A blank value never makes a record.
+ * is left. An analysis that another link names is kept. On a segment with no approved translation,
+ * a blank value clears the named stale translation the same way and leaves it stale. A blank value
+ * never makes a record.
  *
- * Approved links on the segment that name no stored analysis are removed.
+ * Nothing is staged when the language's translation would come out as it was, unless a stale
+ * translation is adopted. Otherwise, approved links on the segment that name no stored analysis are
+ * removed.
  */
 export async function writeSegmentFreeTranslation(
   buffer: ChangeBuffer,
@@ -115,18 +121,24 @@ export async function writeSegmentFreeTranslation(
 ): Promise<void> {
   const isBlank = value.trim() === '';
 
-  const approved = await resolveApprovedSegmentAnalysis(buffer, segmentId);
+  const { approved, orphans } = await findApprovedSegmentAnalysis(buffer, segmentId);
+  const removeOrphans = () =>
+    orphans.forEach((orphan) => buffer.delete('segmentAnalysisLinks', orphan));
   if (!approved && isBlank) {
     const stale =
       adoptStaleAnalysisId === undefined
         ? undefined
         : await findStaleTranslation(buffer, adoptStaleAnalysisId);
-    if (!stale) return;
+    if (!stale || stale.analysis.freeTranslation?.[lang] === undefined) return;
+    removeOrphans();
     stale.analysis.updatedAt = now;
     stale.link.updatedAt = now;
-    clearFreeTranslation(buffer, stale, lang);
+    await clearFreeTranslation(buffer, stale, lang);
     return;
   }
+  if (approved && approved.analysis.freeTranslation?.[lang] === (isBlank ? undefined : value))
+    return;
+  removeOrphans();
 
   const resolved =
     approved ??
@@ -139,7 +151,7 @@ export async function writeSegmentFreeTranslation(
     analysis.updatedAt = now;
     link.updatedAt = now;
     if (isBlank) {
-      clearFreeTranslation(buffer, resolved, lang);
+      await clearFreeTranslation(buffer, resolved, lang);
       return;
     }
     if (!analysis.freeTranslation) analysis.freeTranslation = {};

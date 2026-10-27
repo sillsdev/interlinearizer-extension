@@ -479,8 +479,9 @@ declare module 'papi-shared-types' {
      * content-identical stored payload where one exists.
      *
      * @returns A JSON string of the changes it applied.
-     * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
-     *   fails (logged before rethrowing).
+     * @throws If `tokens` is empty or not within one segment of the text, the project has no text
+     *   for its book, the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
      */
     'interlinearizer.createPhrase': (
       sessionId: string,
@@ -492,8 +493,9 @@ declare module 'papi-shared-types' {
      * removes the occurrence.
      *
      * @returns A JSON string of the changes it applied.
-     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
-     *   before rethrowing).
+     * @throws If `tokens` is not within one segment of the text, the project has no text for its
+     *   book, the session is read-only or not open, or the edit is refused or fails (logged before
+     *   rethrowing).
      */
     'interlinearizer.updatePhrase': (
       sessionId: string,
@@ -516,8 +518,9 @@ declare module 'papi-shared-types' {
      * token in no phrase goes unnamed, or is named `null`.
      *
      * @returns A JSON string of the changes it applied.
-     * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
-     *   fails (logged before rethrowing).
+     * @throws If `tokens` is empty or not within one segment of the text, the project has no text
+     *   for its book, the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
      */
     'interlinearizer.mergePhrases': (
       sessionId: string,
@@ -543,8 +546,9 @@ declare module 'papi-shared-types' {
      * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
      *
      * @returns A JSON string of the changes it applied.
-     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
-     *   before rethrowing).
+     * @throws If the occurrence would be approved over tokens not within one segment of the text,
+     *   the project has no text for their book, the session is read-only or not open, or the edit
+     *   is refused or fails (logged before rethrowing).
      */
     'interlinearizer.approvePhrase': (sessionId: string, phraseId: string) => Promise<string>;
 
@@ -566,7 +570,9 @@ declare module 'papi-shared-types' {
     /**
      * Writes a segment's free translation in a session's analysis language, refreshing the surface
      * text stored with it. A blank value clears the translation in that language. The translation's
-     * record is removed once it holds nothing.
+     * record is removed once it holds nothing, unless another link names it. A write that leaves
+     * the translation in that language as it was changes nothing, unless it adopts a stale
+     * translation.
      *
      * A segment with no approved translation adopts the stale translation `adoptStaleAnalysisId`
      * names, approving it for the segment, so that the stale translation's other languages carry

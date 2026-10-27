@@ -321,29 +321,35 @@ function reshapePhrase(
 }
 
 /**
- * Finds the approved `SegmentAnalysisLink` for `segmentId` — of several, the one an approval tie
- * picks — together with the `SegmentAnalysis` it references, or `undefined` when no approved link
- * with a payload remains. Approved links referencing a missing analysis (orphaned links from
- * corruption or a migration) are removed from the draft first — so the corruption never persists or
- * accumulates duplicate approved links — and the pick falls to the rest.
+ * Finds the approved translation of `segmentId`, as an approval tie picks it.
+ *
+ * @returns `approved`, absent when no approved link on the segment names a stored analysis.
+ *   `orphans` lists the segment's approved links that name none.
  */
-function resolveApprovedSegmentAnalysis(
+function findApprovedSegmentAnalysis(
   state: AnalysisState,
   segmentId: string,
-): { link: SegmentAnalysisLink; analysis: SegmentAnalysis } | undefined {
+): {
+  approved?: { link: SegmentAnalysisLink; analysis: SegmentAnalysis };
+  orphans: SegmentAnalysisLink[];
+} {
   const analysisOf = (link: SegmentAnalysisLink) =>
     state.analysis.segmentAnalyses.find((sa) => sa.id === link.analysisId);
-  const approved = state.analysis.segmentAnalysisLinks.filter(
+  const links = state.analysis.segmentAnalysisLinks.filter(
     (l) => l.status === 'approved' && l.segmentId === segmentId,
   );
-  const orphans = approved.filter((l) => !analysisOf(l));
-  if (orphans.length > 0)
-    state.analysis.segmentAnalysisLinks = state.analysis.segmentAnalysisLinks.filter(
-      (l) => !orphans.includes(l),
-    );
-  const link = preferredLink(approved.filter((l) => !orphans.includes(l)));
+  const orphans = links.filter((l) => !analysisOf(l));
+  const link = preferredLink(links.filter((l) => !orphans.includes(l)));
   const analysis = link && analysisOf(link);
-  return link && analysis ? { link, analysis } : undefined;
+  return { approved: link && analysis ? { link, analysis } : undefined, orphans };
+}
+
+function removeSegmentAnalysisLinks(state: AnalysisState, links: SegmentAnalysisLink[]): void {
+  // Reassigning the list would change the state even when nothing is removed.
+  if (links.length === 0) return;
+  state.analysis.segmentAnalysisLinks = state.analysis.segmentAnalysisLinks.filter(
+    (l) => !links.includes(l),
+  );
 }
 
 /**
@@ -362,7 +368,7 @@ function isEmptySegmentAnalysis(analysis: SegmentAnalysis): boolean {
 
 /**
  * Removes a `SegmentAnalysis` record and its `SegmentAnalysisLink` from the draft in a single step,
- * keeping the two collections in sync. Called when an edit empties an analysis of all content.
+ * keeping the two collections in sync.
  */
 function removeSegmentAnalysis(
   state: AnalysisState,
@@ -393,8 +399,8 @@ function findStaleSegmentAnalysis(
 }
 
 /**
- * Removes the `lang` free translation from `analysis`, and the record with `link` once it holds
- * nothing.
+ * Removes the `lang` free translation from `analysis`. Once the analysis holds nothing, `link` is
+ * removed, with the analysis unless another link names it.
  */
 function clearFreeTranslation(
   state: AnalysisState,
@@ -406,7 +412,10 @@ function clearFreeTranslation(
     delete analysis.freeTranslation[lang];
     if (Object.keys(analysis.freeTranslation).length === 0) delete analysis.freeTranslation;
   }
-  if (isEmptySegmentAnalysis(analysis)) removeSegmentAnalysis(state, analysis, link);
+  if (!isEmptySegmentAnalysis(analysis)) return;
+  removeSegmentAnalysisLinks(state, [link]);
+  if (!state.analysis.segmentAnalysisLinks.some((l) => l.analysisId === analysis.id))
+    state.analysis.segmentAnalyses = state.analysis.segmentAnalyses.filter((sa) => sa !== analysis);
 }
 
 /**
@@ -1789,7 +1798,7 @@ const analysisSlice = createSlice({
        * an approved link already exists for `segmentId`, its analysis is updated in place and the
        * stored surface text is refreshed, so it never goes stale when the baseline text changed
        * since the analysis was first written. Otherwise a new `SegmentAnalysis` and approved
-       * `SegmentAnalysisLink` are appended (an orphaned approved link is repaired first).
+       * `SegmentAnalysisLink` are appended.
        *
        * A segment with no approved analysis instead adopts the stale one `adoptStaleAnalysisId`
        * names, where given — the translation the value was typed over — approving it for the
@@ -1797,9 +1806,13 @@ const analysisSlice = createSlice({
        *
        * A blank `value` (empty or whitespace) clears the free translation rather than writing junk:
        * the active language's entry is removed, and when that leaves the analysis with no content,
-       * the record and its link are removed entirely. On a segment with no approved analysis, a
-       * blank write clears the stale translation `adoptStaleAnalysisId` names the same way, leaving
-       * it stale, and never creates a record.
+       * the record and its link are removed entirely. A record that another link names is kept. On
+       * a segment with no approved analysis, a blank write clears the stale translation
+       * `adoptStaleAnalysisId` names the same way, leaving it stale, and never creates a record.
+       *
+       * A write that leaves the active language's translation as it was changes nothing, unless it
+       * adopts a stale translation. Any other write also removes the segment's approved links that
+       * name no stored analysis.
        */
       reducer(state, action: PayloadAction<WriteSegmentFreeTranslationPayload>) {
         const { segmentId, surfaceText, value, id, linkId, now, adoptStaleAnalysisId } =
@@ -1807,18 +1820,22 @@ const analysisSlice = createSlice({
         const lang = state.analysisLanguage;
         const isBlank = value.trim() === '';
 
-        const approved = resolveApprovedSegmentAnalysis(state, segmentId);
+        const { approved, orphans } = findApprovedSegmentAnalysis(state, segmentId);
         if (!approved && isBlank) {
           const stale =
             adoptStaleAnalysisId === undefined
               ? undefined
               : findStaleSegmentAnalysis(state, adoptStaleAnalysisId);
-          if (!stale) return;
+          if (!stale || stale.analysis.freeTranslation?.[lang] === undefined) return;
+          removeSegmentAnalysisLinks(state, orphans);
           stale.analysis.updatedAt = now;
           stale.link.updatedAt = now;
           clearFreeTranslation(state, stale.analysis, stale.link, lang);
           return;
         }
+        if (approved && approved.analysis.freeTranslation?.[lang] === (isBlank ? undefined : value))
+          return;
+        removeSegmentAnalysisLinks(state, orphans);
 
         const resolved =
           approved ??

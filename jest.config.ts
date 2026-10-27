@@ -116,9 +116,10 @@ const config: Config = {
 
   /**
    * Exclude `.claude` from module resolution to avoid nested git worktrees. Exclude `dist` from
-   * module resolution to avoid Haste naming collision with root package.json.
+   * module resolution to avoid Haste naming collision with root package.json. Exclude `.cache`
+   * folders, whose copies of the source tree would duplicate its manual mocks.
    */
-  modulePathIgnorePatterns: ['<rootDir>/.claude', '<rootDir>/dist'],
+  modulePathIgnorePatterns: ['<rootDir>/.claude', '<rootDir>/dist', '/\\.cache/'],
 
   /** Load @testing-library/jest-dom matchers and browser API stubs for React component tests. */
   setupFilesAfterEnv: [
@@ -136,8 +137,11 @@ const config: Config = {
    */
   testMatch: ['**/__tests__/**/*.(test|spec).[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
 
-  /** Do not run tests from build output, e2e tests, or dependencies. */
-  testPathIgnorePatterns: ['/dist/', '/e2e-tests/', '/node_modules/'],
+  /**
+   * Do not run tests from build output, e2e tests, dependencies, or `.cache` folders (such as
+   * `perf/.cache`, which can hold copies of the source tree).
+   */
+  testPathIgnorePatterns: ['/dist/', '/e2e-tests/', '/node_modules/', '/\\.cache/'],
 
   /**
    * Transform TS/TSX with ts-jest (webpack uses SWC; Jest does not run webpack). Explicitly list

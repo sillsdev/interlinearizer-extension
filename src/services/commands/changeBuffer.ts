@@ -1,4 +1,5 @@
 import type {
+  AssignmentStatus,
   PhraseAnalysis,
   PhraseAnalysisLink,
   SegmentAnalysis,
@@ -6,7 +7,13 @@ import type {
   TextAnalysis,
   TokenAnalysis,
 } from 'interlinearizer';
-import type { AnalysisLinks, AnalysisRepository, ChangeSet } from '../../types/analysis-repository';
+import type {
+  AnalysisLinks,
+  AnalysisRepository,
+  ChangeSet,
+  ScopeRecord,
+} from '../../types/analysis-repository';
+import { bookOfRef } from '../../utils/analysis-book';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
 import { jsonCopy } from '../../utils/json-copy';
 
@@ -45,6 +52,9 @@ export class ChangeBuffer {
     phraseAnalyses: emptyStaged(),
     phraseAnalysisLinks: emptyStaged(),
   };
+
+  /** The scope's record to store whole; absent while none is staged. */
+  private stagedScope?: ScopeRecord;
 
   constructor(repository: AnalysisRepository) {
     this.repository = repository;
@@ -121,6 +131,38 @@ export class ChangeBuffer {
   }
 
   /**
+   * The links of every kind into any of `bookCodes`, limited to `statuses` when given, once the
+   * staged changes apply.
+   */
+  async findLinksInBooks(
+    bookCodes: string[],
+    statuses?: AssignmentStatus[],
+  ): Promise<AnalysisLinks> {
+    const books = new Set(bookCodes);
+    const stored = await this.repository.findLinksInBooks(bookCodes, statuses);
+    const inBooks = (bookCode: string, status: AssignmentStatus) =>
+      books.has(bookCode) && (!statuses || statuses.includes(status));
+    return {
+      tokenAnalysisLinks: this.overlay('tokenAnalysisLinks', stored.tokenAnalysisLinks, (link) =>
+        inBooks(bookOfRef(link.token.tokenRef), link.status),
+      ),
+      phraseAnalysisLinks: this.overlay('phraseAnalysisLinks', stored.phraseAnalysisLinks, (link) =>
+        inBooks(bookOfRef(link.tokens[0].tokenRef), link.status),
+      ),
+      segmentAnalysisLinks: this.overlay(
+        'segmentAnalysisLinks',
+        stored.segmentAnalysisLinks,
+        (link) => inBooks(bookOfRef(link.segmentId), link.status),
+      ),
+    };
+  }
+
+  /** The scope's record once the staged changes apply. */
+  async getScope(): Promise<ScopeRecord> {
+    return jsonCopy(this.stagedScope ?? (await this.repository.getScope()));
+  }
+
+  /**
    * The token analyses whose surface text normalizes to one of `normalizedForms` once the staged
    * changes apply.
    */
@@ -165,6 +207,11 @@ export class ChangeBuffer {
     staged.deletes.set(record.id, jsonCopy(record));
   }
 
+  /** Stages `scope` to be stored whole as the scope's record. */
+  putScope(scope: ScopeRecord): void {
+    this.stagedScope = jsonCopy(scope);
+  }
+
   /**
    * Every staged record of `kind`: those to store as they will be stored, those to remove as they
    * were staged.
@@ -174,9 +221,13 @@ export class ChangeBuffer {
     return [...staged.puts.values(), ...staged.deletes.values()].map((record) => jsonCopy(record));
   }
 
-  /** The staged changes as one change set; a kind with nothing staged is left out. */
+  /**
+   * The staged changes as one change set. A kind with nothing staged is left out, and so is the
+   * scope's record while none is staged.
+   */
   toChangeSet(intent: string): ChangeSet {
     const changes: ChangeSet = { intent };
+    if (this.stagedScope) changes.scope = jsonCopy(this.stagedScope);
     const kinds: RecordKind[] = [
       'segmentAnalyses',
       'segmentAnalysisLinks',

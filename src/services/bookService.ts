@@ -260,7 +260,7 @@ function segmentsOf(
   held: HeldBook,
   book: Book,
   segmentationJson: string | undefined,
-  call: 'getBookOutline' | 'getSegments',
+  call: 'getBookOutline' | 'getSegments' | 'getBookSegments',
 ): readonly Segment[] {
   const key = segmentationJson || '';
   if (held.segmented?.key !== key) {
@@ -364,6 +364,25 @@ export async function getVerseBook(
   bookId: string,
 ): Promise<Book | undefined> {
   return (await keptBook(sourceProjectId, bookId)).book;
+}
+
+/**
+ * Reads a book of the source project, segmented by the boundaries `segmentationJson` names, as
+ * {@link getSegments} pages it. The segments are shared, so the caller must not change them.
+ *
+ * @returns `undefined` when the project has no text for the book.
+ * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
+ *   `SegmentationDelta`.
+ */
+export async function getBookSegments(
+  sourceProjectId: string,
+  bookId: string,
+  segmentationJson?: string,
+): Promise<readonly Segment[] | undefined> {
+  const held = await keptBook(sourceProjectId, bookId);
+  const book = await held.book;
+  if (!book) return undefined;
+  return segmentsOf(held, book, segmentationJson, 'getBookSegments');
 }
 
 /** Lets go of the source project's kept copies of `bookId`, holding its open book again at once. */

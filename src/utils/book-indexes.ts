@@ -85,3 +85,17 @@ export function buildBookIndexes(segments: readonly Segment[]): BookIndexes {
     wordRefByOrder,
   };
 }
+
+const bookIndexesCache = new WeakMap<readonly Segment[], BookIndexes>();
+
+/**
+ * The book-wide lookup indexes over `segments`, built once per array and shared by every caller.
+ * The array must not change once indexed.
+ */
+export function bookIndexesOf(segments: readonly Segment[]): BookIndexes {
+  const cached = bookIndexesCache.get(segments);
+  if (cached) return cached;
+  const indexes = buildBookIndexes(segments);
+  bookIndexesCache.set(segments, indexes);
+  return indexes;
+}

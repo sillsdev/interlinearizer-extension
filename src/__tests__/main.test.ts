@@ -8,6 +8,7 @@ import type {
   DraftProject,
   PhraseAnalysisLink,
   ProjectConfig,
+  SegmentationDelta,
   TextAnalysis,
   TokenSnapshot,
 } from 'interlinearizer';
@@ -1998,8 +1999,11 @@ describe('main', () => {
       };
     }
 
-    /** Stores a draft of `src-project` holding `analysis`, for sessions to open. */
-    async function storeDraftHolding(analysis: Partial<TextAnalysis>): Promise<void> {
+    /** Stores a draft of `src-project` holding `analysis` and `segmentation`, for sessions to open. */
+    async function storeDraftHolding(
+      analysis: Partial<TextAnalysis>,
+      segmentation?: SegmentationDelta,
+    ): Promise<void> {
       const repository = new DraftRepository(
         memoryStorage().storage,
         'src-project',
@@ -2009,6 +2013,7 @@ describe('main', () => {
         ...emptyDraft('src-project'),
         analysisLanguages: ['en'],
         analysis: { ...emptyAnalysis(), ...analysis },
+        ...(segmentation && { segmentation }),
       });
       jest.mocked(projectStorage.openDraftRepository).mockReturnValue(repository);
     }
@@ -2043,7 +2048,7 @@ describe('main', () => {
 
     /** Two verses of Genesis, standing in for the source project's text. */
     const VERSE_BOOK = makeVerseBook([
-      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 1:1', text: 'In the beginning God' },
       { sid: 'GEN 1:2', text: 'And the earth' },
     ]);
 
@@ -2055,6 +2060,7 @@ describe('main', () => {
         );
       __mockSettingsGet.mockResolvedValue(['en']);
       jest.mocked(bookService.getVerseBook).mockResolvedValue(VERSE_BOOK);
+      jest.mocked(bookService.getBookSegments).mockResolvedValue(VERSE_BOOK.segments);
     });
 
     it("opens a session on the source project's draft", async () => {
@@ -2339,12 +2345,12 @@ describe('main', () => {
 
     const inThe: TokenSnapshot[] = [
       { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
-      { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+      { tokenRef: 'GEN 1:1:3', surfaceText: 'the' },
     ];
 
     const beginningGod: TokenSnapshot[] = [
-      { tokenRef: 'GEN 1:1:2', surfaceText: 'beginning' },
-      { tokenRef: 'GEN 1:1:3', surfaceText: 'God' },
+      { tokenRef: 'GEN 1:1:7', surfaceText: 'beginning' },
+      { tokenRef: 'GEN 1:1:17', surfaceText: 'God' },
     ];
 
     it('creates a phrase, replying with the changes', async () => {
@@ -2358,6 +2364,101 @@ describe('main', () => {
         phraseAnalyses: { puts: [{ surfaceText: 'In the' }], deletes: [] },
         phraseAnalysisLinks: { puts: [{ status: 'approved', tokens: inThe }], deletes: [] },
       });
+      expect(bookService.getBookSegments).toHaveBeenCalledWith('src-project', 'GEN', undefined);
+    });
+
+    it("checks a phrase against the segments the draft's boundaries make", async () => {
+      const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+      await storeDraftHolding({}, segmentation);
+      const { openSession, createPhrase } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await createPhrase(sessionId, inThe);
+
+      expect(bookService.getBookSegments).toHaveBeenCalledWith(
+        'src-project',
+        'GEN',
+        JSON.stringify(segmentation),
+      );
+    });
+
+    const godAnd: TokenSnapshot[] = [
+      { tokenRef: 'GEN 1:1:17', surfaceText: 'God' },
+      { tokenRef: 'GEN 1:2:0', surfaceText: 'And' },
+    ];
+
+    const suggested = (tokens: TokenSnapshot[]): Partial<TextAnalysis> => ({
+      phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'God And' }],
+      phraseAnalysisLinks: [
+        { id: 'pl-1', analysisId: 'pa-1', ...FIXTURE_STAMPS, status: 'suggested', tokens },
+      ],
+    });
+
+    it.each([
+      ['createPhrase', (c: SessionCommands, id: string) => c.createPhrase(id, godAnd)],
+      ['updatePhrase', (c: SessionCommands, id: string) => c.updatePhrase(id, 'pl-1', godAnd)],
+      ['mergePhrases', (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', godAnd)],
+      ['approvePhrase', (c: SessionCommands, id: string) => c.approvePhrase(id, 'pl-1')],
+    ])('refuses %s over tokens in two segments, logging the error', async (intent, command) => {
+      await storeDraftHolding(suggested(godAnd));
+      const commands = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+
+      await expect(command(commands, sessionId)).rejects.toThrow(
+        "a phrase's tokens must lie within one segment of the text",
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        `Interlinearizer: failed to ${intent} in session ${sessionId}`,
+        expect.any(Error),
+      );
+    });
+
+    it('refuses a phrase over a token the text lacks', async () => {
+      const { openSession, createPhrase } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(
+        createPhrase(sessionId, [inThe[0], { tokenRef: 'GEN 1:1:1', surfaceText: 'the' }]),
+      ).rejects.toThrow("a phrase's tokens must lie within one segment of the text");
+    });
+
+    it('approves a suggested phrase within one segment, replying with the changes', async () => {
+      await storeDraftHolding(suggested(inThe));
+      const { openSession, approvePhrase } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(approvePhrase(sessionId, 'pl-1').then(JSON.parse)).resolves.toMatchObject({
+        intent: 'approvePhrase',
+        phraseAnalysisLinks: { puts: [{ id: 'pl-1', status: 'approved' }], deletes: [] },
+      });
+    });
+
+    it('leaves an approved phrase approved without reading the text', async () => {
+      await storeDraftHolding({
+        ...suggested(godAnd),
+        phraseAnalysisLinks: [
+          { id: 'pl-1', analysisId: 'pa-1', ...FIXTURE_STAMPS, status: 'approved', tokens: godAnd },
+        ],
+      });
+      const { openSession, approvePhrase } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(approvePhrase(sessionId, 'pl-1').then(JSON.parse)).resolves.toStrictEqual({
+        intent: 'approvePhrase',
+      });
+      expect(bookService.getBookSegments).not.toHaveBeenCalled();
+    });
+
+    it('removes a phrase given no tokens without reading the text', async () => {
+      await storeDraftHolding(suggested(godAnd));
+      const { openSession, updatePhrase } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(updatePhrase(sessionId, 'pl-1', []).then(JSON.parse)).resolves.toMatchObject({
+        intent: 'updatePhrase',
+        phraseAnalysisLinks: { puts: [], deletes: ['pl-1'] },
+      });
+      expect(bookService.getBookSegments).not.toHaveBeenCalled();
     });
 
     it("writes a phrase's gloss in the session's language, replying with the changes", async () => {
@@ -2647,7 +2748,16 @@ describe('main', () => {
       });
     });
 
+    const exodus: TokenSnapshot[] = [
+      { tokenRef: 'EXO 1:1:0', surfaceText: 'Now' },
+      { tokenRef: 'EXO 1:1:4', surfaceText: 'these' },
+    ];
+
     it.each([
+      ['createPhrase', (c: SessionCommands, id: string) => c.createPhrase(id, exodus)],
+      ['updatePhrase', (c: SessionCommands, id: string) => c.updatePhrase(id, 'pl-1', exodus)],
+      ['mergePhrases', (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', exodus)],
+      ['approvePhrase', (c: SessionCommands, id: string) => c.approvePhrase(id, 'pl-1')],
       ['splitPhrase', (c: SessionCommands, id: string) => c.splitPhrase(id, 'pl-1', 'EXO 1:1:0')],
       ['mergeSegments', (c: SessionCommands, id: string) => c.mergeSegments(id, 'EXO 1:2:0')],
       ['splitSegment', (c: SessionCommands, id: string) => c.splitSegment(id, 'EXO 1:1:3')],
@@ -2658,7 +2768,9 @@ describe('main', () => {
     ])(
       'refuses %s in a book the project has no text for, logging the error',
       async (intent, command) => {
+        await storeDraftHolding(suggested(exodus));
         jest.mocked(bookService.getVerseBook).mockResolvedValue(undefined);
+        jest.mocked(bookService.getBookSegments).mockResolvedValue(undefined);
         const commands = await activateSessionCommands();
         const { sessionId } = JSON.parse(await commands.openSession('src-project'));
 

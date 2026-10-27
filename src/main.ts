@@ -27,7 +27,7 @@ import { toProjectSummary, type SavedAsProject } from './types/interlinear-proje
 import { UnreadableBooksError } from './types/analysis-repository';
 import { isDraftProject } from './types/type-guards';
 import { BOOKLESS_PARTITION, bookOfRef } from './utils/analysis-book';
-import { buildBookIndexes } from './utils/book-indexes';
+import { bookIndexesOf } from './utils/book-indexes';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 
 // #region WebView provider
@@ -997,17 +997,65 @@ function assertTokenRun(tokens: readonly TokenSnapshot[]): void {
 }
 
 /**
+ * What `read` serves for the session's source project and the book that `tokenRef` falls in.
+ *
+ * @throws If the project has no text for that book, or `read` throws.
+ */
+async function readBookOf<T>(
+  session: Session,
+  tokenRef: string,
+  read: (sourceProjectId: string, bookId: string) => Promise<T | undefined>,
+): Promise<T> {
+  const bookId = bookOfRef(tokenRef);
+  const { sourceProjectId } = session.scope;
+  const found = await read(sourceProjectId, bookId);
+  if (found === undefined) {
+    throw new Error(`Interlinearizer: project ${sourceProjectId} has no text for book ${bookId}`);
+  }
+  return found;
+}
+
+/**
+ * Refuses a phrase occurrence over `tokens` unless they lie within one segment of the text, as the
+ * staged boundaries segment it.
+ *
+ * @throws If the tokens span segments or name a token the text lacks, the project has no text for
+ *   the first token's book, or the book cannot be read or tokenized.
+ */
+async function assertOneSegment(
+  buffer: ChangeBuffer,
+  session: Session,
+  tokens: readonly TokenSnapshot[],
+): Promise<void> {
+  const { segmentation } = await buffer.getScope();
+  const segments = await readBookOf(session, tokens[0].tokenRef, (sourceProjectId, bookId) =>
+    bookService.getBookSegments(
+      sourceProjectId,
+      bookId,
+      segmentation && JSON.stringify(segmentation),
+    ),
+  );
+  const { tokenSegmentMap } = bookIndexesOf(segments);
+  const segmentIds = new Set(tokens.map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)));
+  if (segmentIds.size > 1 || segmentIds.has(undefined)) {
+    throw new Error("Interlinearizer: a phrase's tokens must lie within one segment of the text");
+  }
+}
+
+/**
  * Adds an approved phrase occurrence over `tokens`, sharing a content-identical stored payload
  * where one exists.
  *
  * @returns The changes it applied, as JSON.
- * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
- *   fails. The error is logged before rethrowing.
+ * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
+ *   its book, the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<string> {
-  return runSessionEdit(sessionId, 'createPhrase', (buffer) => {
+  return runSessionEdit(sessionId, 'createPhrase', async (buffer, session) => {
     assertTokenRun(tokens);
-    return phraseCommands.createPhrase(buffer, { ...editStamp(), tokens });
+    await assertOneSegment(buffer, session, tokens);
+    await phraseCommands.createPhrase(buffer, { ...editStamp(), tokens });
   });
 }
 
@@ -1016,17 +1064,19 @@ function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<strin
  * occurrence.
  *
  * @returns The changes it applied, as JSON.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
+ * @throws If `tokens` is not within one segment of the text, the project has no text for its book,
+ *   the session is read-only or not open, or the edit is refused or fails. The error is logged
+ *   before rethrowing.
  */
 function updatePhrase(
   sessionId: string,
   phraseId: string,
   tokens: TokenSnapshot[],
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'updatePhrase', (buffer) =>
-    phraseCommands.updatePhrase(buffer, { ...editStamp(), phraseId, tokens }),
-  );
+  return runSessionEdit(sessionId, 'updatePhrase', async (buffer, session) => {
+    if (tokens.length > 0) await assertOneSegment(buffer, session, tokens);
+    await phraseCommands.updatePhrase(buffer, { ...editStamp(), phraseId, tokens });
+  });
 }
 
 /**
@@ -1052,8 +1102,9 @@ function deletePhrase(sessionId: string, phraseId: string): Promise<string> {
  * @param absorbedPhraseId - The absorbed occurrence's link ID. Absent or `null` when the neighbor
  *   is a token in no phrase.
  * @returns The changes it applied, as JSON.
- * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
- *   fails. The error is logged before rethrowing.
+ * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
+ *   its book, the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function mergePhrases(
   sessionId: string,
@@ -1061,9 +1112,10 @@ function mergePhrases(
   tokens: TokenSnapshot[],
   absorbedPhraseId?: string | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'mergePhrases', (buffer) => {
+  return runSessionEdit(sessionId, 'mergePhrases', async (buffer, session) => {
     assertTokenRun(tokens);
-    return phraseCommands.mergePhrases(buffer, {
+    await assertOneSegment(buffer, session, tokens);
+    await phraseCommands.mergePhrases(buffer, {
       ...editStamp(),
       targetPhraseId,
       tokens,
@@ -1094,13 +1146,16 @@ function writePhraseGloss(sessionId: string, phraseId: string, value: string): P
  * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
  *
  * @returns The changes it applied, as JSON.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
+ * @throws If the occurrence would be approved over tokens not within one segment of the text, the
+ *   project has no text for their book, the session is read-only or not open, or the edit is
+ *   refused or fails. The error is logged before rethrowing.
  */
 function approvePhrase(sessionId: string, phraseId: string): Promise<string> {
-  return runSessionEdit(sessionId, 'approvePhrase', (buffer) =>
-    phraseCommands.approvePhrase(buffer, { ...editStamp(), phraseId }),
-  );
+  return runSessionEdit(sessionId, 'approvePhrase', async (buffer, session) => {
+    const [link] = await buffer.getPhraseAnalysisLinks([phraseId]);
+    if (link && link.status !== 'approved') await assertOneSegment(buffer, session, link.tokens);
+    await phraseCommands.approvePhrase(buffer, { ...editStamp(), phraseId });
+  });
 }
 
 /**
@@ -1109,14 +1164,8 @@ function approvePhrase(sessionId: string, phraseId: string): Promise<string> {
  *
  * @throws If the project has no text for that book, or the book cannot be read or tokenized.
  */
-async function verseBookOf(session: Session, tokenRef: string): Promise<Book> {
-  const bookId = bookOfRef(tokenRef);
-  const { sourceProjectId } = session.scope;
-  const verseBook = await bookService.getVerseBook(sourceProjectId, bookId);
-  if (!verseBook) {
-    throw new Error(`Interlinearizer: project ${sourceProjectId} has no text for book ${bookId}`);
-  }
-  return verseBook;
+function verseBookOf(session: Session, tokenRef: string): Promise<Book> {
+  return readBookOf(session, tokenRef, bookService.getVerseBook);
 }
 
 /**
@@ -1138,7 +1187,7 @@ function splitPhrase(
       ...editStamp(),
       phraseId,
       splitAfterTokenRef,
-      tokenDocOrder: buildBookIndexes(verseBook.segments).tokenDocOrder,
+      tokenDocOrder: bookIndexesOf(verseBook.segments).tokenDocOrder,
     });
   });
 }

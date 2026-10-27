@@ -1,5 +1,5 @@
 import type { Book, SegmentationDelta } from 'interlinearizer';
-import { buildBookIndexes } from '../../utils/book-indexes';
+import { bookIndexesOf } from '../../utils/book-indexes';
 import { phrasesStraddlingBoundary } from '../../utils/phrase-arc';
 import {
   isEmptyDelta,
@@ -91,7 +91,7 @@ async function breakStraddledPhrases(
   boundaryRef: string,
   { verseBook, now, newId }: PhraseBreakingEdit,
 ): Promise<void> {
-  const { tokenDocOrder, fullTokenOrder } = buildBookIndexes(verseBook.segments);
+  const { tokenDocOrder, fullTokenOrder } = bookIndexesOf(verseBook.segments);
   const { phraseAnalysisLinks } = await buffer.findLinksInBooks([verseBook.bookRef], ['approved']);
   const straddled = phrasesStraddlingBoundary(boundaryRef, phraseAnalysisLinks, fullTokenOrder);
   await straddled.reduce(async (previous, { link, splitAfterTokenRef }) => {

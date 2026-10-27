@@ -140,12 +140,48 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
       },
     ],
     [
-      'removes an approved link naming no stored translation even when the write clears nothing',
+      'keeps an approved link naming no stored translation when a blank value clears nothing',
       {
         analysis: analysisOf([], [link('sl-orphan', 'sa-missing')]),
         input: { value: '  ' },
         expectStore: (store) => {
-          expect(store).toStrictEqual(emptyAnalysis());
+          expect(store).toStrictEqual(analysisOf([], [link('sl-orphan', 'sa-missing')]));
+        },
+      },
+    ],
+    [
+      'changes nothing when the value matches the approved translation',
+      {
+        analysis: analysisOf(
+          [translation('sa-1', { freeTranslation: { en: 'At first' } })],
+          [link('sl-1', 'sa-1'), link('sl-orphan', 'sa-missing')],
+        ),
+        input: { value: 'At first' },
+        expectStore: (store) => {
+          expect(store).toStrictEqual(
+            analysisOf(
+              [translation('sa-1', { freeTranslation: { en: 'At first' } })],
+              [link('sl-1', 'sa-1'), link('sl-orphan', 'sa-missing')],
+            ),
+          );
+        },
+      },
+    ],
+    [
+      "changes nothing when a blank value finds no translation in the approved one's language",
+      {
+        analysis: analysisOf(
+          [translation('sa-1', { freeTranslation: { fr: 'Au début' } })],
+          [link('sl-1', 'sa-1')],
+        ),
+        input: { value: '' },
+        expectStore: (store) => {
+          expect(store).toStrictEqual(
+            analysisOf(
+              [translation('sa-1', { freeTranslation: { fr: 'Au début' } })],
+              [link('sl-1', 'sa-1')],
+            ),
+          );
         },
       },
     ],
@@ -179,6 +215,24 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
         input: { value: ' ' },
         expectStore: (store) => {
           expect(store).toStrictEqual(emptyAnalysis());
+        },
+      },
+    ],
+    [
+      'keeps a translation that another link names once a blank value leaves it nothing',
+      {
+        analysis: analysisOf(
+          [translation('sa-1', { freeTranslation: { en: 'At first' } })],
+          [link('sl-1', 'sa-1'), link('sl-2', 'sa-1', { segmentId: OTHER_SEGMENT })],
+        ),
+        input: { value: '' },
+        expectStore: (store) => {
+          expect(store).toStrictEqual(
+            analysisOf(
+              [translation('sa-1', { surfaceText: TEXT, updatedAt: NOW })],
+              [link('sl-2', 'sa-1', { segmentId: OTHER_SEGMENT })],
+            ),
+          );
         },
       },
     ],
@@ -341,6 +395,61 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
               segmentId: OTHER_SEGMENT,
               updatedAt: NOW,
             }),
+          ]);
+        },
+      },
+    ],
+    [
+      'changes nothing when a blank value finds no translation in the named stale one',
+      {
+        analysis: analysisOf(
+          [translation('sa-stale', { freeTranslation: { fr: 'Au début' } })],
+          [
+            link('sl-stale', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT }),
+            link('sl-orphan', 'sa-missing'),
+          ],
+        ),
+        input: { value: '', adoptStaleAnalysisId: 'sa-stale' },
+        expectStore: (store) => {
+          expect(store).toStrictEqual(
+            analysisOf(
+              [translation('sa-stale', { freeTranslation: { fr: 'Au début' } })],
+              [
+                link('sl-orphan', 'sa-missing'),
+                link('sl-stale', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT }),
+              ],
+            ),
+          );
+        },
+      },
+    ],
+    [
+      'removes an approved link naming no stored translation when a blank value clears a stale one',
+      {
+        analysis: analysisOf(
+          [translation('sa-stale', { freeTranslation: { en: 'Old', fr: 'Au début' } })],
+          [
+            link('sl-stale', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT }),
+            link('sl-orphan', 'sa-missing'),
+          ],
+        ),
+        input: { value: '', adoptStaleAnalysisId: 'sa-stale' },
+        expectStore: (store) => {
+          expect(ids(store.segmentAnalysisLinks)).toStrictEqual(['sl-stale']);
+        },
+      },
+    ],
+    [
+      'adopts the named stale translation even when the value matches it',
+      {
+        analysis: analysisOf(
+          [translation('sa-stale', { freeTranslation: { en: 'At first' } })],
+          [link('sl-stale', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT })],
+        ),
+        input: { value: 'At first', adoptStaleAnalysisId: 'sa-stale' },
+        expectStore: (store) => {
+          expect(store.segmentAnalysisLinks).toStrictEqual([
+            link('sl-stale', 'sa-stale', { updatedAt: NOW }),
           ]);
         },
       },

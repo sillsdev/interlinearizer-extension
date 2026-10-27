@@ -5,7 +5,6 @@ import type {
   SegmentAnalysis,
   SegmentAnalysisLink,
   TextAnalysis,
-  TokenAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
 import {
@@ -22,11 +21,18 @@ import {
 } from '../../../store/analysisSlice';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../../test-helpers';
-import { runParity } from './parity';
-
-function payload(id: string, surfaceText: string, fields: Partial<TokenAnalysis> = {}) {
-  return { id, ...FIXTURE_STAMPS, surfaceText, ...fields };
-}
+import {
+  analysisOf,
+  EARLIER,
+  ids,
+  LATER,
+  NOW,
+  OTHER_TOKEN,
+  type ParityCase,
+  payload,
+  runParity,
+  TOKEN,
+} from './parity';
 
 function morpheme(id: string, form: string, fields: Partial<MorphemeAnalysis> = {}) {
   return { id, form, writingSystem: 'qaa', ...fields };
@@ -47,28 +53,6 @@ function link(
     ...fields,
   };
 }
-
-function analysisOf(
-  tokenAnalyses: TokenAnalysis[],
-  tokenAnalysisLinks: TokenAnalysisLink[],
-): TextAnalysis {
-  return { ...emptyAnalysis(), tokenAnalyses, tokenAnalysisLinks };
-}
-
-const NOW = '2026-06-01T00:00:00.000Z';
-const EARLIER = { createdAt: '2025-06-01T00:00:00.000Z', updatedAt: '2025-06-01T00:00:00.000Z' };
-const LATER = { createdAt: '2026-03-01T00:00:00.000Z', updatedAt: '2026-03-01T00:00:00.000Z' };
-const TOKEN = 'GEN 1:1:0';
-const OTHER_TOKEN = 'GEN 1:2:0';
-
-type ParityCase<Input> = {
-  analysis: TextAnalysis;
-  input: Input;
-  /** What the reducer's result must show, so the case exercises the path it names. */
-  expectStore: (store: TextAnalysis) => void;
-};
-
-const ids = (records: readonly { id: string }[]) => records.map(({ id }) => id).sort();
 
 describe('discardStaleAnalysis parity with the reducer', () => {
   const cases: [string, ParityCase<{ tokenRef: string }>][] = [

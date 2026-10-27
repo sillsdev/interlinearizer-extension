@@ -419,7 +419,12 @@ export function MorphemeBox({ readOnly, ...props }: MorphemeBoxProps) {
 
 /**
  * Renders a single morpheme's gloss as an editable input filling its grid column, directly under
- * the morpheme's form. Writes to the store on blur when the draft differs from the committed value.
+ * the morpheme's form. The input shows the stored gloss. Where none is stored, it shows the gloss
+ * of the morpheme's lexicon sense.
+ *
+ * Blurring the input writes the edited gloss to the store. Emptying a gloss that only the lexicon
+ * supplies writes nothing.
+ *
  * The input carries a `data-morpheme-gloss` attribute so container-level "focus the first gloss
  * input" handlers can exclude morpheme glosses, which precede the token gloss input in DOM order.
  */

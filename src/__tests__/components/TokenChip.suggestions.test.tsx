@@ -4,12 +4,18 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { TextAnalysis, Token, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type {
+  SenseRef,
+  TextAnalysis,
+  Token,
+  TokenAnalysis,
+  TokenAnalysisLink,
+} from 'interlinearizer';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { TokenChip } from '../../components/TokenChip';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { FIXTURE_STAMPS, makeWordToken } from '../test-helpers';
-import { mockKeyAsValueLocalizedStrings } from './test-helpers';
+import { mockKeyAsValueLocalizedStrings, testSenseRef } from './test-helpers';
 
 beforeEach(() => {
   mockKeyAsValueLocalizedStrings();
@@ -539,13 +545,16 @@ describe('TokenChip suggestion dropdown', () => {
  * Builds the homograph 'bank' where `riverbank` is approved three times (`r1`/`r2`/`r3`, the
  * majority) and `finance` once (`f1`, the minority) — so clearing an approved majority token can be
  * tested for previewing the still-majority pick rather than the lone alternative.
+ *
+ * @param riverSenseRef - The `glossSenseRef` of the `riverbank` payload, or `undefined` for none.
  */
-function homographMajorityPool(): TextAnalysis {
+function homographMajorityPool(riverSenseRef?: SenseRef): TextAnalysis {
   const river: TokenAnalysis = {
     ...FIXTURE_STAMPS,
     id: 'ta-river',
     surfaceText: 'bank',
     gloss: { en: 'riverbank' },
+    ...(riverSenseRef ? { glossSenseRef: riverSenseRef } : {}),
   };
   const fin: TokenAnalysis = {
     ...FIXTURE_STAMPS,
@@ -620,6 +629,21 @@ describe('TokenChip suggestion after clearing an approved gloss', () => {
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(screen.queryByTestId('suggestion-candidate')).not.toBeInTheDocument();
     expect(input).toHaveAttribute('placeholder', 'gloss');
+  });
+
+  it('previews no suggestion when the cleared gloss carries a sense ref', async () => {
+    // The sense ref survives the clear, so r1 stays approved. Its dropdown keeps offering only the
+    // alternative, where an r1 without a sense ref would preview 'riverbank'.
+    renderChip(makeWordToken('r1', 'bank'), {
+      initialAnalysis: homographMajorityPool(testSenseRef('s-river')),
+    });
+
+    const input = await focusGloss();
+    await userEvent.clear(input);
+
+    expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
+    expect(screen.getByTestId('suggestion-candidate')).toHaveTextContent('finance');
+    expect(input).toHaveAttribute('placeholder', ghost('finance'));
   });
 });
 

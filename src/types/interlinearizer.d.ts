@@ -448,7 +448,7 @@ declare module 'papi-shared-types' {
 
     /**
      * Glosses one morpheme of a token's breakdown in a session's analysis language; a blank value
-     * clears it.
+     * clears the morpheme's gloss.
      *
      * @returns A JSON string of the changes it applied.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged

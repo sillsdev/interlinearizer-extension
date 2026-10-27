@@ -40,11 +40,11 @@ export type WriteMorphemeGlossRequest = Pick<TokenEdit, 'tokenRef' | 'now'> & {
 };
 
 /**
- * Stages writing a token's morpheme breakdown. The edit is per token: a payload other tokens share
- * is forked first. A form the breakdown already carried keeps its morpheme whole, so links to it
- * survive; every morpheme takes `writingSystem`, and the breakdown is never left marked stale. An
- * edit that makes the payload identical to another folds it in. A token with no approved analysis
- * takes a content-identical stored one, or a new one.
+ * Stages writing a token's morpheme breakdown. The edit is per token: a payload that other tokens
+ * share is forked first. A form that the breakdown already carried keeps its morpheme whole, so
+ * links to that morpheme survive. Every morpheme takes `writingSystem`. The breakdown is never left
+ * marked stale. An edit that makes the payload identical to another folds it in. A token with no
+ * approved analysis takes a content-identical stored one, or a new one.
  */
 export async function writeMorphemes(
   buffer: ChangeBuffer,
@@ -85,9 +85,10 @@ export async function writeMorphemes(
 
 /**
  * Stages removing a token's morpheme breakdown and its stale mark. The edit is per token: a payload
- * other tokens share is forked first. A payload the removal leaves empty is detached from the token
- * and goes once nothing links it; one left with content folds into an identical payload where there
- * is one. It stages nothing for a token with no approved analysis, or one with no breakdown.
+ * that other tokens share is forked first. A payload that the removal leaves empty is detached from
+ * the token and goes once nothing links it. A payload left with content folds into an identical
+ * payload, if one exists. It stages nothing for a token with no approved analysis, or one with no
+ * breakdown.
  */
 export async function deleteMorphemes(
   buffer: ChangeBuffer,
@@ -115,10 +116,11 @@ export async function deleteMorphemes(
 
 /**
  * Stages glossing one morpheme of a token's approved breakdown. The edit is per token: a payload
- * other tokens share is forked first, the morpheme keeping its id on the fork. A blank value clears
- * the gloss in `analysisLanguage`, dropping a gloss it leaves empty; the morpheme and its analysis
- * stay. An edit or clear that makes the payload identical to another folds it in. It stages nothing
- * for a token with no approved analysis, or one whose breakdown lacks the morpheme.
+ * that other tokens share is forked first, the morpheme keeping its id on the fork. A blank value
+ * clears the morpheme's gloss in `analysisLanguage`. The morpheme and its analysis stay, even when
+ * no language's gloss is left. An edit or clear that makes the payload identical to another folds
+ * it in. It stages nothing for a token with no approved analysis, or one whose breakdown lacks the
+ * morpheme.
  */
 export async function writeMorphemeGloss(
   buffer: ChangeBuffer,

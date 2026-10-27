@@ -31,22 +31,28 @@ import {
 } from '../../../utils/segmentation';
 import { FIXTURE_STAMPS, memoryStorage, silentLogger } from '../../test-helpers';
 
+/** Stamps dated before {@link FIXTURE_STAMPS}. */
 export const EARLIER = {
   createdAt: '2025-06-01T00:00:00.000Z',
   updatedAt: '2025-06-01T00:00:00.000Z',
 };
+/** Stamps dated after {@link FIXTURE_STAMPS} and before {@link NOW}. */
 export const LATER = {
   createdAt: '2026-03-01T00:00:00.000Z',
   updatedAt: '2026-03-01T00:00:00.000Z',
 };
 
+/** `Token.ref` of the token that a case edits. */
 export const TOKEN = 'GEN 1:1:0';
+/** `Token.ref` of a token that a case leaves alone. */
 export const OTHER_TOKEN = 'GEN 1:2:0';
 
+/** A token analysis stamped with {@link FIXTURE_STAMPS}, with `fields` overriding the defaults. */
 export function payload(id: string, surfaceText: string, fields: Partial<TokenAnalysis> = {}) {
   return { id, ...FIXTURE_STAMPS, surfaceText, ...fields };
 }
 
+/** An approved link stamped with {@link FIXTURE_STAMPS}, with `fields` overriding the defaults. */
 export function link(
   id: string,
   analysisId: string,
@@ -64,6 +70,7 @@ export function link(
   };
 }
 
+/** An analysis holding only the given token analyses and links. */
 export function analysisOf(
   tokenAnalyses: TokenAnalysis[],
   tokenAnalysisLinks: TokenAnalysisLink[],
@@ -71,10 +78,14 @@ export function analysisOf(
   return { ...emptyAnalysis(), tokenAnalyses, tokenAnalysisLinks };
 }
 
+/** The ids of `records`, sorted. */
 export const ids = (records: readonly { id: string }[]) => records.map(({ id }) => id).sort();
 
+/** One input that a parity suite runs through both the reducer and the command. */
 export type ParityCase<Input> = {
+  /** What the draft holds before the input runs. */
   analysis: TextAnalysis;
+  /** What varies between the suite's cases, passed to both the reducer and the command. */
   input: Input;
   /** What the reducer's result must show, so the case exercises the path it names. */
   expectStore: (store: TextAnalysis) => void;
@@ -183,7 +194,7 @@ export type BoundaryParityOutcome = ParityOutcome & {
   hostSegmentation: SegmentationDelta | undefined;
 };
 
-/** The time both ways of a boundary run stamp on the records they touch. */
+/** The time stamped on every record that either way of a run touches. */
 export const NOW = '2026-06-01T00:00:00.000Z';
 
 /** Makes ids in a fixed sequence, so both ways of a run spend the same ids in the same order. */
@@ -291,8 +302,8 @@ export async function runBoundaryParity(
 }
 
 /**
- * Asserts the reducer took the path the case names, and that the command left the same analysis
- * with its indexes matching its records.
+ * Asserts that the reducer took the path that the case names, and that the command left the same
+ * analysis and consistent indexes.
  */
 export function expectParity(
   outcome: ParityOutcome,

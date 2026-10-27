@@ -872,7 +872,8 @@ function editStamp() {
  * Writes a token's gloss in the session's analysis language; a blank value clears it.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function writeGloss(
   sessionId: string,
@@ -895,7 +896,8 @@ function writeGloss(
  * Approves a stored token analysis for a token, in place of any approval the token held.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function approveAnalysisForToken(
   sessionId: string,
@@ -917,7 +919,8 @@ function approveAnalysisForToken(
  * Writes a token's morpheme breakdown, each form in `writingSystem`.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function writeMorphemes(
   sessionId: string,
@@ -941,7 +944,8 @@ function writeMorphemes(
  * Removes a token's morpheme breakdown.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function deleteMorphemes(sessionId: string, tokenRef: string): Promise<string> {
   return runSessionEdit(sessionId, 'deleteMorphemes', (buffer) =>
@@ -951,10 +955,11 @@ function deleteMorphemes(sessionId: string, tokenRef: string): Promise<string> {
 
 /**
  * Glosses one morpheme of a token's breakdown in the session's analysis language; a blank value
- * clears it.
+ * clears the morpheme's gloss.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function writeMorphemeGloss(
   sessionId: string,
@@ -977,7 +982,8 @@ function writeMorphemeGloss(
  * Gives up the place an analysis went stale at, leaving its other places alone.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function discardStaleAnalysis(
   sessionId: string,
@@ -994,7 +1000,8 @@ function discardStaleAnalysis(
  * whatever that token held.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function reapplyStaleAnalysis(
   sessionId: string,
@@ -1022,7 +1029,8 @@ function reapplyStaleAnalysis(
  * segment.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function keepStaleFreeTranslation(
   sessionId: string,
@@ -1044,7 +1052,8 @@ function keepStaleFreeTranslation(
  * Drops a stale free translation, even one whose verse the book no longer holds.
  *
  * @returns The changes it applied, as JSON.
- * @throws As {@link runSessionEdit} does.
+ * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
+ *   logged before rethrowing.
  */
 function discardStaleFreeTranslation(sessionId: string, analysisId: string): Promise<string> {
   return runSessionEdit(sessionId, 'discardStaleFreeTranslation', (buffer) =>
@@ -2066,7 +2075,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary:
-          "Gloss one morpheme of a token's breakdown in a session's analysis language; a blank value clears it",
+          "Gloss one morpheme of a token's breakdown in a session's analysis language; a blank value clears the morpheme's gloss",
         params: [
           sessionIdParam,
           tokenParams[0],

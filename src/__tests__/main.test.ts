@@ -2008,8 +2008,8 @@ describe('main', () => {
     };
 
     /**
-     * Opens the source project's draft holding `analysis` and `segmentation`, its analysis language
-     * English.
+     * Gives sessions a draft of `src-project` to open. The draft holds `analysis` and
+     * `segmentation`, with English as its analysis language.
      */
     async function seedDraft(
       analysis: Partial<TextAnalysis>,

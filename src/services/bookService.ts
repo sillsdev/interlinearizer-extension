@@ -526,7 +526,8 @@ function reportTextRead(sourceProjectId: string, read: TextRead): void {
 /**
  * Reads `bookId` of `read`'s text again, then reports its edit unless the read has ended, a later
  * read of the book will report it, or the book failed to read both before and again. Reports the
- * books holding text first when the read changes which they are, or clears a failure.
+ * books holding text first when the read changes which they are, or when the read clears a
+ * failure.
  */
 async function rereadTextBook(
   sourceProjectId: string,

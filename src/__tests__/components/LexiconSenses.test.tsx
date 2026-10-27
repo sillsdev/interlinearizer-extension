@@ -3,7 +3,11 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { SenseRef } from 'interlinearizer';
 import type { ReactNode } from 'react';
-import { LexiconSensesProvider, useDisplayedGloss } from '../../components/LexiconSenses';
+import {
+  LexiconSensesProvider,
+  useDisplayedGloss,
+  WithoutLexiconSenses,
+} from '../../components/LexiconSenses';
 import { stubLexiconRegistry, testSenseRef } from './test-helpers';
 
 const SENSES = { 's-1': { gloss: { en: 'water', fr: 'eau' } } };
@@ -72,6 +76,21 @@ describe('useDisplayedGloss', () => {
     const { result } = renderHook(() => useDisplayedGloss('', testSenseRef('s-1'), 'en'));
 
     await waitFor(() => expect(result.current).toEqual({ text: '', fromLexicon: false }));
+  });
+
+  it('shows nothing beneath a lexicon-free subtree, even inside a lexicon', async () => {
+    const { registry, resolveSense } = stubLexiconRegistry(SENSES);
+    const wrapper = ({ children }: Readonly<{ children: ReactNode }>) => (
+      <LexiconSensesProvider registry={registry}>
+        <WithoutLexiconSenses>{children}</WithoutLexiconSenses>
+      </LexiconSensesProvider>
+    );
+    const { result } = renderHook(() => useDisplayedGloss('', testSenseRef('s-1'), 'en'), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current).toEqual({ text: '', fromLexicon: false }));
+    expect(resolveSense).not.toHaveBeenCalled();
   });
 
   it('asks again once a different lexicon is connected', async () => {

@@ -29,6 +29,15 @@ export function LexiconSensesProvider({
   return <LexiconSensesContext.Provider value={senses}>{children}</LexiconSensesContext.Provider>;
 }
 
+/** Shows every gloss beneath it as stored, resolving no lexicon sense. */
+export function WithoutLexiconSenses({ children }: Readonly<{ children: ReactNode }>) {
+  return (
+    <LexiconSensesContext.Provider value={NO_LEXICON_SENSES}>
+      {children}
+    </LexiconSensesContext.Provider>
+  );
+}
+
 /** A gloss as it is shown. */
 export type DisplayedGloss = Readonly<{
   /** The gloss text, `''` when there is none to show. */

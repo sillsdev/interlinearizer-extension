@@ -3,7 +3,7 @@
 import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
-import { FIXTURE_STAMPS } from '../test-helpers';
+import { FIXTURE_STAMPS, makeTokenLink } from '../test-helpers';
 import useDraftProject, {
   type DraftContent,
   type StepSummary,
@@ -432,7 +432,7 @@ describe('useDraftProject', () => {
       });
 
       act(() => {
-        result.current.wipeAll();
+        result.current.discardAll();
       });
       let landed: boolean | undefined;
       await act(async () => {
@@ -778,113 +778,268 @@ describe('useDraftProject', () => {
     });
   });
 
-  describe('wipeBook', () => {
-    it('removes the book, marks the draft dirty, bumps the version, and persists', async () => {
-      const genToken = analysisWithToken('gen-tok');
-      // A MAT token that should survive wiping GEN.
-      const mixed: TextAnalysis = {
-        ...genToken,
-        tokenAnalyses: [
-          ...genToken.tokenAnalyses,
-          { ...FIXTURE_STAMPS, id: 'mat-tok', surfaceText: 'word' },
-        ],
-        tokenAnalysisLinks: [
-          ...genToken.tokenAnalysisLinks,
-          {
-            id: 'tl-2',
-            ...FIXTURE_STAMPS,
-            analysisId: 'mat-tok',
-            status: 'approved',
-            token: { tokenRef: 'MAT 1:1:0', surfaceText: 'word' },
-          },
-        ],
+  describe('discardBook', () => {
+    /** Builds an analysis that glosses each token ref with its own payload, `analysisId`. */
+    function analysisOf(...glosses: [analysisId: string, tokenRef: string][]): TextAnalysis {
+      return {
+        ...emptyAnalysis(),
+        tokenAnalyses: glosses.map(([id]) => ({ ...FIXTURE_STAMPS, id, surfaceText: 'word' })),
+        tokenAnalysisLinks: glosses.map(([analysisId, tokenRef]) =>
+          makeTokenLink(analysisId, tokenRef, { surfaceText: 'word' }),
+        ),
       };
-      mockGetDraftResolves(makeDraft({ analysis: mixed }));
+    }
+
+    /** Lists each token link in `analysis` as `tokenRef=analysisId`, sorted. */
+    function glossesIn(analysis: TextAnalysis | undefined): string[] {
+      return (analysis?.tokenAnalysisLinks ?? [])
+        .map((link) => `${link.token.tokenRef}=${link.analysisId}`)
+        .sort();
+    }
+
+    it("restores the book's analysis from the saved project", async () => {
+      mockGetDraftResolves(makeDraft({ analysis: analysisOf(['gen-unsaved', 'GEN 1:1:0']) }));
       const { result } = await renderLoaded();
-      const versionBefore = result.current.draftVersion;
+      const saved = analysisOf(['gen-saved', 'GEN 1:1:0']);
 
       act(() => {
-        result.current.wipeBook('GEN');
+        result.current.discardBook('GEN', { analysis: saved, segmentation: undefined });
       });
 
-      const ids = result.current.draft?.analysis.tokenAnalyses.map((a) => a.id);
-      expect(ids).toEqual(['mat-tok']);
-      expect(result.current.dirty).toBe(true);
-      expect(result.current.draftVersion).toBe(versionBefore + 1);
-      expect(lastSavedDraft().dirty).toBe(true);
+      expect(glossesIn(result.current.draft?.analysis)).toEqual(['GEN 1:1:0=gen-saved']);
+      expect(glossesIn(lastSavedDraft().analysis)).toEqual(['GEN 1:1:0=gen-saved']);
     });
 
-    it('drops the wiped book’s custom boundaries while keeping other books’', async () => {
+    it("keeps other books' unsaved analysis", async () => {
+      mockGetDraftResolves(
+        makeDraft({
+          analysis: analysisOf(['gen-unsaved', 'GEN 1:1:0'], ['mat-unsaved', 'MAT 1:1:0']),
+        }),
+      );
+      const { result } = await renderLoaded();
+      const saved = analysisOf(['gen-saved', 'GEN 1:1:0'], ['mat-saved', 'MAT 1:1:0']);
+
+      act(() => {
+        result.current.discardBook('GEN', { analysis: saved, segmentation: undefined });
+      });
+
+      expect(glossesIn(result.current.draft?.analysis)).toEqual([
+        'GEN 1:1:0=gen-saved',
+        'MAT 1:1:0=mat-unsaved',
+      ]);
+    });
+
+    it("restores the book's boundaries from the saved project, keeping other books'", async () => {
       mockGetDraftResolves(
         makeDraft({
           segmentation: { removedVerseStarts: ['GEN 1:2:0', 'MAT 3:4:0'], addedStarts: [] },
         }),
       );
       const { result } = await renderLoaded();
+      const savedStart = { tokenRef: 'GEN 1:3:5', surfaceText: 'word' };
 
       act(() => {
-        result.current.wipeBook('GEN');
+        result.current.discardBook('GEN', {
+          analysis: emptyAnalysis(),
+          segmentation: {
+            removedVerseStarts: ['GEN 1:5:0', 'MAT 9:9:0'],
+            addedStarts: [savedStart],
+          },
+        });
       });
 
-      const expected = { removedVerseStarts: ['MAT 3:4:0'], addedStarts: [] };
+      const expected = {
+        removedVerseStarts: ['MAT 3:4:0', 'GEN 1:5:0'],
+        addedStarts: [savedStart],
+      };
       expect(result.current.draft?.segmentation).toEqual(expected);
       expect(lastSavedDraft().segmentation).toEqual(expected);
     });
 
-    it('clears the segmentation field entirely when only the wiped book had boundaries', async () => {
+    it('leaves a clean draft clean', async () => {
+      mockGetDraftResolves(makeDraft({ analysis: analysisOf(['gen-saved', 'GEN 1:1:0']) }));
+      const { result } = await renderLoaded();
+
+      act(() => {
+        result.current.discardBook('GEN', {
+          analysis: analysisOf(['gen-saved', 'GEN 1:1:0']),
+          segmentation: undefined,
+        });
+      });
+
+      expect(result.current.dirty).toBe(false);
+      expect(lastSavedDraft().dirty).toBe(false);
+    });
+
+    it('leaves an unsaved draft unsaved', async () => {
       mockGetDraftResolves(
         makeDraft({
-          segmentation: {
-            removedVerseStarts: ['GEN 1:2:0'],
-            addedStarts: [{ tokenRef: 'GEN 1:3:5', surfaceText: 'word' }],
-          },
+          analysis: analysisOf(['gen-unsaved', 'GEN 1:1:0'], ['mat-unsaved', 'MAT 1:1:0']),
+          dirty: true,
         }),
       );
       const { result } = await renderLoaded();
 
       act(() => {
-        result.current.wipeBook('GEN');
+        result.current.discardBook('GEN', {
+          analysis: analysisOf(['gen-saved', 'GEN 1:1:0']),
+          segmentation: undefined,
+        });
       });
 
-      expect(result.current.draft?.segmentation).toBeUndefined();
-      expect(lastSavedDraft().segmentation).toBeUndefined();
+      expect(result.current.dirty).toBe(true);
+      expect(lastSavedDraft().dirty).toBe(true);
+    });
+
+    describe('with no saved project', () => {
+      it('removes the book, bumps the version, and persists', async () => {
+        mockGetDraftResolves(
+          makeDraft({
+            analysis: analysisOf(['gen-unsaved', 'GEN 1:1:0'], ['mat-unsaved', 'MAT 1:1:0']),
+          }),
+        );
+        const { result } = await renderLoaded();
+        const versionBefore = result.current.draftVersion;
+
+        act(() => {
+          result.current.discardBook('GEN');
+        });
+
+        expect(glossesIn(result.current.draft?.analysis)).toEqual(['MAT 1:1:0=mat-unsaved']);
+        expect(result.current.draftVersion).toBe(versionBefore + 1);
+        expect(glossesIn(lastSavedDraft().analysis)).toEqual(['MAT 1:1:0=mat-unsaved']);
+      });
+
+      it('marks a clean draft unsaved', async () => {
+        mockGetDraftResolves(
+          makeDraft({
+            analysis: analysisOf(['gen-unsaved', 'GEN 1:1:0'], ['mat-unsaved', 'MAT 1:1:0']),
+          }),
+        );
+        const { result } = await renderLoaded();
+
+        act(() => {
+          result.current.discardBook('GEN');
+        });
+
+        expect(result.current.dirty).toBe(true);
+        expect(lastSavedDraft().dirty).toBe(true);
+      });
+
+      it('drops the book’s custom boundaries while keeping other books’', async () => {
+        mockGetDraftResolves(
+          makeDraft({
+            segmentation: { removedVerseStarts: ['GEN 1:2:0', 'MAT 3:4:0'], addedStarts: [] },
+          }),
+        );
+        const { result } = await renderLoaded();
+
+        act(() => {
+          result.current.discardBook('GEN');
+        });
+
+        const expected = { removedVerseStarts: ['MAT 3:4:0'], addedStarts: [] };
+        expect(result.current.draft?.segmentation).toEqual(expected);
+        expect(lastSavedDraft().segmentation).toEqual(expected);
+      });
+
+      it('clears the segmentation field entirely when only that book had boundaries', async () => {
+        mockGetDraftResolves(
+          makeDraft({
+            segmentation: {
+              removedVerseStarts: ['GEN 1:2:0'],
+              addedStarts: [{ tokenRef: 'GEN 1:3:5', surfaceText: 'word' }],
+            },
+          }),
+        );
+        const { result } = await renderLoaded();
+
+        act(() => {
+          result.current.discardBook('GEN');
+        });
+
+        expect(result.current.draft?.segmentation).toBeUndefined();
+        expect(lastSavedDraft().segmentation).toBeUndefined();
+      });
     });
   });
 
-  describe('wipeAll', () => {
-    it('clears the analysis entirely, clears dirty (clean baseline), bumps the version, and persists', async () => {
-      // Start from a dirty draft so the transition to clean is observable.
-      mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-wipe-all'), dirty: true }));
-      const { result } = await renderLoaded();
-      expect(result.current.dirty).toBe(true);
-      const versionBefore = result.current.draftVersion;
-
-      act(() => {
-        result.current.wipeAll();
-      });
-
-      expect(result.current.draft?.analysis.tokenAnalyses).toEqual([]);
-      expect(result.current.dirty).toBe(false);
-      expect(result.current.draftVersion).toBe(versionBefore + 1);
-      expect(lastSavedDraft().dirty).toBe(false);
-    });
-
-    it('clears any custom segment boundaries as part of the clean baseline', async () => {
+  describe('discardAll', () => {
+    it('restores the saved analysis and boundaries, clean, and persists', async () => {
       mockGetDraftResolves(
         makeDraft({
-          analysis: analysisWithToken('tok-wipe-all'),
+          analysis: analysisWithToken('tok-unsaved'),
           dirty: true,
           segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
         }),
       );
       const { result } = await renderLoaded();
+      const versionBefore = result.current.draftVersion;
+      const saved: DraftContent = {
+        analysis: analysisWithToken('tok-saved'),
+        segmentation: { removedVerseStarts: ['MAT 3:4:0'], addedStarts: [] },
+      };
 
       act(() => {
-        result.current.wipeAll();
+        result.current.discardAll(saved);
+      });
+
+      expect(result.current.draft?.analysis).toEqual(saved.analysis);
+      expect(result.current.draft?.segmentation).toEqual(saved.segmentation);
+      expect(result.current.dirty).toBe(false);
+      expect(result.current.draftVersion).toBe(versionBefore + 1);
+      expect(lastSavedDraft()).toMatchObject({ ...saved, dirty: false });
+    });
+
+    it('drops the boundaries when the saved project has none', async () => {
+      mockGetDraftResolves(
+        makeDraft({ segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] } }),
+      );
+      const { result } = await renderLoaded();
+
+      act(() => {
+        result.current.discardAll({ analysis: emptyAnalysis(), segmentation: undefined });
       });
 
       expect(result.current.draft?.segmentation).toBeUndefined();
       expect(lastSavedDraft().segmentation).toBeUndefined();
+    });
+
+    describe('with no saved project', () => {
+      it('empties the analysis, clean, bumps the version, and persists', async () => {
+        mockGetDraftResolves(
+          makeDraft({ analysis: analysisWithToken('tok-unsaved'), dirty: true }),
+        );
+        const { result } = await renderLoaded();
+        const versionBefore = result.current.draftVersion;
+
+        act(() => {
+          result.current.discardAll();
+        });
+
+        expect(result.current.draft?.analysis.tokenAnalyses).toEqual([]);
+        expect(result.current.dirty).toBe(false);
+        expect(result.current.draftVersion).toBe(versionBefore + 1);
+        expect(lastSavedDraft().dirty).toBe(false);
+      });
+
+      it('clears any custom segment boundaries', async () => {
+        mockGetDraftResolves(
+          makeDraft({
+            analysis: analysisWithToken('tok-unsaved'),
+            dirty: true,
+            segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+          }),
+        );
+        const { result } = await renderLoaded();
+
+        act(() => {
+          result.current.discardAll();
+        });
+
+        expect(result.current.draft?.segmentation).toBeUndefined();
+        expect(lastSavedDraft().segmentation).toBeUndefined();
+      });
     });
   });
 
@@ -1026,11 +1181,11 @@ describe('useDraftProject', () => {
         .map((call) => call[3]);
     }
 
-    it('says nothing of starting over with an edit or a wipe', async () => {
+    it('says nothing of starting over with an edit or a discard', async () => {
       const { result } = await renderLoaded();
 
-      act(() => result.current.wipeBook('JHN'));
-      act(() => result.current.wipeAll());
+      act(() => result.current.discardBook('JHN'));
+      act(() => result.current.discardAll());
 
       expect(startedOverPerWrite()).toEqual([undefined, undefined]);
     });
@@ -1057,7 +1212,7 @@ describe('useDraftProject', () => {
       const { result } = await renderLoaded();
       act(() => result.current.newDraft({ analysisLanguages: ['en'] }));
 
-      act(() => result.current.wipeAll());
+      act(() => result.current.discardAll());
 
       expect(startedOverPerWrite()).toEqual([true, true]);
     });
@@ -1071,7 +1226,7 @@ describe('useDraftProject', () => {
 
       view.rerender({ source: 'source-project-2' });
       await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
-      act(() => view.result.current.wipeAll());
+      act(() => view.result.current.discardAll());
 
       expect(startedOverPerWrite().at(-1)).toBeUndefined();
     });
@@ -1281,13 +1436,13 @@ describe('useDraftProject', () => {
       expect(result.current.canUndo).toBe(false);
     });
 
-    describe('wipes', () => {
-      it('undoes a book wipe', async () => {
+    describe('discards', () => {
+      it('undoes a book discard', async () => {
         const loaded = analysisWithToken('tok-loaded');
         mockGetDraftResolves(makeDraft({ analysis: loaded }));
         const { result } = await renderLoaded();
 
-        act(() => result.current.wipeBook('GEN'));
+        act(() => result.current.discardBook('GEN'));
         act(() => {
           result.current.undo();
         });
@@ -1295,12 +1450,12 @@ describe('useDraftProject', () => {
         expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
       });
 
-      it('undoes a whole-draft wipe', async () => {
+      it('undoes a whole-draft discard', async () => {
         const loaded = analysisWithToken('tok-loaded');
         mockGetDraftResolves(makeDraft({ analysis: loaded }));
         const { result } = await renderLoaded();
 
-        act(() => result.current.wipeAll());
+        act(() => result.current.discardAll());
         act(() => {
           result.current.undo();
         });
@@ -1308,13 +1463,32 @@ describe('useDraftProject', () => {
         expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
       });
 
-      it('keeps the edits made before a wipe undoable', async () => {
+      it('undoes a discard that restored the saved project back to the unsaved edit', async () => {
+        mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
+        const { result } = await renderLoaded();
+        const edited = analysisWithToken('tok-edited');
+
+        act(() => result.current.autosaveAnalysis(edited));
+        act(() =>
+          result.current.discardAll({
+            analysis: analysisWithToken('tok-saved'),
+            segmentation: undefined,
+          }),
+        );
+        act(() => {
+          result.current.undo();
+        });
+
+        expect(result.current.getDraftSnapshot()?.analysis).toEqual(edited);
+      });
+
+      it('keeps the edits made before a discard undoable', async () => {
         const loaded = analysisWithToken('tok-loaded');
         mockGetDraftResolves(makeDraft({ analysis: loaded }));
         const { result } = await renderLoaded();
 
         act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
-        act(() => result.current.wipeAll());
+        act(() => result.current.discardAll());
         act(() => {
           result.current.undo();
         });
@@ -1325,11 +1499,11 @@ describe('useDraftProject', () => {
         expect(result.current.getDraftSnapshot()?.analysis).toEqual(loaded);
       });
 
-      it('is clean after undoing a whole-draft wipe of a clean draft', async () => {
+      it('is clean after undoing a whole-draft discard of a clean draft', async () => {
         mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
         const { result } = await renderLoaded();
 
-        act(() => result.current.wipeAll());
+        act(() => result.current.discardAll());
         act(() => {
           result.current.undo();
         });
@@ -1337,12 +1511,12 @@ describe('useDraftProject', () => {
         expect(result.current.dirty).toBe(false);
       });
 
-      it('is dirty after undoing a whole-draft wipe back to an unsaved edit', async () => {
+      it('is dirty after undoing a whole-draft discard back to an unsaved edit', async () => {
         mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
         const { result } = await renderLoaded();
 
         act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
-        act(() => result.current.wipeAll());
+        act(() => result.current.discardAll());
         act(() => {
           result.current.undo();
         });
@@ -1350,12 +1524,12 @@ describe('useDraftProject', () => {
         expect(result.current.dirty).toBe(true);
       });
 
-      it('is clean once undo passes back through a wipe to the loaded content', async () => {
+      it('is clean once undo passes back through a discard to the loaded content', async () => {
         mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
         const { result } = await renderLoaded();
 
         act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
-        act(() => result.current.wipeAll());
+        act(() => result.current.discardAll());
         act(() => {
           result.current.undo();
         });
@@ -1366,11 +1540,11 @@ describe('useDraftProject', () => {
         expect(result.current.dirty).toBe(false);
       });
 
-      it('is dirty after undoing back to a wipe made before the last save', async () => {
+      it('is dirty after undoing back to a discard made before the last save', async () => {
         const { result } = await renderLoaded();
         const saved = analysisWithToken('tok-saved');
 
-        act(() => result.current.wipeAll());
+        act(() => result.current.discardAll());
         act(() => result.current.autosaveAnalysis(saved));
         await saveNow(result);
         act(() => {
@@ -1380,11 +1554,11 @@ describe('useDraftProject', () => {
         expect(result.current.dirty).toBe(true);
       });
 
-      it('is clean again after redoing a whole-draft wipe', async () => {
+      it('is clean again after redoing a whole-draft discard', async () => {
         mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-loaded') }));
         const { result } = await renderLoaded();
 
-        act(() => result.current.wipeAll());
+        act(() => result.current.discardAll());
         act(() => {
           result.current.undo();
         });

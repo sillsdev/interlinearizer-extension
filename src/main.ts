@@ -689,9 +689,10 @@ async function getTextReadStatus(sourceProjectId: string): Promise<string> {
 
 /**
  * Persists the draft working buffer for a source project. Called from the WebView after every edit
- * (auto-save) and whenever the draft is reset (New), opened from a project, or wiped. Analysis for
- * a book whose stored analysis could not be read is left out of the write. The user is told which
- * books once, and again only after the draft is reloaded or a write has left none out.
+ * (auto-save) and whenever the draft is reset (New), opened from a project, or has its changes
+ * discarded. Analysis for a book whose stored analysis could not be read is left out of the write.
+ * The user is told which books once, and again only after the draft is reloaded or a write has left
+ * none out.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
  * @param draftJson - JSON-stringified `DraftProject` to persist.
@@ -2681,14 +2682,14 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const wipeCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.wipe',
+  const discardChangesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.openDiscardChangesModal',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
     /* v8 ignore next */ async () => {},
     {
       method: {
         summary:
-          "Open the wipe dialog to remove the current book's or the whole draft's analysis (handled in the WebView)",
+          'Open the dialog that discards the unsaved analysis of the current book or the whole draft (handled in the WebView)',
         params: [],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
@@ -2755,7 +2756,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openLexiconChooserCommandRegistration,
     saveCommandRegistration,
     openSaveAsModalCommandRegistration,
-    wipeCommandRegistration,
+    discardChangesCommandRegistration,
   );
 
   logger.debug('Interlinearizer extension finished activating!');

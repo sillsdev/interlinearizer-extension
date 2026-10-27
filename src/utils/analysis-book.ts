@@ -124,8 +124,8 @@ function collectPayloads<T extends { id: string }>(
  *
  * A record is dropped when the token or segment it is attached to belongs to the book, and a phrase
  * when its token run does — a run lies within one book, so its first token decides for the whole. A
- * payload the wipe leaves unreferenced is dropped with it, so no orphans remain; one that no link
- * referenced beforehand belongs to no book and survives.
+ * payload that the removal leaves unreferenced is dropped with it, so no orphans remain; one that
+ * no link referenced beforehand belongs to no book and survives.
  */
 export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string): TextAnalysis {
   const tokenAnalysisLinks = analysis.tokenAnalysisLinks.filter(
@@ -164,10 +164,24 @@ export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string)
 }
 
 /**
- * Returns a copy of the delta with every boundary anchor belonging to the book removed, so wiping a
- * book also drops its custom segment boundaries. The result is `undefined` when the delta is absent
- * or the removal empties it, so segmentation collapses back to the default rather than persisting
- * empty arrays.
+ * Returns a copy of the analysis, unmutated, with the book's records replaced by those that
+ * `source` holds for it, if any. A payload that the book shares with another book keeps the
+ * analysis's version.
+ */
+export function restoreBookInAnalysis(
+  analysis: TextAnalysis,
+  source: TextAnalysis | undefined,
+  bookCode: string,
+): TextAnalysis {
+  const remaining = removeBookFromAnalysis(analysis, bookCode);
+  const restored = source && splitAnalysisByBook(source).get(bookCode);
+  return restored ? mergeAnalyses([remaining, restored]) : remaining;
+}
+
+/**
+ * Returns a copy of the delta with every boundary anchor belonging to the book removed. The result
+ * is `undefined` when the delta is absent or the removal empties it, so segmentation collapses back
+ * to the default rather than persisting empty arrays.
  */
 export function removeBookFromSegmentation(
   delta: SegmentationDelta | undefined,
@@ -176,6 +190,28 @@ export function removeBookFromSegmentation(
   if (!delta) return undefined;
   const removedVerseStarts = delta.removedVerseStarts.filter((ref) => bookOfRef(ref) !== bookCode);
   const addedStarts = delta.addedStarts.filter((start) => bookOfRef(start.tokenRef) !== bookCode);
+  if (removedVerseStarts.length === 0 && addedStarts.length === 0) return undefined;
+  return { removedVerseStarts, addedStarts };
+}
+
+/**
+ * Returns a copy of the delta with the book's boundary anchors replaced by those that `source`
+ * holds for it, if any, or `undefined` when no anchor remains.
+ */
+export function restoreBookInSegmentation(
+  delta: SegmentationDelta | undefined,
+  source: SegmentationDelta | undefined,
+  bookCode: string,
+): SegmentationDelta | undefined {
+  const kept = removeBookFromSegmentation(delta, bookCode);
+  const removedVerseStarts = [
+    ...(kept?.removedVerseStarts ?? []),
+    ...(source?.removedVerseStarts.filter((ref) => bookOfRef(ref) === bookCode) ?? []),
+  ];
+  const addedStarts = [
+    ...(kept?.addedStarts ?? []),
+    ...(source?.addedStarts.filter((start) => bookOfRef(start.tokenRef) === bookCode) ?? []),
+  ];
   if (removedVerseStarts.length === 0 && addedStarts.length === 0) return undefined;
   return { removedVerseStarts, addedStarts };
 }

@@ -6,12 +6,8 @@ import type { DraftCopyResult, NewDraftConfig, OpenableProject } from '../../hoo
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
-import {
-  isInterlinearProjectSummary,
-  isSavedAsProject,
-  isSegmentationDelta,
-  isTextAnalysis,
-} from '../../types/type-guards';
+import { isInterlinearProjectSummary, isSavedAsProject } from '../../types/type-guards';
+import { readOpenableProject } from '../../utils/read-openable-project';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
 import { DiscardDraftConfirm } from './DiscardDraftConfirm';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
@@ -209,33 +205,15 @@ export default function ProjectModals({
   const openProject = useCallback(
     async (project: InterlinearProjectSummary) => {
       try {
-        const json = await papi.commands.sendCommand('interlinearizer.getProject', project.id);
-        const parsed: unknown = json ? JSON.parse(json) : undefined;
-        const analysis =
-          parsed && typeof parsed === 'object' && 'analysis' in parsed
-            ? parsed.analysis
-            : undefined;
-        const segmentation =
-          parsed && typeof parsed === 'object' && 'segmentation' in parsed
-            ? parsed.segmentation
-            : undefined;
-        if (
-          !isInterlinearProjectSummary(parsed) ||
-          !isTextAnalysis(analysis) ||
-          (segmentation !== undefined && !isSegmentationDelta(segmentation))
-        ) {
+        const openable = await readOpenableProject(project.id);
+        if (!openable) {
           await papi.notifications
             .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
             .catch(() => {});
           return;
         }
 
-        loadFromProject({
-          analysisLanguages: parsed.analysisLanguages,
-          ...(parsed.targetProjectId !== undefined && { targetProjectId: parsed.targetProjectId }),
-          ...(segmentation !== undefined && { segmentation }),
-          analysis,
-        });
+        loadFromProject(openable);
         setActiveProject(project);
         setModal('none');
       } catch (e) {

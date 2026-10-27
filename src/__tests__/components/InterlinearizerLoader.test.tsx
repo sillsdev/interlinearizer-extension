@@ -179,29 +179,43 @@ jest.mock('../../components/controls/ScriptureNavControls', () => ({
   ),
 }));
 
-jest.mock('../../components/modals/WipeModal', () => ({
+jest.mock('../../components/modals/DiscardChangesModal', () => ({
   __esModule: true,
   /**
-   * Minimal WipeModal stand-in exposing per-scope confirm buttons and cancel so tests can drive the
-   * loader's wipe handlers without the real dialog's localization or scope-picker UI.
+   * Minimal DiscardChangesModal stand-in exposing per-scope confirm buttons and cancel so tests can
+   * drive the loader's discard handlers without the real dialog's localization or scope-picker UI.
    */
-  WipeModal: ({
+  DiscardChangesModal: ({
     hasActiveBook,
+    isSubmitting,
     onConfirm,
     onCancel,
   }: {
     hasActiveBook: boolean;
+    isSubmitting: boolean;
     onConfirm: (scope: 'book' | 'all') => void;
     onCancel: () => void;
   }) => (
-    <div data-testid="wipe-modal-panel" data-has-active-book={String(hasActiveBook)}>
-      <button type="button" data-testid="wipe-confirm-book" onClick={() => onConfirm('book')}>
-        Wipe book
+    <div
+      data-testid="discard-changes-modal-panel"
+      data-has-active-book={String(hasActiveBook)}
+      data-is-submitting={String(isSubmitting)}
+    >
+      <button
+        type="button"
+        data-testid="discard-changes-confirm-book"
+        onClick={() => onConfirm('book')}
+      >
+        Discard book
       </button>
-      <button type="button" data-testid="wipe-confirm-all" onClick={() => onConfirm('all')}>
-        Wipe draft
+      <button
+        type="button"
+        data-testid="discard-changes-confirm-all"
+        onClick={() => onConfirm('all')}
+      >
+        Discard draft
       </button>
-      <button type="button" data-testid="wipe-modal-cancel" onClick={onCancel}>
+      <button type="button" data-testid="discard-changes-modal-cancel" onClick={onCancel}>
         Cancel
       </button>
     </div>
@@ -1769,18 +1783,18 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('pt9-import-banner')).not.toBeInTheDocument();
     });
 
-    it('silences Save, Save As, and Wipe while an import is open', async () => {
+    it('silences Save, Save As, and Discard Unsaved Changes while an import is open', async () => {
       mockImportCommands();
       await renderImportView();
       mockSendCommand.mockClear();
 
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
       await userEvent.click(screen.getByTestId('tab-toolbar-save-as'));
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
+      await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
 
       expect(mockSendCommand).not.toHaveBeenCalled();
       expect(screen.queryByTestId('save-as-modal')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('wipe-modal-panel')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument();
     });
 
     /**
@@ -4188,17 +4202,17 @@ describe('InterlinearizerLoader', () => {
       return () => act(async () => finishSave(JSON.stringify(STUB_ACTIVE_PROJECT)));
     }
 
-    it('shows the save running, and holds New, Save, Save As, and Wipe while it does', async () => {
+    it('shows the save running, and holds New, Save, Save As, and Discard Unsaved Changes while it does', async () => {
       await startHeldSave();
 
       expect(screen.getByTestId('saving-indicator')).toBeInTheDocument();
       await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
       await userEvent.click(screen.getByTestId('tab-toolbar-save-as'));
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
+      await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
-      expect(screen.queryByTestId('wipe-modal-panel')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument();
       // Each held command says why it did nothing; the save itself was sent once.
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(4);
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
@@ -4216,8 +4230,8 @@ describe('InterlinearizerLoader', () => {
       await finishSave();
 
       await waitFor(() => expect(screen.queryByTestId('saving-indicator')).not.toBeInTheDocument());
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
-      expect(screen.getByTestId('wipe-modal-panel')).toBeInTheDocument();
+      await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+      expect(screen.getByTestId('discard-changes-modal-panel')).toBeInTheDocument();
       expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
     });
 
@@ -4483,7 +4497,7 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
-    it('keeps the source text across a wipe that replaces the draft', async () => {
+    it('keeps the source text across a discard that replaces the draft', async () => {
       let readerMounts = 0;
       const text = makeSourceText({ status: 'ready' });
       jest.mocked(useSourceTextReader).mockImplementation(() => {
@@ -4500,8 +4514,8 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
       const viewMounts = interlinearizerMountCount;
 
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
-      await userEvent.click(screen.getByTestId('wipe-confirm-all'));
+      await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+      await userEvent.click(screen.getByTestId('discard-changes-confirm-all'));
 
       expect(interlinearizerMountCount).toBeGreaterThan(viewMounts);
       expect(readerMounts).toBe(1);
@@ -4862,16 +4876,24 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
-  describe('wipe command', () => {
-    it('opens the wipe dialog with the active-book flag set when a book is loaded', async () => {
+  describe('discard changes command', () => {
+    /** The draft the last `saveDraft` wrote, if any. */
+    function lastSavedDraft(): DraftProject | undefined {
+      const json = mockSendCommand.mock.calls.findLast(
+        ([c]) => c === 'interlinearizer.saveDraft',
+      )?.[2];
+      return typeof json === 'string' ? JSON.parse(json) : undefined;
+    }
+
+    it('opens the discard dialog with the active-book flag set when a book is loaded', async () => {
       await act(async () => {
         renderLoader();
       });
 
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
+      await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
 
-      // The dialog must appear before anything is wiped, with the loaded book reflected.
-      expect(screen.getByTestId('wipe-modal-panel')).toHaveAttribute(
+      // The dialog must appear before anything is discarded, with the loaded book reflected.
+      expect(screen.getByTestId('discard-changes-modal-panel')).toHaveAttribute(
         'data-has-active-book',
         'true',
       );
@@ -4880,52 +4902,157 @@ describe('InterlinearizerLoader', () => {
       ).toHaveLength(0);
     });
 
-    it('wipes the current book through the draft after confirming the book scope', async () => {
+    it('discards the current book through the draft after confirming the book scope', async () => {
       await act(async () => {
         renderLoader();
       });
 
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
-      await userEvent.click(screen.getByTestId('wipe-confirm-book'));
+      await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+      await userEvent.click(screen.getByTestId('discard-changes-confirm-book'));
 
-      // Confirming a book wipe replaces the draft (saveDraft) and dismisses the dialog.
+      // Confirming a book discard replaces the draft (saveDraft) and dismisses the dialog.
       expect(
         mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft').length,
       ).toBeGreaterThan(0);
-      expect(screen.queryByTestId('wipe-modal-panel')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument();
     });
 
-    it('wipes the whole draft through the draft after confirming the all scope', async () => {
+    it('empties the whole draft after confirming the all scope with no active project', async () => {
       await act(async () => {
         renderLoader();
       });
 
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
-      await userEvent.click(screen.getByTestId('wipe-confirm-all'));
+      await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+      await userEvent.click(screen.getByTestId('discard-changes-confirm-all'));
 
-      const wiped: DraftProject | undefined = (() => {
-        const call = [...mockSendCommand.mock.calls]
-          .reverse()
-          .find(([c]) => c === 'interlinearizer.saveDraft');
-        const json = call?.[2];
-        return typeof json === 'string' ? JSON.parse(json) : undefined;
-      })();
-      expect(wiped?.analysis).toEqual(emptyAnalysis());
-      // Wiping the whole draft is treated as a clean baseline, so it persists not-dirty.
-      expect(wiped?.dirty).toBe(false);
-      expect(screen.queryByTestId('wipe-modal-panel')).not.toBeInTheDocument();
+      expect(lastSavedDraft()?.analysis).toEqual(emptyAnalysis());
+      expect(lastSavedDraft()?.dirty).toBe(false);
+      expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument();
     });
 
-    it('leaves the draft untouched when the wipe dialog is canceled', async () => {
+    describe('with an active project', () => {
+      const saved = analysisApprovingAt('GEN 1:1:0', 'saved');
+
+      /** Serves an unsaved draft, and answers `getProject` for the active project with `read`. */
+      function mockStoredProject(
+        read: () => Promise<string | undefined> = async () =>
+          JSON.stringify({
+            ...STUB_ACTIVE_PROJECT,
+            updatedAt: '2026-01-02T00:00:00Z',
+            analysis: saved,
+          }),
+      ): void {
+        mockSendCommand.mockImplementation(async (...args) => {
+          if (args[0] === 'interlinearizer.getProject') return read();
+          return JSON.stringify({
+            ...emptyDraft(testProjectId),
+            analysis: analysisApprovingAt('GEN 1:1:0', 'unsaved'),
+            dirty: true,
+          });
+        });
+      }
+
+      /** Renders the loader with {@link STUB_ACTIVE_PROJECT} active and confirms `scope`. */
+      async function discard(scope: 'book' | 'all'): Promise<void> {
+        await act(async () => {
+          renderLoader({
+            useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }),
+          });
+        });
+        await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+        await userEvent.click(screen.getByTestId(`discard-changes-confirm-${scope}`));
+      }
+
+      it("restores the project's saved analysis when discarding the entire draft", async () => {
+        mockStoredProject();
+
+        await discard('all');
+
+        await waitFor(() => expect(lastSavedDraft()?.analysis).toEqual(saved));
+      });
+
+      it("restores the current book from the project's saved analysis", async () => {
+        mockStoredProject();
+
+        await discard('book');
+
+        await waitFor(() => expect(lastSavedDraft()?.analysis).toEqual(saved));
+      });
+
+      it('notifies and leaves the draft untouched when the project cannot be read', async () => {
+        mockStoredProject(async () => {
+          throw new Error('storage offline');
+        });
+
+        await discard('all');
+
+        await waitFor(() =>
+          expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+            message: '%interlinearizer_error_discardChanges_failed%',
+            severity: 'error',
+          }),
+        );
+        expect(lastSavedDraft()).toBeUndefined();
+      });
+
+      it('keeps the dialog open and submitting while the project is read', async () => {
+        mockStoredProject(() => new Promise(() => {}));
+
+        await discard('all');
+
+        expect(screen.getByTestId('discard-changes-modal-panel')).toHaveAttribute(
+          'data-is-submitting',
+          'true',
+        );
+      });
+
+      it('dismisses the dialog once the restored content is applied', async () => {
+        mockStoredProject();
+
+        await discard('all');
+
+        await waitFor(() =>
+          expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument(),
+        );
+      });
+
+      it('dismisses the dialog when the project cannot be read', async () => {
+        mockStoredProject(async () => {
+          throw new Error('storage offline');
+        });
+
+        await discard('all');
+
+        await waitFor(() =>
+          expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument(),
+        );
+      });
+
+      it('notifies and leaves the draft untouched when the project no longer exists', async () => {
+        mockStoredProject(async () => undefined);
+
+        await discard('all');
+
+        await waitFor(() =>
+          expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+            message: '%interlinearizer_error_discardChanges_failed%',
+            severity: 'error',
+          }),
+        );
+        expect(lastSavedDraft()).toBeUndefined();
+      });
+    });
+
+    it('leaves the draft untouched when the discard dialog is canceled', async () => {
       await act(async () => {
         renderLoader();
       });
 
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
+      await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
       mockSendCommand.mockClear();
-      await userEvent.click(screen.getByTestId('wipe-modal-cancel'));
+      await userEvent.click(screen.getByTestId('discard-changes-modal-cancel'));
 
-      expect(screen.queryByTestId('wipe-modal-panel')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument();
       expect(
         mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft'),
       ).toHaveLength(0);
@@ -5069,7 +5196,7 @@ describe('InterlinearizerLoader', () => {
       });
     });
 
-    it('resets phraseMode to view when the draft is replaced (wipe)', async () => {
+    it('resets phraseMode to view when the draft is replaced (discard)', async () => {
       await act(async () => {
         renderLoader();
       });
@@ -5088,8 +5215,8 @@ describe('InterlinearizerLoader', () => {
       expect(capturedInterlinearizerProps?.phraseMode.kind).toBe('edit');
 
       // Wiping the whole draft bumps draftVersion, which the loader watches to reset phraseMode.
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
-      await userEvent.click(screen.getByTestId('wipe-confirm-all'));
+      await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+      await userEvent.click(screen.getByTestId('discard-changes-confirm-all'));
 
       expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
     });
@@ -5395,18 +5522,18 @@ describe('analysis store lifetime', () => {
   });
 
   it('rebuilds the store when the draft is replaced wholesale', async () => {
-    // The store's seed is not reactive, so a replacement (New / Open / Wipe) reseeds by remounting
-    // the provider. Hoisting it above the book key must not cost that: a wiped draft whose store
+    // The store's seed is not reactive, so a replacement (New / Open / Discard) reseeds by remounting
+    // the provider. Hoisting it above the book key must not cost that: a discarded draft whose store
     // kept the old analysis would show glosses the draft no longer contains.
     await act(async () => renderLoader());
     const storeBefore = probeStore;
 
     act(() => probeWriteGloss?.('GEN 1:1:0', 'In', 'beginning'));
     await act(async () => {
-      screen.getByTestId('tab-toolbar-wipe').click();
+      screen.getByTestId('tab-toolbar-discard-changes').click();
     });
     await act(async () => {
-      screen.getByTestId('wipe-confirm-all').click();
+      screen.getByTestId('discard-changes-confirm-all').click();
     });
 
     expect(probeStore).not.toBe(storeBefore);
@@ -5495,8 +5622,8 @@ describe('whole-text re-anchoring', () => {
     await renderWithApprovalAt('EXO 1:1:3');
     const { readKey } = readerArgs();
 
-    await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
-    await userEvent.click(screen.getByTestId('wipe-confirm-book'));
+    await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+    await userEvent.click(screen.getByTestId('discard-changes-confirm-book'));
 
     expect(readerArgs().readKey).not.toBe(readKey);
   });
@@ -5701,31 +5828,31 @@ describe('undo and redo', () => {
   });
 
   describe('announcing a step with no one place', () => {
-    /** Renders the loader, glosses a word, and wipes the whole draft. */
-    async function renderAndWipe(): Promise<void> {
+    /** Renders the loader, glosses a word, and discards the whole draft. */
+    async function renderAndDiscard(): Promise<void> {
       await renderAndGloss();
       await act(async () => {
-        screen.getByTestId('tab-toolbar-wipe').click();
+        screen.getByTestId('tab-toolbar-discard-changes').click();
       });
       await act(async () => {
-        screen.getByTestId('wipe-confirm-all').click();
+        screen.getByTestId('discard-changes-confirm-all').click();
       });
     }
 
-    it('announces an undone wipe', async () => {
-      await renderAndWipe();
+    it('announces an undone discard', async () => {
+      await renderAndDiscard();
 
       await act(async () => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
-        expect.objectContaining({ message: '%interlinearizer_undone_wipeAll%' }),
+        expect.objectContaining({ message: '%interlinearizer_undone_discardAll%' }),
       );
     });
 
-    it('announces a redone wipe', async () => {
-      await renderAndWipe();
+    it('announces a redone discard', async () => {
+      await renderAndDiscard();
       act(() => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
@@ -5735,20 +5862,20 @@ describe('undo and redo', () => {
       });
 
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
-        expect.objectContaining({ message: '%interlinearizer_redone_wipeAll%' }),
+        expect.objectContaining({ message: '%interlinearizer_redone_discardAll%' }),
       );
     });
 
-    describe('naming the book of an undone book wipe', () => {
-      /** Renders the loader, glosses a word in GEN, wipes GEN, and undoes the wipe. */
-      async function wipeBookAndUndo(): Promise<void> {
+    describe('naming the book of an undone book discard', () => {
+      /** Renders the loader, glosses a word in GEN, discards GEN, and undoes the discard. */
+      async function discardBookAndUndo(): Promise<void> {
         jest.mocked(useLocalizedStrings).mockImplementation((keys: readonly string[]) => [
           Object.fromEntries(
             keys.map((k) => [
               k,
               {
-                '%interlinearizer_undone_wipeBook%': 'Undid wiping {book}.',
-                '%interlinearizer_redone_wipeBook%': 'Redid wiping {book}.',
+                '%interlinearizer_undone_discardBook%': 'Undid wiping {book}.',
+                '%interlinearizer_redone_discardBook%': 'Redid wiping {book}.',
               }[k] ?? k,
             ]),
           ),
@@ -5756,10 +5883,10 @@ describe('undo and redo', () => {
         ]);
         await renderAndGloss();
         await act(async () => {
-          screen.getByTestId('tab-toolbar-wipe').click();
+          screen.getByTestId('tab-toolbar-discard-changes').click();
         });
         await act(async () => {
-          screen.getByTestId('wipe-confirm-book').click();
+          screen.getByTestId('discard-changes-confirm-book').click();
         });
         await act(async () => {
           fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
@@ -5773,7 +5900,7 @@ describe('undo and redo', () => {
             localizeKey === '%LocalizedId.GEN%' ? 'Mwanzo' : localizeKey,
           );
 
-        await wipeBookAndUndo();
+        await discardBookAndUndo();
 
         expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
           expect.objectContaining({ message: 'Undid wiping Mwanzo.' }),
@@ -5785,7 +5912,7 @@ describe('undo and redo', () => {
           .mocked(papi.localization.getLocalizedString)
           .mockImplementation(async ({ localizeKey }) => localizeKey);
 
-        await wipeBookAndUndo();
+        await discardBookAndUndo();
 
         expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
           expect.objectContaining({ message: 'Undid wiping Genesis.' }),
@@ -5798,7 +5925,7 @@ describe('undo and redo', () => {
           jest
             .mocked(papi.localization.getLocalizedString)
             .mockImplementation(() => new Promise(() => {}));
-          await wipeBookAndUndo();
+          await discardBookAndUndo();
 
           await act(async () => {
             jest.advanceTimersByTime(BOOK_NAME_TIMEOUT_MS);
@@ -5824,7 +5951,7 @@ describe('undo and redo', () => {
           )
           .mockResolvedValue('Mwanzo');
 
-        await wipeBookAndUndo();
+        await discardBookAndUndo();
         await act(async () => {
           fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
         });
@@ -6205,13 +6332,13 @@ describe('undo and redo', () => {
     });
   });
 
-  it('brings wiped glosses back on Ctrl+Z', async () => {
+  it('brings discarded glosses back on Ctrl+Z', async () => {
     await renderAndGloss();
     await act(async () => {
-      screen.getByTestId('tab-toolbar-wipe').click();
+      screen.getByTestId('tab-toolbar-discard-changes').click();
     });
     await act(async () => {
-      screen.getByTestId('wipe-confirm-all').click();
+      screen.getByTestId('discard-changes-confirm-all').click();
     });
 
     act(() => {

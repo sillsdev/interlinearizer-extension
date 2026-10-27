@@ -75,8 +75,8 @@ const RENDERER_SETTLE_TIMEOUT = process.env.CI ? 180_000 : 120_000;
  * 4. Records the PID and user-data dir for {@link globalTeardownCdp}.
  *
  * The isolated user-data dir means the run never touches a developer's real profile; the feature
- * tests self-establish every precondition (they create the E2E project, navigate, and wipe the
- * draft at the start of each test), so a fresh profile is sufficient.
+ * tests self-establish every precondition (they create the E2E project, navigate, and discard the
+ * draft's changes at the start of each test), so a fresh profile is sufficient.
  *
  * If the CDP port is already in use, a warm instance is assumed (a developer's own `npm run
  * start:cdp`) and setup is a no-op: no app is launched and nothing is recorded for teardown, so the

@@ -107,10 +107,10 @@ export const MOCK_SAVE_AS_MENU_ITEM: MenuItemContainingCommand = {
   localizeNotes: '',
 };
 
-/** Sentinel menu item passed by the mock toolbar when the wipe button is clicked. */
-export const MOCK_WIPE_MENU_ITEM: MenuItemContainingCommand = {
-  label: '%interlinearizer_wipe%',
-  command: 'interlinearizer.wipe',
+/** Sentinel menu item passed by the mock toolbar when the discard-changes button is clicked. */
+export const MOCK_DISCARD_CHANGES_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_discardChanges%',
+  command: 'interlinearizer.openDiscardChangesModal',
   group: 'interlinearizer.draftActions',
   order: 1,
   localizeNotes: '',
@@ -259,10 +259,10 @@ export function TabToolbar({
       {onSelectProjectMenuItem && (
         <button
           type="button"
-          data-testid="tab-toolbar-wipe"
-          onClick={() => onSelectProjectMenuItem(MOCK_WIPE_MENU_ITEM)}
+          data-testid="tab-toolbar-discard-changes"
+          onClick={() => onSelectProjectMenuItem(MOCK_DISCARD_CHANGES_MENU_ITEM)}
         >
-          Wipe
+          Discard Changes
         </button>
       )}
       {onSelectProjectMenuItem && (

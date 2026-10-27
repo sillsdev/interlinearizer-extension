@@ -7,7 +7,7 @@
   "license": "MIT",
   "main": "src/main.ts",
   "extensionDependencies": {},
-  "elevatedPrivileges": [],
+  "elevatedPrivileges": ["createProcess"],
   "types": "src/types/interlinearizer.d.ts",
   "menus": "contributions/menus.json",
   "settings": "contributions/settings.json",

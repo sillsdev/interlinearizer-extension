@@ -96,11 +96,11 @@
             "command": "interlinearizer.openSaveAsModal"
           },
           {
-            "label": "%interlinearizer_wipe%",
-            "localizeNotes": "Interlinearizer top menu > Open the wipe dialog to remove the current book's or the whole draft's analysis",
+            "label": "%interlinearizer_discardChanges%",
+            "localizeNotes": "Interlinearizer top menu > Open the dialog that discards the unsaved analysis of the current book or the whole draft",
             "group": "interlinearizer.draftActions",
             "order": 1,
-            "command": "interlinearizer.wipe"
+            "command": "interlinearizer.openDiscardChangesModal"
           },
           {
             "label": "%interlinearizer_openLexiconChooser%",

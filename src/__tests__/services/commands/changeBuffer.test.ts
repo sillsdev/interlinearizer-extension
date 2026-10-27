@@ -109,6 +109,9 @@ describe('ChangeBuffer', () => {
       'pa-1',
     ]);
     await expect(buffer.getPhraseAnalyses(['pa-1']).then(ids)).resolves.toStrictEqual(['pa-1']);
+    await expect(buffer.getPhraseAnalysisLinks(['pa-1', 'missing'])).resolves.toStrictEqual([
+      phrase,
+    ]);
     await expect(buffer.getSegmentAnalyses(['sa-1']).then(ids)).resolves.toStrictEqual(['sa-1']);
     await expect(buffer.findLinksBySegment(['GEN 1:1'])).resolves.toStrictEqual([segmentLink]);
     await expect(buffer.findLinksByToken(['GEN 1:1:3'])).resolves.toStrictEqual({
@@ -177,6 +180,75 @@ describe('ChangeBuffer', () => {
     expect(buffer.toChangeSet('restore').tokenAnalyses).toStrictEqual({
       puts: [payload('ta-1')],
       deletes: [],
+    });
+  });
+
+  it("answers with the scope's record as stored while none is staged, and stages none", async () => {
+    const buffer = await bufferOver();
+
+    await expect(buffer.getScope()).resolves.toStrictEqual(
+      expect.objectContaining({ sourceProjectId: 'src', analysisLanguages: [] }),
+    );
+    expect(buffer.toChangeSet('nothing')).toStrictEqual({ intent: 'nothing' });
+  });
+
+  it("answers with the staged scope's record as it stood when staged, and collects it", async () => {
+    const buffer = await bufferOver();
+    const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+    const scope = { ...(await buffer.getScope()), segmentation };
+
+    buffer.putScope(scope);
+    segmentation.removedVerseStarts.push('GEN 1:3:0');
+
+    await expect(buffer.getScope()).resolves.toMatchObject({
+      segmentation: { removedVerseStarts: ['GEN 1:2:0'] },
+    });
+    expect(buffer.toChangeSet('merge').scope).toMatchObject({
+      segmentation: { removedVerseStarts: ['GEN 1:2:0'] },
+    });
+  });
+
+  describe('findLinksInBooks', () => {
+    const segmentLink = {
+      id: 'sl-1',
+      analysisId: 'sa-1',
+      ...FIXTURE_STAMPS,
+      status: 'approved' as const,
+      segmentId: 'GEN 1:1',
+    };
+
+    /** A buffer over links in GEN and EXO that stages a GEN token link stale and a new GEN phrase. */
+    async function bufferWithStagedLinks(): Promise<ChangeBuffer> {
+      const buffer = await bufferOver({
+        tokenAnalysisLinks: [
+          link('tl-1', 'ta-1', 'GEN 1:1:0'),
+          link('tl-exo', 'ta-1', 'EXO 1:1:0'),
+        ],
+        phraseAnalysisLinks: [makePhraseLink('pl-1', ['GEN 1:1:0', 'GEN 1:1:3'])],
+        segmentAnalysisLinks: [segmentLink],
+      });
+      buffer.put('tokenAnalysisLinks', { ...link('tl-1', 'ta-1', 'GEN 1:1:0'), status: 'stale' });
+      buffer.create('phraseAnalysisLinks', makePhraseLink('pl-new', ['GEN 1:2:0', 'GEN 1:2:3']));
+      return buffer;
+    }
+
+    it('finds the links in the books asked for through the staged changes', async () => {
+      const buffer = await bufferWithStagedLinks();
+
+      const found = await buffer.findLinksInBooks(['GEN']);
+
+      expect(ids(found.tokenAnalysisLinks)).toStrictEqual(['tl-1']);
+      expect(ids(found.phraseAnalysisLinks)).toStrictEqual(['pl-1', 'pl-new']);
+      expect(found.segmentAnalysisLinks).toStrictEqual([segmentLink]);
+    });
+
+    it('finds only the links at the statuses asked for, as the staged changes leave them', async () => {
+      const buffer = await bufferWithStagedLinks();
+
+      const found = await buffer.findLinksInBooks(['GEN'], ['approved']);
+
+      expect(found.tokenAnalysisLinks).toStrictEqual([]);
+      expect(ids(found.phraseAnalysisLinks)).toStrictEqual(['pl-1', 'pl-new']);
     });
   });
 

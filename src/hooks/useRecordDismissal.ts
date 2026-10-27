@@ -6,7 +6,7 @@ type RecordDismissalOptions = {
   records: readonly string[];
   /** The book `records` were found in, `undefined` while no book's records are observable. */
   observedBookRef: string | undefined;
-  /** Bumped by every wholesale draft replacement (New / Open / Wipe). */
+  /** Bumped by every wholesale draft replacement (New / Open / Discard). */
   draftVersion: number;
   /** The WebView-state key the dismissal is stored under, one per banner. */
   stateKey: string;

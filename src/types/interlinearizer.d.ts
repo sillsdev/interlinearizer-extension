@@ -144,12 +144,12 @@ declare module 'papi-shared-types' {
     'interlinearizer.openSaveAsModal': () => Promise<void>;
 
     /**
-     * Opens the wipe dialog in the Interlinearizer WebView, where the user chooses to remove the
-     * currently viewed book's analysis or the entire draft's analysis and confirms. The backend
+     * Opens the discard-changes dialog in the Interlinearizer WebView, where the user chooses to
+     * discard the unsaved analysis of the currently viewed book or of the entire draft. The backend
      * registers this command to make it visible to the platform menu system; all logic executes in
      * the WebView.
      */
-    'interlinearizer.wipe': () => Promise<void>;
+    'interlinearizer.openDiscardChangesModal': () => Promise<void>;
 
     /**
      * Opens the analysis catalog panel in the Interlinearizer WebView, listing every analysis the
@@ -315,9 +315,9 @@ declare module 'papi-shared-types' {
 
     /**
      * Persists the draft working buffer for the given source project. Called from the WebView after
-     * every edit (auto-save) and whenever the draft is reset (New), opened from a project, or
-     * wiped. Analysis for a book whose stored analysis could not be read is left out of the write,
-     * and the user is told which books.
+     * every edit (auto-save) and whenever the draft is reset (New), opened from a project, or has
+     * its changes discarded. Analysis for a book whose stored analysis could not be read is left
+     * out of the write, and the user is told which books.
      *
      * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
      * @param draftJson - JSON-stringified `DraftProject` to persist.
@@ -512,6 +512,179 @@ declare module 'papi-shared-types' {
       sessionId: string,
       analysisId: string,
     ) => Promise<string>;
+
+    /**
+     * Adds an approved phrase occurrence over `tokens`, given in document order. It shares a
+     * content-identical stored payload where one exists.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If `tokens` is empty or not within one segment of the text, the project has no text
+     *   for the first token's book, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
+     */
+    'interlinearizer.createPhrase': (
+      sessionId: string,
+      tokens: import('interlinearizer').TokenSnapshot[],
+    ) => Promise<string>;
+
+    /**
+     * Gives a phrase occurrence a new token run, in document order, keeping its gloss. An empty run
+     * removes the occurrence.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If `tokens` is not within one segment of the text, the project has no text for the
+     *   first token's book, the session is read-only or not open, or the edit is refused or fails
+     *   (logged before rethrowing).
+     */
+    'interlinearizer.updatePhrase': (
+      sessionId: string,
+      phraseId: string,
+      tokens: import('interlinearizer').TokenSnapshot[],
+    ) => Promise<string>;
+
+    /**
+     * Removes a phrase occurrence, with its payload unless another occurrence shares that payload.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.deletePhrase': (sessionId: string, phraseId: string) => Promise<string>;
+
+    /**
+     * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token
+     * run. The absorbed occurrence, when named, is removed.
+     *
+     * @param sessionId - As `interlinearizer.openSession` returned it.
+     * @param targetPhraseId - The target occurrence's link ID.
+     * @param tokens - In document order.
+     * @param absorbedPhraseId - The absorbed occurrence's link ID. Absent or `null` when the
+     *   neighbor is a token in no phrase.
+     * @returns A JSON string of the changes it applied.
+     * @throws If `tokens` is empty or not within one segment of the text, the project has no text
+     *   for the first token's book, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
+     */
+    'interlinearizer.mergePhrases': (
+      sessionId: string,
+      targetPhraseId: string,
+      tokens: import('interlinearizer').TokenSnapshot[],
+      absorbedPhraseId?: string | null,
+    ) => Promise<string>;
+
+    /**
+     * Writes a phrase occurrence's gloss in a session's analysis language; a blank value clears it.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.writePhraseGloss': (
+      sessionId: string,
+      phraseId: string,
+      value: string,
+    ) => Promise<string>;
+
+    /**
+     * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the occurrence would be approved over tokens not within one segment of the text,
+     *   the project has no text for their book, the session is read-only or not open, or the edit
+     *   is refused or fails (logged before rethrowing).
+     */
+    'interlinearizer.approvePhrase': (sessionId: string, phraseId: string) => Promise<string>;
+
+    /**
+     * Splits a phrase occurrence just after `splitAfterTokenRef`, in the document order of that
+     * token's book as the session's source project holds it. A half left with a single token leaves
+     * that token in no phrase.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the project has no text for the token's book, the session is read-only or not
+     *   open, or the edit is refused or fails (logged before rethrowing).
+     */
+    'interlinearizer.splitPhrase': (
+      sessionId: string,
+      phraseId: string,
+      splitAfterTokenRef: string,
+    ) => Promise<string>;
+
+    /**
+     * Writes a segment's free translation in a session's analysis language, refreshing the surface
+     * text stored with it. A blank value clears the translation in that language. The translation's
+     * record is removed once it holds nothing, unless another link names it. A write that leaves
+     * the translation in that language as it was changes nothing, unless it adopts a stale
+     * translation.
+     *
+     * A segment with no approved translation adopts the stale translation `adoptStaleAnalysisId`
+     * names, approving it for the segment, so that the stale translation's other languages carry
+     * over. Leave `adoptStaleAnalysisId` out, or pass `null`, when the value was typed over no
+     * stale translation.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.writeSegmentFreeTranslation': (
+      sessionId: string,
+      segmentId: string,
+      surfaceText: string,
+      value: string,
+      adoptStaleAnalysisId?: string | null,
+    ) => Promise<string>;
+
+    /**
+     * Merges the segment beginning at `secondSegmentStartRef` into the one before it. A segment
+     * with no verse text directly before it, such as the book's first or one after a heading, is
+     * left as it is.
+     *
+     * @returns A JSON string of the changes it applied, with a scope record carrying the new
+     *   boundaries when they change.
+     * @throws If the project has no text for the token's book, the session is read-only or not
+     *   open, or the edit fails (logged before rethrowing).
+     */
+    'interlinearizer.mergeSegments': (
+      sessionId: string,
+      secondSegmentStartRef: string,
+    ) => Promise<string>;
+
+    /**
+     * Splits a segment so a new one begins at `tokenRef`. Every approved phrase the new boundary
+     * would cut is split first, in the same edit, so that no phrase spans two segments.
+     *
+     * @returns A JSON string of the changes it applied, with a scope record carrying the new
+     *   boundaries when they change.
+     * @throws If the project has no text for the token's book, the session is read-only or not
+     *   open, or the edit is refused or fails (logged before rethrowing).
+     */
+    'interlinearizer.splitSegment': (sessionId: string, tokenRef: string) => Promise<string>;
+
+    /**
+     * Moves a segment boundary from `fromRef` to `toRef`, as pulling an edge token across a
+     * boundary does. Every approved phrase a boundary before `toRef` would cut is split first, in
+     * the same edit.
+     *
+     * @returns A JSON string of the changes it applied, with a scope record carrying the new
+     *   boundaries when they change.
+     * @throws If the project has no text for the book of `toRef`, the session is read-only or not
+     *   open, or the edit is refused or fails (logged before rethrowing).
+     */
+    'interlinearizer.moveBoundary': (
+      sessionId: string,
+      fromRef: string,
+      toRef: string,
+    ) => Promise<string>;
+
+    /**
+     * Served by the interlinearizer's C# host rather than the extension, to show the two can talk.
+     *
+     * @returns The message, echoed back, with the .NET runtime version and process id that
+     *   answered.
+     */
+    'interlinearizer.csharpPing': (
+      message: string,
+    ) => Promise<{ message: string; runtimeVersion: string; processId: number }>;
 
     /**
      * Turns the extension host's timing entries on or off, discarding any it holds. Off until

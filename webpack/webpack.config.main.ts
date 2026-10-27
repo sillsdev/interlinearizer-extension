@@ -71,6 +71,8 @@ const configMain: webpack.Configuration = merge(configBase, {
         { from: 'package.json', to: './', noErrorOnMissing: true },
         // We need to distribute the manifest.json to inform Platform.Bible about the extension
         { from: 'manifest.json', to: './' },
+        // The C# host, once `npm run build:c-sharp` has published it
+        { from: 'c-sharp/publish', to: './c-sharp/', noErrorOnMissing: true },
       ],
     }),
   ],

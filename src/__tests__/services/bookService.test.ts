@@ -9,9 +9,11 @@ import {
   closeAllProjects,
   closeProject,
   getBookOutline,
+  getBookSegments,
   getSegments,
   getTextReadStatus,
   getTokenizedBook,
+  getVerseBook,
   getWritingSystem,
   isFormInText,
   onBookTextChanged,
@@ -535,6 +537,79 @@ describe('getSegments', () => {
     await getSegments('src', 'EXO', 0, 1);
 
     expect(mockPdpGet).toHaveBeenCalledWith('platform.base', 'src');
+  });
+});
+
+describe('getVerseBook', () => {
+  beforeEach(() => {
+    tokenizeToVerseBook();
+    segmentStandIns();
+  });
+
+  it('serves the book its pages are segmented from', async () => {
+    serveProject((bookId) => usj(bookId));
+    await getSegments('src', 'GEN', 0, 1);
+
+    const served = await getVerseBook('src', 'GEN');
+
+    expect(served).toBe(VERSE_BOOK);
+    expect(jest.mocked(resegmentBook).mock.calls[0][0]).toBe(served);
+  });
+
+  it('serves a kept book without reading the language tag again', async () => {
+    serveProject((bookId) => usj(bookId));
+    await getBookOutline('src', 'GEN');
+    mockPdpGet.mockClear();
+
+    await getVerseBook('src', 'GEN');
+
+    expect(mockPdpGet).not.toHaveBeenCalledWith('platform.base', 'src');
+  });
+
+  it('resolves undefined when the project has no text for the book', async () => {
+    serveProject(() => undefined);
+
+    await expect(getVerseBook('src', 'GEN')).resolves.toBeUndefined();
+  });
+});
+
+describe('getBookSegments', () => {
+  beforeEach(() => {
+    tokenizeToVerseBook();
+    segmentStandIns();
+  });
+
+  it('serves the book segmented by the boundaries named', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    const segments = await getBookSegments('src', 'GEN', JSON.stringify(DELTA));
+
+    expect(segments).toBe(SEGMENTED);
+    expect(resegmentBook).toHaveBeenCalledWith(VERSE_BOOK, REANCHORED);
+  });
+
+  it('serves the segments its pages hold for the same boundaries without segmenting again', async () => {
+    serveProject((bookId) => usj(bookId));
+    await getSegments('src', 'GEN', 0, 1, JSON.stringify(DELTA));
+
+    await getBookSegments('src', 'GEN', JSON.stringify(DELTA));
+
+    expect(resegmentBook).toHaveBeenCalledTimes(1);
+  });
+
+  it('times segmenting the book as part of the request', async () => {
+    const timed = jest.spyOn(perfMarks, 'perfTime');
+    serveProject((bookId) => usj(bookId));
+
+    await getBookSegments('src', 'GEN');
+
+    expect(timed).toHaveBeenCalledWith('getBookSegments:resegment', expect.any(Function));
+  });
+
+  it('resolves undefined when the project has no text for the book', async () => {
+    serveProject(() => undefined);
+
+    await expect(getBookSegments('src', 'GEN')).resolves.toBeUndefined();
   });
 });
 

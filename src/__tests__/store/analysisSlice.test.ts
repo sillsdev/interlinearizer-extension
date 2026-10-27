@@ -912,11 +912,12 @@ describe('mergePhrases', () => {
     expect(phraseAnalysisLinks[0].tokens).toHaveLength(1);
   });
 
-  it('no-ops on the target updates when the target phrase id is not found', () => {
+  it('leaves the analysis alone when the target phrase id is not found', () => {
     const absorbed = makePhraseLink('phrase-2', ['tok-b']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(absorbed), analysisLanguage: 'und' },
     });
+    const before = store.getState().analysis;
 
     store.dispatch(
       mergePhrases({
@@ -926,10 +927,7 @@ describe('mergePhrases', () => {
       }),
     );
 
-    // The absorbed phrase is still removed; the missing target simply has no link/analysis to grow.
-    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
-    expect(phraseAnalyses).toHaveLength(0);
-    expect(phraseAnalysisLinks).toHaveLength(0);
+    expect(store.getState().analysis).toBe(before);
   });
 });
 
@@ -1301,12 +1299,13 @@ describe('phrase payload sharing', () => {
       expect(payloadOf(store, 'occ-1')?.gloss).toStrictEqual({ fr: 'pas' });
     });
 
-    it('leaves an unglossed phrase unglossed on a blank value', () => {
+    it('leaves the analysis alone on a blank value when the phrase has no gloss', () => {
       const store = phraseStore([BARE], [occurrence('occ-1', 'pa-bare', ['tok-1'])]);
+      const before = store.getState().analysis;
 
       store.dispatch(writePhraseGloss({ phraseId: 'occ-1', value: '' }));
 
-      expect(payloadOf(store, 'occ-1')).not.toHaveProperty('gloss');
+      expect(store.getState().analysis).toBe(before);
     });
 
     it('joins an unglossed payload when a clear leaves it matching', () => {

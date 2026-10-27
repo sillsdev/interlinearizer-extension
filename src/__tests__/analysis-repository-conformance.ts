@@ -1264,6 +1264,14 @@ export function describeAnalysisRepositoryConformance(
         ).resolves.toStrictEqual(fullAnalysis().segmentAnalyses);
       });
 
+      it('gets phrase links by id, once per id, skipping ids with nothing stored', async () => {
+        const repository = await overFullDraft();
+
+        await expect(
+          repository.getPhraseAnalysisLinks(['pa-in-the', 'pl-missing', 'pa-in-the']),
+        ).resolves.toStrictEqual(fullAnalysis().phraseAnalysisLinks);
+      });
+
       it('finds the token links on tokens, and the phrase links touching them, each once', async () => {
         const repository = await overFullDraft();
 

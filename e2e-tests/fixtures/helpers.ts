@@ -1695,28 +1695,32 @@ export async function ensureE2eProjectActive(
 }
 
 /**
- * Wipe the entire draft's analysis via the visible UI (Project menu → Wipe… → "Entire draft" →
- * Wipe). Standard reset step for mutating feature tests on the shared CDP instance: run it at the
- * START of a test (never at the end) so a previously failed run self-heals instead of poisoning the
- * next one.
+ * Discard the entire draft's unsaved changes via the visible UI (Project menu → Discard Unsaved
+ * Changes… → "Entire draft" → Discard). With the e2e project active, the discard empties the draft,
+ * because no test saves to that project. Standard reset step for mutating feature tests on the
+ * shared CDP instance: run it at the START of a test (never at the end) so a previously failed run
+ * self-heals instead of poisoning the next one.
  *
- * @throws If the wipe dialog does not open or does not close after confirming.
+ * @throws If the discard dialog does not open or does not close after confirming.
  */
-export async function wipeDraft(page: Page): Promise<void> {
+export async function discardAllChanges(page: Page): Promise<void> {
   const frame = await openInterlinearizerProjectMenu(page);
-  await frame.getByRole('menuitem', { name: /Wipe/i }).first().click();
+  await frame
+    .getByRole('menuitem', { name: /Discard Unsaved Changes/i })
+    .first()
+    .click();
 
-  const wipeDialogTitle = frame.getByTestId('wipe-modal-title');
-  await expect(wipeDialogTitle).toBeVisible({ timeout: 5_000 });
-  const scopeAll = frame.getByTestId('wipe-scope-all');
+  const dialogTitle = frame.getByTestId('discard-changes-modal-title');
+  await expect(dialogTitle).toBeVisible({ timeout: 5_000 });
+  const scopeAll = frame.getByTestId('discard-changes-scope-all');
   // `force`: on a slow/software-rendered CI display the just-opened modal overlay hasn't won the
   // hit-test yet, so a normal click is intercepted by the iframe's `#root` for a few frames and
   // times out. We've asserted the modal is open and target an element inside it by a unique test id,
   // so skipping the hit-test check is safe.
   await expect(scopeAll).toBeEnabled({ timeout: 5_000 });
   await scopeAll.check({ force: true });
-  await frame.getByTestId('wipe-confirm').click({ force: true });
-  await expect(wipeDialogTitle).not.toBeVisible({ timeout: 10_000 });
+  await frame.getByTestId('discard-changes-confirm').click({ force: true });
+  await expect(dialogTitle).not.toBeVisible({ timeout: 10_000 });
 }
 
 /**

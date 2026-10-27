@@ -86,10 +86,9 @@ export function sortByDocOrder<T extends { tokenRef: string }>(
  * Slices a phrase's tokens, in document order, into the half up to and including the boundary token
  * and the remainder after it; `undefined` when the boundary token is not among them.
  *
- * The single source of this slice, so the destructive-border preview cannot drift from the split it
- * previews.
+ * The single source of this slice, so that a split and its preview always slice a phrase alike.
  */
-function sliceAtBoundary(
+export function sliceAtBoundary(
   tokens: readonly TokenSnapshot[],
   splitAfterTokenRef: string,
   tokenDocOrder: ReadonlyMap<string, number>,
@@ -185,7 +184,10 @@ export type StraddledPhrase = {
  *
  * The single source of truth for whether a boundary cuts a phrase, so deciding to force-break one
  * and deciding whether a boundary is safe to offer can never disagree. A boundary ref absent from
- * the document-order map yields no matches.
+ * the document-order map yields no matches. A phrase token absent from that map falls on neither
+ * side.
+ *
+ * @returns The matches in link-id order, whatever order `phraseLinks` holds them in.
  */
 export function phrasesStraddlingBoundary(
   boundaryRef: string,
@@ -195,13 +197,13 @@ export function phrasesStraddlingBoundary(
   const boundaryOrder = tokenDocOrder.get(boundaryRef);
   if (boundaryOrder === undefined) return [];
   const straddled: StraddledPhrase[] = [];
-  Array.from(phraseLinks).forEach((link) => {
+  const byId = Array.from(phraseLinks).sort((a, b) => a.id.localeCompare(b.id));
+  byId.forEach((link) => {
     let lastBefore: TokenSnapshot | undefined;
     let lastBeforeOrder = Number.NEGATIVE_INFINITY;
     let hasAfter = false;
     link.tokens.forEach((t) => {
       const order = tokenDocOrder.get(t.tokenRef);
-      /* v8 ignore next -- phrase tokens are word tokens, which the doc-order map always contains */
       if (order === undefined) return;
       if (order < boundaryOrder) {
         if (order > lastBeforeOrder) {

@@ -12,6 +12,7 @@ npm run build            # Build both main and web-view bundles
 npm run build:main       # Build main extension only
 npm run build:web-view   # Build React WebView only
 npm run watch            # Continuous rebuild on changes
+npm run build:c-sharp    # Publish the C# host for every platform (or name some: -- win-x64)
 
 # Lint & Format
 npm run lint             # Run ESLint + stylelint + tsc --noEmit + dependency scope
@@ -23,6 +24,7 @@ npm test                 # Run full Jest suite
 npm run test:coverage    # Run with coverage (100% threshold enforced)
 npm test -- path/to/file.test.ts                 # Run a single test file
 npm test -- --testNamePattern="pattern"          # Run tests matching name
+npm run test:c-sharp                             # Check the C# host published for this machine starts
 
 # Performance (results land in perf/results/)
 npm run perf:capture     # Capture the WEB sample's USJ from a launched app into perf/.cache
@@ -48,6 +50,10 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 - `deactivate()` — clears `openWebViewsByProject`, closes every session, lets go of every book `bookService` keeps, and returns `true`.
 
 `openWebViewsByProject` (`Map<string, string>`) tracks one open WebView ID per project to prevent duplicates; reopening an already-open project brings that tab to front via the `existingId` option.
+
+### C# host
+
+[c-sharp/InterlinearizerHost](c-sharp/InterlinearizerHost) is a .NET program the extension starts on activation ([csharpHost.ts](src/services/csharpHost.ts)) and stops on deactivation. It registers its commands on the PAPI network, so TypeScript calls them with `papi.commands.sendCommand` like any other. It exits once its connection to Platform.Bible closes. It targets .NET 10, which Harmony needs, and is published self-contained for each platform Platform.Bible ships for, since Platform.Bible's own runtime is private to its process. It talks to the network through its own small client, since core's is not packaged for extensions to use; that client offers the methods core's does, so services can move into core later. The build copies whatever `npm run build:c-sharp` has published; without it the extension logs that the host could not start and carries on.
 
 ### WebView UI
 
@@ -88,7 +94,7 @@ Saved projects are listed through [ProjectSummaries](src/services/projectSummari
 
 [AnalysisSessions](src/services/analysisSessions.ts) keeps the host's sessions, behind the `openSession`, `closeSession` and `setAnalysisLanguage` commands. A session is a handle on either one source project's draft, paired with the interlinear project it saves to, or a read-only Paratext 9 import. A source has at most one session: opening another closes it. Each session runs its commands one at a time through `run`. A command that changes stored analysis goes through `runEdit` instead, which a read-only session refuses. An edit reaches the repository as a `ChangeSet` of whole-record puts and deletes, applied through the session's [EditHistory](src/services/editHistory.ts) so that undo can revert it; boundary changes ride in the change set's scope record. The WebView doesn't use sessions yet.
 
-Host commands live in [src/services/commands/](src/services/commands/), one module per family. A command stages its changes in a [ChangeBuffer](src/services/commands/changeBuffer.ts), whose reads answer as the repository will once those changes apply, and `AnalysisSessions.edit` applies what it staged as one undo step after the approval rule passes. Each command copies the reducer it replaces, step for step, and its parity tests run one input through both with [runParity](src/__tests__/services/commands/parity.ts); a reducer change in Phase 3 updates its command and parity tests in the same PR.
+Host commands live in [src/services/commands/](src/services/commands/), one module per family. A command stages its changes in a [ChangeBuffer](src/services/commands/changeBuffer.ts), whose reads answer as the repository will once those changes apply, and `AnalysisSessions.edit` applies what it staged as one undo step after the approval rule passes. Each command copies the reducer it replaces, step for step, and its parity tests run one input through both with [runParity](src/__tests__/services/commands/parity.ts). A boundary command replaces no reducer; it copies the WebView's boundary dispatch, phrase breaks included, and `runBoundaryParity` runs one edit through both. A reducer or dispatch change in Phase 3 updates its command and parity tests in the same PR.
 
 ### Components
 

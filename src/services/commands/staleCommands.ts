@@ -146,19 +146,50 @@ export type KeepStaleFreeTranslationRequest = {
   now: string;
 };
 
+/** A segment analysis with the link that places it. */
+export type PlacedTranslation = { link: SegmentAnalysisLink; analysis: SegmentAnalysis };
+
 /**
  * The stale translation `analysisId` with its stale link, or `undefined` when there is none. The
  * link is the translation's only one: every writer gives a segment analysis exactly one link.
  * Nothing checks this convention.
  */
-async function findStaleTranslation(
+export async function findStaleTranslation(
   buffer: ChangeBuffer,
   analysisId: string,
-): Promise<{ link: SegmentAnalysisLink; analysis: SegmentAnalysis } | undefined> {
+): Promise<PlacedTranslation | undefined> {
   const { segmentAnalysisLinks } = await buffer.findLinksToAnalyses([analysisId]);
   const link = preferredLink(segmentAnalysisLinks.filter(({ status }) => status === 'stale'));
   const [analysis] = await buffer.getSegmentAnalyses([analysisId]);
   return link && analysis ? { link, analysis } : undefined;
+}
+
+/**
+ * Stages approving the stale translation `analysisId` for `segmentId`. Its link moves to
+ * `segmentId`, so a translation whose own segment has vanished lands where it was shown. Only the
+ * link is staged, leaving the analysis to the caller.
+ *
+ * Resolves to the translation with its approved link, or `undefined` when the segment already holds
+ * an approved translation or `analysisId` names no stale one.
+ */
+export async function approveStaleTranslation(
+  buffer: ChangeBuffer,
+  segmentId: string,
+  analysisId: string,
+  now: string,
+): Promise<PlacedTranslation | undefined> {
+  const held = await buffer.findLinksBySegment([segmentId]);
+  if (held.some(({ status }) => status === 'approved')) return undefined;
+  const stale = await findStaleTranslation(buffer, analysisId);
+  if (!stale) return undefined;
+  const link: SegmentAnalysisLink = {
+    ...stale.link,
+    status: 'approved',
+    segmentId,
+    updatedAt: now,
+  };
+  buffer.put('segmentAnalysisLinks', link);
+  return { link, analysis: stale.analysis };
 }
 
 /**
@@ -172,13 +203,8 @@ export async function keepStaleFreeTranslation(
   buffer: ChangeBuffer,
   { analysisId, segmentId, surfaceText, now }: KeepStaleFreeTranslationRequest,
 ): Promise<void> {
-  const held = await buffer.findLinksBySegment([segmentId]);
-  if (held.some(({ status }) => status === 'approved')) return;
-  const stale = await findStaleTranslation(buffer, analysisId);
-  if (!stale) return;
-  const { link, analysis } = stale;
-  buffer.put('segmentAnalysisLinks', { ...link, status: 'approved', segmentId, updatedAt: now });
-  buffer.put('segmentAnalyses', { ...analysis, surfaceText, updatedAt: now });
+  const kept = await approveStaleTranslation(buffer, segmentId, analysisId, now);
+  if (kept) buffer.put('segmentAnalyses', { ...kept.analysis, surfaceText, updatedAt: now });
 }
 
 /** What discarding a stale free translation needs. */

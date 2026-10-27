@@ -1,9 +1,16 @@
+import type { PhraseAnalysisLink } from 'interlinearizer';
 import type { AnalysisRepository } from '../../types/analysis-repository';
 import type { ChangeBuffer } from './changeBuffer';
 
-/** Thrown by an edit that would give a token or segment a second approved link. */
+/**
+ * Thrown by an edit that would give a token or segment a second approved link, or put a token in a
+ * second approved phrase.
+ */
 export class ApprovalRuleError extends Error {
-  /** The token refs and segment ids the edit would leave holding several approved links. */
+  /**
+   * The token refs and segment ids where the edit would leave several approved links of one kind,
+   * or a token in several approved phrases.
+   */
   readonly places: readonly string[];
 
   constructor(places: readonly string[]) {
@@ -13,15 +20,18 @@ export class ApprovalRuleError extends Error {
   }
 }
 
-/** How many approved links each place holds, placing each link by `placeOf`. */
+/**
+ * How many approved links each place holds, counting each link at every place that `placesOf` gives
+ * it.
+ */
 function approvedCounts<Link extends { status: string }>(
   links: readonly Link[],
-  placeOf: (link: Link) => string,
+  placesOf: (link: Link) => readonly string[],
 ): Map<string, number> {
   const counts = new Map<string, number>();
   links.forEach((link) => {
     if (link.status !== 'approved') return;
-    counts.set(placeOf(link), (counts.get(placeOf(link)) ?? 0) + 1);
+    placesOf(link).forEach((place) => counts.set(place, (counts.get(place) ?? 0) + 1));
   });
   return counts;
 }
@@ -30,17 +40,20 @@ function approvedCounts<Link extends { status: string }>(
 function breaches<Link extends { status: string }>(
   before: readonly Link[],
   after: readonly Link[],
-  placeOf: (link: Link) => string,
+  placesOf: (link: Link) => readonly string[],
 ): string[] {
-  const held = approvedCounts(before, placeOf);
-  return [...approvedCounts(after, placeOf)].flatMap(([place, count]) =>
+  const held = approvedCounts(before, placesOf);
+  return [...approvedCounts(after, placesOf)].flatMap(([place, count]) =>
     count > 1 && count > (held.get(place) ?? 0) ? [place] : [],
   );
 }
 
+const phraseTokenRefs = ({ tokens }: PhraseAnalysisLink) => tokens.map(({ tokenRef }) => tokenRef);
+
 /**
  * Refuses the staged changes where they would give a token or segment more than one approved link,
- * and more than it has now.
+ * or put a token in more than one approved phrase. At a place already over the limit, the changes
+ * are refused only when they add to it.
  *
  * @throws {ApprovalRuleError} If the changes breach the rule anywhere.
  */
@@ -49,19 +62,29 @@ export async function assertApprovalRule(
   repository: AnalysisRepository,
 ): Promise<void> {
   const tokenRefs = [
-    ...new Set(buffer.touched('tokenAnalysisLinks').map(({ token }) => token.tokenRef)),
+    ...new Set([
+      ...buffer.touched('tokenAnalysisLinks').map(({ token }) => token.tokenRef),
+      ...buffer.touched('phraseAnalysisLinks').flatMap(phraseTokenRefs),
+    ]),
   ];
   const segmentIds = [...new Set(buffer.touched('segmentAnalysisLinks').map((l) => l.segmentId))];
+  const onTokensBefore = await repository.findLinksByToken(tokenRefs);
+  const onTokensAfter = await buffer.findLinksByToken(tokenRefs);
   const found = [
     ...breaches(
-      (await repository.findLinksByToken(tokenRefs)).tokenAnalysisLinks,
-      (await buffer.findLinksByToken(tokenRefs)).tokenAnalysisLinks,
-      ({ token }) => token.tokenRef,
+      onTokensBefore.tokenAnalysisLinks,
+      onTokensAfter.tokenAnalysisLinks,
+      ({ token }) => [token.tokenRef],
+    ),
+    ...breaches(
+      onTokensBefore.phraseAnalysisLinks,
+      onTokensAfter.phraseAnalysisLinks,
+      phraseTokenRefs,
     ),
     ...breaches(
       await repository.findLinksBySegment(segmentIds),
       await buffer.findLinksBySegment(segmentIds),
-      ({ segmentId }) => segmentId,
+      ({ segmentId }) => [segmentId],
     ),
   ];
   if (found.length > 0) throw new ApprovalRuleError(found);

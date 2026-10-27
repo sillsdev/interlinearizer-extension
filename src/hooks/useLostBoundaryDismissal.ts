@@ -11,7 +11,7 @@ type LostBoundaryDismissalOptions = {
   segmentation: SegmentationDelta | undefined;
   /** Bumped by every boundary edit. */
   segmentationVersion: number;
-  /** Bumped by every wholesale draft replacement (New / Open / Wipe). */
+  /** Bumped by every wholesale draft replacement (New / Open / Discard). */
   draftVersion: number;
   /** Whether the initial draft load is still outstanding, which bumps neither counter. */
   isDraftLoading: boolean;

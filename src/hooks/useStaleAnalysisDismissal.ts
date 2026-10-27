@@ -6,7 +6,7 @@ import useRecordDismissal from './useRecordDismissal';
 type StaleAnalysisDismissalOptions = {
   /** The loaded book's stale analyses, `undefined` while no book's are known. */
   report: StaleAnalysesReport | undefined;
-  /** Bumped by every wholesale draft replacement (New / Open / Wipe). */
+  /** Bumped by every wholesale draft replacement (New / Open / Discard). */
   draftVersion: number;
   /** Scopes the dismissal to one tab. */
   useWebViewState: UseWebViewStateHook;

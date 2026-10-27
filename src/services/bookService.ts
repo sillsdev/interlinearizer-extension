@@ -80,10 +80,14 @@ interface TextRead {
 }
 
 /**
- * Each source project's whole-text read, from the first status asked for until the project closes,
- * or until its books could not be listed.
+ * Each source project's whole-text read. A read starts with the first status asked for, or with
+ * {@link startTextRead}. It lasts until {@link stopTextRead}, until the project closes while no
+ * session holds its read, or until its books could not be listed.
  */
 const textReads = new Map<string, TextRead>();
+
+/** The source projects whose read a session holds, from {@link startTextRead} to {@link stopTextRead}. */
+const sessionReads = new Set<string>();
 
 /** Receives the source project and book of each edit to a watched book's text. */
 type BookTextListener = (sourceProjectId: string, bookId: string) => void;
@@ -94,7 +98,10 @@ function reportEdit(sourceProjectId: string, bookId: string): void {
   bookTextListeners.forEach((listener) => listener(sourceProjectId, bookId));
 }
 
-/** Receives the source project and tokenized text of each book that a whole-text read takes in. */
+/**
+ * Receives the source project and tokenized text of each book that a whole-text read takes in, and
+ * of the open book once it is edited.
+ */
 type BookReadListener = (sourceProjectId: string, book: Book) => void;
 
 const bookReadListeners = new Set<BookReadListener>();
@@ -326,10 +333,11 @@ export function onBookRead(listener: BookReadListener): () => boolean {
 
 /**
  * Calls `listener` with the books of a source project that hold text, until the returned function
- * is called. It is first called once the whole-text read has read every book with none failed.
+ * is called. `listener` is first called once the whole-text read has read every book with none
+ * failed.
  *
- * It is called again whenever a book gains or loses its text. It is also called when a retried read
- * succeeds and no other book's read is still failing.
+ * `listener` is called again whenever a book gains or loses its text. `listener` is also called
+ * when a retried read succeeds and no other book's read is still failing.
  */
 export function onTextRead(listener: TextReadListener): () => boolean {
   textReadListeners.add(listener);
@@ -589,8 +597,8 @@ function beginTextRead(sourceProjectId: string): TextRead {
 /**
  * Reports how far reading the source project's whole text has got, starting the read when the
  * project has none. The read keeps a form index that {@link isFormInText} answers from, and watches
- * each book it has read, reporting its edits through {@link onBookTextChanged}, until the project
- * closes.
+ * each book it has read, reporting its edits through {@link onBookTextChanged}, until the read
+ * ends.
  *
  * @returns Once the text's books are known, the `TextReadStatus` as JSON.
  * @throws If the books or the provider of their text cannot be got. The read is dropped, so the
@@ -621,12 +629,16 @@ export function isFormInText(sourceProjectId: string, form: string): boolean | u
 
 /**
  * Starts reading the source project's whole text afresh, ending any read already under way, so that
- * {@link onBookRead}'s listeners hear of every book again, and {@link onTextRead}'s once the read is
- * done. A failure to list the books is left for {@link getTextReadStatus} to report.
+ * {@link onBookRead}'s listeners hear again of each book holding text, and {@link onTextRead}'s hear
+ * once the read is done. A failure to list the books is left for {@link getTextReadStatus} to
+ * report.
+ *
+ * The session holds the read until {@link stopTextRead}, so closing the project leaves it running.
  *
  * @returns Once the read it replaced has stopped watching its books; the new read goes on.
  */
 export function startTextRead(sourceProjectId: string): Promise<void> {
+  sessionReads.add(sourceProjectId);
   const ended = endTextRead(sourceProjectId);
   beginTextRead(sourceProjectId);
   return ended;
@@ -634,6 +646,7 @@ export function startTextRead(sourceProjectId: string): Promise<void> {
 
 /** Ends the source project's whole-text read, leaving the books its view keeps. */
 export async function stopTextRead(sourceProjectId: string): Promise<void> {
+  sessionReads.delete(sourceProjectId);
   await endTextRead(sourceProjectId);
 }
 
@@ -644,30 +657,35 @@ async function endTextRead(sourceProjectId: string): Promise<void> {
   await Promise.all([...(read?.watches.values() ?? [])].map((stop) => stop()));
 }
 
-/** Lets go of the books kept for the source project, and ends its whole-text read. */
-async function releaseProject(sourceProjectId: string): Promise<void> {
+/** Lets go of the books kept for the source project. */
+async function releaseKeptBooks(sourceProjectId: string): Promise<void> {
   const kept = new Set([latestBooks.get(sourceProjectId), openBooks.get(sourceProjectId)]);
-  await Promise.all([
-    ...[...kept].map((held) => held && releaseBook(sourceProjectId, held.watch)),
-    endTextRead(sourceProjectId),
-  ]);
+  await Promise.all([...kept].map((held) => held && releaseBook(sourceProjectId, held.watch)));
 }
 
 /**
- * Lets go of the books kept for the source project, and of any a request under way would keep, and
- * ends its whole-text read.
+ * Lets go of the books kept for the source project, and of any a request under way would keep. Ends
+ * the project's whole-text read too, unless a session holds that read.
  */
 export async function closeProject(sourceProjectId: string): Promise<void> {
   closeCounts.set(sourceProjectId, (closeCounts.get(sourceProjectId) ?? 0) + 1);
-  await releaseProject(sourceProjectId);
+  await Promise.all([
+    releaseKeptBooks(sourceProjectId),
+    !sessionReads.has(sourceProjectId) && endTextRead(sourceProjectId),
+  ]);
 }
 
-/** Lets go of every book kept, and ends every whole-text read. */
+/** Lets go of every book kept, and ends every whole-text read, including those sessions hold. */
 export async function closeAllProjects(): Promise<void> {
   const sourceProjectIds = new Set([
     ...latestBooks.keys(),
     ...openBooks.keys(),
     ...textReads.keys(),
   ]);
-  await Promise.all([...sourceProjectIds].map(releaseProject));
+  sessionReads.clear();
+  await Promise.all(
+    [...sourceProjectIds].map((sourceProjectId) =>
+      Promise.all([releaseKeptBooks(sourceProjectId), endTextRead(sourceProjectId)]),
+    ),
+  );
 }

@@ -1588,6 +1588,61 @@ describe('startTextRead and stopTextRead', () => {
   it('does nothing for a project whose text is not being read', async () => {
     await expect(stopTextRead('src')).resolves.toBeUndefined();
   });
+
+  it('keeps reading when the project closes, passing each edited book', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const listener = jest.fn();
+    unsubscribers.push(onBookRead(listener));
+    await startTextRead('src');
+    await settle();
+
+    await closeProject('src');
+    subscriptionsTo(project, 'GEN')[0].deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(await readStatus()).toEqual({ booksRead: 1, bookCount: 1, failedBookIds: [] });
+  });
+
+  it('lets go of the kept books when the project closes during its read', async () => {
+    segmentStandIns();
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    await getBookOutline('src', 'EXO');
+    await startTextRead('src');
+    await settle();
+
+    await closeProject('src');
+
+    expect(subscriptionsTo(project, 'EXO')[0].unsubscribe).toHaveBeenCalled();
+    expect(subscriptionsTo(project, 'GEN')[0].unsubscribe).not.toHaveBeenCalled();
+  });
+
+  it('ends a stopped read when the project closes', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    await startTextRead('src');
+    await stopTextRead('src');
+    readStatus();
+    await settle();
+
+    await closeProject('src');
+
+    expect(project.subscriptions.every((s) => s.unsubscribe.mock.calls.length === 1)).toBe(true);
+  });
+
+  it('ends the read once all projects close', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    await startTextRead('src');
+    await settle();
+
+    await closeAllProjects();
+
+    expect(project.subscriptions[0].unsubscribe).toHaveBeenCalled();
+    expect(isFormInText('src', 'shared')).toBeUndefined();
+  });
 });
 
 describe('getTextReadStatus', () => {

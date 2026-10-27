@@ -111,8 +111,8 @@ async function approveHeldLink(
 }
 
 /**
- * Detaches `link` from the payload an edit through it emptied, which goes once nothing links it and
- * otherwise stays, emptied, as the edit left it.
+ * Removes `link` after an edit through it emptied its payload. The payload goes too when no other
+ * link names it, and otherwise stays, emptied, as the edit left it.
  */
 export async function detachEmptiedAnalysis(
   buffer: ChangeBuffer,

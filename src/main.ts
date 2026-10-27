@@ -984,8 +984,8 @@ function discardStaleFreeTranslation(sessionId: string, analysisId: string): Pro
 }
 
 /**
- * Refuses a phrase occurrence with no tokens. The store files an occurrence under its first token,
- * so one with none can't be stored.
+ * Refuses a phrase occurrence with no tokens; the analysis index files a phrase by the book of its
+ * first token.
  *
  * @throws If `tokens` is empty.
  */

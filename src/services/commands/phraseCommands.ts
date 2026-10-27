@@ -106,7 +106,7 @@ async function detachPhraseLink(buffer: ChangeBuffer, link: PhraseAnalysisLink):
   );
 }
 
-/** Whether another occurrence, at any status, names the payload `link` names. */
+/** Whether another occurrence, at any status, names the payload that `link` names. */
 async function isPhrasePayloadShared(
   buffer: ChangeBuffer,
   link: PhraseAnalysisLink,
@@ -226,7 +226,7 @@ export async function createPhrase(
 
 /**
  * Stages giving a phrase occurrence a new token run. The occurrence keeps its gloss. Its payload's
- * surface text is re-derived. The edit is per occurrence: a payload other occurrences share is
+ * surface text is re-derived. The edit is per occurrence: a payload that other occurrences share is
  * forked first. An edit that makes the payload identical to another folds the edited payload into
  * the other.
  *
@@ -260,7 +260,7 @@ export async function deletePhrase(
  * keeping its gloss. The absorbed occurrence, when named, is removed. Its payload goes too, unless
  * another occurrence shares it.
  *
- * A payload only the two shared stays with the target rather than forking. Other occurrences
+ * A payload that only the two shared stays with the target rather than forking. Other occurrences
  * sharing either payload are unaffected. Nothing is staged for an unknown target, or when the
  * absorbed occurrence is the target.
  */
@@ -280,7 +280,7 @@ export async function mergePhrases(
 
 /**
  * Stages writing a phrase occurrence's gloss in `analysisLanguage`. The edit is per occurrence: a
- * payload other occurrences share is forked first. An edit that makes the payload identical to
+ * payload that other occurrences share is forked first. An edit that makes the payload identical to
  * another folds the edited payload into the other.
  *
  * A blank value clears the language's gloss, leaving the phrase in place. Nothing is staged for an
@@ -309,9 +309,9 @@ export async function writePhraseGloss(
 }
 
 /**
- * Stages approving a phrase occurrence, leaving its `confidence` as recorded. Refused when any of
- * its tokens is in an approved phrase, so that no token ends up in two. Nothing is staged for an
- * unknown or already approved occurrence.
+ * Stages approving a phrase occurrence, leaving its `confidence` as recorded. Nothing is staged for
+ * an unknown or already approved occurrence, or for one with a token already in an approved
+ * phrase.
  */
 export async function approvePhrase(
   buffer: ChangeBuffer,

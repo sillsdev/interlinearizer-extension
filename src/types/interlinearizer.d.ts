@@ -512,9 +512,13 @@ declare module 'papi-shared-types' {
 
     /**
      * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token
-     * run, in document order. The absorbed occurrence, when named, is removed. A neighbor that is a
-     * token in no phrase goes unnamed, or is named `null`.
+     * run. The absorbed occurrence, when named, is removed.
      *
+     * @param sessionId - As `interlinearizer.openSession` returned it.
+     * @param targetPhraseId - The target occurrence's link ID.
+     * @param tokens - In document order.
+     * @param absorbedPhraseId - The absorbed occurrence's link ID. Absent or `null` when the
+     *   neighbor is a token in no phrase.
      * @returns A JSON string of the changes it applied.
      * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
      *   fails (logged before rethrowing).

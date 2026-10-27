@@ -8,6 +8,11 @@ import type { Token, TokenSnapshot } from 'interlinearizer';
  */
 export const PHRASE_GAP_SEPARATOR = ' _ ';
 
+/** The surface text a phrase payload stores for `tokens`: their surface texts, joined by spaces. */
+export function phraseSurfaceText(tokens: readonly TokenSnapshot[]): string {
+  return tokens.map((t) => t.surfaceText).join(' ');
+}
+
 /** The book-wide lookups {@link phraseSurfaceForm} reads a phrase's text and spacing out of. */
 export type PhraseTextIndexes = Readonly<{
   /** Word token ref → the verbatim baseline text separating it from the previous word. */

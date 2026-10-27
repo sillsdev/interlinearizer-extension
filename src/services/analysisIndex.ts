@@ -118,6 +118,11 @@ export class AnalysisIndex {
     return this.segmentAnalyses.get(ids);
   }
 
+  /** The phrase links stored under `ids`, each once; an id with none stored is skipped. */
+  getPhraseAnalysisLinks(ids: readonly string[]): PhraseAnalysisLink[] {
+    return this.phraseLinks.get(ids);
+  }
+
   /** The token links on any of `tokenRefs`, and the phrase links touching any of them. */
   findLinksByToken(
     tokenRefs: readonly string[],

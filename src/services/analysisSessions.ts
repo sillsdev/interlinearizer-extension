@@ -213,7 +213,7 @@ export class AnalysisSessions {
    * @returns The changes applied, naming `intent`.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {ApprovalRuleError} If the changes would give a token or segment a second approved
-   *   link; nothing is applied.
+   *   link, or put a token in a second approved phrase; nothing is applied.
    * @throws {Error} If the session is not open.
    * @throws Whatever the command, reading the draft's record, or applying its changes throws;
    *   nothing is applied.

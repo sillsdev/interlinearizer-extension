@@ -2,6 +2,7 @@ import type {
   AssignmentStatus,
   DraftProject,
   PhraseAnalysis,
+  PhraseAnalysisLink,
   SegmentAnalysis,
   SegmentAnalysisLink,
   TextAnalysis,
@@ -233,6 +234,13 @@ export interface AnalysisRepository {
    * @throws Whatever {@link AnalysisRepository.exportAll} throws.
    */
   getSegmentAnalyses(ids: string[]): Promise<SegmentAnalysis[]>;
+
+  /**
+   * The phrase links stored under `ids`; an id with none stored under it is skipped.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  getPhraseAnalysisLinks(ids: string[]): Promise<PhraseAnalysisLink[]>;
 
   /**
    * The token links on any of `tokenRefs`, and the phrase links touching any of them.

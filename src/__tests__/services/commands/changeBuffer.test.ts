@@ -109,6 +109,9 @@ describe('ChangeBuffer', () => {
       'pa-1',
     ]);
     await expect(buffer.getPhraseAnalyses(['pa-1']).then(ids)).resolves.toStrictEqual(['pa-1']);
+    await expect(buffer.getPhraseAnalysisLinks(['pa-1', 'missing'])).resolves.toStrictEqual([
+      phrase,
+    ]);
     await expect(buffer.getSegmentAnalyses(['sa-1']).then(ids)).resolves.toStrictEqual(['sa-1']);
     await expect(buffer.findLinksBySegment(['GEN 1:1'])).resolves.toStrictEqual([segmentLink]);
     await expect(buffer.findLinksByToken(['GEN 1:1:3'])).resolves.toStrictEqual({

@@ -37,20 +37,20 @@ function normalized(analysis: TextAnalysis): TextAnalysis {
 }
 
 /**
- * Runs one input both ways over `analysis`: `action` through the store's reducer, working in
- * `analysisLanguage`, and `command` staging changes over a draft holding the same analysis, which
- * are then applied and the draft reloaded from storage.
+ * Runs one input both ways over `analysis`. One way runs `action` through the store's reducer,
+ * working in `analysisLanguage`. An array of actions runs in turn. The other way stages `command`'s
+ * changes over a draft holding the same analysis, then applies them and reloads the draft from
+ * storage.
  */
 export async function runParity(
   analysis: TextAnalysis,
   analysisLanguage: string,
-  action: UnknownAction,
+  action: UnknownAction | readonly UnknownAction[],
   command: (buffer: ChangeBuffer) => Promise<void>,
 ): Promise<ParityOutcome> {
-  const store = reducer(
-    { analysis: JSON.parse(JSON.stringify(analysis)), analysisLanguage },
-    action,
-  );
+  const store = [action]
+    .flat()
+    .reduce(reducer, { analysis: JSON.parse(JSON.stringify(analysis)), analysisLanguage });
 
   const { storage } = memoryStorage();
   const logger = silentLogger();

@@ -2969,6 +2969,7 @@ describe('projectStorage', () => {
       ['getTokenAnalyses', (r: AnalysisRepository) => r.getTokenAnalyses(['analysis-GEN']), 1],
       ['getPhraseAnalyses', (r: AnalysisRepository) => r.getPhraseAnalyses(['p']), 0],
       ['getSegmentAnalyses', (r: AnalysisRepository) => r.getSegmentAnalyses(['s']), 0],
+      ['getPhraseAnalysisLinks', (r: AnalysisRepository) => r.getPhraseAnalysisLinks(['p']), 0],
       ['findLinksBySegment', (r: AnalysisRepository) => r.findLinksBySegment(['GEN 1:1']), 0],
       [
         'findLinksByToken',

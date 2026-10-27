@@ -475,6 +475,100 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Adds an approved phrase occurrence over `tokens`, given in document order. It shares a
+     * content-identical stored payload where one exists.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
+     */
+    'interlinearizer.createPhrase': (
+      sessionId: string,
+      tokens: import('interlinearizer').TokenSnapshot[],
+    ) => Promise<string>;
+
+    /**
+     * Gives a phrase occurrence a new token run, in document order, keeping its gloss. An empty run
+     * removes the occurrence.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.updatePhrase': (
+      sessionId: string,
+      phraseId: string,
+      tokens: import('interlinearizer').TokenSnapshot[],
+    ) => Promise<string>;
+
+    /**
+     * Removes a phrase occurrence, with its payload unless another occurrence shares that payload.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.deletePhrase': (sessionId: string, phraseId: string) => Promise<string>;
+
+    /**
+     * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token
+     * run. The absorbed occurrence, when named, is removed.
+     *
+     * @param sessionId - As `interlinearizer.openSession` returned it.
+     * @param targetPhraseId - The target occurrence's link ID.
+     * @param tokens - In document order.
+     * @param absorbedPhraseId - The absorbed occurrence's link ID. Absent or `null` when the
+     *   neighbor is a token in no phrase.
+     * @returns A JSON string of the changes it applied.
+     * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
+     */
+    'interlinearizer.mergePhrases': (
+      sessionId: string,
+      targetPhraseId: string,
+      tokens: import('interlinearizer').TokenSnapshot[],
+      absorbedPhraseId?: string | null,
+    ) => Promise<string>;
+
+    /**
+     * Writes a phrase occurrence's gloss in a session's analysis language; a blank value clears it.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.writePhraseGloss': (
+      sessionId: string,
+      phraseId: string,
+      value: string,
+    ) => Promise<string>;
+
+    /**
+     * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.approvePhrase': (sessionId: string, phraseId: string) => Promise<string>;
+
+    /**
+     * Splits a phrase occurrence just after `splitAfterTokenRef`, in the document order
+     * `tokenDocOrder` gives by `Token.ref`. A token `tokenDocOrder` leaves out sorts as if at place
+     * zero. A half left with a single token leaves that token in no phrase.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.splitPhrase': (
+      sessionId: string,
+      phraseId: string,
+      splitAfterTokenRef: string,
+      tokenDocOrder: Record<string, number>,
+    ) => Promise<string>;
+
+    /**
      * Turns the extension host's timing entries on or off, discarding any it holds. Off until
      * turned on.
      */

@@ -352,7 +352,7 @@ export async function getSegments(
 
 /**
  * Reads a book of the source project, tokenized one segment per verse: the book that
- * {@link getSegments} pages are segmented from. The book is shared, so the caller must not change
+ * {@link getSegments} resegments into its pages. The book is shared, so the caller must not change
  * it.
  *
  * @returns `undefined` when the project has no text for the book.

@@ -187,8 +187,7 @@ export type StraddledPhrase = {
  * the document-order map yields no matches. A phrase token absent from that map falls on neither
  * side.
  *
- * @returns The matches in link-id order, whatever order `phraseLinks` holds them in. Breaking them
- *   in turn then settles by id which of two phrases sharing a payload keeps it.
+ * @returns The matches in link-id order, whatever order `phraseLinks` holds them in.
  */
 export function phrasesStraddlingBoundary(
   boundaryRef: string,

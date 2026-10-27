@@ -208,7 +208,7 @@ describe('ChangeBuffer', () => {
     });
   });
 
-  it('finds the links in the books asked for through the staged changes, by status when asked', async () => {
+  describe('findLinksInBooks', () => {
     const segmentLink = {
       id: 'sl-1',
       analysisId: 'sa-1',
@@ -216,22 +216,40 @@ describe('ChangeBuffer', () => {
       status: 'approved' as const,
       segmentId: 'GEN 1:1',
     };
-    const buffer = await bufferOver({
-      tokenAnalysisLinks: [link('tl-1', 'ta-1', 'GEN 1:1:0'), link('tl-exo', 'ta-1', 'EXO 1:1:0')],
-      phraseAnalysisLinks: [makePhraseLink('pl-1', ['GEN 1:1:0', 'GEN 1:1:3'])],
-      segmentAnalysisLinks: [segmentLink],
+
+    /** A buffer over links in GEN and EXO that stages a GEN token link stale and a new GEN phrase. */
+    async function bufferWithStagedLinks(): Promise<ChangeBuffer> {
+      const buffer = await bufferOver({
+        tokenAnalysisLinks: [
+          link('tl-1', 'ta-1', 'GEN 1:1:0'),
+          link('tl-exo', 'ta-1', 'EXO 1:1:0'),
+        ],
+        phraseAnalysisLinks: [makePhraseLink('pl-1', ['GEN 1:1:0', 'GEN 1:1:3'])],
+        segmentAnalysisLinks: [segmentLink],
+      });
+      buffer.put('tokenAnalysisLinks', { ...link('tl-1', 'ta-1', 'GEN 1:1:0'), status: 'stale' });
+      buffer.create('phraseAnalysisLinks', makePhraseLink('pl-new', ['GEN 1:2:0', 'GEN 1:2:3']));
+      return buffer;
+    }
+
+    it('finds the links in the books asked for through the staged changes', async () => {
+      const buffer = await bufferWithStagedLinks();
+
+      const found = await buffer.findLinksInBooks(['GEN']);
+
+      expect(ids(found.tokenAnalysisLinks)).toStrictEqual(['tl-1']);
+      expect(ids(found.phraseAnalysisLinks)).toStrictEqual(['pl-1', 'pl-new']);
+      expect(found.segmentAnalysisLinks).toStrictEqual([segmentLink]);
     });
 
-    buffer.put('tokenAnalysisLinks', { ...link('tl-1', 'ta-1', 'GEN 1:1:0'), status: 'stale' });
-    buffer.create('phraseAnalysisLinks', makePhraseLink('pl-new', ['GEN 1:2:0', 'GEN 1:2:3']));
+    it('finds only the links at the statuses asked for, as the staged changes leave them', async () => {
+      const buffer = await bufferWithStagedLinks();
 
-    const all = await buffer.findLinksInBooks(['GEN']);
-    expect(ids(all.tokenAnalysisLinks)).toStrictEqual(['tl-1']);
-    expect(ids(all.phraseAnalysisLinks)).toStrictEqual(['pl-1', 'pl-new']);
-    expect(all.segmentAnalysisLinks).toStrictEqual([segmentLink]);
-    const approved = await buffer.findLinksInBooks(['GEN'], ['approved']);
-    expect(approved.tokenAnalysisLinks).toStrictEqual([]);
-    expect(ids(approved.phraseAnalysisLinks)).toStrictEqual(['pl-1', 'pl-new']);
+      const found = await buffer.findLinksInBooks(['GEN'], ['approved']);
+
+      expect(found.tokenAnalysisLinks).toStrictEqual([]);
+      expect(ids(found.phraseAnalysisLinks)).toStrictEqual(['pl-1', 'pl-new']);
+    });
   });
 
   it('lists the records it touches as they stood before a removal or will stand after a put', async () => {

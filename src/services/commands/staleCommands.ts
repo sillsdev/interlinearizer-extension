@@ -166,8 +166,8 @@ export async function findStaleTranslation(
 
 /**
  * Stages approving the stale translation `analysisId` for `segmentId`. Its link moves to
- * `segmentId`, so a translation whose own segment has vanished lands where it was shown. The link
- * is staged and the analysis is left to the caller.
+ * `segmentId`, so a translation whose own segment has vanished lands where it was shown. Only the
+ * link is staged, leaving the analysis to the caller.
  *
  * Resolves to the translation with its approved link, or `undefined` when the segment already holds
  * an approved translation or `analysisId` names no stale one.

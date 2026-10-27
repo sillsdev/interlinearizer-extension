@@ -29,6 +29,7 @@ import { isDraftProject } from './types/type-guards';
 import { BOOKLESS_PARTITION, bookOfRef } from './utils/analysis-book';
 import { bookIndexesOf } from './utils/book-indexes';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
+import { segmentationForBook } from './utils/segmentation';
 
 // #region WebView provider
 
@@ -1028,13 +1029,11 @@ async function assertOneSegment(
   tokens: readonly TokenSnapshot[],
 ): Promise<void> {
   const { segmentation } = await buffer.getScope();
-  const segments = await readBookOf(session, tokens[0].tokenRef, (sourceProjectId, bookId) =>
-    bookService.getBookSegments(
-      sourceProjectId,
-      bookId,
-      segmentation && JSON.stringify(segmentation),
-    ),
-  );
+  const segments = await readBookOf(session, tokens[0].tokenRef, (sourceProjectId, bookId) => {
+    // Keyed as the WebView's page reads key it, so that the two share the book's segmentation.
+    const forBook = segmentationForBook(segmentation, bookId);
+    return bookService.getBookSegments(sourceProjectId, bookId, forBook && JSON.stringify(forBook));
+  });
   const { tokenSegmentMap } = bookIndexesOf(segments);
   const segmentIds = new Set(tokens.map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)));
   if (segmentIds.size > 1 || segmentIds.has(undefined)) {

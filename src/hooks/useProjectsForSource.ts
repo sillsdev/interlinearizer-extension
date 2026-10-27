@@ -1,5 +1,5 @@
 import papi, { logger } from '@papi/frontend';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { isInterlinearProjectSummary } from '../types/type-guards';
 import { perfTrack } from '../utils/perf-marks';
@@ -11,6 +11,8 @@ export type UseProjectsForSourceResult = {
   projects: InterlinearProjectSummary[];
   /** True from the moment a load starts until its response settles. */
   isLoading: boolean;
+  /** Drops a project deleted since the load from {@link projects}. */
+  removeProject: (projectId: string) => void;
 };
 
 /**
@@ -70,5 +72,10 @@ export default function useProjectsForSource(sourceProjectId: string): UseProjec
     };
   }, [sourceProjectId]);
 
-  return { projects, isLoading };
+  const removeProject = useCallback(
+    (projectId: string) => setProjects((current) => current.filter(({ id }) => id !== projectId)),
+    [],
+  );
+
+  return { projects, isLoading, removeProject };
 }

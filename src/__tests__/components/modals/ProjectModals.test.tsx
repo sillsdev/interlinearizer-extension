@@ -78,12 +78,14 @@ jest.mock('../../../components/modals/SelectInterlinearProjectModal', () => ({
     onCreateNew,
     onClose,
     onViewInfo,
+    onProjectDeleted,
   }: {
     isOpening?: boolean;
     onSelect: (p: InterlinearProjectSummary) => void;
     onCreateNew: () => void;
     onClose: () => void;
     onViewInfo: (p: InterlinearProjectSummary) => void;
+    onProjectDeleted: (id: string) => void;
   }) => (
     <div data-testid="select-modal" data-is-opening={String(isOpening)}>
       <button type="button" data-testid="select-select" onClick={() => onSelect(MOCK_PROJECT)}>
@@ -114,6 +116,13 @@ jest.mock('../../../components/modals/SelectInterlinearProjectModal', () => ({
         onClick={() => onViewInfo(MOCK_PROJECT_2)}
       >
         View info 2
+      </button>
+      <button
+        type="button"
+        data-testid="select-delete"
+        onClick={() => onProjectDeleted(MOCK_PROJECT.id)}
+      >
+        Delete
       </button>
     </div>
   ),
@@ -1279,6 +1288,23 @@ describe('ProjectModals', () => {
       await userEvent.click(screen.getByTestId('metadata-delete'));
       expect(resetActiveProject).toHaveBeenCalledTimes(1);
       expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it('resets the active project when the select modal deletes it', async () => {
+      const resetActiveProject = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'select',
+            activeProject: MOCK_PROJECT,
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject }),
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('select-delete'));
+
+      expect(resetActiveProject).toHaveBeenCalledTimes(1);
     });
 
     it('does not reset the active project when a different project is deleted', async () => {

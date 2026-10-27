@@ -113,7 +113,7 @@ export default function ProjectModals({
   >('activeProject', undefined);
 
   /**
-   * The project currently open in the metadata modal. Set when the user clicks the info icon in the
+   * The project currently open in the metadata modal. Set when the user chooses Get info in the
    * select modal or triggers "View Project Info" from the menu.
    */
   const [metadataProject, setMetadataProject] = useState<InterlinearProjectSummary | undefined>(
@@ -129,7 +129,7 @@ export default function ProjectModals({
   const [createSourceIsSelect, setCreateSourceIsSelect] = useState(false);
 
   /**
-   * Tracks whether the metadata modal was opened from the select modal (info icon) or from the
+   * Tracks whether the metadata modal was opened from the select modal (Get info) or from the
    * top-menu "View Project Info" item. `true` means opened via the select modal, so closing the
    * metadata modal restores the select modal; `false` means opened from the menu, so closing
    * dismisses to `'none'`.
@@ -161,7 +161,7 @@ export default function ProjectModals({
 
   const resolvedMetadataProject = metadataProject ?? activeProject;
 
-  /** Opens the metadata modal for the project whose info icon was clicked in the select modal. */
+  /** Opens the metadata modal for the project chosen through the select modal's Get info. */
   const handleViewInfo = useCallback(
     (project: InterlinearProjectSummary) => {
       setMetadataProject(project);
@@ -192,13 +192,8 @@ export default function ProjectModals({
     [activeProject, resolvedMetadataProject, setActiveProject],
   );
 
-  /**
-   * Called when the metadata modal deletes the project. Clears `activeProject` if it was the
-   * deleted project.
-   *
-   * @param deletedId - UUID of the project that was deleted.
-   */
-  const handleMetadataProjectDeleted = useCallback(
+  /** Clears `activeProject` when the project the user just deleted was the active one. */
+  const handleProjectDeleted = useCallback(
     (deletedId: string) => {
       if (activeProject?.id === deletedId) resetActiveProject();
     },
@@ -538,6 +533,7 @@ export default function ProjectModals({
           onImportPt9={onImportPt9}
           onClose={handleSelectClose}
           onViewInfo={handleViewInfo}
+          onProjectDeleted={handleProjectDeleted}
         />
       )}
 
@@ -576,7 +572,7 @@ export default function ProjectModals({
           pt9ImportedAt={resolvedMetadataProject.pt9Import?.importedAt}
           onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}
-          onProjectDeleted={handleMetadataProjectDeleted}
+          onProjectDeleted={handleProjectDeleted}
         />
       )}
 

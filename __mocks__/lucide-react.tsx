@@ -41,6 +41,13 @@ export function Info(props: Readonly<{ size?: number; className?: string }>): Re
 }
 
 /**
+ * Stub for the EllipsisVertical (kebab menu) icon.
+ */
+export function EllipsisVertical(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="ellipsis-vertical-icon" {...props} />;
+}
+
+/**
  * Stub for the Trash2 icon.
  */
 export function Trash2(props: Readonly<{ size?: number; className?: string }>): ReactElement {

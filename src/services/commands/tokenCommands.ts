@@ -126,7 +126,10 @@ export async function detachEmptiedAnalysis(
 }
 
 /** Removes the payload once no link of any status names it. */
-async function reclaimIfUnlinked(buffer: ChangeBuffer, analysis: TokenAnalysis): Promise<void> {
+export async function reclaimIfUnlinked(
+  buffer: ChangeBuffer,
+  analysis: TokenAnalysis,
+): Promise<void> {
   const { tokenAnalysisLinks } = await buffer.findLinksToAnalyses([analysis.id]);
   if (tokenAnalysisLinks.length === 0) buffer.delete('tokenAnalyses', analysis);
 }

@@ -458,6 +458,62 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Gives up the place an analysis went stale at, leaving its other places alone.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.discardStaleAnalysis': (
+      sessionId: string,
+      analysisId: string,
+      tokenRef: string,
+    ) => Promise<string>;
+
+    /**
+     * Moves an analysis from a place it went stale at onto a token, approving it there in place of
+     * whatever that token held.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.reapplyStaleAnalysis': (
+      sessionId: string,
+      analysisId: string,
+      staleTokenRef: string,
+      tokenRef: string,
+      surfaceText: string,
+    ) => Promise<string>;
+
+    /**
+     * Keeps a stale free translation as a claim about a segment's current text, approving it for
+     * that segment.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.keepStaleFreeTranslation': (
+      sessionId: string,
+      analysisId: string,
+      segmentId: string,
+      surfaceText: string,
+    ) => Promise<string>;
+
+    /**
+     * Drops a stale free translation, even one whose verse the book no longer holds.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.discardStaleFreeTranslation': (
+      sessionId: string,
+      analysisId: string,
+    ) => Promise<string>;
+
+    /**
      * Turns the extension host's timing entries on or off, discarding any it holds. Off until
      * turned on.
      */

@@ -5,6 +5,7 @@
 
 const mockRegisterWebViewProvider = jest.fn();
 const mockRegisterCommand = jest.fn();
+const mockSendCommand = jest.fn();
 const mockOpenWebView = jest.fn();
 const mockSelectProject = jest.fn();
 const mockGetOpenWebViewDefinition = jest.fn();
@@ -30,6 +31,7 @@ const mockLogger = {
 const papi = {
   commands: {
     registerCommand: mockRegisterCommand,
+    sendCommand: mockSendCommand,
   },
   dialogs: {
     selectProject: mockSelectProject,
@@ -77,6 +79,7 @@ const defaultExport = {
   ...papi,
   __mockRegisterWebViewProvider: mockRegisterWebViewProvider,
   __mockRegisterCommand: mockRegisterCommand,
+  __mockSendCommand: mockSendCommand,
   __mockOpenWebView: mockOpenWebView,
   __mockSelectProject: mockSelectProject,
   __mockGetOpenWebViewDefinition: mockGetOpenWebViewDefinition,

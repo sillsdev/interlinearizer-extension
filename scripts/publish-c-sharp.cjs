@@ -6,9 +6,6 @@ const path = require('path');
  * Publishes the C# host, with its own .NET runtime, into `c-sharp/publish/<runtime identifier>/`,
  * where the webpack build picks it up. Publishes every runtime identifier Platform.Bible ships for
  * unless some are named as arguments, e.g. `npm run build:c-sharp -- win-x64`.
- *
- * Publish macOS builds on macOS: the .NET SDK code-signs the executable only there, and macOS on
- * Apple silicon will not run one that is unsigned.
  */
 
 const REPO_ROOT = path.join(__dirname, '..');

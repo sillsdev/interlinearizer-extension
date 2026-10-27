@@ -30,9 +30,7 @@ on:
 
 jobs:
   # Builds the C# host for every platform, each with its own .NET runtime, on the same runners the
-  # Test workflow's c-sharp-host job checks it on. Both macOS builds run on macOS because the .NET
-  # SDK code-signs macOS executables only there, and macOS on Apple silicon will not run one that is
-  # unsigned.
+  # Test workflow's c-sharp-host job checks it on.
   c-sharp-host:
     name: Build the C# host on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}

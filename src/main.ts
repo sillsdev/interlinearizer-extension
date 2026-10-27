@@ -1043,7 +1043,11 @@ function deletePhrase(sessionId: string, phraseId: string): Promise<string> {
  * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token run.
  * The absorbed occurrence, when named, is removed.
  *
- * @param absorbedPhraseId Absent or `null` when the neighbor is a token in no phrase.
+ * @param sessionId - As {@link openSession} returned it.
+ * @param targetPhraseId - The target occurrence's link ID.
+ * @param tokens - In document order.
+ * @param absorbedPhraseId - The absorbed occurrence's link ID. Absent or `null` when the neighbor
+ *   is a token in no phrase.
  * @returns The changes it applied, as JSON.
  * @throws If `tokens` is empty, the session is read-only or not open, or the edit is refused or
  *   fails. The error is logged before rethrowing.

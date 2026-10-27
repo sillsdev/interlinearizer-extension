@@ -2311,6 +2311,11 @@ describe('main', () => {
       { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
     ];
 
+    const beginningGod: TokenSnapshot[] = [
+      { tokenRef: 'GEN 1:1:2', surfaceText: 'beginning' },
+      { tokenRef: 'GEN 1:1:3', surfaceText: 'God' },
+    ];
+
     it('creates a phrase, replying with the changes', async () => {
       const { openSession, createPhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
@@ -2345,6 +2350,60 @@ describe('main', () => {
       });
     });
 
+    it('merges a token into a phrase when PAPI names no absorbed phrase, replying with the changes', async () => {
+      await storeDraftHolding({
+        phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the' }],
+        phraseAnalysisLinks: [
+          { id: 'pl-1', analysisId: 'pa-1', ...FIXTURE_STAMPS, status: 'approved', tokens: inThe },
+        ],
+      });
+      const { openSession, mergePhrases } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const inTheBeginning = [...inThe, beginningGod[0]];
+
+      const changes = JSON.parse(
+        // eslint-disable-next-line no-null/no-null -- PAPI delivers an omitted argument as null
+        await mergePhrases(sessionId, 'pl-1', inTheBeginning, null),
+      );
+
+      expect(changes).toMatchObject({
+        intent: 'mergePhrases',
+        phraseAnalyses: { puts: [{ id: 'pa-1', surfaceText: 'In the beginning' }], deletes: [] },
+        phraseAnalysisLinks: { puts: [{ id: 'pl-1', tokens: inTheBeginning }], deletes: [] },
+      });
+    });
+
+    it('splits a phrase in the document order PAPI sends, replying with the changes', async () => {
+      await storeDraftHolding({
+        phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the beginning God' }],
+        phraseAnalysisLinks: [
+          {
+            id: 'pl-1',
+            analysisId: 'pa-1',
+            ...FIXTURE_STAMPS,
+            status: 'approved',
+            tokens: [...beginningGod, ...inThe],
+          },
+        ],
+      });
+      const { openSession, splitPhrase } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const tokenDocOrder = { 'GEN 1:1:0': 0, 'GEN 1:1:1': 1, 'GEN 1:1:2': 2, 'GEN 1:1:3': 3 };
+
+      const changes = JSON.parse(await splitPhrase(sessionId, 'pl-1', 'GEN 1:1:1', tokenDocOrder));
+
+      expect(changes).toMatchObject({
+        intent: 'splitPhrase',
+        phraseAnalysisLinks: {
+          puts: [
+            { id: 'pl-1', tokens: inThe },
+            { status: 'approved', tokens: beginningGod },
+          ],
+          deletes: [],
+        },
+      });
+    });
+
     type SessionCommands = Awaited<ReturnType<typeof activateSessionCommands>>;
 
     it.each([
@@ -2369,22 +2428,9 @@ describe('main', () => {
         (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', inThe),
       ],
       [
-        'mergePhrases absorbing a token in no phrase, named null',
-        'mergePhrases',
-        (c: SessionCommands, id: string) =>
-          // eslint-disable-next-line no-null/no-null -- PAPI delivers an omitted argument as null
-          c.mergePhrases(id, 'pl-1', inThe, null),
-      ],
-      [
         'approvePhrase',
         'approvePhrase',
         (c: SessionCommands, id: string) => c.approvePhrase(id, 'pl-1'),
-      ],
-      [
-        'splitPhrase',
-        'splitPhrase',
-        (c: SessionCommands, id: string) =>
-          c.splitPhrase(id, 'pl-1', 'GEN 1:1:0', { 'GEN 1:1:0': 0, 'GEN 1:1:1': 1 }),
       ],
     ])(
       'runs %s as an edit of the session, replying with the changes',
@@ -2413,11 +2459,6 @@ describe('main', () => {
         expect.any(Error),
       );
     });
-
-    const beginningGod: TokenSnapshot[] = [
-      { tokenRef: 'GEN 1:1:2', surfaceText: 'beginning' },
-      { tokenRef: 'GEN 1:1:3', surfaceText: 'God' },
-    ];
 
     it.each([
       [

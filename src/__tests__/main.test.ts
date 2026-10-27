@@ -2367,9 +2367,11 @@ describe('main', () => {
       expect(bookService.getBookSegments).toHaveBeenCalledWith('src-project', 'GEN', undefined);
     });
 
-    it("checks a phrase against the segments the draft's boundaries make", async () => {
-      const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
-      await storeDraftHolding({}, segmentation);
+    it("checks a phrase against the segments the draft's boundaries in its book make", async () => {
+      await storeDraftHolding(
+        {},
+        { removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'], addedStarts: [] },
+      );
       const { openSession, createPhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
@@ -2378,7 +2380,7 @@ describe('main', () => {
       expect(bookService.getBookSegments).toHaveBeenCalledWith(
         'src-project',
         'GEN',
-        JSON.stringify(segmentation),
+        JSON.stringify({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] }),
       );
     });
 

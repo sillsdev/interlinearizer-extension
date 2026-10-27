@@ -269,9 +269,9 @@ export class AnalysisSessions {
 
   /**
    * Reverts the session's latest edit not yet undone, re-anchoring what it restores to the current
-   * text of each book passed over since.
+   * text of each book re-anchored since.
    *
-   * @returns The changes that reverted the edit and re-anchored what the edit restored, or
+   * @returns The changes that reverted the edit and re-anchored what the undo restored, or
    *   `undefined` when there is none.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
@@ -284,9 +284,9 @@ export class AnalysisSessions {
 
   /**
    * Redoes the session's latest undone edit, re-anchoring what it restores to the current text of
-   * each book passed over since.
+   * each book re-anchored since.
    *
-   * @returns The changes that redid the edit and re-anchored what the edit restored, or `undefined`
+   * @returns The changes that redid the edit and re-anchored what the redo restored, or `undefined`
    *   when there is none.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
@@ -311,8 +311,7 @@ export class AnalysisSessions {
 
   /**
    * Re-anchors the draft of the source project's session, as {@link reanchorBook} does, to each book
-   * the text lacks. A book the text lacks is one the draft links into that `textBookIds` does not
-   * list.
+   * the text lacks. A book the text lacks is a linked book that `textBookIds` does not list.
    *
    * @throws Whatever reading the draft or applying the changes throws; the books before stay
    *   re-anchored.

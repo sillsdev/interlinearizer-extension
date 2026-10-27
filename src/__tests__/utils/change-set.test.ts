@@ -236,13 +236,18 @@ describe('mergeChangeSets', () => {
     expect(mergeChangeSets({ intent: 'first' }, { intent: 'then' }).intent).toBe('first');
   });
 
-  it("keeps the later scope's record, or the earlier one when only it has one", () => {
+  it("keeps the later scope's record when both have one", () => {
     const earlier = scopeRecordOf({ ...draftOf(), suggestedName: 'Earlier' });
     const later = scopeRecordOf({ ...draftOf(), suggestedName: 'Later' });
 
     expect(
       mergeChangeSets({ intent: 'a', scope: earlier }, { intent: 'b', scope: later }).scope,
     ).toBe(later);
+  });
+
+  it("keeps the earlier scope's record when only it has one", () => {
+    const earlier = scopeRecordOf({ ...draftOf(), suggestedName: 'Earlier' });
+
     expect(mergeChangeSets({ intent: 'a', scope: earlier }, { intent: 'b' }).scope).toBe(earlier);
   });
 

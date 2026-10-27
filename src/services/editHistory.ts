@@ -89,7 +89,7 @@ export class EditHistory {
   /**
    * Reverts the latest edit not yet undone, re-anchoring what it restores.
    *
-   * @returns The changes that reverted the edit and re-anchored what the edit restored, or
+   * @returns The changes that reverted the edit and re-anchored what the undo restored, or
    *   `undefined` when there is none.
    * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
    *   edit stays the next to undo.
@@ -101,7 +101,7 @@ export class EditHistory {
   /**
    * Redoes the latest undone edit, re-anchoring what it restores.
    *
-   * @returns The changes that redid the edit and re-anchored what the edit restored, or `undefined`
+   * @returns The changes that redid the edit and re-anchored what the redo restored, or `undefined`
    *   when there is none.
    * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
    *   edit stays the next to redo.
@@ -111,7 +111,7 @@ export class EditHistory {
   }
 
   /**
-   * Applies the latest changes on `from`, re-anchored to each book passed over since they were
+   * Applies the latest changes on `from`, re-anchored to each book re-anchored since they were
    * captured, as one apply, moving what reverts it onto `to`.
    */
   private async step(from: Step[], to: Step[]): Promise<ChangeSet | undefined> {

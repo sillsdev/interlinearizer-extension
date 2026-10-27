@@ -365,9 +365,9 @@ declare module 'papi-shared-types' {
 
     /**
      * Reverts a session's latest edit not yet undone, re-anchoring what it restores to the current
-     * text of each book passed over since.
+     * text of each book re-anchored since.
      *
-     * @returns The changes that reverted the edit and re-anchored what the edit restored, as JSON,
+     * @returns The changes that reverted the edit and re-anchored what the undo restored, as JSON,
      *   or `undefined` when there is none.
      * @throws If the session is read-only or not open, or re-anchoring or applying the changes
      *   fails (logged before rethrowing).
@@ -376,9 +376,9 @@ declare module 'papi-shared-types' {
 
     /**
      * Redoes a session's latest undone edit, re-anchoring what it restores to the current text of
-     * each book passed over since.
+     * each book re-anchored since.
      *
-     * @returns The changes that redid the edit and re-anchored what the edit restored, as JSON, or
+     * @returns The changes that redid the edit and re-anchored what the redo restored, as JSON, or
      *   `undefined` when there is none.
      * @throws If the session is read-only or not open, or re-anchoring or applying the changes
      *   fails (logged before rethrowing).

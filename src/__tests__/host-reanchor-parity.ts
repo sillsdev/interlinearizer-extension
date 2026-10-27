@@ -13,9 +13,14 @@ function draftHolding({ analysis, segmentation }: DraftContent): DraftProject {
 }
 
 /**
- * Checks that the host's re-anchor of `bookCode` gives what the WebView's `pass` made of `content`,
- * `reanchored`: the changes it applies bring the draft to `reanchored`, and the pass over only the
- * book's links, as the host reads them, makes the same changes. `pass` must stamp every run alike.
+ * Checks that the host's re-anchor of a book gives what the WebView's pass made. The changes the
+ * host applies bring the draft to what the pass made. A pass over only the book's links, as the
+ * host reads them, makes the same changes.
+ *
+ * @param content - The draft content the pass ran over.
+ * @param bookCode - The book re-anchored.
+ * @param pass - The WebView's pass over the book. It must stamp every run alike.
+ * @param reanchored - What `pass` made of `content`.
  */
 export function expectHostReanchorParity(
   content: DraftContent,

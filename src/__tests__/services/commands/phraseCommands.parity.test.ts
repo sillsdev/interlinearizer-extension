@@ -511,6 +511,21 @@ describe('writePhraseGloss parity with the reducer', () => {
       },
     ],
     [
+      'forks a shared payload on a blank value, clearing only this occurrence',
+      {
+        analysis: analysisOf(
+          [payload('pa-1', 'In the', { gloss: { en: 'a', fr: 'au' } })],
+          [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-1', run(2, 0, 1))],
+        ),
+        input: { value: '' },
+        expectStore: (store) => {
+          expect(payloadOf(store, 'pa-1')?.gloss).toStrictEqual({ en: 'a', fr: 'au' });
+          expect(payloadOf(store, 'fork')?.gloss).toStrictEqual({ fr: 'au' });
+          expect(linkOf(store, 'pl-1')?.analysisId).toBe('fork');
+        },
+      },
+    ],
+    [
       'joins a payload the gloss makes it identical to',
       {
         analysis: analysisOf(

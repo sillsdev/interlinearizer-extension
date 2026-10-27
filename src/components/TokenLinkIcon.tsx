@@ -125,8 +125,9 @@ function EditableTokenLinkIcon({
    *
    * Special case: when the neighbor is a different fragment of the focused phrase itself (e.g.
    * focused is A in phrase [A,C] and this slot is between free token B and C), the "neighbor" link
-   * is the same occurrence as `focusedPhraseLink`. In that case the token on the focused side of
-   * the slot (the bridging free token between the two fragments) is absorbed into the phrase.
+   * is the same occurrence as `focusedPhraseLink`. In that case what sits on the focused side of
+   * the slot, between the two fragments, is absorbed instead: the bridging token, or the whole
+   * phrase that holds it.
    */
   const handleLinkClick = useCallback(() => {
     /* v8 ignore next -- button only renders when both tokens exist and focus is defined */
@@ -135,14 +136,24 @@ function EditableTokenLinkIcon({
     // The neighbor is the token/phrase on the opposite side of this slot from focus.
     const neighborLink = focusedSideIsPrev ? nextPhraseLink : prevPhraseLink;
     const neighborToken = focusedSideIsPrev ? nextToken : prevToken;
-    // The bridging token is on the focused side of this slot — the free token sitting between two
+    // The bridging token is on the focused side of this slot — the token sitting between two
     // fragments of the focused phrase when the neighbor IS the focused phrase.
     const bridgingToken = focusedSideIsPrev ? prevToken : nextToken;
+    const bridgingLink = focusedSideIsPrev ? prevPhraseLink : nextPhraseLink;
 
     if (focusedPhraseLink) {
-      // When the neighbor is a different fragment of the same phrase, absorb the bridging free
-      // token between the two fragments rather than re-merging the phrase with itself.
+      // When the neighbor is a different fragment of the same phrase, absorb what sits between the
+      // two fragments rather than re-merging the phrase with itself.
       if (neighborLink?.id === focusedPhraseLink.id) {
+        // A phrase holding the bridging token joins whole, so that no token lands in two phrases.
+        if (bridgingLink) {
+          mergePhrases(
+            focusedPhraseLink.id,
+            sortByDocOrder([...focusedPhraseLink.tokens, ...bridgingLink.tokens], tokenDocOrder),
+            bridgingLink.id,
+          );
+          return;
+        }
         const bridgingSnapshot = {
           tokenRef: bridgingToken.ref,
           surfaceText: bridgingToken.surfaceText,
@@ -287,6 +298,7 @@ function EditableTokenLinkIcon({
   const neighborRef = (focusedSideIsPrev ? nextToken : prevToken)?.ref;
   const neighborLink = focusedSideIsPrev ? nextPhraseLink : prevPhraseLink;
   const bridgingToken = focusedSideIsPrev ? prevToken : nextToken;
+  const bridgingLink = focusedSideIsPrev ? prevPhraseLink : nextPhraseLink;
   const neighborIsPhrase = focusedSideIsPrev ? !!nextPhraseLink : !!prevPhraseLink;
   const neighborIsFocusedPhrase = neighborIsPhrase && neighborLink?.id === focusedPhraseLink?.id;
   const candidateTokenRefs = (() => {
@@ -302,7 +314,8 @@ function EditableTokenLinkIcon({
         /* v8 ignore next -- neighborLink is always non-null when neighborIsPhrase is true */
         ...(neighborLink ? neighborLink.tokens.map((t) => t.tokenRef) : [neighborRef]),
       ];
-    // Neighbor is a different fragment of the focused phrase: highlight the bridging free token.
+    // Neighbor is a different fragment of the focused phrase: highlight what sits between them.
+    if (neighborIsFocusedPhrase && bridgingLink) return bridgingLink.tokens.map((t) => t.tokenRef);
     if (neighborIsFocusedPhrase && bridgingToken) return [bridgingToken.ref];
     // Focus is a phrase, neighbor is a different phrase: highlight all of its tokens since the
     // entire phrase would be absorbed on click.

@@ -7,7 +7,10 @@ import type { ChangeBuffer } from './changeBuffer';
  * second approved phrase.
  */
 export class ApprovalRuleError extends Error {
-  /** The token refs and segment ids the edit would leave holding several approved links. */
+  /**
+   * The token refs and segment ids where the edit would leave several approved links of one kind,
+   * or a token in several approved phrases.
+   */
   readonly places: readonly string[];
 
   constructor(places: readonly string[]) {

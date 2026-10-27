@@ -785,11 +785,13 @@ async function setAnalysisLanguage(sessionId: string, analysisLanguage: string):
 }
 
 /**
- * Reverts a session's latest edit not yet undone.
+ * Reverts a session's latest edit not yet undone, re-anchoring what it restores to the current text
+ * of each book passed over since.
  *
- * @returns The changes that reverted it, as JSON, or `undefined` when there is none.
- * @throws If the session is read-only or not open, or the changes cannot be applied. The error is
- *   logged before rethrowing.
+ * @returns The changes that reverted the edit and re-anchored what the edit restored, as JSON, or
+ *   `undefined` when there is none.
+ * @throws If the session is read-only or not open, or re-anchoring or applying the changes fails.
+ *   The error is logged before rethrowing.
  */
 async function undoEdit(sessionId: string): Promise<string | undefined> {
   try {
@@ -802,11 +804,13 @@ async function undoEdit(sessionId: string): Promise<string | undefined> {
 }
 
 /**
- * Redoes a session's latest undone edit.
+ * Redoes a session's latest undone edit, re-anchoring what it restores to the current text of each
+ * book passed over since.
  *
- * @returns The changes that redid it, as JSON, or `undefined` when there is none.
- * @throws If the session is read-only or not open, or the changes cannot be applied. The error is
- *   logged before rethrowing.
+ * @returns The changes that redid the edit and re-anchored what the edit restored, as JSON, or
+ *   `undefined` when there is none.
+ * @throws If the session is read-only or not open, or re-anchoring or applying the changes fails.
+ *   The error is logged before rethrowing.
  */
 async function redoEdit(sessionId: string): Promise<string | undefined> {
   try {

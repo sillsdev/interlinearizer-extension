@@ -6,9 +6,6 @@ import { REANCHOR_INTENT, reanchorChangesForBook } from '../../utils/reanchor-ch
 import { missingBook } from '../../utils/reanchor-draft';
 import { FIXTURE_STAMPS, makeTokenLink, makeVerseBook, tokenRefOf } from '../test-helpers';
 
-// These check what the changes carry. Each case of the WebView's passes checks that the changes
-// match the pass's result.
-
 /** A book of Genesis 1, one verse per text. */
 function genesis(...verses: string[]): Book {
   return makeVerseBook(verses.map((text, index) => ({ sid: `GEN 1:${index + 1}`, text })));

@@ -41,8 +41,8 @@ export class EditHistory {
   private readonly redoable: Step[] = [];
 
   /**
-   * Each book's latest text a pass has re-anchored to, while some step predates it, in the order
-   * the passes ran.
+   * Each book's latest text a pass has re-anchored to, while some step predates that pass, in the
+   * order the passes ran.
    */
   private readonly passes = new Map<string, { book: Book; ordinal: number }>();
 
@@ -89,8 +89,8 @@ export class EditHistory {
   /**
    * Reverts the latest edit not yet undone, re-anchoring what it restores.
    *
-   * @returns The changes that reverted it, with those that re-anchored it, or `undefined` when
-   *   there is none.
+   * @returns The changes that reverted the edit and re-anchored what the edit restored, or
+   *   `undefined` when there is none.
    * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
    *   edit stays the next to undo.
    */
@@ -101,8 +101,8 @@ export class EditHistory {
   /**
    * Redoes the latest undone edit, re-anchoring what it restores.
    *
-   * @returns The changes that redid it, with those that re-anchored it, or `undefined` when there
-   *   is none.
+   * @returns The changes that redid the edit and re-anchored what the edit restored, or `undefined`
+   *   when there is none.
    * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
    *   edit stays the next to redo.
    */
@@ -132,7 +132,7 @@ export class EditHistory {
     return changes;
   }
 
-  /** Forgets each pass that every undo and redo step still held already reflects. */
+  /** Forgets each pass that every step left in the history already reflects. */
   private forgetUnneededPasses(): void {
     const oldestSeen = Math.min(
       ...[...this.undoable, ...this.redoable].map(({ passesSeen }) => passesSeen),

@@ -47,3 +47,8 @@ e2e-tests/test-results
 
 # Captured text and generated datasets for the performance harness
 perf/.cache
+
+# .NET build output for the C# host
+c-sharp/**/bin
+c-sharp/**/obj
+c-sharp/publish

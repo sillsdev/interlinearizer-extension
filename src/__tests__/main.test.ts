@@ -6,6 +6,7 @@ import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
 import type { DraftProject, ProjectConfig, TextAnalysis, TokenSnapshot } from 'interlinearizer';
 import { AnalysisSessions } from '../services/analysisSessions';
+import { ApprovalRuleError } from '../services/commands/approvalRule';
 import * as bookService from '../services/bookService';
 import { DraftRepository } from '../services/draftRepository';
 import * as hostPerf from '../services/hostPerf';
@@ -2411,6 +2412,47 @@ describe('main', () => {
         `Interlinearizer: failed to ${intent} in session ${sessionId}`,
         expect.any(Error),
       );
+    });
+
+    const beginningGod: TokenSnapshot[] = [
+      { tokenRef: 'GEN 1:1:2', surfaceText: 'beginning' },
+      { tokenRef: 'GEN 1:1:3', surfaceText: 'God' },
+    ];
+
+    it.each([
+      [
+        'createPhrase',
+        (c: SessionCommands, id: string) => c.createPhrase(id, [inThe[1], beginningGod[0]]),
+      ],
+      [
+        'updatePhrase',
+        (c: SessionCommands, id: string) => c.updatePhrase(id, 'pl-2', [inThe[1], ...beginningGod]),
+      ],
+      [
+        'mergePhrases',
+        (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-2', [inThe[1], ...beginningGod]),
+      ],
+    ])('refuses %s over a token in another approved phrase', async (_intent, command) => {
+      await storeDraftHolding({
+        phraseAnalyses: [
+          { id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the' },
+          { id: 'pa-2', ...FIXTURE_STAMPS, surfaceText: 'beginning God' },
+        ],
+        phraseAnalysisLinks: [
+          { id: 'pl-1', analysisId: 'pa-1', ...FIXTURE_STAMPS, status: 'approved', tokens: inThe },
+          {
+            id: 'pl-2',
+            analysisId: 'pa-2',
+            ...FIXTURE_STAMPS,
+            status: 'approved',
+            tokens: beginningGod,
+          },
+        ],
+      });
+      const commands = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+
+      await expect(command(commands, sessionId)).rejects.toThrow(ApprovalRuleError);
     });
 
     it('closes every session on deactivation', async () => {

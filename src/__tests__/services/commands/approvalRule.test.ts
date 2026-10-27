@@ -1,6 +1,11 @@
 /// <reference types="jest" />
 
-import type { SegmentAnalysisLink, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type {
+  PhraseAnalysisLink,
+  SegmentAnalysisLink,
+  TextAnalysis,
+  TokenAnalysisLink,
+} from 'interlinearizer';
 import { ApprovalRuleError, assertApprovalRule } from '../../../services/commands/approvalRule';
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { DraftRepository } from '../../../services/draftRepository';
@@ -27,6 +32,16 @@ function segmentLink(id: string): SegmentAnalysisLink {
     ...FIXTURE_STAMPS,
     status: 'approved',
     segmentId: 'GEN 1:1',
+  };
+}
+
+function phraseLink(id: string, ...indexes: number[]): PhraseAnalysisLink {
+  return {
+    id,
+    analysisId: `pa-${id}`,
+    ...FIXTURE_STAMPS,
+    status: 'approved',
+    tokens: indexes.map((i) => ({ tokenRef: `GEN 1:1:${i}`, surfaceText: `w${i}` })),
   };
 }
 
@@ -66,6 +81,24 @@ describe('assertApprovalRule', () => {
     buffer.create('segmentAnalysisLinks', segmentLink('b'));
 
     await expect(assertApprovalRule(buffer, repository)).rejects.toThrow(ApprovalRuleError);
+  });
+
+  it('refuses a token in a second approved phrase', async () => {
+    const { repository, buffer } = await over({ phraseAnalysisLinks: [phraseLink('a', 0, 1)] });
+
+    buffer.create('phraseAnalysisLinks', phraseLink('b', 1, 2));
+
+    await expect(assertApprovalRule(buffer, repository)).rejects.toThrow(
+      new ApprovalRuleError(['GEN 1:1:1']),
+    );
+  });
+
+  it('counts approved phrases apart from approved token links', async () => {
+    const { repository, buffer } = await over({ tokenAnalysisLinks: [tokenLink('a')] });
+
+    buffer.create('phraseAnalysisLinks', phraseLink('b', 0, 1));
+
+    await expect(assertApprovalRule(buffer, repository)).resolves.toBeUndefined();
   });
 
   it('accepts changes that leave a stored breach no worse', async () => {

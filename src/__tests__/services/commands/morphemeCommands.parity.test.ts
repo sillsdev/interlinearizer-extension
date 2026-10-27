@@ -444,6 +444,30 @@ describe('writeMorphemeGloss parity with the reducer', () => {
       },
     ],
     [
+      'clears the gloss and keeps the sense ref',
+      {
+        analysis: analysisOf(
+          [
+            payload('ta-cats', 'cats', {
+              morphemes: [
+                morpheme('m-cat', 'cat', {
+                  gloss: { en: 'feline' },
+                  senseRef: { authority: 'fwlite', senseId: 's-cat' },
+                }),
+              ],
+            }),
+          ],
+          [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
+        ),
+        input: { value: '' },
+        expectStore: (store) => {
+          expect(store.tokenAnalyses[0].morphemes).toStrictEqual([
+            morpheme('m-cat', 'cat', { senseRef: { authority: 'fwlite', senseId: 's-cat' } }),
+          ]);
+        },
+      },
+    ],
+    [
       'stamps the payload and link even when a blank value finds no gloss to clear',
       {
         analysis: analysisOf(

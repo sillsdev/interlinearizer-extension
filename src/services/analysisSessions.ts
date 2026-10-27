@@ -69,12 +69,7 @@ export interface SessionHost {
   openPt9ImportRepository(interlinearProjectId: string): AnalysisRepository;
   /** The platform's interface languages, most preferred first. */
   getInterfaceLanguages(): Promise<string[]>;
-  /**
-   * Starts reading the source project's whole text afresh, without waiting on the read. Each book
-   * holding text reaches {@link AnalysisSessions.reanchorBook} once read. Once every book is read
-   * with none failed, the books holding text reach {@link AnalysisSessions.reanchorMissingBooks}. A
-   * book that fails to read reaches neither until a later read of that book succeeds.
-   */
+  /** Starts reading the source project's whole text afresh, without waiting on the read. */
   startTextRead(sourceProjectId: string): Promise<void>;
   /** Ends the source project's whole-text read. */
   stopTextRead(sourceProjectId: string): Promise<void>;

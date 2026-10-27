@@ -93,8 +93,8 @@ function occurrenceLabel(occurrence: ConcordanceOccurrence): string {
 }
 
 /**
- * The gloss shown for an analysis a form's occurrences are approved to, or `noGloss` when it has
- * none to show.
+ * The gloss shown for an analysis that occurrences of a form are approved to. Shows `noGloss` when
+ * the analysis has none to show.
  */
 function TallyGloss({
   tally,

@@ -24,11 +24,15 @@ import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import { formatTemplate } from '../utils/format-template';
 
 /**
- * Inline gloss input for a phrase. Writes the phrase-level gloss to the analysis store, and shows
- * the stored gloss or, where none is stored, the gloss of the phrase's lexicon sense. Separated
- * into its own component so hooks are always called unconditionally. The placeholder comes from
- * strip context (fetched once per strip) rather than a per-instance `useLocalizedStrings`, so the
- * `field-sizing: content` input renders at its final width on its first frame.
+ * Inline gloss input for a phrase. Writes the phrase-level gloss to the analysis store.
+ *
+ * The input shows the stored gloss. Where none is stored, it shows the gloss of the phrase's
+ * lexicon sense.
+ *
+ * Separated into its own component so hooks are always called unconditionally. The placeholder
+ * comes from strip context (fetched once per strip) rather than a per-instance
+ * `useLocalizedStrings`, so the `field-sizing: content` input renders at its final width on its
+ * first frame.
  */
 function PhraseGlossInput({
   phraseId,

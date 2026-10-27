@@ -143,7 +143,8 @@ export function TokenChip({
   // store still reports the token as approved. Preview the post-commit suggestion now — derived as
   // if this token's approval were already gone — so the row and ghost placeholder stay consistent
   // across the blur. Gated to the one token being cleared so no other chip does the extra lookup.
-  // A lexicon link survives the clear and keeps the approval, so a linked token previews nothing.
+  // A sense ref survives the clear and keeps the approval, so a token whose gloss carries one
+  // previews nothing.
   const clearingApprovedGloss =
     !disabled && resolved?.status === 'approved' && draft === '' && glossSenseRef === undefined;
   const clearedSuggestion = useSuggestionAfterClearing(

@@ -22,7 +22,6 @@ const LABELS = {
   editMorphemes: 'Edit morpheme breakdown for {token}',
   editStaleMorphemes: 'Edit stale morpheme breakdown for {token}',
   morphemeGloss: 'Gloss for morpheme {form}',
-  lexiconGloss: 'Gloss from the lexicon',
 };
 
 const WORD_TOKEN = makeWordToken('GEN 1:1:0', 'hello');
@@ -734,13 +733,13 @@ describe('morphemes linked to a lexicon sense', () => {
   it('marks only the gloss shown from the lexicon, in the row under it', async () => {
     renderLinkedBox();
 
-    const mark = await screen.findByRole('img', { name: 'Gloss from the lexicon' });
+    const mark = await screen.findByRole('img', { name: LABELS.lexiconGloss });
     expect(mark).toHaveStyle({ gridColumn: '1', gridRow: '3' });
     expect(screen.getAllByTestId('morpheme-lexicon-mark')).toHaveLength(1);
   });
 
   it('names the mark in a platform tooltip', async () => {
-    renderLinkedBox();
+    renderLinkedBox({ labels: { ...LABELS, lexiconGloss: 'Gloss from the lexicon' } });
 
     expect(await screen.findByTestId('morpheme-lexicon-mark')).toHaveAttribute(
       'title',
@@ -763,7 +762,7 @@ describe('morphemes linked to a lexicon sense', () => {
       'data-testid',
       'readonly-morpheme-gloss',
     );
-    expect(screen.getByRole('img', { name: 'Gloss from the lexicon' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: LABELS.lexiconGloss })).toBeInTheDocument();
   });
 
   it('shows and marks nothing for a link the lexicon cannot resolve', async () => {

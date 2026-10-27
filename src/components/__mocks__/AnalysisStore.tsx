@@ -67,7 +67,7 @@ export function useGloss(tokenRef: string) {
   return useContext(MockCtx).glosses[tokenRef] ?? '';
 }
 
-/** Reports no sense ref in mock context; tests covering one mock this module member directly. */
+/** Reports no sense ref in mock context. */
 export function useGlossSenseRef(_tokenRef: string): SenseRef | undefined {
   return undefined;
 }

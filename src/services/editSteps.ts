@@ -1,4 +1,4 @@
-import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
+import type { AnalysisRepository } from '../types/analysis-repository';
 import type { EditStep } from '../types/edit-step';
 import type { ChangeBuffer } from './commands/changeBuffer';
 
@@ -6,33 +6,26 @@ import type { ChangeBuffer } from './commands/changeBuffer';
  * Reads, ahead of a catalog edit or merge on the row of `analysisId`, what the edit's step will
  * summarize.
  *
- * @returns A function that builds the step from the changes that the edit stages. Its summary names
- *   the row's form and the analysis that holds the row afterward. That is the analysis itself when
- *   the edit keeps it, else the one that its links were folded into, else none.
+ * @returns A function that takes the id of the analysis that holds the row after the edit, or
+ *   `undefined` when the edit removed the row. It builds a step that names the row's form,
+ *   `analysisId` and any such surviving analysis.
  */
 export async function catalogStepOf(
   buffer: ChangeBuffer,
   kind: 'catalogEdit' | 'catalogMerge',
   analysisId: string,
-): Promise<(changes: ChangeSet) => EditStep> {
+): Promise<(survivingAnalysisId: string | undefined) => EditStep> {
   const [analysis] = await buffer.getTokenAnalyses([analysisId]);
   /* v8 ignore next -- an edit of an analysis not stored stages nothing, so records no step */
   const form = analysis?.surfaceText ?? '';
-  const { tokenAnalysisLinks } = await buffer.findLinksToAnalyses([analysisId]);
-  const linkIds = new Set(tokenAnalysisLinks.map(({ id }) => id));
-  return (changes) => {
-    const survivingAnalysisId = changes.tokenAnalyses?.deletes.includes(analysisId)
-      ? changes.tokenAnalysisLinks?.puts.find(({ id }) => linkIds.has(id))?.analysisId
-      : analysisId;
-    return {
-      summary: {
-        kind,
-        form,
-        analysisId,
-        ...(survivingAnalysisId !== undefined && { survivingAnalysisId }),
-      },
-    };
-  };
+  return (survivingAnalysisId) => ({
+    summary: {
+      kind,
+      form,
+      analysisId,
+      ...(survivingAnalysisId !== undefined && { survivingAnalysisId }),
+    },
+  });
 }
 
 /**

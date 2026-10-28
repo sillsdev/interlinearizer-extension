@@ -33,34 +33,11 @@ describe('catalogStepOf', () => {
     tokenAnalysisLinks: [makeTokenLink('ta-a', 'GEN 1:1:0', { id: 'tl-1' })],
   };
 
-  it("names the row's form and the analysis left holding it when the edit keeps it", async () => {
-    const { buffer } = await bufferOver(linked);
-    const stepOf = await catalogStepOf(buffer, 'catalogEdit', 'ta-a');
-
-    expect(stepOf({ intent: 'x' })).toStrictEqual({
-      summary: {
-        kind: 'catalogEdit',
-        form: 'Word',
-        analysisId: 'ta-a',
-        survivingAnalysisId: 'ta-a',
-      },
-    });
-  });
-
-  it('names the analysis the edit folded the row into', async () => {
+  it("names the row's form and the analysis left holding it", async () => {
     const { buffer } = await bufferOver(linked);
     const stepOf = await catalogStepOf(buffer, 'catalogMerge', 'ta-a');
 
-    expect(
-      stepOf({
-        intent: 'x',
-        tokenAnalyses: { puts: [], deletes: ['ta-a'] },
-        tokenAnalysisLinks: {
-          puts: [makeTokenLink('ta-b', 'GEN 1:1:0', { id: 'tl-1' })],
-          deletes: [],
-        },
-      }),
-    ).toStrictEqual({
+    expect(stepOf('ta-b')).toStrictEqual({
       summary: {
         kind: 'catalogMerge',
         form: 'Word',
@@ -74,7 +51,7 @@ describe('catalogStepOf', () => {
     const { buffer } = await bufferOver(linked);
     const stepOf = await catalogStepOf(buffer, 'catalogEdit', 'ta-a');
 
-    expect(stepOf({ intent: 'x', tokenAnalyses: { puts: [], deletes: ['ta-a'] } })).toStrictEqual({
+    expect(stepOf(undefined)).toStrictEqual({
       summary: { kind: 'catalogEdit', form: 'Word', analysisId: 'ta-a' },
     });
   });

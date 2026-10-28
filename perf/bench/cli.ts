@@ -58,7 +58,7 @@ function memoryStorage(): KeyValueStorage {
   };
 }
 
-/** The token payload the most links reference, which an edit to rewrites the most books. */
+/** The token payload the most links reference, so an edit to it rewrites the most books. */
 function mostLinkedTokenAnalysis(analysis: TextAnalysis) {
   const linkCounts = new Map<string, number>();
   analysis.tokenAnalysisLinks.forEach(({ analysisId }) =>

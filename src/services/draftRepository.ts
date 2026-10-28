@@ -39,8 +39,9 @@ async function settleAll(operations: readonly Promise<unknown>[]): Promise<void>
 }
 
 /**
- * Names the shards an interrupted save could strand, so a later process can still find them.
- * Storage cannot enumerate keys, so a shard the manifest does not name is otherwise unreachable.
+ * Names the shards an interrupted save could strand or leave out of step with the draft, so a later
+ * process can still find them. Storage cannot enumerate keys, so a shard the manifest does not name
+ * is otherwise unreachable.
  */
 interface ShardJournal {
   /**
@@ -388,7 +389,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @param books - The key of every partition the draft carries, less the books whose shard could
    *   not be read.
    * @param partitions - The partitions to compare, keyed by book; every key is in `books`.
-   * @throws If storage rejects a read, or a write before the envelope lands.
+   * @throws If storage rejects a write before the envelope lands.
    */
   private async writeDraft(
     draft: DraftProject,
@@ -650,9 +651,12 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Reads the shard journal. A missing, unparseable or malformed journal recovers as empty. It is a
-   * recovery hint, not a record of truth: every book it names is checked against storage before
-   * anything acts on it. Losing one costs an orphaned shard, never correctness.
+   * Reads the shard journal. A missing, unparseable or malformed journal recovers as empty. Every
+   * book it names is checked against storage or the draft before anything acts on it, so a stale
+   * entry costs at most a write.
+   *
+   * Losing a journal costs more. A shard it names under `adding` is orphaned, and a book it names
+   * under `unsettled` can stay out of step with the draft until a whole save.
    *
    * @throws If storage rejects the read.
    */

@@ -139,6 +139,12 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    */
   private current: IndexedDraft | undefined;
 
+  /**
+   * Books a failed apply set out to rewrite. Storage may hold changes there that {@link current}
+   * lacks, so each later apply compares them too until one succeeds.
+   */
+  private unsettledBooks = new Set<string>();
+
   constructor(storage: KeyValueStorage, sourceProjectId: string, logger: WarningLogger) {
     super();
     this.storage = storage;
@@ -253,14 +259,22 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
         if (!(e instanceof SyntaxError)) throw e;
       }
     }
-    return this.writeDraft(draft, options, { refuseUnreadable: false });
+    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
+      this.assertStoredDraftIsWritable(),
+    );
+    const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(draft.analysis));
+    if (options?.discardUnreadable) this.unreadableShards.clear();
+    const leftOut = [...this.unreadableShards].filter((bookCode) => byBook.has(bookCode));
+    leftOut.forEach((bookCode) => byBook.delete(bookCode));
+    await this.writeDraft(draft, storedBooks, [...byBook.keys()], byBook);
+    return leftOut;
   }
 
   /**
    * Applies the changes to the draft this instance keeps, loading the stored draft first when it
-   * keeps none, as after {@link exportAll} or a whole save. Only the books whose content the changes
-   * alter are rewritten, so an edit to a payload rewrites every book linking it. Marks the draft
-   * unsaved unless `options` keeps the mark.
+   * keeps none, as after {@link exportAll} or a whole save. Only the books the changes reach are
+   * compared and rewritten, found through the index, so an edit to a payload rewrites every book
+   * linking it. Marks the draft unsaved unless `options` keeps the mark.
    *
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project; nothing is written.
@@ -276,8 +290,14 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     const applied = applyChangeSet(base, copied);
     const { inverse } = applied;
     const draft = options?.keepDirty ? { ...applied.draft, dirty: base.dirty } : applied.draft;
-    await this.writeDraft(draft, undefined, { refuseUnreadable: true });
-    index.apply(copied);
+    const reached = index.apply(copied);
+    try {
+      await this.writeReachedBooks(draft, index, reached);
+    } catch (e) {
+      // The index already holds the changes, so it is built afresh over the draft as it was.
+      this.current = { draft: base, index: new AnalysisIndex(base.analysis) };
+      throw e;
+    }
     this.current = { draft, index };
     return { inverse };
   }
@@ -292,6 +312,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     if (!this.current) {
       const { draft } = await this.read(false);
       this.current = { draft, index: new AnalysisIndex(draft.analysis) };
+      this.unsettledBooks.clear();
     }
     return this.current;
   }
@@ -312,31 +333,58 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Saves `draft` as {@link replaceAll} describes.
+   * Saves `draft`, an applied draft that `index` is kept over, as {@link replaceAll} does, comparing
+   * only the partitions in `reached` and those a failed apply left unsettled.
    *
-   * @throws {Error} If `refuseUnreadable` is set and the draft carries analysis for a book whose
-   *   shard could not be read; nothing is written.
+   * @throws {Error} If `reached` names a book whose shard could not be read; nothing is written.
+   * @throws Whatever {@link replaceAll} throws.
+   */
+  private async writeReachedBooks(
+    draft: DraftProject,
+    index: AnalysisIndex,
+    reached: ReadonlySet<string>,
+  ): Promise<void> {
+    const { sourceProjectId, unreadableShards: unreadable, unsettledBooks: unsettled } = this;
+    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
+      this.assertStoredDraftIsWritable(),
+    );
+    const refused = [...reached].filter((bookCode) => unreadable.has(bookCode));
+    if (refused.length > 0) {
+      throw new Error(
+        `Interlinearizer: the draft for ${sourceProjectId} could not read the stored analysis of ${refused.join(', ')}, so it refuses changes there`,
+      );
+    }
+    const { books, partitions } = perfTime('saveDraft:compare', () => {
+      const keys = index.partitionKeys().filter((bookCode) => !unreadable.has(bookCode));
+      const compared = new Map<string, TextAnalysis>();
+      new Set([...reached, ...unsettled]).forEach((bookCode) => {
+        const partition = index.partition(bookCode);
+        if (partition && keys.includes(bookCode)) compared.set(bookCode, partition);
+      });
+      return { books: keys, partitions: compared };
+    });
+    reached.forEach((bookCode) => unsettled.add(bookCode));
+    await this.writeDraft(draft, storedBooks, books, partitions);
+    unsettled.clear();
+  }
+
+  /**
+   * Saves `draft` as {@link replaceAll} describes, comparing only `partitions` against what this
+   * instance last loaded or saved and rewriting those that differ.
+   *
+   * @param storedBooks The books the stored draft's manifest names.
+   * @param books Every partition the draft carries, less the books whose shard could not be read.
+   * @param partitions The partitions to compare, each one of `books`.
    * @throws Whatever {@link replaceAll} throws.
    */
   private async writeDraft(
     draft: DraftProject,
-    options: ReplaceAllOptions | undefined,
-    { refuseUnreadable }: { refuseUnreadable: boolean },
-  ): Promise<string[]> {
+    storedBooks: readonly string[],
+    books: readonly string[],
+    partitions: ReadonlyMap<string, TextAnalysis>,
+  ): Promise<void> {
     const { sourceProjectId, storage, shardContents: saved, unreadableShards: unreadable } = this;
-    const { analysis } = draft;
-    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
-      this.assertStoredDraftIsWritable(),
-    );
-    const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(analysis));
-    if (options?.discardUnreadable) unreadable.clear();
-    const leftOut = [...unreadable].filter((bookCode) => byBook.has(bookCode));
-    if (refuseUnreadable && leftOut.length > 0) {
-      throw new Error(
-        `Interlinearizer: the draft for ${sourceProjectId} could not read the stored analysis of ${leftOut.join(', ')}, so it refuses changes there`,
-      );
-    }
-    leftOut.forEach((bookCode) => byBook.delete(bookCode));
+    const carried = new Set(books);
 
     // Books this save no longer carries, less those held back because the load could not read them.
     // The stored manifest and the journal also list shards the load did not see, such as one
@@ -349,18 +397,18 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       ...journaled.removing,
     ]);
     const wiped = [...knownShards].filter(
-      (bookCode) => !byBook.has(bookCode) && !unreadable.has(bookCode),
+      (bookCode) => !carried.has(bookCode) && !unreadable.has(bookCode),
     );
 
     // Journal every shard this save could strand before writing any. A book the stored manifest
     // already names needs no entry: the manifest alone keeps it reachable.
-    const stranded = [...byBook.keys()].filter((bookCode) => !storedBooks.includes(bookCode));
+    const stranded = books.filter((bookCode) => !storedBooks.includes(bookCode));
     await perfTimeAsync('saveDraft:write', () =>
       this.writeShardJournal({ adding: stranded, removing: wiped }),
     );
 
     const shards = perfTime('saveDraft:compare', () =>
-      [...byBook].map(([bookCode, partition]) => {
+      [...partitions].map(([bookCode, partition]) => {
         const json = JSON.stringify(partition);
         return { bookCode, json, changed: saved.get(bookCode) !== json };
       }),
@@ -378,7 +426,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       ...draft,
       modelVersion: CURRENT_MODEL_VERSION,
       analysis: emptyAnalysis(),
-      analysisBooks: [...byBook.keys(), ...unreadable],
+      analysisBooks: [...books, ...unreadable],
     };
     await perfTimeAsync('saveDraft:write', () =>
       storage.write(draftKey(sourceProjectId), JSON.stringify(envelope)),
@@ -425,7 +473,6 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
         e,
       );
     }
-    return leftOut;
   }
 
   /**

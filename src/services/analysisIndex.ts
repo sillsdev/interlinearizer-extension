@@ -8,8 +8,13 @@ import type {
   TokenAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
-import type { AnalysisLinks, ChangeSet, IndexDifference } from '../types/analysis-repository';
-import { bookOfRef } from '../utils/analysis-book';
+import type {
+  AnalysisLinks,
+  ChangeSet,
+  IndexDifference,
+  RecordChanges,
+} from '../types/analysis-repository';
+import { bookOfRef, BOOKLESS_PARTITION } from '../utils/analysis-book';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { RecordTable } from './recordTable';
 
@@ -27,6 +32,72 @@ function linkKeyers<Link extends { analysisId: string; status: AssignmentStatus 
     book: (link: Link) => [bookOf(link)],
     bookStatus: (link: Link) => [bookStatusKey(bookOf(link), link.status)],
   };
+}
+
+function tokenLinkBook(link: TokenAnalysisLink): string {
+  return bookOfRef(link.token.tokenRef);
+}
+
+function phraseLinkBook(link: PhraseAnalysisLink): string {
+  // Every token of a phrase shares a book, so the first one places the whole run.
+  return bookOfRef(link.tokens[0].tokenRef);
+}
+
+function segmentLinkBook(link: SegmentAnalysisLink): string {
+  return bookOfRef(link.segmentId);
+}
+
+/** The ids one record kind's changes put or delete. */
+function idsNamedBy(changes: RecordChanges<{ id: string }> | undefined): string[] {
+  return changes ? [...changes.puts.map(({ id }) => id), ...changes.deletes] : [];
+}
+
+/** One record kind's payloads. */
+type PayloadTable<Payload extends { id: string }> = Pick<
+  RecordTable<Payload, never>,
+  'get' | 'all'
+>;
+
+/** The links to one record kind's payloads. */
+type LinkTable<Link extends { id: string }> = Pick<
+  RecordTable<Link, 'analysisId' | 'book'>,
+  'get' | 'find' | 'has'
+>;
+
+/**
+ * Adds to `books` the book of each link that `payloadChanges` and `linkChanges` reach, as the
+ * tables stand before the changes apply: a link they replace or delete, a link they put, and a link
+ * to a payload they put or delete.
+ *
+ * @returns The ids of the payloads the changes put or delete, or whose links they change.
+ */
+function reachOfKind<
+  Payload extends { id: string },
+  Link extends { id: string; analysisId: string },
+>(
+  links: LinkTable<Link>,
+  bookOf: (link: Link) => string,
+  payloadChanges: RecordChanges<Payload> | undefined,
+  linkChanges: RecordChanges<Link> | undefined,
+  books: Set<string>,
+): string[] {
+  const changedPayloadIds = idsNamedBy(payloadChanges);
+  const changedLinks = [...links.get(idsNamedBy(linkChanges)), ...(linkChanges?.puts ?? [])];
+  [...changedLinks, ...links.find('analysisId', changedPayloadIds)].forEach((link) =>
+    books.add(bookOf(link)),
+  );
+  return [...changedPayloadIds, ...changedLinks.map(({ analysisId }) => analysisId)];
+}
+
+/** The payloads stored under `ids`, or all of them when absent, that no link references. */
+function unlinkedPayloads<Payload extends { id: string }>(
+  payloads: PayloadTable<Payload>,
+  links: LinkTable<{ id: string; analysisId: string }>,
+  ids?: readonly string[],
+): Payload[] {
+  return (ids ? payloads.get(ids) : payloads.all()).filter(
+    ({ id }) => !links.has('analysisId', id),
+  );
 }
 
 const formKeyers = {
@@ -66,7 +137,7 @@ export class AnalysisIndex {
     this.tokenLinks = new RecordTable(
       'tokenAnalysisLinks',
       {
-        ...linkKeyers((link: TokenAnalysisLink) => bookOfRef(link.token.tokenRef)),
+        ...linkKeyers(tokenLinkBook),
         tokenRef: (link) => [link.token.tokenRef],
       },
       analysis.tokenAnalysisLinks,
@@ -74,8 +145,7 @@ export class AnalysisIndex {
     this.phraseLinks = new RecordTable(
       'phraseAnalysisLinks',
       {
-        // Every token of a phrase shares a book, so the first one places the whole run.
-        ...linkKeyers((link: PhraseAnalysisLink) => bookOfRef(link.tokens[0].tokenRef)),
+        ...linkKeyers(phraseLinkBook),
         tokenRef: (link) => link.tokens.map(({ tokenRef }) => tokenRef),
       },
       analysis.phraseAnalysisLinks,
@@ -83,7 +153,7 @@ export class AnalysisIndex {
     this.segmentLinks = new RecordTable(
       'segmentAnalysisLinks',
       {
-        ...linkKeyers((link: SegmentAnalysisLink) => bookOfRef(link.segmentId)),
+        ...linkKeyers(segmentLinkBook),
         segmentId: (link) => [link.segmentId],
       },
       analysis.segmentAnalysisLinks,
@@ -93,14 +163,98 @@ export class AnalysisIndex {
   /**
    * Applies `changes`, which must name each id at most once per record kind. The index holds the
    * put records themselves, not copies.
+   *
+   * @returns The keys of the partitions, as {@link splitAnalysisByBook} keys them, whose records the
+   *   changes may alter. That is each book holding a link they change or a link to a payload they
+   *   change, and {@link BOOKLESS_PARTITION} when a payload they reach is referenced by no link
+   *   before or after they apply.
    */
-  apply(changes: ChangeSet): void {
+  apply(changes: ChangeSet): Set<string> {
+    const books = new Set<string>();
+    const tokenIds = reachOfKind(
+      this.tokenLinks,
+      tokenLinkBook,
+      changes.tokenAnalyses,
+      changes.tokenAnalysisLinks,
+      books,
+    );
+    const phraseIds = reachOfKind(
+      this.phraseLinks,
+      phraseLinkBook,
+      changes.phraseAnalyses,
+      changes.phraseAnalysisLinks,
+      books,
+    );
+    const segmentIds = reachOfKind(
+      this.segmentLinks,
+      segmentLinkBook,
+      changes.segmentAnalyses,
+      changes.segmentAnalysisLinks,
+      books,
+    );
+    const reachesUnlinked = () =>
+      unlinkedPayloads(this.tokenAnalyses, this.tokenLinks, tokenIds).length > 0 ||
+      unlinkedPayloads(this.phraseAnalyses, this.phraseLinks, phraseIds).length > 0 ||
+      unlinkedPayloads(this.segmentAnalyses, this.segmentLinks, segmentIds).length > 0;
+    const unlinkedBefore = reachesUnlinked();
+
     this.tokenAnalyses.apply(changes.tokenAnalyses);
     this.phraseAnalyses.apply(changes.phraseAnalyses);
     this.segmentAnalyses.apply(changes.segmentAnalyses);
     this.tokenLinks.apply(changes.tokenAnalysisLinks);
     this.phraseLinks.apply(changes.phraseAnalysisLinks);
     this.segmentLinks.apply(changes.segmentAnalysisLinks);
+
+    if (unlinkedBefore || reachesUnlinked()) books.add(BOOKLESS_PARTITION);
+    return books;
+  }
+
+  /** The keys of the partitions {@link splitAnalysisByBook} would split the records into. */
+  partitionKeys(): string[] {
+    const keys = new Set([
+      ...this.tokenLinks.keys('book'),
+      ...this.segmentLinks.keys('book'),
+      ...this.phraseLinks.keys('book'),
+    ]);
+    if (this.partition(BOOKLESS_PARTITION)) keys.add(BOOKLESS_PARTITION);
+    return [...keys];
+  }
+
+  /**
+   * The partition {@link splitAnalysisByBook} would file under `key`, ordered as it would order it,
+   * or `undefined` when it would file none there.
+   */
+  partition(key: string): TextAnalysis | undefined {
+    if (key === BOOKLESS_PARTITION) {
+      const segmentAnalyses = unlinkedPayloads(this.segmentAnalyses, this.segmentLinks);
+      const tokenAnalyses = unlinkedPayloads(this.tokenAnalyses, this.tokenLinks);
+      const phraseAnalyses = unlinkedPayloads(this.phraseAnalyses, this.phraseLinks);
+      if (segmentAnalyses.length + tokenAnalyses.length + phraseAnalyses.length === 0)
+        return undefined;
+      return {
+        segmentAnalyses,
+        segmentAnalysisLinks: [],
+        tokenAnalyses,
+        tokenAnalysisLinks: [],
+        phraseAnalyses,
+        phraseAnalysisLinks: [],
+      };
+    }
+    const segmentAnalysisLinks = this.segmentLinks.find('book', [key]);
+    const tokenAnalysisLinks = this.tokenLinks.find('book', [key]);
+    const phraseAnalysisLinks = this.phraseLinks.find('book', [key]);
+    if (segmentAnalysisLinks.length + tokenAnalysisLinks.length + phraseAnalysisLinks.length === 0)
+      return undefined;
+    const analysisIds = (links: readonly { analysisId: string }[]) =>
+      links.map(({ analysisId }) => analysisId);
+    return {
+      segmentAnalyses: this.segmentAnalyses.get(analysisIds(segmentAnalysisLinks)),
+      segmentAnalysisLinks,
+      tokenAnalyses: this.tokenAnalyses.get(analysisIds(tokenAnalysisLinks)),
+      tokenAnalysisLinks,
+      phraseAnalyses: this.phraseAnalyses.get(analysisIds(phraseAnalysisLinks)),
+      phraseAnalysisLinks,
+    };
   }
 
   /** The token analyses stored under `ids`, each once; an id with none stored is skipped. */

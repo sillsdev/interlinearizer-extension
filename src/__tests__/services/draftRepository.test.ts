@@ -359,6 +359,72 @@ describe('DraftRepository', () => {
       expect(analysis.segmentAnalyses[0].freeTranslation).toEqual({ en: 'And then.' });
       expect(records.get(draftAnalysisKey('src', 'GEN'))).not.toContain('and then');
     });
+
+    it('rewrites a book a failed apply wrote, though the next apply does not reach it', async () => {
+      const { storage, records } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+      const [payload] = twoBookAnalysis().tokenAnalyses;
+      const [phrase] = twoBookAnalysis().phraseAnalyses;
+      // Fails the GEN shard's write, so EXO's lands with the gloss the draft never takes.
+      const write = jest.spyOn(storage, 'write').mockRejectedValueOnce(new Error('disk full'));
+      await expect(
+        repository.apply({
+          intent: 'writeGloss',
+          tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+        }),
+      ).rejects.toThrow('disk full');
+      write.mockRestore();
+      expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('and then');
+
+      await repository.apply({
+        intent: 'writePhraseGloss',
+        phraseAnalyses: { puts: [{ ...phrase, gloss: { en: 'within' } }], deletes: [] },
+      });
+
+      expect(records.get(draftAnalysisKey('src', 'EXO'))).not.toContain('and then');
+      expect((await repository.getTokenAnalyses(['ta-and']))[0].gloss).toEqual({ en: 'and' });
+    });
+
+    it('stores each book as a whole save of the same draft would', async () => {
+      const { storage, records } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+      const [genesisLink, exodusLink] = twoBookAnalysis().tokenAnalysisLinks;
+      const [segmentLink] = twoBookAnalysis().segmentAnalysisLinks;
+      const unlinked = { id: 'ta-so', ...FIXTURE_STAMPS, surfaceText: 'so' };
+
+      // Leaves a payload no link references, adds a book, then empties EXO of links.
+      await repository.apply({
+        intent: 'removePhrase',
+        phraseAnalysisLinks: { puts: [], deletes: ['pa-1'] },
+        tokenAnalyses: { puts: [unlinked], deletes: [] },
+      });
+      await repository.apply({
+        intent: 'writeGloss',
+        tokenAnalysisLinks: {
+          puts: [
+            { ...genesisLink, id: 'tl-LEV', token: { tokenRef: 'LEV 1:1!0', surfaceText: 'and' } },
+          ],
+          deletes: [],
+        },
+      });
+      await repository.apply({
+        intent: 'clear',
+        tokenAnalysisLinks: { puts: [], deletes: [exodusLink.id] },
+        segmentAnalysisLinks: { puts: [], deletes: [segmentLink.id] },
+      });
+      await repository.apply({
+        intent: 'relink',
+        tokenAnalysisLinks: { puts: [{ ...genesisLink, analysisId: unlinked.id }], deletes: [] },
+      });
+
+      const whole = memoryStorage();
+      const { draft } = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
+      await new DraftRepository(whole.storage, 'src', silentLogger()).replaceAll(draft);
+      expect(records).toEqual(whole.records);
+      expect(records.has(draftAnalysisKey('src', 'EXO'))).toBe(false);
+    });
   });
 
   describe('lookups', () => {

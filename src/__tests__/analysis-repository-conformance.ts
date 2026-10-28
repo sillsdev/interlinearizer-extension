@@ -1382,6 +1382,96 @@ export function describeAnalysisRepositoryConformance(
         ).resolves.toStrictEqual(['pa-in-the']);
       });
 
+      it('counts the tokens approving each analysis, leaving out those none approves', async () => {
+        const repository = await overFullDraft();
+
+        await expect(
+          repository.countApprovals(['ta-and', 'ta-beginning', 'ta-unlinked', 'ta-missing']),
+        ).resolves.toStrictEqual({ 'ta-and': 2 });
+      });
+
+      it('counts a token once, for the approved link an approval tie picks', async () => {
+        const repository = await overFullDraft();
+        const [genAnd, , beginning] = fullAnalysis().tokenAnalysisLinks;
+
+        await repository.apply({
+          intent: 'approveTwice',
+          tokenAnalysisLinks: {
+            puts: [
+              {
+                ...beginning,
+                token: genAnd.token,
+                status: 'approved',
+                updatedAt: '2026-02-01T00:00:00.000Z',
+              },
+            ],
+            deletes: [],
+          },
+        });
+
+        await expect(repository.countApprovals(['ta-and', 'ta-beginning'])).resolves.toStrictEqual({
+          'ta-and': 1,
+          'ta-beginning': 1,
+        });
+      });
+
+      it('passes over an approved link naming no stored payload when picking a tie', async () => {
+        const repository = await overFullDraft();
+        const [genAnd] = fullAnalysis().tokenAnalysisLinks;
+
+        await repository.apply({
+          intent: 'approveMissing',
+          tokenAnalysisLinks: {
+            puts: [
+              {
+                ...genAnd,
+                id: 'tl-gen-missing',
+                analysisId: 'ta-missing',
+                updatedAt: '2026-02-01T00:00:00.000Z',
+              },
+            ],
+            deletes: [],
+          },
+        });
+
+        await expect(repository.countApprovals(['ta-and', 'ta-missing'])).resolves.toStrictEqual({
+          'ta-and': 2,
+        });
+      });
+
+      it('counts from the records the applied changes leave', async () => {
+        const repository = await overFullDraft();
+        await repository.countApprovals(['ta-and']);
+        const [, , beginning] = fullAnalysis().tokenAnalysisLinks;
+
+        await repository.apply({
+          intent: 'approveAndDelete',
+          tokenAnalysisLinks: {
+            puts: [{ ...beginning, status: 'approved' }],
+            deletes: ['tl-exo-and'],
+          },
+        });
+        await expect(repository.countApprovals(['ta-and', 'ta-beginning'])).resolves.toStrictEqual({
+          'ta-and': 1,
+          'ta-beginning': 1,
+        });
+        await repository.apply({
+          intent: 'deletePayload',
+          tokenAnalyses: { puts: [], deletes: ['ta-beginning'] },
+        });
+        await expect(repository.countApprovals(['ta-and', 'ta-beginning'])).resolves.toStrictEqual({
+          'ta-and': 1,
+        });
+        await repository.apply({
+          intent: 'restorePayload',
+          tokenAnalyses: { puts: [fullAnalysis().tokenAnalyses[1]], deletes: [] },
+        });
+        await expect(repository.countApprovals(['ta-and', 'ta-beginning'])).resolves.toStrictEqual({
+          'ta-and': 1,
+          'ta-beginning': 1,
+        });
+      });
+
       it('finds nothing in a draft never saved', async () => {
         const repository = await store.open(SOURCE);
 

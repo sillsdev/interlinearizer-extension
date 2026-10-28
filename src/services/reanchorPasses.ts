@@ -5,6 +5,7 @@ import { booksLinkedIn } from '../utils/analysis-book';
 import { applyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { reanchorChangesForBook } from '../utils/reanchor-changes';
 import { segmentationForBook } from '../utils/segmentation';
+import type { AppliedChange } from './analysisChanges';
 import type { ReanchorBooks } from './editHistory';
 
 /**
@@ -43,7 +44,7 @@ export type StoredBookPass = {
   /** Whether the draft linked into the book or held boundary edits in it before the pass. */
   heldAnalysis: boolean;
   /** The changes applied; absent when the draft already read as re-anchored. */
-  changes?: ChangeSet;
+  applied?: AppliedChange;
 };
 
 /**
@@ -62,8 +63,9 @@ export async function reanchorStoredBook(
     booksLinkedIn(draft.analysis).has(book.bookRef) ||
     segmentationForBook(draft.segmentation, book.bookRef) !== undefined;
   const changes = reanchorInTurn(draft, [book]);
-  if (changes) await repository.apply(changes, { keepDirty: true });
-  return { heldAnalysis, ...(changes && { changes }) };
+  if (!changes) return { heldAnalysis };
+  const { inverse } = await repository.apply(changes, { keepDirty: true });
+  return { heldAnalysis, applied: { changes, inverse } };
 }
 
 /**

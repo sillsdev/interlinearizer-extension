@@ -17,6 +17,13 @@ describe('RecordTable', () => {
     expect(tableOf(a).get(['a', 'missing', 'a'])).toStrictEqual([a]);
   });
 
+  it('tells whether a record is stored under an id', () => {
+    const table = tableOf({ id: 'a', tags: [] });
+
+    expect(table.hasRecord('a')).toBe(true);
+    expect(table.hasRecord('missing')).toBe(false);
+  });
+
   it('finds the records filed under any of the keys, each once', () => {
     const a = { id: 'a', tags: ['x', 'y'] };
     const b = { id: 'b', tags: ['y'] };

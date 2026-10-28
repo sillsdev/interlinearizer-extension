@@ -301,6 +301,15 @@ export interface AnalysisRepository {
   findPhraseAnalysesByForm(normalizedForms: string[]): Promise<PhraseAnalysis[]>;
 
   /**
+   * How many tokens approve each of `analysisIds`. A token approves the analysis that its approved
+   * link names. Where a token has several approved links naming stored payloads, the approval
+   * tie-break picks one. An id that no token approves is left out.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  countApprovals(analysisIds: string[]): Promise<Record<string, number>>;
+
+  /**
    * Reports where the derived indexes the repository keeps differ from ones built afresh from its
    * records, for debugging, leaving the kept ones as they are. A repository keeping none reports
    * nothing.

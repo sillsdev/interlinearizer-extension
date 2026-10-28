@@ -39,9 +39,22 @@ function applyRecordChanges<T extends { id: string }>(
     named.add(id);
   });
 
-  const stored = new Map(records.map((record) => [record.id, record]));
-  const deleted = new Set(changes.deletes);
   const puts = new Map(changes.puts.map((record) => [record.id, record]));
+  // Holds only the records the changes name, so a long record list is walked once and never mapped
+  // whole.
+  const stored = new Map<string, T>();
+  // A replaced record keeps its place, so records nearby are left as they were.
+  const next: T[] = [];
+  records.forEach((record) => {
+    if (!named.has(record.id)) {
+      next.push(record);
+      return;
+    }
+    stored.set(record.id, record);
+    const put = puts.get(record.id);
+    if (put) next.push(put);
+  });
+
   const inverse: RecordChanges<T> = { puts: [], deletes: [] };
   changes.puts.forEach(({ id }) => {
     const prior = stored.get(id);
@@ -51,12 +64,6 @@ function applyRecordChanges<T extends { id: string }>(
   changes.deletes.forEach((id) => {
     const prior = stored.get(id);
     if (prior) inverse.puts.push(prior);
-  });
-
-  // A replaced record keeps its place, so records nearby are left as they were.
-  const next = records.flatMap((record) => {
-    if (deleted.has(record.id)) return [];
-    return [puts.get(record.id) ?? record];
   });
   puts.forEach((record, id) => {
     if (!stored.has(id)) next.push(record);

@@ -39,8 +39,9 @@ async function settleAll(operations: readonly Promise<unknown>[]): Promise<void>
 }
 
 /**
- * Names the shards an interrupted save could strand, so a later process can still find them.
- * Storage cannot enumerate keys, so a shard the manifest does not name is otherwise unreachable.
+ * Names the shards an interrupted save could strand or leave out of step with the draft, so a later
+ * process can still find them. Storage cannot enumerate keys, so a shard the manifest does not name
+ * is otherwise unreachable.
  */
 interface ShardJournal {
   /**
@@ -53,6 +54,11 @@ interface ShardJournal {
    * read these, or the wipe that recorded them would undo itself.
    */
   removing: string[];
+  /**
+   * Books whose shard this save set out to rewrite. Until a save settles them, storage may hold
+   * changes there that the draft lacks, so each apply compares them as well. Absent means none.
+   */
+  unsettled?: string[];
 }
 
 /** A journal naming no shards, which is what a cleared or unusable one recovers as. */
@@ -67,7 +73,8 @@ function isShardJournal(value: unknown): value is ShardJournal {
     'adding' in value &&
     isStringArray(value.adding) &&
     'removing' in value &&
-    isStringArray(value.removing)
+    isStringArray(value.removing) &&
+    (!('unsettled' in value) || isStringArray(value.unsettled))
   );
 }
 
@@ -253,14 +260,32 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
         if (!(e instanceof SyntaxError)) throw e;
       }
     }
-    return this.writeDraft(draft, options, { refuseUnreadable: false });
+    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
+      this.assertStoredDraftIsWritable(),
+    );
+    const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(draft.analysis));
+    if (options?.discardUnreadable) this.unreadableShards.clear();
+    const leftOut = [...this.unreadableShards].filter((bookCode) => byBook.has(bookCode));
+    leftOut.forEach((bookCode) => byBook.delete(bookCode));
+    const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
+    await this.writeDraft(draft, storedBooks, journaled, [...byBook.keys()], byBook);
+    return leftOut;
   }
 
   /**
    * Applies the changes to the draft this instance keeps, loading the stored draft first when it
-   * keeps none, as after {@link exportAll} or a whole save. Only the books whose content the changes
-   * alter are rewritten, so an edit to a payload rewrites every book linking it. Marks the draft
-   * unsaved unless `options` keeps the mark.
+   * keeps none, as after {@link exportAll} or a whole save. Rewrites only the books whose content
+   * the changes alter, so an edit to a payload rewrites every book linking it. A draft loaded
+   * inline is written whole. Marks the draft unsaved unless `options` keeps the mark.
+   *
+   * After a failed apply, the next apply to succeed also brings back in step any book the failure
+   * left out of step with the draft. In the same instance, the next apply restores the book as it
+   * was. After a reload or restart, the reloaded draft keeps the first copy of each payload in
+   * manifest order, so a book may take the failed edit instead.
+   *
+   * What an apply stores matches a whole save of the same draft in content, not order. The manifest
+   * may list the books in another order, and a link that a put moves into a book comes last in that
+   * book's shard.
    *
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project; nothing is written.
@@ -276,8 +301,24 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     const applied = applyChangeSet(base, copied);
     const { inverse } = applied;
     const draft = options?.keepDirty ? { ...applied.draft, dirty: base.dirty } : applied.draft;
-    await this.writeDraft(draft, undefined, { refuseUnreadable: true });
+    const reached = index.reach(copied);
+    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
+      this.assertStoredDraftIsWritable(),
+    );
+    const refused = [...reached].filter((bookCode) => this.unreadableShards.has(bookCode));
+    if (refused.length > 0) {
+      throw new Error(
+        `Interlinearizer: the draft for ${this.sourceProjectId} could not read the stored analysis of ${refused.join(', ')}, so it refuses changes there`,
+      );
+    }
     index.apply(copied);
+    try {
+      await this.writeReachedBooks(draft, index, reached, storedBooks);
+    } catch (e) {
+      // The index already holds the changes, so it is built afresh over the draft as it was.
+      this.current = { draft: base, index: new AnalysisIndex(base.analysis) };
+      throw e;
+    }
     this.current = { draft, index };
     return { inverse, wasDirty: base.dirty };
   }
@@ -312,36 +353,59 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Saves `draft` as {@link replaceAll} describes.
+   * Saves `draft` over a stored draft whose manifest names `storedBooks`, as {@link replaceAll}
+   * describes, taking each book's analysis from the `index` kept over it. Compares only the
+   * partitions in `reached`, those the shard journal names as unsettled, and those this instance
+   * holds no saved content for, such as every book of a draft loaded inline.
    *
-   * @throws {Error} If `refuseUnreadable` is set and the draft carries analysis for a book whose
-   *   shard could not be read; nothing is written.
-   * @throws Whatever {@link replaceAll} throws.
+   * @throws If storage rejects a read, or a write before the envelope lands.
+   */
+  private async writeReachedBooks(
+    draft: DraftProject,
+    index: AnalysisIndex,
+    reached: ReadonlySet<string>,
+    storedBooks: readonly string[],
+  ): Promise<void> {
+    const { shardContents: saved, unreadableShards: unreadable } = this;
+    const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
+    const { books, partitions } = perfTime('saveDraft:compare', () => {
+      const keys = index.partitionKeys().filter((bookCode) => !unreadable.has(bookCode));
+      const unsaved = keys.filter((bookCode) => !saved.has(bookCode));
+      const compared = new Map<string, TextAnalysis>();
+      new Set([...reached, ...(journaled.unsettled ?? []), ...unsaved]).forEach((bookCode) => {
+        const partition = index.partition(bookCode);
+        if (partition && keys.includes(bookCode)) compared.set(bookCode, partition);
+      });
+      return { books: keys, partitions: compared };
+    });
+    await this.writeDraft(draft, storedBooks, journaled, books, partitions);
+  }
+
+  /**
+   * Saves `draft` as {@link replaceAll} describes, comparing only `partitions` against what this
+   * instance last loaded or saved and rewriting those that differ.
+   *
+   * @param draft - The draft whose envelope is written; its analysis is not read.
+   * @param storedBooks - The books the stored draft's manifest names.
+   * @param journaled - The shard journal as stored before this save.
+   * @param books - The key of every partition the draft carries, less the books whose shard could
+   *   not be read.
+   * @param partitions - Keyed by book; every key is in `books`.
+   * @throws If storage rejects a write before the envelope lands.
    */
   private async writeDraft(
     draft: DraftProject,
-    options: ReplaceAllOptions | undefined,
-    { refuseUnreadable }: { refuseUnreadable: boolean },
-  ): Promise<string[]> {
+    storedBooks: readonly string[],
+    journaled: ShardJournal,
+    books: readonly string[],
+    partitions: ReadonlyMap<string, TextAnalysis>,
+  ): Promise<void> {
     const { sourceProjectId, storage, shardContents: saved, unreadableShards: unreadable } = this;
-    const { analysis } = draft;
-    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
-      this.assertStoredDraftIsWritable(),
-    );
-    const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(analysis));
-    if (options?.discardUnreadable) unreadable.clear();
-    const leftOut = [...unreadable].filter((bookCode) => byBook.has(bookCode));
-    if (refuseUnreadable && leftOut.length > 0) {
-      throw new Error(
-        `Interlinearizer: the draft for ${sourceProjectId} could not read the stored analysis of ${leftOut.join(', ')}, so it refuses changes there`,
-      );
-    }
-    leftOut.forEach((bookCode) => byBook.delete(bookCode));
+    const carried = new Set(books);
 
     // Books this save no longer carries, less those held back because the load could not read them.
     // The stored manifest and the journal also list shards the load did not see, such as one
     // awaiting deletion. A journaled addition whose shard never landed deletes as a no-op.
-    const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
     const knownShards = new Set([
       ...saved.keys(),
       ...storedBooks,
@@ -349,21 +413,23 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       ...journaled.removing,
     ]);
     const wiped = [...knownShards].filter(
-      (bookCode) => !byBook.has(bookCode) && !unreadable.has(bookCode),
-    );
-
-    // Journal every shard this save could strand before writing any. A book the stored manifest
-    // already names needs no entry: the manifest alone keeps it reachable.
-    const stranded = [...byBook.keys()].filter((bookCode) => !storedBooks.includes(bookCode));
-    await perfTimeAsync('saveDraft:write', () =>
-      this.writeShardJournal({ adding: stranded, removing: wiped }),
+      (bookCode) => !carried.has(bookCode) && !unreadable.has(bookCode),
     );
 
     const shards = perfTime('saveDraft:compare', () =>
-      [...byBook].map(([bookCode, partition]) => {
+      [...partitions].map(([bookCode, partition]) => {
         const json = JSON.stringify(partition);
         return { bookCode, json, changed: saved.get(bookCode) !== json };
       }),
+    );
+
+    // Journal every shard this save could strand or leave half-written before writing any. A book
+    // the stored manifest already names needs no `adding` entry: the manifest alone keeps it
+    // reachable.
+    const stranded = books.filter((bookCode) => !storedBooks.includes(bookCode));
+    const unsettled = shards.filter(({ changed }) => changed).map(({ bookCode }) => bookCode);
+    await perfTimeAsync('saveDraft:write', () =>
+      this.writeShardJournal({ adding: stranded, removing: wiped, unsettled }),
     );
     await perfTimeAsync('saveDraft:write', () =>
       settleAll(
@@ -378,7 +444,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       ...draft,
       modelVersion: CURRENT_MODEL_VERSION,
       analysis: emptyAnalysis(),
-      analysisBooks: [...byBook.keys(), ...unreadable],
+      analysisBooks: [...books, ...unreadable],
     };
     await perfTimeAsync('saveDraft:write', () =>
       storage.write(draftKey(sourceProjectId), JSON.stringify(envelope)),
@@ -425,7 +491,6 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
         e,
       );
     }
-    return leftOut;
   }
 
   /**
@@ -588,9 +653,12 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Reads the shard journal. A missing, unparseable or malformed journal recovers as empty. It is a
-   * recovery hint, not a record of truth: every book it names is checked against storage before
-   * anything acts on it. Losing one costs an orphaned shard, never correctness.
+   * Reads the shard journal. A missing, unparseable or malformed journal recovers as empty. Every
+   * book it names is checked against storage or the draft before anything acts on it, so a stale
+   * entry costs at most a write.
+   *
+   * Losing a journal costs more. A shard it names under `adding` is orphaned, and a book it names
+   * under `unsettled` can stay out of step with the draft until a save that reaches it.
    *
    * @throws If storage rejects the read.
    */
@@ -620,7 +688,11 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    */
   private async writeShardJournal(journal: ShardJournal): Promise<void> {
     const key = draftJournalKey(this.sourceProjectId);
-    if (journal.adding.length === 0 && journal.removing.length === 0) {
+    if (
+      journal.adding.length === 0 &&
+      journal.removing.length === 0 &&
+      (journal.unsettled ?? []).length === 0
+    ) {
       await this.storage.delete(key);
       return;
     }

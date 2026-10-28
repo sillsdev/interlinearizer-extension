@@ -44,14 +44,36 @@ export class RecordTable<T extends { id: string }, Index extends string> {
 
   /** The records stored under `ids`, each once. */
   get(ids: readonly string[]): T[] {
-    return [...new Set(ids)].flatMap((id) => this.records.get(id) ?? []);
+    return this.recordsOf(new Set(ids));
   }
 
   /** The records `index` files under any of `keys`, each once. */
   find(index: Index, keys: readonly string[]): T[] {
     const filed = this.filed(index);
-    const ids = new Set(keys.flatMap((key) => [...(filed.get(key) ?? [])]));
-    return this.get([...ids]);
+    if (keys.length === 1) return this.recordsOf(filed.get(keys[0]) ?? []);
+    const ids = new Set<string>();
+    keys.forEach((key) => filed.get(key)?.forEach((id) => ids.add(id)));
+    return this.recordsOf(ids);
+  }
+
+  /** Every record, in stored order. */
+  all(): T[] {
+    return [...this.records.values()];
+  }
+
+  /** The keys `index` files any record under. */
+  keys(index: Index): string[] {
+    return [...this.filed(index).keys()];
+  }
+
+  /** How many records `index` files under `key`. */
+  count(index: Index, key: string): number {
+    return this.filed(index).get(key)?.size ?? 0;
+  }
+
+  /** Whether `index` files any record under `key`. */
+  has(index: Index, key: string): boolean {
+    return this.filed(index).has(key);
   }
 
   /** Applies one record kind's puts and deletes; absent changes apply nothing. */
@@ -84,6 +106,17 @@ export class RecordTable<T extends { id: string }, Index extends string> {
       });
     });
     return [...recordDifferences, ...indexDifferences];
+  }
+
+  /** The records stored under `ids`, which must be distinct, skipping an id with none stored. */
+  private recordsOf(ids: Iterable<string>): T[] {
+    const found: T[] = [];
+    // eslint-disable-next-line no-restricted-syntax -- iterates a Set without copying it to an array
+    for (const id of ids) {
+      const record = this.records.get(id);
+      if (record) found.push(record);
+    }
+    return found;
   }
 
   private indexNames(): Index[] {

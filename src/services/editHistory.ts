@@ -1,5 +1,6 @@
 import type { Book } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
+import type { EditStep } from '../types/edit-step';
 import type { AppliedChange } from './analysisChanges';
 import { mergeChangeSets } from '../utils/change-set';
 import { MAX_UNDO_STEPS } from '../utils/undo-history';
@@ -15,7 +16,7 @@ export type ReanchorBooks = (
   books: readonly Book[],
 ) => Promise<ChangeSet | undefined>;
 
-/** How an edit leaves the draft's unsaved mark. */
+/** How an edit applies. */
 export type EditOptions = {
   /**
    * `'keep'` leaves the draft as saved or unsaved as it was. `'clear'` marks it saved, even when
@@ -23,11 +24,18 @@ export type EditOptions = {
    * something marks the draft unsaved.
    */
   unsavedMark?: 'keep' | 'clear';
+  /** The step to record the edit as, which an undo or redo of the edit hands back. */
+  step?: EditStep;
 };
+
+/** An undo or redo as applied, with the step that the edit was recorded as. */
+export type HistoryMove = AppliedChange & { step?: EditStep };
 
 /** What reverts or redoes one edit. */
 type Step = {
   changes: ChangeSet;
+  /** The step that the edit was recorded as. */
+  step?: EditStep;
   /** How many passes had been recorded when the step was captured, all of which it reflects. */
   passesSeen: number;
   /** The state that applying the step leads to. */
@@ -107,7 +115,12 @@ export class EditHistory {
     );
     this.appliedCount += 1;
     this.noteMark(wasDirty);
-    this.undoable.push({ changes: inverse, passesSeen: this.passCount, state: this.state });
+    this.undoable.push({
+      changes: inverse,
+      ...(options?.step && { step: options.step }),
+      passesSeen: this.passCount,
+      state: this.state,
+    });
     if (this.undoable.length > MAX_UNDO_STEPS) this.undoable.shift();
     this.redoable.length = 0;
     this.forgetUnneededPasses();
@@ -159,12 +172,13 @@ export class EditHistory {
    * Reverts the latest edit not yet undone, re-anchoring what it restores.
    *
    * @returns The changes that reverted the edit and re-anchored what the undo restored, with what
-   *   restores what they replaced, or `undefined` when there is none.
+   *   restores what they replaced. The move also carries the step that the edit was recorded as.
+   *   `undefined` when there is none.
    * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
    *   edit stays the next to undo.
    * @throws Whatever marking the draft saved throws; the undo stays applied.
    */
-  undo(): Promise<AppliedChange | undefined> {
+  undo(): Promise<HistoryMove | undefined> {
     return this.step(this.undoable, this.redoable);
   }
 
@@ -172,12 +186,13 @@ export class EditHistory {
    * Redoes the latest undone edit, re-anchoring what it restores.
    *
    * @returns The changes that redid the edit and re-anchored what the redo restored, with what
-   *   restores what they replaced, or `undefined` when there is none.
+   *   restores what they replaced. The move also carries the step that the edit was recorded as.
+   *   `undefined` when there is none.
    * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
    *   edit stays the next to redo.
    * @throws Whatever marking the draft saved throws; the redo stays applied.
    */
-  redo(): Promise<AppliedChange | undefined> {
+  redo(): Promise<HistoryMove | undefined> {
     return this.step(this.redoable, this.undoable);
   }
 
@@ -186,7 +201,7 @@ export class EditHistory {
    * captured, as one apply, moving what reverts it onto `to`. Marks the draft saved when the step
    * lands on a clean state.
    */
-  private async step(from: Step[], to: Step[]): Promise<AppliedChange | undefined> {
+  private async step(from: Step[], to: Step[]): Promise<HistoryMove | undefined> {
     const step = from.at(-1);
     if (!step) return undefined;
     const books = [...this.passes.values()]
@@ -201,11 +216,16 @@ export class EditHistory {
     this.appliedCount += 1;
     this.noteMark(wasDirty);
     from.pop();
-    to.push({ changes: inverse, passesSeen: this.passCount, state: this.state });
+    to.push({
+      changes: inverse,
+      ...(step.step && { step: step.step }),
+      passesSeen: this.passCount,
+      state: this.state,
+    });
     this.state = step.state;
     this.forgetUnneededPasses();
     if (this.cleanStates.has(this.state)) await this.repository.markClean();
-    return { changes, inverse };
+    return { changes, inverse, ...(step.step && { step: step.step }) };
   }
 
   /** Unless `wasDirty`, makes the current state the only clean one, if it isn't clean already. */

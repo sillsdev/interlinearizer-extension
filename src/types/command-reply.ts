@@ -1,5 +1,6 @@
 import type { ChangeId } from 'interlinearizer';
 import type { ChangeSet } from './analysis-repository';
+import type { EditStep } from './edit-step';
 import type { PoolRead } from './segment-pages';
 
 /**
@@ -12,4 +13,9 @@ export type CommandReply = {
   changeId: ChangeId;
   /** The changes applied, naming the edit's intent. */
   changes: ChangeSet;
+  /**
+   * For an undo or redo, the step that the edit was recorded as; absent when it was recorded with
+   * none.
+   */
+  step?: EditStep;
 } & PoolRead;

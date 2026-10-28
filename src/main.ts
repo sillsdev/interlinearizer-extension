@@ -1283,7 +1283,8 @@ function writeAnalysisMorphemes(
 }
 
 /**
- * Keeps a token analysis's stale breakdown as it stands, for every token linked to it.
+ * Keeps a token analysis's stale breakdown as it stands, for every token linked to it. The undo
+ * step is placed at `tokenRef` when given, and otherwise names the analysis's catalog row.
  *
  * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
@@ -1291,11 +1292,16 @@ function writeAnalysisMorphemes(
 function confirmAnalysisMorphemes(
   sessionId: string,
   analysisId: string,
+  tokenRef?: string | null,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'confirmAnalysisMorphemes', (buffer) =>
-    catalogCommands.confirmAnalysisMorphemes(buffer, { analysisId, now: editStamp().now }),
-  );
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'confirmAnalysisMorphemes', async (buffer) => {
+    target.step = tokenRef
+      ? { location: tokenRef }
+      : (await catalogStepOf(buffer, 'catalogEdit', analysisId))(analysisId);
+    await catalogCommands.confirmAnalysisMorphemes(buffer, { analysisId, now: editStamp().now });
+  });
 }
 
 /**

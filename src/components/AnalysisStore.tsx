@@ -502,17 +502,18 @@ export function useStaleMorphemesAnalysisId(tokenRef: string): string | undefine
 
 /**
  * Returns a stable callback that keeps an analysis's stale breakdown as it stands, clearing the
- * mark for every token linked to it. Persists immediately.
+ * mark for every token linked to it. Persists immediately, recording the optional `tokenRef` as the
+ * place the confirmation was made at.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
-export function useConfirmMorphemesDispatch(): (analysisId: string) => void {
+export function useConfirmMorphemesDispatch(): (analysisId: string, tokenRef?: string) => void {
   const { dispatch, save } = useAnalysisSave('useConfirmMorphemesDispatch');
 
   return useCallback(
-    (analysisId: string) => {
+    (analysisId: string, tokenRef?: string) => {
       dispatch(confirmAnalysisMorphemes({ analysisId }));
-      save();
+      save(tokenRef);
     },
     [dispatch, save],
   );

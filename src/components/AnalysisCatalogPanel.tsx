@@ -13,6 +13,7 @@ import {
   useAnalysisReadOnly,
   useAnalysisRowDispatch,
   useCatalogRows,
+  useConfirmMorphemesDispatch,
   useGlossClearReclaims,
   useReportGlossEditing,
   useStaleLocationDispatch,
@@ -416,6 +417,7 @@ export default function AnalysisCatalogPanel({
   );
 
   const rowDispatch = useAnalysisRowDispatch();
+  const confirmMorphemes = useConfirmMorphemesDispatch();
   const readDeletionOutcome = useAnalysisDeletionOutcome();
   const readOnly = useAnalysisReadOnly();
 
@@ -637,6 +639,17 @@ export default function AnalysisCatalogPanel({
       );
     },
     [asOneStep, reportEditOutcome, rowDispatch, surfaceTextOf],
+  );
+
+  const handleMorphemesConfirm = useCallback(
+    (analysisId: string) =>
+      asOneStep(() => confirmMorphemes(analysisId), {
+        kind: 'catalogEdit',
+        form: surfaceTextOf(analysisId),
+        analysisId,
+        survivingAnalysisId: analysisId,
+      }),
+    [asOneStep, confirmMorphemes, surfaceTextOf],
   );
 
   /**
@@ -1102,6 +1115,7 @@ export default function AnalysisCatalogPanel({
                   }
                   onMorphemeGlossCommit={handleMorphemeGlossCommit}
                   onMorphemesCommit={handleMorphemesCommit}
+                  onMorphemesConfirm={handleMorphemesConfirm}
                   onStaleDiscard={handleStaleDiscard}
                   onStaleReapply={handleStaleReapply}
                   onStaleSelect={handleStaleSelect}

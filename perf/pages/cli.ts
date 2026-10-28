@@ -554,12 +554,23 @@ function expectedChange(
   };
   tokenLinks.forEach(({ token }) => markToken(token.tokenRef));
   phraseLinks.forEach(({ tokens }) => tokens.forEach(({ tokenRef }) => markToken(tokenRef)));
+  const staleBooks = new Set(
+    segmentLinks.filter((l) => l.status === 'stale').map((l) => bookOfRef(l.segmentId)),
+  );
   const changedBooks: ChangedBook[] = [...new Set([...whole, ...indexes.keys()])]
     .sort()
     .map((bookId) => {
       const set = indexes.get(bookId);
-      return whole.has(bookId) || !set ? { bookId } : { bookId, ranges: rangesOf(set) };
+      const book: ChangedBook =
+        whole.has(bookId) || !set ? { bookId } : { bookId, ranges: rangesOf(set) };
+      return staleBooks.has(bookId) ? { ...book, staleTranslations: true } : book;
     });
+  const payloadsAfter = new Map(is.tokenAnalyses.map((p) => [p.id, p]));
+  const forms = new Set(
+    [...tokenPayloads, ...tokenLinks.flatMap((l) => payloadsAfter.get(l.analysisId) ?? [])].map(
+      (p) => normalizeSurfaceForm(p.surfaceText),
+    ),
+  );
   const staleIds = new Set(
     [
       ...after.analysis.tokenAnalysisLinks,
@@ -578,6 +589,7 @@ function expectedChange(
   return {
     books: changedBooks,
     analysisIds: [...new Set([...payloadIds, ...links.map(({ analysisId }) => analysisId)])].sort(),
+    forms: [...forms].sort(),
     queries,
   };
 }
@@ -585,10 +597,11 @@ function expectedChange(
 /** Sorts books by id, so an expected change compares with one named in canonical order. */
 function comparable(change: AnalysisChange | undefined): string {
   if (!change) return 'nothing';
-  const { books, analysisIds, queries } = change;
+  const { books, analysisIds, forms, queries } = change;
   return JSON.stringify({
     books: [...books].sort((a, b) => a.bookId.localeCompare(b.bookId)),
     analysisIds,
+    forms,
     queries,
   });
 }

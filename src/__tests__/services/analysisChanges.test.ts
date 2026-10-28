@@ -174,12 +174,12 @@ describe('describeChange', () => {
   });
 
   describe('a segment link', () => {
-    async function rangesFor(segmentId: string) {
+    async function rangesFor(segmentId: string, status: 'stale' | 'approved' = 'stale') {
       const link = {
         id: 'sl',
         analysisId: 'sa',
         segmentId,
-        status: 'stale' as const,
+        status,
         ...FIXTURE_STAMPS,
       };
       const changes: ChangeSet = {
@@ -195,25 +195,31 @@ describe('describeChange', () => {
 
     it('names its own segment', async () => {
       expect(await rangesFor('GEN 1:2')).toStrictEqual([
-        { bookId: 'GEN', ranges: [{ start: 1, end: 2 }] },
+        { bookId: 'GEN', ranges: [{ start: 1, end: 2 }], staleTranslations: true },
       ]);
     });
 
     it('names the segment covering a vanished segment it was on', async () => {
       expect(await rangesFor(ref('light'))).toStrictEqual([
-        { bookId: 'GEN', ranges: [{ start: 2, end: 3 }] },
+        { bookId: 'GEN', ranges: [{ start: 2, end: 3 }], staleTranslations: true },
       ]);
     });
 
     it('names the segment an orphan of a lost verse follows', async () => {
       expect(await rangesFor('GEN 1:7')).toStrictEqual([
-        { bookId: 'GEN', ranges: [{ start: 2, end: 3 }] },
+        { bookId: 'GEN', ranges: [{ start: 2, end: 3 }], staleTranslations: true },
       ]);
     });
 
     it('names the first segment for an orphan ahead of every verse', async () => {
       expect(await rangesFor('GEN 1:0')).toStrictEqual([
-        { bookId: 'GEN', ranges: [{ start: 0, end: 1 }] },
+        { bookId: 'GEN', ranges: [{ start: 0, end: 1 }], staleTranslations: true },
+      ]);
+    });
+
+    it('leaves the book unflagged when the link is not stale', async () => {
+      expect(await rangesFor('GEN 1:2', 'approved')).toStrictEqual([
+        { bookId: 'GEN', ranges: [{ start: 1, end: 2 }] },
       ]);
     });
 
@@ -257,6 +263,19 @@ describe('describeChange', () => {
       const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
 
       expect(change.queries).toContain('getStaleSummary');
+    });
+
+    it('leaves the book unflagged for a stale token link, which places no translation', async () => {
+      const link = makeTokenLink('ta', ref('God'));
+      const changes: ChangeSet = {
+        intent: 'x',
+        tokenAnalysisLinks: { puts: [{ ...link, status: 'stale' }], deletes: [] },
+      };
+      const inverse: ChangeSet = { intent: 'x', tokenAnalysisLinks: { puts: [link], deletes: [] } };
+
+      const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
+
+      expect(change.books.some(({ staleTranslations }) => staleTranslations)).toBe(false);
     });
 
     it('is named when a payload a stale link names changes', async () => {

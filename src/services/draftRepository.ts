@@ -182,6 +182,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    */
   async exportAll(): Promise<DraftExport> {
     this.current = undefined;
+    this.exported = undefined;
     const loaded = await this.read(false);
     this.exported = jsonCopy(loaded.draft);
     return loaded;
@@ -335,9 +336,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * The draft this instance keeps and the index over its records. When none is kept, the index is
-   * built over what {@link exportAll} loaded since the last whole save, or else over the draft
-   * loaded from storage.
+   * The draft this instance keeps and the index over its records. When none is kept, the draft is
+   * what the latest {@link exportAll} loaded. If that call never ran or failed, or a whole save came
+   * after it, the draft is read afresh from storage.
    *
    * @throws Whatever {@link exportAll} throws.
    */

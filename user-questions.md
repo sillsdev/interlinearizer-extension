@@ -400,3 +400,20 @@ Questions we'd like answered:
    from the catalog, or instead of it?
 
 #228
+
+## Marking a morpheme gloss that comes from the lexicon
+
+A morpheme can be linked to a sense in the project's lexicon. Where the morpheme has no gloss of its
+own, its box shows the sense's gloss, with a book mark in a row below it. A gloss typed into the
+field replaces the sense's gloss and removes the mark, but the link stays. Emptying the field brings
+the sense's gloss and the mark back. Token and phrase glosses can also come from the lexicon, but
+they get no mark.
+
+Questions we'd like answered:
+
+1. **What should the mark tell the reader?** Now it says the gloss shown came from the lexicon, so a
+   typed gloss hides the link. It could instead say the morpheme has a link, so a typed gloss beside
+   a link would be marked too.
+2. **Should token and phrase glosses from the lexicon be marked too?**
+
+#227, #228, #514

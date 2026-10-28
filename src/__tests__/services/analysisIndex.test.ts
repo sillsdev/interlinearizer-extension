@@ -283,6 +283,66 @@ describe('AnalysisIndex', () => {
     });
   });
 
+  describe('countApprovals', () => {
+    it('counts the tokens approving each analysis, leaving out those none approves', () => {
+      const index = new AnalysisIndex(analysis());
+
+      expect(index.countApprovals(['ta-and', 'ta-And', 'ta-and'])).toStrictEqual({ 'ta-and': 1 });
+    });
+
+    it('moves a token from the analysis it approved to the one it approves now', () => {
+      const index = new AnalysisIndex(analysis());
+      const [gen] = analysis().tokenAnalysisLinks;
+
+      index.apply({
+        intent: 'relink',
+        tokenAnalysisLinks: { puts: [{ ...gen, analysisId: 'ta-And' }], deletes: [] },
+      });
+
+      expect(index.countApprovals(['ta-and', 'ta-And'])).toStrictEqual({ 'ta-And': 1 });
+    });
+
+    it('counts a token again once the payload its approval names is stored again', () => {
+      const index = new AnalysisIndex(analysis());
+      const [and] = analysis().tokenAnalyses;
+
+      index.apply({ intent: 'drop', tokenAnalyses: { puts: [], deletes: ['ta-and'] } });
+      expect(index.countApprovals(['ta-and'])).toStrictEqual({});
+      index.apply({ intent: 'restore', tokenAnalyses: { puts: [and], deletes: [] } });
+
+      expect(index.countApprovals(['ta-and'])).toStrictEqual({ 'ta-and': 1 });
+    });
+
+    it('stops counting a token whose approved link is removed', () => {
+      const index = new AnalysisIndex(analysis());
+
+      index.apply({ intent: 'unlink', tokenAnalysisLinks: { puts: [], deletes: ['tl-gen'] } });
+
+      expect(index.countApprovals(['ta-and'])).toStrictEqual({});
+    });
+
+    it('keeps counting a token whose other links change', () => {
+      const index = new AnalysisIndex(analysis());
+      const [, exo] = analysis().tokenAnalysisLinks;
+
+      index.apply({
+        intent: 'suggest',
+        tokenAnalysisLinks: {
+          puts: [
+            {
+              ...exo,
+              id: 'tl-gen-suggested',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'and' },
+            },
+          ],
+          deletes: [],
+        },
+      });
+
+      expect(index.countApprovals(['ta-and', 'ta-And'])).toStrictEqual({ 'ta-and': 1 });
+    });
+  });
+
   describe('differencesFrom', () => {
     it('reports none against the analysis it was built from', () => {
       expect(new AnalysisIndex(analysis()).differencesFrom(analysis())).toStrictEqual([]);
@@ -323,6 +383,7 @@ describe('AnalysisIndex', () => {
           'segmentAnalysisLinks by book',
           'segmentAnalysisLinks by bookStatus',
           'segmentAnalysisLinks by segmentId',
+          'tokenAnalyses by approving token',
         ]),
       );
       expect(differences).toContainEqual({
@@ -330,6 +391,21 @@ describe('AnalysisIndex', () => {
         key: 'EXO/suggested',
         missing: ['tl-exo'],
         extra: [],
+      });
+      expect(differences).toContainEqual({
+        index: 'tokenAnalyses by approving token',
+        key: 'ta-and',
+        missing: ['GEN 1:1:0'],
+        extra: [],
+      });
+    });
+
+    it('reports the approvals it keeps that an analysis lacks', () => {
+      expect(new AnalysisIndex(analysis()).differencesFrom(emptyAnalysis())).toContainEqual({
+        index: 'tokenAnalyses by approving token',
+        key: 'ta-and',
+        missing: [],
+        extra: ['GEN 1:1:0'],
       });
     });
   });

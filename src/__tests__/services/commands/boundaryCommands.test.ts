@@ -64,6 +64,8 @@ describe('splitSegment', () => {
       getInterfaceLanguages: async () => [],
       startTextRead: async () => {},
       stopTextRead: async () => {},
+      heldBook: () => undefined,
+      reportChange: () => {},
     });
     const stored = async () => {
       const { draft } = await new DraftRepository(storage, SOURCE, logger).exportAll();

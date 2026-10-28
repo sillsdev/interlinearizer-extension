@@ -28,6 +28,7 @@ import {
   UnreadableBooksError,
 } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
+import type { CommandReply } from '../types/command-reply';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import {
   createTestActivationContext,
@@ -371,6 +372,25 @@ describe('main', () => {
 
         expect(AnalysisSessions.prototype.settled).toHaveBeenCalledWith('src-project');
         expect(emit).toHaveBeenCalledTimes(1);
+      });
+
+      it("also tells the source's open session of the edit, naming the book whole", async () => {
+        const emitters = emittersByEvent();
+        jest.spyOn(AnalysisSessions.prototype, 'sessionIdFor').mockReturnValue('session-1');
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
+
+        listener('src-project', 'GEN');
+        await nextTick();
+
+        expect(AnalysisSessions.prototype.sessionIdFor).toHaveBeenCalledWith('src-project');
+        expect(emitters.get('interlinearizer.onAnalysisChanged')?.emit).toHaveBeenCalledWith({
+          sessionId: 'session-1',
+          changeId: expect.any(String),
+          books: [{ bookId: 'GEN' }],
+          analysisIds: [],
+          queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
+        });
       });
 
       it('disposes the emitter and stops listening on deactivation', async () => {
@@ -2046,12 +2066,12 @@ describe('main', () => {
         setAnalysisLanguage: handler<
           (sessionId: string, analysisLanguage: string) => Promise<void>
         >('interlinearizer.setAnalysisLanguage'),
-        undoEdit: handler<(sessionId: string) => Promise<string | undefined>>(
-          'interlinearizer.undoEdit',
-        ),
-        redoEdit: handler<(sessionId: string) => Promise<string | undefined>>(
-          'interlinearizer.redoEdit',
-        ),
+        undoEdit: handler<
+          (sessionId: string, changeId?: string | null) => Promise<string | undefined>
+        >('interlinearizer.undoEdit'),
+        redoEdit: handler<
+          (sessionId: string, changeId?: string | null) => Promise<string | undefined>
+        >('interlinearizer.redoEdit'),
         checkIndexes: handler<(sessionId: string) => Promise<string>>(
           'interlinearizer.checkIndexes',
         ),
@@ -2061,6 +2081,7 @@ describe('main', () => {
             tokenRef: string,
             surfaceText: string,
             value: string,
+            changeId?: string,
           ) => Promise<string>
         >('interlinearizer.writeGloss'),
         approveAnalysisForToken: handler<
@@ -2194,15 +2215,39 @@ describe('main', () => {
             content: MergedContent,
           ) => Promise<string>
         >('interlinearizer.mergeAnalysesInto'),
-        discardBook: handler<(sessionId: string, bookCode: string) => Promise<string>>(
-          'interlinearizer.discardBook',
+        discardBook: handler<
+          (sessionId: string, bookCode: string, changeId?: string) => Promise<string>
+        >('interlinearizer.discardBook'),
+        discardAll: handler<(sessionId: string, changeId?: string) => Promise<string>>(
+          'interlinearizer.discardAll',
         ),
-        discardAll: handler<(sessionId: string) => Promise<string>>('interlinearizer.discardAll'),
         previewRemovals: handler<
           (sessionId: string, request: RemovalPreviewRequest) => Promise<string>
         >('interlinearizer.previewRemovals'),
+        getBookOutline: handler<
+          (
+            address: { sessionId: string },
+            bookId: string,
+            segmentationJson?: string,
+          ) => Promise<string | undefined>
+        >('interlinearizer.getBookOutline'),
+        getSegments: handler<
+          (
+            address: { sessionId: string },
+            bookId: string,
+            start: number,
+            end: number,
+            segmentationJson?: string,
+          ) => Promise<string | undefined>
+        >('interlinearizer.getSegments'),
+        getTextReadStatus: handler<(address: { sessionId: string }) => Promise<string>>(
+          'interlinearizer.getTextReadStatus',
+        ),
       };
     }
+
+    /** The changes a command's JSON reply names. */
+    const changesOf = (json: string) => JSON.parse(json).changes;
 
     const staleToken = {
       tokenAnalyses: [{ id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'at' } }],
@@ -2242,7 +2287,7 @@ describe('main', () => {
       await seedDraft({});
       __mockSettingsGet.mockResolvedValue(['en']);
       jest.mocked(bookService.getVerseBook).mockResolvedValue(VERSE_BOOK);
-      jest.mocked(bookService.getBookSegments).mockResolvedValue(VERSE_BOOK.segments);
+      jest.mocked(bookService.getSegmentedBook).mockResolvedValue(VERSE_BOOK);
     });
 
     it("opens a session on the source project's draft", async () => {
@@ -2343,13 +2388,29 @@ describe('main', () => {
       );
     });
 
-    it('replies to an undo with the changes it applied', async () => {
-      const reverted = { intent: 'writeGloss', tokenAnalyses: { puts: [], deletes: ['ta-1'] } };
+    it('replies to an undo with what it applied, under the change id it was sent', async () => {
+      const reverted: CommandReply = {
+        changeId: 'change-1',
+        changes: { intent: 'writeGloss', tokenAnalyses: { puts: [], deletes: ['ta-1'] } },
+        poolBuckets: {},
+        poolAnalyses: [],
+      };
       jest.spyOn(AnalysisSessions.prototype, 'undo').mockResolvedValue(reverted);
       const { undoEdit } = await activateSessionCommands();
 
-      await expect(undoEdit('session-id')).resolves.toBe(JSON.stringify(reverted));
-      expect(AnalysisSessions.prototype.undo).toHaveBeenCalledWith('session-id');
+      await expect(undoEdit('session-id', 'change-1')).resolves.toBe(JSON.stringify(reverted));
+      expect(AnalysisSessions.prototype.undo).toHaveBeenCalledWith('session-id', 'change-1');
+    });
+
+    it('names an undo sent with no change id afresh', async () => {
+      jest.spyOn(AnalysisSessions.prototype, 'undo').mockResolvedValue(undefined);
+      const { undoEdit } = await activateSessionCommands();
+
+      // Over PAPI an omitted argument arrives as null.
+      // eslint-disable-next-line no-null/no-null
+      await undoEdit('session-id', null);
+
+      expect(AnalysisSessions.prototype.undo).toHaveBeenCalledWith('session-id', undefined);
     });
 
     it('replies to an undo with nothing when there is no edit to undo', async () => {
@@ -2369,13 +2430,18 @@ describe('main', () => {
       );
     });
 
-    it('replies to a redo with the changes it applied', async () => {
-      const remade = { intent: 'writeGloss', tokenAnalyses: { puts: [], deletes: ['ta-1'] } };
+    it('replies to a redo with what it applied, under the change id it was sent', async () => {
+      const remade: CommandReply = {
+        changeId: 'change-1',
+        changes: { intent: 'writeGloss', tokenAnalyses: { puts: [], deletes: ['ta-1'] } },
+        poolBuckets: {},
+        poolAnalyses: [],
+      };
       jest.spyOn(AnalysisSessions.prototype, 'redo').mockResolvedValue(remade);
       const { redoEdit } = await activateSessionCommands();
 
-      await expect(redoEdit('session-id')).resolves.toBe(JSON.stringify(remade));
-      expect(AnalysisSessions.prototype.redo).toHaveBeenCalledWith('session-id');
+      await expect(redoEdit('session-id', 'change-1')).resolves.toBe(JSON.stringify(remade));
+      expect(AnalysisSessions.prototype.redo).toHaveBeenCalledWith('session-id', 'change-1');
     });
 
     it('replies to a redo with nothing when there is no undone edit', async () => {
@@ -2421,7 +2487,7 @@ describe('main', () => {
       const { sessionId } = JSON.parse(await openSession('src-project'));
       await setAnalysisLanguage(sessionId, 'fr');
 
-      const changes = JSON.parse(await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'au'));
+      const { changes } = JSON.parse(await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'au'));
 
       expect(changes).toMatchObject({
         intent: 'writeGloss',
@@ -2431,6 +2497,176 @@ describe('main', () => {
           deletes: [],
         },
       });
+    });
+
+    describe("a session's text", () => {
+      const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+      const orphaned = {
+        segmentAnalyses: [{ id: 'sa-9', ...FIXTURE_STAMPS, surfaceText: 'lost' }],
+        segmentAnalysisLinks: [
+          {
+            id: 'sl-9',
+            analysisId: 'sa-9',
+            ...FIXTURE_STAMPS,
+            status: 'stale' as const,
+            segmentId: 'GEN 1:9',
+          },
+        ],
+      };
+
+      it("outlines a book under the draft's boundaries, counting its orphaned cards", async () => {
+        await seedDraft(orphaned, segmentation);
+        jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
+        const { openSession, getBookOutline } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+
+        const json = await getBookOutline({ sessionId }, 'GEN');
+
+        expect(bookService.getOpenBook).toHaveBeenCalledWith(
+          'src-project',
+          'GEN',
+          JSON.stringify(segmentation),
+        );
+        expect(
+          JSON.parse(json ?? '').segments.map(
+            ({ orphanedCardCount }: { orphanedCardCount: number }) => orphanedCardCount,
+          ),
+        ).toStrictEqual([0, 1]);
+      });
+
+      it("serves a run of a book's segments under the draft's boundaries, with its analysis", async () => {
+        await seedDraft(orphaned, segmentation);
+        jest.mocked(bookService.getSegmentedBook).mockResolvedValue(VERSE_BOOK);
+        const { openSession, getSegments } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+
+        const page = JSON.parse((await getSegments({ sessionId }, 'GEN', 1, 2)) ?? '');
+
+        expect(bookService.getSegmentedBook).toHaveBeenCalledWith(
+          'src-project',
+          'GEN',
+          JSON.stringify(segmentation),
+        );
+        expect(page).toMatchObject({
+          start: 1,
+          segments: [VERSE_BOOK.segments[1]],
+          analysis: { staleFreeTranslations: { orphanedAfter: { 'GEN 1:2': ['sa-9'] } } },
+        });
+      });
+
+      it('names no boundaries for a book the draft sets none in', async () => {
+        jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
+        const { openSession, getBookOutline, getSegments } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+
+        await getBookOutline({ sessionId }, 'GEN');
+        await getSegments({ sessionId }, 'GEN', 0, 1);
+
+        expect(bookService.getOpenBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
+        expect(bookService.getSegmentedBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
+      });
+
+      it('resolves undefined for a book the source has no text for', async () => {
+        jest.mocked(bookService.getOpenBook).mockResolvedValue(undefined);
+        jest.mocked(bookService.getSegmentedBook).mockResolvedValue(undefined);
+        const { openSession, getBookOutline, getSegments } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+
+        await expect(getBookOutline({ sessionId }, 'GEN')).resolves.toBeUndefined();
+        await expect(getSegments({ sessionId }, 'GEN', 0, 1)).resolves.toBeUndefined();
+      });
+
+      it('refuses boundaries sent with a session, logging the session', async () => {
+        const { openSession, getBookOutline, getSegments } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+        const json = JSON.stringify(segmentation);
+
+        await expect(getBookOutline({ sessionId }, 'GEN', json)).rejects.toThrow(
+          "segmented by its draft's boundaries",
+        );
+        await expect(getSegments({ sessionId }, 'GEN', 0, 1, json)).rejects.toThrow(
+          "segmented by its draft's boundaries",
+        );
+        expect(__mockLogger.error).toHaveBeenCalledWith(
+          `Interlinearizer: failed to outline book GEN of session ${sessionId}`,
+          expect.any(Error),
+        );
+        expect(__mockLogger.error).toHaveBeenCalledWith(
+          `Interlinearizer: failed to serve segments 0-1 of book GEN of session ${sessionId}`,
+          expect.any(Error),
+        );
+      });
+
+      it("reports how far the session source's text has been read", async () => {
+        jest.mocked(bookService.getTextReadStatus).mockResolvedValue('{"booksRead":1}');
+        const { openSession, getTextReadStatus } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+
+        await expect(getTextReadStatus({ sessionId })).resolves.toBe('{"booksRead":1}');
+        expect(bookService.getTextReadStatus).toHaveBeenCalledWith('src-project');
+      });
+
+      it('logs the session when its read cannot be reported', async () => {
+        const { getTextReadStatus } = await activateSessionCommands();
+
+        await expect(getTextReadStatus({ sessionId: 'no-session' })).rejects.toThrow(
+          'no session no-session is open',
+        );
+        expect(__mockLogger.error).toHaveBeenCalledWith(
+          'Interlinearizer: failed to read the text of session no-session',
+          expect.any(Error),
+        );
+      });
+    });
+
+    it('edits under the change id sent, replying with the pool buckets the edit touched', async () => {
+      const { openSession, writeGloss } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const reply = JSON.parse(await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'at', 'change-1'));
+      const again = JSON.parse(await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'at', 'change-1'));
+
+      expect(reply.changeId).toBe('change-1');
+      expect(reply.poolBuckets).toStrictEqual({
+        in: [{ analysisId: reply.changes.tokenAnalyses.puts[0].id, frequency: 1 }],
+      });
+      expect(again).toStrictEqual(reply);
+    });
+
+    it('tells views what an edit touched, in the book the source keeps under its boundaries', async () => {
+      const emitter = { emit: jest.fn(), dispose: jest.fn() };
+      __mockCreateNetworkEventEmitterAsync.mockResolvedValue(emitter);
+      const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+      await seedDraft({}, segmentation);
+      jest.mocked(bookService.heldBook).mockReturnValue(VERSE_BOOK);
+      const { openSession, writeGloss } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const { changes } = JSON.parse(
+        await writeGloss(sessionId, 'GEN 1:2:0', 'And', 'and', 'change-1'),
+      );
+
+      expect(bookService.heldBook).toHaveBeenCalledWith(
+        'src-project',
+        'GEN',
+        JSON.stringify(segmentation),
+      );
+      expect(emitter.emit).toHaveBeenCalledWith({
+        sessionId,
+        changeId: 'change-1',
+        books: [{ bookId: 'GEN', ranges: [{ start: 1, end: 2 }] }],
+        analysisIds: [changes.tokenAnalyses.puts[0].id],
+        queries: ['getCatalogRows', 'getConcordance'],
+      });
+    });
+
+    it("names no boundaries for a book the session's draft sets none in", async () => {
+      const { openSession, writeGloss } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'at');
+
+      expect(bookService.heldBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
     });
 
     it('logs the error and rethrows when an edit fails', async () => {
@@ -2452,7 +2688,7 @@ describe('main', () => {
       const { openSession, approveAnalysisForToken } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(
+      const { changes } = JSON.parse(
         await approveAnalysisForToken(sessionId, 'GEN 1:1:0', 'In', 'ta-in'),
       );
 
@@ -2475,7 +2711,7 @@ describe('main', () => {
       const { openSession, writeMorphemes } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(
+      const { changes } = JSON.parse(
         await writeMorphemes(sessionId, 'GEN 1:1:0', 'cats', ['cat', '-s'], 'en'),
       );
 
@@ -2505,7 +2741,7 @@ describe('main', () => {
       const { openSession, deleteMorphemes } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(await deleteMorphemes(sessionId, 'GEN 1:1:0'));
+      const { changes } = JSON.parse(await deleteMorphemes(sessionId, 'GEN 1:1:0'));
 
       expect(changes).toMatchObject({
         intent: 'deleteMorphemes',
@@ -2521,7 +2757,9 @@ describe('main', () => {
       const { sessionId } = JSON.parse(await openSession('src-project'));
       await setAnalysisLanguage(sessionId, 'fr');
 
-      const changes = JSON.parse(await writeMorphemeGloss(sessionId, 'GEN 1:1:0', 'm-cat', 'chat'));
+      const { changes } = JSON.parse(
+        await writeMorphemeGloss(sessionId, 'GEN 1:1:0', 'm-cat', 'chat'),
+      );
 
       expect(changes).toMatchObject({
         intent: 'writeMorphemeGloss',
@@ -2540,7 +2778,7 @@ describe('main', () => {
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
       await expect(
-        discardStaleAnalysis(sessionId, 'ta-in', 'GEN 1:1:0').then(JSON.parse),
+        discardStaleAnalysis(sessionId, 'ta-in', 'GEN 1:1:0').then(changesOf),
       ).resolves.toStrictEqual({
         intent: 'discardStaleAnalysis',
         tokenAnalyses: { puts: [], deletes: ['ta-in'] },
@@ -2553,7 +2791,7 @@ describe('main', () => {
       const { openSession, reapplyStaleAnalysis } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(
+      const { changes } = JSON.parse(
         await reapplyStaleAnalysis(sessionId, 'ta-in', 'GEN 1:1:0', 'GEN 1:2:0', 'In'),
       );
 
@@ -2577,7 +2815,7 @@ describe('main', () => {
       const { openSession, keepStaleFreeTranslation } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(
+      const { changes } = JSON.parse(
         await keepStaleFreeTranslation(sessionId, 'sa-1', 'GEN 1:1', 'In the start'),
       );
 
@@ -2597,7 +2835,7 @@ describe('main', () => {
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
       await expect(
-        discardStaleFreeTranslation(sessionId, 'sa-1').then(JSON.parse),
+        discardStaleFreeTranslation(sessionId, 'sa-1').then(changesOf),
       ).resolves.toStrictEqual({
         intent: 'discardStaleFreeTranslation',
         segmentAnalyses: { puts: [], deletes: ['sa-1'] },
@@ -2619,14 +2857,14 @@ describe('main', () => {
       const { openSession, createPhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(await createPhrase(sessionId, inThe));
+      const { changes } = JSON.parse(await createPhrase(sessionId, inThe));
 
       expect(changes).toMatchObject({
         intent: 'createPhrase',
         phraseAnalyses: { puts: [{ surfaceText: 'In the' }], deletes: [] },
         phraseAnalysisLinks: { puts: [{ status: 'approved', tokens: inThe }], deletes: [] },
       });
-      expect(bookService.getBookSegments).toHaveBeenCalledWith('src-project', 'GEN', undefined);
+      expect(bookService.getSegmentedBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
     });
 
     it("checks a phrase against the segments the draft's boundaries in its book make", async () => {
@@ -2636,7 +2874,7 @@ describe('main', () => {
 
       await createPhrase(sessionId, inThe);
 
-      expect(bookService.getBookSegments).toHaveBeenCalledWith(
+      expect(bookService.getSegmentedBook).toHaveBeenCalledWith(
         'src-project',
         'GEN',
         JSON.stringify({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] }),
@@ -2688,7 +2926,7 @@ describe('main', () => {
       const { openSession, approvePhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      await expect(approvePhrase(sessionId, 'pl-1').then(JSON.parse)).resolves.toMatchObject({
+      await expect(approvePhrase(sessionId, 'pl-1').then(changesOf)).resolves.toMatchObject({
         intent: 'approvePhrase',
         phraseAnalysisLinks: { puts: [{ id: 'pl-1', status: 'approved' }], deletes: [] },
       });
@@ -2704,10 +2942,10 @@ describe('main', () => {
       const { openSession, approvePhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      await expect(approvePhrase(sessionId, 'pl-1').then(JSON.parse)).resolves.toStrictEqual({
+      await expect(approvePhrase(sessionId, 'pl-1').then(changesOf)).resolves.toStrictEqual({
         intent: 'approvePhrase',
       });
-      expect(bookService.getBookSegments).not.toHaveBeenCalled();
+      expect(bookService.getSegmentedBook).not.toHaveBeenCalled();
     });
 
     it('removes a phrase given no tokens without reading the text', async () => {
@@ -2715,11 +2953,11 @@ describe('main', () => {
       const { openSession, updatePhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      await expect(updatePhrase(sessionId, 'pl-1', []).then(JSON.parse)).resolves.toMatchObject({
+      await expect(updatePhrase(sessionId, 'pl-1', []).then(changesOf)).resolves.toMatchObject({
         intent: 'updatePhrase',
         phraseAnalysisLinks: { puts: [], deletes: ['pl-1'] },
       });
-      expect(bookService.getBookSegments).not.toHaveBeenCalled();
+      expect(bookService.getSegmentedBook).not.toHaveBeenCalled();
     });
 
     it("writes a phrase's gloss in the session's language, replying with the changes", async () => {
@@ -2734,7 +2972,7 @@ describe('main', () => {
       const { sessionId } = JSON.parse(await openSession('src-project'));
       await setAnalysisLanguage(sessionId, 'fr');
 
-      const changes = JSON.parse(await writePhraseGloss(sessionId, 'pl-1', 'au début'));
+      const { changes } = JSON.parse(await writePhraseGloss(sessionId, 'pl-1', 'au début'));
 
       expect(changes).toMatchObject({
         intent: 'writePhraseGloss',
@@ -2754,7 +2992,7 @@ describe('main', () => {
       const { sessionId } = JSON.parse(await openSession('src-project'));
       const inTheBeginning = [...inThe, beginningGod[0]];
 
-      const changes = JSON.parse(
+      const { changes } = JSON.parse(
         // eslint-disable-next-line no-null/no-null -- PAPI delivers an omitted argument as null
         await mergePhrases(sessionId, 'pl-1', inTheBeginning, null),
       );
@@ -2790,7 +3028,7 @@ describe('main', () => {
       const { openSession, splitPhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(await splitPhrase(sessionId, 'pl-1', 'GEN 1:1:3'));
+      const { changes } = JSON.parse(await splitPhrase(sessionId, 'pl-1', 'GEN 1:1:3'));
 
       expect(changes).toMatchObject({
         intent: 'splitPhrase',
@@ -2866,7 +3104,7 @@ describe('main', () => {
         const commands = await activateSessionCommands();
         const { sessionId } = JSON.parse(await commands.openSession('src-project'));
 
-        await expect(command(commands, sessionId).then(JSON.parse)).resolves.toStrictEqual({
+        await expect(command(commands, sessionId).then(changesOf)).resolves.toStrictEqual({
           intent,
         });
       },
@@ -2930,7 +3168,7 @@ describe('main', () => {
       const { sessionId } = JSON.parse(await openSession('src-project'));
       await setAnalysisLanguage(sessionId, 'fr');
 
-      const changes = JSON.parse(
+      const { changes } = JSON.parse(
         await writeSegmentFreeTranslation(
           sessionId,
           'GEN 1:1',
@@ -2974,7 +3212,7 @@ describe('main', () => {
         const commands = await activateSessionCommands();
         const { sessionId } = JSON.parse(await commands.openSession('src-project'));
 
-        const changes = JSON.parse(await command(commands, sessionId));
+        const { changes } = JSON.parse(await command(commands, sessionId));
 
         expect(changes).toMatchObject({ intent, scope: { segmentation } });
         expect(bookService.getVerseBook).toHaveBeenCalledWith('src-project', 'GEN');
@@ -3000,7 +3238,7 @@ describe('main', () => {
       const { openSession, splitSegment } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(await splitSegment(sessionId, 'GEN 1:1:3'));
+      const { changes } = JSON.parse(await splitSegment(sessionId, 'GEN 1:1:3'));
 
       expect(changes).toMatchObject({
         intent: 'splitSegment',
@@ -3032,7 +3270,7 @@ describe('main', () => {
       const { openSession, splitSegment } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(await splitSegment(sessionId, 'GEN 1:1:3'));
+      const { changes } = JSON.parse(await splitSegment(sessionId, 'GEN 1:1:3'));
 
       expect(changes).toMatchObject({
         intent: 'splitSegment',
@@ -3070,7 +3308,7 @@ describe('main', () => {
       const { sessionId } = JSON.parse(await openSession('src-project'));
       await setAnalysisLanguage(sessionId, 'fr');
 
-      const changes = JSON.parse(await writeAnalysisGloss(sessionId, 'ta-in', 'au'));
+      const { changes } = JSON.parse(await writeAnalysisGloss(sessionId, 'ta-in', 'au'));
 
       expect(changes).toMatchObject({
         intent: 'writeAnalysisGloss',
@@ -3083,7 +3321,7 @@ describe('main', () => {
       const { openSession, clearAnalysisGlosses } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(await clearAnalysisGlosses(sessionId, ['ta-in']));
+      const { changes } = JSON.parse(await clearAnalysisGlosses(sessionId, ['ta-in']));
 
       expect(changes.intent).toBe('clearAnalysisGlosses');
       expect(changes.tokenAnalyses.puts).toStrictEqual([
@@ -3096,7 +3334,7 @@ describe('main', () => {
       const { openSession, writeAnalysisMorphemes } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(
+      const { changes } = JSON.parse(
         await writeAnalysisMorphemes(sessionId, 'ta-in', ['In', 'n'], 'qaa'),
       );
 
@@ -3122,7 +3360,7 @@ describe('main', () => {
       const { openSession, confirmAnalysisMorphemes } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(await confirmAnalysisMorphemes(sessionId, 'ta-in'));
+      const { changes } = JSON.parse(await confirmAnalysisMorphemes(sessionId, 'ta-in'));
 
       expect(changes.intent).toBe('confirmAnalysisMorphemes');
       expect(changes.tokenAnalyses.puts).toStrictEqual([
@@ -3137,7 +3375,7 @@ describe('main', () => {
       const { sessionId } = JSON.parse(await openSession('src-project'));
       await setAnalysisLanguage(sessionId, 'fr');
 
-      const changes = JSON.parse(
+      const { changes } = JSON.parse(
         await writeAnalysisMorphemeGloss(sessionId, 'ta-in', 'm-in', 'dans'),
       );
 
@@ -3152,7 +3390,7 @@ describe('main', () => {
       const { openSession, deleteAnalyses } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      await expect(deleteAnalyses(sessionId, ['ta-in']).then(JSON.parse)).resolves.toStrictEqual({
+      await expect(deleteAnalyses(sessionId, ['ta-in']).then(changesOf)).resolves.toStrictEqual({
         intent: 'deleteAnalyses',
         tokenAnalyses: { puts: [], deletes: ['ta-in'] },
         tokenAnalysisLinks: { puts: [], deletes: ['tl-in'] },
@@ -3179,7 +3417,7 @@ describe('main', () => {
       const { openSession, mergeAnalysesInto } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const changes = JSON.parse(
+      const { changes } = JSON.parse(
         await mergeAnalysesInto(sessionId, 'ta-in', ['ta-into'], { gloss: 'in', morphemes: [] }),
       );
 
@@ -3227,9 +3465,10 @@ describe('main', () => {
       const { openSession, discardBook } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession('src-project'));
 
-      const reply = JSON.parse(await discardBook(sessionId, 'GEN'));
+      const reply = JSON.parse(await discardBook(sessionId, 'GEN', 'change-1'));
 
       expect(reply).toStrictEqual({
+        changeId: 'change-1',
         changes: {
           intent: 'discardBook',
           segmentAnalyses: { puts: [], deletes: ['sa-1'] },
@@ -3237,6 +3476,8 @@ describe('main', () => {
           tokenAnalyses: { puts: [], deletes: ['ta-in'] },
           tokenAnalysisLinks: { puts: [], deletes: ['tl-in'] },
         },
+        poolBuckets: { in: [] },
+        poolAnalyses: [],
         hasFreeTranslations: false,
       });
       expect(projectStorage.getProject).not.toHaveBeenCalled();
@@ -3284,9 +3525,10 @@ describe('main', () => {
       const { sessionId } = JSON.parse(await openSession('src-project', 'proj-1'));
       await writeGloss(sessionId, 'GEN 1:2:0', 'And', 'and');
 
-      const reply = JSON.parse(await discardAll(sessionId));
+      const reply = JSON.parse(await discardAll(sessionId, 'change-1'));
 
       expect(reply).toMatchObject({
+        changeId: 'change-1',
         changes: {
           intent: 'discardAll',
           tokenAnalyses: { puts: [{ id: 'ta-in' }] },
@@ -3400,7 +3642,7 @@ describe('main', () => {
       async (intent, command) => {
         await seedDraft(suggested(exodus));
         jest.mocked(bookService.getVerseBook).mockResolvedValue(undefined);
-        jest.mocked(bookService.getBookSegments).mockResolvedValue(undefined);
+        jest.mocked(bookService.getSegmentedBook).mockResolvedValue(undefined);
         const commands = await activateSessionCommands();
         const { sessionId } = JSON.parse(await commands.openSession('src-project'));
 

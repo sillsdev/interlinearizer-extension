@@ -10,6 +10,7 @@ import type {
 } from '../../src/types/analysis-repository';
 import { bookOfRef, booksLinkedIn } from '../../src/utils/analysis-book';
 import { normalizeSurfaceForm } from '../../src/utils/analysis-identity';
+import { preferredLinkByKey } from '../../src/utils/pick-rules';
 import { chance, createRng, type Rng } from '../dataset/rng';
 import { readDraftJson } from '../dataset/store';
 import { TIERS, type TierSpec } from '../dataset/tiers';
@@ -262,11 +263,24 @@ async function lookupMismatches(
   ];
   const linkedBooks = (await repository.findLinkedBooks()).sort();
   const scannedBooks = [...booksLinkedIn(stored)].sort();
+  const storedIds = new Set(stored.tokenAnalyses.map(({ id }) => id));
+  const winners = preferredLinkByKey(stored.tokenAnalysisLinks, (l) =>
+    l.status === 'approved' && storedIds.has(l.analysisId) ? l.token.tokenRef : undefined,
+  );
+  const scannedCounts: Record<string, number> = {};
+  winners.forEach(({ analysisId }) => {
+    if (tokenIds.includes(analysisId))
+      scannedCounts[analysisId] = (scannedCounts[analysisId] ?? 0) + 1;
+  });
+  const counted = await repository.countApprovals(tokenIds);
+  const sortedEntries = (counts: Record<string, number>) =>
+    JSON.stringify(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
   return [
     ...checks
       .filter(([, answered, scanned]) => canonical(answered) !== canonical(scanned))
       .map(([name]) => name),
     ...(linkedBooks.join() === scannedBooks.join() ? [] : ['findLinkedBooks']),
+    ...(sortedEntries(counted) === sortedEntries(scannedCounts) ? [] : ['countApprovals']),
   ];
 }
 

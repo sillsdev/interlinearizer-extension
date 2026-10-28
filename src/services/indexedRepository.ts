@@ -38,6 +38,7 @@ export abstract class IndexedRepository implements Pick<
   | 'findLinkedBooks'
   | 'findTokenAnalysesByForm'
   | 'findPhraseAnalysesByForm'
+  | 'countApprovals'
   | 'checkIndexes'
 > {
   async getScope(): Promise<ScopeRecord> {
@@ -88,6 +89,10 @@ export abstract class IndexedRepository implements Pick<
 
   findPhraseAnalysesByForm(normalizedForms: string[]): Promise<PhraseAnalysis[]> {
     return this.query((index) => index.findPhraseAnalysesByForm(normalizedForms));
+  }
+
+  countApprovals(analysisIds: string[]): Promise<Record<string, number>> {
+    return this.query((index) => index.countApprovals(analysisIds));
   }
 
   /**

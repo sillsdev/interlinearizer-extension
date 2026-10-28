@@ -9,12 +9,18 @@ import type {
 } from '@papi/core';
 import type {
   Book,
+  ChangeId,
   MergedContent,
   ProjectConfig,
   RemovalPreviewRequest,
   TokenSnapshot,
 } from 'interlinearizer';
-import { formatReplacementString, type LocalizeKey } from 'platform-bible-utils';
+import type { NetworkEvents } from 'papi-shared-types';
+import {
+  formatReplacementString,
+  type LocalizeKey,
+  type PlatformEventEmitter,
+} from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
@@ -35,6 +41,9 @@ import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
+import { readBookOutline, readSegmentPage } from './services/sessionPages';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
+import type { CommandReply } from './types/command-reply';
 import { toProjectSummary, type SavedAsProject } from './types/interlinear-project-summary';
 import { UnreadableBooksError, type DraftExport } from './types/analysis-repository';
 import { isDraftProject } from './types/type-guards';
@@ -148,6 +157,11 @@ const openWebViewsByProject = new Map<string, string>();
  */
 const leftOutDraftBooks = new Map<string, string>();
 
+/** Tells views what a change touched; set on activation. */
+let analysisChangedEmitter: PlatformEventEmitter<
+  NetworkEvents['interlinearizer.onAnalysisChanged']
+>;
+
 /** The open analysis sessions, over the extension's storage. */
 const sessions = new AnalysisSessions({
   findProject: async (sourceProjectId, interlinearProjectId) =>
@@ -163,7 +177,31 @@ const sessions = new AnalysisSessions({
   getInterfaceLanguages: () => papi.settings.get('platform.interfaceLanguage'),
   startTextRead: (sourceProjectId) => bookService.startTextRead(sourceProjectId),
   stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
+  heldBook: (sourceProjectId, bookId, segmentation) =>
+    bookService.heldBook(sourceProjectId, bookId, segmentation && JSON.stringify(segmentation)),
+  reportChange: (change) => analysisChangedEmitter.emit(change),
 });
+
+/**
+ * Tells views of a Scripture edit to the source project's book, addressed by source project and,
+ * when the source has a session open, by session too.
+ */
+function emitScriptureEdit(sourceProjectId: string, bookId: string): void {
+  analysisChangedEmitter.emit({
+    sourceProjectId,
+    changeId: crypto.randomUUID(),
+    scriptureEdit: { bookId },
+  });
+  const sessionId = sessions.sessionIdFor(sourceProjectId);
+  if (sessionId === undefined) return;
+  analysisChangedEmitter.emit({
+    sessionId,
+    changeId: crypto.randomUUID(),
+    books: [{ bookId }],
+    analysisIds: [],
+    queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
+  });
+}
 
 // #endregion
 
@@ -632,53 +670,105 @@ async function getTokenizedBook(
   }
 }
 
+/** A source project by id, or a session by id; a session's form answers with its analysis too. */
+type TextAddress = string | { sessionId: string };
+
+/** Names `address` in a logged message. */
+function addressed(address: TextAddress): string {
+  return typeof address === 'string' ? `project ${address}` : `session ${address.sessionId}`;
+}
+
 /**
- * Outlines a book of the source project, segmented by the boundaries `segmentationJson` names.
+ * Refuses boundaries sent with a session's address, because a session's book is segmented by its
+ * draft's boundaries.
+ *
+ * @throws If `segmentationJson` names any.
+ */
+function refuseBoundaries(segmentationJson: string | undefined): void {
+  if (segmentationJson)
+    throw new Error("Interlinearizer: a session's book is segmented by its draft's boundaries");
+}
+
+/** The boundaries the session's draft sets in the book, as JSON; `undefined` when it sets none. */
+async function sessionBoundaries(session: Session, bookId: string): Promise<string | undefined> {
+  const forBook = segmentationForBook((await session.repository.getScope()).segmentation, bookId);
+  return forBook && JSON.stringify(forBook);
+}
+
+/**
+ * Outlines a book of a source project, or of a session's source. A project's book is segmented by
+ * the boundaries that `segmentationJson` names. A session's book is segmented by its draft's
+ * boundaries, and its outline also counts each segment's orphaned free-translation cards.
  *
  * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
- *   `SegmentationDelta`. The error is logged before rethrowing.
+ *   `SegmentationDelta`. Also if `segmentationJson` names boundaries for a session, the session is
+ *   not open, or its analysis cannot be read. The error is logged before rethrowing.
  */
 async function getBookOutline(
-  sourceProjectId: string,
+  address: TextAddress,
   bookId: string,
   segmentationJson?: string,
 ): Promise<string | undefined> {
   try {
-    return await perfTimeAsync('getBookOutline', () =>
-      bookService.getBookOutline(sourceProjectId, bookId, segmentationJson),
-    );
+    return await perfTimeAsync('getBookOutline', async () => {
+      if (typeof address === 'string')
+        return bookService.getBookOutline(address, bookId, segmentationJson);
+      refuseBoundaries(segmentationJson);
+      return sessions.run(address.sessionId, async (session) => {
+        const book = await bookService.getOpenBook(
+          session.scope.sourceProjectId,
+          bookId,
+          await sessionBoundaries(session, bookId),
+        );
+        if (!book) return undefined;
+        const outline = await readBookOutline(session.repository, book);
+        return perfTime('getBookOutline:serialize', () => JSON.stringify(outline));
+      });
+    });
   } catch (e) {
-    logger.error(
-      `Interlinearizer: failed to outline book ${bookId} of project ${sourceProjectId}`,
-      e,
-    );
+    logger.error(`Interlinearizer: failed to outline book ${bookId} of ${addressed(address)}`, e);
     throw e;
   }
 }
 
 /**
- * Serves the segments at outline indexes `[start, end)` of a book of the source project, segmented
- * by the boundaries `segmentationJson` names.
+ * Serves the segments at outline indexes `[start, end)` of a book of a source project, or of a
+ * session's source. A project's book is segmented by the boundaries that `segmentationJson` names.
+ * A session's book is segmented by its draft's boundaries, and its segments come with the analysis
+ * that its draft holds for them.
  *
  * @returns The `SegmentPage` as JSON, or `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
- *   `SegmentationDelta`. The error is logged before rethrowing.
+ *   `SegmentationDelta`. Also if `segmentationJson` names boundaries for a session, the session is
+ *   not open, or its analysis cannot be read. The error is logged before rethrowing.
  */
 async function getSegments(
-  sourceProjectId: string,
+  address: TextAddress,
   bookId: string,
   start: number,
   end: number,
   segmentationJson?: string,
 ): Promise<string | undefined> {
   try {
-    return await perfTimeAsync('getSegments', () =>
-      bookService.getSegments(sourceProjectId, bookId, start, end, segmentationJson),
-    );
+    return await perfTimeAsync('getSegments', async () => {
+      if (typeof address === 'string')
+        return bookService.getSegments(address, bookId, start, end, segmentationJson);
+      refuseBoundaries(segmentationJson);
+      return sessions.run(address.sessionId, async (session) => {
+        const book = await bookService.getSegmentedBook(
+          session.scope.sourceProjectId,
+          bookId,
+          await sessionBoundaries(session, bookId),
+        );
+        if (!book) return undefined;
+        const page = await readSegmentPage(session.repository, book, start, end);
+        return perfTime('getSegments:serialize', () => JSON.stringify(page));
+      });
+    });
   } catch (e) {
     logger.error(
-      `Interlinearizer: failed to serve segments ${start}-${end} of book ${bookId} of project ${sourceProjectId}`,
+      `Interlinearizer: failed to serve segments ${start}-${end} of book ${bookId} of ${addressed(address)}`,
       e,
     );
     throw e;
@@ -686,18 +776,22 @@ async function getSegments(
 }
 
 /**
- * Reports how far reading the source project's whole text has got, starting the read when the
- * project has none.
+ * Reports how far reading the whole text of the source project, or of a session's, has got,
+ * starting the read when the project has none.
  *
  * @returns Once the text's books are known, the `TextReadStatus` as JSON.
- * @throws If the books or the provider of their text cannot be got. The error is logged before
- *   rethrowing.
+ * @throws If the books or the provider of their text cannot be got, or the session is not open. The
+ *   error is logged before rethrowing.
  */
-async function getTextReadStatus(sourceProjectId: string): Promise<string> {
+async function getTextReadStatus(address: TextAddress): Promise<string> {
   try {
+    const sourceProjectId =
+      typeof address === 'string'
+        ? address
+        : await sessions.run(address.sessionId, async ({ scope }) => scope.sourceProjectId);
     return await bookService.getTextReadStatus(sourceProjectId);
   } catch (e) {
-    logger.error(`Interlinearizer: failed to read the text of project ${sourceProjectId}`, e);
+    logger.error(`Interlinearizer: failed to read the text of ${addressed(address)}`, e);
     throw e;
   }
 }
@@ -800,14 +894,17 @@ async function setAnalysisLanguage(sessionId: string, analysisLanguage: string):
 /**
  * Reverts a session's latest edit not yet undone.
  *
- * @returns The changes it applied, as JSON, or `undefined` when there is none.
+ * @returns A JSON string of the {@link CommandReply}, or `undefined` when there is none.
  * @throws If the session is read-only or not open, or the undo fails. The error is logged before
  *   rethrowing.
  */
-async function undoEdit(sessionId: string): Promise<string | undefined> {
+async function undoEdit(
+  sessionId: string,
+  changeId?: ChangeId | null,
+): Promise<string | undefined> {
   try {
-    const changes = await sessions.undo(sessionId);
-    return changes && JSON.stringify(changes);
+    const reply = await sessions.undo(sessionId, changeId ?? undefined);
+    return reply && JSON.stringify(reply);
   } catch (e) {
     logger.error(`Interlinearizer: failed to undo an edit in session ${sessionId}`, e);
     throw e;
@@ -817,14 +914,17 @@ async function undoEdit(sessionId: string): Promise<string | undefined> {
 /**
  * Redoes a session's latest undone edit.
  *
- * @returns The changes it applied, as JSON, or `undefined` when there is none.
+ * @returns A JSON string of the {@link CommandReply}, or `undefined` when there is none.
  * @throws If the session is read-only or not open, or the redo fails. The error is logged before
  *   rethrowing.
  */
-async function redoEdit(sessionId: string): Promise<string | undefined> {
+async function redoEdit(
+  sessionId: string,
+  changeId?: ChangeId | null,
+): Promise<string | undefined> {
   try {
-    const changes = await sessions.redo(sessionId);
-    return changes && JSON.stringify(changes);
+    const reply = await sessions.redo(sessionId, changeId ?? undefined);
+    return reply && JSON.stringify(reply);
   } catch (e) {
     logger.error(`Interlinearizer: failed to redo an edit in session ${sessionId}`, e);
     throw e;
@@ -849,20 +949,25 @@ async function checkIndexes(sessionId: string): Promise<string> {
   }
 }
 
+/** The session an edit is sent to, and the change id it is sent under. */
+type EditTarget = { sessionId: string; changeId?: ChangeId | null };
+
 /**
  * Runs `command` as one edit of a session's analysis.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
 async function runSessionEdit(
-  sessionId: string,
+  { sessionId, changeId }: EditTarget,
   intent: string,
   command: (buffer: ChangeBuffer, session: Session) => Promise<void | readonly Book[]>,
 ): Promise<string> {
   try {
-    return JSON.stringify(await sessions.edit(sessionId, intent, command));
+    return JSON.stringify(
+      await sessions.edit(sessionId, intent, command, { changeId: changeId ?? undefined }),
+    );
   } catch (e) {
     logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
     throw e;
@@ -882,7 +987,7 @@ function editStamp() {
 /**
  * Writes a token's gloss in the session's analysis language; a blank value clears it.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
@@ -891,8 +996,9 @@ function writeGloss(
   tokenRef: string,
   surfaceText: string,
   value: string,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'writeGloss', (buffer, session) =>
+  return runSessionEdit({ sessionId, changeId }, 'writeGloss', (buffer, session) =>
     tokenCommands.writeGloss(buffer, {
       ...editStamp(),
       tokenRef,
@@ -906,7 +1012,7 @@ function writeGloss(
 /**
  * Approves a stored token analysis for a token, in place of any approval the token held.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
@@ -915,8 +1021,9 @@ function approveAnalysisForToken(
   tokenRef: string,
   surfaceText: string,
   analysisId: string,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'approveAnalysisForToken', (buffer) =>
+  return runSessionEdit({ sessionId, changeId }, 'approveAnalysisForToken', (buffer) =>
     tokenCommands.approveAnalysisForToken(buffer, {
       ...editStamp(),
       tokenRef,
@@ -929,7 +1036,7 @@ function approveAnalysisForToken(
 /**
  * Writes a token's morpheme breakdown, each form in `writingSystem`.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
@@ -939,8 +1046,9 @@ function writeMorphemes(
   surfaceText: string,
   forms: string[],
   writingSystem: string,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'writeMorphemes', (buffer) =>
+  return runSessionEdit({ sessionId, changeId }, 'writeMorphemes', (buffer) =>
     morphemeCommands.writeMorphemes(buffer, {
       ...editStamp(),
       tokenRef,
@@ -954,12 +1062,16 @@ function writeMorphemes(
 /**
  * Removes a token's morpheme breakdown.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function deleteMorphemes(sessionId: string, tokenRef: string): Promise<string> {
-  return runSessionEdit(sessionId, 'deleteMorphemes', (buffer) =>
+function deleteMorphemes(
+  sessionId: string,
+  tokenRef: string,
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'deleteMorphemes', (buffer) =>
     morphemeCommands.deleteMorphemes(buffer, { ...editStamp(), tokenRef }),
   );
 }
@@ -968,7 +1080,7 @@ function deleteMorphemes(sessionId: string, tokenRef: string): Promise<string> {
  * Glosses one morpheme of a token's breakdown in the session's analysis language; a blank value
  * clears the morpheme's gloss.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
@@ -977,8 +1089,9 @@ function writeMorphemeGloss(
   tokenRef: string,
   morphemeId: string,
   value: string,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'writeMorphemeGloss', (buffer, session) =>
+  return runSessionEdit({ sessionId, changeId }, 'writeMorphemeGloss', (buffer, session) =>
     morphemeCommands.writeMorphemeGloss(buffer, {
       ...editStamp(),
       tokenRef,
@@ -992,7 +1105,7 @@ function writeMorphemeGloss(
 /**
  * Gives up the place an analysis went stale at, leaving its other places alone.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
@@ -1000,8 +1113,9 @@ function discardStaleAnalysis(
   sessionId: string,
   analysisId: string,
   tokenRef: string,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'discardStaleAnalysis', (buffer) =>
+  return runSessionEdit({ sessionId, changeId }, 'discardStaleAnalysis', (buffer) =>
     staleCommands.discardStaleAnalysis(buffer, { analysisId, tokenRef }),
   );
 }
@@ -1010,7 +1124,7 @@ function discardStaleAnalysis(
  * Moves an analysis from a place it went stale at onto a token, approving it there in place of
  * whatever that token held.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
@@ -1020,9 +1134,10 @@ function reapplyStaleAnalysis(
   staleTokenRef: string,
   tokenRef: string,
   surfaceText: string,
+  changeId?: ChangeId | null,
 ): Promise<string> {
   const { analysisId: copyId, linkId, now } = editStamp();
-  return runSessionEdit(sessionId, 'reapplyStaleAnalysis', (buffer) =>
+  return runSessionEdit({ sessionId, changeId }, 'reapplyStaleAnalysis', (buffer) =>
     staleCommands.reapplyStaleAnalysis(buffer, {
       analysisId,
       staleTokenRef,
@@ -1039,7 +1154,7 @@ function reapplyStaleAnalysis(
  * Keeps a stale free translation as a claim about a segment's current text, approving it for that
  * segment.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
@@ -1048,8 +1163,9 @@ function keepStaleFreeTranslation(
   analysisId: string,
   segmentId: string,
   surfaceText: string,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'keepStaleFreeTranslation', (buffer) =>
+  return runSessionEdit({ sessionId, changeId }, 'keepStaleFreeTranslation', (buffer) =>
     staleCommands.keepStaleFreeTranslation(buffer, {
       analysisId,
       segmentId,
@@ -1062,12 +1178,16 @@ function keepStaleFreeTranslation(
 /**
  * Drops a stale free translation, even one whose verse the book no longer holds.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function discardStaleFreeTranslation(sessionId: string, analysisId: string): Promise<string> {
-  return runSessionEdit(sessionId, 'discardStaleFreeTranslation', (buffer) =>
+function discardStaleFreeTranslation(
+  sessionId: string,
+  analysisId: string,
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'discardStaleFreeTranslation', (buffer) =>
     staleCommands.discardStaleFreeTranslation(buffer, { analysisId }),
   );
 }
@@ -1076,11 +1196,16 @@ function discardStaleFreeTranslation(sessionId: string, analysisId: string): Pro
  * Writes a token analysis's gloss in the session's analysis language, for every token linked to it;
  * a blank value clears it.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
-function writeAnalysisGloss(sessionId: string, analysisId: string, value: string): Promise<string> {
-  return runSessionEdit(sessionId, 'writeAnalysisGloss', (buffer, session) =>
+function writeAnalysisGloss(
+  sessionId: string,
+  analysisId: string,
+  value: string,
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'writeAnalysisGloss', (buffer, session) =>
     catalogCommands.writeAnalysisGloss(buffer, {
       analysisId,
       value,
@@ -1093,11 +1218,15 @@ function writeAnalysisGloss(sessionId: string, analysisId: string, value: string
 /**
  * Clears the glosses of several token analyses in the session's analysis language.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
-function clearAnalysisGlosses(sessionId: string, analysisIds: string[]): Promise<string> {
-  return runSessionEdit(sessionId, 'clearAnalysisGlosses', (buffer, session) =>
+function clearAnalysisGlosses(
+  sessionId: string,
+  analysisIds: string[],
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'clearAnalysisGlosses', (buffer, session) =>
     catalogCommands.clearAnalysisGlosses(buffer, {
       analysisIds,
       analysisLanguage: session.analysisLanguage,
@@ -1110,7 +1239,7 @@ function clearAnalysisGlosses(sessionId: string, analysisIds: string[]): Promise
  * Re-splits a token analysis's breakdown into `forms`, for every token linked to it; no forms
  * removes the breakdown.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
 function writeAnalysisMorphemes(
@@ -1118,8 +1247,9 @@ function writeAnalysisMorphemes(
   analysisId: string,
   forms: string[],
   writingSystem: string,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'writeAnalysisMorphemes', (buffer) =>
+  return runSessionEdit({ sessionId, changeId }, 'writeAnalysisMorphemes', (buffer) =>
     catalogCommands.writeAnalysisMorphemes(buffer, {
       analysisId,
       morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
@@ -1132,11 +1262,15 @@ function writeAnalysisMorphemes(
 /**
  * Keeps a token analysis's stale breakdown as it stands, for every token linked to it.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
-function confirmAnalysisMorphemes(sessionId: string, analysisId: string): Promise<string> {
-  return runSessionEdit(sessionId, 'confirmAnalysisMorphemes', (buffer) =>
+function confirmAnalysisMorphemes(
+  sessionId: string,
+  analysisId: string,
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'confirmAnalysisMorphemes', (buffer) =>
     catalogCommands.confirmAnalysisMorphemes(buffer, { analysisId, now: editStamp().now }),
   );
 }
@@ -1145,7 +1279,7 @@ function confirmAnalysisMorphemes(sessionId: string, analysisId: string): Promis
  * Writes the gloss of one morpheme of a token analysis in the session's analysis language, for
  * every token linked to it; a blank value clears it.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
 function writeAnalysisMorphemeGloss(
@@ -1153,8 +1287,9 @@ function writeAnalysisMorphemeGloss(
   analysisId: string,
   morphemeId: string,
   value: string,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'writeAnalysisMorphemeGloss', (buffer, session) =>
+  return runSessionEdit({ sessionId, changeId }, 'writeAnalysisMorphemeGloss', (buffer, session) =>
     catalogCommands.writeAnalysisMorphemeGloss(buffer, {
       analysisId,
       morphemeId,
@@ -1168,11 +1303,15 @@ function writeAnalysisMorphemeGloss(
 /**
  * Removes token analyses with every token link to them.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
-function deleteAnalyses(sessionId: string, analysisIds: string[]): Promise<string> {
-  return runSessionEdit(sessionId, 'deleteAnalyses', (buffer) =>
+function deleteAnalyses(
+  sessionId: string,
+  analysisIds: string[],
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'deleteAnalyses', (buffer) =>
     catalogCommands.deleteAnalyses(buffer, { analysisIds }),
   );
 }
@@ -1181,7 +1320,7 @@ function deleteAnalyses(sessionId: string, analysisIds: string[]): Promise<strin
  * Folds token analyses into a survivor and writes the settled content onto it, in the session's
  * analysis language.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
 function mergeAnalysesInto(
@@ -1189,8 +1328,9 @@ function mergeAnalysesInto(
   survivorAnalysisId: string,
   mergedAnalysisIds: string[],
   content: MergedContent,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'mergeAnalysesInto', (buffer, session) =>
+  return runSessionEdit({ sessionId, changeId }, 'mergeAnalysesInto', (buffer, session) =>
     catalogCommands.mergeAnalysesInto(buffer, {
       survivorAnalysisId,
       mergedAnalysisIds,
@@ -1243,10 +1383,14 @@ async function assertOneSegment(
   tokens: readonly TokenSnapshot[],
 ): Promise<void> {
   const { segmentation } = await buffer.getScope();
-  const segments = await readBookOf(session, tokens[0].tokenRef, (sourceProjectId, bookId) => {
-    // Keyed as the WebView's page reads key it, so that the two share the book's segmentation.
+  const { segments } = await readBookOf(session, tokens[0].tokenRef, (sourceProjectId, bookId) => {
+    // Keyed as page reads key it, so that the two share the book's segmentation.
     const forBook = segmentationForBook(segmentation, bookId);
-    return bookService.getBookSegments(sourceProjectId, bookId, forBook && JSON.stringify(forBook));
+    return bookService.getSegmentedBook(
+      sourceProjectId,
+      bookId,
+      forBook && JSON.stringify(forBook),
+    );
   });
   const { tokenSegmentMap } = bookIndexesOf(segments);
   const segmentIds = new Set(tokens.map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)));
@@ -1259,13 +1403,17 @@ async function assertOneSegment(
  * Adds an approved phrase occurrence over `tokens`, sharing a content-identical stored payload
  * where one exists.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
  *   the first token's book, the session is read-only or not open, or the edit is refused or fails.
  *   The error is logged before rethrowing.
  */
-function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<string> {
-  return runSessionEdit(sessionId, 'createPhrase', async (buffer, session) => {
+function createPhrase(
+  sessionId: string,
+  tokens: TokenSnapshot[],
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'createPhrase', async (buffer, session) => {
     assertTokenRun(tokens);
     await assertOneSegment(buffer, session, tokens);
     await phraseCommands.createPhrase(buffer, { ...editStamp(), tokens });
@@ -1276,7 +1424,7 @@ function createPhrase(sessionId: string, tokens: TokenSnapshot[]): Promise<strin
  * Gives a phrase occurrence a new token run, keeping its gloss. An empty run removes the
  * occurrence.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If `tokens` is not within one segment of the text, the project has no text for the first
  *   token's book, the session is read-only or not open, or the edit is refused or fails. The error
  *   is logged before rethrowing.
@@ -1285,8 +1433,9 @@ function updatePhrase(
   sessionId: string,
   phraseId: string,
   tokens: TokenSnapshot[],
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'updatePhrase', async (buffer, session) => {
+  return runSessionEdit({ sessionId, changeId }, 'updatePhrase', async (buffer, session) => {
     if (tokens.length > 0) await assertOneSegment(buffer, session, tokens);
     await phraseCommands.updatePhrase(buffer, { ...editStamp(), phraseId, tokens });
   });
@@ -1295,12 +1444,16 @@ function updatePhrase(
 /**
  * Removes a phrase occurrence, with its payload unless another occurrence shares that payload.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function deletePhrase(sessionId: string, phraseId: string): Promise<string> {
-  return runSessionEdit(sessionId, 'deletePhrase', (buffer) =>
+function deletePhrase(
+  sessionId: string,
+  phraseId: string,
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'deletePhrase', (buffer) =>
     phraseCommands.deletePhrase(buffer, { phraseId }),
   );
 }
@@ -1314,7 +1467,8 @@ function deletePhrase(sessionId: string, phraseId: string): Promise<string> {
  * @param tokens - In document order.
  * @param absorbedPhraseId - The absorbed occurrence's link ID. Absent or `null` when the neighbor
  *   is a token in no phrase.
- * @returns The changes it applied, as JSON.
+ * @param changeId - Names the change; absent or `null`, the session names it.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
  *   the first token's book, the session is read-only or not open, or the edit is refused or fails.
  *   The error is logged before rethrowing.
@@ -1324,8 +1478,9 @@ function mergePhrases(
   targetPhraseId: string,
   tokens: TokenSnapshot[],
   absorbedPhraseId?: string | null,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'mergePhrases', async (buffer, session) => {
+  return runSessionEdit({ sessionId, changeId }, 'mergePhrases', async (buffer, session) => {
     assertTokenRun(tokens);
     await assertOneSegment(buffer, session, tokens);
     await phraseCommands.mergePhrases(buffer, {
@@ -1340,12 +1495,17 @@ function mergePhrases(
 /**
  * Writes a phrase occurrence's gloss in the session's analysis language; a blank value clears it.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function writePhraseGloss(sessionId: string, phraseId: string, value: string): Promise<string> {
-  return runSessionEdit(sessionId, 'writePhraseGloss', (buffer, session) =>
+function writePhraseGloss(
+  sessionId: string,
+  phraseId: string,
+  value: string,
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'writePhraseGloss', (buffer, session) =>
     phraseCommands.writePhraseGloss(buffer, {
       ...editStamp(),
       phraseId,
@@ -1358,13 +1518,17 @@ function writePhraseGloss(sessionId: string, phraseId: string, value: string): P
 /**
  * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the occurrence would be approved over tokens not within one segment of the text, the
  *   project has no text for their book, the session is read-only or not open, or the edit is
  *   refused or fails. The error is logged before rethrowing.
  */
-function approvePhrase(sessionId: string, phraseId: string): Promise<string> {
-  return runSessionEdit(sessionId, 'approvePhrase', async (buffer, session) => {
+function approvePhrase(
+  sessionId: string,
+  phraseId: string,
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'approvePhrase', async (buffer, session) => {
     const [link] = await buffer.getPhraseAnalysisLinks([phraseId]);
     if (link && link.status !== 'approved') await assertOneSegment(buffer, session, link.tokens);
     await phraseCommands.approvePhrase(buffer, { ...editStamp(), phraseId });
@@ -1385,7 +1549,7 @@ function verseBookOf(session: Session, tokenRef: string): Promise<Book> {
  * Splits a phrase occurrence just after a token, in the document order of the token's book. A half
  * left with a single token leaves that token in no phrase.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the project has no text for the token's book, the session is read-only or not open, or
  *   the edit is refused or fails. The error is logged before rethrowing.
  */
@@ -1393,8 +1557,9 @@ function splitPhrase(
   sessionId: string,
   phraseId: string,
   splitAfterTokenRef: string,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'splitPhrase', async (buffer, session) => {
+  return runSessionEdit({ sessionId, changeId }, 'splitPhrase', async (buffer, session) => {
     const verseBook = await verseBookOf(session, splitAfterTokenRef);
     await phraseCommands.splitPhrase(buffer, {
       ...editStamp(),
@@ -1416,7 +1581,8 @@ function splitPhrase(
  * @param adoptStaleAnalysisId - Id of the stale translation the value was typed over. The write
  *   adopts that translation when the segment has no approved one. Absent or `null` when the value
  *   was typed over none.
- * @returns The changes it applied, as JSON.
+ * @param changeId - Names the change; absent or `null`, the session names it.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
@@ -1426,8 +1592,9 @@ function writeSegmentFreeTranslation(
   surfaceText: string,
   value: string,
   adoptStaleAnalysisId?: string | null,
+  changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit(sessionId, 'writeSegmentFreeTranslation', (buffer, session) =>
+  return runSessionEdit({ sessionId, changeId }, 'writeSegmentFreeTranslation', (buffer, session) =>
     freeTranslationCommands.writeSegmentFreeTranslation(buffer, {
       ...editStamp(),
       segmentId,
@@ -1447,12 +1614,16 @@ function boundaryEditStamp() {
 /**
  * Merges the segment beginning at a token into the one before it.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the project has no text for the token's book, the session is read-only or not open, or
  *   the edit fails. The error is logged before rethrowing.
  */
-function mergeSegments(sessionId: string, secondSegmentStartRef: string): Promise<string> {
-  return runSessionEdit(sessionId, 'mergeSegments', async (buffer, session) => {
+function mergeSegments(
+  sessionId: string,
+  secondSegmentStartRef: string,
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'mergeSegments', async (buffer, session) => {
     const verseBook = await verseBookOf(session, secondSegmentStartRef);
     await boundaryCommands.mergeSegments(buffer, { verseBook, secondSegmentStartRef });
     return [verseBook];
@@ -1463,12 +1634,16 @@ function mergeSegments(sessionId: string, secondSegmentStartRef: string): Promis
  * Splits a segment so a new one begins at a token, first splitting every approved phrase the new
  * boundary would cut.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the project has no text for the token's book, the session is read-only or not open, or
  *   the edit is refused or fails. The error is logged before rethrowing.
  */
-function splitSegment(sessionId: string, tokenRef: string): Promise<string> {
-  return runSessionEdit(sessionId, 'splitSegment', async (buffer, session) => {
+function splitSegment(
+  sessionId: string,
+  tokenRef: string,
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'splitSegment', async (buffer, session) => {
     const verseBook = await verseBookOf(session, tokenRef);
     await boundaryCommands.splitSegment(buffer, { ...boundaryEditStamp(), verseBook, tokenRef });
     return [verseBook];
@@ -1479,13 +1654,18 @@ function splitSegment(sessionId: string, tokenRef: string): Promise<string> {
  * Moves a segment boundary from one token to another, first splitting every approved phrase the
  * moved boundary would cut.
  *
- * @returns The changes it applied, as JSON.
+ * @returns A JSON string of the {@link CommandReply}.
  * @throws If the project has no text for the book of the token the boundary moves to, the session
  *   is read-only or not open, or the edit is refused or fails. The error is logged before
  *   rethrowing.
  */
-function moveBoundary(sessionId: string, fromRef: string, toRef: string): Promise<string> {
-  return runSessionEdit(sessionId, 'moveBoundary', async (buffer, session) => {
+function moveBoundary(
+  sessionId: string,
+  fromRef: string,
+  toRef: string,
+  changeId?: ChangeId | null,
+): Promise<string> {
+  return runSessionEdit({ sessionId, changeId }, 'moveBoundary', async (buffer, session) => {
     const verseBook = await verseBookOf(session, toRef);
     await boundaryCommands.moveBoundary(buffer, {
       ...boundaryEditStamp(),
@@ -1516,17 +1696,18 @@ async function savedContentOf(session: Session): Promise<DraftContent | undefine
  * Runs an unsaved-change discard as one edit of a session's analysis, re-anchoring each book it
  * rewrites to the book's current text. A book the text lacks has its links go stale.
  *
- * @param sessionId - The session whose draft the discard edits.
+ * @param target - The session whose draft the discard edits, and the change id it is sent under.
  * @param intent - Names the discard.
  * @param stage - Stages the discard over the stored draft, given the saved project's content.
  * @param unsavedMark - How the discard leaves the draft's unsaved mark, given whether the draft
  *   saves to a project.
- * @returns A JSON string of `{ changes, hasFreeTranslations }`.
+ * @returns A JSON string of the {@link CommandReply}, with `hasFreeTranslations`: whether any
+ *   segment of the draft the discard leaves has a free translation.
  * @throws If the saved project cannot be read, the session is read-only or not open, or the edit is
  *   refused or fails. The error is logged before rethrowing.
  */
 async function runDiscard(
-  sessionId: string,
+  { sessionId, changeId }: EditTarget,
   intent: string,
   stage: (
     buffer: ChangeBuffer,
@@ -1537,7 +1718,7 @@ async function runDiscard(
 ): Promise<string> {
   let hasFreeTranslations = false;
   try {
-    const changes = await sessions.edit(
+    const reply = await sessions.edit(
       sessionId,
       intent,
       async (buffer, session) => {
@@ -1552,9 +1733,12 @@ async function runDiscard(
           ),
         );
       },
-      ({ scope }) => ({ unsavedMark: unsavedMark(scope.interlinearProjectId !== undefined) }),
+      {
+        unsavedMark: ({ scope }) => unsavedMark(scope.interlinearProjectId !== undefined),
+        changeId: changeId ?? undefined,
+      },
     );
-    return JSON.stringify({ changes, hasFreeTranslations });
+    return JSON.stringify({ ...reply, hasFreeTranslations });
   } catch (e) {
     logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
     throw e;
@@ -1567,12 +1751,16 @@ async function runDiscard(
  * analysis could not be read keeps it. A draft saving to a project stays as saved or unsaved as it
  * was; one saving to none is marked unsaved when the discard changes anything.
  *
- * @returns A JSON string of `{ changes, hasFreeTranslations }`.
+ * @returns As {@link runDiscard} does.
  * @throws As {@link runDiscard} does.
  */
-function discardBook(sessionId: string, bookCode: string): Promise<string> {
+function discardBook(
+  sessionId: string,
+  bookCode: string,
+  changeId?: ChangeId | null,
+): Promise<string> {
   return runDiscard(
-    sessionId,
+    { sessionId, changeId },
     'discardBook',
     (buffer, stored, saved) => discardCommands.discardBook(buffer, stored, bookCode, saved),
     (savesToProject) => (savesToProject ? 'keep' : undefined),
@@ -1584,11 +1772,16 @@ function discardBook(sessionId: string, bookCode: string): Promise<string> {
  * emptying the draft when it has no project. A book whose stored analysis could not be read keeps
  * it. The draft is marked saved.
  *
- * @returns A JSON string of `{ changes, hasFreeTranslations }`.
+ * @returns As {@link runDiscard} does.
  * @throws As {@link runDiscard} does.
  */
-function discardAll(sessionId: string): Promise<string> {
-  return runDiscard(sessionId, 'discardAll', discardCommands.discardAll, () => 'clear');
+function discardAll(sessionId: string, changeId?: ChangeId | null): Promise<string> {
+  return runDiscard(
+    { sessionId, changeId },
+    'discardAll',
+    discardCommands.discardAll,
+    () => 'clear',
+  );
 }
 
 /**
@@ -2004,14 +2197,27 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  /** Parameters naming the source project's book a segment query reads. */
-  const bookParams = [
-    {
-      name: 'sourceProjectId',
-      required: true,
-      summary: 'Platform.Bible source project ID whose book to segment',
-      schema: { type: 'string' },
+  /** The parameter naming the source project, or the session, whose text a query reads. */
+  const textAddressParam = {
+    name: 'address',
+    required: true as const,
+    summary:
+      'Platform.Bible source project ID, or { sessionId } to read the source of a session and its analysis too',
+    schema: {
+      anyOf: [
+        { type: 'string' as const },
+        {
+          type: 'object' as const,
+          properties: { sessionId: { type: 'string' as const } },
+          required: ['sessionId'],
+        },
+      ],
     },
+  };
+
+  /** Parameters naming the book a segment query reads. */
+  const bookParams = [
+    textAddressParam,
     {
       name: 'bookId',
       required: true,
@@ -2023,7 +2229,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     name: 'segmentationJson',
     required: false,
     summary:
-      "JSON-stringified SegmentationDelta of the book's custom boundaries; omit for one segment per verse",
+      "JSON-stringified SegmentationDelta of the book's custom boundaries; omit for one segment per verse, and for a session, which segments by its draft's",
     schema: { type: 'string' },
   } as const;
 
@@ -2083,14 +2289,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Return how far reading a source project's whole text has got, starting the read when the project has none, as a JSON string",
-        params: [
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Platform.Bible source project ID whose text to read',
-            schema: { type: 'string' },
-          },
-        ],
+        params: [textAddressParam],
         result: {
           name: 'return value',
           summary: 'JSON-stringified TextReadStatus',
@@ -2137,6 +2336,15 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     name: 'sessionId',
     required: true,
     summary: 'ID of the session, as openSession returned it',
+    schema: { type: 'string' },
+  } as const;
+
+  /** The parameter naming the change a session command makes. */
+  const changeIdParam = {
+    name: 'changeId',
+    required: false,
+    summary:
+      'Names the change; a command sent again under the id of a change the session has applied replies as it did then, applying nothing. Omit to have the session name it',
     schema: { type: 'string' },
   } as const;
 
@@ -2206,7 +2414,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   /** The result of a command that replies with the changes it applied, if any. */
   const appliedChangesResult = {
     name: 'return value',
-    summary: 'JSON-stringified ChangeSet it applied; omitted when there was nothing to apply',
+    summary:
+      'JSON-stringified CommandReply: the ChangeSet it applied and the pool buckets that touched; omitted when there was nothing to apply',
     schema: { type: 'string' },
   } as const;
 
@@ -2216,7 +2425,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Revert a session's latest edit not yet undone",
-        params: [sessionIdParam],
+        params: [sessionIdParam, changeIdParam],
         result: appliedChangesResult,
       },
     },
@@ -2228,7 +2437,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Make a session's latest undone edit again",
-        params: [sessionIdParam],
+        params: [sessionIdParam, changeIdParam],
         result: appliedChangesResult,
       },
     },
@@ -2252,7 +2461,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const editResult = {
     name: 'return value',
-    summary: 'JSON-stringified ChangeSet the edit applied',
+    summary:
+      'JSON-stringified CommandReply: the ChangeSet the edit applied and the pool buckets that touched',
     schema: { type: 'string' },
   } as const;
 
@@ -2271,6 +2481,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'The gloss',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2293,6 +2504,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'Id of the stored token analysis to approve',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2320,6 +2532,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'BCP 47 tag of the writing system the forms are in',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2332,7 +2545,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Remove a token's morpheme breakdown",
-        params: [sessionIdParam, tokenParams[0]],
+        params: [sessionIdParam, tokenParams[0], changeIdParam],
         result: editResult,
       },
     },
@@ -2360,6 +2573,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'The gloss',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2388,6 +2602,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'Token.ref the stale link names',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2411,6 +2626,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           ...tokenParams,
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2446,6 +2662,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: "The segment's current baseline text",
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2458,7 +2675,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: 'Drop a stale free translation, one whose verse the book no longer holds included',
-        params: [sessionIdParam, staleTranslationParam],
+        params: [sessionIdParam, staleTranslationParam, changeIdParam],
         result: editResult,
       },
     },
@@ -2490,6 +2707,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           sessionIdParam,
           catalogAnalysisParam,
           { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2502,7 +2720,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Clear the glosses of several token analyses in a session's analysis language",
-        params: [sessionIdParam, analysisIdsParam],
+        params: [sessionIdParam, analysisIdsParam, changeIdParam],
         result: editResult,
       },
     },
@@ -2530,6 +2748,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'Writing system the morphemes are tagged with',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2543,7 +2762,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Keep a token analysis's stale breakdown as it stands, for every token linked to it",
-        params: [sessionIdParam, catalogAnalysisParam],
+        params: [sessionIdParam, catalogAnalysisParam, changeIdParam],
         result: editResult,
       },
     },
@@ -2566,6 +2785,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2578,7 +2798,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: 'Remove token analyses with every token link to them',
-        params: [sessionIdParam, analysisIdsParam],
+        params: [sessionIdParam, analysisIdsParam, changeIdParam],
         result: editResult,
       },
     },
@@ -2611,6 +2831,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'MergedContent the survivor says once the merge settles',
             schema: { type: 'object' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2652,6 +2873,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: "The phrase's token snapshots, in document order",
             schema: tokenSnapshotsSchema,
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2674,6 +2896,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'The new token snapshots, in document order',
             schema: tokenSnapshotsSchema,
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2686,7 +2909,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: 'Remove a phrase occurrence, with its payload unless another occurrence shares it',
-        params: [sessionIdParam, phraseIdParam],
+        params: [sessionIdParam, phraseIdParam, changeIdParam],
         result: editResult,
       },
     },
@@ -2720,6 +2943,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
               'PhraseAnalysisLink.id of the neighboring occurrence merged in; omit when the neighbor is in no phrase',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2742,6 +2966,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'The gloss',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2754,7 +2979,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: 'Approve a phrase occurrence, unless any of its tokens is in an approved phrase',
-        params: [sessionIdParam, phraseIdParam],
+        params: [sessionIdParam, phraseIdParam, changeIdParam],
         result: editResult,
       },
     },
@@ -2776,6 +3001,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'Token.ref of the token the first half ends with',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2816,6 +3042,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
               'Id of the stale translation the value was typed over, adopted when the segment has no approved one; omit when there is none',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2836,6 +3063,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'Token.ref of the first token of the segment merged away',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2857,6 +3085,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'Token.ref of the token the new segment begins with',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2884,6 +3113,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'Token.ref of the token that begins a segment instead',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: editResult,
       },
@@ -2912,6 +3142,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'Three-letter code of the book discarded',
             schema: { type: 'string' },
           },
+          changeIdParam,
         ],
         result: discardResult,
       },
@@ -2925,7 +3156,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Discard every unsaved change to a session's draft, restoring what the project it saves to holds",
-        params: [sessionIdParam],
+        params: [sessionIdParam, changeIdParam],
         result: discardResult,
       },
     },
@@ -3260,7 +3491,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const analysisChangedEmitter = await papi.network.createNetworkEventEmitterAsync(
+  analysisChangedEmitter = await papi.network.createNetworkEventEmitterAsync(
     'interlinearizer.onAnalysisChanged',
   );
   const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book) =>
@@ -3285,13 +3516,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   );
   // A book's new text reaches its pass before its edit is reported, so the event waits for the pass.
   const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
-    sessions.settled(sourceProjectId).then(() =>
-      analysisChangedEmitter.emit({
-        sourceProjectId,
-        changeId: crypto.randomUUID(),
-        scriptureEdit: { bookId },
-      }),
-    ),
+    sessions.settled(sourceProjectId).then(() => emitScriptureEdit(sourceProjectId, bookId)),
   );
 
   const openLexiconChooserCommandRegistration = await papi.commands.registerCommand(

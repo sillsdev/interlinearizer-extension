@@ -44,6 +44,7 @@
     "perf:summary": "node -r ts-node/register perf/summary/cli.ts",
     "perf:shape": "node --max-old-space-size=8192 -r ts-node/register perf/shape/cli.ts",
     "perf:indexes": "node --max-old-space-size=12288 -r ts-node/register perf/indexes/cli.ts",
+    "perf:pages": "node --max-old-space-size=12288 -r ts-node/register perf/pages/cli.ts",
     "core:start": "npm --prefix ../paranext-core start",
     "core:stop": "npm --prefix ../paranext-core stop",
     "core:reset": "npm run core:stop && node ./scripts/delete-temp-files.cjs --core --ext",

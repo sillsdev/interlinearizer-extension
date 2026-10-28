@@ -64,12 +64,24 @@ describe('reanchorStoredBook', () => {
     const { repository, stored } = await storedDraft();
     const edited = verseBook('GEN 1:1', 'alpha and beta');
 
-    const { changes } = await reanchorStoredBook(repository, edited);
+    const { applied } = await reanchorStoredBook(repository, edited);
 
     const draft = await stored();
     expect(linkNamed(draft, 'tl-gen').token.tokenRef).toBe(tokenRefOf(edited, 'beta'));
     expect(linkNamed(draft, 'tl-exo').token.tokenRef).toBe('EXO 1:1:6');
-    expect(changes?.tokenAnalysisLinks?.puts.map(({ id }) => id)).toEqual(['tl-gen']);
+    expect(applied?.changes.tokenAnalysisLinks?.puts.map(({ id }) => id)).toEqual(['tl-gen']);
+  });
+
+  it('returns what restores what the pass replaced', async () => {
+    const { repository } = await storedDraft();
+    const before = linkNamed((await repository.exportAll()).draft, 'tl-gen');
+
+    const { applied } = await reanchorStoredBook(
+      repository,
+      verseBook('GEN 1:1', 'alpha and beta'),
+    );
+
+    expect(applied?.inverse.tokenAnalysisLinks).toStrictEqual({ puts: [before], deletes: [] });
   });
 
   it.each([false, true])(

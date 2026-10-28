@@ -138,7 +138,7 @@ export function useStaleMorphemesAnalysisId(): string | undefined {
 }
 
 /** Returns a no-op dispatch for confirming a stale breakdown in mock context. */
-export function useConfirmMorphemesDispatch(): (analysisId: string) => void {
+export function useConfirmMorphemesDispatch(): (analysisId: string, tokenRef?: string) => void {
   return () => {};
 }
 

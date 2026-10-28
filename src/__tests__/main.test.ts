@@ -2194,7 +2194,7 @@ describe('main', () => {
           ) => Promise<string>
         >('interlinearizer.writeAnalysisMorphemes'),
         confirmAnalysisMorphemes: handler<
-          (sessionId: string, analysisId: string) => Promise<string>
+          (sessionId: string, analysisId: string, tokenRef?: string) => Promise<string>
         >('interlinearizer.confirmAnalysisMorphemes'),
         writeAnalysisMorphemeGloss: handler<
           (
@@ -2800,6 +2800,46 @@ describe('main', () => {
 
         await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
           summary: { kind: 'catalogClearGlossChecked', count: 1 },
+        });
+      });
+
+      describe('keeping a stale breakdown', () => {
+        const staleIn = {
+          ...tokenIn,
+          tokenAnalyses: tokenIn.tokenAnalyses.map((analysis) => ({
+            ...analysis,
+            morphemes: [{ id: 'm-in', form: 'Inn', writingSystem: 'en' }],
+            morphemesStale: true,
+          })),
+        };
+
+        it('places the step at the token it was kept from', async () => {
+          await seedDraft(staleIn);
+          const { openSession, confirmAnalysisMorphemes, undoEdit } =
+            await activateSessionCommands();
+          const { sessionId } = JSON.parse(await openSession('src-project'));
+          await confirmAnalysisMorphemes(sessionId, 'ta-in', 'GEN 1:1:0');
+
+          await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+            location: 'GEN 1:1:0',
+          });
+        });
+
+        it('names the catalog row when kept from no token', async () => {
+          await seedDraft(staleIn);
+          const { openSession, confirmAnalysisMorphemes, undoEdit } =
+            await activateSessionCommands();
+          const { sessionId } = JSON.parse(await openSession('src-project'));
+          await confirmAnalysisMorphemes(sessionId, 'ta-in');
+
+          await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+            summary: {
+              kind: 'catalogEdit',
+              form: 'In',
+              analysisId: 'ta-in',
+              survivingAnalysisId: 'ta-in',
+            },
+          });
         });
       });
 

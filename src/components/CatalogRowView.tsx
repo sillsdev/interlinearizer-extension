@@ -67,6 +67,8 @@ type CatalogRowViewProps = Readonly<{
   onGlossCommit: (analysisId: string, value: string) => void;
   /** Replaces this row's morpheme breakdown for every token linked to it. */
   onMorphemesCommit: (analysisId: string, forms: readonly string[]) => void;
+  /** Keeps this row's stale breakdown as it stands, for every token linked to it. */
+  onMorphemesConfirm: (analysisId: string) => void;
   /** Writes one of this row's morpheme glosses for every token linked to it. */
   onMorphemeGlossCommit: (analysisId: string, morphemeId: string, value: string) => void;
   /**
@@ -124,6 +126,7 @@ function CatalogRowView({
   showMorphology,
   onGlossCommit,
   onMorphemesCommit,
+  onMorphemesConfirm,
   onMorphemeGlossCommit,
   onMergeRequest,
   onDeleteRequest,
@@ -153,6 +156,10 @@ function CatalogRowView({
   const handleMorphemesCommit = useCallback(
     (forms: readonly string[]) => onMorphemesCommit(analysisId, forms),
     [analysisId, onMorphemesCommit],
+  );
+  const handleMorphemesConfirm = useCallback(
+    () => onMorphemesConfirm(analysisId),
+    [analysisId, onMorphemesConfirm],
   );
   const handleMorphemeGlossCommit = useCallback(
     (morphemeId: string, value: string) => onMorphemeGlossCommit(analysisId, morphemeId, value),
@@ -239,6 +246,7 @@ function CatalogRowView({
             onGlossCommit={handleGlossCommit}
             onMorphemeGlossCommit={handleMorphemeGlossCommit}
             onMorphemesCommit={handleMorphemesCommit}
+            onMorphemesConfirm={handleMorphemesConfirm}
             surfaceText={row.surfaceText}
             usageCount={row.usageCount}
           />

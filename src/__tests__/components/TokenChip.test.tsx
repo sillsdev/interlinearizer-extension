@@ -861,7 +861,7 @@ describe('TokenChip', () => {
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
       await userEvent.click(screen.getByRole('button', { name: 'mock-confirm' }));
 
-      expect(confirm).toHaveBeenCalledWith('ta-1');
+      expect(confirm).toHaveBeenCalledWith('ta-1', 'GEN 1:1:0');
     });
 
     it('offers no keeping for a breakdown that is not stale', async () => {

@@ -509,7 +509,7 @@ export function TokenChip({
                 onConfirm={
                   staleMorphemesAnalysisId === undefined
                     ? undefined
-                    : () => confirmMorphemes(staleMorphemesAnalysisId)
+                    : () => confirmMorphemes(staleMorphemesAnalysisId, token.ref)
                 }
                 onReset={hasMorphemes ? () => dispatchMorphemeDelete(token.ref) : undefined}
                 onSave={handleMorphemeSave}

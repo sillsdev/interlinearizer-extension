@@ -619,7 +619,8 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
-     * Keeps a token analysis's stale breakdown as it stands, for every token linked to it.
+     * Keeps a token analysis's stale breakdown as it stands, for every token linked to it. The undo
+     * step is placed at `tokenRef` when given, and otherwise names the analysis's catalog row.
      *
      * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
      *   they touched.
@@ -629,6 +630,7 @@ declare module 'papi-shared-types' {
     'interlinearizer.confirmAnalysisMorphemes': (
       sessionId: string,
       analysisId: string,
+      tokenRef?: string | null,
       changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 

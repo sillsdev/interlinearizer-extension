@@ -394,7 +394,7 @@ describe('DraftRepository', () => {
       const [segmentLink] = twoBookAnalysis().segmentAnalysisLinks;
       const unlinked = { id: 'ta-so', ...FIXTURE_STAMPS, surfaceText: 'so' };
 
-      // Leaves a payload no link references, adds a book, then empties EXO of links.
+      // Unlinks a payload, adds a book, empties EXO of links, then links a bookless payload.
       await repository.apply({
         intent: 'removePhrase',
         phraseAnalysisLinks: { puts: [], deletes: ['pa-1'] },

@@ -40,7 +40,8 @@ function applyRecordChanges<T extends { id: string }>(
   });
 
   const puts = new Map(changes.puts.map((record) => [record.id, record]));
-  // Holds only the records the changes name, so a large draft costs one pass and no map of it.
+  // Holds only the records the changes name, so a long record list is walked once and never mapped
+  // whole.
   const stored = new Map<string, T>();
   // A replaced record keeps its place, so records nearby are left as they were.
   const next: T[] = [];

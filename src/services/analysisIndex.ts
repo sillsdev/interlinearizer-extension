@@ -65,9 +65,9 @@ type LinkTable<Link extends { id: string }> = Pick<
 >;
 
 /**
- * Adds to `books` the book of each link that `payloadChanges` and `linkChanges` reach, as the
- * tables stand before the changes apply: a link they replace or delete, a link they put, and a link
- * to a payload they put or delete.
+ * Adds to `books` the book of each link the changes reach, as `links` stands before they apply. A
+ * link is reached when `linkChanges` puts, replaces or deletes it, or when `payloadChanges` puts or
+ * deletes its payload.
  *
  * @returns The ids of the payloads the changes put or delete, or whose links they change.
  */
@@ -165,9 +165,9 @@ export class AnalysisIndex {
    * put records themselves, not copies.
    *
    * @returns The keys of the partitions, as {@link splitAnalysisByBook} keys them, whose records the
-   *   changes may alter. That is each book holding a link they change or a link to a payload they
-   *   change, and {@link BOOKLESS_PARTITION} when a payload they reach is referenced by no link
-   *   before or after they apply.
+   *   changes may alter. These are each book holding a link the changes alter, or a link to a
+   *   payload they alter. {@link BOOKLESS_PARTITION} is included when a payload they reach is
+   *   unlinked before they apply or after.
    */
   apply(changes: ChangeSet): Set<string> {
     const books = new Set<string>();
@@ -221,8 +221,9 @@ export class AnalysisIndex {
   }
 
   /**
-   * The partition {@link splitAnalysisByBook} would file under `key`, ordered as it would order it,
-   * or `undefined` when it would file none there.
+   * The partition {@link splitAnalysisByBook} would file under `key`, or `undefined` when it would
+   * file none there. Records come in the order it would give, unless a put moved a link from
+   * another book; that link comes last here.
    */
   partition(key: string): TextAnalysis | undefined {
     if (key === BOOKLESS_PARTITION) {

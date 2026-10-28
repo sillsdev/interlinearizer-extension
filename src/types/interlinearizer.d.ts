@@ -2291,6 +2291,8 @@ declare module 'interlinearizer' {
     books: ChangedBook[];
     /** The analyses whose payload, or whose links, the change put or removed. */
     analysisIds: string[];
+    /** The normalized surface forms whose pool buckets the change may have changed. */
+    forms: string[];
     /** The cross-book queries whose answers the change may have changed. */
     queries: AnalysisQuery[];
   };

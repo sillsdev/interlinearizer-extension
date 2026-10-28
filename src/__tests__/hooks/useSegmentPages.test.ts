@@ -4,11 +4,8 @@ import papi, { logger } from '@papi/frontend';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { Book, Segment, SegmentationDelta } from 'interlinearizer';
-import useSegmentPages, {
-  PAGE_RETRY_DELAYS_MS,
-  PAGE_SIZE,
-  type UseSegmentPagesArgs,
-} from '../../hooks/useSegmentPages';
+import { PAGE_RETRY_DELAYS_MS, PAGE_SIZE } from '../../cache/pageClient';
+import useSegmentPages, { type UseSegmentPagesArgs } from '../../hooks/useSegmentPages';
 import type { BookOutline, SegmentPage } from '../../types/segment-pages';
 import { getMockedSendCommand, makeSegment, makeWordToken, outlineOf } from '../test-helpers';
 

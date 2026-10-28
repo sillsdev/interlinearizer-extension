@@ -51,6 +51,7 @@ describe('describeChange', () => {
     expect(change).toStrictEqual({
       books: [{ bookId: 'GEN', ranges: [{ start: 1, end: 2 }] }],
       analysisIds: ['ta-god'],
+      forms: [],
       queries: ['getCatalogRows', 'getConcordance'],
     });
   });
@@ -144,6 +145,7 @@ describe('describeChange', () => {
         },
       ],
       analysisIds: ['pl'],
+      forms: [],
       queries: [],
     });
   });
@@ -166,6 +168,7 @@ describe('describeChange', () => {
     expect(change).toStrictEqual({
       books: [],
       analysisIds: ['ta'],
+      forms: ['god'],
       queries: ['getCatalogRows', 'getConcordance'],
     });
   });

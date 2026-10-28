@@ -9,7 +9,7 @@ import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { missingBook } from '../utils/reanchor-draft';
 import { segmentationForBook } from '../utils/segmentation';
-import { describeChange, type AppliedChange } from './analysisChanges';
+import { booksResegmented, describeChange, type AppliedChange } from './analysisChanges';
 import { assertApprovalRule } from './commands/approvalRule';
 import { ChangeBuffer } from './commands/changeBuffer';
 import { EditHistory, type EditOptions, type HistoryMove } from './editHistory';
@@ -138,7 +138,12 @@ async function replyTo(
 ): Promise<CommandReply> {
   const pool = await readTouchedPoolBuckets(session.repository, applied);
   await reportApplied(host, session, applied, changeId);
-  return { changeId, changes: applied.changes, ...pool };
+  return {
+    changeId,
+    changes: applied.changes,
+    ...pool,
+    resegmentedBooks: booksResegmented(applied),
+  };
 }
 
 /**
@@ -369,7 +374,13 @@ export class AnalysisSessions {
           return replyTo(this.host, session, applied, changeId);
         }
         if (editOptions.unsavedMark === 'clear') await session.history.markRestoredClean();
-        return { changeId, changes: staged, poolBuckets: {}, poolAnalyses: [] };
+        return {
+          changeId,
+          changes: staged,
+          poolBuckets: {},
+          poolAnalyses: [],
+          resegmentedBooks: [],
+        };
       }),
     );
     /* v8 ignore next -- defensive: only a caller reusing the change id of an empty undo gets none */

@@ -201,6 +201,7 @@ function emitScriptureEdit(sourceProjectId: string, bookId: string): void {
     changeId: crypto.randomUUID(),
     books: [{ bookId }],
     analysisIds: [],
+    forms: [],
     queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
   });
 }

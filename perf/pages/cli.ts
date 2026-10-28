@@ -24,6 +24,7 @@ import {
 import { ApprovalRuleError } from '../../src/services/commands/approvalRule';
 import * as boundaryCommands from '../../src/services/commands/boundaryCommands';
 import type { ChangeBuffer } from '../../src/services/commands/changeBuffer';
+import * as discardCommands from '../../src/services/commands/discardCommands';
 import * as catalogCommands from '../../src/services/commands/catalogCommands';
 import * as freeTranslationCommands from '../../src/services/commands/freeTranslationCommands';
 import * as phraseCommands from '../../src/services/commands/phraseCommands';
@@ -628,6 +629,7 @@ async function checkEvents(
     return w.slice(1).map((t, i) => [w[i], t]);
   });
   const now = () => new Date().toISOString();
+  const saved = { analysis: draft.analysis, segmentation: draft.segmentation };
   const ids = () => ({
     analysisId: crypto.randomUUID(),
     linkId: crypto.randomUUID(),
@@ -747,6 +749,18 @@ async function checkEvents(
         await catalogCommands.deleteAnalyses(buffer, {
           analysisIds: [pick(rng, current.analysis.tokenAnalyses).id],
         });
+      },
+    ],
+    [
+      'discardBook',
+      async (buffer, current) => {
+        const { changedBooks } = discardCommands.discardBook(
+          buffer,
+          { draft: current, unreadableBooks: [] },
+          viewBook.bookRef,
+          saved,
+        );
+        return books.filter(({ bookRef }) => changedBooks.includes(bookRef));
       },
     ],
     [

@@ -15,6 +15,8 @@ export type CommandReply = {
   poolBuckets: PoolBuckets;
   /** The payloads `poolBuckets` names. */
   poolAnalyses: TokenAnalysis[];
+  /** The books whose boundaries the changes moved. */
+  resegmentedBooks: string[];
   /**
    * For an undo or redo, the step that the edit was recorded as; absent when it was recorded with
    * none.

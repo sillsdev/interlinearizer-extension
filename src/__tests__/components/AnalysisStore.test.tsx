@@ -1462,6 +1462,18 @@ describe('useConfirmMorphemesDispatch', () => {
     const saved: TextAnalysis = onSave.mock.lastCall[0];
     expect(saved.tokenAnalyses[0]).not.toHaveProperty('morphemesStale');
   });
+
+  it('saves the kept breakdown at the token it was kept from', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => useConfirmMorphemesDispatch(), {
+      initialAnalysis: STALE_BREAKDOWN,
+      onSave,
+    });
+
+    act(() => result.current('ta-1', 'tok-1'));
+
+    expect(onSave).toHaveBeenLastCalledWith(expect.anything(), 'tok-1');
+  });
 });
 
 describe('useUnapprovedTokenAnalysis', () => {

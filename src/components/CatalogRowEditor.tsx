@@ -6,11 +6,7 @@ import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import { resolvedOrEmpty } from '../utils/localized-strings';
-import {
-  useAnalysisReadOnly,
-  useConfirmMorphemesDispatch,
-  useReportGlossEditing,
-} from './AnalysisStore';
+import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
 
 /** Localized string keys the row editor renders. */
 export const ROW_EDITOR_STRING_KEYS = [
@@ -54,6 +50,8 @@ type CatalogRowEditorProps = Readonly<{
   onGlossCommit: (value: string) => void;
   /** Replaces the analysis's morpheme breakdown for every token linked to it. */
   onMorphemesCommit: (forms: readonly string[]) => void;
+  /** Keeps the analysis's stale breakdown as it stands, for every token linked to it. */
+  onMorphemesConfirm: () => void;
   /** Writes one morpheme's gloss for every token linked to the analysis. */
   onMorphemeGlossCommit: (morphemeId: string, value: string) => void;
   /**
@@ -194,6 +192,7 @@ export default function CatalogRowEditor({
   showMorphology,
   onGlossCommit,
   onMorphemesCommit,
+  onMorphemesConfirm,
   onMorphemeGlossCommit,
   breakdownDraft,
   onBreakdownDraftChange,
@@ -201,7 +200,6 @@ export default function CatalogRowEditor({
 }: CatalogRowEditorProps) {
   const glossFieldId = useId();
   const readOnly = useAnalysisReadOnly();
-  const confirmMorphemes = useConfirmMorphemesDispatch();
 
   const morphemeForms = morphemes.map((m) => m.form).join(' ');
 
@@ -367,7 +365,7 @@ export default function CatalogRowEditor({
               morphemes={morphemes}
               needsResetConfirm={morphemes.some(morphemeCarriesAnnotation)}
               onClose={() => onBreakdownDraftChange(undefined)}
-              onConfirm={morphemesStale ? () => confirmMorphemes(analysisId) : undefined}
+              onConfirm={morphemesStale ? onMorphemesConfirm : undefined}
               onDraftChange={(draft) => onBreakdownDraftChange(draft)}
               onReset={morphemes.length > 0 ? () => onMorphemesCommit([]) : undefined}
               onSave={(value) => onMorphemesCommit(breakdownDraftForms(value))}

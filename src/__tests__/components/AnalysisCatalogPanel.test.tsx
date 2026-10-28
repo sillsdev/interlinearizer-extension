@@ -2457,6 +2457,24 @@ describe('AnalysisCatalogPanel', () => {
         expect(saved.tokenAnalyses[0]).not.toHaveProperty('morphemesStale');
         expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογγ', 'ος']);
       });
+
+      it('summarizes keeping the breakdown as an edit to its analysis', async () => {
+        const { asOneStep, summaries } = spyOnSteps();
+        renderPanel({ analysis: STALE_BREAKDOWN, asOneStep });
+
+        const row = await expandRow('ta-1');
+        await openBreakdown(row);
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
+
+        expect(summaries).toStrictEqual([
+          {
+            kind: 'catalogEdit',
+            form: SHARED.tokenAnalyses[0].surfaceText,
+            analysisId: 'ta-1',
+            survivingAnalysisId: 'ta-1',
+          },
+        ]);
+      });
     });
 
     it('leaves the breakdown alone when the editor is canceled', async () => {

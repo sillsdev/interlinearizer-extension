@@ -180,20 +180,22 @@ export type MergeIntoIdenticalOptions = {
  * Every link to `analysis` moves to the survivor. The survivor's `updatedAt` becomes `now` when the
  * merge settles its confidence or clears its stale mark. A token that links both keeps one link.
  * The survivor's breakdown stays stale only when both payloads' were.
+ *
+ * @returns The survivor's id, or `undefined` when no other payload is identical.
  */
 export async function mergeIntoIdenticalPayload(
   buffer: ChangeBuffer,
   analysis: TokenAnalysis,
   now: string,
   { settleProvenance = false }: MergeIntoIdenticalOptions = {},
-): Promise<void> {
+): Promise<string | undefined> {
   const candidates = await buffer.findTokenAnalysesByForm([
     normalizeSurfaceForm(analysis.surfaceText),
   ]);
   const other = preferredPayload(
     candidates.filter((ta) => ta.id !== analysis.id && analysesAreIdentical(ta, analysis)),
   );
-  if (!other) return;
+  if (!other) return undefined;
   const settlesStaleMark = other.morphemesStale && !analysis.morphemesStale;
   if (settleProvenance) {
     if (analysis.confidence === undefined) delete other.confidence;
@@ -210,6 +212,7 @@ export async function mergeIntoIdenticalPayload(
   );
   await coalesceLinksPerToken(buffer, other.id);
   buffer.delete('tokenAnalyses', analysis);
+  return other.id;
 }
 
 /**

@@ -2829,6 +2829,28 @@ describe('main', () => {
         });
       });
 
+      it('names the analysis that an unused row was folded into', async () => {
+        await seedDraft({
+          ...tokenIn,
+          tokenAnalyses: [
+            ...tokenIn.tokenAnalyses,
+            { id: 'ta-spare', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'on' } },
+          ],
+        });
+        const { openSession, writeAnalysisGloss, undoEdit } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+        await writeAnalysisGloss(sessionId, 'ta-spare', 'at');
+
+        await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+          summary: {
+            kind: 'catalogEdit',
+            form: 'In',
+            analysisId: 'ta-spare',
+            survivingAnalysisId: 'ta-in',
+          },
+        });
+      });
+
       it('names a deletion by the form and uses of what it deleted', async () => {
         await seedDraft(tokenIn);
         const { openSession, deleteAnalyses, undoEdit } = await activateSessionCommands();

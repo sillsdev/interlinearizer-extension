@@ -42,6 +42,11 @@ export class RecordTable<T extends { id: string }, Index extends string> {
     records.forEach((record) => this.put(record));
   }
 
+  /** Whether a record is stored under `id`. */
+  has(id: string): boolean {
+    return this.records.has(id);
+  }
+
   /** The records stored under `ids`, each once. */
   get(ids: readonly string[]): T[] {
     return [...new Set(ids)].flatMap((id) => this.records.get(id) ?? []);

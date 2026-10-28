@@ -570,6 +570,17 @@ describe('DraftRepository', () => {
       await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toEqual([]);
     });
 
+    it('read the draft again after a later exportAll fails', async () => {
+      const { storage, records } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.exportAll();
+      records.set(draftKey('src'), '{');
+      await expect(repository.exportAll()).rejects.toThrow(SyntaxError);
+
+      await expect(repository.getTokenAnalyses(['ta-and'])).rejects.toThrow(SyntaxError);
+    });
+
     it('are unchanged by changes to the draft exportAll returned', async () => {
       const { storage } = memoryStorage();
       await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());

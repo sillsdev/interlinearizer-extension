@@ -2422,7 +2422,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const appliedChangesResult = {
     name: 'return value',
     summary:
-      'JSON-stringified CommandReply: the ChangeSet it applied and the pool buckets that touched; omitted when there was nothing to apply',
+      'JSON-stringified CommandReply: the ChangeSet the undo or redo applied and the pool buckets it touched; omitted when there was nothing to apply',
     schema: { type: 'string' },
   } as const;
 
@@ -2469,7 +2469,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const editResult = {
     name: 'return value',
     summary:
-      'JSON-stringified CommandReply: the ChangeSet the edit applied and the pool buckets that touched',
+      'JSON-stringified CommandReply: the ChangeSet the edit applied and the pool buckets it touched',
     schema: { type: 'string' },
   } as const;
 
@@ -3130,7 +3130,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const discardResult = {
     name: 'return value',
     summary:
-      'JSON-stringified { changes, hasFreeTranslations }: the ChangeSet the discard applied, and whether any segment of the draft it leaves has a free translation',
+      'JSON-stringified CommandReply with hasFreeTranslations: the ChangeSet the discard applied and the pool buckets it touched; whether any segment of the draft the discard leaves has a free translation',
     schema: { type: 'string' },
   } as const;
 

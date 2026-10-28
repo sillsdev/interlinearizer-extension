@@ -73,8 +73,10 @@ export default function useInterlinearizerBookData({
   useEvent(
     analysisChangedEvent,
     useCallback(
-      ({ sourceProjectId, scriptureEdit }: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
-        if (sourceProjectId === projectId && scriptureEdit.bookId === scrRef.book) reload();
+      (change: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
+        if (!('sourceProjectId' in change)) return;
+        if (change.sourceProjectId === projectId && change.scriptureEdit.bookId === scrRef.book)
+          reload();
       },
       [projectId, scrRef.book, reload],
     ),

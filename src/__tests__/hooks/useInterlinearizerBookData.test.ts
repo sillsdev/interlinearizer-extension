@@ -307,13 +307,18 @@ describe('useInterlinearizerBookData', () => {
       jest.mocked(papi.network.getNetworkEvent).mockReturnValue(ANALYSIS_CHANGED_EVENT);
     });
 
-    /** Relays an analysis change to the hook, as the platform does. */
-    function emitChange(sourceProjectId: string, bookId: string): void {
+    /** Relays `change` to the hook, as the platform does. */
+    function relay(change: unknown): void {
       const handler = [...jest.mocked(useEvent).mock.calls]
         .reverse()
         .find(([event]) => event === ANALYSIS_CHANGED_EVENT)?.[1];
       if (typeof handler !== 'function') throw new Error('nothing listens for the change event');
-      act(() => handler({ sourceProjectId, changeId: 'change-1', scriptureEdit: { bookId } }));
+      act(() => handler(change));
+    }
+
+    /** Relays a Scripture edit to the hook, as the platform does. */
+    function emitChange(sourceProjectId: string, bookId: string): void {
+      relay({ sourceProjectId, changeId: 'change-1', scriptureEdit: { bookId } });
     }
 
     it('listens for analysis changes', async () => {
@@ -343,6 +348,21 @@ describe('useInterlinearizerBookData', () => {
       emitChange('other-project', 'GEN');
 
       expect(result.current.isLoading).toBe(false);
+      expect(mockSendCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it('fetches nothing more for a change addressed to a session', async () => {
+      const { result } = renderBookData();
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      relay({
+        sessionId: 'session-1',
+        changeId: 'change-1',
+        books: [{ bookId: 'GEN' }],
+        analysisIds: [],
+        queries: [],
+      });
+
       expect(mockSendCommand).toHaveBeenCalledTimes(1);
     });
 

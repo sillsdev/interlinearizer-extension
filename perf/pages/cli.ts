@@ -14,11 +14,14 @@ import type {
 } from 'interlinearizer';
 import { performance } from 'perf_hooks';
 import { resegmentBook } from '../../src/parsers/papi/resegmentBook';
+import { PageClient } from '../../src/cache/pageClient';
 import {
   AnalysisSessions,
   type ReportedChange,
+  type Session,
   type SessionHost,
 } from '../../src/services/analysisSessions';
+import { ApprovalRuleError } from '../../src/services/commands/approvalRule';
 import * as boundaryCommands from '../../src/services/commands/boundaryCommands';
 import type { ChangeBuffer } from '../../src/services/commands/changeBuffer';
 import * as catalogCommands from '../../src/services/commands/catalogCommands';
@@ -595,17 +598,19 @@ function comparable(change: AnalysisChange | undefined): string {
 }
 
 /**
- * Runs random commands, undos and redos in a session over the tier, comparing each change's event
- * with what the drafts before and after it say it touched.
+ * Runs random commands, undos and redos in a session over the tier. Compares each change's event
+ * with what the drafts before and after it say it touched. Checks that a page client following the
+ * changes holds what the session serves, including when a refetch is sent before a change.
  *
- * @returns How many changes ran, and those whose event differed.
+ * @returns How many changes ran, those whose event or cached pages differed, and how many refetches
+ *   raced a change.
  */
 async function checkEvents(
   draft: DraftProject,
   books: readonly Book[],
   viewBook: Book,
   steps: number,
-): Promise<{ changes: number; mismatches: string[] }> {
+): Promise<{ changes: number; mismatches: string[]; races: number }> {
   const storage = memoryStorage();
   await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
   const segmented = segmenter(new Map(books.map((b) => [b.bookRef, b])));
@@ -763,11 +768,43 @@ async function checkEvents(
     ],
   ];
 
+  const sessionBook = async (session: Session) => {
+    const { segmentation } = await session.repository.getScope();
+    return (
+      segmented(viewBook.bookRef, segmentationForBook(segmentation, viewBook.bookRef)) ?? viewBook
+    );
+  };
+  const fetchPage = (start: number, end: number) =>
+    sessions.run(sessionId, async (session) =>
+      readSegmentPage(session.repository, await sessionBook(session), start, end),
+    );
+  const fetchOutline = () =>
+    sessions.run(sessionId, async (session) =>
+      readBookOutline(session.repository, await sessionBook(session)),
+    );
+  const client = new PageClient({ getOutline: fetchOutline, getSegments: fetchPage });
+  await client.open();
+  client.load(0, Number.MAX_SAFE_INTEGER, 'list');
+  await client.settled();
+
   const mismatches: string[] = [];
   let changes = 0;
+  let races = 0;
   for (let step = 0; step < steps; step += 1) {
     // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
     const before = await read();
+    const { cache } = client;
+    if (!cache) throw new Error('The client holds no outline');
+    const racing =
+      rng() < 0.3
+        ? Math.floor((rng() * viewBook.segments.length) / PAGE_SIZE) * PAGE_SIZE
+        : undefined;
+    const sentAt = cache.revision;
+    const stalePage =
+      racing === undefined
+        ? undefined
+        : // eslint-disable-next-line no-await-in-loop -- a refetch sent ahead of the change
+          await fetchPage(racing, racing + PAGE_SIZE);
     const changeId = `step-${step}`;
     const roll = rng();
     let applied: ChangeSet | undefined;
@@ -775,19 +812,44 @@ async function checkEvents(
     if (roll < 0.1) {
       name = 'undo';
       // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
-      applied = (await sessions.undo(sessionId, changeId))?.changes;
+      const reply = await sessions.undo(sessionId, changeId);
+      if (reply) client.apply(reply);
+      applied = reply?.changes;
     } else if (roll < 0.15) {
       name = 'redo';
       // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
-      applied = (await sessions.redo(sessionId, changeId))?.changes;
+      const reply = await sessions.redo(sessionId, changeId);
+      if (reply) client.apply(reply);
+      applied = reply?.changes;
     } else {
       const [intent, command] = pick(rng, commands);
       name = intent;
       // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
-      const reply = await sessions.edit(sessionId, intent, (buffer) => command(buffer, before), {
-        changeId,
-      });
-      applied = reply.changes;
+      const reply = await sessions
+        .edit(sessionId, intent, (buffer) => command(buffer, before), { changeId })
+        // A random edit that the approval rule refuses applies nothing, as the host intends.
+        .catch((e) => {
+          if (e instanceof ApprovalRuleError) return undefined;
+          throw e;
+        });
+      if (reply) client.apply(reply);
+      applied = reply?.changes;
+    }
+    if (stalePage && !applied?.scope) {
+      cache.absorb(stalePage, sentAt);
+      races += 1;
+    }
+    // eslint-disable-next-line no-await-in-loop -- the client settles before it is compared
+    await client.settled();
+    // eslint-disable-next-line no-await-in-loop -- compared against what the session serves now
+    const outline = await fetchOutline();
+    if (JSON.stringify(client.cache?.outline) !== JSON.stringify(outline))
+      mismatches.push(`${name} (${changeId}): cached outline differs`);
+    for (let start = 0; start < outline.segments.length; start += PAGE_SIZE) {
+      // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
+      const fresh = await fetchPage(start, start + PAGE_SIZE);
+      if (canonicalPage(client.cache?.pageAt(start, start + PAGE_SIZE)) !== canonicalPage(fresh))
+        mismatches.push(`${name} (${changeId}): cached page ${start} differs`);
     }
     // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
     const after = await read();
@@ -803,7 +865,29 @@ async function checkEvents(
     if (want !== got) mismatches.push(`${name} (${changeId}): expected ${want}, reported ${got}`);
   }
   await sessions.closeAll();
-  return { changes, mismatches };
+  return { changes, mismatches, races };
+}
+
+/** A page with every list in id order and every map in key order, serialized. */
+function canonicalPage(page: SegmentPage | undefined): string {
+  if (!page?.analysis) return JSON.stringify(page);
+  const { analysis, ...rest } = page;
+  return JSON.stringify({
+    ...rest,
+    tokenAnalysisLinks: canonical(analysis.tokenAnalysisLinks),
+    phraseAnalysisLinks: canonical(analysis.phraseAnalysisLinks),
+    segmentAnalysisLinks: canonical(analysis.segmentAnalysisLinks),
+    tokenAnalyses: canonical(analysis.tokenAnalyses),
+    phraseAnalyses: canonical(analysis.phraseAnalyses),
+    segmentAnalyses: canonical(analysis.segmentAnalyses),
+    poolBuckets: canonicalMap(analysis.poolBuckets),
+    staleFreeTranslations: [
+      canonicalMap(analysis.staleFreeTranslations.bySegment),
+      canonicalMap(analysis.staleFreeTranslations.orphanedAfter),
+      analysis.staleFreeTranslations.orphanedAhead,
+    ],
+    phraseSpans: canonicalMap(analysis.phraseSpans),
+  });
 }
 
 /**
@@ -862,7 +946,7 @@ async function checkTier(tier: TierSpec): Promise<boolean> {
   const events = await checkEvents(draft, books, viewBook, steps);
 
   console.log(
-    `${tier.name.padEnd(15)} ${pages.pages} pages, ${pages.mismatches.length} differ (${pages.phrasesCrossing} phrases reach unheld segments, ${pages.jumps} jumps)  ${events.changes} changes, ${events.mismatches.length} differ  open ${timing.open.toFixed(0)} ms, first page ${timing.first.toFixed(0)} ms, next ${timing.next.toFixed(1)} ms`,
+    `${tier.name.padEnd(15)} ${pages.pages} pages, ${pages.mismatches.length} differ (${pages.phrasesCrossing} phrases reach unheld segments, ${pages.jumps} jumps)  ${events.changes} changes (${events.races} refetch races), ${events.mismatches.length} differ  open ${timing.open.toFixed(0)} ms, first page ${timing.first.toFixed(0)} ms, next ${timing.next.toFixed(1)} ms`,
   );
   [...pages.mismatches, ...events.mismatches].slice(0, 20).forEach((m) => console.log(`  ${m}`));
   return pages.mismatches.length === 0 && events.mismatches.length === 0;

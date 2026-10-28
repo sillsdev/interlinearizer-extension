@@ -32,6 +32,14 @@ describe('RecordTable', () => {
     expect(tableOf(a, b).all()).toStrictEqual([a, b]);
   });
 
+  it('counts the records filed under a key', () => {
+    const table = tableOf({ id: 'a', tags: ['x'] }, { id: 'b', tags: ['x', 'y'] });
+
+    expect(table.count('tag', 'x')).toBe(2);
+    expect(table.count('tag', 'y')).toBe(1);
+    expect(table.count('tag', 'missing')).toBe(0);
+  });
+
   it('drops a key once its last record is deleted', () => {
     const table = tableOf({ id: 'a', tags: ['x'] }, { id: 'b', tags: ['y'] });
 

@@ -63,7 +63,7 @@ type PayloadTable<Payload extends { id: string }> = Pick<
 /** The links to one record kind's payloads. */
 type LinkTable<Link extends { id: string }> = Pick<
   RecordTable<Link, 'analysisId' | 'book'>,
-  'get' | 'find' | 'has'
+  'get' | 'find' | 'has' | 'count'
 >;
 
 /**
@@ -100,14 +100,18 @@ function reachOfKind<
     ...[...priorLinks, ...putLinks].map(({ analysisId }) => analysisId),
   ];
   const storedIds = new Set(payloads.get(reachedIds).map(({ id }) => id));
+  const putLinkTargets = new Set(putLinks.map(({ analysisId }) => analysisId));
+  const changedLinksTo = new Map<string, number>();
+  priorLinks.forEach(({ analysisId }) =>
+    changedLinksTo.set(analysisId, (changedLinksTo.get(analysisId) ?? 0) + 1),
+  );
   return [...new Set(reachedIds)].some((id) => {
-    const linkedBefore = links.has('analysisId', id);
-    if (storedIds.has(id) && !linkedBefore) return true;
+    const linksTo = links.count('analysisId', id);
+    if (storedIds.has(id) && linksTo === 0) return true;
     const storedAfter = putPayloadIds.has(id) || (storedIds.has(id) && !deletedPayloadIds.has(id));
     if (!storedAfter) return false;
-    const linkedAfter =
-      putLinks.some(({ analysisId }) => analysisId === id) ||
-      (linkedBefore && links.find('analysisId', [id]).some((link) => !changedLinkIds.has(link.id)));
+    // The changes replace or delete every link they name, so only the rest keep their payload.
+    const linkedAfter = putLinkTargets.has(id) || linksTo > (changedLinksTo.get(id) ?? 0);
     return !linkedAfter;
   });
 }

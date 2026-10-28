@@ -66,6 +66,11 @@ export class RecordTable<T extends { id: string }, Index extends string> {
     return [...this.filed(index).keys()];
   }
 
+  /** How many records `index` files under `key`. */
+  count(index: Index, key: string): number {
+    return this.filed(index).get(key)?.size ?? 0;
+  }
+
   /** Whether `index` files any record under `key`. */
   has(index: Index, key: string): boolean {
     return this.filed(index).has(key);

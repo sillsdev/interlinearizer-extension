@@ -23,12 +23,7 @@ import {
 } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-import {
-  AnalysisSessions,
-  type OpenedSession,
-  type Session,
-  type SessionEditOptions,
-} from './services/analysisSessions';
+import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
 import type { DraftContent } from './hooks/useDraftProject';
 import * as bookService from './services/bookService';
 import * as boundaryCommands from './services/commands/boundaryCommands';
@@ -50,6 +45,7 @@ import type { Pt9ImportResult } from './services/pt9ImportService';
 import { readBookOutline, readSegmentPage } from './services/sessionPages';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
+import type { EditStep } from './types/edit-step';
 import { toProjectSummary, type SavedAsProject } from './types/interlinear-project-summary';
 import { UnreadableBooksError, type DraftExport } from './types/analysis-repository';
 import { isDraftProject } from './types/type-guards';
@@ -962,7 +958,7 @@ async function checkIndexes(sessionId: string): Promise<string> {
 type EditTarget = {
   sessionId: string;
   changeId?: ChangeId | null;
-  step?: SessionEditOptions['step'];
+  step?: EditStep;
 };
 
 /**
@@ -982,7 +978,7 @@ async function runSessionEdit(
     return JSON.stringify(
       await sessions.edit(sessionId, intent, command, {
         changeId: changeId ?? undefined,
-        step: (changes) => (typeof target.step === 'function' ? target.step(changes) : target.step),
+        step: () => target.step,
       }),
     );
   } catch (e) {
@@ -1238,13 +1234,15 @@ function writeAnalysisGloss(
 ): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'writeAnalysisGloss', async (buffer, session) => {
-    target.step = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-    await catalogCommands.writeAnalysisGloss(buffer, {
-      analysisId,
-      value,
-      analysisLanguage: session.analysisLanguage,
-      now: editStamp().now,
-    });
+    const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
+    target.step = stepOf(
+      await catalogCommands.writeAnalysisGloss(buffer, {
+        analysisId,
+        value,
+        analysisLanguage: session.analysisLanguage,
+        now: editStamp().now,
+      }),
+    );
   });
 }
 
@@ -1287,13 +1285,15 @@ function writeAnalysisMorphemes(
 ): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'writeAnalysisMorphemes', async (buffer) => {
-    target.step = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-    await catalogCommands.writeAnalysisMorphemes(buffer, {
-      analysisId,
-      morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
-      writingSystem,
-      now: editStamp().now,
-    });
+    const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
+    target.step = stepOf(
+      await catalogCommands.writeAnalysisMorphemes(buffer, {
+        analysisId,
+        morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
+        writingSystem,
+        now: editStamp().now,
+      }),
+    );
   });
 }
 
@@ -1329,14 +1329,16 @@ function writeAnalysisMorphemeGloss(
 ): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'writeAnalysisMorphemeGloss', async (buffer, session) => {
-    target.step = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-    await catalogCommands.writeAnalysisMorphemeGloss(buffer, {
-      analysisId,
-      morphemeId,
-      value,
-      analysisLanguage: session.analysisLanguage,
-      now: editStamp().now,
-    });
+    const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
+    target.step = stepOf(
+      await catalogCommands.writeAnalysisMorphemeGloss(buffer, {
+        analysisId,
+        morphemeId,
+        value,
+        analysisLanguage: session.analysisLanguage,
+        now: editStamp().now,
+      }),
+    );
   });
 }
 
@@ -1374,14 +1376,16 @@ function mergeAnalysesInto(
 ): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'mergeAnalysesInto', async (buffer, session) => {
-    target.step = await catalogStepOf(buffer, 'catalogMerge', survivorAnalysisId);
-    await catalogCommands.mergeAnalysesInto(buffer, {
-      survivorAnalysisId,
-      mergedAnalysisIds,
-      content,
-      analysisLanguage: session.analysisLanguage,
-      now: editStamp().now,
-    });
+    const stepOf = await catalogStepOf(buffer, 'catalogMerge', survivorAnalysisId);
+    target.step = stepOf(
+      await catalogCommands.mergeAnalysesInto(buffer, {
+        survivorAnalysisId,
+        mergedAnalysisIds,
+        content,
+        analysisLanguage: session.analysisLanguage,
+        now: editStamp().now,
+      }),
+    );
   });
 }
 

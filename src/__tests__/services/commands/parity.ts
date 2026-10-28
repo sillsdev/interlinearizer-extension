@@ -140,7 +140,7 @@ type DraftSeed = {
  * Stages `command`'s changes over a draft holding `seed`, then applies them and reloads the draft
  * from storage.
  */
-async function runOnHost(seed: DraftSeed, command: (buffer: ChangeBuffer) => Promise<void>) {
+async function runOnHost(seed: DraftSeed, command: (buffer: ChangeBuffer) => Promise<unknown>) {
   const { storage } = memoryStorage();
   const logger = silentLogger();
   await new DraftRepository(storage, 'src', logger).replaceAll({
@@ -180,7 +180,7 @@ export async function runParity(
   analysis: TextAnalysis,
   analysisLanguage: string,
   action: UnknownAction | readonly UnknownAction[],
-  command: (buffer: ChangeBuffer) => Promise<void>,
+  command: (buffer: ChangeBuffer) => Promise<unknown>,
 ): Promise<ParityOutcome> {
   const store = runInStore(analysis, analysisLanguage, [action].flat());
   const { draft, changes, indexDifferences } = await runOnHost(

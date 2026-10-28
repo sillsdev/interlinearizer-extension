@@ -176,6 +176,36 @@ describe('Pt9ImportRepository', () => {
       expect(readProject).toHaveBeenCalledTimes(2);
     });
 
+    it('answer from what exportAll read, reading nothing more', async () => {
+      const readProject = jest.fn(async () => imported());
+      const repository = new Pt9ImportRepository('import-id', readProject, NEVER_SYNCED);
+      await repository.exportAll();
+
+      await expect(repository.getTokenAnalyses(['ta-1'])).resolves.toHaveLength(1);
+      expect(readProject).toHaveBeenCalledTimes(1);
+    });
+
+    it('are unchanged by changes to the draft exportAll returned', async () => {
+      const repository = new Pt9ImportRepository('import-id', async () => imported(), NEVER_SYNCED);
+      const { draft } = await repository.exportAll();
+
+      draft.analysis.tokenAnalyses.length = 0;
+
+      await expect(repository.getTokenAnalyses(['ta-1'])).resolves.toHaveLength(1);
+    });
+
+    it('read the import again once a sync replaces what exportAll read', async () => {
+      let revision = 0;
+      const readProject = jest.fn(async () => imported());
+      const repository = new Pt9ImportRepository('import-id', readProject, () => revision);
+      await repository.exportAll();
+
+      revision = 1;
+      await repository.getTokenAnalyses(['ta-1']);
+
+      expect(readProject).toHaveBeenCalledTimes(2);
+    });
+
     it('read the import again once a sync replaces it', async () => {
       let revision = 0;
       const synced = makeImport({

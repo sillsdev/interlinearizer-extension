@@ -14,7 +14,11 @@ import type {
 } from 'interlinearizer';
 import { performance } from 'perf_hooks';
 import { resegmentBook } from '../../src/parsers/papi/resegmentBook';
-import { AnalysisSessions, type ReportedChange } from '../../src/services/analysisSessions';
+import {
+  AnalysisSessions,
+  type ReportedChange,
+  type SessionHost,
+} from '../../src/services/analysisSessions';
 import * as boundaryCommands from '../../src/services/commands/boundaryCommands';
 import type { ChangeBuffer } from '../../src/services/commands/changeBuffer';
 import * as catalogCommands from '../../src/services/commands/catalogCommands';
@@ -51,6 +55,27 @@ const STAMP = '2026-01-01T00:00:00.000Z';
 
 /** Random edits break invariants that a load reports, so its warnings say nothing here. */
 const SILENT: WarningLogger = { warn: () => {} };
+
+/** A session host that reads no text, serving drafts from `storage` and books from `heldBook`. */
+function sessionHost(
+  storage: KeyValueStorage,
+  heldBook: (bookId: string, segmentation: SegmentationDelta | undefined) => Book | undefined,
+  reportChange: (change: ReportedChange) => void,
+): SessionHost {
+  return {
+    findProject: async () => undefined,
+    openDraftRepository: (sourceProjectId) => new DraftRepository(storage, sourceProjectId, SILENT),
+    releaseDraftRepository: async () => {},
+    openPt9ImportRepository: () => {
+      throw new Error('no imports here');
+    },
+    getInterfaceLanguages: async () => ['en'],
+    startTextRead: async () => {},
+    stopTextRead: async () => {},
+    heldBook: (_source, bookId, segmentation) => heldBook(bookId, segmentation),
+    reportChange,
+  };
+}
 
 function memoryStorage(): KeyValueStorage {
   const records = new Map<string, string>();
@@ -475,19 +500,9 @@ async function checkEvents(
   await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
   const segmented = segmenter(new Map(books.map((b) => [b.bookRef, b])));
   const reported = new Map<string, ReportedChange>();
-  const sessions = new AnalysisSessions({
-    findProject: async () => undefined,
-    openDraftRepository: (sourceProjectId) => new DraftRepository(storage, sourceProjectId, SILENT),
-    releaseDraftRepository: async () => {},
-    openPt9ImportRepository: () => {
-      throw new Error('no imports here');
-    },
-    getInterfaceLanguages: async () => ['en'],
-    startTextRead: async () => {},
-    stopTextRead: async () => {},
-    heldBook: (_source, bookId, segmentation) => segmented(bookId, segmentation),
-    reportChange: (change) => reported.set(change.changeId, change),
-  });
+  const sessions = new AnalysisSessions(
+    sessionHost(storage, segmented, (change) => reported.set(change.changeId, change)),
+  );
   const { sessionId } = await sessions.open(draft.sourceProjectId);
   const read = async () =>
     (await new DraftRepository(storage, draft.sourceProjectId, SILENT).exportAll()).draft;
@@ -682,22 +697,37 @@ async function checkEvents(
 }
 
 /**
- * Times the first session-form page request on a freshly opened draft against the request after it.
- * The first request builds the derived indexes.
+ * Times opening a session on `draft`, the session's first page request, and the request after it.
+ * The first request waits for whatever remains of the index build that opening starts.
  */
 async function timeFirstRequest(
   draft: DraftProject,
   viewBook: Book,
-): Promise<{ first: number; next: number }> {
+): Promise<{ open: number; first: number; next: number }> {
   const storage = memoryStorage();
   await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
-  const repository = new DraftRepository(storage, draft.sourceProjectId, SILENT);
+  const sessions = new AnalysisSessions(
+    sessionHost(
+      storage,
+      () => undefined,
+      () => {},
+    ),
+  );
   let started = performance.now();
-  await readSegmentPage(repository, viewBook, 0, PAGE_SIZE);
+  const { sessionId } = await sessions.open(draft.sourceProjectId);
+  const open = performance.now() - started;
+  const page = (start: number) =>
+    sessions.run(sessionId, ({ repository }) =>
+      readSegmentPage(repository, viewBook, start, start + PAGE_SIZE),
+    );
+  started = performance.now();
+  await page(0);
   const first = performance.now() - started;
   started = performance.now();
-  await readSegmentPage(repository, viewBook, PAGE_SIZE, 2 * PAGE_SIZE);
-  return { first, next: performance.now() - started };
+  await page(PAGE_SIZE);
+  const next = performance.now() - started;
+  await sessions.closeAll();
+  return { open, first, next };
 }
 
 async function checkTier(tier: TierSpec): Promise<boolean> {
@@ -722,7 +752,7 @@ async function checkTier(tier: TierSpec): Promise<boolean> {
   const events = await checkEvents(draft, books, viewBook, steps);
 
   console.log(
-    `${tier.name.padEnd(15)} ${pages.pages} pages, ${pages.mismatches.length} differ  ${events.changes} changes, ${events.mismatches.length} differ  first page ${timing.first.toFixed(0)} ms, next ${timing.next.toFixed(1)} ms`,
+    `${tier.name.padEnd(15)} ${pages.pages} pages, ${pages.mismatches.length} differ  ${events.changes} changes, ${events.mismatches.length} differ  open ${timing.open.toFixed(0)} ms, first page ${timing.first.toFixed(0)} ms, next ${timing.next.toFixed(1)} ms`,
   );
   [...pages.mismatches, ...events.mismatches].slice(0, 20).forEach((m) => console.log(`  ${m}`));
   return pages.mismatches.length === 0 && events.mismatches.length === 0;

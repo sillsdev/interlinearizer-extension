@@ -140,7 +140,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   private current: IndexedDraft | undefined;
 
   /**
-   * Partitions a failed apply set out to rewrite. Storage may hold changes there that
+   * The partitions that a failed apply set out to rewrite. Storage may hold changes there that
    * {@link current} lacks. Each later apply compares these partitions as well, until an apply
    * succeeds.
    */
@@ -274,11 +274,15 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   /**
    * Applies the changes to the draft this instance keeps, loading the stored draft first when it
    * keeps none, as after {@link exportAll} or a whole save. Rewrites only the books whose content
-   * the changes alter, so an edit to a payload rewrites every book linking it. After a failed
-   * apply, the next apply to succeed also restores any book the failure left out of step with the
-   * draft. What it stores matches a whole save of the same draft in content, not order: the
-   * manifest may list the books in another order, and a link a put moves into a book comes last in
-   * that book's shard. Marks the draft unsaved unless `options` keeps the mark.
+   * the changes alter, so an edit to a payload rewrites every book linking it. Marks the draft
+   * unsaved unless `options` keeps the mark.
+   *
+   * After a failed apply, the next apply to succeed also restores any book the failure left out of
+   * step with the draft.
+   *
+   * What an apply stores matches a whole save of the same draft in content, not order. The manifest
+   * may list the books in another order, and a link that a put moves into a book comes last in that
+   * book's shard.
    *
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project; nothing is written.
@@ -381,11 +385,11 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * Saves `draft` as {@link replaceAll} describes, comparing only `partitions` against what this
    * instance last loaded or saved and rewriting those that differ.
    *
-   * @param draft The draft whose envelope is written; its analysis is not read.
-   * @param storedBooks The books the stored draft's manifest names.
-   * @param books The key of every partition the draft carries, less the books whose shard could not
-   *   be read.
-   * @param partitions The partitions to compare, keyed by book; every key is in `books`.
+   * @param draft - The draft whose envelope is written; its analysis is not read.
+   * @param storedBooks - The books the stored draft's manifest names.
+   * @param books - The key of every partition the draft carries, less the books whose shard could
+   *   not be read.
+   * @param partitions - The partitions to compare, keyed by book; every key is in `books`.
    * @throws If storage rejects a read, or a write before the envelope lands.
    */
   private async writeDraft(

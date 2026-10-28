@@ -192,9 +192,11 @@ export class AnalysisIndex {
   }
 
   /**
-   * The keys of the partitions, as {@link splitAnalysisByBook} keys them, whose records `changes`
-   * may alter once applied, which must name each id at most once per record kind. These are each
-   * book holding a link the changes alter, or a link to a payload they alter.
+   * The keys of the partitions whose records `changes` may alter once applied, keyed as
+   * {@link splitAnalysisByBook} keys them. `changes` must name each id at most once per record
+   * kind.
+   *
+   * The keys are each book holding a link the changes alter, or a link to a payload they alter.
    * {@link BOOKLESS_PARTITION} is included when a payload they reach is unlinked before they apply
    * or after.
    */

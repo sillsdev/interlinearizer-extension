@@ -379,36 +379,46 @@ describe('DraftRepository', () => {
       );
     });
 
-    it('rewrites a book a failed apply wrote after a restart, though no later apply reaches it', async () => {
-      const { storage, records } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
-      const [payload] = twoBookAnalysis().tokenAnalyses;
-      const [phrase] = twoBookAnalysis().phraseAnalyses;
-      const { write: writeThrough } = storage;
-      const write = jest
-        .spyOn(storage, 'write')
-        .mockImplementation((key, data) =>
-          key === draftAnalysisKey('src', 'GEN')
-            ? Promise.reject(new Error('disk full'))
-            : writeThrough(key, data),
-        );
-      await expect(
-        new DraftRepository(storage, 'src', silentLogger()).apply({
-          intent: 'writeGloss',
-          tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
-        }),
-      ).rejects.toThrow('disk full');
-      write.mockRestore();
+    // The restarted load keeps the first copy of the shared payload in manifest order, GEN's.
+    it.each([
+      ['GEN', 'and'],
+      ['EXO', 'and then'],
+    ])(
+      'brings the books back in step after a restart when the %s write fails, both glossed %p',
+      async (failing, gloss) => {
+        const { storage, records } = memoryStorage();
+        await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+        const [payload] = twoBookAnalysis().tokenAnalyses;
+        const [phrase] = twoBookAnalysis().phraseAnalyses;
+        const { write: writeThrough } = storage;
+        const write = jest
+          .spyOn(storage, 'write')
+          .mockImplementation((key, data) =>
+            key === draftAnalysisKey('src', failing)
+              ? Promise.reject(new Error('disk full'))
+              : writeThrough(key, data),
+          );
+        await expect(
+          new DraftRepository(storage, 'src', silentLogger()).apply({
+            intent: 'writeGloss',
+            tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+          }),
+        ).rejects.toThrow('disk full');
+        write.mockRestore();
 
-      const restarted = new DraftRepository(storage, 'src', silentLogger());
-      await restarted.apply({
-        intent: 'writePhraseGloss',
-        phraseAnalyses: { puts: [{ ...phrase, gloss: { en: 'within' } }], deletes: [] },
-      });
+        const restarted = new DraftRepository(storage, 'src', silentLogger());
+        await restarted.apply({
+          intent: 'writePhraseGloss',
+          phraseAnalyses: { puts: [{ ...phrase, gloss: { en: 'within' } }], deletes: [] },
+        });
 
-      expect(records.get(draftAnalysisKey('src', 'EXO'))).not.toContain('and then');
-      expect(records.has(draftJournalKey('src'))).toBe(false);
-    });
+        const glossIn = (bookCode: string) =>
+          JSON.parse(records.get(draftAnalysisKey('src', bookCode)) ?? '').tokenAnalyses[0].gloss;
+        expect(glossIn('GEN')).toEqual({ en: gloss });
+        expect(glossIn('EXO')).toEqual({ en: gloss });
+        expect(records.has(draftJournalKey('src'))).toBe(false);
+      },
+    );
 
     it('rewrites a book a failed apply wrote, though the next apply does not reach it', async () => {
       const { storage, records } = memoryStorage();

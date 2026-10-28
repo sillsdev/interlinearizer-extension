@@ -278,8 +278,10 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * the changes alter, so an edit to a payload rewrites every book linking it. Marks the draft
    * unsaved unless `options` keeps the mark.
    *
-   * After a failed apply, the next apply to succeed also restores any book the failure left out of
-   * step with the draft, even after a reload or a restart.
+   * After a failed apply, the next apply to succeed also brings back in step any book the failure
+   * left out of step with the draft. In the same instance that restores the book as it was. After a
+   * reload or restart, the reloaded draft keeps the first copy of each payload in manifest order,
+   * so a book may take the failed edit instead.
    *
    * What an apply stores matches a whole save of the same draft in content, not order. The manifest
    * may list the books in another order, and a link that a put moves into a book comes last in that
@@ -388,7 +390,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @param journaled - The shard journal as stored before this save.
    * @param books - The key of every partition the draft carries, less the books whose shard could
    *   not be read.
-   * @param partitions - The partitions to compare, keyed by book; every key is in `books`.
+   * @param partitions - Keyed by book; every key is in `books`.
    * @throws If storage rejects a write before the envelope lands.
    */
   private async writeDraft(

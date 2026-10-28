@@ -48,15 +48,15 @@ export function normalizeSurfaceForm(text: string): string {
 }
 
 /**
- * Structural deep-equality for the JSON-shaped values an analysis carries, used to compare glosses,
- * features, and morpheme refs without depending on key order. Never receives `null`, since the
+ * Structural deep-equality for the JSON-shaped values a draft carries, such as glosses, features,
+ * morpheme refs and whole records, without depending on key order. Never receives `null`, since the
  * analysis types use absence rather than `null`.
  *
  * Kept as a dedicated local helper rather than reusing `platform-bible-utils`' equivalent: that
  * package is fully mocked in this project's Jest setup and the mock does not surface it, so
  * depending on it here would mean the dedupe path silently ran against `undefined` under test.
  */
-function deepEqual(a: unknown, b: unknown): boolean {
+export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (typeof a !== 'object' || typeof b !== 'object') return false;
   /* v8 ignore next -- analysis fields are never null; guard only satisfies Object.entries typing */

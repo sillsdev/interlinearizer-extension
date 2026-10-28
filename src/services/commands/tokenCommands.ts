@@ -164,22 +164,28 @@ export async function coalesceLinksPerToken(
   });
 }
 
+/** How {@link mergeIntoIdenticalPayload} settles the survivor. */
+export type MergeIntoIdenticalOptions = {
+  /**
+   * Set when the edit chose the payload's confidence; the survivor then takes `analysis`'s
+   * confidence.
+   */
+  settleProvenance?: boolean;
+};
+
 /**
  * When the edit made `analysis` identical to another payload, folds it into that one, so that an
  * edit never leaves a duplicate.
  *
- * Every link to `analysis` moves to the survivor. The survivor keeps its own timestamps unless
- * `settleProvenance` is set. A token that links both keeps one link. The survivor's breakdown stays
- * stale only when both payloads' were.
- *
- * Set `settleProvenance` when the edit chose the payload's confidence; the survivor then takes
- * `analysis`'s confidence.
+ * Every link to `analysis` moves to the survivor. The survivor's `updatedAt` becomes `now` when the
+ * merge settles its confidence or clears its stale mark. A token that links both keeps one link.
+ * The survivor's breakdown stays stale only when both payloads' were.
  */
 export async function mergeIntoIdenticalPayload(
   buffer: ChangeBuffer,
   analysis: TokenAnalysis,
   now: string,
-  settleProvenance = false,
+  { settleProvenance = false }: MergeIntoIdenticalOptions = {},
 ): Promise<void> {
   const candidates = await buffer.findTokenAnalysesByForm([
     normalizeSurfaceForm(analysis.surfaceText),

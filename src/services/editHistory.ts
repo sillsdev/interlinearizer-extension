@@ -18,7 +18,8 @@ export type ReanchorBooks = (
 export type EditOptions = {
   /**
    * `'keep'` leaves the draft as saved or unsaved as it was. `'clear'` marks it saved, even when
-   * the edit changes nothing. Absent, an edit that changes something marks the draft unsaved.
+   * the edit changes nothing, without superseding any earlier save. Absent, an edit that changes
+   * something marks the draft unsaved.
    */
   unsavedMark?: 'keep' | 'clear';
 };
@@ -40,9 +41,9 @@ type Step = {
  * undo or redo restores is re-anchored to the current text of each book that a pass has re-anchored
  * since then.
  *
- * An undo or redo marks the draft saved when it leads back to content the draft was last saved
- * with, and unsaved otherwise. The history learns of a save made elsewhere only when it next
- * applies changes.
+ * An undo or redo marks the draft saved when it leads back to content the draft was saved with, and
+ * unsaved otherwise. The history learns of a save made elsewhere only when it next applies
+ * changes.
  */
 export class EditHistory {
   private readonly repository: AnalysisRepository;
@@ -70,7 +71,7 @@ export class EditHistory {
   /** The latest number given to a state. */
   private lastState = 0;
 
-  /** The states whose content the draft was last saved with, as far as the history has seen. */
+  /** The states whose content the draft was saved with, as far as the history has seen. */
   private cleanStates = new Set<number>();
 
   /**
@@ -84,7 +85,7 @@ export class EditHistory {
   }
 
   /**
-   * Applies `changes` as one undo step, marked unsaved unless `options` says otherwise.
+   * Applies `changes` as one undo step. Marks the draft unsaved unless `options` says otherwise.
    *
    * @throws Whatever applying the changes throws; the history is left as it was.
    * @throws Whatever marking the draft saved throws; the changes stay applied as an undo step.
@@ -103,18 +104,30 @@ export class EditHistory {
     this.lastState += 1;
     this.state = this.lastState;
     if (keep && !wasDirty) this.cleanStates.add(this.state);
-    if (options?.unsavedMark === 'clear') await this.markClean();
+    if (options?.unsavedMark === 'clear') await this.markRestoredClean();
   }
 
   /**
    * Marks the draft saved, superseding any earlier save unless the draft was already saved. Any
-   * later undo or redo that leads back to its current content marks it saved too.
+   * later undo or redo that returns the draft to this content marks the draft saved too.
    *
    * @throws Whatever the repository's `markClean` throws.
    */
   async markClean(): Promise<void> {
     await this.repository.markClean();
     this.noteMark(false);
+  }
+
+  /**
+   * Marks the draft saved without superseding any earlier save, as a discard back to the saved
+   * content does. Any later undo or redo that returns the draft to this content marks the draft
+   * saved too.
+   *
+   * @throws Whatever the repository's `markClean` throws.
+   */
+  async markRestoredClean(): Promise<void> {
+    await this.repository.markClean();
+    this.cleanStates.add(this.state);
   }
 
   /**
@@ -183,10 +196,7 @@ export class EditHistory {
     return changes;
   }
 
-  /**
-   * Takes in a save of the current content unless `wasDirty`. When the current state is not already
-   * clean, it becomes the only clean one.
-   */
+  /** Unless `wasDirty`, makes the current state the only clean one, if it isn't clean already. */
   private noteMark(wasDirty: boolean): void {
     if (!wasDirty && !this.cleanStates.has(this.state)) this.cleanStates = new Set([this.state]);
   }

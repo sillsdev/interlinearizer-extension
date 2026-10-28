@@ -27,13 +27,13 @@ export function clearAnalysisGloss(analysis: TokenAnalysis, lang: string): void 
 }
 
 /**
- * Carries the glosses outside `lang` off the donors onto the survivor, which keeps its own wherever
- * it has them, and settles the sense the survivor's gloss resolves through.
+ * Carries the glosses outside `lang` off the donors onto the survivor. The survivor keeps its own
+ * gloss in any language it has one. Settles the sense the survivor's gloss resolves through.
  *
- * @param survivor Mutated in place.
- * @param donors The records being dropped, most-preferred first.
- * @param lang BCP 47 tag the merge was conducted in, the one gloss this leaves alone.
- * @param glossFrom The analysis the settled gloss came from, whose sense the survivor takes;
+ * @param survivor - Mutated in place.
+ * @param donors - The records being dropped, most-preferred first.
+ * @param lang - BCP 47 tag the merge was conducted in, the one gloss this leaves alone.
+ * @param glossFrom - The analysis the settled gloss came from, whose sense the survivor takes;
  *   `undefined` for a gloss answering to no record, which leaves the survivor without one.
  */
 export function carryOverUnsettledContent(
@@ -68,7 +68,10 @@ function copyMergedMorpheme(morpheme: MorphemeAnalysis, lang: string): MorphemeA
   return copy;
 }
 
-/** Writes merged content onto an analysis, clearing each field the merge settled on nothing for. */
+/**
+ * Writes merged content onto `analysis` in place, with its gloss in `lang`. A field the merge left
+ * absent is cleared.
+ */
 export function applyMergedContent(
   analysis: TokenAnalysis,
   content: MergedContent,

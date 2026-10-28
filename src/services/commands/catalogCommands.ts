@@ -117,8 +117,9 @@ export async function writeAnalysisGloss(
 }
 
 /**
- * Stages clearing the gloss of each token analysis in `analysisIds`, in order, as a blank
- * {@link writeAnalysisGloss} clears one.
+ * Stages clearing the gloss of each token analysis in `analysisIds`, in order. An analysis left
+ * empty goes with every token link to it. One made identical to another payload is folded into that
+ * payload.
  */
 export async function clearAnalysisGlosses(
   buffer: ChangeBuffer,
@@ -269,5 +270,5 @@ export async function mergeAnalysesInto(
     await removeAnalysisAndLinks(buffer, survivorAnalysisId);
     return;
   }
-  await mergeIntoIdenticalPayload(buffer, survivor, now, true);
+  await mergeIntoIdenticalPayload(buffer, survivor, now, { settleProvenance: true });
 }

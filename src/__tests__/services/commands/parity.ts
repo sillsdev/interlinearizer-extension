@@ -324,6 +324,18 @@ export function expectParity(
   expect(outcome.indexDifferences).toStrictEqual([]);
 }
 
+/**
+ * Asserts that the token analyses the command's changes delete are those a removal preview in the
+ * WebView names: the ones in `before` that the reducer's result lacks.
+ */
+export function expectRemovalPreviewParity(outcome: ParityOutcome, before: TextAnalysis): void {
+  const kept = new Set(outcome.store.tokenAnalyses.map(({ id }) => id));
+  const reclaimed = before.tokenAnalyses.map(({ id }) => id).filter((id) => !kept.has(id));
+  expect([...(outcome.changes.tokenAnalyses?.deletes ?? [])].sort()).toStrictEqual(
+    reclaimed.sort(),
+  );
+}
+
 /** What a draft holds before an unsaved-change discard runs. */
 export type DiscardSeed = {
   analysis: TextAnalysis;

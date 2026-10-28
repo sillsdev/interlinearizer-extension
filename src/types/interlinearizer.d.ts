@@ -790,7 +790,7 @@ declare module 'papi-shared-types' {
      * Discards the unsaved changes to one book of a session's draft, restoring the book as the
      * draft's project holds it, or emptying the book when the draft has no project. A book whose
      * stored analysis could not be read keeps it. A draft saving to a project stays as saved or
-     * unsaved as it was; one saving to none is marked unsaved.
+     * unsaved as it was; one saving to none is marked unsaved when the discard changes anything.
      *
      * @returns A JSON string of `{ changes, hasFreeTranslations }`: the changes it applied, and
      *   whether any segment of the draft it leaves has a free translation.
@@ -815,7 +815,8 @@ declare module 'papi-shared-types' {
      * Names the token analyses a command would remove from a session's draft, applying nothing.
      *
      * @returns A JSON string of the ids; `"[]"` when it would remove none.
-     * @throws If the session is not open, or staging the command fails (logged before rethrowing).
+     * @throws If the session is not open, the request names an intent it can't preview, or staging
+     *   the command fails (logged before rethrowing).
      */
     'interlinearizer.previewRemovals': (
       sessionId: string,
@@ -2138,9 +2139,8 @@ declare module 'interlinearizer' {
   export type ProjectConfig = Pick<InterlinearProject, 'analysisLanguages' | 'targetProjectId'>;
 
   /**
-   * What a merge settles the surviving analysis says. Every field is written as given and absence
-   * clears what the record held, a missing value being one the merge decided against rather than
-   * one it had nothing to say about.
+   * What the surviving analysis says once a merge settles. Every field is written as given. An
+   * absent field clears what the record held, because the merge decided against a value.
    */
   export interface MergedContent {
     /** Gloss in the language the merge is conducted in, blank clearing it. */

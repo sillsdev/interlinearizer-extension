@@ -88,7 +88,6 @@ async function reanchorNow(session: Session, book: Book): Promise<void> {
 /**
  * Applies an edit's staged changes as one undo step, re-anchored to `reanchorTo`.
  *
- * @returns The changes applied.
  * @throws As {@link AnalysisSessions.edit} does.
  */
 async function applyStaged(
@@ -254,9 +253,10 @@ export class AnalysisSessions {
 
   /**
    * Runs `command` as one edit of the session's analysis, in the session's turn. What it stages
-   * applies as one undo step, marking the draft unsaved unless `options` says otherwise. A command
-   * staging nothing applies nothing. When the draft lists no analysis languages, the step adds the
-   * session's analysis language.
+   * applies as one undo step, marking the draft unsaved unless `options` says otherwise. `options`
+   * given as a function is read from the session in the edit's turn. A command staging nothing
+   * applies nothing. When the draft lists no analysis languages, the step adds the session's
+   * analysis language.
    *
    * When `command` returns books, the step also re-anchors the draft, as the staged changes leave
    * it, to each book's text in turn.
@@ -274,15 +274,16 @@ export class AnalysisSessions {
     sessionId: string,
     intent: string,
     command: (buffer: ChangeBuffer, session: Session) => Promise<void | readonly Book[]>,
-    options?: EditOptions,
+    editOptions?: EditOptions | ((session: Session) => EditOptions),
   ): Promise<ChangeSet> {
     return this.runEdit(sessionId, async (session) => {
+      const options = typeof editOptions === 'function' ? editOptions(session) : editOptions;
       const buffer = new ChangeBuffer(session.repository);
       const reanchorTo = await command(buffer, session);
       const staged = buffer.toChangeSet(intent);
       if (!isEmptyChangeSet(staged))
         return applyStaged(session, buffer, staged, reanchorTo, options);
-      if (options?.unsavedMark === 'clear') await session.history.markClean();
+      if (options?.unsavedMark === 'clear') await session.history.markRestoredClean();
       return staged;
     });
   }

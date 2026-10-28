@@ -27,7 +27,7 @@ import {
 } from '../../../store/analysisSlice';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../../test-helpers';
-import { NOW, runParity, type ParityOutcome } from './parity';
+import { expectRemovalPreviewParity, NOW, runParity, type ParityOutcome } from './parity';
 
 function payload(id: string, surfaceText: string, fields: Partial<TokenAnalysis> = {}) {
   return { id, ...FIXTURE_STAMPS, surfaceText, ...fields };
@@ -349,6 +349,7 @@ describe('clearAnalysisGlosses parity with the reducer', () => {
     );
 
     expectParity(outcome, expectStore);
+    expectRemovalPreviewParity(outcome, analysis);
   });
 });
 

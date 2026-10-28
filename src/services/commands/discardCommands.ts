@@ -9,6 +9,7 @@ import {
   restoreBookInAnalysis,
   restoreBookInSegmentation,
 } from '../../utils/analysis-book';
+import { deepEqual } from '../../utils/analysis-identity';
 import { scopeRecordOf } from '../../utils/change-set';
 import { analysisHasFreeTranslations } from '../../utils/free-translations';
 import { segmentationForBook } from '../../utils/segmentation';
@@ -22,8 +23,6 @@ export type DiscardOutcome = {
   changedBooks: string[];
 };
 
-const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-
 /**
  * Stages the puts and removals of `kind` that turn `current`'s records into `target`'s, returning
  * the records it puts.
@@ -36,7 +35,7 @@ function stageKind<Kind extends RecordKind>(
 ): RecordOf<Kind>[] {
   const before = new Map(current.map((record) => [record.id, record]));
   const kept = new Set(target.map(({ id }) => id));
-  const puts = target.filter((record) => !sameJson(before.get(record.id), record));
+  const puts = target.filter((record) => !deepEqual(before.get(record.id), record));
   puts.forEach((record) => buffer.put(kind, record));
   current.filter(({ id }) => !kept.has(id)).forEach((record) => buffer.delete(kind, record));
   return puts;
@@ -82,7 +81,7 @@ function stageDiscard(
   };
 
   const changedBooks = new Set(booksLinkedIn(putLinks));
-  if (!sameJson(draft.segmentation, restored.segmentation)) {
+  if (!deepEqual(draft.segmentation, restored.segmentation)) {
     const scope = scopeRecordOf(draft);
     if (restored.segmentation) scope.segmentation = restored.segmentation;
     else delete scope.segmentation;
@@ -95,7 +94,7 @@ function stageDiscard(
     );
     new Set(anchoredBooks).forEach((bookCode) => {
       const before = segmentationForBook(draft.segmentation, bookCode);
-      if (!sameJson(before, segmentationForBook(restored.segmentation, bookCode)))
+      if (!deepEqual(before, segmentationForBook(restored.segmentation, bookCode)))
         changedBooks.add(bookCode);
     });
   }

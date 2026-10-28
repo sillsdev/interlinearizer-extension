@@ -8,6 +8,7 @@ import {
 } from '../../services/analysisSessions';
 import { ApprovalRuleError } from '../../services/commands/approvalRule';
 import { DraftRepository } from '../../services/draftRepository';
+import type { EditOptions } from '../../services/editHistory';
 import { Pt9ImportRepository } from '../../services/pt9ImportRepository';
 import { draftKey } from '../../services/storageKeys';
 import { ReadOnlyAnalysisError } from '../../types/read-only-analysis-error';
@@ -660,6 +661,25 @@ describe('AnalysisSessions', () => {
 
       await expect(stored(storage)).resolves.toMatchObject({ dirty: false });
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
+    });
+
+    it('reads options given as a function from the session in the edit turn', async () => {
+      const { sessions, storage, saveDraft } = makeSessions();
+      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty: true });
+      const { sessionId } = await sessions.open(SOURCE);
+      const readOptions = jest.fn((): EditOptions => ({ unsavedMark: 'clear' }));
+
+      await sessions.edit(
+        sessionId,
+        'add',
+        async (buffer) => buffer.create('tokenAnalyses', payload('a')),
+        readOptions,
+      );
+
+      expect(readOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ scope: expect.objectContaining({ sourceProjectId: SOURCE }) }),
+      );
+      await expect(stored(storage)).resolves.toMatchObject({ dirty: false });
     });
   });
 

@@ -104,6 +104,31 @@ describe('discardAll', () => {
     expect(changedBooks).toStrictEqual([]);
   });
 
+  it('stages nothing when the saved records list their keys in another order', () => {
+    const buffer = freshBuffer();
+
+    discardAll(buffer, storedHolding(analysisLinking(link('tl-gen', 'GEN 1:1:0'))), {
+      analysis: {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { gloss: { en: 'at' }, surfaceText: 'In', ...FIXTURE_STAMPS, id: 'ta-tl-gen' },
+        ],
+        tokenAnalysisLinks: [
+          {
+            token: { surfaceText: 'In', tokenRef: 'GEN 1:1:0' },
+            status: 'approved',
+            ...FIXTURE_STAMPS,
+            analysisId: 'ta-tl-gen',
+            id: 'tl-gen',
+          },
+        ],
+      },
+      segmentation: undefined,
+    });
+
+    expect(buffer.toChangeSet('discardAll')).toStrictEqual({ intent: 'discardAll' });
+  });
+
   it('stages the scope with the restored boundaries', () => {
     const buffer = freshBuffer();
 

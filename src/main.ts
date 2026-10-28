@@ -1537,7 +1537,6 @@ async function runDiscard(
 ): Promise<string> {
   let hasFreeTranslations = false;
   try {
-    const { interlinearProjectId } = await sessions.run(sessionId, async ({ scope }) => scope);
     const changes = await sessions.edit(
       sessionId,
       intent,
@@ -1553,7 +1552,7 @@ async function runDiscard(
           ),
         );
       },
-      { unsavedMark: unsavedMark(interlinearProjectId !== undefined) },
+      ({ scope }) => ({ unsavedMark: unsavedMark(scope.interlinearProjectId !== undefined) }),
     );
     return JSON.stringify({ changes, hasFreeTranslations });
   } catch (e) {
@@ -1566,7 +1565,7 @@ async function runDiscard(
  * Discards the unsaved changes to one book of a session's draft, restoring the book as the draft's
  * project holds it, or emptying the book when the draft has no project. A book whose stored
  * analysis could not be read keeps it. A draft saving to a project stays as saved or unsaved as it
- * was; one saving to none is marked unsaved.
+ * was; one saving to none is marked unsaved when the discard changes anything.
  *
  * @returns A JSON string of `{ changes, hasFreeTranslations }`.
  * @throws As {@link runDiscard} does.
@@ -1596,8 +1595,8 @@ function discardAll(sessionId: string): Promise<string> {
  * Names the token analyses a command would remove from a session's draft, applying nothing.
  *
  * @returns A JSON string of the ids; `"[]"` when it would remove none.
- * @throws If the session is not open, or staging the command fails. The error is logged before
- *   rethrowing.
+ * @throws If the session is not open, the request names an intent it can't preview, or staging the
+ *   command fails. The error is logged before rethrowing.
  */
 async function previewRemovals(sessionId: string, request: RemovalPreviewRequest): Promise<string> {
   try {

@@ -131,6 +131,30 @@ describe('AnalysisSessions', () => {
       });
     });
 
+    it("builds the repository's indexes once it opens, without waiting for a command", async () => {
+      const { host, sessions } = makeSessions();
+      const getScope = jest.spyOn(DraftRepository.prototype, 'getScope');
+
+      await sessions.open(SOURCE);
+      await flushPromises();
+
+      expect(getScope).toHaveBeenCalledTimes(1);
+      expect(host.openDraftRepository).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens when building the indexes fails, and the first command meets the failure', async () => {
+      const { sessions } = makeSessions();
+      jest
+        .spyOn(DraftRepository.prototype, 'getScope')
+        .mockRejectedValue(new Error('storage is gone'));
+
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await expect(
+        sessions.run(sessionId, ({ repository }) => repository.getScope()),
+      ).rejects.toThrow('storage is gone');
+    });
+
     it('reports a free translation in the draft', async () => {
       const { sessions, saveDraft } = makeSessions();
       await saveDraft({ ...emptyDraft(SOURCE), analysis: FREE_TRANSLATED });

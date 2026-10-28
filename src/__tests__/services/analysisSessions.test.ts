@@ -820,6 +820,25 @@ describe('AnalysisSessions', () => {
       expect((await storedLink(storage)).status).toBe('approved');
     });
 
+    it('stales the links into a book whose code is outside the canon', async () => {
+      const { sessions, saveDraft, storage } = makeSessions();
+      await saveDraft({
+        ...emptyDraft(SOURCE),
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'beta' }],
+          tokenAnalysisLinks: [
+            makeTokenLink('ta-1', 'ZZZ front1:0', { surfaceText: 'beta', id: 'tl-beta' }),
+          ],
+        },
+      });
+      await sessions.open(SOURCE);
+
+      await sessions.reanchorMissingBooks(SOURCE, ['GEN']);
+
+      expect((await storedLink(storage)).status).toBe('stale');
+    });
+
     it('re-anchors in the session turn, after the commands sent before', async () => {
       const { sessions, sessionId, storage } = await sessionGlossingBeta();
       const command = deferred();

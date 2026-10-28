@@ -232,13 +232,20 @@ export class AnalysisIndex {
     return books;
   }
 
+  /** The book codes the links of every kind point into, each once. */
+  linkedBooks(): string[] {
+    return [
+      ...new Set([
+        ...this.tokenLinks.keys('book'),
+        ...this.segmentLinks.keys('book'),
+        ...this.phraseLinks.keys('book'),
+      ]),
+    ];
+  }
+
   /** The keys of the partitions {@link splitAnalysisByBook} would split the records into. */
   partitionKeys(): string[] {
-    const keys = new Set([
-      ...this.tokenLinks.keys('book'),
-      ...this.segmentLinks.keys('book'),
-      ...this.phraseLinks.keys('book'),
-    ]);
+    const keys = new Set(this.linkedBooks());
     if (this.partition(BOOKLESS_PARTITION)) keys.add(BOOKLESS_PARTITION);
     return [...keys];
   }

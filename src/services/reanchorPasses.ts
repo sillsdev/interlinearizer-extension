@@ -81,16 +81,3 @@ export function reanchorRestored(repository: AnalysisRepository): ReanchorBooks 
     return reanchorInTurn(applyChangeSet(stored, changes).draft, books);
   };
 }
-
-/**
- * Which of `bookCodes` the stored draft links into.
- *
- * @throws Whatever reading the draft throws.
- */
-export async function booksLinkedAmong(
-  repository: AnalysisRepository,
-  bookCodes: string[],
-): Promise<string[]> {
-  const links = await repository.findLinksInBooks(bookCodes);
-  return [...booksLinkedIn({ ...emptyAnalysis(), ...links })];
-}

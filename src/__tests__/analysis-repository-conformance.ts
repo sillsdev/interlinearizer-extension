@@ -1353,6 +1353,68 @@ export function describeAnalysisRepositoryConformance(
         });
       });
 
+      it('finds the books the links point into, each once', async () => {
+        const repository = await overFullDraft();
+
+        await expect(repository.findLinkedBooks().then((books) => books.sort())).resolves.toEqual([
+          'EXO',
+          'GEN',
+        ]);
+      });
+
+      it('finds a book only a phrase or segment link points into', async () => {
+        const repository = await overFullDraft();
+
+        await repository.apply({
+          intent: 'unlinkTokens',
+          tokenAnalysisLinks: {
+            puts: [],
+            deletes: ['tl-gen-and', 'tl-exo-and', 'tl-gen-beginning'],
+          },
+        });
+
+        await expect(repository.findLinkedBooks().then((books) => books.sort())).resolves.toEqual([
+          'EXO',
+          'GEN',
+        ]);
+      });
+
+      it('finds a linked book whose code is outside the canon', async () => {
+        const repository = await overFullDraft();
+
+        await repository.apply({
+          intent: 'linkOutsideCanon',
+          tokenAnalysisLinks: {
+            puts: [
+              makeTokenLink('ta-and', 'ZZZ front1:0', { id: 'tl-zzz-and', surfaceText: 'and' }),
+            ],
+            deletes: [],
+          },
+        });
+
+        await expect(repository.findLinkedBooks().then((books) => books.sort())).resolves.toEqual([
+          'EXO',
+          'GEN',
+          'ZZZ',
+        ]);
+      });
+
+      it('drops a book once no link points into it', async () => {
+        const repository = await overFullDraft();
+
+        await repository.apply({
+          intent: 'unlinkExodus',
+          tokenAnalysisLinks: { puts: [], deletes: ['tl-exo-and'] },
+          segmentAnalysisLinks: { puts: [], deletes: ['sl-exo'] },
+        });
+
+        await expect(repository.findLinkedBooks()).resolves.toEqual(['GEN']);
+      });
+
+      it('finds no linked books in a draft never saved', async () => {
+        await expect((await store.open(SOURCE)).findLinkedBooks()).resolves.toEqual([]);
+      });
+
       it('finds the payloads whose surface text normalizes to a form', async () => {
         const repository = await overFullDraft();
         await repository.apply({

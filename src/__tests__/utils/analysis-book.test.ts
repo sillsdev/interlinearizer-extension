@@ -9,6 +9,7 @@ import type {
 import {
   BOOKLESS_PARTITION,
   bookOfRef,
+  booksMissingFrom,
   mergeAnalyses,
   removeBookFromAnalysis,
   removeBookFromSegmentation,
@@ -61,6 +62,16 @@ describe('bookOfRef', () => {
 
   it('returns the whole string when it contains no space', () => {
     expect(bookOfRef('GEN')).toBe('GEN');
+  });
+});
+
+describe('booksMissingFrom', () => {
+  it('names the linked books the text does not list', () => {
+    expect(booksMissingFrom(['GEN', 'EXO', 'ZZZ'], ['GEN', 'LEV'])).toEqual(['EXO', 'ZZZ']);
+  });
+
+  it('names none when the text lists every linked book', () => {
+    expect(booksMissingFrom(new Set(['GEN']), ['GEN', 'EXO'])).toEqual([]);
   });
 });
 

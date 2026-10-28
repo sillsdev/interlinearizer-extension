@@ -35,6 +35,7 @@ export abstract class IndexedRepository implements Pick<
   | 'findLinksBySegment'
   | 'findLinksToAnalyses'
   | 'findLinksInBooks'
+  | 'findLinkedBooks'
   | 'findTokenAnalysesByForm'
   | 'findPhraseAnalysesByForm'
   | 'checkIndexes'
@@ -75,6 +76,10 @@ export abstract class IndexedRepository implements Pick<
 
   findLinksInBooks(bookCodes: string[], statuses?: AssignmentStatus[]): Promise<AnalysisLinks> {
     return this.query((index) => index.findLinksInBooks(bookCodes, statuses));
+  }
+
+  findLinkedBooks(): Promise<string[]> {
+    return this.query((index) => index.linkedBooks());
   }
 
   findTokenAnalysesByForm(normalizedForms: string[]): Promise<TokenAnalysis[]> {

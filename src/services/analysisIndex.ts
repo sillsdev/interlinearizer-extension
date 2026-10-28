@@ -246,7 +246,7 @@ export class AnalysisIndex {
     return books;
   }
 
-  /** The book codes the links of every kind point into, each once. */
+  /** The codes of the books that links of every kind point into, each once. */
   linkedBooks(): string[] {
     return [
       ...new Set([

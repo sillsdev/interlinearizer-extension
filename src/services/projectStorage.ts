@@ -1156,6 +1156,7 @@ export function openDraftRepository(
       queued((repository) => repository.findLinksToAnalyses(analysisIds)),
     findLinksInBooks: (bookCodes, statuses) =>
       queued((repository) => repository.findLinksInBooks(bookCodes, statuses)),
+    findLinkedBooks: () => queued((repository) => repository.findLinkedBooks()),
     findTokenAnalysesByForm: (normalizedForms) =>
       queued((repository) => repository.findTokenAnalysesByForm(normalizedForms)),
     findPhraseAnalysesByForm: (normalizedForms) =>

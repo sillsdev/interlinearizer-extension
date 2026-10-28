@@ -285,6 +285,14 @@ export interface AnalysisRepository {
   findLinksInBooks(bookCodes: string[], statuses?: AssignmentStatus[]): Promise<AnalysisLinks>;
 
   /**
+   * The book codes the links of every kind point into, each once and in no set order. A code need
+   * not be one of the canon's.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  findLinkedBooks(): Promise<string[]>;
+
+  /**
    * The token analyses whose surface text {@link normalizeSurfaceForm} maps to one of
    * `normalizedForms`.
    *

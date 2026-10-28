@@ -1,15 +1,15 @@
-import { Canon } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
+import { booksMissingFrom } from '../utils/analysis-book';
 import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { missingBook } from '../utils/reanchor-draft';
 import { assertApprovalRule } from './commands/approvalRule';
 import { ChangeBuffer } from './commands/changeBuffer';
 import { EditHistory, type EditOptions } from './editHistory';
-import { booksLinkedAmong, reanchorRestored, reanchorStoredBook } from './reanchorPasses';
+import { reanchorRestored, reanchorStoredBook } from './reanchorPasses';
 
 /** BCP 47 tag for a language that cannot be determined. */
 export const UNDETERMINED_LANGUAGE = 'und';
@@ -364,11 +364,7 @@ export class AnalysisSessions {
    */
   reanchorMissingBooks(sourceProjectId: string, textBookIds: readonly string[]): Promise<void> {
     return this.runOnWritable(sourceProjectId, async (session) => {
-      const present = new Set(textBookIds);
-      const missing = await booksLinkedAmong(
-        session.repository,
-        Canon.allBookIds.filter((bookCode) => !present.has(bookCode)),
-      );
+      const missing = booksMissingFrom(await session.repository.findLinkedBooks(), textBookIds);
       await missing.reduce<Promise<void>>(
         (previous, bookCode) => previous.then(() => reanchorNow(session, missingBook(bookCode))),
         Promise.resolve(),

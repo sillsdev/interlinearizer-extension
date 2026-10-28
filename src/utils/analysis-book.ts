@@ -20,6 +20,15 @@ export function booksLinkedIn(analysis: TextAnalysis): ReadonlySet<string> {
   ]);
 }
 
+/** The linked books the text lacks: those of `linkedBooks` that `textBookCodes` does not list. */
+export function booksMissingFrom(
+  linkedBooks: Iterable<string>,
+  textBookCodes: Iterable<string>,
+): string[] {
+  const present = new Set(textBookCodes);
+  return [...linkedBooks].filter((bookCode) => !present.has(bookCode));
+}
+
 /**
  * Partition key for payloads no link references, which describe a spelling rather than any one
  * occurrence and so belong to no book. Its space cannot occur in a book code, so it never collides

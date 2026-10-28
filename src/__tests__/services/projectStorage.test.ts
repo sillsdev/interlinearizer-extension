@@ -2989,6 +2989,7 @@ describe('projectStorage', () => {
           r.findLinksInBooks(['GEN'], ['approved']).then((l) => l.tokenAnalysisLinks),
         1,
       ],
+      ['findLinkedBooks', (r: AnalysisRepository) => r.findLinkedBooks(), 1],
       [
         'findTokenAnalysesByForm',
         (r: AnalysisRepository) => r.findTokenAnalysesByForm(['word-gen']),

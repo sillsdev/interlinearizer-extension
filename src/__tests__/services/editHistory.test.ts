@@ -112,6 +112,18 @@ describe('EditHistory', () => {
     await expect(storedIds()).resolves.toStrictEqual(['a', 'b']);
   });
 
+  it('returns with an undo and its redo the step the edit was applied as', async () => {
+    const { history } = makeHistory();
+    const step = { location: 'GEN 1:1:0' };
+    await history.apply(putting('a'), { step });
+    await history.apply(putting('b'));
+
+    await history.undo();
+    await expect(history.undo()).resolves.toMatchObject({ step });
+    await expect(history.redo()).resolves.toMatchObject({ step });
+    await expect(history.redo()).resolves.not.toHaveProperty('step');
+  });
+
   it('has nothing to undo before any edit', async () => {
     await expect(makeHistory().history.undo()).resolves.toBeUndefined();
   });

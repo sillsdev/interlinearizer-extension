@@ -4,6 +4,7 @@ import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import type { CommandReply } from '../types/command-reply';
+import type { EditStep } from '../types/edit-step';
 import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { missingBook } from '../utils/reanchor-draft';
@@ -11,7 +12,7 @@ import { segmentationForBook } from '../utils/segmentation';
 import { describeChange, type AppliedChange } from './analysisChanges';
 import { assertApprovalRule } from './commands/approvalRule';
 import { ChangeBuffer } from './commands/changeBuffer';
-import { EditHistory, type EditOptions } from './editHistory';
+import { EditHistory, type EditOptions, type HistoryMove } from './editHistory';
 import { booksLinkedAmong, reanchorRestored, reanchorStoredBook } from './reanchorPasses';
 import { readTouchedPoolBuckets } from './sessionPages';
 
@@ -46,6 +47,11 @@ export type SessionEditOptions = {
   /** As {@link EditOptions}; given as a function, it is read from the session in the edit's turn. */
   unsavedMark?: EditOptions['unsavedMark'] | ((session: Session) => EditOptions['unsavedMark']);
   changeId?: ChangeId;
+  /**
+   * The step to record the edit as, which an undo or redo of the edit hands back. A function reads
+   * the step from the changes that the edit applies.
+   */
+  step?: EditStep | ((changes: ChangeSet) => EditStep | undefined);
 };
 
 /** What one change to a session's analysis touched, as a session reports it. */
@@ -156,7 +162,7 @@ async function applyStaged(
   buffer: ChangeBuffer,
   staged: ChangeSet,
   reanchorTo: void | readonly Book[],
-  options: EditOptions | undefined,
+  options: Pick<EditOptions, 'unsavedMark'> & Pick<SessionEditOptions, 'step'>,
 ): Promise<AppliedChange> {
   await assertApprovalRule(buffer, session.repository);
   const scope = staged.scope ?? (await session.repository.getScope());
@@ -168,7 +174,11 @@ async function applyStaged(
       ? await reanchorRestored(session.repository)(staged, reanchorTo)
       : undefined;
   const changes = reanchored ? mergeChangeSets(staged, reanchored) : staged;
-  const inverse = await session.history.apply(changes, options);
+  const { unsavedMark, step } = options;
+  const inverse = await session.history.apply(changes, {
+    unsavedMark,
+    step: typeof step === 'function' ? step(changes) : step,
+  });
   return { changes, inverse };
 }
 
@@ -344,11 +354,12 @@ export class AnalysisSessions {
     command: (buffer: ChangeBuffer, session: Session) => Promise<void | readonly Book[]>,
     options?: SessionEditOptions,
   ): Promise<CommandReply> {
-    const { changeId = crypto.randomUUID(), unsavedMark } = options ?? {};
+    const { changeId = crypto.randomUUID(), unsavedMark, step } = options ?? {};
     const reply = await this.once(sessionId, changeId, () =>
       this.runEdit(sessionId, async (session) => {
-        const editOptions: EditOptions = {
+        const editOptions = {
           unsavedMark: typeof unsavedMark === 'function' ? unsavedMark(session) : unsavedMark,
+          step,
         };
         const buffer = new ChangeBuffer(session.repository);
         const reanchorTo = await command(buffer, session);
@@ -484,12 +495,14 @@ export class AnalysisSessions {
   private moveThroughHistory(
     sessionId: string,
     changeId: string,
-    move: (history: EditHistory) => Promise<AppliedChange | undefined>,
+    move: (history: EditHistory) => Promise<HistoryMove | undefined>,
   ): Promise<CommandReply | undefined> {
     return this.once(sessionId, changeId, () =>
       this.runEdit(sessionId, async (session) => {
-        const applied = await move(session.history);
-        return applied && replyTo(this.host, session, applied, changeId);
+        const moved = await move(session.history);
+        if (!moved) return undefined;
+        const reply = await replyTo(this.host, session, moved, changeId);
+        return moved.step ? { ...reply, step: moved.step } : reply;
       }),
     );
   }

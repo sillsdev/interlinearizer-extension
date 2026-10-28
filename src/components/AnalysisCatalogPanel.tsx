@@ -41,7 +41,7 @@ import { useInterlinearNav } from './InterlinearNavContext';
 import useDraftDiscardGate from '../hooks/useDraftDiscardGate';
 import useRowSelection from '../hooks/useRowSelection';
 import useRowWindow from '../hooks/useRowWindow';
-import type { StepSummary } from '../hooks/useDraftProject';
+import type { StepSummary } from '../types/edit-step';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import {
   DELETION_ANNOUNCEMENT_STRING_KEYS,

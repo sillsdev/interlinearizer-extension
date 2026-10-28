@@ -228,6 +228,24 @@ describe('readSegmentPage', () => {
     });
   });
 
+  it('spans each phrase touching the range with every member the book holds, wherever it sits', async () => {
+    const phrase = makePhraseLink('pl', [ref('God'), ref('light'), 'GEN 1:9:0']);
+    const repository = await repositoryOver({
+      phraseAnalyses: [{ id: 'pl', ...FIXTURE_STAMPS, surfaceText: 'God light' }],
+      phraseAnalysisLinks: [phrase, makePhraseLink('pl-in', [ref('In'), ref('beginning')])],
+    });
+    const [, light] = book.segments[2].tokens;
+
+    const page = await readSegmentPage(repository, book, 1, 2);
+
+    expect(page.analysis?.phraseSpans).toStrictEqual({
+      pl: [
+        { token: book.segments[1].tokens[0], segmentId: 'GEN 1:2', docOrder: 3 },
+        { token: light, segmentId: 'GEN 1:3', docOrder: 6, gapText: ' ' },
+      ],
+    });
+  });
+
   describe('stale free translations', () => {
     async function pageWith(segmentId: string, start: number) {
       const repository = await repositoryOver(staleTranslation(segmentId));

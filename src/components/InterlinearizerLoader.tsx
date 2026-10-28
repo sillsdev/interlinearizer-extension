@@ -1424,8 +1424,8 @@ function InterlinearizerLoaderInner({
 
   /**
    * Resets the chosen scope to the active project's stored content, or empties it when no project
-   * is active. When the stored content can't be read, it notifies the user and leaves the draft
-   * untouched. Either way, the dialog closes once the discard ends.
+   * is active. When the stored content can't be read, or the discard fails, it notifies the user
+   * and leaves the draft untouched. Either way, the dialog closes once the discard ends.
    */
   const handleDiscardChangesConfirm = useCallback(
     (scope: DiscardScope) =>
@@ -1456,6 +1456,17 @@ function InterlinearizerLoaderInner({
           // Match 'all' explicitly rather than via an else, so a future scope can't fall through to
           // the whole-draft discard.
           if (scope === 'all') discardAll(saved);
+          /* v8 ignore start -- defensive: restoring validated content has no known way to throw, but
+             a failure must not close the dialog silently */
+        } catch (e) {
+          logger.error('Interlinearizer: failed to discard changes', e);
+          await papi.notifications
+            .send({
+              message: '%interlinearizer_error_discardChanges_unexpected%',
+              severity: 'error',
+            })
+            .catch(() => {});
+          /* v8 ignore stop */
         } finally {
           setDiscardChangesModalOpen(false);
         }

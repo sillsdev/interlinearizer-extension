@@ -330,6 +330,7 @@
       "%interlinearizer_error_save_draft_failed%": "Could not save your working draft. Please try again.",
       "%interlinearizer_error_save_analysis_failed%": "Could not save your analysis. Please try again.",
       "%interlinearizer_error_discardChanges_failed%": "The saved project could not be read, so no changes were discarded.",
+      "%interlinearizer_error_discardChanges_unexpected%": "Something went wrong, so no changes were discarded.",
       "%interlinearizer_error_save_project_missing%": "The project you were saving to no longer exists. Use Save As to save your work to another project.",
       "%interlinearizer_info_save_in_progress%": "A save is in progress. Try again when it finishes.",
       "%interlinearizer_status_saving%": "Saving…",

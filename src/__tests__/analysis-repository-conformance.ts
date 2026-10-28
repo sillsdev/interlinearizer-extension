@@ -1192,6 +1192,18 @@ export function describeAnalysisRepositoryConformance(
         expect(dirty).toBe(false);
       });
 
+      it('keeps the clean mark markClean left after a load when asked to keep the mark', async () => {
+        await (await store.open(SOURCE)).replaceAll({ ...exodusOnlyDraft(), dirty: true });
+        const repository = await store.open(SOURCE);
+        await repository.exportAll();
+        await repository.markClean();
+
+        await repository.apply(translatingExodus(), { keepDirty: true });
+
+        const { dirty } = await reload(store);
+        expect(dirty).toBe(false);
+      });
+
       it('leaves the draft unsaved when undoing an edit made before it was marked clean', async () => {
         const repository = await store.open(SOURCE);
         await repository.replaceAll(exodusOnlyDraft());

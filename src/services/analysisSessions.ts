@@ -207,8 +207,9 @@ export class AnalysisSessions {
    * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
    * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
    * Opening closes the source's earlier session, if any. The new session starts on what storage
-   * holds, with nothing to undo. Opening also starts a fresh read of the source's whole text, which
-   * lasts until the session closes.
+   * holds, with nothing to undo. Its first command waits while the repository builds its indexes.
+   * Opening also starts a fresh read of the source's whole text, which lasts until the session
+   * closes.
    *
    * The session starts on the opened draft's first analysis language. When the draft lists none, it
    * starts on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the
@@ -241,6 +242,8 @@ export class AnalysisSessions {
       const entry: OpenSession = { session, queue: Promise.resolve(), replies: new Map() };
       this.sessions.set(session.id, entry);
       this.sessionsBySource.set(sourceProjectId, entry);
+      // Builds the indexes ahead of the first command; the next lookup retries a failed build.
+      this.run(session.id, () => repository.getScope()).catch(() => {});
       await this.host.startTextRead(sourceProjectId);
       return {
         sessionId: session.id,

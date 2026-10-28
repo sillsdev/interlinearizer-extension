@@ -547,17 +547,38 @@ describe('DraftRepository', () => {
       },
     );
 
-    it('read the draft again after exportAll', async () => {
+    it('answer from what exportAll loaded, reading nothing more', async () => {
+      const { storage } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.exportAll();
+      const read = jest.spyOn(storage, 'read');
+
+      await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toHaveLength(1);
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it('answer from what exportAll loaded, not from what an earlier lookup kept', async () => {
       const { storage } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.replaceAll(twoBookDraft());
       await repository.findLinksInBooks(['GEN']);
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(emptyDraft('src'));
+
       await repository.exportAll();
-      const read = jest.spyOn(storage, 'read');
 
-      await repository.findLinksInBooks(['GEN']);
+      await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toEqual([]);
+    });
 
-      expect(read).toHaveBeenCalled();
+    it('are unchanged by changes to the draft exportAll returned', async () => {
+      const { storage } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      const { draft } = await repository.exportAll();
+
+      draft.analysis.tokenAnalyses.length = 0;
+
+      await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toHaveLength(1);
     });
 
     it('read the draft again after a whole save', async () => {

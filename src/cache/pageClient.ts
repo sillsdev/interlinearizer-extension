@@ -6,7 +6,7 @@ import { RecordCache, type Refetch } from './recordCache';
 /** How many segments one page holds; pages start at multiples of it. */
 export const PAGE_SIZE = 32;
 
-/** The waits before each retry of a failed page load; the page is given up after the last. */
+/** The waits before each retry of a failed load; the load is given up after the last. */
 export const PAGE_RETRY_DELAYS_MS: readonly number[] = [1000, 4000, 16000];
 
 /** A view whose latest page range is reloaded after the outline changes. */
@@ -62,6 +62,9 @@ export class PageClient {
 
   private readonly inFlight = new Set<number>();
 
+  /** The pages in flight that a change has since left out of date, to fetch again once they land. */
+  private readonly dirty = new Set<number>();
+
   private readonly failed = new Set<number>();
 
   /** Every fetch under way, so {@link PageClient.settled} can wait for them. */
@@ -109,14 +112,7 @@ export class PageClient {
    * @throws If the source has no text for the book, or the outline cannot be read.
    */
   async open(): Promise<void> {
-    const outline = await this.source.getOutline();
-    if (!outline) throw new Error('Interlinearizer: the source has no text for the book');
-    this.outlineCount += 1;
-    if (this.cacheHeld) this.cacheHeld.replaceOutline(outline);
-    else this.cacheHeld = new RecordCache(outline);
-    this.failed.clear();
-    this.changed();
-    this.ranges.forEach(({ start, end }) => this.fetchMissing(start, end));
+    this.takeOutline(await this.readOutline());
   }
 
   /**
@@ -155,8 +151,9 @@ export class PageClient {
   }
 
   /**
-   * Takes in a change that the session reported, and fetches again what the change names in this
-   * book. A change whose reply was applied here is skipped, because its records are already held.
+   * Takes in a change that the session reported, and fetches again whatever the change leaves out
+   * of date in this book. A change whose reply was applied here is skipped, because its records are
+   * already held.
    */
   hear(change: AnalysisChange & { changeId: ChangeId }): void {
     const cache = this.cacheHeld;
@@ -166,8 +163,19 @@ export class PageClient {
       this.refetch('outline');
       return;
     }
-    book?.ranges?.forEach(({ start, end }) => this.refetchHeld(start, end));
-    if (change.analysisIds.length > 0) this.refetchHeld(0, cache.outline.segments.length);
+    if (book && change.queries.includes('getStaleSummary')) {
+      this.refetch('placement');
+      return;
+    }
+    const indexes = [
+      ...(book?.ranges ?? []).flatMap(({ start, end }) =>
+        Array.from({ length: end - start }, (_unused, i) => start + i),
+      ),
+      ...cache.heldIndexesReading(change.analysisIds, change.forms),
+    ];
+    new Set(indexes.map((index) => Math.floor(index / this.pageSize))).forEach((pageIndex) => {
+      if (cache.holds(pageIndex * this.pageSize)) this.fetchAgain(pageIndex);
+    });
   }
 
   /** Calls `listener` whenever what the client holds changes, until the returned function is called. */
@@ -184,17 +192,53 @@ export class PageClient {
     }
   }
 
-  private refetch(refetch: Refetch): void {
-    if (refetch === 'outline') this.track(this.open());
-    else if (refetch === 'pages') this.refetchHeld(0, this.held.outline.segments.length);
+  /** @throws If the source has no text for the book, or the outline cannot be read. */
+  private async readOutline(): Promise<BookOutline> {
+    const outline = await this.source.getOutline();
+    if (!outline) throw new Error('Interlinearizer: the source has no text for the book');
+    return outline;
   }
 
-  /** Fetches again each held page with a segment in `[start, end)`. */
-  private refetchHeld(start: number, end: number): void {
-    const cache = this.held;
-    this.pagesCovering(start, end)
-      .filter((pageIndex) => cache.holds(pageIndex * this.pageSize))
-      .forEach((pageIndex) => this.fetchPage(pageIndex));
+  /**
+   * Takes `outline`, letting go of every held page, then loads the latest range each view asked
+   * for.
+   */
+  private takeOutline(outline: BookOutline): void {
+    this.outlineCount += 1;
+    if (this.cacheHeld) this.cacheHeld.replaceOutline(outline);
+    else this.cacheHeld = new RecordCache(outline);
+    this.failed.clear();
+    this.changed();
+    this.ranges.forEach(({ start, end }) => this.fetchMissing(start, end));
+  }
+
+  /**
+   * Reads the outline again and takes its orphaned-card counts, or the whole outline when it
+   * differs from the held one in more than those counts.
+   *
+   * @throws If the source has no text for the book, or the outline cannot be read.
+   */
+  private async takeCounts(): Promise<void> {
+    const outline = await this.readOutline();
+    if (this.held.takeCounts(outline)) this.changed();
+    else this.takeOutline(outline);
+  }
+
+  private refetch(refetch: Refetch): void {
+    if (refetch === 'outline') this.track(this.open());
+    else if (refetch !== 'none') {
+      if (refetch === 'placement') this.track(this.takeCounts());
+      const cache = this.held;
+      this.pagesCovering(0, cache.outline.segments.length)
+        .filter((pageIndex) => cache.holds(pageIndex * this.pageSize))
+        .forEach((pageIndex) => this.fetchAgain(pageIndex));
+    }
+  }
+
+  /** Fetches the page at `pageIndex` again, once any fetch of it in flight has landed. */
+  private fetchAgain(pageIndex: number): void {
+    if (this.inFlight.has(pageIndex)) this.dirty.add(pageIndex);
+    else this.fetchPage(pageIndex);
   }
 
   private fetchMissing(start: number, end: number): void {
@@ -215,6 +259,7 @@ export class PageClient {
 
   private fetchPage(pageIndex: number, attempt = 0): void {
     this.inFlight.add(pageIndex);
+    this.dirty.delete(pageIndex);
     this.track(this.fetchPageNow(pageIndex, attempt));
   }
 
@@ -240,13 +285,17 @@ export class PageClient {
       return;
     }
     this.inFlight.delete(pageIndex);
-    if (outlineAt !== this.outlineCount) return;
+    if (outlineAt !== this.outlineCount) {
+      this.ranges.forEach((range) => this.fetchMissing(range.start, range.end));
+      return;
+    }
     if (!page || page.textVersion !== cache.outline.textVersion) {
       this.refetch('outline');
       return;
     }
     cache.absorb(page, sentAt);
     this.changed();
+    if (this.dirty.has(pageIndex)) this.fetchPage(pageIndex);
   }
 
   private track(work: Promise<unknown>): void {

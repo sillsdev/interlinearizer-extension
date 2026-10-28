@@ -13,6 +13,8 @@ export type CommandReply = {
   changeId: ChangeId;
   /** The changes applied, naming the edit's intent. */
   changes: ChangeSet;
+  /** The books whose boundaries the changes moved. */
+  resegmentedBooks: string[];
   /**
    * For an undo or redo, the step that the edit was recorded as; absent when it was recorded with
    * none.

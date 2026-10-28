@@ -2,22 +2,11 @@ import papi, { logger } from '@papi/frontend';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment, SegmentationDelta } from 'interlinearizer';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { PAGE_RETRY_DELAYS_MS, PAGE_SIZE, type PageCaller } from '../cache/pageClient';
 import type { BookOutline, OutlineSegment, SegmentPage } from '../types/segment-pages';
 import { perfTime, perfTrack } from '../utils/perf-marks';
 import useLatestRef from './useLatestRef';
 import { EXTEND_CHUNK, INITIAL_WINDOW_HALF, findAnchorIndex } from './useSegmentWindow';
-
-/** How many segments one page holds; pages start at multiples of it. */
-export const PAGE_SIZE = 32;
-
-/**
- * How long an outline or page that failed to load waits before each retry, given up once these run
- * out.
- */
-export const PAGE_RETRY_DELAYS_MS: readonly number[] = [1000, 4000, 16000];
-
-/** A view whose latest page range is kept loaded across outlines. */
-export type PageCaller = 'list' | 'strip';
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {

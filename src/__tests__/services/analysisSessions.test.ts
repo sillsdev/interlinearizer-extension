@@ -611,6 +611,7 @@ describe('AnalysisSessions', () => {
         changes: { intent: 'nothing' },
         poolBuckets: {},
         poolAnalyses: [],
+        resegmentedBooks: [],
       });
 
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
@@ -975,6 +976,7 @@ describe('AnalysisSessions', () => {
         changeId: 'change-1',
         books: [{ bookId: 'GEN', ranges: [{ start: 1, end: 2 }] }],
         analysisIds: ['ta'],
+        forms: ['ta'],
         queries: ['getCatalogRows', 'getConcordance'],
       });
     });
@@ -1071,6 +1073,7 @@ describe('AnalysisSessions', () => {
         changeId: expect.any(String),
         books: [{ bookId: 'GEN', ranges: [{ start: 0, end: 1 }] }],
         analysisIds: ['ta'],
+        forms: [],
         queries: ['getCatalogRows', 'getConcordance'],
       });
     });
@@ -1116,6 +1119,7 @@ describe('AnalysisSessions', () => {
           changeId: expect.any(String),
           books: [{ bookId: 'GEN' }],
           analysisIds: ['ta'],
+          forms: [],
           queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
         });
       });
@@ -1131,6 +1135,7 @@ describe('AnalysisSessions', () => {
           changeId: expect.any(String),
           books: [{ bookId: 'GEN' }],
           analysisIds: [],
+          forms: [],
           queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
         });
       });

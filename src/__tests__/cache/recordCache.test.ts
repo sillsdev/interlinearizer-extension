@@ -1,9 +1,10 @@
 /// <reference types="jest" />
 
+import * as discardCommands from '../../services/commands/discardCommands';
 import * as freeTranslationCommands from '../../services/commands/freeTranslationCommands';
 import { RecordCache } from '../../cache/recordCache';
-import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
-import { comparable, GLOSSED, glossing, NOW, ref, sessionOver } from './session-source';
+import { FIXTURE_STAMPS, makePhraseLink, makeVerseBook } from '../test-helpers';
+import { BOOK, comparable, GLOSSED, glossing, NOW, ref, sessionOver } from './session-source';
 
 describe('RecordCache', () => {
   it('serves the pages it took in as they were fetched', async () => {
@@ -68,7 +69,7 @@ describe('RecordCache', () => {
     expect(cache.apply(reply)).toBe('outline');
   });
 
-  it('asks for the outline again once a reply reaches a stale free translation', async () => {
+  it('asks for its pages and counts again once a reply reaches a stale free translation', async () => {
     const { fetchPage, outline, edit } = await sessionOver({
       segmentAnalyses: [
         { id: 'sa-1', ...FIXTURE_STAMPS, surfaceText: 'x', freeTranslation: { en: 'old' } },
@@ -99,7 +100,19 @@ describe('RecordCache', () => {
       }),
     );
 
-    expect(cache.apply(reply)).toBe('outline');
+    expect(cache.apply(reply)).toBe('placement');
+  });
+
+  it('asks for nothing when the first reply naming boundaries leaves them as they were', async () => {
+    const { fetchPage, outline, edit } = await sessionOver();
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 3), cache.revision);
+
+    const reply = await edit('rescope', async (buffer) => {
+      buffer.putScope({ ...(await buffer.getScope()), analysisLanguages: ['fr'] });
+    });
+
+    expect(cache.apply(reply)).toBe('none');
   });
 });
 
@@ -167,7 +180,7 @@ describe('RecordCache with phrases and stale translations', () => {
     expect(cache.apply(reply)).toBe('pages');
   });
 
-  it('asks for the outline again once a reply removes a stale translation it holds', async () => {
+  it('asks for its pages and counts again once a reply removes a stale translation it holds', async () => {
     const { fetchPage, outline, edit } = await sessionOver(phrased);
     const cache = new RecordCache(outline);
     cache.absorb(await fetchPage(0, 3), cache.revision);
@@ -177,21 +190,7 @@ describe('RecordCache with phrases and stale translations', () => {
       buffer.delete('segmentAnalysisLinks', link);
     });
 
-    expect(cache.apply(reply)).toBe('outline');
-  });
-
-  it('asks for nothing when a reply names the boundaries the book already has', async () => {
-    const { fetchPage, outline, edit } = await sessionOver();
-    const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
-    const rescope = (languages: string[]) =>
-      edit('rescope', async (buffer) => {
-        buffer.putScope({ ...(await buffer.getScope()), analysisLanguages: languages });
-      });
-
-    cache.apply(await rescope(['fr']));
-
-    expect(cache.apply(await rescope(['de']))).toBe('none');
+    expect(cache.apply(reply)).toBe('placement');
   });
 
   it('lets go of its pages when it takes a new outline', async () => {
@@ -203,6 +202,72 @@ describe('RecordCache with phrases and stale translations', () => {
 
     expect(cache.holds(0)).toBe(false);
     expect(cache.outline).toBe(outline);
+  });
+
+  it('spans a phrase over only the words the text still holds once it takes a new outline', async () => {
+    const shortened = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 1:2', text: 'And the earth' },
+      { sid: 'GEN 1:3', text: 'And God said' },
+    ]);
+    const { fetchPage, fetchOutline, outline } = await sessionOver({
+      phraseAnalyses: [{ id: 'pa', ...FIXTURE_STAMPS, surfaceText: 'beginning God' }],
+      phraseAnalysisLinks: [phrase([ref('beginning'), ref('God')])],
+    });
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 1), cache.revision);
+
+    cache.replaceOutline(await fetchOutline(shortened));
+    cache.absorb(await fetchPage(0, 1, shortened), cache.revision);
+
+    expect(comparable(cache.pageAt(0, 1))).toStrictEqual(
+      comparable(await fetchPage(0, 1, shortened)),
+    );
+  });
+
+  it('takes the counts of an outline that cuts the book as the held one does, keeping its pages', async () => {
+    const { fetchPage, outline } = await sessionOver(phrased);
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 3), cache.revision);
+    const recounted = {
+      ...outline,
+      segments: outline.segments.map((segment) => ({ ...segment, orphanedCardCount: 2 })),
+    };
+
+    expect(cache.takeCounts(recounted)).toBe(true);
+    expect(cache.outline).toBe(recounted);
+    expect(cache.holds(0)).toBe(true);
+  });
+
+  it('takes nothing from an outline that cuts the book otherwise', async () => {
+    const { fetchPage, outline } = await sessionOver(phrased);
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 3), cache.revision);
+
+    expect(cache.takeCounts({ ...outline, textVersion: 'other' })).toBe(false);
+    expect(cache.outline).toBe(outline);
+  });
+
+  it('names the held segments whose pages read an analysis', async () => {
+    const { fetchPage, outline } = await sessionOver(phrased);
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 3), cache.revision);
+
+    expect(cache.heldIndexesReading(['ta-god'], [])).toStrictEqual([0]);
+    expect(cache.heldIndexesReading([phrased.phraseAnalysisLinks[0].analysisId], [])).toStrictEqual(
+      [0],
+    );
+    expect(cache.heldIndexesReading(['sa-2'], [])).toStrictEqual([1]);
+    expect(cache.heldIndexesReading(['sa-9'], [])).toStrictEqual([2]);
+    expect(cache.heldIndexesReading(['ta-elsewhere'], [])).toStrictEqual([]);
+  });
+
+  it('names the held segments whose pages read the pool bucket of a form', async () => {
+    const { fetchPage, outline } = await sessionOver(phrased);
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 3), cache.revision);
+
+    expect(cache.heldIndexesReading([], ['god'])).toStrictEqual([0, 2]);
   });
 });
 
@@ -222,7 +287,7 @@ describe('RecordCache and free translations', () => {
     ],
   };
 
-  it('applies a new free translation and the removal of one it never held without fetching again', async () => {
+  it('applies a new free translation without fetching again', async () => {
     const { fetchPage, outline, edit } = await sessionOver(translated);
     const cache = new RecordCache(outline);
     cache.absorb(await fetchPage(0, 2), cache.revision);
@@ -238,14 +303,22 @@ describe('RecordCache and free translations', () => {
         now: NOW,
       }),
     );
+
+    expect(cache.apply(written)).toBe('none');
+    expect(comparable(cache.pageAt(0, 2))).toStrictEqual(comparable(await fetchPage(0, 2)));
+  });
+
+  it('asks for its pages and counts again once a reply removes a free translation it never held', async () => {
+    const { fetchPage, outline, edit } = await sessionOver(translated);
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 2), cache.revision);
+
     const removed = await edit('remove', async (buffer) => {
       const [link] = await buffer.findLinksBySegment(['GEN 1:3']);
       buffer.delete('segmentAnalysisLinks', link);
     });
 
-    expect(cache.apply(written)).toBe('none');
-    expect(cache.apply(removed)).toBe('none');
-    expect(comparable(cache.pageAt(0, 2))).toStrictEqual(comparable(await fetchPage(0, 2)));
+    expect(cache.apply(removed)).toBe('placement');
   });
 
   it('lets go of a record a page fetched later no longer holds', async () => {
@@ -257,5 +330,71 @@ describe('RecordCache and free translations', () => {
     cache.absorb(await fetchPage(0, 3), cache.revision);
 
     expect(comparable(cache.pageAt(0, 3))).toStrictEqual(comparable(await fetchPage(0, 3)));
+  });
+});
+
+describe('RecordCache and discards', () => {
+  const analyzed = {
+    ...GLOSSED,
+    phraseAnalyses: [{ id: 'pa', ...FIXTURE_STAMPS, surfaceText: 'the earth' }],
+    phraseAnalysisLinks: [
+      { ...makePhraseLink('pl', [ref('the'), ref('beginning')]), analysisId: 'pa' },
+    ],
+    segmentAnalyses: [
+      { id: 'sa-2', ...FIXTURE_STAMPS, surfaceText: 'And the earth', freeTranslation: { en: 'x' } },
+    ],
+    segmentAnalysisLinks: [
+      {
+        id: 'sl-2',
+        analysisId: 'sa-2',
+        segmentId: 'GEN 1:2',
+        status: 'approved' as const,
+        ...FIXTURE_STAMPS,
+      },
+    ],
+  };
+
+  it('gives the pages a refetch gives once a reply discards the book', async () => {
+    const { fetchPage, outline, edit } = await sessionOver(analyzed);
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 3), cache.revision);
+
+    const reply = await edit('discardBook', async (buffer, session) => {
+      discardCommands.discardBook(buffer, await session.repository.exportAll(), 'GEN', undefined);
+      return { reanchorTo: [BOOK] };
+    });
+
+    expect(cache.apply(reply)).toBe('none');
+    expect(comparable(cache.pageAt(0, 3))).toStrictEqual(comparable(await fetchPage(0, 3)));
+  });
+
+  it('gives the pages a refetch gives once a reply discards every change', async () => {
+    const { fetchPage, outline, edit } = await sessionOver(analyzed);
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 3), cache.revision);
+
+    const reply = await edit('discardAll', async (buffer, session) => {
+      discardCommands.discardAll(buffer, await session.repository.exportAll(), undefined);
+      return { reanchorTo: [BOOK] };
+    });
+
+    expect(cache.apply(reply)).toBe('none');
+    expect(comparable(cache.pageAt(0, 3))).toStrictEqual(comparable(await fetchPage(0, 3)));
+  });
+
+  it('asks for the outline again once a discard restores the boundaries', async () => {
+    const { fetchPage, outline, edit } = await sessionOver(analyzed, {
+      removedVerseStarts: [],
+      addedStarts: [{ tokenRef: ref('beginning'), surfaceText: 'beginning' }],
+    });
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 3), cache.revision);
+
+    const reply = await edit('discardBook', async (buffer, session) => {
+      discardCommands.discardBook(buffer, await session.repository.exportAll(), 'GEN', undefined);
+      return { reanchorTo: [BOOK] };
+    });
+
+    expect(cache.apply(reply)).toBe('outline');
   });
 });

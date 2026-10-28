@@ -16,7 +16,7 @@ import type {
 import { performance } from 'perf_hooks';
 import { resegmentBook } from '../../src/parsers/papi/resegmentBook';
 import { PageClient } from '../../src/cache/pageClient';
-import { booksResegmented, rangesOf } from '../../src/services/analysisChanges';
+import { booksResegmentedBetween, rangesOf } from '../../src/services/analysisChanges';
 import {
   AnalysisSessions,
   type Session,
@@ -25,6 +25,7 @@ import {
 import { ApprovalRuleError } from '../../src/services/commands/approvalRule';
 import * as boundaryCommands from '../../src/services/commands/boundaryCommands';
 import type { ChangeBuffer } from '../../src/services/commands/changeBuffer';
+import * as discardCommands from '../../src/services/commands/discardCommands';
 import * as catalogCommands from '../../src/services/commands/catalogCommands';
 import * as freeTranslationCommands from '../../src/services/commands/freeTranslationCommands';
 import * as phraseCommands from '../../src/services/commands/phraseCommands';
@@ -498,7 +499,7 @@ function expectedChange(
   const segmentLinks = [...segmentLinksWere, ...segmentLinksAre];
   const links: AnalysisLink[] = [...tokenLinks, ...phraseLinks, ...segmentLinks];
   const payloadIds = [...tokenPayloads, ...segmentPayloads, ...phrasePayloads].map(({ id }) => id);
-  const whole = new Set(booksResegmented(before.segmentation, after.segmentation));
+  const whole = new Set(booksResegmentedBetween(before.segmentation, after.segmentation));
   const indexes = new Map<string, Set<number>>();
   const mark = (bookId: string, index: number | undefined) => {
     if (whole.has(bookId)) return;
@@ -622,6 +623,7 @@ async function checkEvents(
     return w.slice(1).map((t, i) => [w[i], t]);
   });
   const now = () => new Date().toISOString();
+  const saved = { analysis: draft.analysis, segmentation: draft.segmentation };
   const ids = () => ({
     analysisId: crypto.randomUUID(),
     linkId: crypto.randomUUID(),
@@ -741,6 +743,18 @@ async function checkEvents(
         await catalogCommands.deleteAnalyses(buffer, {
           analysisIds: [pick(rng, current.analysis.tokenAnalyses).id],
         });
+      },
+    ],
+    [
+      'discardBook',
+      async (buffer, current) => {
+        const { changedBooks } = discardCommands.discardBook(
+          buffer,
+          { draft: current, unreadableBooks: [] },
+          viewBook.bookRef,
+          saved,
+        );
+        return books.filter(({ bookRef }) => changedBooks.includes(bookRef));
       },
     ],
     [

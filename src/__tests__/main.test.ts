@@ -2713,6 +2713,139 @@ describe('main', () => {
       expect(bookService.heldBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
     });
 
+    describe('the steps undo hands back', () => {
+      const tokenIn = {
+        tokenAnalyses: [{ id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'at' } }],
+        tokenAnalysisLinks: [
+          {
+            id: 'tl-in',
+            analysisId: 'ta-in',
+            ...FIXTURE_STAMPS,
+            status: 'approved' as const,
+            token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+          },
+        ],
+      };
+      const inThe = [
+        { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+        { tokenRef: 'GEN 1:1:3', surfaceText: 'the' },
+      ];
+
+      /** The step that undoing the latest edit of `sessionId` hands back. */
+      async function undoneStep(
+        undoEdit: (sessionId: string) => Promise<string | undefined>,
+        sessionId: string,
+      ) {
+        return JSON.parse((await undoEdit(sessionId)) ?? '{}').step;
+      }
+
+      it('places a token edit at its token', async () => {
+        const { openSession, writeGloss, undoEdit } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+        await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'at');
+
+        await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+          location: 'GEN 1:1:0',
+        });
+      });
+
+      it("places a phrase edit at the phrase's first token", async () => {
+        const { openSession, createPhrase, deletePhrase, undoEdit } =
+          await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+        const { changes } = JSON.parse(await createPhrase(sessionId, inThe));
+        await deletePhrase(sessionId, changes.phraseAnalysisLinks.puts[0].id);
+
+        await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+          location: 'GEN 1:1:0',
+        });
+        await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+          location: 'GEN 1:1:0',
+        });
+      });
+
+      it("places a reshaping that empties a phrase at the phrase's first token", async () => {
+        const { openSession, createPhrase, updatePhrase, undoEdit } =
+          await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+        const { changes } = JSON.parse(await createPhrase(sessionId, inThe));
+        await updatePhrase(sessionId, changes.phraseAnalysisLinks.puts[0].id, []);
+
+        await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+          location: 'GEN 1:1:0',
+        });
+      });
+
+      it('places a free-translation edit at its segment', async () => {
+        const { openSession, writeSegmentFreeTranslation, undoEdit } =
+          await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+        await writeSegmentFreeTranslation(sessionId, 'GEN 1:2', 'And the earth', 'x');
+
+        await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+          location: 'GEN 1:2',
+        });
+      });
+
+      it('names a catalog edit by its row and the analysis it leaves holding it', async () => {
+        await seedDraft(tokenIn);
+        const { openSession, writeAnalysisGloss, undoEdit } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+        await writeAnalysisGloss(sessionId, 'ta-in', 'into');
+
+        await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+          summary: {
+            kind: 'catalogEdit',
+            form: 'In',
+            analysisId: 'ta-in',
+            survivingAnalysisId: 'ta-in',
+          },
+        });
+      });
+
+      it('names a deletion by the form and uses of what it deleted', async () => {
+        await seedDraft(tokenIn);
+        const { openSession, deleteAnalyses, undoEdit } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+        await deleteAnalyses(sessionId, ['ta-in']);
+
+        await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+          summary: { kind: 'catalogDelete', form: 'In', analysisId: 'ta-in', count: 1 },
+        });
+      });
+
+      it('names a gloss clear by how many analyses it cleared', async () => {
+        await seedDraft(tokenIn);
+        const { openSession, clearAnalysisGlosses, undoEdit } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+        await clearAnalysisGlosses(sessionId, ['ta-in']);
+
+        await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+          summary: { kind: 'catalogClearGlossChecked', count: 1 },
+        });
+      });
+
+      it('names a discard by what it discarded', async () => {
+        await seedDraft(tokenIn);
+        const { openSession, discardBook, undoEdit } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+        await discardBook(sessionId, 'GEN');
+
+        await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
+          summary: { kind: 'discardBook', book: 'GEN' },
+        });
+      });
+
+      it('names no step for a stale edit, as the view makes it at no place', async () => {
+        await seedDraft(staleToken);
+        const { openSession, discardStaleAnalysis, undoEdit } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession('src-project'));
+        await discardStaleAnalysis(sessionId, 'ta-in', 'GEN 1:1:0');
+
+        await expect(undoneStep(undoEdit, sessionId)).resolves.toBeUndefined();
+      });
+    });
+
     it('logs the error and rethrows when an edit fails', async () => {
       const { writeGloss } = await activateSessionCommands();
 

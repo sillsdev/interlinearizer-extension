@@ -22,7 +22,7 @@ import { AnalysisStoreProvider, useGlossDispatch } from '../../components/Analys
 import { SourceTextContext } from '../../components/SourceTextContext';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import type { SourceText } from '../../hooks/useSourceTextReader';
-import type { StepSummary } from '../../hooks/useDraftProject';
+import type { StepSummary } from '../../types/edit-step';
 import { emptyAnalysis } from '../../types/empty-factories';
 import type { HeadingPlacement } from '../../utils/analysis-query';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';

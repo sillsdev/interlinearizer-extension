@@ -1,5 +1,6 @@
 import type {
   Book,
+  PhraseAnalysisLink,
   Segment,
   SegmentAnalysis,
   SegmentAnalysisLink,
@@ -9,12 +10,14 @@ import type { AnalysisRepository } from '../types/analysis-repository';
 import type { AppliedChange } from './analysisChanges';
 import type {
   BookOutline,
+  PhraseSpanToken,
   PlacedFreeTranslations,
   PoolRead,
   SegmentPage,
 } from '../types/segment-pages';
 import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
+import { bookIndexesOf } from '../utils/book-indexes';
 import { buildBookOutline } from '../utils/book-outline';
 import { touched } from '../utils/change-set';
 import {
@@ -119,6 +122,29 @@ function placedAmong(
   return { bySegment, orphanedAfter, orphanedAhead };
 }
 
+/** For each of `links`, by id, the word tokens of the link that `book` holds, with where each sits. */
+function spansOf(
+  book: Book,
+  links: readonly PhraseAnalysisLink[],
+): Record<string, readonly PhraseSpanToken[]> {
+  const { wordTokenByRef, tokenSegmentMap, tokenDocOrder, gapTextByWordRef } = bookIndexesOf(
+    book.segments,
+  );
+  return Object.fromEntries(
+    links.map(({ id, tokens }) => [
+      id,
+      tokens.flatMap(({ tokenRef }): PhraseSpanToken[] => {
+        const token = wordTokenByRef.get(tokenRef);
+        const segmentId = tokenSegmentMap.get(tokenRef);
+        const docOrder = tokenDocOrder.get(tokenRef);
+        if (!token || segmentId === undefined || docOrder === undefined) return [];
+        const gapText = gapTextByWordRef.get(tokenRef);
+        return [{ token, segmentId, docOrder, ...(gapText !== undefined && { gapText }) }];
+      }),
+    ]),
+  );
+}
+
 /**
  * Outlines a book, counting the orphaned free-translation cards that the view shows beside each
  * segment. Each count takes in the cards after its segment; the first also takes in those ahead of
@@ -205,6 +231,7 @@ export async function readSegmentPage(
       ]),
       poolBuckets,
       staleFreeTranslations,
+      phraseSpans: spansOf(book, phraseAnalysisLinks),
     },
   };
 }

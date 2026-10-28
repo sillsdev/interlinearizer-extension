@@ -6,9 +6,9 @@ import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { FIXTURE_STAMPS, makeTokenLink } from '../test-helpers';
 import useDraftProject, {
   type DraftContent,
-  type StepSummary,
   type UseDraftProjectResult,
 } from '../../hooks/useDraftProject';
+import type { StepSummary } from '../../types/edit-step';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 

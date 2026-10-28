@@ -120,7 +120,7 @@ function unlinkedPayloads<Payload extends { id: string }>(
   return payloads.all().filter(({ id }) => !links.has('analysisId', id));
 }
 
-/** Whether any payload has no link referencing it, stopping at the first found. */
+/** Whether any payload has no link referencing it. */
 function hasUnlinkedPayload<Payload extends { id: string }>(
   payloads: PayloadTable<Payload>,
   links: LinkTable<{ id: string; analysisId: string }>,

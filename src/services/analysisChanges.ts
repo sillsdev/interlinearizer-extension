@@ -104,9 +104,10 @@ async function anyLinkedStale(
  *
  * The description names each segment on which the change put or removed links, at the place where
  * the view shows it. A book whose boundaries the change moved is named whole, as is a book that the
- * host holds no outline for. The description also names the analyses whose payloads or links the
- * change put or removed, and the cross-book queries that those analyses may change. It names the
- * forms whose pool buckets the change may have changed, too.
+ * host holds no outline for. Among the books that it names, the description flags each one where
+ * the change put or removed a stale free translation. The description also names the analyses whose
+ * payloads or links the change put or removed, and the cross-book queries that those analyses may
+ * change. It names the forms whose pool buckets the change may have changed, too.
  *
  * @throws Whatever the repository's lookups throw.
  */
@@ -157,13 +158,18 @@ export async function describeChange(
     markAt(bookOfRef(segmentId), (book) => freeTranslationIndex(book, segmentId)),
   );
 
+  const staleTranslationBooks = new Set(
+    segmentLinks
+      .filter(({ status }) => status === 'stale')
+      .map(({ segmentId }) => bookOfRef(segmentId)),
+  );
   const changedBooks: ChangedBook[] = [...new Set([...wholeBooks, ...indexesByBook.keys()])]
     .sort((a, b) => Canon.bookIdToNumber(a) - Canon.bookIdToNumber(b))
     .map((bookId) => {
       const indexes = indexesByBook.get(bookId);
-      return wholeBooks.has(bookId) || !indexes
-        ? { bookId }
-        : { bookId, ranges: rangesOf(indexes) };
+      const book: ChangedBook =
+        wholeBooks.has(bookId) || !indexes ? { bookId } : { bookId, ranges: rangesOf(indexes) };
+      return staleTranslationBooks.has(bookId) ? { ...book, staleTranslations: true } : book;
     });
 
   const queries: AnalysisQuery[] = [];

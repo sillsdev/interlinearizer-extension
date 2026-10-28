@@ -163,7 +163,7 @@ export class PageClient {
       this.refetch('outline');
       return;
     }
-    if (book && change.queries.includes('getStaleSummary')) {
+    if (book?.staleTranslations) {
       this.refetch('placement');
       return;
     }

@@ -62,6 +62,8 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     'Indexing every book of the source and deriving the concordance rows.',
   'bench.timings.text':
     "Filing every book's word forms in the host's form index, the books already tokenized.",
+  'bench.timings.apply':
+    "One edit applied through the host's draft repository, with its draft loaded and indexed and its storage in memory, the writes to storage included.",
   'bench.formsNotInText':
     "How many of the catalog's forms the text lacks, by the WebView's whole-text read and by the host's form index, and how many forms the two disagree on.",
   'app.textRead':
@@ -90,6 +92,7 @@ const SECTION_LABELS: Record<string, string> = {
   'timings.edit': 'Edit one gloss',
   'timings.concordance': 'Concordance',
   'timings.text': 'Form-in-text index',
+  'timings.apply': 'Apply one edit in the host',
 };
 
 /** Names for measured values, by their key; an unlisted value shows its key. */
@@ -130,6 +133,8 @@ const METRIC_LABELS: Record<string, string> = {
   readShards: 'Parse and merge shards',
   writeShards: 'Split and serialize shards',
   dispatch: 'Commit gloss and reselect',
+  link: "Change one link's status",
+  widePayload: 'Edit the most-linked payload',
   serializeDraft: 'Serialize draft',
   build: 'Build entries and rows',
   parsedDraftBytes: 'Parsed draft',

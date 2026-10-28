@@ -1,12 +1,12 @@
 # Performance harness
 
-Measures the extension rather than tests it: the data layer's pure functions in Node, and the extension running in the app.
+Measures the extension rather than tests it: the data layer in Node, and the extension running in the app.
 
 ## Commands
 
 - `npm run perf:capture` captures the WEB sample's USJ into `perf/.cache`.
 - `npm run perf:datasets` generates the seeded dataset tiers defined in `perf/dataset/tiers.ts`, capturing first when the cache holds no complete capture.
-- `npm run perf:bench` times the data layer's pure functions in Node.
+- `npm run perf:bench` times the data layer in Node: its pure functions, and an apply through the host's draft repository.
 - `npm run perf:app` times the extension in the app.
 - `npm run perf:summary` renders the newest results of each kind as markdown tables.
 - `npm run perf:shape -- <dataset>...` compares the shape of analyses; see [Dataset shape](#dataset-shape).

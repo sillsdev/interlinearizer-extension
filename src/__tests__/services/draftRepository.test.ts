@@ -2,7 +2,7 @@
 
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
-import { draftAnalysisKey, draftKey } from '../../services/storageKeys';
+import { draftAnalysisKey, draftJournalKey, draftKey } from '../../services/storageKeys';
 import type { ChangeSet } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
@@ -377,6 +377,37 @@ describe('DraftRepository', () => {
       expect(loaded.draft.analysis.segmentAnalysisLinks).toEqual(
         twoBookAnalysis().segmentAnalysisLinks,
       );
+    });
+
+    it('rewrites a book a failed apply wrote after a restart, though no later apply reaches it', async () => {
+      const { storage, records } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      const [payload] = twoBookAnalysis().tokenAnalyses;
+      const [phrase] = twoBookAnalysis().phraseAnalyses;
+      const { write: writeThrough } = storage;
+      const write = jest
+        .spyOn(storage, 'write')
+        .mockImplementation((key, data) =>
+          key === draftAnalysisKey('src', 'GEN')
+            ? Promise.reject(new Error('disk full'))
+            : writeThrough(key, data),
+        );
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).apply({
+          intent: 'writeGloss',
+          tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+        }),
+      ).rejects.toThrow('disk full');
+      write.mockRestore();
+
+      const restarted = new DraftRepository(storage, 'src', silentLogger());
+      await restarted.apply({
+        intent: 'writePhraseGloss',
+        phraseAnalyses: { puts: [{ ...phrase, gloss: { en: 'within' } }], deletes: [] },
+      });
+
+      expect(records.get(draftAnalysisKey('src', 'EXO'))).not.toContain('and then');
+      expect(records.has(draftJournalKey('src'))).toBe(false);
     });
 
     it('rewrites a book a failed apply wrote, though the next apply does not reach it', async () => {

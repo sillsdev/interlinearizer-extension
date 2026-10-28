@@ -57,6 +57,25 @@ export function measure<T>(
   return summarize(durations);
 }
 
+/** Times `run` as {@link measure} does, awaiting each call before timing the next. */
+export async function measureAsync<T>(
+  { runs, warmup }: { runs: number; warmup: number },
+  setup: (index: number) => T,
+  run: (input: T, index: number) => Promise<unknown>,
+): Promise<Timing> {
+  const durations: number[] = [];
+  for (let i = 0; i < warmup + runs; i += 1) {
+    const input = setup(i);
+    collectGarbage();
+    const start = performance.now();
+    // eslint-disable-next-line no-await-in-loop -- each run is timed on its own
+    await run(input, i);
+    const elapsed = performance.now() - start;
+    if (i >= warmup) durations.push(elapsed);
+  }
+  return summarize(durations);
+}
+
 /** Heap bytes `build`'s result keeps alive, measured across forced collections. */
 export function retainedBytes(build: () => unknown): number {
   collectGarbage();

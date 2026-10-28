@@ -53,6 +53,11 @@ interface ShardJournal {
    * read these, or the wipe that recorded them would undo itself.
    */
   removing: string[];
+  /**
+   * Books whose shard this save set out to rewrite. Until a save settles them, storage may hold
+   * changes there that the draft lacks, so each apply compares them as well. Absent means none.
+   */
+  unsettled?: string[];
 }
 
 /** A journal naming no shards, which is what a cleared or unusable one recovers as. */
@@ -67,7 +72,8 @@ function isShardJournal(value: unknown): value is ShardJournal {
     'adding' in value &&
     isStringArray(value.adding) &&
     'removing' in value &&
-    isStringArray(value.removing)
+    isStringArray(value.removing) &&
+    (!('unsettled' in value) || isStringArray(value.unsettled))
   );
 }
 
@@ -138,13 +144,6 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * {@link exportAll}, which reads storage afresh.
    */
   private current: IndexedDraft | undefined;
-
-  /**
-   * The partitions that a failed apply set out to rewrite. Storage may hold changes there that
-   * {@link current} lacks. Each later apply compares these partitions as well, until an apply
-   * succeeds.
-   */
-  private unsettledBooks = new Set<string>();
 
   constructor(storage: KeyValueStorage, sourceProjectId: string, logger: WarningLogger) {
     super();
@@ -267,7 +266,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     if (options?.discardUnreadable) this.unreadableShards.clear();
     const leftOut = [...this.unreadableShards].filter((bookCode) => byBook.has(bookCode));
     leftOut.forEach((bookCode) => byBook.delete(bookCode));
-    await this.writeDraft(draft, storedBooks, [...byBook.keys()], byBook);
+    const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
+    await this.writeDraft(draft, storedBooks, journaled, [...byBook.keys()], byBook);
     return leftOut;
   }
 
@@ -278,7 +278,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * unsaved unless `options` keeps the mark.
    *
    * After a failed apply, the next apply to succeed also restores any book the failure left out of
-   * step with the draft.
+   * step with the draft, even after a reload or a restart.
    *
    * What an apply stores matches a whole save of the same draft in content, not order. The manifest
    * may list the books in another order, and a link that a put moves into a book comes last in that
@@ -330,7 +330,6 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     if (!this.current) {
       const { draft } = await this.read(false);
       this.current = { draft, index: new AnalysisIndex(draft.analysis) };
-      this.unsettledBooks.clear();
     }
     return this.current;
   }
@@ -353,9 +352,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   /**
    * Saves `draft` over a stored draft whose manifest names `storedBooks`, as {@link replaceAll}
    * describes, taking each book's analysis from the `index` kept over it. Compares only the
-   * partitions in `reached`, those a failed apply left unsettled, and those this instance holds no
-   * saved content for, such as every book of a draft loaded inline. If the save fails, the
-   * partitions in `reached` stay unsettled.
+   * partitions in `reached`, those the shard journal names as unsettled, and those this instance
+   * holds no saved content for, such as every book of a draft loaded inline.
    *
    * @throws If storage rejects a read, or a write before the envelope lands.
    */
@@ -365,20 +363,19 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     reached: ReadonlySet<string>,
     storedBooks: readonly string[],
   ): Promise<void> {
-    const { shardContents: saved, unreadableShards: unreadable, unsettledBooks: unsettled } = this;
+    const { shardContents: saved, unreadableShards: unreadable } = this;
+    const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
     const { books, partitions } = perfTime('saveDraft:compare', () => {
       const keys = index.partitionKeys().filter((bookCode) => !unreadable.has(bookCode));
       const unsaved = keys.filter((bookCode) => !saved.has(bookCode));
       const compared = new Map<string, TextAnalysis>();
-      new Set([...reached, ...unsettled, ...unsaved]).forEach((bookCode) => {
+      new Set([...reached, ...(journaled.unsettled ?? []), ...unsaved]).forEach((bookCode) => {
         const partition = index.partition(bookCode);
         if (partition && keys.includes(bookCode)) compared.set(bookCode, partition);
       });
       return { books: keys, partitions: compared };
     });
-    reached.forEach((bookCode) => unsettled.add(bookCode));
-    await this.writeDraft(draft, storedBooks, books, partitions);
-    unsettled.clear();
+    await this.writeDraft(draft, storedBooks, journaled, books, partitions);
   }
 
   /**
@@ -387,6 +384,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    *
    * @param draft - The draft whose envelope is written; its analysis is not read.
    * @param storedBooks - The books the stored draft's manifest names.
+   * @param journaled - The shard journal as stored before this save.
    * @param books - The key of every partition the draft carries, less the books whose shard could
    *   not be read.
    * @param partitions - The partitions to compare, keyed by book; every key is in `books`.
@@ -395,6 +393,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   private async writeDraft(
     draft: DraftProject,
     storedBooks: readonly string[],
+    journaled: ShardJournal,
     books: readonly string[],
     partitions: ReadonlyMap<string, TextAnalysis>,
   ): Promise<void> {
@@ -404,7 +403,6 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     // Books this save no longer carries, less those held back because the load could not read them.
     // The stored manifest and the journal also list shards the load did not see, such as one
     // awaiting deletion. A journaled addition whose shard never landed deletes as a no-op.
-    const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
     const knownShards = new Set([
       ...saved.keys(),
       ...storedBooks,
@@ -415,18 +413,20 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       (bookCode) => !carried.has(bookCode) && !unreadable.has(bookCode),
     );
 
-    // Journal every shard this save could strand before writing any. A book the stored manifest
-    // already names needs no entry: the manifest alone keeps it reachable.
-    const stranded = books.filter((bookCode) => !storedBooks.includes(bookCode));
-    await perfTimeAsync('saveDraft:write', () =>
-      this.writeShardJournal({ adding: stranded, removing: wiped }),
-    );
-
     const shards = perfTime('saveDraft:compare', () =>
       [...partitions].map(([bookCode, partition]) => {
         const json = JSON.stringify(partition);
         return { bookCode, json, changed: saved.get(bookCode) !== json };
       }),
+    );
+
+    // Journal every shard this save could strand or leave half-written before writing any. A book
+    // the stored manifest already names needs no `adding` entry: the manifest alone keeps it
+    // reachable.
+    const stranded = books.filter((bookCode) => !storedBooks.includes(bookCode));
+    const unsettled = shards.filter(({ changed }) => changed).map(({ bookCode }) => bookCode);
+    await perfTimeAsync('saveDraft:write', () =>
+      this.writeShardJournal({ adding: stranded, removing: wiped, unsettled }),
     );
     await perfTimeAsync('saveDraft:write', () =>
       settleAll(
@@ -682,7 +682,11 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    */
   private async writeShardJournal(journal: ShardJournal): Promise<void> {
     const key = draftJournalKey(this.sourceProjectId);
-    if (journal.adding.length === 0 && journal.removing.length === 0) {
+    if (
+      journal.adding.length === 0 &&
+      journal.removing.length === 0 &&
+      (journal.unsettled ?? []).length === 0
+    ) {
       await this.storage.delete(key);
       return;
     }

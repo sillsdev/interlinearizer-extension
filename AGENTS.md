@@ -29,7 +29,7 @@ npm run test:c-sharp                             # Check the C# host published f
 # Performance (results land in perf/results/)
 npm run perf:capture     # Capture the WEB sample's USJ from a launched app into perf/.cache
 npm run perf:datasets    # Generate the seeded dataset tiers (captures first if needed)
-npm run perf:bench       # Time the data layer's pure functions in Node
+npm run perf:bench       # Time the data layer in Node, host applies included
 npm run perf:app         # Production-build the extension and time it, WebView and extension host, in the app
 npm run perf:summary     # Render the newest results as markdown tables
 npm run perf:shape       # Compare analysis shape across tiers and stored projects

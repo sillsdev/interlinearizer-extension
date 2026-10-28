@@ -385,8 +385,8 @@ declare module 'papi-shared-types' {
      * was saved with, and unsaved otherwise.
      *
      * @returns A JSON string of the `CommandReply`: the changes that reverted the edit and
-     *   re-anchored what the undo restored, with the pool buckets they touched. `undefined` when
-     *   there is none.
+     *   re-anchored what the undo restored, with the pool buckets that they touched. The reply also
+     *   carries the step that the edit was recorded as. `undefined` when there is none.
      * @throws If the session is read-only or not open, or re-anchoring, applying the changes or
      *   marking the draft saved fails (logged before rethrowing).
      */
@@ -401,8 +401,8 @@ declare module 'papi-shared-types' {
      * saved with, and unsaved otherwise.
      *
      * @returns A JSON string of the `CommandReply`: the changes that redid the edit and re-anchored
-     *   what the redo restored, with the pool buckets they touched. `undefined` when there is
-     *   none.
+     *   what the redo restored, with the pool buckets that they touched. The reply also carries the
+     *   step that the edit was recorded as. `undefined` when there is none.
      * @throws If the session is read-only or not open, or re-anchoring, applying the changes or
      *   marking the draft saved fails (logged before rethrowing).
      */

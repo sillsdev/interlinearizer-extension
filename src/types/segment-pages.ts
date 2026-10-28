@@ -6,6 +6,7 @@ import type {
   SegmentAnalysis,
   SegmentAnalysisLink,
   SegmentHeading,
+  Token,
   TokenAnalysis,
   TokenAnalysisLink,
   VerseStart,
@@ -58,6 +59,19 @@ export type PoolRead = {
   poolAnalyses: TokenAnalysis[];
 };
 
+/** A word token of a phrase that touches a page, with where it sits in its book. */
+export type PhraseSpanToken = Readonly<{
+  token: Token & { type: 'word' };
+  segmentId: string;
+  /** Its place among the book's word tokens, in document order. */
+  docOrder: number;
+  /**
+   * The baseline text separating it from the previous word token of its segment, verbatim; absent
+   * for a segment's first word token.
+   */
+  gapText?: string;
+}>;
+
 /** Stale free translations by where the view shows them, each named by its payload's id. */
 export type PlacedFreeTranslations = Readonly<{
   /**
@@ -92,6 +106,11 @@ export type PageAnalysis = Readonly<{
   poolBuckets: PoolBuckets;
   /** The stale free translations placed among the segments. */
   staleFreeTranslations: PlacedFreeTranslations;
+  /**
+   * The word tokens of each phrase link, by its id, in the order the link stores them, wherever
+   * they sit in the book. A token the book no longer holds is left out.
+   */
+  phraseSpans: Readonly<Record<string, readonly PhraseSpanToken[]>>;
 }>;
 
 /** A run of a book's segments, at the indexes its outline lists them at. */

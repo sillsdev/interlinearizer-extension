@@ -909,6 +909,41 @@ describe('AnalysisSessions', () => {
       });
     });
 
+    it('hands back with an undo and its redo the step the edit was made as', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.edit(sessionId, 'link', async (buffer) => linking(buffer, 'GEN 1:1:0'), {
+        step: { location: 'GEN 1:1:0' },
+      });
+
+      await expect(sessions.undo(sessionId)).resolves.toMatchObject({
+        step: { location: 'GEN 1:1:0' },
+      });
+      await expect(sessions.redo(sessionId)).resolves.toMatchObject({
+        step: { location: 'GEN 1:1:0' },
+      });
+    });
+
+    it('reads the step from the changes the edit applies when told how', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.edit(sessionId, 'link', async (buffer) => linking(buffer, 'GEN 1:1:0'), {
+        step: (changes) => ({ location: changes.tokenAnalysisLinks?.puts[0].token.tokenRef }),
+      });
+
+      await expect(sessions.undo(sessionId)).resolves.toMatchObject({
+        step: { location: 'GEN 1:1:0' },
+      });
+    });
+
+    it('hands back no step with an undo of an edit made as none', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.edit(sessionId, 'link', async (buffer) => linking(buffer, 'GEN 1:1:0'));
+
+      await expect(sessions.undo(sessionId)).resolves.not.toHaveProperty('step');
+    });
+
     it('carries the pool buckets an undo and a redo touched, and their change ids', async () => {
       const { sessions } = makeSessions();
       const { sessionId } = await sessions.open(SOURCE);

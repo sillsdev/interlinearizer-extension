@@ -326,16 +326,22 @@ async function checkPages(
         ({ tokens }) => bookOfRef(tokens[0].tokenRef) === book.bookRef,
       );
       phrasesCrossing += checkPageIndexes(book, outline.segments, held, bookPhrases, mismatches);
-      // A jump to a token whose page is not held loads the page that the outline places it on.
+      // A jump to a token or segment whose page is not held loads the page that holds it.
       for (let index = 1; index < book.segments.length; index += 20) {
-        const [target] = book.segments[index].tokens.filter(isWordToken);
-        const range = target && outlineRangeOf(outline.segments, target.ref);
-        if (range) {
+        const segment = book.segments[index];
+        const [token] = segment.tokens.filter(isWordToken);
+        const targets = token ? [token.ref, segment.id] : [segment.id];
+        // eslint-disable-next-line no-restricted-syntax -- calls for one draft must not overlap
+        for (const target of targets) {
+          const range = outlineRangeOf(outline.segments, target);
           // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
-          const page = await readSegmentPage(repository, book, range.start, range.end);
-          const landed = buildPageIndexes(outline.segments, [...held, page]);
-          if (landed.tokenSegmentMap.get(target.ref) !== book.segments[index].id)
-            mismatches.push(`${book.bookRef} jump to ${target.ref}`);
+          const page = range && (await readSegmentPage(repository, book, range.start, range.end));
+          const landed = page && buildPageIndexes(outline.segments, [...held, page]);
+          const holds =
+            target === segment.id
+              ? landed?.segmentById.has(target)
+              : landed?.tokenSegmentMap.get(target) === segment.id;
+          if (!holds) mismatches.push(`${book.bookRef} jump to ${target}`);
           jumps += 1;
         }
       }

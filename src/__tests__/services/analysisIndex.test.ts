@@ -2,8 +2,11 @@
 
 import type { TextAnalysis } from 'interlinearizer';
 import { AnalysisIndex } from '../../services/analysisIndex';
-import { emptyAnalysis } from '../../types/empty-factories';
+import type { ChangeSet } from '../../types/analysis-repository';
+import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
+import { BOOKLESS_PARTITION, splitAnalysisByBook } from '../../utils/analysis-book';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
+import { applyChangeSet } from '../../utils/change-set';
 import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
 
 const link = { ...FIXTURE_STAMPS, status: 'approved' as const };
@@ -128,6 +131,127 @@ describe('AnalysisIndex', () => {
     });
     expect(index.findPhraseAnalysesByForm(['in the'])).toStrictEqual([]);
     expect(index.getSegmentAnalyses(['sa-1'])).toStrictEqual([]);
+  });
+
+  describe('reach and partition', () => {
+    const unlinked = { id: 'ta-so', ...FIXTURE_STAMPS, surfaceText: 'so' };
+    const [genesisLink, exodusLink] = analysis().tokenAnalysisLinks;
+
+    /** {@link analysis} with a token payload no link references. */
+    function withUnlinked(): TextAnalysis {
+      const base = analysis();
+      return { ...base, tokenAnalyses: [...base.tokenAnalyses, unlinked] };
+    }
+
+    const cases: [string, ChangeSet, string[]][] = [
+      [
+        'a payload edit reaches the books linking it',
+        {
+          intent: 'gloss',
+          tokenAnalyses: {
+            puts: [{ id: 'ta-and', ...FIXTURE_STAMPS, surfaceText: 'but' }],
+            deletes: [],
+          },
+        },
+        ['GEN'],
+      ],
+      [
+        'a link edit reaches its book',
+        {
+          intent: 'status',
+          tokenAnalysisLinks: { puts: [{ ...exodusLink, status: 'approved' }], deletes: [] },
+        },
+        ['EXO'],
+      ],
+      [
+        'deleting the last link to a payload reaches the bookless partition',
+        { intent: 'clear', tokenAnalysisLinks: { puts: [], deletes: ['tl-gen'] } },
+        ['GEN', BOOKLESS_PARTITION],
+      ],
+      [
+        'deleting a phrase with its payload leaves the bookless partition alone',
+        {
+          intent: 'removePhrase',
+          phraseAnalyses: { puts: [], deletes: ['pa-1'] },
+          phraseAnalysisLinks: { puts: [], deletes: ['pa-1'] },
+        },
+        ['GEN'],
+      ],
+      [
+        'a payload put with no link reaches the bookless partition',
+        {
+          intent: 'add',
+          tokenAnalyses: {
+            puts: [{ id: 'ta-new', ...FIXTURE_STAMPS, surfaceText: 'new' }],
+            deletes: [],
+          },
+        },
+        [BOOKLESS_PARTITION],
+      ],
+      [
+        'linking an unlinked payload reaches its new book and the bookless partition',
+        {
+          intent: 'link',
+          tokenAnalysisLinks: {
+            puts: [{ ...genesisLink, id: 'tl-so', analysisId: 'ta-so' }],
+            deletes: [],
+          },
+        },
+        ['GEN', BOOKLESS_PARTITION],
+      ],
+      [
+        'relinking a link reaches the bookless partition when its old payload is left unlinked',
+        {
+          intent: 'relink',
+          tokenAnalysisLinks: { puts: [{ ...exodusLink, analysisId: 'ta-and' }], deletes: [] },
+        },
+        ['EXO', BOOKLESS_PARTITION],
+      ],
+      [
+        'a segment link into a new book reaches that book',
+        {
+          intent: 'translate',
+          segmentAnalysisLinks: {
+            puts: [{ ...link, id: 'sl-lev', analysisId: 'sa-1', segmentId: 'LEV 1:1' }],
+            deletes: [],
+          },
+        },
+        ['LEV'],
+      ],
+      [
+        'deleting a payload that links still name reaches their books',
+        { intent: 'delete', tokenAnalyses: { puts: [], deletes: ['ta-And'] } },
+        ['EXO'],
+      ],
+    ];
+
+    it.each(cases)('%s', (_name, changes, expected) => {
+      const base = withUnlinked();
+      const before = splitAnalysisByBook(base);
+      const after = splitAnalysisByBook(
+        applyChangeSet({ ...emptyDraft('src'), analysis: base }, changes).draft.analysis,
+      );
+      const index = new AnalysisIndex(base);
+
+      const reached = index.reach(changes);
+      index.apply(changes);
+
+      expect([...reached].sort()).toStrictEqual([...expected].sort());
+      const changed = [...new Set([...before.keys(), ...after.keys()])].filter(
+        (key) => JSON.stringify(before.get(key)) !== JSON.stringify(after.get(key)),
+      );
+      expect(changed.filter((key) => !reached.has(key))).toStrictEqual([]);
+      expect(index.partitionKeys().sort()).toStrictEqual([...after.keys()].sort());
+      after.forEach((partition, key) => expect(index.partition(key)).toStrictEqual(partition));
+    });
+
+    it('files no partition where a whole split would file none', () => {
+      const index = new AnalysisIndex(analysis());
+
+      expect(index.partition('LEV')).toBeUndefined();
+      expect(index.partition(BOOKLESS_PARTITION)).toBeUndefined();
+      expect(index.partitionKeys().sort()).toStrictEqual(['EXO', 'GEN']);
+    });
   });
 
   describe('differencesFrom', () => {

@@ -292,9 +292,19 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     const applied = applyChangeSet(base, copied);
     const { inverse } = applied;
     const draft = options?.keepDirty ? { ...applied.draft, dirty: base.dirty } : applied.draft;
-    const reached = index.apply(copied);
+    const reached = index.reach(copied);
+    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
+      this.assertStoredDraftIsWritable(),
+    );
+    const refused = [...reached].filter((bookCode) => this.unreadableShards.has(bookCode));
+    if (refused.length > 0) {
+      throw new Error(
+        `Interlinearizer: the draft for ${this.sourceProjectId} could not read the stored analysis of ${refused.join(', ')}, so it refuses changes there`,
+      );
+    }
+    index.apply(copied);
     try {
-      await this.writeReachedBooks(draft, index, reached);
+      await this.writeReachedBooks(draft, index, reached, storedBooks);
     } catch (e) {
       // The index already holds the changes, so it is built afresh over the draft as it was.
       this.current = { draft: base, index: new AnalysisIndex(base.analysis) };
@@ -336,31 +346,25 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
 
   /**
    * Saves `draft` as {@link replaceAll} describes, taking each book's analysis from the `index` kept
-   * over it. Compares only the partitions `reached` names and those a failed apply left unsettled.
-   * If the save fails, the partitions `reached` names stay unsettled.
+   * over it. Compares only the partitions `reached` names, those a failed apply left unsettled, and
+   * those this instance holds no saved content for, such as every book of a draft loaded inline. If
+   * the save fails, the partitions `reached` names stay unsettled.
    *
-   * @throws {Error} If `reached` names a book whose shard could not be read; nothing is written.
-   * @throws Whatever {@link replaceAll} throws.
+   * @param storedBooks The books the stored draft's manifest names.
+   * @throws If storage rejects a read, or a write before the envelope lands.
    */
   private async writeReachedBooks(
     draft: DraftProject,
     index: AnalysisIndex,
     reached: ReadonlySet<string>,
+    storedBooks: readonly string[],
   ): Promise<void> {
-    const { sourceProjectId, unreadableShards: unreadable, unsettledBooks: unsettled } = this;
-    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
-      this.assertStoredDraftIsWritable(),
-    );
-    const refused = [...reached].filter((bookCode) => unreadable.has(bookCode));
-    if (refused.length > 0) {
-      throw new Error(
-        `Interlinearizer: the draft for ${sourceProjectId} could not read the stored analysis of ${refused.join(', ')}, so it refuses changes there`,
-      );
-    }
+    const { shardContents: saved, unreadableShards: unreadable, unsettledBooks: unsettled } = this;
     const { books, partitions } = perfTime('saveDraft:compare', () => {
       const keys = index.partitionKeys().filter((bookCode) => !unreadable.has(bookCode));
+      const unsaved = keys.filter((bookCode) => !saved.has(bookCode));
       const compared = new Map<string, TextAnalysis>();
-      new Set([...reached, ...unsettled]).forEach((bookCode) => {
+      new Set([...reached, ...unsettled, ...unsaved]).forEach((bookCode) => {
         const partition = index.partition(bookCode);
         if (partition && keys.includes(bookCode)) compared.set(bookCode, partition);
       });

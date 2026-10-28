@@ -3,8 +3,10 @@
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
 import { draftAnalysisKey, draftKey } from '../../services/storageKeys';
+import type { ChangeSet } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
+import { applyChangeSet } from '../../utils/change-set';
 import { FIXTURE_STAMPS, makePhraseLink, memoryStorage, silentLogger } from '../test-helpers';
 
 /** An analysis with a token payload shared by GEN and EXO, a phrase in GEN and a segment in EXO. */
@@ -360,6 +362,23 @@ describe('DraftRepository', () => {
       expect(records.get(draftAnalysisKey('src', 'GEN'))).not.toContain('and then');
     });
 
+    it('writes every book of a draft loaded inline, though the changes reach only one', async () => {
+      const { storage } = memoryStorage({ [draftKey('src')]: JSON.stringify(twoBookDraft()) });
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      const [phrase] = twoBookAnalysis().phraseAnalyses;
+
+      await repository.apply({
+        intent: 'writePhraseGloss',
+        phraseAnalyses: { puts: [{ ...phrase, gloss: { en: 'within' } }], deletes: [] },
+      });
+
+      const loaded = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
+      expect(loaded.unreadableBooks).toEqual([]);
+      expect(loaded.draft.analysis.segmentAnalysisLinks).toEqual(
+        twoBookAnalysis().segmentAnalysisLinks,
+      );
+    });
+
     it('rewrites a book a failed apply wrote, though the next apply does not reach it', async () => {
       const { storage, records } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
@@ -367,7 +386,14 @@ describe('DraftRepository', () => {
       const [payload] = twoBookAnalysis().tokenAnalyses;
       const [phrase] = twoBookAnalysis().phraseAnalyses;
       // Fails the GEN shard's write, so EXO's lands with the gloss the draft never takes.
-      const write = jest.spyOn(storage, 'write').mockRejectedValueOnce(new Error('disk full'));
+      const { write: writeThrough } = storage;
+      const write = jest
+        .spyOn(storage, 'write')
+        .mockImplementation((key, data) =>
+          key === draftAnalysisKey('src', 'GEN')
+            ? Promise.reject(new Error('disk full'))
+            : writeThrough(key, data),
+        );
       await expect(
         repository.apply({
           intent: 'writeGloss',
@@ -393,35 +419,48 @@ describe('DraftRepository', () => {
       const [genesisLink, exodusLink] = twoBookAnalysis().tokenAnalysisLinks;
       const [segmentLink] = twoBookAnalysis().segmentAnalysisLinks;
       const unlinked = { id: 'ta-so', ...FIXTURE_STAMPS, surfaceText: 'so' };
-
       // Unlinks a payload, adds a book, empties EXO of links, then links a bookless payload.
-      await repository.apply({
-        intent: 'removePhrase',
-        phraseAnalysisLinks: { puts: [], deletes: ['pa-1'] },
-        tokenAnalyses: { puts: [unlinked], deletes: [] },
-      });
-      await repository.apply({
-        intent: 'writeGloss',
-        tokenAnalysisLinks: {
-          puts: [
-            { ...genesisLink, id: 'tl-LEV', token: { tokenRef: 'LEV 1:1!0', surfaceText: 'and' } },
-          ],
-          deletes: [],
+      const changeSets: ChangeSet[] = [
+        {
+          intent: 'removePhrase',
+          phraseAnalysisLinks: { puts: [], deletes: ['pa-1'] },
+          tokenAnalyses: { puts: [unlinked], deletes: [] },
         },
-      });
-      await repository.apply({
-        intent: 'clear',
-        tokenAnalysisLinks: { puts: [], deletes: [exodusLink.id] },
-        segmentAnalysisLinks: { puts: [], deletes: [segmentLink.id] },
-      });
-      await repository.apply({
-        intent: 'relink',
-        tokenAnalysisLinks: { puts: [{ ...genesisLink, analysisId: unlinked.id }], deletes: [] },
-      });
+        {
+          intent: 'writeGloss',
+          tokenAnalysisLinks: {
+            puts: [
+              {
+                ...genesisLink,
+                id: 'tl-LEV',
+                token: { tokenRef: 'LEV 1:1!0', surfaceText: 'and' },
+              },
+            ],
+            deletes: [],
+          },
+        },
+        {
+          intent: 'clear',
+          tokenAnalysisLinks: { puts: [], deletes: [exodusLink.id] },
+          segmentAnalysisLinks: { puts: [], deletes: [segmentLink.id] },
+        },
+        {
+          intent: 'relink',
+          tokenAnalysisLinks: { puts: [{ ...genesisLink, analysisId: unlinked.id }], deletes: [] },
+        },
+      ];
+
+      await changeSets.reduce(async (prior, changes) => {
+        await prior;
+        await repository.apply(changes);
+      }, Promise.resolve());
 
       const whole = memoryStorage();
-      const { draft } = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
-      await new DraftRepository(whole.storage, 'src', silentLogger()).replaceAll(draft);
+      const expected = changeSets.reduce(
+        (draft, changes) => applyChangeSet(draft, changes).draft,
+        twoBookDraft(),
+      );
+      await new DraftRepository(whole.storage, 'src', silentLogger()).replaceAll(expected);
       expect(records).toEqual(whole.records);
       expect(records.has(draftAnalysisKey('src', 'EXO'))).toBe(false);
     });

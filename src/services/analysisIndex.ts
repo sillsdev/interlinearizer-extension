@@ -67,37 +67,55 @@ type LinkTable<Link extends { id: string }> = Pick<
 /**
  * Adds to `books` the book of each link the changes reach, as `links` stands before they apply. A
  * link is reached when `linkChanges` puts, replaces or deletes it, or when `payloadChanges` puts or
- * deletes its payload.
+ * deletes its payload. Leaves both tables as they stand.
  *
- * @returns The ids of the payloads the changes put or delete, or whose links they change.
+ * @returns Whether a payload the changes put, delete or relink is stored with no link referencing
+ *   it, before they apply or after.
  */
 function reachOfKind<
   Payload extends { id: string },
   Link extends { id: string; analysisId: string },
 >(
+  payloads: PayloadTable<Payload>,
   links: LinkTable<Link>,
   bookOf: (link: Link) => string,
   payloadChanges: RecordChanges<Payload> | undefined,
   linkChanges: RecordChanges<Link> | undefined,
   books: Set<string>,
-): string[] {
+): boolean {
   const changedPayloadIds = idsNamedBy(payloadChanges);
-  const changedLinks = [...links.get(idsNamedBy(linkChanges)), ...(linkChanges?.puts ?? [])];
-  [...changedLinks, ...links.find('analysisId', changedPayloadIds)].forEach((link) =>
+  const changedLinkIds = new Set(idsNamedBy(linkChanges));
+  const putLinks = linkChanges?.puts ?? [];
+  const priorLinks = links.get([...changedLinkIds]);
+  [...priorLinks, ...putLinks, ...links.find('analysisId', changedPayloadIds)].forEach((link) =>
     books.add(bookOf(link)),
   );
-  return [...changedPayloadIds, ...changedLinks.map(({ analysisId }) => analysisId)];
+
+  const deletedPayloadIds = new Set(payloadChanges?.deletes);
+  const putPayloadIds = new Set(payloadChanges?.puts.map(({ id }) => id));
+  const reachedIds = [
+    ...changedPayloadIds,
+    ...[...priorLinks, ...putLinks].map(({ analysisId }) => analysisId),
+  ];
+  const storedIds = new Set(payloads.get(reachedIds).map(({ id }) => id));
+  return [...new Set(reachedIds)].some((id) => {
+    const linkedBefore = links.has('analysisId', id);
+    if (storedIds.has(id) && !linkedBefore) return true;
+    const storedAfter = putPayloadIds.has(id) || (storedIds.has(id) && !deletedPayloadIds.has(id));
+    if (!storedAfter) return false;
+    const linkedAfter =
+      putLinks.some(({ analysisId }) => analysisId === id) ||
+      (linkedBefore && links.find('analysisId', [id]).some((link) => !changedLinkIds.has(link.id)));
+    return !linkedAfter;
+  });
 }
 
-/** The payloads stored under `ids`, or all of them when absent, that no link references. */
+/** The payloads no link references. */
 function unlinkedPayloads<Payload extends { id: string }>(
   payloads: PayloadTable<Payload>,
   links: LinkTable<{ id: string; analysisId: string }>,
-  ids?: readonly string[],
 ): Payload[] {
-  return (ids ? payloads.get(ids) : payloads.all()).filter(
-    ({ id }) => !links.has('analysisId', id),
-  );
+  return payloads.all().filter(({ id }) => !links.has('analysisId', id));
 }
 
 const formKeyers = {
@@ -163,49 +181,52 @@ export class AnalysisIndex {
   /**
    * Applies `changes`, which must name each id at most once per record kind. The index holds the
    * put records themselves, not copies.
-   *
-   * @returns The keys of the partitions, as {@link splitAnalysisByBook} keys them, whose records the
-   *   changes may alter. These are each book holding a link the changes alter, or a link to a
-   *   payload they alter. {@link BOOKLESS_PARTITION} is included when a payload they reach is
-   *   unlinked before they apply or after.
    */
-  apply(changes: ChangeSet): Set<string> {
-    const books = new Set<string>();
-    const tokenIds = reachOfKind(
-      this.tokenLinks,
-      tokenLinkBook,
-      changes.tokenAnalyses,
-      changes.tokenAnalysisLinks,
-      books,
-    );
-    const phraseIds = reachOfKind(
-      this.phraseLinks,
-      phraseLinkBook,
-      changes.phraseAnalyses,
-      changes.phraseAnalysisLinks,
-      books,
-    );
-    const segmentIds = reachOfKind(
-      this.segmentLinks,
-      segmentLinkBook,
-      changes.segmentAnalyses,
-      changes.segmentAnalysisLinks,
-      books,
-    );
-    const reachesUnlinked = () =>
-      unlinkedPayloads(this.tokenAnalyses, this.tokenLinks, tokenIds).length > 0 ||
-      unlinkedPayloads(this.phraseAnalyses, this.phraseLinks, phraseIds).length > 0 ||
-      unlinkedPayloads(this.segmentAnalyses, this.segmentLinks, segmentIds).length > 0;
-    const unlinkedBefore = reachesUnlinked();
-
+  apply(changes: ChangeSet): void {
     this.tokenAnalyses.apply(changes.tokenAnalyses);
     this.phraseAnalyses.apply(changes.phraseAnalyses);
     this.segmentAnalyses.apply(changes.segmentAnalyses);
     this.tokenLinks.apply(changes.tokenAnalysisLinks);
     this.phraseLinks.apply(changes.phraseAnalysisLinks);
     this.segmentLinks.apply(changes.segmentAnalysisLinks);
+  }
 
-    if (unlinkedBefore || reachesUnlinked()) books.add(BOOKLESS_PARTITION);
+  /**
+   * The keys of the partitions, as {@link splitAnalysisByBook} keys them, whose records `changes`
+   * may alter once applied, which must name each id at most once per record kind. These are each
+   * book holding a link the changes alter, or a link to a payload they alter.
+   * {@link BOOKLESS_PARTITION} is included when a payload they reach is unlinked before they apply
+   * or after.
+   */
+  reach(changes: ChangeSet): Set<string> {
+    const books = new Set<string>();
+    const reachesUnlinked = [
+      reachOfKind(
+        this.tokenAnalyses,
+        this.tokenLinks,
+        tokenLinkBook,
+        changes.tokenAnalyses,
+        changes.tokenAnalysisLinks,
+        books,
+      ),
+      reachOfKind(
+        this.phraseAnalyses,
+        this.phraseLinks,
+        phraseLinkBook,
+        changes.phraseAnalyses,
+        changes.phraseAnalysisLinks,
+        books,
+      ),
+      reachOfKind(
+        this.segmentAnalyses,
+        this.segmentLinks,
+        segmentLinkBook,
+        changes.segmentAnalyses,
+        changes.segmentAnalysisLinks,
+        books,
+      ),
+    ].some(Boolean);
+    if (reachesUnlinked) books.add(BOOKLESS_PARTITION);
     return books;
   }
 

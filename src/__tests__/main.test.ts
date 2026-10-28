@@ -3504,6 +3504,19 @@ describe('main', () => {
       expect(bookService.getVerseBook).toHaveBeenCalledWith('src-project', 'GEN');
     });
 
+    it('answers a retried discard with the free translations its first reply reported', async () => {
+      await seedDraft({});
+      storeProjectHolding(translatedVerse);
+      const { openSession, discardAll } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project', 'proj-1'));
+      const first = JSON.parse(await discardAll(sessionId, 'change-1'));
+
+      const retried = JSON.parse(await discardAll(sessionId, 'change-1'));
+
+      expect(first.hasFreeTranslations).toBe(true);
+      expect(retried).toStrictEqual(first);
+    });
+
     it('stales what it restores into a book the text lacks', async () => {
       await seedDraft({});
       storeProjectHolding(translatedVerse);

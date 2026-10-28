@@ -1692,6 +1692,9 @@ async function savedContentOf(session: Session): Promise<DraftContent | undefine
   return { analysis: project.analysis, segmentation: project.segmentation };
 }
 
+/** Whether the draft each discard left has a free translation, kept with the reply a retry gets. */
+const discardLeftFreeTranslations = new WeakMap<CommandReply, boolean>();
+
 /**
  * Runs an unsaved-change discard as one edit of a session's analysis, re-anchoring each book it
  * rewrites to the book's current text. A book the text lacks has its links go stale.
@@ -1716,7 +1719,7 @@ async function runDiscard(
   ) => discardCommands.DiscardOutcome,
   unsavedMark: (savesToProject: boolean) => EditOptions['unsavedMark'],
 ): Promise<string> {
-  let hasFreeTranslations = false;
+  let hasFreeTranslations: boolean | undefined;
   try {
     const reply = await sessions.edit(
       sessionId,
@@ -1738,6 +1741,10 @@ async function runDiscard(
         changeId: changeId ?? undefined,
       },
     );
+    if (hasFreeTranslations === undefined) {
+      /* v8 ignore next -- defensive: a reply lacks the flag only when a discard reuses a non-discard command's change id */
+      hasFreeTranslations = discardLeftFreeTranslations.get(reply) ?? false;
+    } else discardLeftFreeTranslations.set(reply, hasFreeTranslations);
     return JSON.stringify({ ...reply, hasFreeTranslations });
   } catch (e) {
     logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);

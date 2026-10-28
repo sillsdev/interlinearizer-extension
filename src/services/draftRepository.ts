@@ -353,9 +353,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   /**
    * Saves `draft` over a stored draft whose manifest names `storedBooks`, as {@link replaceAll}
    * describes, taking each book's analysis from the `index` kept over it. Compares only the
-   * partitions `reached` names, those a failed apply left unsettled, and those this instance holds
-   * no saved content for, such as every book of a draft loaded inline. If the save fails, the
-   * partitions `reached` names stay unsettled.
+   * partitions in `reached`, those a failed apply left unsettled, and those this instance holds no
+   * saved content for, such as every book of a draft loaded inline. If the save fails, the
+   * partitions in `reached` stay unsettled.
    *
    * @throws If storage rejects a read, or a write before the envelope lands.
    */

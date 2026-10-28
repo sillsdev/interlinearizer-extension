@@ -219,7 +219,7 @@ describe('AnalysisIndex', () => {
         ['LEV'],
       ],
       [
-        'deleting a payload that links still name reaches their books',
+        'deleting a payload still named by links reaches their books',
         { intent: 'delete', tokenAnalyses: { puts: [], deletes: ['ta-And'] } },
         ['EXO'],
       ],
@@ -243,6 +243,35 @@ describe('AnalysisIndex', () => {
       expect(changed.filter((key) => !reached.has(key))).toStrictEqual([]);
       expect(index.partitionKeys().sort()).toStrictEqual([...after.keys()].sort());
       after.forEach((partition, key) => expect(index.partition(key)).toStrictEqual(partition));
+    });
+
+    it('reaches both books of a link moved between them, filing it last in the new one', () => {
+      const base = withUnlinked();
+      const changes: ChangeSet = {
+        intent: 'move',
+        tokenAnalysisLinks: {
+          puts: [{ ...genesisLink, token: { tokenRef: 'EXO 1:1:4', surfaceText: 'and' } }],
+          deletes: [],
+        },
+      };
+      const after = splitAnalysisByBook(
+        applyChangeSet({ ...emptyDraft('src'), analysis: base }, changes).draft.analysis,
+      );
+      const index = new AnalysisIndex(base);
+
+      expect([...index.reach(changes)].sort()).toStrictEqual(['EXO', 'GEN']);
+      index.apply(changes);
+
+      expect(index.partition('GEN')).toStrictEqual(after.get('GEN'));
+      const exodus = index.partition('EXO');
+      expect(exodus?.tokenAnalysisLinks.map(({ id }) => id)).toStrictEqual(['tl-exo', 'tl-gen']);
+      expect(after.get('EXO')?.tokenAnalysisLinks.map(({ id }) => id)).toStrictEqual([
+        'tl-gen',
+        'tl-exo',
+      ]);
+      expect(ids(exodus?.tokenAnalyses ?? [])).toStrictEqual(
+        ids(after.get('EXO')?.tokenAnalyses ?? []),
+      );
     });
 
     it('files no partition where a whole split would file none', () => {

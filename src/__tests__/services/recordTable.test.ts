@@ -25,6 +25,24 @@ describe('RecordTable', () => {
     expect(tableOf(a, b, c).find('tag', ['x', 'y', 'missing'])).toStrictEqual([a, b]);
   });
 
+  it('lists every record in stored order', () => {
+    const a = { id: 'a', tags: [] };
+    const b = { id: 'b', tags: [] };
+
+    expect(tableOf(a, b).all()).toStrictEqual([a, b]);
+  });
+
+  it('drops a key once its last record is deleted or moved off it', () => {
+    const table = tableOf({ id: 'a', tags: ['x'] }, { id: 'b', tags: ['y'] });
+
+    table.apply({ puts: [{ id: 'b', tags: ['z'] }], deletes: ['a'] });
+
+    expect(table.keys('tag')).toStrictEqual(['z']);
+    expect(table.has('tag', 'x')).toBe(false);
+    expect(table.has('tag', 'y')).toBe(false);
+    expect(table.has('tag', 'z')).toBe(true);
+  });
+
   it('files a record once under a key its keyer returns twice', () => {
     const table = tableOf({ id: 'a', tags: ['x', 'x'] });
 

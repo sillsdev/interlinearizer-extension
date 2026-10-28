@@ -279,9 +279,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * unsaved unless `options` keeps the mark.
    *
    * After a failed apply, the next apply to succeed also brings back in step any book the failure
-   * left out of step with the draft. In the same instance that restores the book as it was. After a
-   * reload or restart, the reloaded draft keeps the first copy of each payload in manifest order,
-   * so a book may take the failed edit instead.
+   * left out of step with the draft. In the same instance, the next apply restores the book as it
+   * was. After a reload or restart, the reloaded draft keeps the first copy of each payload in
+   * manifest order, so a book may take the failed edit instead.
    *
    * What an apply stores matches a whole save of the same draft in content, not order. The manifest
    * may list the books in another order, and a link that a put moves into a book comes last in that

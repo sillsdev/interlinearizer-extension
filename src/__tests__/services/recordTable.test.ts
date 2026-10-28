@@ -32,14 +32,23 @@ describe('RecordTable', () => {
     expect(tableOf(a, b).all()).toStrictEqual([a, b]);
   });
 
-  it('drops a key once its last record is deleted or moved off it', () => {
+  it('drops a key once its last record is deleted', () => {
     const table = tableOf({ id: 'a', tags: ['x'] }, { id: 'b', tags: ['y'] });
 
-    table.apply({ puts: [{ id: 'b', tags: ['z'] }], deletes: ['a'] });
+    table.apply({ puts: [], deletes: ['a'] });
+
+    expect(table.keys('tag')).toStrictEqual(['y']);
+    expect(table.has('tag', 'x')).toBe(false);
+    expect(table.has('tag', 'y')).toBe(true);
+  });
+
+  it('drops a key once its last record is moved off it', () => {
+    const table = tableOf({ id: 'a', tags: ['x'] });
+
+    table.apply({ puts: [{ id: 'a', tags: ['z'] }], deletes: [] });
 
     expect(table.keys('tag')).toStrictEqual(['z']);
     expect(table.has('tag', 'x')).toBe(false);
-    expect(table.has('tag', 'y')).toBe(false);
     expect(table.has('tag', 'z')).toBe(true);
   });
 

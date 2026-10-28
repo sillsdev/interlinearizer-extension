@@ -207,6 +207,17 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
       (changes) => repository.apply(changes),
     ),
   );
+  // A status change stays in its link's book; a payload edit reaches every book linking it.
+  const applyBooksReached = {
+    link: 1,
+    widePayload: booksLinkedIn({
+      ...emptyAnalysis(),
+      tokenAnalysisLinks: links.filter(({ analysisId }) => analysisId === widest.id),
+    }).size,
+  };
+  console.log(
+    `  books an apply reaches: ${applyBooksReached.link} by apply.link, ${applyBooksReached.widePayload} by apply.widePayload`,
+  );
 
   const books = allBooks();
   const collator = collatorForTag(meta.languageTag || 'und');
@@ -331,6 +342,7 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
       byHostIndex: byHostIndex.length,
       disagreeing,
     },
+    applyBooksReached,
     hostReanchor: {
       books: passes.length,
       changedByWebView,

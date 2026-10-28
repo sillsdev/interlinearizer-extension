@@ -15,6 +15,8 @@ import type {
   RecordChanges,
 } from '../types/analysis-repository';
 import { bookOfRef, BOOKLESS_PARTITION } from '../utils/analysis-book';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
+import type { splitAnalysisByBook } from '../utils/analysis-book';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { RecordTable } from './recordTable';
 

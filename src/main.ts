@@ -7,30 +7,41 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type { Book, ProjectConfig, TokenSnapshot } from 'interlinearizer';
+import type {
+  Book,
+  MergedContent,
+  ProjectConfig,
+  RemovalPreviewRequest,
+  TokenSnapshot,
+} from 'interlinearizer';
 import { formatReplacementString, type LocalizeKey } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
+import type { DraftContent } from './hooks/useDraftProject';
 import * as bookService from './services/bookService';
 import * as boundaryCommands from './services/commands/boundaryCommands';
+import * as catalogCommands from './services/commands/catalogCommands';
 import type { ChangeBuffer } from './services/commands/changeBuffer';
+import * as discardCommands from './services/commands/discardCommands';
 import * as morphemeCommands from './services/commands/morphemeCommands';
 import * as staleCommands from './services/commands/staleCommands';
 import * as freeTranslationCommands from './services/commands/freeTranslationCommands';
 import * as phraseCommands from './services/commands/phraseCommands';
 import * as tokenCommands from './services/commands/tokenCommands';
 import { startCSharpHost } from './services/csharpHost';
+import type { EditOptions } from './services/editHistory';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
 import { toProjectSummary, type SavedAsProject } from './types/interlinear-project-summary';
-import { UnreadableBooksError } from './types/analysis-repository';
+import { UnreadableBooksError, type DraftExport } from './types/analysis-repository';
 import { isDraftProject } from './types/type-guards';
 import { BOOKLESS_PARTITION, bookOfRef } from './utils/analysis-book';
 import { bookIndexesOf } from './utils/book-indexes';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
+import { missingBook } from './utils/reanchor-draft';
 import { segmentationForBook } from './utils/segmentation';
 
 // #region WebView provider
@@ -1062,6 +1073,135 @@ function discardStaleFreeTranslation(sessionId: string, analysisId: string): Pro
 }
 
 /**
+ * Writes a token analysis's gloss in the session's analysis language, for every token linked to it;
+ * a blank value clears it.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function writeAnalysisGloss(sessionId: string, analysisId: string, value: string): Promise<string> {
+  return runSessionEdit(sessionId, 'writeAnalysisGloss', (buffer, session) =>
+    catalogCommands.writeAnalysisGloss(buffer, {
+      analysisId,
+      value,
+      analysisLanguage: session.analysisLanguage,
+      now: editStamp().now,
+    }),
+  );
+}
+
+/**
+ * Clears the glosses of several token analyses in the session's analysis language.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function clearAnalysisGlosses(sessionId: string, analysisIds: string[]): Promise<string> {
+  return runSessionEdit(sessionId, 'clearAnalysisGlosses', (buffer, session) =>
+    catalogCommands.clearAnalysisGlosses(buffer, {
+      analysisIds,
+      analysisLanguage: session.analysisLanguage,
+      now: editStamp().now,
+    }),
+  );
+}
+
+/**
+ * Re-splits a token analysis's breakdown into `forms`, for every token linked to it; no forms
+ * removes the breakdown.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function writeAnalysisMorphemes(
+  sessionId: string,
+  analysisId: string,
+  forms: string[],
+  writingSystem: string,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'writeAnalysisMorphemes', (buffer) =>
+    catalogCommands.writeAnalysisMorphemes(buffer, {
+      analysisId,
+      morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
+      writingSystem,
+      now: editStamp().now,
+    }),
+  );
+}
+
+/**
+ * Keeps a token analysis's stale breakdown as it stands, for every token linked to it.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function confirmAnalysisMorphemes(sessionId: string, analysisId: string): Promise<string> {
+  return runSessionEdit(sessionId, 'confirmAnalysisMorphemes', (buffer) =>
+    catalogCommands.confirmAnalysisMorphemes(buffer, { analysisId, now: editStamp().now }),
+  );
+}
+
+/**
+ * Writes the gloss of one morpheme of a token analysis in the session's analysis language, for
+ * every token linked to it; a blank value clears it.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function writeAnalysisMorphemeGloss(
+  sessionId: string,
+  analysisId: string,
+  morphemeId: string,
+  value: string,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'writeAnalysisMorphemeGloss', (buffer, session) =>
+    catalogCommands.writeAnalysisMorphemeGloss(buffer, {
+      analysisId,
+      morphemeId,
+      value,
+      analysisLanguage: session.analysisLanguage,
+      now: editStamp().now,
+    }),
+  );
+}
+
+/**
+ * Removes token analyses with every token link to them.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function deleteAnalyses(sessionId: string, analysisIds: string[]): Promise<string> {
+  return runSessionEdit(sessionId, 'deleteAnalyses', (buffer) =>
+    catalogCommands.deleteAnalyses(buffer, { analysisIds }),
+  );
+}
+
+/**
+ * Folds token analyses into a survivor and writes the settled content onto it, in the session's
+ * analysis language.
+ *
+ * @returns The changes it applied, as JSON.
+ * @throws As {@link runSessionEdit} does.
+ */
+function mergeAnalysesInto(
+  sessionId: string,
+  survivorAnalysisId: string,
+  mergedAnalysisIds: string[],
+  content: MergedContent,
+): Promise<string> {
+  return runSessionEdit(sessionId, 'mergeAnalysesInto', (buffer, session) =>
+    catalogCommands.mergeAnalysesInto(buffer, {
+      survivorAnalysisId,
+      mergedAnalysisIds,
+      content,
+      analysisLanguage: session.analysisLanguage,
+      now: editStamp().now,
+    }),
+  );
+}
+
+/**
  * Refuses a phrase occurrence with no tokens; the analysis index files a phrase by the book of its
  * first token.
  *
@@ -1355,6 +1495,135 @@ function moveBoundary(sessionId: string, fromRef: string, toRef: string): Promis
     });
     return [verseBook];
   });
+}
+
+/**
+ * The content of the project that the session's draft saves to, or `undefined` when it has none.
+ *
+ * @throws If the project is not stored, or reading it fails.
+ */
+async function savedContentOf(session: Session): Promise<DraftContent | undefined> {
+  const { interlinearProjectId } = session.scope;
+  if (interlinearProjectId === undefined) return undefined;
+  const project = await projectStorage.getProject(executionToken, interlinearProjectId);
+  if (!project) {
+    throw new Error(`Interlinearizer: interlinear project ${interlinearProjectId} is not stored`);
+  }
+  return { analysis: project.analysis, segmentation: project.segmentation };
+}
+
+/**
+ * Runs an unsaved-change discard as one edit of a session's analysis, re-anchoring each book it
+ * rewrites to the book's current text. A book the text lacks has its links go stale.
+ *
+ * @param sessionId - The session whose draft the discard edits.
+ * @param intent - Names the discard.
+ * @param stage - Stages the discard over the stored draft, given the saved project's content.
+ * @param unsavedMark - How the discard leaves the draft's unsaved mark, given whether the draft
+ *   saves to a project.
+ * @returns A JSON string of `{ changes, hasFreeTranslations }`.
+ * @throws If the saved project cannot be read, the session is read-only or not open, or the edit is
+ *   refused or fails. The error is logged before rethrowing.
+ */
+async function runDiscard(
+  sessionId: string,
+  intent: string,
+  stage: (
+    buffer: ChangeBuffer,
+    stored: DraftExport,
+    saved: DraftContent | undefined,
+  ) => discardCommands.DiscardOutcome,
+  unsavedMark: (savesToProject: boolean) => EditOptions['unsavedMark'],
+): Promise<string> {
+  let hasFreeTranslations = false;
+  try {
+    const changes = await sessions.edit(
+      sessionId,
+      intent,
+      async (buffer, session) => {
+        const saved = await savedContentOf(session);
+        const outcome = stage(buffer, await session.repository.exportAll(), saved);
+        hasFreeTranslations = outcome.hasFreeTranslations;
+        const { sourceProjectId } = session.scope;
+        return Promise.all(
+          outcome.changedBooks.map(
+            async (bookCode) =>
+              (await bookService.getVerseBook(sourceProjectId, bookCode)) ?? missingBook(bookCode),
+          ),
+        );
+      },
+      ({ scope }) => ({ unsavedMark: unsavedMark(scope.interlinearProjectId !== undefined) }),
+    );
+    return JSON.stringify({ changes, hasFreeTranslations });
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/**
+ * Discards the unsaved changes to one book of a session's draft, restoring the book as the draft's
+ * project holds it, or emptying the book when the draft has no project. A book whose stored
+ * analysis could not be read keeps it. A draft saving to a project stays as saved or unsaved as it
+ * was; one saving to none is marked unsaved when the discard changes anything.
+ *
+ * @returns A JSON string of `{ changes, hasFreeTranslations }`.
+ * @throws As {@link runDiscard} does.
+ */
+function discardBook(sessionId: string, bookCode: string): Promise<string> {
+  return runDiscard(
+    sessionId,
+    'discardBook',
+    (buffer, stored, saved) => discardCommands.discardBook(buffer, stored, bookCode, saved),
+    (savesToProject) => (savesToProject ? 'keep' : undefined),
+  );
+}
+
+/**
+ * Discards every unsaved change to a session's draft, restoring what the draft's project holds, or
+ * emptying the draft when it has no project. A book whose stored analysis could not be read keeps
+ * it. The draft is marked saved.
+ *
+ * @returns A JSON string of `{ changes, hasFreeTranslations }`.
+ * @throws As {@link runDiscard} does.
+ */
+function discardAll(sessionId: string): Promise<string> {
+  return runDiscard(sessionId, 'discardAll', discardCommands.discardAll, () => 'clear');
+}
+
+/**
+ * Names the token analyses a command would remove from a session's draft, applying nothing.
+ *
+ * @returns A JSON string of the ids; `"[]"` when it would remove none.
+ * @throws If the session is not open, the request names an intent it can't preview, or staging the
+ *   command fails. The error is logged before rethrowing.
+ */
+async function previewRemovals(sessionId: string, request: RemovalPreviewRequest): Promise<string> {
+  try {
+    const changes = await sessions.preview(sessionId, request.intent, (buffer, session) => {
+      const { now, linkId, analysisId: copyId } = editStamp();
+      switch (request.intent) {
+        case 'clearAnalysisGlosses':
+          return catalogCommands.clearAnalysisGlosses(buffer, {
+            analysisIds: request.analysisIds,
+            analysisLanguage: session.analysisLanguage,
+            now,
+          });
+        case 'discardStaleAnalysis':
+          return staleCommands.discardStaleAnalysis(buffer, request);
+        case 'reapplyStaleAnalysis':
+          return staleCommands.reapplyStaleAnalysis(buffer, { ...request, copyId, linkId, now });
+        default:
+          throw new Error(
+            `Interlinearizer: cannot preview the removals of ${JSON.stringify(request)}`,
+          );
+      }
+    });
+    return JSON.stringify(changes.tokenAnalyses?.deletes ?? []);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to preview removals in session ${sessionId}`, e);
+    throw e;
+  }
 }
 
 /**
@@ -2195,6 +2464,159 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  /** The parameter naming the token analysis that a catalog-wide edit acts on. */
+  const catalogAnalysisParam = {
+    name: 'analysisId',
+    required: true,
+    summary: 'Id of the token analysis edited, for every token linked to it',
+    schema: { type: 'string' },
+  } as const;
+
+  const analysisIdsParam = {
+    name: 'analysisIds',
+    required: true,
+    summary: 'Ids of the token analyses',
+    schema: { type: 'array', items: { type: 'string' } },
+  } as const;
+
+  const writeAnalysisGlossCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.writeAnalysisGloss',
+    writeAnalysisGloss,
+    {
+      method: {
+        summary:
+          "Write a token analysis's gloss in a session's analysis language, for every token linked to it; a blank value clears it",
+        params: [
+          sessionIdParam,
+          catalogAnalysisParam,
+          { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const clearAnalysisGlossesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.clearAnalysisGlosses',
+    clearAnalysisGlosses,
+    {
+      method: {
+        summary: "Clear the glosses of several token analyses in a session's analysis language",
+        params: [sessionIdParam, analysisIdsParam],
+        result: editResult,
+      },
+    },
+  );
+
+  const writeAnalysisMorphemesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.writeAnalysisMorphemes',
+    writeAnalysisMorphemes,
+    {
+      method: {
+        summary:
+          "Re-split a token analysis's breakdown, for every token linked to it; no forms removes the breakdown",
+        params: [
+          sessionIdParam,
+          catalogAnalysisParam,
+          {
+            name: 'forms',
+            required: true,
+            summary: "The breakdown's forms in order",
+            schema: { type: 'array', items: { type: 'string' } },
+          },
+          {
+            name: 'writingSystem',
+            required: true,
+            summary: 'Writing system the morphemes are tagged with',
+            schema: { type: 'string' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const confirmAnalysisMorphemesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.confirmAnalysisMorphemes',
+    confirmAnalysisMorphemes,
+    {
+      method: {
+        summary:
+          "Keep a token analysis's stale breakdown as it stands, for every token linked to it",
+        params: [sessionIdParam, catalogAnalysisParam],
+        result: editResult,
+      },
+    },
+  );
+
+  const writeAnalysisMorphemeGlossCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.writeAnalysisMorphemeGloss',
+    writeAnalysisMorphemeGloss,
+    {
+      method: {
+        summary:
+          "Write the gloss of one morpheme of a token analysis in a session's analysis language, for every token linked to it; a blank value clears it",
+        params: [
+          sessionIdParam,
+          catalogAnalysisParam,
+          {
+            name: 'morphemeId',
+            required: true,
+            summary: 'MorphemeAnalysis.id of the morpheme glossed',
+            schema: { type: 'string' },
+          },
+          { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
+  const deleteAnalysesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.deleteAnalyses',
+    deleteAnalyses,
+    {
+      method: {
+        summary: 'Remove token analyses with every token link to them',
+        params: [sessionIdParam, analysisIdsParam],
+        result: editResult,
+      },
+    },
+  );
+
+  const mergeAnalysesIntoCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.mergeAnalysesInto',
+    mergeAnalysesInto,
+    {
+      method: {
+        summary:
+          "Fold token analyses into a survivor and write the settled content onto it, in a session's analysis language",
+        params: [
+          sessionIdParam,
+          {
+            name: 'survivorAnalysisId',
+            required: true,
+            summary: 'Id of the token analysis kept',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'mergedAnalysisIds',
+            required: true,
+            summary: 'Ids of the token analyses folded in, most-preferred first',
+            schema: { type: 'array', items: { type: 'string' } },
+          },
+          {
+            name: 'content',
+            required: true,
+            summary: 'MergedContent the survivor says once the merge settles',
+            schema: { type: 'object' },
+          },
+        ],
+        result: editResult,
+      },
+    },
+  );
+
   /** The parameter naming the phrase occurrence a phrase edit acts on. */
   const phraseIdParam = {
     name: 'phraseId',
@@ -2464,6 +2886,71 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           },
         ],
         result: editResult,
+      },
+    },
+  );
+
+  const discardResult = {
+    name: 'return value',
+    summary:
+      'JSON-stringified { changes, hasFreeTranslations }: the ChangeSet the discard applied, and whether any segment of the draft it leaves has a free translation',
+    schema: { type: 'string' },
+  } as const;
+
+  const discardBookCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.discardBook',
+    discardBook,
+    {
+      method: {
+        summary:
+          "Discard the unsaved changes to one book of a session's draft, restoring what the project it saves to holds for the book",
+        params: [
+          sessionIdParam,
+          {
+            name: 'bookCode',
+            required: true,
+            summary: 'Three-letter code of the book discarded',
+            schema: { type: 'string' },
+          },
+        ],
+        result: discardResult,
+      },
+    },
+  );
+
+  const discardAllCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.discardAll',
+    discardAll,
+    {
+      method: {
+        summary:
+          "Discard every unsaved change to a session's draft, restoring what the project it saves to holds",
+        params: [sessionIdParam],
+        result: discardResult,
+      },
+    },
+  );
+
+  const previewRemovalsCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.previewRemovals',
+    previewRemovals,
+    {
+      method: {
+        summary: "Name the token analyses a command would remove from a session's draft",
+        params: [
+          sessionIdParam,
+          {
+            name: 'request',
+            required: true,
+            summary: 'RemovalPreviewRequest naming the command by intent, with its arguments',
+            schema: { type: 'object' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified ids of the token analyses; "[]" when it would remove none',
+          schema: { type: 'string' },
+        },
       },
     },
   );
@@ -2893,6 +3380,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     reapplyStaleAnalysisCommandRegistration,
     keepStaleFreeTranslationCommandRegistration,
     discardStaleFreeTranslationCommandRegistration,
+    writeAnalysisGlossCommandRegistration,
+    clearAnalysisGlossesCommandRegistration,
+    writeAnalysisMorphemesCommandRegistration,
+    confirmAnalysisMorphemesCommandRegistration,
+    writeAnalysisMorphemeGlossCommandRegistration,
+    deleteAnalysesCommandRegistration,
+    mergeAnalysesIntoCommandRegistration,
     createPhraseCommandRegistration,
     updatePhraseCommandRegistration,
     deletePhraseCommandRegistration,
@@ -2904,6 +3398,9 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     mergeSegmentsCommandRegistration,
     splitSegmentCommandRegistration,
     moveBoundaryCommandRegistration,
+    discardBookCommandRegistration,
+    discardAllCommandRegistration,
+    previewRemovalsCommandRegistration,
     setPerfMarksCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,

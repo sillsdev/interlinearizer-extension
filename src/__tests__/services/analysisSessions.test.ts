@@ -8,6 +8,7 @@ import {
 } from '../../services/analysisSessions';
 import { ApprovalRuleError } from '../../services/commands/approvalRule';
 import { DraftRepository } from '../../services/draftRepository';
+import type { EditOptions } from '../../services/editHistory';
 import { Pt9ImportRepository } from '../../services/pt9ImportRepository';
 import { draftKey } from '../../services/storageKeys';
 import { ReadOnlyAnalysisError } from '../../types/read-only-analysis-error';
@@ -611,6 +612,113 @@ describe('AnalysisSessions', () => {
 
       await expect(sessions.edit(sessionId, 'add', command)).rejects.toThrow(ReadOnlyAnalysisError);
       expect(command).not.toHaveBeenCalled();
+    });
+    it.each([
+      ['an unsaved', true],
+      ['a saved', false],
+    ])('leaves %s draft as it was when the edit keeps the unsaved mark', async (_case, dirty) => {
+      const { sessions, storage, saveDraft } = makeSessions();
+      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty });
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await sessions.edit(
+        sessionId,
+        'add',
+        async (buffer) => buffer.create('tokenAnalyses', payload('a')),
+        { unsavedMark: 'keep' },
+      );
+
+      await expect(stored(storage)).resolves.toMatchObject({
+        dirty,
+        analysis: { tokenAnalyses: [payload('a')] },
+      });
+    });
+
+    it('marks the draft saved when the edit clears the mark', async () => {
+      const { sessions, storage, saveDraft } = makeSessions();
+      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty: true });
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await sessions.edit(
+        sessionId,
+        'add',
+        async (buffer) => buffer.create('tokenAnalyses', payload('a')),
+        { unsavedMark: 'clear' },
+      );
+
+      await expect(stored(storage)).resolves.toMatchObject({
+        dirty: false,
+        analysis: { tokenAnalyses: [payload('a')] },
+      });
+    });
+
+    it('marks the draft saved when an edit clearing the mark stages nothing', async () => {
+      const { sessions, storage, saveDraft } = makeSessions();
+      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty: true });
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await sessions.edit(sessionId, 'nothing', async () => {}, { unsavedMark: 'clear' });
+
+      await expect(stored(storage)).resolves.toMatchObject({ dirty: false });
+      await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
+    });
+
+    it('reads options given as a function from the session in the edit turn', async () => {
+      const { sessions, storage, saveDraft } = makeSessions();
+      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty: true });
+      const { sessionId } = await sessions.open(SOURCE);
+      const readOptions = jest.fn((): EditOptions => ({ unsavedMark: 'clear' }));
+
+      await sessions.edit(
+        sessionId,
+        'add',
+        async (buffer) => buffer.create('tokenAnalyses', payload('a')),
+        readOptions,
+      );
+
+      expect(readOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ scope: expect.objectContaining({ sourceProjectId: SOURCE }) }),
+      );
+      await expect(stored(storage)).resolves.toMatchObject({ dirty: false });
+    });
+  });
+
+  describe('preview', () => {
+    const payload = (id: string) => ({ id, ...FIXTURE_STAMPS, surfaceText: id });
+
+    it('reports what the command stages, applying nothing', async () => {
+      const { sessions, storage } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const changes = await sessions.preview(sessionId, 'add', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('a'));
+      });
+
+      expect(changes).toStrictEqual({
+        intent: 'add',
+        tokenAnalyses: { puts: [payload('a')], deletes: [] },
+      });
+      await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
+      await expect(
+        new DraftRepository(storage, SOURCE, silentLogger()).exportAll(),
+      ).resolves.toMatchObject({ draft: { analysis: { tokenAnalyses: [] } } });
+    });
+
+    it("answers on a Paratext 9 import's session", async () => {
+      const { sessions } = makeSessions([makeImport()]);
+      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+
+      await expect(sessions.preview(sessionId, 'nothing', async () => {})).resolves.toStrictEqual({
+        intent: 'nothing',
+      });
+    });
+
+    it('refuses a session that is not open', async () => {
+      const { sessions } = makeSessions();
+
+      await expect(sessions.preview('no-session', 'nothing', async () => {})).rejects.toThrow(
+        'no session no-session is open',
+      );
     });
   });
 

@@ -320,7 +320,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       throw e;
     }
     this.current = { draft, index };
-    return { inverse };
+    return { inverse, wasDirty: base.dirty };
   }
 
   /**

@@ -8,7 +8,7 @@ import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { missingBook } from '../utils/reanchor-draft';
 import { assertApprovalRule } from './commands/approvalRule';
 import { ChangeBuffer } from './commands/changeBuffer';
-import { EditHistory } from './editHistory';
+import { EditHistory, type EditOptions } from './editHistory';
 import { booksLinkedAmong, reanchorRestored, reanchorStoredBook } from './reanchorPasses';
 
 /** BCP 47 tag for a language that cannot be determined. */
@@ -83,6 +83,32 @@ export interface SessionHost {
 async function reanchorNow(session: Session, book: Book): Promise<void> {
   const { heldAnalysis } = await reanchorStoredBook(session.repository, book);
   if (heldAnalysis) session.history.recordPass(book);
+}
+
+/**
+ * Applies an edit's staged changes as one undo step, re-anchored to `reanchorTo`.
+ *
+ * @throws As {@link AnalysisSessions.edit} does.
+ */
+async function applyStaged(
+  session: Session,
+  buffer: ChangeBuffer,
+  staged: ChangeSet,
+  reanchorTo: void | readonly Book[],
+  options: EditOptions | undefined,
+): Promise<ChangeSet> {
+  await assertApprovalRule(buffer, session.repository);
+  const scope = staged.scope ?? (await session.repository.getScope());
+  if (scope.analysisLanguages.length === 0) {
+    staged.scope = { ...scope, analysisLanguages: [session.analysisLanguage] };
+  }
+  const reanchored =
+    reanchorTo && reanchorTo.length > 0
+      ? await reanchorRestored(session.repository)(staged, reanchorTo)
+      : undefined;
+  const changes = reanchored ? mergeChangeSets(staged, reanchored) : staged;
+  await session.history.apply(changes, options);
+  return changes;
 }
 
 type OpenSession = {
@@ -227,8 +253,10 @@ export class AnalysisSessions {
 
   /**
    * Runs `command` as one edit of the session's analysis, in the session's turn. What it stages
-   * applies as one undo step, marking the draft dirty; a command staging nothing applies nothing.
-   * When the draft lists no analysis languages, that step adds the session's analysis language.
+   * applies as one undo step, marking the draft unsaved unless `options` says otherwise. `options`
+   * given as a function is read from the session in the edit's turn. A command staging nothing
+   * applies nothing. When the draft lists no analysis languages, the step adds the session's
+   * analysis language.
    *
    * When `command` returns books, the step also re-anchors the draft, as the staged changes leave
    * it, to each book's text in turn.
@@ -240,35 +268,50 @@ export class AnalysisSessions {
    * @throws {Error} If the session is not open.
    * @throws Whatever the command, reading the draft, or applying its changes throws; nothing is
    *   applied.
+   * @throws Whatever marking the draft saved throws; the changes stay applied.
    */
   edit(
     sessionId: string,
     intent: string,
     command: (buffer: ChangeBuffer, session: Session) => Promise<void | readonly Book[]>,
+    editOptions?: EditOptions | ((session: Session) => EditOptions),
   ): Promise<ChangeSet> {
     return this.runEdit(sessionId, async (session) => {
+      const options = typeof editOptions === 'function' ? editOptions(session) : editOptions;
       const buffer = new ChangeBuffer(session.repository);
       const reanchorTo = await command(buffer, session);
       const staged = buffer.toChangeSet(intent);
-      if (isEmptyChangeSet(staged)) return staged;
-      await assertApprovalRule(buffer, session.repository);
-      const scope = staged.scope ?? (await session.repository.getScope());
-      if (scope.analysisLanguages.length === 0) {
-        staged.scope = { ...scope, analysisLanguages: [session.analysisLanguage] };
-      }
-      const reanchored =
-        reanchorTo && reanchorTo.length > 0
-          ? await reanchorRestored(session.repository)(staged, reanchorTo)
-          : undefined;
-      const changes = reanchored ? mergeChangeSets(staged, reanchored) : staged;
-      await session.history.apply(changes);
-      return changes;
+      if (!isEmptyChangeSet(staged))
+        return applyStaged(session, buffer, staged, reanchorTo, options);
+      if (options?.unsavedMark === 'clear') await session.history.markRestoredClean();
+      return staged;
+    });
+  }
+
+  /**
+   * Stages `command` in the session's turn and reports what it would change, applying nothing. A
+   * read-only session answers too.
+   *
+   * @returns The changes `command` staged, naming `intent`.
+   * @throws {Error} If the session is not open.
+   * @throws Whatever the command throws.
+   */
+  preview(
+    sessionId: string,
+    intent: string,
+    command: (buffer: ChangeBuffer, session: Session) => Promise<unknown>,
+  ): Promise<ChangeSet> {
+    return this.run(sessionId, async (session) => {
+      const buffer = new ChangeBuffer(session.repository);
+      await command(buffer, session);
+      return buffer.toChangeSet(intent);
     });
   }
 
   /**
    * Reverts the session's latest edit not yet undone, re-anchoring what it restores to the current
-   * text of each book re-anchored since.
+   * text of each book re-anchored since. Marks the draft saved when it restores content the draft
+   * was saved with, and unsaved otherwise.
    *
    * @returns The changes that reverted the edit and re-anchored what the undo restored, or
    *   `undefined` when there is none.
@@ -276,6 +319,7 @@ export class AnalysisSessions {
    * @throws {Error} If the session is not open.
    * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit
    *   stays the next to undo.
+   * @throws Whatever marking the draft saved throws; the undo stays applied.
    */
   undo(sessionId: string): Promise<ChangeSet | undefined> {
     return this.runEdit(sessionId, (session) => session.history.undo());
@@ -283,7 +327,8 @@ export class AnalysisSessions {
 
   /**
    * Redoes the session's latest undone edit, re-anchoring what it restores to the current text of
-   * each book re-anchored since.
+   * each book re-anchored since. Marks the draft saved when it restores content the draft was saved
+   * with, and unsaved otherwise.
    *
    * @returns The changes that redid the edit and re-anchored what the redo restored, or `undefined`
    *   when there is none.
@@ -291,6 +336,7 @@ export class AnalysisSessions {
    * @throws {Error} If the session is not open.
    * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit
    *   stays the next to redo.
+   * @throws Whatever marking the draft saved throws; the redo stays applied.
    */
   redo(sessionId: string): Promise<ChangeSet | undefined> {
     return this.runEdit(sessionId, (session) => session.history.redo());

@@ -10,8 +10,15 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
+import type { DraftContent } from '../../../hooks/useDraftProject';
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
+import {
+  discardAll,
+  discardBook,
+  type DiscardOutcome,
+} from '../../../services/commands/discardCommands';
 import { DraftRepository } from '../../../services/draftRepository';
+import { draftAnalysisKey } from '../../../services/storageKeys';
 import reducer, {
   createPhrase,
   deletePhrase,
@@ -20,7 +27,10 @@ import reducer, {
 } from '../../../store/analysisSlice';
 import type { ChangeSet, IndexDifference } from '../../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
+import { restoreBookInAnalysis, restoreBookInSegmentation } from '../../../utils/analysis-book';
 import { buildBookIndexes } from '../../../utils/book-indexes';
+import { isEmptyChangeSet } from '../../../utils/change-set';
+import { analysisHasFreeTranslations } from '../../../utils/free-translations';
 import { phrasesStraddlingBoundary, splitPhraseAtBoundary } from '../../../utils/phrase-arc';
 import {
   isEmptyDelta,
@@ -312,4 +322,120 @@ export function expectParity(
   expectStore(outcome.store);
   expect(outcome.host).toStrictEqual(outcome.store);
   expect(outcome.indexDifferences).toStrictEqual([]);
+}
+
+/**
+ * Asserts that the token analyses the command's changes delete are those a removal preview in the
+ * WebView names: the ones in `before` that the reducer's result lacks.
+ */
+export function expectRemovalPreviewParity(outcome: ParityOutcome, before: TextAnalysis): void {
+  const kept = new Set(outcome.store.tokenAnalyses.map(({ id }) => id));
+  const reclaimed = before.tokenAnalyses.map(({ id }) => id).filter((id) => !kept.has(id));
+  expect([...(outcome.changes.tokenAnalyses?.deletes ?? [])].sort()).toStrictEqual(
+    reclaimed.sort(),
+  );
+}
+
+/** What a draft holds before an unsaved-change discard runs. */
+export type DiscardSeed = {
+  analysis: TextAnalysis;
+  /** The draft's boundaries; absent for the default verse segmentation. */
+  segmentation?: SegmentationDelta;
+  /** Books whose stored analysis is made unreadable once the draft is stored. */
+  unreadableBooks?: readonly string[];
+};
+
+/** An unsaved-change discard to run both ways: of one book, or of the whole draft. */
+export type DiscardEdit = { kind: 'book'; bookCode: string } | { kind: 'all' };
+
+/** What one discard gives through the WebView and through the host's command. */
+export type DiscardParityOutcome = ParityOutcome & {
+  /** The boundaries the WebView saves. */
+  storeSegmentation: SegmentationDelta | undefined;
+  /** The boundaries the command's changes leave once applied and reloaded. */
+  hostSegmentation: SegmentationDelta | undefined;
+  /** Whether the WebView's draft, as the discard leaves it in memory, has a free translation. */
+  storeHasFreeTranslations: boolean;
+  /** What the command told its caller. */
+  hostOutcome: DiscardOutcome;
+  /** What each way leaves stored under each unreadable book's analysis key. */
+  unreadableShards: { store: (string | undefined)[]; host: (string | undefined)[] };
+};
+
+/** Storage holding a draft of `seed`, with the analysis of its unreadable books made unreadable. */
+async function seededStorage(seed: DiscardSeed) {
+  const memory = memoryStorage();
+  await new DraftRepository(memory.storage, 'src', silentLogger()).replaceAll({
+    ...emptyDraft('src'),
+    analysisLanguages: ['en'],
+    ...(seed.segmentation && { segmentation: JSON.parse(JSON.stringify(seed.segmentation)) }),
+    analysis: JSON.parse(JSON.stringify(seed.analysis)),
+  });
+  seed.unreadableBooks?.forEach((bookCode) =>
+    memory.records.set(draftAnalysisKey('src', bookCode), 'not json'),
+  );
+  return memory;
+}
+
+/**
+ * Runs one unsaved-change discard both ways over a draft holding `seed`, restoring `saved`, the
+ * content of the project the draft saves to. One way computes the content the WebView's discard
+ * leaves in memory and saves it whole, as its autosave does for a draft not started over. The other
+ * way stages the host's command over the stored draft and applies its changes. Each way then
+ * reloads the draft from storage.
+ */
+export async function runDiscardParity(
+  seed: DiscardSeed,
+  saved: DraftContent | undefined,
+  edit: DiscardEdit,
+): Promise<DiscardParityOutcome> {
+  const logger = silentLogger();
+  const shardsOf = (records: Map<string, string>) =>
+    (seed.unreadableBooks ?? []).map((bookCode) => records.get(draftAnalysisKey('src', bookCode)));
+  const savedCopy = (): DraftContent | undefined => saved && JSON.parse(JSON.stringify(saved));
+
+  const store = await seededStorage(seed);
+  const webViewRepository = new DraftRepository(store.storage, 'src', logger);
+  const { draft: loaded } = await webViewRepository.exportAll();
+  const restored: DraftContent =
+    edit.kind === 'book'
+      ? {
+          analysis: restoreBookInAnalysis(loaded.analysis, savedCopy()?.analysis, edit.bookCode),
+          segmentation: restoreBookInSegmentation(
+            loaded.segmentation,
+            savedCopy()?.segmentation,
+            edit.bookCode,
+          ),
+        }
+      : (savedCopy() ?? { analysis: emptyAnalysis(), segmentation: undefined });
+  const { segmentation: restoredSegmentation, ...rest } = { ...loaded, ...restored };
+  await webViewRepository.replaceAll({
+    ...rest,
+    ...(restoredSegmentation !== undefined && { segmentation: restoredSegmentation }),
+  });
+  const { draft: storeDraft } = await new DraftRepository(store.storage, 'src', logger).exportAll();
+
+  const host = await seededStorage(seed);
+  const repository = new DraftRepository(host.storage, 'src', logger);
+  const stored = await repository.exportAll();
+  const buffer = new ChangeBuffer(repository);
+  const hostOutcome =
+    edit.kind === 'book'
+      ? discardBook(buffer, stored, edit.bookCode, savedCopy())
+      : discardAll(buffer, stored, savedCopy());
+  const changes = buffer.toChangeSet('discard');
+  if (!isEmptyChangeSet(changes)) await repository.apply(changes);
+  const { draft: hostDraft } = await new DraftRepository(host.storage, 'src', logger).exportAll();
+
+  return {
+    store: normalized(storeDraft.analysis),
+    host: normalized(hostDraft.analysis),
+    changes,
+    indexDifferences: await repository.checkIndexes(),
+    storeSegmentation: storeDraft.segmentation,
+    hostSegmentation: hostDraft.segmentation,
+    storeHasFreeTranslations: analysisHasFreeTranslations(restored.analysis),
+    hostOutcome,
+    unreadableShards: { store: shardsOf(store.records), host: shardsOf(host.records) },
+  };
 }

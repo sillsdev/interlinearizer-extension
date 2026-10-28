@@ -120,6 +120,14 @@ function unlinkedPayloads<Payload extends { id: string }>(
   return payloads.all().filter(({ id }) => !links.has('analysisId', id));
 }
 
+/** Whether any payload has no link referencing it, stopping at the first found. */
+function hasUnlinkedPayload<Payload extends { id: string }>(
+  payloads: PayloadTable<Payload>,
+  links: LinkTable<{ id: string; analysisId: string }>,
+): boolean {
+  return payloads.all().some(({ id }) => !links.has('analysisId', id));
+}
+
 const formKeyers = {
   form: (payload: { surfaceText: string }) => [normalizeSurfaceForm(payload.surfaceText)],
 };
@@ -241,7 +249,12 @@ export class AnalysisIndex {
       ...this.segmentLinks.keys('book'),
       ...this.phraseLinks.keys('book'),
     ]);
-    if (this.partition(BOOKLESS_PARTITION)) keys.add(BOOKLESS_PARTITION);
+    if (
+      hasUnlinkedPayload(this.tokenAnalyses, this.tokenLinks) ||
+      hasUnlinkedPayload(this.phraseAnalyses, this.phraseLinks) ||
+      hasUnlinkedPayload(this.segmentAnalyses, this.segmentLinks)
+    )
+      keys.add(BOOKLESS_PARTITION);
     return [...keys];
   }
 

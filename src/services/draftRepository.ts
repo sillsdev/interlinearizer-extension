@@ -275,8 +275,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   /**
    * Applies the changes to the draft this instance keeps, loading the stored draft first when it
    * keeps none, as after {@link exportAll} or a whole save. Rewrites only the books whose content
-   * the changes alter, so an edit to a payload rewrites every book linking it. Marks the draft
-   * unsaved unless `options` keeps the mark.
+   * the changes alter, so an edit to a payload rewrites every book linking it. A draft loaded
+   * inline is written whole. Marks the draft unsaved unless `options` keeps the mark.
    *
    * After a failed apply, the next apply to succeed also brings back in step any book the failure
    * left out of step with the draft. In the same instance, the next apply restores the book as it
@@ -658,7 +658,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * entry costs at most a write.
    *
    * Losing a journal costs more. A shard it names under `adding` is orphaned, and a book it names
-   * under `unsettled` can stay out of step with the draft until a whole save.
+   * under `unsettled` can stay out of step with the draft until a save that reaches it.
    *
    * @throws If storage rejects the read.
    */

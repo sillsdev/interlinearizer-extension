@@ -158,6 +158,29 @@ describe('reanchorDraftToMissingBook', () => {
     expect(reanchored.analysis.segmentAnalysisLinks[0].status).toBe('stale');
   });
 
+  it('stales a free translation in a book outside the canon', () => {
+    const content = {
+      analysis: {
+        ...emptyAnalysis(),
+        segmentAnalyses: [{ ...FIXTURE_STAMPS, id: 'sa-1', surfaceText: 'alpha beta' }],
+        segmentAnalysisLinks: [
+          {
+            id: 'sl-1',
+            ...FIXTURE_STAMPS,
+            analysisId: 'sa-1',
+            status: 'approved' as const,
+            segmentId: 'ZZZ front1:0',
+          },
+        ],
+      },
+      segmentation: undefined,
+    };
+
+    const reanchored = toMissingBook('ZZZ', content);
+
+    expect(reanchored.analysis.segmentAnalysisLinks[0].status).toBe('stale');
+  });
+
   it("leaves another book's approvals approved", () => {
     const content = { analysis: glossedOn('alpha beta', 'beta', 'bêta'), segmentation: undefined };
 

@@ -45,6 +45,8 @@ type PendingReplace =
  *   is silently lost by the draft-replacing swap. When false, Save As reports the active project as
  *   having nothing to save rather than offering a write that would change nothing.
  * @param props.getDraftSnapshot - Returns the latest draft envelope (analysis + config).
+ * @param props.detachFromProject - Records that the active project, the draft's Save target, was
+ *   deleted, so the draft's content is saved nowhere.
  * @param props.commitDraft - Runs a Save As through the draft: once the stored draft is current,
  *   runs the given copy with the draft snapshot and marks the draft synced when the copy reports it
  *   landed whole. Resolves whether the copy landed, or `false` when no save could run.
@@ -74,6 +76,7 @@ export default function ProjectModals({
   defaultAnalysisLanguage,
   hasUnsavedWork,
   getDraftSnapshot,
+  detachFromProject,
   commitDraft,
   loadFromProject,
   newDraft,
@@ -89,6 +92,7 @@ export default function ProjectModals({
   defaultAnalysisLanguage?: string;
   hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
+  detachFromProject: () => void;
   commitDraft: (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>) => Promise<boolean>;
   loadFromProject: (project: OpenableProject) => void;
   newDraft: (config: NewDraftConfig) => void;
@@ -188,12 +192,17 @@ export default function ProjectModals({
     [activeProject, resolvedMetadataProject, setActiveProject],
   );
 
-  /** Clears `activeProject` when the project the user just deleted was the active one. */
+  /**
+   * Clears `activeProject` when the project the user just deleted was the active one, and records
+   * that the draft's content is saved nowhere.
+   */
   const handleProjectDeleted = useCallback(
     (deletedId: string) => {
-      if (activeProject?.id === deletedId) resetActiveProject();
+      if (activeProject?.id !== deletedId) return;
+      resetActiveProject();
+      detachFromProject();
     },
-    [activeProject, resetActiveProject],
+    [activeProject, detachFromProject, resetActiveProject],
   );
 
   /**

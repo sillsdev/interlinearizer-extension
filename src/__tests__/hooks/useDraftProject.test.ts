@@ -1043,6 +1043,78 @@ describe('useDraftProject', () => {
     });
   });
 
+  describe('detachFromProject', () => {
+    it('marks a clean draft with analysis unsaved and persists the mark', async () => {
+      mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-saved') }));
+      const { result } = await renderLoaded();
+
+      jest.useFakeTimers();
+      act(() => result.current.detachFromProject());
+      act(() => jest.advanceTimersByTime(300));
+      jest.useRealTimers();
+
+      expect(result.current.dirty).toBe(true);
+      expect(lastSavedDraft()).toMatchObject({
+        analysis: analysisWithToken('tok-saved'),
+        dirty: true,
+      });
+    });
+
+    it('marks a clean draft with only custom boundaries unsaved', async () => {
+      mockGetDraftResolves(
+        makeDraft({ segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] } }),
+      );
+      const { result } = await renderLoaded();
+
+      act(() => result.current.detachFromProject());
+
+      expect(result.current.dirty).toBe(true);
+    });
+
+    it('leaves an empty draft clean without writing it', async () => {
+      const { result } = await renderLoaded();
+      const writesBefore = saveDraftCount();
+
+      jest.useFakeTimers();
+      act(() => result.current.detachFromProject());
+      act(() => jest.advanceTimersByTime(300));
+      jest.useRealTimers();
+
+      expect(result.current.dirty).toBe(false);
+      expect(saveDraftCount()).toBe(writesBefore);
+    });
+
+    it('leaves an unsaved draft unsaved', async () => {
+      mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-unsaved'), dirty: true }));
+      const { result } = await renderLoaded();
+
+      act(() => result.current.detachFromProject());
+
+      expect(result.current.dirty).toBe(true);
+    });
+
+    it('stays unsaved when an undo returns to the content the deleted project held', async () => {
+      mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-saved') }));
+      const { result } = await renderLoaded();
+
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+      act(() => result.current.detachFromProject());
+      act(() => result.current.undo());
+
+      expect(result.current.dirty).toBe(true);
+    });
+
+    it('reads clean again when an undo returns to an empty draft', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => result.current.detachFromProject());
+      act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
+      act(() => result.current.undo());
+
+      expect(result.current.dirty).toBe(false);
+    });
+  });
+
   describe('marking the draft synced after a save', () => {
     it('clears dirty without bumping the version', async () => {
       const { result } = await renderLoaded();

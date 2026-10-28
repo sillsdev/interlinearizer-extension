@@ -48,6 +48,13 @@ function sameContent(a: DraftContent, b: DraftContent): boolean {
   return a.analysis === b.analysis && a.segmentation === b.segmentation;
 }
 
+/** Whether `content` holds no analysis and no custom segment boundaries. */
+function isEmptyContent({ analysis, segmentation }: DraftContent): boolean {
+  return (
+    Object.values(analysis).every((records) => records.length === 0) && isEmptyDelta(segmentation)
+  );
+}
+
 /** Returns `draft` holding `content`, marked `dirty` or not. */
 function withContent(
   draft: DraftProject,
@@ -238,6 +245,11 @@ export type UseDraftProjectResult = {
    * alignment target.
    */
   discardAll: (saved?: DraftContent) => void;
+  /**
+   * Records that no project holds the draft's content any longer, as when its project is deleted.
+   * Marks the draft unsaved unless it is empty, so nothing it holds is replaced without asking.
+   */
+  detachFromProject: () => void;
   canUndo: boolean;
   canRedo: boolean;
   /**
@@ -594,6 +606,19 @@ export default function useDraftProject(
     [applyReplacement],
   );
 
+  const detachFromProject = useCallback(() => {
+    const { current } = draftRef;
+    /* v8 ignore next -- a project is deleted only once the draft has loaded */
+    if (!current) return;
+
+    // The history states that read clean matched the deleted project, so none of them still do.
+    // Only an empty draft has nothing to lose.
+    const empty = isEmptyContent(contentOf(current));
+    const clean = empty && !current.dirty;
+    cleanStatesRef.current = new Set(clean ? [historyRef.current.state] : []);
+    if (!empty && !current.dirty) writeDraft({ ...current, dirty: true });
+  }, [writeDraft]);
+
   /**
    * Marks the draft synced once `saved` has been copied into a project, unless an edit landed
    * meanwhile: then the draft stays dirty, so the indicator and the next Save reflect that edit. An
@@ -744,6 +769,7 @@ export default function useDraftProject(
     newDraft,
     discardBook,
     discardAll,
+    detachFromProject,
     canUndo,
     canRedo,
     getHistoryRevision,

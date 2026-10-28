@@ -500,6 +500,7 @@ function InterlinearizerLoaderInner({
     commitDraft,
     discardBook,
     discardAll,
+    detachFromProject,
     reanchorBook,
     asOneStep,
     subscribeToAnalysisReplacements,
@@ -2098,6 +2099,7 @@ function InterlinearizerLoaderInner({
         defaultAnalysisLanguage={platformLanguage}
         hasUnsavedWork={hasUnsavedChanges}
         getDraftSnapshot={getDraftSnapshot}
+        detachFromProject={detachFromProject}
         commitDraft={commitDraft}
         loadFromProject={loadFromProject}
         newDraft={newDraft}

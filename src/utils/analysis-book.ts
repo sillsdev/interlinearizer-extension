@@ -94,9 +94,10 @@ export function mergeAnalyses(partitions: readonly TextAnalysis[]): TextAnalysis
     });
   };
   partitions.forEach((partition) => {
-    merged.tokenAnalysisLinks.push(...partition.tokenAnalysisLinks);
-    merged.segmentAnalysisLinks.push(...partition.segmentAnalysisLinks);
-    merged.phraseAnalysisLinks.push(...partition.phraseAnalysisLinks);
+    // Appended one by one: spreading a large draft's links into `push` overflows the call stack.
+    partition.tokenAnalysisLinks.forEach((link) => merged.tokenAnalysisLinks.push(link));
+    partition.segmentAnalysisLinks.forEach((link) => merged.segmentAnalysisLinks.push(link));
+    partition.phraseAnalysisLinks.forEach((link) => merged.phraseAnalysisLinks.push(link));
     appendPayloads(partition.tokenAnalyses, merged.tokenAnalyses);
     appendPayloads(partition.segmentAnalyses, merged.segmentAnalyses);
     appendPayloads(partition.phraseAnalyses, merged.phraseAnalyses);

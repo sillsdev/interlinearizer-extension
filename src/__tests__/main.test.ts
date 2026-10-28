@@ -2464,6 +2464,7 @@ describe('main', () => {
         changes: { intent: 'writeGloss', tokenAnalyses: { puts: [], deletes: ['ta-1'] } },
         poolBuckets: {},
         poolAnalyses: [],
+        resegmentedBooks: [],
       };
       jest.spyOn(AnalysisSessions.prototype, 'undo').mockResolvedValue(reverted);
       const { undoEdit } = await activateSessionCommands();
@@ -2506,6 +2507,7 @@ describe('main', () => {
         changes: { intent: 'writeGloss', tokenAnalyses: { puts: [], deletes: ['ta-1'] } },
         poolBuckets: {},
         poolAnalyses: [],
+        resegmentedBooks: [],
       };
       jest.spyOn(AnalysisSessions.prototype, 'redo').mockResolvedValue(remade);
       const { redoEdit } = await activateSessionCommands();
@@ -2726,6 +2728,7 @@ describe('main', () => {
         changeId: 'change-1',
         books: [{ bookId: 'GEN', ranges: [{ start: 1, end: 2 }] }],
         analysisIds: [changes.tokenAnalyses.puts[0].id],
+        forms: ['and'],
         queries: ['getCatalogRows', 'getConcordance'],
       });
     });
@@ -3743,6 +3746,7 @@ describe('main', () => {
         },
         poolBuckets: { in: [] },
         poolAnalyses: [],
+        resegmentedBooks: [],
         hasFreeTranslations: false,
       });
       expect(projectStorage.getProject).not.toHaveBeenCalled();

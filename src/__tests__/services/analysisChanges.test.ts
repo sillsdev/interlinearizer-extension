@@ -51,6 +51,7 @@ describe('describeChange', () => {
     expect(change).toStrictEqual({
       books: [{ bookId: 'GEN', ranges: [{ start: 1, end: 2 }] }],
       analysisIds: ['ta-god'],
+      forms: [],
       queries: ['getCatalogRows', 'getConcordance'],
     });
   });
@@ -144,6 +145,7 @@ describe('describeChange', () => {
         },
       ],
       analysisIds: ['pl'],
+      forms: [],
       queries: [],
     });
   });
@@ -166,6 +168,7 @@ describe('describeChange', () => {
     expect(change).toStrictEqual({
       books: [],
       analysisIds: ['ta'],
+      forms: ['god'],
       queries: ['getCatalogRows', 'getConcordance'],
     });
   });
@@ -319,23 +322,26 @@ describe('describeScriptureEdit', () => {
     expect(describeScriptureEdit('GEN', [])).toStrictEqual({
       books: [{ bookId: 'GEN' }],
       analysisIds: [],
+      forms: [],
       queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
     });
   });
 
-  it('names whole each book its passes touched, and each analysis once', () => {
+  it('names whole each book its passes touched, and each analysis and form once', () => {
     const passes = [
       {
         books: [{ bookId: 'GEN', ranges: [{ start: 0, end: 1 }] }],
         analysisIds: ['ta'],
+        forms: ['a'],
         queries: [],
       },
-      { books: [{ bookId: 'EXO' }], analysisIds: ['ta', 'tb'], queries: [] },
+      { books: [{ bookId: 'EXO' }], analysisIds: ['ta', 'tb'], forms: ['a', 'b'], queries: [] },
     ];
 
     expect(describeScriptureEdit('GEN', passes)).toStrictEqual({
       books: [{ bookId: 'GEN' }, { bookId: 'EXO' }],
       analysisIds: ['ta', 'tb'],
+      forms: ['a', 'b'],
       queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
     });
   });

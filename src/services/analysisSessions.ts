@@ -15,7 +15,12 @@ import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { missingBook } from '../utils/reanchor-draft';
 import { segmentationForBook } from '../utils/segmentation';
-import { describeChange, describeScriptureEdit, type AppliedChange } from './analysisChanges';
+import {
+  booksResegmented,
+  describeChange,
+  describeScriptureEdit,
+  type AppliedChange,
+} from './analysisChanges';
 import { assertApprovalRule } from './commands/approvalRule';
 import { ChangeBuffer } from './commands/changeBuffer';
 import { settleAll } from './draftRepository';
@@ -169,7 +174,12 @@ async function replyTo(
 ): Promise<CommandReply> {
   const pool = await readTouchedPoolBuckets(session.repository, applied);
   await reportApplied(host, session, applied, changeId);
-  return { changeId, changes: applied.changes, ...pool };
+  return {
+    changeId,
+    changes: applied.changes,
+    ...pool,
+    resegmentedBooks: booksResegmented(applied),
+  };
 }
 
 /**
@@ -441,7 +451,14 @@ export class AnalysisSessions {
             return { ...(await replyTo(this.host, session, applied, changeId)), ...extra };
           }
           if (editOptions.unsavedMark === 'clear') await session.history.markRestoredClean();
-          return { changeId, changes: staged, poolBuckets: {}, poolAnalyses: [], ...extra };
+          return {
+            changeId,
+            changes: staged,
+            poolBuckets: {},
+            poolAnalyses: [],
+            resegmentedBooks: [],
+            ...extra,
+          };
         }),
       ),
     );

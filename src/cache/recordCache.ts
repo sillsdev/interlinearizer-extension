@@ -4,7 +4,6 @@ import type {
   Segment,
   SegmentAnalysis,
   SegmentAnalysisLink,
-  SegmentationDelta,
   TokenAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
@@ -18,10 +17,12 @@ import type {
 } from '../types/segment-pages';
 import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
-import { segmentationForBook } from '../utils/segmentation';
 
-/** What a reply leaves to fetch again: nothing, the held pages, or the outline. */
-export type Refetch = 'none' | 'pages' | 'outline';
+/**
+ * What a reply leaves to fetch again: nothing, the held pages, the held pages with the outline's
+ * orphaned-card counts, or the outline along with each view's latest range.
+ */
+export type Refetch = 'none' | 'pages' | 'placement' | 'outline';
 
 /** Records of one kind by id. */
 type Table<T> = Map<string, T>;
@@ -98,9 +99,6 @@ export class RecordCache {
   /** The revision that last wrote or removed each record or pool bucket, keyed by kind and id. */
   private readonly writtenAt = new Map<string, number>();
 
-  /** The boundaries that a reply last gave the book, as JSON; absent until a reply names them. */
-  private boundaries?: string;
-
   constructor(outline: BookOutline) {
     this.outlineHeld = outline;
   }
@@ -114,6 +112,51 @@ export class RecordCache {
   replaceOutline(outline: BookOutline): void {
     this.outlineHeld = outline;
     this.segments.clear();
+    this.spanTokens.clear();
+  }
+
+  /**
+   * Takes the orphaned-card counts of a fresh outline, keeping the held pages.
+   *
+   * @returns `true` when it took the counts. `false`, taking nothing, when `outline` differs from
+   *   the held outline in more than its orphaned-card counts.
+   */
+  takeCounts(outline: BookOutline): boolean {
+    const cut = ({ segments, ...rest }: BookOutline) =>
+      JSON.stringify({ ...rest, segments: segments.map((s) => ({ ...s, orphanedCardCount: 0 })) });
+    if (cut(outline) !== cut(this.outlineHeld)) return false;
+    this.outlineHeld = outline;
+    return true;
+  }
+
+  /**
+   * The outline indexes of the held segments that read one of `analysisIds`, or that hold a word
+   * token of one of `forms`.
+   */
+  heldIndexesReading(analysisIds: readonly string[], forms: readonly string[]): number[] {
+    const ids = new Set(analysisIds);
+    const formSet = new Set(forms);
+    const reads = (links: Iterable<{ analysisId: string }>) =>
+      [...links].some(({ analysisId }) => ids.has(analysisId));
+    return [...this.segments]
+      .filter(([index, segment]) => {
+        const refs = segment.tokens.map(({ ref }) => ref);
+        const placed = [
+          ...(this.placement.bySegment.get(segment.id) ?? []),
+          ...(this.placement.orphanedAfter.get(segment.id) ?? []),
+          ...(index === 0 ? this.placement.orphanedAhead : []),
+        ];
+        return (
+          segment.tokens
+            .filter(isWordToken)
+            .some(({ surfaceText }) => formSet.has(normalizeSurfaceForm(surfaceText))) ||
+          reads(recordsOf(this.tokenLinks, idsUnder(this.tokenLinksByRef, refs))) ||
+          reads(recordsOf(this.phraseLinks, idsUnder(this.phraseLinksByRef, refs))) ||
+          reads(recordsOf(this.segmentLinks, idsUnder(this.segmentLinksBySegment, [segment.id]))) ||
+          placed.some((id) => ids.has(id))
+        );
+      })
+      .map(([index]) => index);
   }
 
   /** Whether the segment at outline index `index` is held. */
@@ -199,31 +242,30 @@ export class RecordCache {
   /**
    * Applies a command's reply.
    *
-   * @returns `'outline'` when the reply moved the book's boundaries or touched a stale free
-   *   translation, because the cache cannot place that translation or count orphaned cards.
-   *   `'pages'` when the reply touched a phrase over a token that the cache does not hold.
-   *   Otherwise `'none'`.
+   * @returns `'outline'` when the reply moved the book's boundaries. `'placement'` when the reply
+   *   touched a stale free translation, or removed a free translation that the cache does not hold.
+   *   The cache cannot place stale translations or count orphaned cards. `'pages'` when the reply
+   *   put a phrase link over a token that the cache does not hold. Otherwise `'none'`.
    */
-  apply({ changes, poolBuckets, poolAnalyses }: CommandReply): Refetch {
+  apply({ changes, poolBuckets, poolAnalyses, resegmentedBooks }: CommandReply): Refetch {
     this.revision += 1;
+    const segmentLinks = changes.segmentAnalysisLinks;
+    const reachesStale =
+      [
+        ...(segmentLinks?.puts ?? []),
+        ...(segmentLinks?.puts ?? []).flatMap(({ id }) => this.segmentLinks.get(id) ?? []),
+      ].some(({ status }) => status === 'stale') ||
+      (segmentLinks?.deletes ?? []).some((id) => {
+        const held = this.segmentLinks.get(id);
+        return !held || held.status === 'stale';
+      });
+    const reachesUnheld = (changes.phraseAnalysisLinks?.puts ?? []).some(({ tokens }) =>
+      tokens.some(({ tokenRef }) => !this.spanTokens.has(tokenRef)),
+    );
     let refetch: Refetch = 'none';
-    const reachesStale = [
-      ...(changes.segmentAnalysisLinks?.puts ?? []),
-      ...(changes.segmentAnalysisLinks?.deletes ?? []).flatMap(
-        (id) => this.segmentLinks.get(id) ?? [],
-      ),
-      ...(changes.segmentAnalysisLinks?.puts ?? []).flatMap(
-        ({ id }) => this.segmentLinks.get(id) ?? [],
-      ),
-    ].some(({ status }) => status === 'stale');
-    if (reachesStale) refetch = 'outline';
-    if (
-      refetch === 'none' &&
-      (changes.phraseAnalysisLinks?.puts ?? []).some(({ tokens }) =>
-        tokens.some(({ tokenRef }) => !this.spanTokens.has(tokenRef)),
-      )
-    )
-      refetch = 'pages';
+    if (resegmentedBooks.includes(this.outlineHeld.bookRef)) refetch = 'outline';
+    else if (reachesStale) refetch = 'placement';
+    else if (reachesUnheld) refetch = 'pages';
 
     this.write('tokenLink', this.tokenLinks, changes.tokenAnalysisLinks);
     this.write('phraseLink', this.phraseLinks, changes.phraseAnalysisLinks);
@@ -236,12 +278,6 @@ export class RecordCache {
       this.poolBuckets.set(form, bucket);
       this.writtenAt.set(`bucket:${form}`, this.revision);
     });
-
-    if (changes.scope) {
-      const boundaries = this.boundariesOf(changes.scope.segmentation);
-      if (boundaries !== this.boundaries) refetch = 'outline';
-      this.boundaries = boundaries;
-    }
     return refetch;
   }
 
@@ -318,11 +354,6 @@ export class RecordCache {
         phraseSpans,
       },
     };
-  }
-
-  /** The boundaries `delta` sets in this book, as JSON. */
-  private boundariesOf(delta: SegmentationDelta | undefined): string {
-    return JSON.stringify(segmentationForBook(delta, this.outlineHeld.bookRef)) ?? 'none';
   }
 
   /** Holds `segment` at outline index `index`, noting where each of its word tokens sits. */

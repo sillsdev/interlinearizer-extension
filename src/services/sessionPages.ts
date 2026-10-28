@@ -237,17 +237,16 @@ export async function readSegmentPage(
 }
 
 /**
- * Reads the pool buckets that an applied change may have changed, from `repository` as the change
- * leaves it. They are the buckets of each token payload that the change or its inverse puts. They
- * also include the bucket of the payload named by each token link that the change or its inverse
- * puts.
+ * The normalized surface forms whose pool buckets an applied change may have changed, sorted. They
+ * are the forms of each token payload that the change or its inverse puts. They also include the
+ * form of the payload named by each token link that the change or its inverse puts.
  *
  * @throws Whatever the repository's lookups throw.
  */
-export async function readTouchedPoolBuckets(
+export async function touchedForms(
   repository: AnalysisRepository,
   { changes, inverse }: AppliedChange,
-): Promise<PoolRead> {
+): Promise<string[]> {
   const payloads = touched(changes.tokenAnalyses, inverse.tokenAnalyses);
   const known = new Set(payloads.map(({ id }) => id));
   const linkedIds = touched(changes.tokenAnalysisLinks, inverse.tokenAnalysisLinks)
@@ -255,9 +254,24 @@ export async function readTouchedPoolBuckets(
     .filter((id) => !known.has(id));
   const linked =
     linkedIds.length > 0 ? await repository.getTokenAnalyses([...new Set(linkedIds)]) : [];
-  const forms = new Set(
-    [...payloads, ...linked].map(({ surfaceText }) => normalizeSurfaceForm(surfaceText)),
-  );
-  if (forms.size === 0) return { poolBuckets: {}, poolAnalyses: [] };
-  return readPoolBuckets(repository, [...forms].sort());
+  return [
+    ...new Set(
+      [...payloads, ...linked].map(({ surfaceText }) => normalizeSurfaceForm(surfaceText)),
+    ),
+  ].sort();
+}
+
+/**
+ * Reads the pool buckets that an applied change may have changed, from `repository` as the change
+ * leaves it.
+ *
+ * @throws Whatever the repository's lookups throw.
+ */
+export async function readTouchedPoolBuckets(
+  repository: AnalysisRepository,
+  applied: AppliedChange,
+): Promise<PoolRead> {
+  const forms = await touchedForms(repository, applied);
+  if (forms.length === 0) return { poolBuckets: {}, poolAnalyses: [] };
+  return readPoolBuckets(repository, forms);
 }

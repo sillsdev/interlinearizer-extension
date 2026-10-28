@@ -1,5 +1,5 @@
-import type { Book, TextAnalysis } from 'interlinearizer';
-import { AnalysisSessions } from '../../services/analysisSessions';
+import type { Book, SegmentationDelta, TextAnalysis } from 'interlinearizer';
+import { AnalysisSessions, type EditOutcome, type Session } from '../../services/analysisSessions';
 import type { ChangeBuffer } from '../../services/commands/changeBuffer';
 import * as tokenCommands from '../../services/commands/tokenCommands';
 import { DraftRepository } from '../../services/draftRepository';
@@ -28,13 +28,20 @@ export const GLOSSED: Partial<TextAnalysis> = {
   tokenAnalysisLinks: [makeTokenLink('ta-god', ref('God'), { surfaceText: 'God', id: 'tl-god' })],
 };
 
-/** A session over a draft holding `analysis`, with a way to read its pages as the host serves them. */
-export async function sessionOver(analysis: Partial<TextAnalysis> = GLOSSED) {
+/**
+ * A session over a draft holding `analysis` and `segmentation`, with a way to read its outline and
+ * pages as the host serves them.
+ */
+export async function sessionOver(
+  analysis: Partial<TextAnalysis> = GLOSSED,
+  segmentation: SegmentationDelta | undefined = undefined,
+) {
   const { storage } = memoryStorage();
   await new DraftRepository(storage, 'src', silentLogger()).replaceAll({
     ...emptyDraft('src'),
     analysisLanguages: ['en'],
     analysis: { ...emptyAnalysis(), ...analysis },
+    ...(segmentation && { segmentation }),
   });
   const sessions = new AnalysisSessions({
     findProject: async () => undefined,
@@ -52,12 +59,14 @@ export async function sessionOver(analysis: Partial<TextAnalysis> = GLOSSED) {
   const { sessionId } = await sessions.open('src');
   const fetchPage = (start: number, end: number, book: Book = BOOK): Promise<SegmentPage> =>
     sessions.run(sessionId, (session) => readSegmentPage(session.repository, book, start, end));
-  const outline = await sessions.run(sessionId, (session) =>
-    readBookOutline(session.repository, BOOK),
-  );
-  const edit = (intent: string, command: (buffer: ChangeBuffer) => Promise<void>) =>
-    sessions.edit(sessionId, intent, command);
-  return { sessions, sessionId, fetchPage, outline, edit };
+  const fetchOutline = (book: Book = BOOK) =>
+    sessions.run(sessionId, (session) => readBookOutline(session.repository, book));
+  const outline = await fetchOutline();
+  const edit = (
+    intent: string,
+    command: (buffer: ChangeBuffer, session: Session) => Promise<void | EditOutcome>,
+  ) => sessions.edit(sessionId, intent, command);
+  return { sessions, sessionId, fetchPage, fetchOutline, outline, edit };
 }
 
 /** A page's analysis with each list in id order, so two pages compare without regard to order. */

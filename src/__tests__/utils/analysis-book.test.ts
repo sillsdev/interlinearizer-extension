@@ -295,6 +295,16 @@ describe('mergeAnalyses', () => {
 
     expect(mergeAnalyses([...splitAnalysisByBook(whole).values()])).toEqual(whole);
   });
+
+  it('merges a partition holding more links than a call can take as arguments', () => {
+    const link = makeTokenLink('ta-gen', 'GEN 1:1:0');
+    const large: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalysisLinks: new Array<typeof link>(500_000).fill(link),
+    };
+
+    expect(mergeAnalyses([large, exodus]).tokenAnalysisLinks).toHaveLength(500_001);
+  });
 });
 
 describe('removeBookFromAnalysis', () => {

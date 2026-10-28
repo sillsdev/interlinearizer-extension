@@ -365,23 +365,25 @@ declare module 'papi-shared-types' {
 
     /**
      * Reverts a session's latest edit not yet undone, re-anchoring what it restores to the current
-     * text of each book re-anchored since.
+     * text of each book re-anchored since. Marks the draft saved when it restores content the draft
+     * was saved with, and unsaved otherwise.
      *
      * @returns The changes that reverted the edit and re-anchored what the undo restored, as JSON,
      *   or `undefined` when there is none.
-     * @throws If the session is read-only or not open, or re-anchoring or applying the changes
-     *   fails (logged before rethrowing).
+     * @throws If the session is read-only or not open, or re-anchoring, applying the changes or
+     *   marking the draft saved fails (logged before rethrowing).
      */
     'interlinearizer.undoEdit': (sessionId: string) => Promise<string | undefined>;
 
     /**
      * Redoes a session's latest undone edit, re-anchoring what it restores to the current text of
-     * each book re-anchored since.
+     * each book re-anchored since. Marks the draft saved when it restores content the draft was
+     * saved with, and unsaved otherwise.
      *
      * @returns The changes that redid the edit and re-anchored what the redo restored, as JSON, or
      *   `undefined` when there is none.
-     * @throws If the session is read-only or not open, or re-anchoring or applying the changes
-     *   fails (logged before rethrowing).
+     * @throws If the session is read-only or not open, or re-anchoring, applying the changes or
+     *   marking the draft saved fails (logged before rethrowing).
      */
     'interlinearizer.redoEdit': (sessionId: string) => Promise<string | undefined>;
 
@@ -515,6 +517,101 @@ declare module 'papi-shared-types' {
     'interlinearizer.discardStaleFreeTranslation': (
       sessionId: string,
       analysisId: string,
+    ) => Promise<string>;
+
+    /**
+     * Writes a token analysis's gloss in a session's analysis language, for every token linked to
+     * it; a blank value clears it. An analysis left empty goes with its links. One made identical
+     * to another payload is folded into that payload.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.writeAnalysisGloss': (
+      sessionId: string,
+      analysisId: string,
+      value: string,
+    ) => Promise<string>;
+
+    /**
+     * Clears the glosses of several token analyses in a session's analysis language, as a blank
+     * `interlinearizer.writeAnalysisGloss` clears one.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.clearAnalysisGlosses': (
+      sessionId: string,
+      analysisIds: string[],
+    ) => Promise<string>;
+
+    /**
+     * Re-splits a token analysis's breakdown into `forms`, for every token linked to it, and clears
+     * its stale mark. A form the breakdown already carried keeps its morpheme. No forms removes the
+     * breakdown.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.writeAnalysisMorphemes': (
+      sessionId: string,
+      analysisId: string,
+      forms: string[],
+      writingSystem: string,
+    ) => Promise<string>;
+
+    /**
+     * Keeps a token analysis's stale breakdown as it stands, for every token linked to it.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.confirmAnalysisMorphemes': (
+      sessionId: string,
+      analysisId: string,
+    ) => Promise<string>;
+
+    /**
+     * Writes the gloss of one morpheme of a token analysis in a session's analysis language, for
+     * every token linked to it; a blank value clears it.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.writeAnalysisMorphemeGloss': (
+      sessionId: string,
+      analysisId: string,
+      morphemeId: string,
+      value: string,
+    ) => Promise<string>;
+
+    /**
+     * Removes token analyses with every token link to them.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.deleteAnalyses': (sessionId: string, analysisIds: string[]) => Promise<string>;
+
+    /**
+     * Folds token analyses into a survivor and writes the settled content onto it, in a session's
+     * analysis language. The folded analyses' token links move to the survivor.
+     *
+     * @returns A JSON string of the changes it applied.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.mergeAnalysesInto': (
+      sessionId: string,
+      survivorAnalysisId: string,
+      mergedAnalysisIds: string[],
+      content: import('interlinearizer').MergedContent,
     ) => Promise<string>;
 
     /**
@@ -687,6 +784,43 @@ declare module 'papi-shared-types' {
       sessionId: string,
       fromRef: string,
       toRef: string,
+    ) => Promise<string>;
+
+    /**
+     * Discards the unsaved changes to one book of a session's draft, restoring the book as the
+     * draft's project holds it, or emptying the book when the draft has no project. A book whose
+     * stored analysis could not be read keeps it. A draft saving to a project stays as saved or
+     * unsaved as it was; one saving to none is marked unsaved when the discard changes anything.
+     *
+     * @returns A JSON string of `{ changes, hasFreeTranslations }`: the changes it applied, and
+     *   whether any segment of the draft it leaves has a free translation.
+     * @throws If the project the draft saves to cannot be read, the session is read-only or not
+     *   open, or the edit is refused or fails (logged before rethrowing).
+     */
+    'interlinearizer.discardBook': (sessionId: string, bookCode: string) => Promise<string>;
+
+    /**
+     * Discards every unsaved change to a session's draft, restoring what the draft's project holds,
+     * or emptying the draft when it has no project. A book whose stored analysis could not be read
+     * keeps it. The draft is marked saved.
+     *
+     * @returns A JSON string of `{ changes, hasFreeTranslations }`: the changes it applied, and
+     *   whether any segment of the draft it leaves has a free translation.
+     * @throws If the project the draft saves to cannot be read, the session is read-only or not
+     *   open, or the edit is refused or fails (logged before rethrowing).
+     */
+    'interlinearizer.discardAll': (sessionId: string) => Promise<string>;
+
+    /**
+     * Names the token analyses a command would remove from a session's draft, applying nothing.
+     *
+     * @returns A JSON string of the ids; `"[]"` when it would remove none.
+     * @throws If the session is not open, the request names an intent it can't preview, or staging
+     *   the command fails (logged before rethrowing).
+     */
+    'interlinearizer.previewRemovals': (
+      sessionId: string,
+      request: import('interlinearizer').RemovalPreviewRequest,
     ) => Promise<string>;
 
     /**
@@ -2003,6 +2137,38 @@ declare module 'interlinearizer' {
    * in, and the target text it aligns to, if any.
    */
   export type ProjectConfig = Pick<InterlinearProject, 'analysisLanguages' | 'targetProjectId'>;
+
+  /**
+   * What the surviving analysis says once a merge settles. Every field is written as given. An
+   * absent field clears what the record held, because the merge decided against a value.
+   */
+  export interface MergedContent {
+    /** Gloss in the language the merge is conducted in, blank clearing it. */
+    gloss: string;
+    /**
+     * Analysis `gloss` was taken from, whose sense the survivor keeps resolving it through. Absent
+     * when the reader typed the gloss, which leaves the survivor no sense.
+     */
+    glossFromAnalysisId?: string;
+    morphemes: readonly MorphemeAnalysis[];
+    /** Whether `morphemes` stand as split from a different spelling, awaiting the reader. */
+    morphemesStale?: boolean;
+    pos?: string;
+    features?: Readonly<Record<string, string>>;
+    confidence?: Confidence;
+  }
+
+  /** A command whose removals a preview reports, named by its intent, with its arguments. */
+  export type RemovalPreviewRequest =
+    | { intent: 'clearAnalysisGlosses'; analysisIds: string[] }
+    | { intent: 'discardStaleAnalysis'; analysisId: string; tokenRef: string }
+    | {
+        intent: 'reapplyStaleAnalysis';
+        analysisId: string;
+        staleTokenRef: string;
+        tokenRef: string;
+        surfaceText: string;
+      };
 
   /**
    * The always-present, auto-saved working buffer for a single source project. Decoupled from the

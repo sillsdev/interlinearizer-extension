@@ -279,7 +279,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     await this.writeDraft(draft, undefined, { refuseUnreadable: true });
     index.apply(copied);
     this.current = { draft, index };
-    return { inverse };
+    return { inverse, wasDirty: base.dirty };
   }
 
   /**

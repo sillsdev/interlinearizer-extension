@@ -6,8 +6,10 @@ import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
 import type {
   DraftProject,
+  MergedContent,
   PhraseAnalysisLink,
   ProjectConfig,
+  RemovalPreviewRequest,
   SegmentationDelta,
   TextAnalysis,
   TokenSnapshot,
@@ -2010,19 +2012,21 @@ describe('main', () => {
     /**
      * Gives sessions a draft of `src-project` to open. The draft holds `analysis` and
      * `segmentation`, with English as its analysis language.
+     *
+     * @returns The repository that sessions open the draft through.
      */
     async function seedDraft(
       analysis: Partial<TextAnalysis>,
       segmentation?: SegmentationDelta,
-    ): Promise<void> {
-      jest.mocked(projectStorage.openDraftRepository).mockReturnValue(
-        await stubRepository({
-          ...emptyDraft('src-project'),
-          analysisLanguages: ['en'],
-          analysis: { ...emptyAnalysis(), ...analysis },
-          ...(segmentation && { segmentation }),
-        }),
-      );
+    ): Promise<DraftRepository> {
+      const repository = await stubRepository({
+        ...emptyDraft('src-project'),
+        analysisLanguages: ['en'],
+        analysis: { ...emptyAnalysis(), ...analysis },
+        ...(segmentation && { segmentation }),
+      });
+      jest.mocked(projectStorage.openDraftRepository).mockReturnValue(repository);
+      return repository;
     }
 
     /** Activates the extension and returns the session commands' handlers. */
@@ -2154,6 +2158,49 @@ describe('main', () => {
         moveBoundary: handler<
           (sessionId: string, fromRef: string, toRef: string) => Promise<string>
         >('interlinearizer.moveBoundary'),
+        writeAnalysisGloss: handler<
+          (sessionId: string, analysisId: string, value: string) => Promise<string>
+        >('interlinearizer.writeAnalysisGloss'),
+        clearAnalysisGlosses: handler<
+          (sessionId: string, analysisIds: string[]) => Promise<string>
+        >('interlinearizer.clearAnalysisGlosses'),
+        writeAnalysisMorphemes: handler<
+          (
+            sessionId: string,
+            analysisId: string,
+            forms: string[],
+            writingSystem: string,
+          ) => Promise<string>
+        >('interlinearizer.writeAnalysisMorphemes'),
+        confirmAnalysisMorphemes: handler<
+          (sessionId: string, analysisId: string) => Promise<string>
+        >('interlinearizer.confirmAnalysisMorphemes'),
+        writeAnalysisMorphemeGloss: handler<
+          (
+            sessionId: string,
+            analysisId: string,
+            morphemeId: string,
+            value: string,
+          ) => Promise<string>
+        >('interlinearizer.writeAnalysisMorphemeGloss'),
+        deleteAnalyses: handler<(sessionId: string, analysisIds: string[]) => Promise<string>>(
+          'interlinearizer.deleteAnalyses',
+        ),
+        mergeAnalysesInto: handler<
+          (
+            sessionId: string,
+            survivorAnalysisId: string,
+            mergedAnalysisIds: string[],
+            content: MergedContent,
+          ) => Promise<string>
+        >('interlinearizer.mergeAnalysesInto'),
+        discardBook: handler<(sessionId: string, bookCode: string) => Promise<string>>(
+          'interlinearizer.discardBook',
+        ),
+        discardAll: handler<(sessionId: string) => Promise<string>>('interlinearizer.discardAll'),
+        previewRemovals: handler<
+          (sessionId: string, request: RemovalPreviewRequest) => Promise<string>
+        >('interlinearizer.previewRemovals'),
       };
     }
 
@@ -2992,6 +3039,343 @@ describe('main', () => {
         segmentAnalysisLinks: { puts: [{ id: 'sl-1', status: 'stale' }] },
         scope: { segmentation: { addedStarts: [{ tokenRef: 'GEN 1:1:3' }] } },
       });
+    });
+
+    const glossedIn = {
+      tokenAnalyses: [
+        {
+          id: 'ta-in',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'In',
+          gloss: { en: 'at' },
+          morphemes: [{ id: 'm-in', form: 'In', writingSystem: 'qaa' }],
+          morphemesStale: true,
+        },
+      ],
+      tokenAnalysisLinks: [
+        {
+          id: 'tl-in',
+          analysisId: 'ta-in',
+          ...FIXTURE_STAMPS,
+          status: 'approved' as const,
+          token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+        },
+      ],
+    };
+
+    it("writes a token analysis's gloss in the session's language, replying with the changes", async () => {
+      await seedDraft(glossedIn);
+      const { openSession, setAnalysisLanguage, writeAnalysisGloss } =
+        await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+      await setAnalysisLanguage(sessionId, 'fr');
+
+      const changes = JSON.parse(await writeAnalysisGloss(sessionId, 'ta-in', 'au'));
+
+      expect(changes).toMatchObject({
+        intent: 'writeAnalysisGloss',
+        tokenAnalyses: { puts: [{ id: 'ta-in', gloss: { en: 'at', fr: 'au' } }], deletes: [] },
+      });
+    });
+
+    it("clears token analyses' glosses in the session's language, replying with the changes", async () => {
+      await seedDraft(glossedIn);
+      const { openSession, clearAnalysisGlosses } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(await clearAnalysisGlosses(sessionId, ['ta-in']));
+
+      expect(changes.intent).toBe('clearAnalysisGlosses');
+      expect(changes.tokenAnalyses.puts).toStrictEqual([
+        expect.not.objectContaining({ gloss: expect.anything() }),
+      ]);
+    });
+
+    it("re-splits a token analysis's breakdown, minting a morpheme for a new form", async () => {
+      await seedDraft(glossedIn);
+      const { openSession, writeAnalysisMorphemes } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(
+        await writeAnalysisMorphemes(sessionId, 'ta-in', ['In', 'n'], 'qaa'),
+      );
+
+      expect(changes).toMatchObject({
+        intent: 'writeAnalysisMorphemes',
+        tokenAnalyses: {
+          puts: [
+            {
+              id: 'ta-in',
+              morphemes: [
+                { id: 'm-in', form: 'In' },
+                { id: expect.any(String), form: 'n', writingSystem: 'qaa' },
+              ],
+            },
+          ],
+        },
+      });
+      expect(changes.tokenAnalyses.puts[0]).not.toHaveProperty('morphemesStale');
+    });
+
+    it("keeps a token analysis's stale breakdown, replying with the changes", async () => {
+      await seedDraft(glossedIn);
+      const { openSession, confirmAnalysisMorphemes } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(await confirmAnalysisMorphemes(sessionId, 'ta-in'));
+
+      expect(changes.intent).toBe('confirmAnalysisMorphemes');
+      expect(changes.tokenAnalyses.puts).toStrictEqual([
+        expect.not.objectContaining({ morphemesStale: true }),
+      ]);
+    });
+
+    it("writes a morpheme's gloss in the session's language, replying with the changes", async () => {
+      await seedDraft(glossedIn);
+      const { openSession, setAnalysisLanguage, writeAnalysisMorphemeGloss } =
+        await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+      await setAnalysisLanguage(sessionId, 'fr');
+
+      const changes = JSON.parse(
+        await writeAnalysisMorphemeGloss(sessionId, 'ta-in', 'm-in', 'dans'),
+      );
+
+      expect(changes).toMatchObject({
+        intent: 'writeAnalysisMorphemeGloss',
+        tokenAnalyses: { puts: [{ morphemes: [{ id: 'm-in', gloss: { fr: 'dans' } }] }] },
+      });
+    });
+
+    it('deletes token analyses with their links, replying with the changes', async () => {
+      await seedDraft(glossedIn);
+      const { openSession, deleteAnalyses } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(deleteAnalyses(sessionId, ['ta-in']).then(JSON.parse)).resolves.toStrictEqual({
+        intent: 'deleteAnalyses',
+        tokenAnalyses: { puts: [], deletes: ['ta-in'] },
+        tokenAnalysisLinks: { puts: [], deletes: ['tl-in'] },
+      });
+    });
+
+    it("merges token analyses into a survivor in the session's language, replying with the changes", async () => {
+      await seedDraft({
+        tokenAnalyses: [
+          ...glossedIn.tokenAnalyses,
+          { id: 'ta-into', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'into' } },
+        ],
+        tokenAnalysisLinks: [
+          ...glossedIn.tokenAnalysisLinks,
+          {
+            id: 'tl-into',
+            analysisId: 'ta-into',
+            ...FIXTURE_STAMPS,
+            status: 'approved',
+            token: { tokenRef: 'GEN 1:2:0', surfaceText: 'In' },
+          },
+        ],
+      });
+      const { openSession, mergeAnalysesInto } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const changes = JSON.parse(
+        await mergeAnalysesInto(sessionId, 'ta-in', ['ta-into'], { gloss: 'in', morphemes: [] }),
+      );
+
+      expect(changes).toMatchObject({
+        intent: 'mergeAnalysesInto',
+        tokenAnalyses: { puts: [{ id: 'ta-in', gloss: { en: 'in' } }], deletes: ['ta-into'] },
+        tokenAnalysisLinks: { puts: [{ id: 'tl-into', analysisId: 'ta-in' }] },
+      });
+    });
+
+    const translatedVerse = {
+      segmentAnalyses: [
+        {
+          id: 'sa-1',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'In the beginning God',
+          freeTranslation: { en: 'At first God' },
+        },
+      ],
+      segmentAnalysisLinks: [
+        {
+          id: 'sl-1',
+          analysisId: 'sa-1',
+          ...FIXTURE_STAMPS,
+          status: 'approved' as const,
+          segmentId: 'GEN 1:1',
+        },
+      ],
+    };
+
+    /** Lists a project among the source's projects, stored holding `analysis`. */
+    function storeProjectHolding(analysis: Partial<TextAnalysis>): void {
+      const project = {
+        ...makeStubProject('proj-1'),
+        analysis: { ...emptyAnalysis(), ...analysis },
+      };
+      jest
+        .mocked(projectStorage.getProjectSummariesForSource)
+        .mockResolvedValue([toProjectSummary(project)]);
+      jest.mocked(projectStorage.getProject).mockResolvedValue(project);
+    }
+
+    it("discards a book's changes in a draft saving to no project, marking it unsaved", async () => {
+      const repository = await seedDraft({ ...glossedIn, ...translatedVerse });
+      const { openSession, discardBook } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      const reply = JSON.parse(await discardBook(sessionId, 'GEN'));
+
+      expect(reply).toStrictEqual({
+        changes: {
+          intent: 'discardBook',
+          segmentAnalyses: { puts: [], deletes: ['sa-1'] },
+          segmentAnalysisLinks: { puts: [], deletes: ['sl-1'] },
+          tokenAnalyses: { puts: [], deletes: ['ta-in'] },
+          tokenAnalysisLinks: { puts: [], deletes: ['tl-in'] },
+        },
+        hasFreeTranslations: false,
+      });
+      expect(projectStorage.getProject).not.toHaveBeenCalled();
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: true } });
+    });
+
+    it("restores what the project holds for a book, re-anchored to the book's text", async () => {
+      await seedDraft({});
+      storeProjectHolding(translatedVerse);
+      const { openSession, discardBook } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project', 'proj-1'));
+
+      const reply = JSON.parse(await discardBook(sessionId, 'GEN'));
+
+      expect(reply).toMatchObject({
+        changes: {
+          intent: 'discardBook',
+          segmentAnalyses: { puts: [{ id: 'sa-1' }] },
+          segmentAnalysisLinks: { puts: [{ id: 'sl-1', status: 'approved' }] },
+        },
+        hasFreeTranslations: true,
+      });
+      expect(projectStorage.getProject).toHaveBeenCalledWith(expect.anything(), 'proj-1');
+      expect(bookService.getVerseBook).toHaveBeenCalledWith('src-project', 'GEN');
+    });
+
+    it('stales what it restores into a book the text lacks', async () => {
+      await seedDraft({});
+      storeProjectHolding(translatedVerse);
+      jest.mocked(bookService.getVerseBook).mockResolvedValue(undefined);
+      const { openSession, discardBook } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project', 'proj-1'));
+
+      const reply = JSON.parse(await discardBook(sessionId, 'GEN'));
+
+      expect(reply.changes.segmentAnalysisLinks.puts).toStrictEqual([
+        expect.objectContaining({ id: 'sl-1', status: 'stale' }),
+      ]);
+    });
+
+    it('discards every unsaved change, marking the draft saved', async () => {
+      const repository = await seedDraft({});
+      storeProjectHolding(glossedIn);
+      const { openSession, writeGloss, discardAll } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project', 'proj-1'));
+      await writeGloss(sessionId, 'GEN 1:2:0', 'And', 'and');
+
+      const reply = JSON.parse(await discardAll(sessionId));
+
+      expect(reply).toMatchObject({
+        changes: {
+          intent: 'discardAll',
+          tokenAnalyses: { puts: [{ id: 'ta-in' }] },
+          tokenAnalysisLinks: { puts: [{ id: 'tl-in' }] },
+        },
+        hasFreeTranslations: false,
+      });
+      expect(reply.changes.tokenAnalyses.deletes).toHaveLength(1);
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: false } });
+    });
+
+    it('logs the error and rethrows when the project the draft saves to is not stored', async () => {
+      storeProjectHolding({});
+      jest.mocked(projectStorage.getProject).mockResolvedValue(undefined);
+      const { openSession, discardAll } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project', 'proj-1'));
+
+      await expect(discardAll(sessionId)).rejects.toThrow(
+        'interlinear project proj-1 is not stored',
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        `Interlinearizer: failed to discardAll in session ${sessionId}`,
+        expect.any(Error),
+      );
+    });
+
+    it.each<[string, RemovalPreviewRequest, Partial<TextAnalysis>]>([
+      [
+        'clearing glosses empties',
+        { intent: 'clearAnalysisGlosses', analysisIds: ['ta-in'] },
+        {
+          tokenAnalyses: [
+            { id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'at' } },
+          ],
+        },
+      ],
+      [
+        'giving up a stale place reclaims',
+        { intent: 'discardStaleAnalysis', analysisId: 'ta-in', tokenRef: 'GEN 1:1:0' },
+        staleToken,
+      ],
+      [
+        'reapplying under another spelling reclaims',
+        {
+          intent: 'reapplyStaleAnalysis',
+          analysisId: 'ta-in',
+          staleTokenRef: 'GEN 1:1:0',
+          tokenRef: 'GEN 1:2:0',
+          surfaceText: 'Inn',
+        },
+        staleToken,
+      ],
+    ])('names the analysis %s, applying nothing', async (_case, request, analysis) => {
+      await seedDraft(analysis);
+      const { openSession, previewRemovals, undoEdit } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(previewRemovals(sessionId, request).then(JSON.parse)).resolves.toStrictEqual([
+        'ta-in',
+      ]);
+      await expect(undoEdit(sessionId)).resolves.toBeUndefined();
+    });
+
+    it.each([
+      ['changes analyses without removing one', 'ta-in'],
+      ['changes nothing', 'ta-unknown'],
+    ])('names no analysis for a command that %s', async (_case, analysisId) => {
+      await seedDraft(glossedIn);
+      const { openSession, previewRemovals } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+
+      await expect(
+        previewRemovals(sessionId, { intent: 'clearAnalysisGlosses', analysisIds: [analysisId] }),
+      ).resolves.toBe('[]');
+    });
+
+    it('logs the error and rethrows when asked to preview a command it cannot', async () => {
+      const { openSession, previewRemovals } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const request: unknown = JSON.parse('{ "intent": "writeGloss" }');
+
+      await expect(
+        // @ts-expect-error -- a request PAPI passes through unchecked
+        previewRemovals(sessionId, request),
+      ).rejects.toThrow('cannot preview the removals of {"intent":"writeGloss"}');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        `Interlinearizer: failed to preview removals in session ${sessionId}`,
+        expect.any(Error),
+      );
     });
 
     const exodus: TokenSnapshot[] = [

@@ -24,6 +24,7 @@ import { FIXTURE_STAMPS } from '../../test-helpers';
 import {
   analysisOf,
   EARLIER,
+  expectRemovalPreviewParity,
   ids,
   LATER,
   NOW,
@@ -143,6 +144,7 @@ describe('discardStaleAnalysis parity with the reducer', () => {
     expectStore(outcome.store);
     expect(outcome.host).toStrictEqual(outcome.store);
     expect(outcome.indexDifferences).toStrictEqual([]);
+    expectRemovalPreviewParity(outcome, analysis);
   });
 });
 
@@ -344,6 +346,7 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
     expectStore(outcome.store);
     expect(outcome.host).toStrictEqual(outcome.store);
     expect(outcome.indexDifferences).toStrictEqual([]);
+    expectRemovalPreviewParity(outcome, analysis);
   });
 });
 

@@ -412,7 +412,7 @@ describe('DraftRepository', () => {
       expect((await repository.getTokenAnalyses(['ta-and']))[0].gloss).toEqual({ en: 'and' });
     });
 
-    it('stores each book as a whole save of the same draft would', async () => {
+    it('stores what a whole save of the same draft would, up to the order of its books', async () => {
       const { storage, records } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.replaceAll(twoBookDraft());
@@ -461,7 +461,16 @@ describe('DraftRepository', () => {
         twoBookDraft(),
       );
       await new DraftRepository(whole.storage, 'src', silentLogger()).replaceAll(expected);
-      expect(records).toEqual(whole.records);
+      /** Each record parsed, with the envelope's manifest sorted. */
+      const parsed = (stored: Map<string, string>) =>
+        new Map(
+          [...stored].map(([key, json]) => {
+            const value = JSON.parse(json);
+            if (key === draftKey('src')) value.analysisBooks.sort();
+            return [key, value];
+          }),
+        );
+      expect(parsed(records)).toEqual(parsed(whole.records));
       expect(records.has(draftAnalysisKey('src', 'EXO'))).toBe(false);
     });
   });

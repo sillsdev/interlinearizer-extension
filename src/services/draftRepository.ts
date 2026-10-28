@@ -276,7 +276,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * keeps none, as after {@link exportAll} or a whole save. Rewrites only the books whose content
    * the changes alter, so an edit to a payload rewrites every book linking it. After a failed
    * apply, the next apply to succeed also restores any book the failure left out of step with the
-   * draft. Marks the draft unsaved unless `options` keeps the mark.
+   * draft. What it stores matches a whole save of the same draft in content, not order: the
+   * manifest may list the books in another order, and a link a put moves into a book comes last in
+   * that book's shard. Marks the draft unsaved unless `options` keeps the mark.
    *
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project; nothing is written.

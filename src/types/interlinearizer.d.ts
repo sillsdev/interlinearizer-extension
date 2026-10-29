@@ -29,11 +29,7 @@ declare module 'papi-shared-types' {
           /** A Scripture edit, naming the book to refetch whole. */
           scriptureEdit: { bookId: string };
         }
-      | ({
-          sessionId: string;
-          /** The id the change was sent under, or a fresh one for a change no command made. */
-          changeId: import('interlinearizer').ChangeId;
-        } & import('interlinearizer').AnalysisChange);
+      | import('interlinearizer').SessionAnalysisChange;
   }
 
   /** Project-level settings contributed by the Interlinearizer extension. */
@@ -2292,6 +2288,13 @@ declare module 'interlinearizer' {
     /** The cross-book queries whose answers the change may have changed. */
     queries: AnalysisQuery[];
   };
+
+  /** What one change to a session's analysis touched, as the session reports it. */
+  export type SessionAnalysisChange = {
+    sessionId: string;
+    /** The id the change was sent under, or a fresh one for a change no command made. */
+    changeId: ChangeId;
+  } & AnalysisChange;
 
   /** A command whose removals a preview reports, named by its intent, with its arguments. */
   export type RemovalPreviewRequest =

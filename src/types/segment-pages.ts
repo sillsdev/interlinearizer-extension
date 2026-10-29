@@ -50,6 +50,14 @@ export type PoolEntryRef = Readonly<{
  */
 export type PoolBuckets = Readonly<Record<string, readonly PoolEntryRef[]>>;
 
+/** Pool buckets, with the payloads they name. */
+export type PoolRead = {
+  /** The pool bucket of each form read. */
+  poolBuckets: PoolBuckets;
+  /** The payloads that `poolBuckets` names. */
+  poolAnalyses: TokenAnalysis[];
+};
+
 /** Stale free translations by where the view shows them, each named by its payload's id. */
 export type PlacedFreeTranslations = Readonly<{
   /**

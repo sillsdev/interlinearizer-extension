@@ -6,28 +6,23 @@ import type {
   TokenAnalysis,
 } from 'interlinearizer';
 import type { AnalysisRepository } from '../types/analysis-repository';
-import type { AppliedChange } from './analysisChanges';
+import { touched, type AppliedChange } from './analysisChanges';
 import type {
   BookOutline,
   PlacedFreeTranslations,
-  PoolBuckets,
+  PoolRead,
   SegmentPage,
 } from '../types/segment-pages';
 import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { buildBookOutline } from '../utils/book-outline';
 import {
+  orphanedCardCountAt,
   placeStaleFreeTranslations,
   type PlacedStaleFreeTranslations,
   type StaleFreeTranslation,
 } from '../utils/stale-free-translations';
 import { buildPoolIndex } from '../utils/suggestion-engine';
-
-/** Pool buckets, with the payloads they name. */
-export type PoolRead = {
-  poolBuckets: PoolBuckets;
-  poolAnalyses: TokenAnalysis[];
-};
 
 /**
  * Reads the pool bucket of each of the normalized `forms`.
@@ -142,9 +137,7 @@ export async function readBookOutline(
     ...outline,
     segments: outline.segments.map((segment, index) => ({
       ...segment,
-      orphanedCardCount:
-        (index === 0 ? placed.orphanedAhead.length : 0) +
-        (placed.orphanedAfter.get(segment.id)?.length ?? 0),
+      orphanedCardCount: orphanedCardCountAt(placed, segment.id, index),
     })),
   };
 }
@@ -227,12 +220,9 @@ export async function readTouchedPoolBuckets(
   repository: AnalysisRepository,
   { changes, inverse }: AppliedChange,
 ): Promise<PoolRead> {
-  const payloads = [...(changes.tokenAnalyses?.puts ?? []), ...(inverse.tokenAnalyses?.puts ?? [])];
+  const payloads = touched(changes.tokenAnalyses, inverse.tokenAnalyses);
   const known = new Set(payloads.map(({ id }) => id));
-  const linkedIds = [
-    ...(changes.tokenAnalysisLinks?.puts ?? []),
-    ...(inverse.tokenAnalysisLinks?.puts ?? []),
-  ]
+  const linkedIds = touched(changes.tokenAnalysisLinks, inverse.tokenAnalysisLinks)
     .map(({ analysisId }) => analysisId)
     .filter((id) => !known.has(id));
   const linked =

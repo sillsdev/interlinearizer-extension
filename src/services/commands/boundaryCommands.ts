@@ -5,6 +5,7 @@ import {
   isEmptyDelta,
   mergeSegments as mergeSegmentsDelta,
   moveBoundary as moveBoundaryDelta,
+  sameSegmentation,
   splitSegmentBefore,
 } from '../../utils/segmentation';
 import type { ChangeBuffer } from './changeBuffer';
@@ -46,24 +47,6 @@ export type MoveBoundaryRequest = PhraseBreakingEdit & {
   /** `Token.ref` of the token that begins a segment instead. */
   toRef: string;
 };
-
-/** Whether two boundary deltas set the same boundaries, entry for entry. */
-function sameSegmentation(
-  a: SegmentationDelta | undefined,
-  b: SegmentationDelta | undefined,
-): boolean {
-  if (!a || !b) return a === b;
-  return (
-    a.removedVerseStarts.length === b.removedVerseStarts.length &&
-    a.removedVerseStarts.every((ref, i) => ref === b.removedVerseStarts[i]) &&
-    a.addedStarts.length === b.addedStarts.length &&
-    a.addedStarts.every(
-      (start, i) =>
-        start.tokenRef === b.addedStarts[i].tokenRef &&
-        start.surfaceText === b.addedStarts[i].surfaceText,
-    )
-  );
-}
 
 /**
  * Stages the boundaries `transform` makes of the draft's boundaries. A result that leaves every

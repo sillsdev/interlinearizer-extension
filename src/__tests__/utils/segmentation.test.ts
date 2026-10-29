@@ -4,6 +4,7 @@ import type { SegmentationDelta, TokenSnapshot } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import {
   addBoundaryBefore,
+  bookSegmentationJson,
   defaultVerseStarts,
   effectiveStarts,
   isDefaultSegmentationForBook,
@@ -13,6 +14,7 @@ import {
   moveBoundary,
   reanchorSegmentation,
   removeBoundaryAt,
+  sameSegmentation,
   segmentationForBook,
   splitSegmentBefore,
   unmergeableVerseStarts,
@@ -169,6 +171,62 @@ describe('segmentationForBook', () => {
       resegmentBook(THREE_VERSES, reanchorSegmentation(THREE_VERSES, boundaries)).segments;
 
     expect(segmentBy(segmentationForBook(delta, 'GEN'))).toEqual(segmentBy(delta));
+  });
+});
+
+describe('bookSegmentationJson', () => {
+  it("serializes the book's part of the delta", () => {
+    const delta: SegmentationDelta = {
+      removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'],
+      addedStarts: [],
+    };
+
+    expect(bookSegmentationJson(delta, 'GEN')).toBe(
+      JSON.stringify({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] }),
+    );
+  });
+
+  it('gives undefined for a book the delta does not name', () => {
+    const delta: SegmentationDelta = { removedVerseStarts: ['EXO 1:2:0'], addedStarts: [] };
+
+    expect(bookSegmentationJson(delta, 'GEN')).toBeUndefined();
+  });
+});
+
+describe('sameSegmentation', () => {
+  const delta: SegmentationDelta = {
+    removedVerseStarts: ['GEN 1:2:0'],
+    addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
+  };
+
+  it('holds for deltas setting the same boundaries', () => {
+    expect(
+      sameSegmentation(delta, {
+        addedStarts: [{ surfaceText: 'beta', tokenRef: 'GEN 1:1:6' }],
+        removedVerseStarts: ['GEN 1:2:0'],
+      }),
+    ).toBe(true);
+  });
+
+  it('fails for a different removed verse start', () => {
+    expect(sameSegmentation(delta, { ...delta, removedVerseStarts: ['GEN 1:3:0'] })).toBe(false);
+  });
+
+  it('fails for a split set before a different word', () => {
+    expect(
+      sameSegmentation(delta, {
+        ...delta,
+        addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'gamma' }],
+      }),
+    ).toBe(false);
+  });
+
+  it('holds for two absent deltas', () => {
+    expect(sameSegmentation(undefined, undefined)).toBe(true);
+  });
+
+  it('fails for an absent delta against a present one', () => {
+    expect(sameSegmentation(undefined, delta)).toBe(false);
   });
 });
 

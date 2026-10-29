@@ -1,4 +1,4 @@
-import type { AnalysisChange, Book, ChangeId, SegmentationDelta } from 'interlinearizer';
+import type { Book, ChangeId, SegmentationDelta, SessionAnalysisChange } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
@@ -48,9 +48,6 @@ export type SessionEditOptions = {
   changeId?: ChangeId;
 };
 
-/** What one change to a session's analysis touched, as a session reports it. */
-export type ReportedChange = AnalysisChange & { sessionId: string; changeId: ChangeId };
-
 /** An open session, as seen by the commands sent to it. */
 export type Session = {
   readonly id: string;
@@ -97,7 +94,7 @@ export interface SessionHost {
     segmentation: SegmentationDelta | undefined,
   ): Book | undefined;
   /** Tells listeners what a change to a session's analysis touched. */
-  reportChange(change: ReportedChange): void;
+  reportChange(change: SessionAnalysisChange): void;
 }
 
 /** How many of a session's latest replies it keeps, to answer an edit sent again. */

@@ -28,7 +28,7 @@ import type { HeightConfig } from '../utils/segment-heights';
 import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights';
 import { buildSegmentLabels } from '../utils/segment-labels';
 import type { StaleFreeTranslation } from '../utils/stale-free-translations';
-import { adoptedStaleTranslation } from '../utils/stale-free-translations';
+import { adoptedStaleTranslation, orphanedCardCountAt } from '../utils/stale-free-translations';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { altHeldSwap } from './alt-key-hint';
@@ -393,8 +393,7 @@ export default function SegmentListView({
   /** How many orphaned-translation cards render beside a segment, ahead of it or after. */
   const orphanedCardCount = useCallback(
     (index: number) =>
-      (index === 0 ? orphanedAhead.length : 0) +
-      (orphanedAfter.get(outline[index].id)?.length ?? 0),
+      orphanedCardCountAt({ orphanedAfter, orphanedAhead }, outline[index].id, index),
     [orphanedAhead, orphanedAfter, outline],
   );
 

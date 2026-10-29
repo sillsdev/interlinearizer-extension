@@ -16,7 +16,11 @@ import type {
 import { performance } from 'perf_hooks';
 import { resegmentBook } from '../../src/parsers/papi/resegmentBook';
 import { booksResegmented, rangesOf } from '../../src/services/analysisChanges';
-import { AnalysisSessions, type SessionHost } from '../../src/services/analysisSessions';
+import {
+  AnalysisSessions,
+  type EditOutcome,
+  type SessionHost,
+} from '../../src/services/analysisSessions';
 import * as boundaryCommands from '../../src/services/commands/boundaryCommands';
 import type { ChangeBuffer } from '../../src/services/commands/changeBuffer';
 import * as catalogCommands from '../../src/services/commands/catalogCommands';
@@ -516,7 +520,7 @@ async function checkEvents(
 
   const commands: [
     string,
-    (buffer: ChangeBuffer, current: DraftProject) => Promise<void | Book[]>,
+    (buffer: ChangeBuffer, current: DraftProject) => Promise<void | EditOutcome>,
   ][] = [
     [
       'writeGloss',
@@ -639,7 +643,7 @@ async function checkEvents(
           now: now(),
           newId: () => crypto.randomUUID(),
         });
-        return [viewBook];
+        return { reanchorTo: [viewBook] };
       },
     ],
   ];

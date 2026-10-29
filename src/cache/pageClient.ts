@@ -9,6 +9,21 @@ export const PAGE_SIZE = 32;
 /** The waits before each retry of a failed load; the load is given up after the last. */
 export const PAGE_RETRY_DELAYS_MS: readonly number[] = [1000, 4000, 16000];
 
+/**
+ * Indexes of the pages that hold any of the segments at `[start, end)` in a book of `count`
+ * segments. Pages start every `pageSize` segments, by default {@link PAGE_SIZE}.
+ */
+export function pagesCovering(
+  start: number,
+  end: number,
+  count: number,
+  pageSize: number = PAGE_SIZE,
+): number[] {
+  const first = Math.floor(Math.max(0, start) / pageSize);
+  const last = Math.ceil(Math.min(count, end) / pageSize);
+  return Array.from({ length: Math.max(0, last - first) }, (_unused, i) => first + i);
+}
+
 /** A view whose latest page range is reloaded after the outline changes. */
 export type PageCaller = 'list' | 'strip';
 
@@ -26,12 +41,12 @@ export type PageClientOptions = Readonly<{
   pageSize?: number;
   /** Defaults to {@link PAGE_RETRY_DELAYS_MS}. */
   retryDelaysMs?: readonly number[];
-  /** Resolves after `ms`; defaults to a timer. */
+  /** Resolves after `ms`; defaults to {@link waitMs}. */
   wait?: (ms: number) => Promise<void>;
 }>;
 
-/* v8 ignore next 5 -- tests replace this timer */
-function waitMs(ms: number): Promise<void> {
+/** Resolves after `ms`. */
+export function waitMs(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
@@ -251,10 +266,7 @@ export class PageClient {
   }
 
   private pagesCovering(start: number, end: number): number[] {
-    const count = this.held.outline.segments.length;
-    const first = Math.floor(Math.max(0, start) / this.pageSize);
-    const last = Math.ceil(Math.min(count, end) / this.pageSize);
-    return Array.from({ length: Math.max(0, last - first) }, (_unused, i) => first + i);
+    return pagesCovering(start, end, this.held.outline.segments.length, this.pageSize);
   }
 
   private fetchPage(pageIndex: number, attempt = 0): void {

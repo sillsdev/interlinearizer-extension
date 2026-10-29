@@ -612,6 +612,7 @@ describe('AnalysisSessions', () => {
         poolBuckets: {},
         poolAnalyses: [],
         resegmentedBooks: [],
+        staleTranslationBooks: [],
       });
 
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();

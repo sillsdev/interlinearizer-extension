@@ -308,8 +308,25 @@ describe('RecordCache and free translations', () => {
     expect(comparable(cache.pageAt(0, 2))).toStrictEqual(comparable(await fetchPage(0, 2)));
   });
 
-  it('asks for its pages and counts again once a reply removes a free translation it never held', async () => {
+  it('applies the removal of a free translation it never held without fetching again', async () => {
     const { fetchPage, outline, edit } = await sessionOver(translated);
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 2), cache.revision);
+
+    const removed = await edit('remove', async (buffer) => {
+      const [link] = await buffer.findLinksBySegment(['GEN 1:3']);
+      buffer.delete('segmentAnalysisLinks', link);
+    });
+
+    expect(cache.apply(removed)).toBe('none');
+    expect(comparable(cache.pageAt(0, 2))).toStrictEqual(comparable(await fetchPage(0, 2)));
+  });
+
+  it('asks for its pages and counts again once a reply removes a stale free translation it never held', async () => {
+    const { fetchPage, outline, edit } = await sessionOver({
+      ...translated,
+      segmentAnalysisLinks: [{ ...translated.segmentAnalysisLinks[0], status: 'stale' as const }],
+    });
     const cache = new RecordCache(outline);
     cache.absorb(await fetchPage(0, 2), cache.revision);
 

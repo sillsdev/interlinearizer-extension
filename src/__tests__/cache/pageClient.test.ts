@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import { PageClient, type PageSource } from '../../cache/pageClient';
+import { PageClient, pagesCovering, waitMs, type PageSource } from '../../cache/pageClient';
 import type { ChangeBuffer } from '../../services/commands/changeBuffer';
 import type { BookOutline, SegmentPage } from '../../types/segment-pages';
 import { makePhraseLink } from '../test-helpers';
@@ -442,8 +442,38 @@ describe('PageClient', () => {
         poolBuckets: {},
         poolAnalyses: [],
         resegmentedBooks: [],
+        staleTranslationBooks: [],
       }),
     ).toThrow('before the outline loaded');
     expect(edit).toBeDefined();
+  });
+});
+
+describe('pagesCovering', () => {
+  it('names each page that holds part of the range', () => {
+    expect(pagesCovering(3, 9, 20, 4)).toStrictEqual([0, 1, 2]);
+  });
+
+  it('clips the range to the segments there are', () => {
+    expect(pagesCovering(-5, 50, 6, 4)).toStrictEqual([0, 1]);
+  });
+
+  it('names no page for an empty range', () => {
+    expect(pagesCovering(8, 8, 20, 4)).toStrictEqual([]);
+  });
+});
+
+describe('waitMs', () => {
+  it('resolves once the time has passed', async () => {
+    jest.useFakeTimers();
+    const resolved = jest.fn();
+    const waiting = waitMs(100).then(resolved);
+    jest.advanceTimersByTime(99);
+    await Promise.resolve();
+    expect(resolved).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    await waiting;
+    expect(resolved).toHaveBeenCalled();
+    jest.useRealTimers();
   });
 });

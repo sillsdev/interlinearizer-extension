@@ -2439,6 +2439,7 @@ describe('main', () => {
         poolBuckets: {},
         poolAnalyses: [],
         resegmentedBooks: [],
+        staleTranslationBooks: [],
       };
       jest.spyOn(AnalysisSessions.prototype, 'undo').mockResolvedValue(reverted);
       const { undoEdit } = await activateSessionCommands();
@@ -2482,6 +2483,7 @@ describe('main', () => {
         poolBuckets: {},
         poolAnalyses: [],
         resegmentedBooks: [],
+        staleTranslationBooks: [],
       };
       jest.spyOn(AnalysisSessions.prototype, 'redo').mockResolvedValue(remade);
       const { redoEdit } = await activateSessionCommands();
@@ -3721,6 +3723,7 @@ describe('main', () => {
         poolBuckets: { in: [] },
         poolAnalyses: [],
         resegmentedBooks: [],
+        staleTranslationBooks: [],
         hasFreeTranslations: false,
       });
       expect(projectStorage.getProject).not.toHaveBeenCalled();

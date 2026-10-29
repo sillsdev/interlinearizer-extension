@@ -2,7 +2,12 @@
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Segment } from 'interlinearizer';
-import { firstVerseNumber, segmentContainsVerse, verseOfId } from '../../utils/verse-ref';
+import {
+  firstVerseNumber,
+  positionOf,
+  segmentContainsVerse,
+  verseOfId,
+} from '../../utils/verse-ref';
 import { makeVerseBook } from '../test-helpers';
 
 /**
@@ -222,5 +227,15 @@ describe('verseOfId', () => {
 
   it('names the verse a heading is filed under for a token in it', () => {
     expect(verseOfId('LUK 2:4/s1:0')).toEqual({ book: 'LUK', chapterNum: 2, verseNum: 4 });
+  });
+});
+
+describe('positionOf', () => {
+  it("reads a verse's SID as the verse at offset 0", () => {
+    expect(positionOf('GEN 1:2')).toStrictEqual({ verse: 'GEN 1:2', offset: 0 });
+  });
+
+  it('reads a token ref as its verse and offset', () => {
+    expect(positionOf('GEN 1:2:14')).toStrictEqual({ verse: 'GEN 1:2', offset: 14 });
   });
 });

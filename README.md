@@ -9,7 +9,7 @@ Interlinearizer extension for Platform.Bible
 To use the Interlinearizer without building it yourself, go to the
 [releases page](https://github.com/sillsdev/interlinearizer-extension/releases) and follow
 [INSTALL.md](INSTALL.md). Each release carries the extension itself
-(`interlinearizer_<version>.zip`) and the Paratext 10 installers it is meant to be used with.
+(`interlinearizer_<version>_<platform>.zip`, one for each of Windows, macOS and Linux) and the Paratext 10 installers it is meant to be used with.
 INSTALL.md walks through installing that application, dropping the extension zip into its extensions
 folder, and opening the Interlinearizer.
 
@@ -137,7 +137,7 @@ The general file structure for an extension is as follows:
   - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo (e.g. **Test** and **Lint** on push/PR to main, release-prep, hotfix-\*; **Publish** and **Bump Versions** manual dispatch; **CodeQL** for security)
   - `.github/assets/release-body.md` is the template for the body of [releases published using GitHub Actions](#publishing). The Publish workflow substitutes its version placeholders into a copy outside the repo, and that copy plus a generated changelog becomes the release body
 - `dist/` is a generated folder containing the built extension files
-- `release/` is a generated folder containing a zip of the built extension files
+- `release/` is a generated folder containing zips of the built extension files
 
 > See the [Extension Anatomy wiki page](https://github.com/paranext/paranext-extension-template/wiki/Extension-Anatomy) for more information about the various files that comprise an extension and their relationships to each other.
 
@@ -186,6 +186,8 @@ To build the extension once:
 To package this extension into a zip file for distribution:
 
 `npm run package`
+
+That zip carries the C# host for every platform. Releases instead carry one zip per platform, each with only its own host, which `npm run build:production && npm run zip:platforms` writes.
 
 ## Testing
 
@@ -246,10 +248,10 @@ These steps will walk you through releasing a version on GitHub and bumping the 
   Alternatively, you can create a new pre-release manually:
 
   ```bash
-  npm run package
+  npm run build:production && npm run zip:platforms
   # Create a new pre-release in GitHub on tag `v<version>`
   # Copy `.github/assets/release-body.md` into the release body and fill in its placeholders by
-  #   hand — the extension zip name, the INSTALL.md link tag, `<Studio version>`, and the Lexicon
+  #   hand — the extension zip names, the INSTALL.md link tag, `<Studio version>`, and the Lexicon
   #   zip name and `<Lexicon build>`; nothing substitutes them on this path. Publish writes
   #   `<Lexicon build>` as the FieldWorks Lite release or run the zip came from plus its Lexbox
   #   commit, e.g. "FieldWorks Lite release [<tag>](<release URL>), Lexbox commit `<sha>`"
@@ -276,7 +278,7 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 
     </details>
 
-3. Install the extension zip against at least one of the attached Paratext 10 installers and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the files downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>`, `interlinearizer_<version>.zip`, or Lexicon placeholder, if its INSTALL.md link does not point at this release's tag, or if any of the files the body names is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again. Attaching an asset is not itself an edit, so after attaching a missing file to a published release, save any change to the release description to re-run the check.
+3. Install an extension zip against at least one of the attached Paratext 10 installers and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the files downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>`, `interlinearizer_<version>_<platform>.zip`, or Lexicon placeholder, if its INSTALL.md link does not point at this release's tag, or if any of the files the body names is not among the attached assets; all of these are fixable on the published release, and editing it runs the check again. Attaching an asset is not itself an edit, so after attaching a missing file to a published release, save any change to the release description to re-run the check.
 
 4. Open a PR and merge the newly created `bump-versions-<next_version>` branch.
 

@@ -18,6 +18,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "zip": "zip-build dist release --template '%NAME%_%VERSION%.%EXT%' --override",
+    "zip:platforms": "node scripts/zip-platforms.cjs",
     "package": "npm run build:production && npm run zip",
     "package:debug": "cross-env DEBUG_PROD=true npm run package",
     "start": "cross-env MAIN_ARGS=\"--extensions $INIT_CWD/dist\" concurrently \"npm:watch\" \"npm:core:start\"",

@@ -169,6 +169,34 @@ describe('SaveAsProjectModal', () => {
     expect(within(rows[1]).getByText('Unnamed')).toBeInTheDocument();
   });
 
+  it('leaves Paratext 9 imports out of the overwrite targets because they are read-only', async () => {
+    const pt9Import = makeProjectSummary({
+      id: 'pt9-import',
+      name: 'Imported glosses',
+      pt9Import: { fileHashes: { 'Lexicon.xml': 'aaaa1111' }, importedAt: '2026-08-01T00:00:00Z' },
+    });
+    mockSendCommand.mockResolvedValue(JSON.stringify([pt9Import, STUB_PROJECT_2]));
+    render(<SaveAsProjectModal {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    expect(screen.queryByText('Imported glosses')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('shows the empty-list message when every project for the source is a Paratext 9 import', async () => {
+    const pt9Import = makeProjectSummary({
+      name: 'Imported glosses',
+      pt9Import: { fileHashes: { 'Lexicon.xml': 'aaaa1111' }, importedAt: '2026-08-01T00:00:00Z' },
+    });
+    mockSendCommand.mockResolvedValue(JSON.stringify([pt9Import]));
+    render(<SaveAsProjectModal {...defaultProps} />);
+
+    // The empty message also shows while the list loads, so wait for the load to settle first.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled());
+    expect(screen.getByText('No existing projects for this source.')).toBeInTheDocument();
+    expect(screen.queryByText('Imported glosses')).not.toBeInTheDocument();
+  });
+
   it('shows the inline overwrite confirm and calls onOverwrite with the chosen project', async () => {
     const onOverwrite = jest.fn();
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));

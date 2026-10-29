@@ -170,3 +170,19 @@ export async function describeChange(
     queries,
   };
 }
+
+/**
+ * Describes an edit to `bookId`'s text, naming the book whole and every query. Adds what `passes`
+ * touched, naming each of their books whole.
+ */
+export function describeScriptureEdit(
+  bookId: string,
+  passes: readonly AnalysisChange[],
+): AnalysisChange {
+  const bookIds = new Set([bookId, ...passes.flatMap(({ books }) => books.map((b) => b.bookId))]);
+  return {
+    books: [...bookIds].map((id) => ({ bookId: id })),
+    analysisIds: [...new Set(passes.flatMap(({ analysisIds }) => analysisIds))],
+    queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
+  };
+}

@@ -793,6 +793,68 @@ describe('AnalysisSessions', () => {
       expect(again.changes.tokenAnalyses?.puts).toStrictEqual([payload('a')]);
     });
 
+    it("keeps the error of an edit that applied before its reply failed, so it isn't applied again", async () => {
+      const { sessions, host } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      host.heldBook.mockImplementation(() => {
+        throw new Error('read failed');
+      });
+      const command = jest.fn(async (buffer: ChangeBuffer) => linking(buffer, 'GEN 1:1:0'));
+
+      await expect(
+        sessions.edit(sessionId, 'link', command, { changeId: 'change-1' }),
+      ).rejects.toThrow('read failed');
+      await expect(
+        sessions.edit(sessionId, 'link', command, { changeId: 'change-1' }),
+      ).rejects.toThrow('read failed');
+
+      expect(command).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the error of an undo that applied before its reply failed, undoing once', async () => {
+      const { sessions, host } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.edit(sessionId, 'link', async (buffer) => linking(buffer, 'GEN 1:1:0'));
+      await sessions.edit(sessionId, 'link b', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('b'));
+        buffer.create('tokenAnalysisLinks', makeTokenLink('b', 'GEN 1:1:1'));
+      });
+      host.heldBook.mockImplementation(() => {
+        throw new Error('read failed');
+      });
+
+      await expect(sessions.undo(sessionId, 'undo-1')).rejects.toThrow('read failed');
+      await expect(sessions.undo(sessionId, 'undo-1')).rejects.toThrow('read failed');
+      host.heldBook.mockReturnValue(undefined);
+
+      await expect(sessions.undo(sessionId)).resolves.toMatchObject({
+        changes: { intent: 'link' },
+      });
+    });
+
+    it('carries whether a free translation is left, as its command returns, when it applied', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const reply = await sessions.edit(sessionId, 'link', async (buffer) => {
+        linking(buffer, 'GEN 1:1:0');
+        return { hasFreeTranslations: true };
+      });
+
+      expect(reply.hasFreeTranslations).toBe(true);
+    });
+
+    it('carries whether a free translation is left, as its command returns, when it staged nothing', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const reply = await sessions.edit(sessionId, 'nothing', async () => ({
+        hasFreeTranslations: false,
+      }));
+
+      expect(reply.hasFreeTranslations).toBe(false);
+    });
+
     it('applies again an edit sent under a change id it has since forgotten', async () => {
       const { sessions } = makeSessions();
       const { sessionId } = await sessions.open(SOURCE);
@@ -984,6 +1046,79 @@ describe('AnalysisSessions', () => {
       await sessions.reanchorBook(SOURCE, book);
 
       expect(host.reportChange).not.toHaveBeenCalled();
+    });
+
+    describe('an edit to a book of the text', () => {
+      const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta' }]);
+      const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and beta' }]);
+
+      async function sessionLinkingBeta() {
+        const made = makeSessions();
+        made.host.heldBook.mockReturnValue(after);
+        await made.saveDraft({
+          ...emptyDraft(SOURCE),
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalysisLinks: [
+              makeTokenLink('ta', tokenRefOf(before, 'beta'), { id: 'tl', surfaceText: 'beta' }),
+            ],
+          },
+        });
+        const { sessionId } = await made.sessions.open(SOURCE);
+        return { ...made, sessionId };
+      }
+
+      it('reports what the pass to the edited text changed only with the edit', async () => {
+        const { host, sessions, sessionId } = await sessionLinkingBeta();
+
+        await sessions.reanchorBook(SOURCE, after, true);
+        expect(host.reportChange).not.toHaveBeenCalled();
+        await sessions.reportScriptureEdit(SOURCE, 'GEN');
+
+        expect(host.reportChange).toHaveBeenCalledTimes(1);
+        expect(host.reportChange).toHaveBeenCalledWith({
+          sessionId,
+          changeId: expect.any(String),
+          books: [{ bookId: 'GEN' }],
+          analysisIds: ['ta'],
+          queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
+        });
+      });
+
+      it('reports an edit whose pass changed nothing, naming the book whole', async () => {
+        const { host, sessions, sessionId } = await sessionHolding();
+
+        await sessions.reanchorBook(SOURCE, book, true);
+        await sessions.reportScriptureEdit(SOURCE, 'GEN');
+
+        expect(host.reportChange).toHaveBeenCalledWith({
+          sessionId,
+          changeId: expect.any(String),
+          books: [{ bookId: 'GEN' }],
+          analysisIds: [],
+          queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
+        });
+      });
+
+      it("reports an edit's passes once", async () => {
+        const { host, sessions } = await sessionLinkingBeta();
+        await sessions.reanchorBook(SOURCE, after, true);
+        await sessions.reportScriptureEdit(SOURCE, 'GEN');
+
+        await sessions.reportScriptureEdit(SOURCE, 'GEN');
+
+        expect(host.reportChange).toHaveBeenLastCalledWith(
+          expect.objectContaining({ analysisIds: [] }),
+        );
+      });
+
+      it('reports nothing for a source with no session open', async () => {
+        const { host, sessions } = makeSessions();
+
+        await sessions.reportScriptureEdit(SOURCE, 'GEN');
+
+        expect(host.reportChange).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -1199,7 +1334,7 @@ describe('AnalysisSessions', () => {
 
       const { changes } = await sessions.edit(sessionId, 'relink', async (buffer) => {
         buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
-        return [AFTER];
+        return { reanchorTo: [AFTER] };
       });
 
       expect(changes.tokenAnalysisLinks?.puts).toEqual([
@@ -1220,7 +1355,7 @@ describe('AnalysisSessions', () => {
 
       await sessions.edit(sessionId, 'relink', async (buffer) => {
         buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
-        return books;
+        return { reanchorTo: books };
       });
 
       expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-2'));

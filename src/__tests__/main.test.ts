@@ -352,14 +352,16 @@ describe('main', () => {
         expect(emit?.mock.calls[0][0].changeId).not.toBe(emit?.mock.calls[1][0].changeId);
       });
 
-      it("emits an edit once the source's session has run what was sent before it", async () => {
+      it("emits an edit once the source's session has reported it", async () => {
         const emitters = emittersByEvent();
         let settle: () => void = () => {};
-        jest.spyOn(AnalysisSessions.prototype, 'settled').mockReturnValue(
-          new Promise<void>((resolve) => {
-            settle = resolve;
-          }),
-        );
+        const reportScriptureEdit = jest
+          .spyOn(AnalysisSessions.prototype, 'reportScriptureEdit')
+          .mockReturnValue(
+            new Promise<void>((resolve) => {
+              settle = resolve;
+            }),
+          );
         await activate(createTestActivationContext());
         const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
         const emit = emitters.get('interlinearizer.onAnalysisChanged')?.emit;
@@ -370,27 +372,67 @@ describe('main', () => {
         settle();
         await nextTick();
 
-        expect(AnalysisSessions.prototype.settled).toHaveBeenCalledWith('src-project');
+        expect(reportScriptureEdit).toHaveBeenCalledWith('src-project', 'GEN');
         expect(emit).toHaveBeenCalledTimes(1);
       });
 
-      it("also tells the source's open session of the edit, naming the book whole", async () => {
+      it("logs a report to the source's session that fails, and emits the edit all the same", async () => {
         const emitters = emittersByEvent();
-        jest.spyOn(AnalysisSessions.prototype, 'sessionIdFor').mockReturnValue('session-1');
+        jest
+          .spyOn(AnalysisSessions.prototype, 'reportScriptureEdit')
+          .mockRejectedValue(new Error('closed'));
         await activate(createTestActivationContext());
         const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
 
         listener('src-project', 'GEN');
         await nextTick();
 
-        expect(AnalysisSessions.prototype.sessionIdFor).toHaveBeenCalledWith('src-project');
-        expect(emitters.get('interlinearizer.onAnalysisChanged')?.emit).toHaveBeenCalledWith({
-          sessionId: 'session-1',
-          changeId: expect.any(String),
-          books: [{ bookId: 'GEN' }],
-          analysisIds: [],
-          queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
+        expect(__mockLogger.warn).toHaveBeenCalledWith(
+          'Interlinearizer: could not report the edit to GEN of project src-project',
+          expect.any(Error),
+        );
+        expect(emitters.get('interlinearizer.onAnalysisChanged')?.emit).toHaveBeenCalledWith(
+          expect.objectContaining({ scriptureEdit: { bookId: 'GEN' } }),
+        );
+      });
+
+      it('creates the emitter before registering any command', async () => {
+        const order: string[] = [];
+        __mockCreateNetworkEventEmitterAsync.mockImplementation(async (eventType: string) => {
+          order.push(eventType);
+          return { emit: jest.fn(), dispose: jest.fn() };
         });
+        __mockRegisterCommand.mockImplementation(async (commandName: string) => {
+          order.push(commandName);
+          return { dispose: jest.fn() };
+        });
+
+        await activate(createTestActivationContext());
+
+        expect(order[0]).toBe('interlinearizer.onAnalysisChanged');
+      });
+
+      it('closes the sessions and lets go of every book before disposing the emitter', async () => {
+        const order: string[] = [];
+        __mockCreateNetworkEventEmitterAsync.mockImplementation(async (eventType: string) => ({
+          emit: jest.fn(),
+          dispose: jest.fn(async () => {
+            if (eventType === 'interlinearizer.onAnalysisChanged') order.push('dispose');
+            return true;
+          }),
+        }));
+        jest.spyOn(AnalysisSessions.prototype, 'closeAll').mockImplementation(async () => {
+          order.push('closeAll');
+        });
+        jest.mocked(bookService.closeAllProjects).mockImplementation(async () => {
+          order.push('closeAllProjects');
+        });
+        const context = createTestActivationContext();
+        await activate(context);
+
+        await context.registrations.runAllUnsubscribers();
+
+        expect(order).toEqual(['closeAll', 'closeAllProjects', 'dispose']);
       });
 
       it('disposes the emitter and stops listening on deactivation', async () => {
@@ -419,9 +461,9 @@ describe('main', () => {
         await activate(createTestActivationContext());
         const [listener] = jest.mocked(bookService.onBookRead).mock.calls[0];
 
-        listener('src-project', book);
+        listener('src-project', book, true);
 
-        expect(reanchorBook).toHaveBeenCalledWith('src-project', book);
+        expect(reanchorBook).toHaveBeenCalledWith('src-project', book, true);
       });
 
       it('logs a re-anchor that fails', async () => {
@@ -431,7 +473,7 @@ describe('main', () => {
         await activate(createTestActivationContext());
         const [listener] = jest.mocked(bookService.onBookRead).mock.calls[0];
 
-        listener('src-project', book);
+        listener('src-project', book, false);
         await nextTick();
 
         expect(__mockLogger.warn).toHaveBeenCalledWith(
@@ -2051,7 +2093,8 @@ describe('main', () => {
 
     /** Activates the extension and returns the session commands' handlers. */
     async function activateSessionCommands() {
-      await activate(createTestActivationContext());
+      const context = createTestActivationContext();
+      await activate(context);
       const handler = <T>(commandName: string): T => {
         const raw = findRegisteredHandler(commandName);
         if (!raw) throw new Error(`Handler not found for ${commandName}`);
@@ -2059,6 +2102,7 @@ describe('main', () => {
         return raw as unknown as T;
       };
       return {
+        context,
         openSession: handler<
           (sourceProjectId: string, interlinearProjectId?: string) => Promise<string>
         >('interlinearizer.openSession'),
@@ -3669,11 +3713,11 @@ describe('main', () => {
       },
     );
 
-    it('closes every session on deactivation', async () => {
-      const { openSession } = await activateSessionCommands();
+    it('closes every session when its registrations are disposed', async () => {
+      const { context, openSession } = await activateSessionCommands();
       await openSession('src-project');
 
-      await deactivate();
+      await context.registrations.runAllUnsubscribers();
 
       expect(projectStorage.releaseDraftRepository).toHaveBeenCalledWith('src-project');
     });
@@ -3684,12 +3728,6 @@ describe('main', () => {
       const result = await deactivate();
 
       expect(result).toBe(true);
-    });
-
-    it('lets go of every book kept', async () => {
-      await deactivate();
-
-      expect(bookService.closeAllProjects).toHaveBeenCalled();
     });
 
     it('logs deactivation', async () => {

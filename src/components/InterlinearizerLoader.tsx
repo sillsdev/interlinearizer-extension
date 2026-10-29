@@ -40,7 +40,7 @@ import useDraftProject, { type DraftContent, type EditStep } from '../hooks/useD
 import { formatTemplate } from '../utils/format-template';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../hooks/useLexiconRegistry';
-import { LexiconSensesProvider, WithoutLexiconSenses } from './LexiconSenses';
+import { LexiconSensesProvider } from './LexiconSenses';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../hooks/useProjectBookIds';
@@ -1831,24 +1831,21 @@ function InterlinearizerLoaderInner({
                 cross-book jump the view is mid-load, and counting against the book being left
                 would relabel every row for the duration. */}
             {sidePanel === 'catalog' ? (
-              // The catalog shows each analysis's stored glosses only.
-              <WithoutLexiconSenses>
-                <AnalysisCatalogPanel
-                  ref={catalogPanelRef}
-                  announceUndoable={announceUndoable}
-                  asOneStep={asOneStep}
-                  currentBook={scrRef.book}
-                  currentBookName={currentBookName}
-                  headingPlacements={headingPlacements}
-                  liveSurfaceText={liveSurfaceText}
-                  localizedStrings={localizedStrings}
-                  onClose={handleSidePanelClose}
-                  onShowConcordance={handleShowConcordance}
-                  showMorphology={showMorphology}
-                  sourceLanguageTag={writingSystem}
-                  staleCoversDraft={wholeTextReanchor.staleCoversDraft}
-                />
-              </WithoutLexiconSenses>
+              <AnalysisCatalogPanel
+                ref={catalogPanelRef}
+                announceUndoable={announceUndoable}
+                asOneStep={asOneStep}
+                currentBook={scrRef.book}
+                currentBookName={currentBookName}
+                headingPlacements={headingPlacements}
+                liveSurfaceText={liveSurfaceText}
+                localizedStrings={localizedStrings}
+                onClose={handleSidePanelClose}
+                onShowConcordance={handleShowConcordance}
+                showMorphology={showMorphology}
+                sourceLanguageTag={writingSystem}
+                staleCoversDraft={wholeTextReanchor.staleCoversDraft}
+              />
             ) : (
               <ConcordancePanel
                 currentBook={scrRef.book}

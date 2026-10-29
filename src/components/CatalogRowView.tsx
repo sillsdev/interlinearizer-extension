@@ -3,6 +3,7 @@ import { formatReplacementString, formatScrRef, type LanguageStrings } from 'pla
 import { memo, useCallback, useState } from 'react';
 import CatalogRowEditor, { CatalogRowActions, ROW_EDITOR_STRING_KEYS } from './CatalogRowEditor';
 import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from './CatalogRowHeader';
+import CatalogSenseLinks, { SENSE_LINKS_STRING_KEYS } from './CatalogSenseLinks';
 import CatalogStaleLocations, { STALE_LOCATION_STRING_KEYS } from './CatalogStaleLocations';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
 
@@ -17,6 +18,7 @@ export const ROW_STRING_KEYS = [
   ...ROW_HEADER_STRING_KEYS,
   ...ROW_EDITOR_STRING_KEYS,
   ...STALE_LOCATION_STRING_KEYS,
+  ...SENSE_LINKS_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -59,7 +61,7 @@ type CatalogRowViewProps = Readonly<{
   liveSurfaceText: (tokenRef: string) => string | undefined;
   /** Resolved localizations covering at least {@link ROW_STRING_KEYS}, shared by the whole list. */
   localizedStrings: LanguageStrings;
-  /** BCP 47 tag the morpheme glosses are read under. */
+  /** BCP 47 tag the row's glosses are read under. */
   analysisLanguage: string;
   /** When false, the row's breakdown is not shown, as the view option hides it on the strip. */
   showMorphology: boolean;
@@ -211,6 +213,7 @@ function CatalogRowView({
       data-testid="catalog-row"
     >
       <CatalogRowHeader
+        analysisLanguage={analysisLanguage}
         isChecked={isChecked}
         isExpanded={isExpanded}
         isNotInText={isNotInText}
@@ -241,6 +244,16 @@ function CatalogRowView({
             onMorphemesCommit={handleMorphemesCommit}
             surfaceText={row.surfaceText}
             usageCount={row.usageCount}
+          />
+
+          <CatalogSenseLinks
+            analysisLanguage={analysisLanguage}
+            gloss={row.gloss}
+            glossSenseRef={row.glossSenseRef}
+            localizedStrings={localizedStrings}
+            morphemes={row.morphemes}
+            showMorphology={showMorphology}
+            surfaceText={row.surfaceText}
           />
 
           {row.usages.length === 0 && row.staleLocations.length === 0 && (

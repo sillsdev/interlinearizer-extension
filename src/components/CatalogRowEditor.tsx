@@ -1,7 +1,8 @@
-import type { MorphemeAnalysis } from 'interlinearizer';
+import type { MorphemeAnalysis, SenseRef } from 'interlinearizer';
 import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
+import { useDisplayedGloss } from './LexiconSenses';
 import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
@@ -41,6 +42,8 @@ type CatalogRowEditorProps = Readonly<{
   surfaceText: string;
   /** The analysis's gloss in the active language, `''` when it has none. */
   gloss: string;
+  /** The sense the analysis links to, whose gloss a read-only analysis shows where it has none. */
+  glossSenseRef?: SenseRef;
   /** How many tokens this analysis is applied to, which every edit here rewrites at once. */
   usageCount: number;
   morphemes: readonly MorphemeAnalysis[];
@@ -187,6 +190,7 @@ export default function CatalogRowEditor({
   analysisId,
   surfaceText,
   gloss,
+  glossSenseRef,
   usageCount,
   morphemes,
   morphemesStale = false,
@@ -202,6 +206,13 @@ export default function CatalogRowEditor({
   const glossFieldId = useId();
   const readOnly = useAnalysisReadOnly();
   const confirmMorphemes = useConfirmMorphemesDispatch();
+  // Only the read-only line shows the sense's gloss. The input shows what is typed, since editing
+  // it would otherwise leave unclear whether the sense's gloss was adopted.
+  const { text: displayedGloss } = useDisplayedGloss(
+    gloss,
+    readOnly ? glossSenseRef : undefined,
+    analysisLanguage,
+  );
 
   const morphemeForms = morphemes.map((m) => m.form).join(' ');
 
@@ -237,7 +248,7 @@ export default function CatalogRowEditor({
             {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
           </span>
           <span className="tw:flex-1 tw:min-w-0 tw:text-sm" data-testid="readonly-catalog-gloss">
-            {gloss ||
+            {displayedGloss ||
               resolvedOrEmpty(localizedStrings['%interlinearizer_analysisCatalog_noGloss%']) ||
               '—'}
           </span>
@@ -252,6 +263,8 @@ export default function CatalogRowEditor({
                 analysisLanguage={analysisLanguage}
                 disabled
                 glossTestId="readonly-catalog-morpheme-gloss"
+                // The row's "Lexicon senses" list marks each morpheme's link.
+                markLexiconGlosses={false}
                 morphemeTestId="catalog-row-morpheme"
                 morphemes={morphemes}
                 noGlossLabel={localizedStrings['%interlinearizer_analysisCatalog_morphemeNoGloss%']}

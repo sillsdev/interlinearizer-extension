@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import type { MorphemeAnalysis } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
 import type { ComponentProps } from 'react';
@@ -92,6 +92,18 @@ describe('CatalogSenseLinks', () => {
     expect(screen.queryByTestId('catalog-sense-links')).not.toBeInTheDocument();
   });
 
+  it("keeps the word's link while the breakdown is hidden", () => {
+    renderLinks({
+      glossSenseRef: testSenseRef('s-word'),
+      showMorphology: false,
+      morphemes: [morpheme('m-1', 'λογ', 's-stem')],
+    });
+
+    const lines = screen.getAllByTestId('catalog-sense-line');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toHaveTextContent('λόγος');
+  });
+
   it('shows a zero morpheme by the zero sign', () => {
     renderLinks({ morphemes: [morpheme('m-1', '', 's-stem')] });
 
@@ -111,6 +123,10 @@ describe('CatalogSenseLinks', () => {
     const { resolveSense } = renderLinks({ glossSenseRef: testSenseRef('gone') });
 
     await waitFor(() => expect(resolveSense).toHaveBeenCalled());
+    // A missing sense shows just as a pending one does, so wait out the lookup itself.
+    await act(async () => {
+      await resolveSense.mock.results[0].value;
+    });
     const line = screen.getByTestId('catalog-sense-line');
     expect(within(line).getByTestId('catalog-sense-link')).toHaveTextContent(
       '%interlinearizer_analysisCatalog_senseLinked%',

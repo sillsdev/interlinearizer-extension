@@ -28,7 +28,7 @@ export const ROW_HEADER_STRING_KEYS = [
 type CatalogRowHeaderProps = Readonly<{
   /** The analysis the row lists. */
   row: CatalogRow;
-  /** BCP 47 tag of `row.gloss`, which the gloss of a linked lexicon sense is read in too. */
+  /** BCP 47 tag that `row.gloss` and a linked sense's gloss are read in. */
   analysisLanguage: string;
   /** Finished label for `row.usageCountInBook`, naming the book that count was taken against. */
   usageCountInBookLabel: string;

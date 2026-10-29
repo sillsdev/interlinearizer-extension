@@ -63,8 +63,6 @@ export function useDisplayedGloss(
 /** A gloss as it is shown, set beside the lexicon sense its analysis links to. */
 export type LinkedGloss = DisplayedGloss &
   Readonly<{
-    /** The linked sense, `undefined` while it is unresolved or when nothing is linked. */
-    sense?: ResolvedSense;
     /** The linked sense's gloss in the language asked for, `''` when there is none. */
     senseGloss: string;
     /**
@@ -76,8 +74,8 @@ export type LinkedGloss = DisplayedGloss &
 
 /**
  * The gloss to show in `language` for an analysis that stores `gloss` and carries `senseRef`, as
- * {@link useDisplayedGloss} gives it, along with the sense itself. The sense is asked for even where
- * a stored gloss covers it, so that the two glosses can be compared.
+ * {@link useDisplayedGloss} gives it, along with the sense's own gloss. The sense is asked for even
+ * where a stored gloss covers it, so that the two glosses can be compared.
  */
 export function useLinkedGloss(
   gloss: string,
@@ -91,11 +89,10 @@ export function useLinkedGloss(
     return {
       text: gloss,
       fromLexicon: false,
-      sense,
       senseGloss,
       differs: senseGloss !== '' && senseGloss.trim() !== gloss.trim(),
     };
-  return { text: senseGloss, fromLexicon: senseGloss !== '', sense, senseGloss, differs: false };
+  return { text: senseGloss, fromLexicon: senseGloss !== '', senseGloss, differs: false };
 }
 
 /** Asks for the sense `senseRef` points to, and reads it once it arrives. */

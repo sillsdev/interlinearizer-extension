@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { SenseRef } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import {
@@ -10,7 +10,10 @@ import {
 } from '../../components/LexiconSenses';
 import { stubLexiconRegistry, testSenseRef } from './test-helpers';
 
-const SENSES = { 's-1': { gloss: { en: 'water', fr: 'eau' } } };
+const SENSES = {
+  's-1': { gloss: { en: 'water', fr: 'eau' } },
+  's-padded': { gloss: { en: ' water ' } },
+};
 
 /** Renders {@link useDisplayedGloss} inside a lexicon holding {@link SENSES}. */
 function renderDisplayedGloss(gloss: string, senseRef: SenseRef | undefined, language = 'en') {
@@ -113,13 +116,8 @@ describe('useLinkedGloss', () => {
   it('asks for the sense even where a gloss is stored', async () => {
     const { result } = renderLinkedGloss('water', testSenseRef('s-1'));
 
-    await waitFor(() => expect(result.current.sense).toEqual(SENSES['s-1']));
-    expect(result.current).toMatchObject({
-      text: 'water',
-      fromLexicon: false,
-      senseGloss: 'water',
-      differs: false,
-    });
+    await waitFor(() => expect(result.current.senseGloss).toBe('water'));
+    expect(result.current).toMatchObject({ text: 'water', fromLexicon: false, differs: false });
   });
 
   it("reports a stored gloss that differs from the sense's", async () => {
@@ -129,10 +127,17 @@ describe('useLinkedGloss', () => {
     expect(result.current).toMatchObject({ text: 'liquid', senseGloss: 'water' });
   });
 
-  it('ignores whitespace around either gloss when comparing them', async () => {
+  it('ignores whitespace around the stored gloss when comparing them', async () => {
     const { result } = renderLinkedGloss(' water ', testSenseRef('s-1'));
 
     await waitFor(() => expect(result.current.senseGloss).toBe('water'));
+    expect(result.current.differs).toBe(false);
+  });
+
+  it("ignores whitespace around the sense's gloss when comparing them", async () => {
+    const { result } = renderLinkedGloss('water', testSenseRef('s-padded'));
+
+    await waitFor(() => expect(result.current.senseGloss).toBe(' water '));
     expect(result.current.differs).toBe(false);
   });
 
@@ -144,9 +149,13 @@ describe('useLinkedGloss', () => {
   });
 
   it('reports no difference where the sense has no gloss in the language asked for', async () => {
-    const { result } = renderLinkedGloss('Wasser', testSenseRef('s-1'), 'de');
+    const { result, resolveSense } = renderLinkedGloss('Wasser', testSenseRef('s-1'), 'de');
 
-    await waitFor(() => expect(result.current.sense).toBeDefined());
+    await waitFor(() => expect(resolveSense).toHaveBeenCalled());
+    // The sense resolves to no gloss here, just as a pending one shows none, so wait out the lookup.
+    await act(async () => {
+      await resolveSense.mock.results[0].value;
+    });
     expect(result.current).toMatchObject({ senseGloss: '', differs: false });
   });
 
@@ -156,7 +165,6 @@ describe('useLinkedGloss', () => {
     expect(result.current).toEqual({
       text: 'water',
       fromLexicon: false,
-      sense: undefined,
       senseGloss: '',
       differs: false,
     });

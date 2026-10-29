@@ -1353,6 +1353,38 @@ describe('onBookRead', () => {
     expect(heard).toEqual(['v3@en']);
   });
 
+  it('passes no text of a whole-text read that a later-subscribed reread of the edited open book overtook', async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    const heard: string[] = [];
+    listenForBooks((_, book) => heard.push(book.textVersion));
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [open] = project.subscriptions;
+    open.deliver(usj('GEN'));
+    await outline;
+    const serve = mockPdpGet.getMockImplementation();
+    const provider = Promise.withResolvers<void>();
+    mockPdpGet.mockImplementationOnce(async (...args: unknown[]) => {
+      await provider.promise;
+      return serve?.(...args);
+    });
+    open.deliver(usj('GEN', 'v2'));
+    readStatus();
+    await settle();
+    const [, read] = subscriptionsTo(project, 'GEN');
+    provider.resolve();
+    await settle();
+    const [, , reread] = subscriptionsTo(project, 'GEN');
+
+    reread.deliver(usj('GEN', 'v3'));
+    await settle();
+    read.deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(heard).toEqual(['v3@en']);
+  });
+
   it("reports an open book's edit whose text a later edit's read overtook", async () => {
     const project = serveProject();
     project.booksPresent = '1';

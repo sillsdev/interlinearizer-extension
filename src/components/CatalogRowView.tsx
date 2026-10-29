@@ -241,6 +241,7 @@ function CatalogRowView({
             analysisLanguage={analysisLanguage}
             breakdownDraft={breakdownDraft}
             gloss={row.gloss}
+            glossSenseRef={row.glossSenseRef}
             localizedStrings={localizedStrings}
             morphemes={row.morphemes}
             morphemesStale={row.morphemesStale}

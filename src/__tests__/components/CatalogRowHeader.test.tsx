@@ -10,8 +10,8 @@ import type { CatalogRow } from '../../utils/analysis-query';
 import { testSenseRef, withLexicon } from './test-helpers';
 
 /**
- * Each key resolving to itself, except the two that fill in placeholders: the check box's label,
- * which names the row's form and gloss, and the differing mark, which names the sense's gloss.
+ * Each key resolving to itself, except those that fill in placeholders, such as the check box's
+ * label, which names the row's form and gloss.
  */
 const STRINGS = {
   ...Object.fromEntries(ROW_HEADER_STRING_KEYS.map((k) => [k, k])),

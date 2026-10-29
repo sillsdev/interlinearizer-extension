@@ -1925,8 +1925,16 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     // and report through the emitter.
     {
       dispose: async () => {
-        await activeSessions.closeAll();
-        await bookService.closeAllProjects();
+        try {
+          await activeSessions.closeAll();
+        } catch (e) {
+          logger.warn('Interlinearizer: could not close every session', e);
+        }
+        try {
+          await bookService.closeAllProjects();
+        } catch (e) {
+          logger.warn('Interlinearizer: could not let go of every book', e);
+        }
         return emitter.dispose();
       },
     },

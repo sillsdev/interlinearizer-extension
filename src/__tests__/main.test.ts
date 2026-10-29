@@ -435,6 +435,32 @@ describe('main', () => {
         expect(order).toEqual(['closeAll', 'closeAllProjects', 'dispose']);
       });
 
+      it('lets go of every book and disposes the emitter when closing the sessions fails', async () => {
+        const emitters = emittersByEvent();
+        jest
+          .spyOn(AnalysisSessions.prototype, 'closeAll')
+          .mockRejectedValue(new Error('close failed'));
+        const context = createTestActivationContext();
+        await activate(context);
+
+        await context.registrations.runAllUnsubscribers();
+
+        expect(bookService.closeAllProjects).toHaveBeenCalled();
+        expect(emitters.get('interlinearizer.onAnalysisChanged')?.dispose).toHaveBeenCalled();
+      });
+
+      it('disposes the emitter when letting go of the books fails', async () => {
+        const emitters = emittersByEvent();
+        jest.spyOn(AnalysisSessions.prototype, 'closeAll').mockResolvedValue();
+        jest.mocked(bookService.closeAllProjects).mockRejectedValue(new Error('release failed'));
+        const context = createTestActivationContext();
+        await activate(context);
+
+        await context.registrations.runAllUnsubscribers();
+
+        expect(emitters.get('interlinearizer.onAnalysisChanged')?.dispose).toHaveBeenCalled();
+      });
+
       it('disposes the emitter and stops listening on deactivation', async () => {
         const emitters = emittersByEvent();
         const unsubscribers = [jest.fn(() => true), jest.fn(() => true), jest.fn(() => true)];

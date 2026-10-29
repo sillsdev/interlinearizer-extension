@@ -1295,6 +1295,25 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
+    it('leaves the draft attached when the deleted active project is a Paratext 9 import', async () => {
+      const resetActiveProject = jest.fn();
+      const detachFromProject = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'metadata',
+            // The mock's Delete targets MOCK_PROJECT.id, so the import takes that id.
+            activeProject: { ...MOCK_PROJECT, pt9Import: MOCK_IMPORT_PROJECT.pt9Import },
+            detachFromProject,
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject }),
+          })}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('metadata-delete'));
+      expect(resetActiveProject).toHaveBeenCalledTimes(1);
+      expect(detachFromProject).not.toHaveBeenCalled();
+    });
+
     it('resets the active project when the select modal deletes it', async () => {
       const resetActiveProject = jest.fn();
       const detachFromProject = jest.fn();

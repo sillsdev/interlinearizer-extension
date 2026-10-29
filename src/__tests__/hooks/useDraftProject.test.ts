@@ -1049,7 +1049,7 @@ describe('useDraftProject', () => {
       const { result } = await renderLoaded();
 
       jest.useFakeTimers();
-      act(() => result.current.detachFromProject());
+      await act(async () => result.current.detachFromProject());
       act(() => jest.advanceTimersByTime(300));
       jest.useRealTimers();
 
@@ -1066,7 +1066,7 @@ describe('useDraftProject', () => {
       );
       const { result } = await renderLoaded();
 
-      act(() => result.current.detachFromProject());
+      await act(async () => result.current.detachFromProject());
 
       expect(result.current.dirty).toBe(true);
     });
@@ -1076,7 +1076,7 @@ describe('useDraftProject', () => {
       const writesBefore = saveDraftCount();
 
       jest.useFakeTimers();
-      act(() => result.current.detachFromProject());
+      await act(async () => result.current.detachFromProject());
       act(() => jest.advanceTimersByTime(300));
       jest.useRealTimers();
 
@@ -1084,11 +1084,126 @@ describe('useDraftProject', () => {
       expect(saveDraftCount()).toBe(writesBefore);
     });
 
+    /** Renders the hook with `getDraft` held open; resolving it returns `draft`. */
+    function renderLoading(draft: DraftProject) {
+      let resolveGetDraft: (json: string) => void = () => {};
+      const deferred = new Promise<string>((resolve) => {
+        resolveGetDraft = resolve;
+      });
+      mockSendCommand.mockImplementation((...args: Parameters<typeof mockSendCommand>) => {
+        if (args[0] === 'interlinearizer.getDraft') return deferred;
+        return Promise.resolve(undefined);
+      });
+      const view = renderHook(() => useDraftProject(SOURCE_PROJECT_ID, PLATFORM_LANGUAGE));
+      const finishLoad = async () => {
+        await act(async () => {
+          resolveGetDraft(JSON.stringify(draft));
+          await deferred;
+        });
+      };
+      return { ...view, finishLoad };
+    }
+
+    it('marks a draft with analysis unsaved when detached while it loads', async () => {
+      const { result, finishLoad } = renderLoading(
+        makeDraft({ analysis: analysisWithToken('tok-loading') }),
+      );
+
+      let detached = Promise.resolve();
+      act(() => {
+        detached = result.current.detachFromProject();
+      });
+      jest.useFakeTimers();
+      await finishLoad();
+      await act(() => detached);
+      act(() => jest.advanceTimersByTime(300));
+      jest.useRealTimers();
+
+      expect(result.current.isDraftLoading).toBe(false);
+      expect(result.current.dirty).toBe(true);
+      expect(lastSavedDraft()).toMatchObject({
+        analysis: analysisWithToken('tok-loading'),
+        dirty: true,
+      });
+    });
+
+    it('stays unsaved when a save in progress succeeds after the detach', async () => {
+      mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-saving') }));
+      const { result } = await renderLoaded();
+      let finishCopy: (copied: boolean) => void = () => {};
+      const copy = jest.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finishCopy = resolve;
+          }),
+      );
+      let saving = Promise.resolve(false);
+      act(() => {
+        saving = result.current.commitDraft(copy);
+      });
+      await waitFor(() => expect(copy).toHaveBeenCalled());
+
+      // The delete's reply lands first: the detach goes as far as it can before the Save replies.
+      let detached = Promise.resolve();
+      await act(async () => {
+        detached = result.current.detachFromProject();
+      });
+      await act(async () => {
+        finishCopy(true);
+        await saving;
+      });
+      await act(() => detached);
+
+      expect(result.current.dirty).toBe(true);
+    });
+
+    it("leaves the next source's draft clean when the source changes during the load", async () => {
+      let resolveGetDraft: (json: string) => void = () => {};
+      const deferred = new Promise<string>((resolve) => {
+        resolveGetDraft = resolve;
+      });
+      mockSendCommand.mockImplementation((...args: Parameters<typeof mockSendCommand>) => {
+        if (args[0] === 'interlinearizer.getDraft') return deferred;
+        return Promise.resolve(undefined);
+      });
+      const view = renderHook(({ source }) => useDraftProject(source, PLATFORM_LANGUAGE), {
+        initialProps: { source: SOURCE_PROJECT_ID },
+      });
+
+      let detached = Promise.resolve();
+      act(() => {
+        detached = view.result.current.detachFromProject();
+      });
+      view.rerender({ source: 'source-project-2' });
+      await act(async () => {
+        resolveGetDraft(JSON.stringify(makeDraft({ analysis: analysisWithToken('tok-next') })));
+        await deferred;
+      });
+      await act(() => detached);
+
+      expect(view.result.current.isDraftLoading).toBe(false);
+      expect(view.result.current.dirty).toBe(false);
+    });
+
+    it('leaves an empty draft clean when detached while it loads', async () => {
+      const { result, finishLoad } = renderLoading(makeDraft());
+
+      let detached = Promise.resolve();
+      act(() => {
+        detached = result.current.detachFromProject();
+      });
+      await finishLoad();
+      await act(() => detached);
+
+      expect(result.current.isDraftLoading).toBe(false);
+      expect(result.current.dirty).toBe(false);
+    });
+
     it('leaves an unsaved draft unsaved', async () => {
       mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-unsaved'), dirty: true }));
       const { result } = await renderLoaded();
 
-      act(() => result.current.detachFromProject());
+      await act(async () => result.current.detachFromProject());
 
       expect(result.current.dirty).toBe(true);
     });
@@ -1098,7 +1213,7 @@ describe('useDraftProject', () => {
       const { result } = await renderLoaded();
 
       act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
-      act(() => result.current.detachFromProject());
+      await act(async () => result.current.detachFromProject());
       act(() => result.current.undo());
 
       expect(result.current.dirty).toBe(true);
@@ -1107,7 +1222,7 @@ describe('useDraftProject', () => {
     it('reads clean again when an undo returns to an empty draft', async () => {
       const { result } = await renderLoaded();
 
-      act(() => result.current.detachFromProject());
+      await act(async () => result.current.detachFromProject());
       act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
       act(() => result.current.undo());
 

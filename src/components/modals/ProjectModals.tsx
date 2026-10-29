@@ -46,7 +46,7 @@ type PendingReplace =
  *   having nothing to save rather than offering a write that would change nothing.
  * @param props.getDraftSnapshot - Returns the latest draft envelope (analysis + config).
  * @param props.detachFromProject - Records that the active project, the draft's Save target, was
- *   deleted, so the draft's content is saved nowhere.
+ *   deleted.
  * @param props.commitDraft - Runs a Save As through the draft: once the stored draft is current,
  *   runs the given copy with the draft snapshot and marks the draft synced when the copy reports it
  *   landed whole. Resolves whether the copy landed, or `false` when no save could run.
@@ -194,13 +194,14 @@ export default function ProjectModals({
 
   /**
    * Clears `activeProject` when the project the user just deleted was the active one, and records
-   * that the draft's content is saved nowhere.
+   * that the draft no longer saves to it.
    */
   const handleProjectDeleted = useCallback(
     (deletedId: string) => {
       if (activeProject?.id !== deletedId) return;
       resetActiveProject();
-      detachFromProject();
+      // An import never held the draft, which still matches the project it last saved to.
+      if (activeProject.pt9Import === undefined) detachFromProject();
     },
     [activeProject, detachFromProject, resetActiveProject],
   );

@@ -181,6 +181,46 @@ describe('EditHistory', () => {
   });
 });
 
+describe("EditHistory's count of applies", () => {
+  it('counts each edit, undo and redo it applies', async () => {
+    const { history } = makeHistory();
+
+    await history.apply(putting('a'));
+    await history.undo();
+    await history.redo();
+
+    expect(history.applied).toBe(3);
+  });
+
+  it('counts an edit whose marking the draft saved fails', async () => {
+    const { history, repository } = makeHistory();
+    jest.spyOn(repository, 'markClean').mockRejectedValue(new Error('disk full'));
+
+    await expect(history.apply(putting('a'), { unsavedMark: 'clear' })).rejects.toThrow(
+      'disk full',
+    );
+
+    expect(history.applied).toBe(1);
+  });
+
+  it('counts no edit that fails to apply', async () => {
+    const { history, repository } = makeHistory();
+    jest.spyOn(repository, 'apply').mockRejectedValue(new Error('disk full'));
+
+    await expect(history.apply(putting('a'))).rejects.toThrow('disk full');
+
+    expect(history.applied).toBe(0);
+  });
+
+  it('counts no undo when there is nothing to undo', async () => {
+    const { history } = makeHistory();
+
+    await history.undo();
+
+    expect(history.applied).toBe(0);
+  });
+});
+
 describe("EditHistory's unsaved mark", () => {
   it('marks the draft saved when an undo leads back to content it was saved with', async () => {
     const { history, storedDirty } = makeHistory();

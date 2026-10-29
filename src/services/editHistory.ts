@@ -75,6 +75,8 @@ export class EditHistory {
   /** The states whose content the draft was saved with, as far as the history has seen. */
   private cleanStates = new Set<number>();
 
+  private appliedCount = 0;
+
   /**
    * @param repository - The repository whose edits the history applies and reverts.
    * @param reanchorBooks - Gives the changes that re-anchor what an undo or redo would restore;
@@ -83,6 +85,11 @@ export class EditHistory {
   constructor(repository: AnalysisRepository, reanchorBooks?: ReanchorBooks) {
     this.repository = repository;
     this.reanchorBooks = reanchorBooks;
+  }
+
+  /** How many edits, undos and redos the history has applied to the repository. */
+  get applied(): number {
+    return this.appliedCount;
   }
 
   /**
@@ -98,6 +105,7 @@ export class EditHistory {
       changes,
       keep ? { keepDirty: true } : undefined,
     );
+    this.appliedCount += 1;
     this.noteMark(wasDirty);
     this.undoable.push({ changes: inverse, passesSeen: this.passCount, state: this.state });
     if (this.undoable.length > MAX_UNDO_STEPS) this.undoable.shift();
@@ -190,6 +198,7 @@ export class EditHistory {
         : undefined;
     const changes = reanchored ? mergeChangeSets(step.changes, reanchored) : step.changes;
     const { inverse, wasDirty } = await this.repository.apply(changes);
+    this.appliedCount += 1;
     this.noteMark(wasDirty);
     from.pop();
     to.push({ changes: inverse, passesSeen: this.passCount, state: this.state });

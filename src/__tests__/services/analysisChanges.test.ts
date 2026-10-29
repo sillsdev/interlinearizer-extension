@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import type { Book, TextAnalysis } from 'interlinearizer';
-import { describeChange } from '../../services/analysisChanges';
+import { describeChange, describeScriptureEdit } from '../../services/analysisChanges';
 import { DraftRepository } from '../../services/draftRepository';
 import type { ChangeSet } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
@@ -310,6 +310,33 @@ describe('describeChange', () => {
       const change = await describeChange(repository, { changes, inverse }, held);
 
       expect(change.queries).toStrictEqual([]);
+    });
+  });
+});
+
+describe('describeScriptureEdit', () => {
+  it('names the edited book whole, with every query', () => {
+    expect(describeScriptureEdit('GEN', [])).toStrictEqual({
+      books: [{ bookId: 'GEN' }],
+      analysisIds: [],
+      queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
+    });
+  });
+
+  it('names whole each book its passes touched, and each analysis once', () => {
+    const passes = [
+      {
+        books: [{ bookId: 'GEN', ranges: [{ start: 0, end: 1 }] }],
+        analysisIds: ['ta'],
+        queries: [],
+      },
+      { books: [{ bookId: 'EXO' }], analysisIds: ['ta', 'tb'], queries: [] },
+    ];
+
+    expect(describeScriptureEdit('GEN', passes)).toStrictEqual({
+      books: [{ bookId: 'GEN' }, { bookId: 'EXO' }],
+      analysisIds: ['ta', 'tb'],
+      queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
     });
   });
 });

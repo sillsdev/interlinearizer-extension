@@ -23,7 +23,12 @@ import {
 } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
+import {
+  AnalysisSessions,
+  type EditOutcome,
+  type OpenedSession,
+  type Session,
+} from './services/analysisSessions';
 import type { DraftContent } from './hooks/useDraftProject';
 import * as bookService from './services/bookService';
 import * as boundaryCommands from './services/commands/boundaryCommands';
@@ -157,49 +162,30 @@ const openWebViewsByProject = new Map<string, string>();
  */
 const leftOutDraftBooks = new Map<string, string>();
 
-/** Tells views what a change touched; set on activation. */
-let analysisChangedEmitter: PlatformEventEmitter<
-  NetworkEvents['interlinearizer.onAnalysisChanged']
->;
+/** The open analysis sessions, over the extension's storage; set on activation. */
+let sessions: AnalysisSessions;
 
-/** The open analysis sessions, over the extension's storage. */
-const sessions = new AnalysisSessions({
-  findProject: async (sourceProjectId, interlinearProjectId) =>
-    (await projectStorage.getProjectSummariesForSource(executionToken, sourceProjectId)).find(
-      (summary) => summary.id === interlinearProjectId,
-    ),
-  openDraftRepository: (sourceProjectId) =>
-    projectStorage.openDraftRepository(executionToken, sourceProjectId),
-  releaseDraftRepository: (sourceProjectId) =>
-    projectStorage.releaseDraftRepository(sourceProjectId),
-  openPt9ImportRepository: (interlinearProjectId) =>
-    projectStorage.openPt9ImportRepository(executionToken, interlinearProjectId),
-  getInterfaceLanguages: () => papi.settings.get('platform.interfaceLanguage'),
-  startTextRead: (sourceProjectId) => bookService.startTextRead(sourceProjectId),
-  stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
-  heldBook: (sourceProjectId, bookId, segmentation) =>
-    bookService.heldBook(sourceProjectId, bookId, segmentation && JSON.stringify(segmentation)),
-  reportChange: (change) => analysisChangedEmitter.emit(change),
-});
-
-/**
- * Tells views of a Scripture edit to the source project's book, addressed by source project and,
- * when the source has a session open, by session too.
- */
-function emitScriptureEdit(sourceProjectId: string, bookId: string): void {
-  analysisChangedEmitter.emit({
-    sourceProjectId,
-    changeId: crypto.randomUUID(),
-    scriptureEdit: { bookId },
-  });
-  const sessionId = sessions.sessionIdFor(sourceProjectId);
-  if (sessionId === undefined) return;
-  analysisChangedEmitter.emit({
-    sessionId,
-    changeId: crypto.randomUUID(),
-    books: [{ bookId }],
-    analysisIds: [],
-    queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
+/** Builds the sessions, reporting each change through `emitter`. */
+function createSessions(
+  emitter: PlatformEventEmitter<NetworkEvents['interlinearizer.onAnalysisChanged']>,
+): AnalysisSessions {
+  return new AnalysisSessions({
+    findProject: async (sourceProjectId, interlinearProjectId) =>
+      (await projectStorage.getProjectSummariesForSource(executionToken, sourceProjectId)).find(
+        (summary) => summary.id === interlinearProjectId,
+      ),
+    openDraftRepository: (sourceProjectId) =>
+      projectStorage.openDraftRepository(executionToken, sourceProjectId),
+    releaseDraftRepository: (sourceProjectId) =>
+      projectStorage.releaseDraftRepository(sourceProjectId),
+    openPt9ImportRepository: (interlinearProjectId) =>
+      projectStorage.openPt9ImportRepository(executionToken, interlinearProjectId),
+    getInterfaceLanguages: () => papi.settings.get('platform.interfaceLanguage'),
+    startTextRead: (sourceProjectId) => bookService.startTextRead(sourceProjectId),
+    stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
+    heldBook: (sourceProjectId, bookId, segmentation) =>
+      bookService.heldBook(sourceProjectId, bookId, segmentation && JSON.stringify(segmentation)),
+    reportChange: (change) => emitter.emit(change),
   });
 }
 
@@ -961,7 +947,7 @@ type EditTarget = { sessionId: string; changeId?: ChangeId | null };
 async function runSessionEdit(
   { sessionId, changeId }: EditTarget,
   intent: string,
-  command: (buffer: ChangeBuffer, session: Session) => Promise<void | readonly Book[]>,
+  command: (buffer: ChangeBuffer, session: Session) => Promise<void | EditOutcome>,
 ): Promise<string> {
   try {
     return JSON.stringify(
@@ -1624,7 +1610,7 @@ function mergeSegments(
   return runSessionEdit({ sessionId, changeId }, 'mergeSegments', async (buffer, session) => {
     const verseBook = await verseBookOf(session, secondSegmentStartRef);
     await boundaryCommands.mergeSegments(buffer, { verseBook, secondSegmentStartRef });
-    return [verseBook];
+    return { reanchorTo: [verseBook] };
   });
 }
 
@@ -1644,7 +1630,7 @@ function splitSegment(
   return runSessionEdit({ sessionId, changeId }, 'splitSegment', async (buffer, session) => {
     const verseBook = await verseBookOf(session, tokenRef);
     await boundaryCommands.splitSegment(buffer, { ...boundaryEditStamp(), verseBook, tokenRef });
-    return [verseBook];
+    return { reanchorTo: [verseBook] };
   });
 }
 
@@ -1671,7 +1657,7 @@ function moveBoundary(
       fromRef,
       toRef,
     });
-    return [verseBook];
+    return { reanchorTo: [verseBook] };
   });
 }
 
@@ -1689,9 +1675,6 @@ async function savedContentOf(session: Session): Promise<DraftContent | undefine
   }
   return { analysis: project.analysis, segmentation: project.segmentation };
 }
-
-/** Whether the draft each discard left has a free translation, kept with the reply a retry gets. */
-const discardLeftFreeTranslations = new WeakMap<CommandReply, boolean>();
 
 /**
  * Runs an unsaved-change discard as one edit of a session's analysis, re-anchoring each book it
@@ -1717,7 +1700,6 @@ async function runDiscard(
   ) => discardCommands.DiscardOutcome,
   unsavedMark: (savesToProject: boolean) => EditOptions['unsavedMark'],
 ): Promise<string> {
-  let hasFreeTranslations: boolean | undefined;
   try {
     const reply = await sessions.edit(
       sessionId,
@@ -1725,25 +1707,24 @@ async function runDiscard(
       async (buffer, session) => {
         const saved = await savedContentOf(session);
         const outcome = stage(buffer, await session.repository.exportAll(), saved);
-        hasFreeTranslations = outcome.hasFreeTranslations;
         const { sourceProjectId } = session.scope;
-        return Promise.all(
+        const reanchorTo = await Promise.all(
           outcome.changedBooks.map(
             async (bookCode) =>
               (await bookService.getVerseBook(sourceProjectId, bookCode)) ?? missingBook(bookCode),
           ),
         );
+        return { reanchorTo, hasFreeTranslations: outcome.hasFreeTranslations };
       },
       {
         unsavedMark: ({ scope }) => unsavedMark(scope.interlinearProjectId !== undefined),
         changeId: changeId ?? undefined,
       },
     );
-    if (hasFreeTranslations === undefined) {
-      /* v8 ignore next -- defensive: a reply lacks the flag only when a discard reuses a non-discard command's change id */
-      hasFreeTranslations = discardLeftFreeTranslations.get(reply) ?? false;
-    } else discardLeftFreeTranslations.set(reply, hasFreeTranslations);
-    return JSON.stringify({ ...reply, hasFreeTranslations });
+    /* v8 ignore next 2 -- defensive: only a discard reusing another command's change id gets no flag */
+    if (reply.hasFreeTranslations === undefined)
+      throw new Error(`Interlinearizer: change ${changeId} was not a discard`);
+    return JSON.stringify(reply);
   } catch (e) {
     logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
     throw e;
@@ -1898,6 +1879,60 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     webViewOpenUnsubscriber,
     webViewUpdateUnsubscriber,
     webViewCloseUnsubscriber,
+  );
+
+  // Built ahead of every command, so no command reaches sessions that cannot report yet.
+  const emitter = await papi.network.createNetworkEventEmitterAsync(
+    'interlinearizer.onAnalysisChanged',
+  );
+  const activeSessions = createSessions(emitter);
+  sessions = activeSessions;
+  const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book, edited) =>
+    activeSessions
+      .reanchorBook(sourceProjectId, book, edited)
+      .catch((e) =>
+        logger.warn(
+          `Interlinearizer: could not re-anchor ${book.bookRef} of project ${sourceProjectId}`,
+          e,
+        ),
+      ),
+  );
+  const textReadUnsubscriber = bookService.onTextRead((sourceProjectId, textBookIds) =>
+    activeSessions
+      .reanchorMissingBooks(sourceProjectId, textBookIds)
+      .catch((e) =>
+        logger.warn(
+          `Interlinearizer: could not re-anchor the books project ${sourceProjectId} lacks`,
+          e,
+        ),
+      ),
+  );
+  const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
+    activeSessions
+      .reportScriptureEdit(sourceProjectId, bookId)
+      .catch((e) =>
+        logger.warn(
+          `Interlinearizer: could not report the edit to ${bookId} of project ${sourceProjectId}`,
+          e,
+        ),
+      )
+      .then(() =>
+        emitter.emit({ sourceProjectId, changeId: crypto.randomUUID(), scriptureEdit: { bookId } }),
+      ),
+  );
+  context.registrations.add(
+    // In this order: closing a session waits for its queued passes, which read the kept books
+    // and report through the emitter.
+    {
+      dispose: async () => {
+        await activeSessions.closeAll();
+        await bookService.closeAllProjects();
+        return emitter.dispose();
+      },
+    },
+    bookReadUnsubscriber,
+    textReadUnsubscriber,
+    bookTextUnsubscriber,
   );
 
   const mainWebViewProviderRegistration = await papi.webViewProviders.registerWebViewProvider(
@@ -3496,34 +3531,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  analysisChangedEmitter = await papi.network.createNetworkEventEmitterAsync(
-    'interlinearizer.onAnalysisChanged',
-  );
-  const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book) =>
-    sessions
-      .reanchorBook(sourceProjectId, book)
-      .catch((e) =>
-        logger.warn(
-          `Interlinearizer: could not re-anchor ${book.bookRef} of project ${sourceProjectId}`,
-          e,
-        ),
-      ),
-  );
-  const textReadUnsubscriber = bookService.onTextRead((sourceProjectId, textBookIds) =>
-    sessions
-      .reanchorMissingBooks(sourceProjectId, textBookIds)
-      .catch((e) =>
-        logger.warn(
-          `Interlinearizer: could not re-anchor the books project ${sourceProjectId} lacks`,
-          e,
-        ),
-      ),
-  );
-  // A book's new text reaches its pass before its edit is reported, so the event waits for the pass.
-  const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
-    sessions.settled(sourceProjectId).then(() => emitScriptureEdit(sourceProjectId, bookId)),
-  );
-
   const openLexiconChooserCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openLexiconChooser',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
@@ -3646,10 +3653,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     redoCommandRegistration,
     undoFromNotificationEmitter,
     undoFromNotificationCommandRegistration,
-    analysisChangedEmitter,
-    bookReadUnsubscriber,
-    textReadUnsubscriber,
-    bookTextUnsubscriber,
     openLexiconChooserCommandRegistration,
     saveCommandRegistration,
     openSaveAsModalCommandRegistration,
@@ -3667,8 +3670,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
  */
 export async function deactivate(): Promise<boolean> {
   openWebViewsByProject.clear();
-  await sessions.closeAll();
-  await bookService.closeAllProjects();
   logger.debug('Interlinearizer extension is deactivating!');
   return true;
 }

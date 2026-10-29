@@ -1338,7 +1338,7 @@ describe('onBookRead', () => {
   const unsubscribers: Array<() => boolean> = [];
 
   /** A listener for books read, registered for the test and removed once it ends. */
-  function listenForBooks(onCall?: (sourceProjectId: string, book: Book) => void) {
+  function listenForBooks(onCall?: (sourceProjectId: string, book: Book, edited: boolean) => void) {
     const listener = jest.fn(onCall);
     unsubscribers.push(onBookRead(listener));
     return listener;
@@ -1352,7 +1352,7 @@ describe('onBookRead', () => {
     unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
   });
 
-  it('passes each book the whole-text read reads, tokenized, with its project', async () => {
+  it('passes each book the whole-text read reads, tokenized, with its project, as no edit', async () => {
     tokenizeToWords();
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '101';
@@ -1362,10 +1362,14 @@ describe('onBookRead', () => {
     await settle();
 
     expect(
-      listener.mock.calls.map(([sourceProjectId, book]) => [sourceProjectId, book.id]),
+      listener.mock.calls.map(([sourceProjectId, book, edited]) => [
+        sourceProjectId,
+        book.id,
+        edited,
+      ]),
     ).toEqual([
-      ['src', 'GEN'],
-      ['src', 'LEV'],
+      ['src', 'GEN', false],
+      ['src', 'LEV', false],
     ]);
     expect(listener.mock.calls[0][1].segments[0].tokens[1].surfaceText).toBe('GEN-v1');
   });
@@ -1383,12 +1387,12 @@ describe('onBookRead', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('passes an edited book again before the edit is reported', async () => {
+  it('passes an edited book again, as edited, before the edit is reported', async () => {
     let version = 'v1';
     const project = serveProject((bookId) => usj(bookId, version));
     project.booksPresent = '1';
     const heard: string[] = [];
-    listenForBooks((_, book) => heard.push(`read ${book.textVersion}`));
+    listenForBooks((_, book, edited) => heard.push(`read ${book.textVersion} ${edited}`));
     unsubscribers.push(onBookTextChanged(() => heard.push('edited')));
     readStatus();
     await settle();
@@ -1397,14 +1401,14 @@ describe('onBookRead', () => {
     project.subscriptions[0].deliver(usj('GEN', version));
     await settle();
 
-    expect(heard).toEqual(['read v1@en', 'read v2@en', 'edited']);
+    expect(heard).toEqual(['read v1@en false', 'read v2@en true', 'edited']);
   });
 
-  it('passes the edited open book before the edit is reported, ahead of the read', async () => {
+  it('passes the edited open book, as edited, before the edit is reported, ahead of the read', async () => {
     let version = 'v1';
     const project = serveProject((bookId) => usj(bookId, version));
     const heard: string[] = [];
-    listenForBooks((_, book) => heard.push(`read ${book.textVersion}`));
+    listenForBooks((_, book, edited) => heard.push(`read ${book.textVersion} ${edited}`));
     unsubscribers.push(onBookTextChanged(() => heard.push('edited')));
     await getBookOutline('src', 'GEN');
 
@@ -1412,7 +1416,7 @@ describe('onBookRead', () => {
     project.subscriptions[0].deliver(usj('GEN', version));
     await settle();
 
-    expect(heard).toEqual(['read v2@en', 'edited']);
+    expect(heard).toEqual(['read v2@en true', 'edited']);
   });
 
   it('reports an edit to the open book that no longer reads, passing nothing', async () => {

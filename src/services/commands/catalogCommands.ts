@@ -81,18 +81,21 @@ async function removeAnalysisAndLinks(buffer: ChangeBuffer, analysisId: string):
 /**
  * Stages storing `analysis` as an edit left it. An analysis left empty goes with every token link
  * to it. One made identical to another payload is folded into that payload.
+ *
+ * @returns The id of the analysis that holds `analysis`'s content afterward, or `undefined` when
+ *   the edit left `analysis` empty.
  */
 async function settleEditedAnalysis(
   buffer: ChangeBuffer,
   analysis: TokenAnalysis,
   now: string,
-): Promise<void> {
+): Promise<string | undefined> {
   if (isEmptyTokenAnalysis(analysis)) {
     await removeAnalysisAndLinks(buffer, analysis.id);
-    return;
+    return undefined;
   }
   buffer.put('tokenAnalyses', analysis);
-  await mergeIntoIdenticalPayload(buffer, analysis, now);
+  return (await mergeIntoIdenticalPayload(buffer, analysis, now)) ?? analysis.id;
 }
 
 /**
@@ -103,17 +106,20 @@ async function settleEditedAnalysis(
  * An analysis the write leaves empty goes with every token link to it. One the write makes
  * identical to another payload is folded into that payload. Nothing is staged when the analysis
  * isn't stored.
+ *
+ * @returns The id of the analysis that holds the edited content afterward, or `undefined` when the
+ *   analysis isn't stored or the edit left it empty.
  */
 export async function writeAnalysisGloss(
   buffer: ChangeBuffer,
   { analysisId, value, analysisLanguage: lang, now }: WriteAnalysisGlossRequest,
-): Promise<void> {
+): Promise<string | undefined> {
   const [analysis] = await buffer.getTokenAnalyses([analysisId]);
-  if (!analysis) return;
+  if (!analysis) return undefined;
   if (value.trim() === '') clearAnalysisGloss(analysis, lang);
   else analysis.gloss = { ...analysis.gloss, [lang]: value };
   analysis.updatedAt = now;
-  await settleEditedAnalysis(buffer, analysis, now);
+  return settleEditedAnalysis(buffer, analysis, now);
 }
 
 /**
@@ -125,7 +131,7 @@ export async function clearAnalysisGlosses(
   buffer: ChangeBuffer,
   { analysisIds, analysisLanguage, now }: ClearAnalysisGlossesRequest,
 ): Promise<void> {
-  await analysisIds.reduce<Promise<void>>(
+  await analysisIds.reduce<Promise<unknown>>(
     (previous, analysisId) =>
       previous.then(() =>
         writeAnalysisGloss(buffer, { analysisId, value: '', analysisLanguage, now }),
@@ -144,18 +150,21 @@ export async function clearAnalysisGlosses(
  * An analysis the re-split leaves empty goes with every token link to it. One the re-split makes
  * identical to another payload is folded into that payload. Nothing is staged when the analysis
  * isn't stored.
+ *
+ * @returns The id of the analysis that holds the edited content afterward, or `undefined` when the
+ *   analysis isn't stored or the edit left it empty.
  */
 export async function writeAnalysisMorphemes(
   buffer: ChangeBuffer,
   { analysisId, morphemes, writingSystem, now }: WriteAnalysisMorphemesRequest,
-): Promise<void> {
+): Promise<string | undefined> {
   const [analysis] = await buffer.getTokenAnalyses([analysisId]);
-  if (!analysis) return;
+  if (!analysis) return undefined;
   if (morphemes.length === 0) delete analysis.morphemes;
   else analysis.morphemes = reconcileMorphemes(analysis.morphemes, morphemes, writingSystem);
   delete analysis.morphemesStale;
   analysis.updatedAt = now;
-  await settleEditedAnalysis(buffer, analysis, now);
+  return settleEditedAnalysis(buffer, analysis, now);
 }
 
 /**
@@ -179,14 +188,17 @@ export async function confirmAnalysisMorphemes(
  *
  * An analysis the write makes identical to another payload is folded into that payload. Nothing is
  * staged when the analysis isn't stored or has no such morpheme.
+ *
+ * @returns The id of the analysis that holds the edited content afterward, or `undefined` when
+ *   nothing was staged.
  */
 export async function writeAnalysisMorphemeGloss(
   buffer: ChangeBuffer,
   { analysisId, morphemeId, value, analysisLanguage: lang, now }: WriteAnalysisMorphemeGlossRequest,
-): Promise<void> {
+): Promise<string | undefined> {
   const [analysis] = await buffer.getTokenAnalyses([analysisId]);
   const morpheme = analysis?.morphemes?.find(({ id }) => id === morphemeId);
-  if (!analysis || !morpheme) return;
+  if (!analysis || !morpheme) return undefined;
   if (value.trim() === '') {
     if (morpheme.gloss) {
       delete morpheme.gloss[lang];
@@ -197,7 +209,7 @@ export async function writeAnalysisMorphemeGloss(
   }
   analysis.updatedAt = now;
   buffer.put('tokenAnalyses', analysis);
-  await mergeIntoIdenticalPayload(buffer, analysis, now);
+  return (await mergeIntoIdenticalPayload(buffer, analysis, now)) ?? analysis.id;
 }
 
 /**
@@ -228,6 +240,9 @@ export async function deleteAnalyses(
  * A survivor the merge leaves empty goes with every token link to it. One that matches another
  * payload is folded into that payload, which takes the survivor's confidence. Nothing is staged
  * when the survivor isn't stored.
+ *
+ * @returns The id of the analysis that holds the edited content afterward, or `undefined` when the
+ *   survivor isn't stored or the merge left it empty.
  */
 export async function mergeAnalysesInto(
   buffer: ChangeBuffer,
@@ -238,9 +253,9 @@ export async function mergeAnalysesInto(
     analysisLanguage: lang,
     now,
   }: MergeAnalysesIntoRequest,
-): Promise<void> {
+): Promise<string | undefined> {
   const [survivor] = await buffer.getTokenAnalyses([survivorAnalysisId]);
-  if (!survivor) return;
+  if (!survivor) return undefined;
 
   const stored = new Map(
     (await buffer.getTokenAnalyses([...mergedAnalysisIds])).map((ta) => [ta.id, ta]),
@@ -268,7 +283,10 @@ export async function mergeAnalysesInto(
 
   if (isEmptyTokenAnalysis(survivor)) {
     await removeAnalysisAndLinks(buffer, survivorAnalysisId);
-    return;
+    return undefined;
   }
-  await mergeIntoIdenticalPayload(buffer, survivor, now, { settleProvenance: true });
+  return (
+    (await mergeIntoIdenticalPayload(buffer, survivor, now, { settleProvenance: true })) ??
+    survivorAnalysisId
+  );
 }

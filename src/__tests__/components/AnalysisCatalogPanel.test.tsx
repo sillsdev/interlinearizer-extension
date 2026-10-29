@@ -22,7 +22,7 @@ import { AnalysisStoreProvider, useGlossDispatch } from '../../components/Analys
 import { SourceTextContext } from '../../components/SourceTextContext';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import type { SourceText } from '../../hooks/useSourceTextReader';
-import type { StepSummary } from '../../hooks/useDraftProject';
+import type { StepSummary } from '../../types/edit-step';
 import { emptyAnalysis } from '../../types/empty-factories';
 import type { HeadingPlacement } from '../../utils/analysis-query';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';
@@ -2456,6 +2456,24 @@ describe('AnalysisCatalogPanel', () => {
         const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
         expect(saved.tokenAnalyses[0]).not.toHaveProperty('morphemesStale');
         expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογγ', 'ος']);
+      });
+
+      it('summarizes keeping the breakdown as an edit to its analysis', async () => {
+        const { asOneStep, summaries } = spyOnSteps();
+        renderPanel({ analysis: STALE_BREAKDOWN, asOneStep });
+
+        const row = await expandRow('ta-1');
+        await openBreakdown(row);
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
+
+        expect(summaries).toStrictEqual([
+          {
+            kind: 'catalogEdit',
+            form: SHARED.tokenAnalyses[0].surfaceText,
+            analysisId: 'ta-1',
+            survivingAnalysisId: 'ta-1',
+          },
+        ]);
       });
     });
 

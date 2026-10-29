@@ -42,6 +42,7 @@ import * as phraseCommands from './services/commands/phraseCommands';
 import * as tokenCommands from './services/commands/tokenCommands';
 import { startCSharpHost } from './services/csharpHost';
 import type { EditOptions } from './services/editHistory';
+import { catalogStepOf, deletionStepOf, phraseStartOf } from './services/editSteps';
 import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
@@ -49,6 +50,7 @@ import type { Pt9ImportResult } from './services/pt9ImportService';
 import { readBookOutline, readSegmentPage } from './services/sessionPages';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
+import type { EditStep } from './types/edit-step';
 import { toProjectSummary, type SavedAsProject } from './types/interlinear-project-summary';
 import { UnreadableBooksError, type DraftExport } from './types/analysis-repository';
 import { isDraftProject } from './types/type-guards';
@@ -934,8 +936,15 @@ async function checkIndexes(sessionId: string): Promise<string> {
   }
 }
 
-/** The session an edit is sent to, and the change id it is sent under. */
-type EditTarget = { sessionId: string; changeId?: ChangeId | null };
+/**
+ * The session an edit is sent to, the change id it is sent under, and the step to record it as. A
+ * command may set the step while it stages, once it has read what the step names.
+ */
+type EditTarget = {
+  sessionId: string;
+  changeId?: ChangeId | null;
+  step?: EditStep;
+};
 
 /**
  * Runs `command` as one edit of a session's analysis.
@@ -945,13 +954,17 @@ type EditTarget = { sessionId: string; changeId?: ChangeId | null };
  *   logged before rethrowing.
  */
 async function runSessionEdit(
-  { sessionId, changeId }: EditTarget,
+  target: EditTarget,
   intent: string,
   command: (buffer: ChangeBuffer, session: Session) => Promise<void | EditOutcome>,
 ): Promise<string> {
+  const { sessionId, changeId } = target;
   try {
     return JSON.stringify(
-      await sessions.edit(sessionId, intent, command, { changeId: changeId ?? undefined }),
+      await sessions.edit(sessionId, intent, command, {
+        changeId: changeId ?? undefined,
+        step: () => target.step,
+      }),
     );
   } catch (e) {
     logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
@@ -983,14 +996,17 @@ function writeGloss(
   value: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'writeGloss', (buffer, session) =>
-    tokenCommands.writeGloss(buffer, {
-      ...editStamp(),
-      tokenRef,
-      surfaceText,
-      value,
-      analysisLanguage: session.analysisLanguage,
-    }),
+  return runSessionEdit(
+    { sessionId, changeId, step: { location: tokenRef } },
+    'writeGloss',
+    (buffer, session) =>
+      tokenCommands.writeGloss(buffer, {
+        ...editStamp(),
+        tokenRef,
+        surfaceText,
+        value,
+        analysisLanguage: session.analysisLanguage,
+      }),
   );
 }
 
@@ -1008,13 +1024,16 @@ function approveAnalysisForToken(
   analysisId: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'approveAnalysisForToken', (buffer) =>
-    tokenCommands.approveAnalysisForToken(buffer, {
-      ...editStamp(),
-      tokenRef,
-      surfaceText,
-      analysisId,
-    }),
+  return runSessionEdit(
+    { sessionId, changeId, step: { location: tokenRef } },
+    'approveAnalysisForToken',
+    (buffer) =>
+      tokenCommands.approveAnalysisForToken(buffer, {
+        ...editStamp(),
+        tokenRef,
+        surfaceText,
+        analysisId,
+      }),
   );
 }
 
@@ -1033,14 +1052,17 @@ function writeMorphemes(
   writingSystem: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'writeMorphemes', (buffer) =>
-    morphemeCommands.writeMorphemes(buffer, {
-      ...editStamp(),
-      tokenRef,
-      surfaceText,
-      writingSystem,
-      morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
-    }),
+  return runSessionEdit(
+    { sessionId, changeId, step: { location: tokenRef } },
+    'writeMorphemes',
+    (buffer) =>
+      morphemeCommands.writeMorphemes(buffer, {
+        ...editStamp(),
+        tokenRef,
+        surfaceText,
+        writingSystem,
+        morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
+      }),
   );
 }
 
@@ -1056,8 +1078,10 @@ function deleteMorphemes(
   tokenRef: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'deleteMorphemes', (buffer) =>
-    morphemeCommands.deleteMorphemes(buffer, { ...editStamp(), tokenRef }),
+  return runSessionEdit(
+    { sessionId, changeId, step: { location: tokenRef } },
+    'deleteMorphemes',
+    (buffer) => morphemeCommands.deleteMorphemes(buffer, { ...editStamp(), tokenRef }),
   );
 }
 
@@ -1076,14 +1100,17 @@ function writeMorphemeGloss(
   value: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'writeMorphemeGloss', (buffer, session) =>
-    morphemeCommands.writeMorphemeGloss(buffer, {
-      ...editStamp(),
-      tokenRef,
-      morphemeId,
-      value,
-      analysisLanguage: session.analysisLanguage,
-    }),
+  return runSessionEdit(
+    { sessionId, changeId, step: { location: tokenRef } },
+    'writeMorphemeGloss',
+    (buffer, session) =>
+      morphemeCommands.writeMorphemeGloss(buffer, {
+        ...editStamp(),
+        tokenRef,
+        morphemeId,
+        value,
+        analysisLanguage: session.analysisLanguage,
+      }),
   );
 }
 
@@ -1190,14 +1217,18 @@ function writeAnalysisGloss(
   value: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'writeAnalysisGloss', (buffer, session) =>
-    catalogCommands.writeAnalysisGloss(buffer, {
-      analysisId,
-      value,
-      analysisLanguage: session.analysisLanguage,
-      now: editStamp().now,
-    }),
-  );
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'writeAnalysisGloss', async (buffer, session) => {
+    const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
+    target.step = stepOf(
+      await catalogCommands.writeAnalysisGloss(buffer, {
+        analysisId,
+        value,
+        analysisLanguage: session.analysisLanguage,
+        now: editStamp().now,
+      }),
+    );
+  });
 }
 
 /**
@@ -1211,7 +1242,10 @@ function clearAnalysisGlosses(
   analysisIds: string[],
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'clearAnalysisGlosses', (buffer, session) =>
+  const step = {
+    summary: { kind: 'catalogClearGlossChecked', count: analysisIds.length },
+  } as const;
+  return runSessionEdit({ sessionId, changeId, step }, 'clearAnalysisGlosses', (buffer, session) =>
     catalogCommands.clearAnalysisGlosses(buffer, {
       analysisIds,
       analysisLanguage: session.analysisLanguage,
@@ -1234,18 +1268,23 @@ function writeAnalysisMorphemes(
   writingSystem: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'writeAnalysisMorphemes', (buffer) =>
-    catalogCommands.writeAnalysisMorphemes(buffer, {
-      analysisId,
-      morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
-      writingSystem,
-      now: editStamp().now,
-    }),
-  );
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'writeAnalysisMorphemes', async (buffer) => {
+    const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
+    target.step = stepOf(
+      await catalogCommands.writeAnalysisMorphemes(buffer, {
+        analysisId,
+        morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
+        writingSystem,
+        now: editStamp().now,
+      }),
+    );
+  });
 }
 
 /**
- * Keeps a token analysis's stale breakdown as it stands, for every token linked to it.
+ * Keeps a token analysis's stale breakdown as it stands, for every token linked to it. The undo
+ * step is placed at `tokenRef` when given, and otherwise names the analysis's catalog row.
  *
  * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
@@ -1253,11 +1292,16 @@ function writeAnalysisMorphemes(
 function confirmAnalysisMorphemes(
   sessionId: string,
   analysisId: string,
+  tokenRef?: string | null,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'confirmAnalysisMorphemes', (buffer) =>
-    catalogCommands.confirmAnalysisMorphemes(buffer, { analysisId, now: editStamp().now }),
-  );
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'confirmAnalysisMorphemes', async (buffer) => {
+    target.step = tokenRef
+      ? { location: tokenRef }
+      : (await catalogStepOf(buffer, 'catalogEdit', analysisId))(analysisId);
+    await catalogCommands.confirmAnalysisMorphemes(buffer, { analysisId, now: editStamp().now });
+  });
 }
 
 /**
@@ -1274,15 +1318,19 @@ function writeAnalysisMorphemeGloss(
   value: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'writeAnalysisMorphemeGloss', (buffer, session) =>
-    catalogCommands.writeAnalysisMorphemeGloss(buffer, {
-      analysisId,
-      morphemeId,
-      value,
-      analysisLanguage: session.analysisLanguage,
-      now: editStamp().now,
-    }),
-  );
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'writeAnalysisMorphemeGloss', async (buffer, session) => {
+    const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
+    target.step = stepOf(
+      await catalogCommands.writeAnalysisMorphemeGloss(buffer, {
+        analysisId,
+        morphemeId,
+        value,
+        analysisLanguage: session.analysisLanguage,
+        now: editStamp().now,
+      }),
+    );
+  });
 }
 
 /**
@@ -1296,9 +1344,11 @@ function deleteAnalyses(
   analysisIds: string[],
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'deleteAnalyses', (buffer) =>
-    catalogCommands.deleteAnalyses(buffer, { analysisIds }),
-  );
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'deleteAnalyses', async (buffer, session) => {
+    target.step = await deletionStepOf(buffer, session.repository, analysisIds);
+    await catalogCommands.deleteAnalyses(buffer, { analysisIds });
+  });
 }
 
 /**
@@ -1315,15 +1365,19 @@ function mergeAnalysesInto(
   content: MergedContent,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'mergeAnalysesInto', (buffer, session) =>
-    catalogCommands.mergeAnalysesInto(buffer, {
-      survivorAnalysisId,
-      mergedAnalysisIds,
-      content,
-      analysisLanguage: session.analysisLanguage,
-      now: editStamp().now,
-    }),
-  );
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'mergeAnalysesInto', async (buffer, session) => {
+    const stepOf = await catalogStepOf(buffer, 'catalogMerge', survivorAnalysisId);
+    target.step = stepOf(
+      await catalogCommands.mergeAnalysesInto(buffer, {
+        survivorAnalysisId,
+        mergedAnalysisIds,
+        content,
+        analysisLanguage: session.analysisLanguage,
+        now: editStamp().now,
+      }),
+    );
+  });
 }
 
 /**
@@ -1397,11 +1451,15 @@ function createPhrase(
   tokens: TokenSnapshot[],
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'createPhrase', async (buffer, session) => {
-    assertTokenRun(tokens);
-    await assertOneSegment(buffer, session, tokens);
-    await phraseCommands.createPhrase(buffer, { ...editStamp(), tokens });
-  });
+  return runSessionEdit(
+    { sessionId, changeId, step: { location: tokens[0]?.tokenRef } },
+    'createPhrase',
+    async (buffer, session) => {
+      assertTokenRun(tokens);
+      await assertOneSegment(buffer, session, tokens);
+      await phraseCommands.createPhrase(buffer, { ...editStamp(), tokens });
+    },
+  );
 }
 
 /**
@@ -1419,7 +1477,10 @@ function updatePhrase(
   tokens: TokenSnapshot[],
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'updatePhrase', async (buffer, session) => {
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'updatePhrase', async (buffer, session) => {
+    target.step =
+      tokens.length > 0 ? { location: tokens[0].tokenRef } : await phraseStartOf(buffer, phraseId);
     if (tokens.length > 0) await assertOneSegment(buffer, session, tokens);
     await phraseCommands.updatePhrase(buffer, { ...editStamp(), phraseId, tokens });
   });
@@ -1437,9 +1498,11 @@ function deletePhrase(
   phraseId: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'deletePhrase', (buffer) =>
-    phraseCommands.deletePhrase(buffer, { phraseId }),
-  );
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'deletePhrase', async (buffer) => {
+    target.step = await phraseStartOf(buffer, phraseId);
+    await phraseCommands.deletePhrase(buffer, { phraseId });
+  });
 }
 
 /**
@@ -1464,16 +1527,20 @@ function mergePhrases(
   absorbedPhraseId?: string | null,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'mergePhrases', async (buffer, session) => {
-    assertTokenRun(tokens);
-    await assertOneSegment(buffer, session, tokens);
-    await phraseCommands.mergePhrases(buffer, {
-      ...editStamp(),
-      targetPhraseId,
-      tokens,
-      absorbedPhraseId: absorbedPhraseId ?? undefined,
-    });
-  });
+  return runSessionEdit(
+    { sessionId, changeId, step: { location: tokens[0]?.tokenRef } },
+    'mergePhrases',
+    async (buffer, session) => {
+      assertTokenRun(tokens);
+      await assertOneSegment(buffer, session, tokens);
+      await phraseCommands.mergePhrases(buffer, {
+        ...editStamp(),
+        targetPhraseId,
+        tokens,
+        absorbedPhraseId: absorbedPhraseId ?? undefined,
+      });
+    },
+  );
 }
 
 /**
@@ -1489,14 +1556,16 @@ function writePhraseGloss(
   value: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'writePhraseGloss', (buffer, session) =>
-    phraseCommands.writePhraseGloss(buffer, {
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'writePhraseGloss', async (buffer, session) => {
+    target.step = await phraseStartOf(buffer, phraseId);
+    await phraseCommands.writePhraseGloss(buffer, {
       ...editStamp(),
       phraseId,
       value,
       analysisLanguage: session.analysisLanguage,
-    }),
-  );
+    });
+  });
 }
 
 /**
@@ -1512,7 +1581,9 @@ function approvePhrase(
   phraseId: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'approvePhrase', async (buffer, session) => {
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'approvePhrase', async (buffer, session) => {
+    target.step = await phraseStartOf(buffer, phraseId);
     const [link] = await buffer.getPhraseAnalysisLinks([phraseId]);
     if (link && link.status !== 'approved') await assertOneSegment(buffer, session, link.tokens);
     await phraseCommands.approvePhrase(buffer, { ...editStamp(), phraseId });
@@ -1543,7 +1614,9 @@ function splitPhrase(
   splitAfterTokenRef: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'splitPhrase', async (buffer, session) => {
+  const target: EditTarget = { sessionId, changeId };
+  return runSessionEdit(target, 'splitPhrase', async (buffer, session) => {
+    target.step = await phraseStartOf(buffer, phraseId);
     const verseBook = await verseBookOf(session, splitAfterTokenRef);
     await phraseCommands.splitPhrase(buffer, {
       ...editStamp(),
@@ -1578,15 +1651,18 @@ function writeSegmentFreeTranslation(
   adoptStaleAnalysisId?: string | null,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'writeSegmentFreeTranslation', (buffer, session) =>
-    freeTranslationCommands.writeSegmentFreeTranslation(buffer, {
-      ...editStamp(),
-      segmentId,
-      surfaceText,
-      value,
-      analysisLanguage: session.analysisLanguage,
-      adoptStaleAnalysisId: adoptStaleAnalysisId ?? undefined,
-    }),
+  return runSessionEdit(
+    { sessionId, changeId, step: { location: segmentId } },
+    'writeSegmentFreeTranslation',
+    (buffer, session) =>
+      freeTranslationCommands.writeSegmentFreeTranslation(buffer, {
+        ...editStamp(),
+        segmentId,
+        surfaceText,
+        value,
+        analysisLanguage: session.analysisLanguage,
+        adoptStaleAnalysisId: adoptStaleAnalysisId ?? undefined,
+      }),
   );
 }
 
@@ -1607,11 +1683,15 @@ function mergeSegments(
   secondSegmentStartRef: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'mergeSegments', async (buffer, session) => {
-    const verseBook = await verseBookOf(session, secondSegmentStartRef);
-    await boundaryCommands.mergeSegments(buffer, { verseBook, secondSegmentStartRef });
-    return { reanchorTo: [verseBook] };
-  });
+  return runSessionEdit(
+    { sessionId, changeId, step: { location: secondSegmentStartRef } },
+    'mergeSegments',
+    async (buffer, session) => {
+      const verseBook = await verseBookOf(session, secondSegmentStartRef);
+      await boundaryCommands.mergeSegments(buffer, { verseBook, secondSegmentStartRef });
+      return { reanchorTo: [verseBook] };
+    },
+  );
 }
 
 /**
@@ -1627,11 +1707,15 @@ function splitSegment(
   tokenRef: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'splitSegment', async (buffer, session) => {
-    const verseBook = await verseBookOf(session, tokenRef);
-    await boundaryCommands.splitSegment(buffer, { ...boundaryEditStamp(), verseBook, tokenRef });
-    return { reanchorTo: [verseBook] };
-  });
+  return runSessionEdit(
+    { sessionId, changeId, step: { location: tokenRef } },
+    'splitSegment',
+    async (buffer, session) => {
+      const verseBook = await verseBookOf(session, tokenRef);
+      await boundaryCommands.splitSegment(buffer, { ...boundaryEditStamp(), verseBook, tokenRef });
+      return { reanchorTo: [verseBook] };
+    },
+  );
 }
 
 /**
@@ -1649,16 +1733,20 @@ function moveBoundary(
   toRef: string,
   changeId?: ChangeId | null,
 ): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'moveBoundary', async (buffer, session) => {
-    const verseBook = await verseBookOf(session, toRef);
-    await boundaryCommands.moveBoundary(buffer, {
-      ...boundaryEditStamp(),
-      verseBook,
-      fromRef,
-      toRef,
-    });
-    return { reanchorTo: [verseBook] };
-  });
+  return runSessionEdit(
+    { sessionId, changeId, step: { location: toRef } },
+    'moveBoundary',
+    async (buffer, session) => {
+      const verseBook = await verseBookOf(session, toRef);
+      await boundaryCommands.moveBoundary(buffer, {
+        ...boundaryEditStamp(),
+        verseBook,
+        fromRef,
+        toRef,
+      });
+      return { reanchorTo: [verseBook] };
+    },
+  );
 }
 
 /**
@@ -1691,7 +1779,7 @@ async function savedContentOf(session: Session): Promise<DraftContent | undefine
  *   refused or fails. The error is logged before rethrowing.
  */
 async function runDiscard(
-  { sessionId, changeId }: EditTarget,
+  { sessionId, changeId, step }: EditTarget,
   intent: string,
   stage: (
     buffer: ChangeBuffer,
@@ -1719,6 +1807,7 @@ async function runDiscard(
       {
         unsavedMark: ({ scope }) => unsavedMark(scope.interlinearProjectId !== undefined),
         changeId: changeId ?? undefined,
+        step,
       },
     );
     /* v8 ignore next 2 -- defensive: only a discard reusing another command's change id gets no flag */
@@ -1746,7 +1835,7 @@ function discardBook(
   changeId?: ChangeId | null,
 ): Promise<string> {
   return runDiscard(
-    { sessionId, changeId },
+    { sessionId, changeId, step: { summary: { kind: 'discardBook', book: bookCode } } },
     'discardBook',
     (buffer, stored, saved) => discardCommands.discardBook(buffer, stored, bookCode, saved),
     (savesToProject) => (savesToProject ? 'keep' : undefined),
@@ -1763,7 +1852,7 @@ function discardBook(
  */
 function discardAll(sessionId: string, changeId?: ChangeId | null): Promise<string> {
   return runDiscard(
-    { sessionId, changeId },
+    { sessionId, changeId, step: { summary: { kind: 'discardAll' } } },
     'discardAll',
     discardCommands.discardAll,
     () => 'clear',

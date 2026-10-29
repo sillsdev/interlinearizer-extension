@@ -1,6 +1,33 @@
 import type { PhraseAnalysisLink, TokenSnapshot } from 'interlinearizer';
 import type { PhraseMode } from '../types/phrase-mode';
 
+/**
+ * The refs of the word tokens before which a segment boundary would cut one of the phrases in
+ * `links`. For each phrase, those are the word tokens after its first, up to and including its
+ * last, including those in the gaps of a discontiguous phrase.
+ *
+ * @param links - The phrases to check.
+ * @param tokenDocOrder - Each word token's place in document order.
+ * @param wordAt - The ref of the word token at a place in document order, or `undefined` where the
+ *   caller holds none.
+ */
+export function straddledRefs(
+  links: Iterable<PhraseAnalysisLink>,
+  tokenDocOrder: ReadonlyMap<string, number>,
+  wordAt: (order: number) => string | undefined,
+): Set<string> {
+  const straddled = new Set<string>();
+  // eslint-disable-next-line no-restricted-syntax -- an Iterable has no forEach
+  for (const { tokens } of links) {
+    const orders = tokens.flatMap(({ tokenRef }) => tokenDocOrder.get(tokenRef) ?? []);
+    for (let order = Math.min(...orders) + 1; order <= Math.max(...orders); order += 1) {
+      const ref = wordAt(order);
+      if (ref !== undefined) straddled.add(ref);
+    }
+  }
+  return straddled;
+}
+
 // #region Constants
 
 /**

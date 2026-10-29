@@ -37,11 +37,14 @@ import type {
   RecordChanges,
   WarningLogger,
 } from '../../src/types/analysis-repository';
-import type { SegmentPage } from '../../src/types/segment-pages';
+import type { OutlineSegment, SegmentPage } from '../../src/types/segment-pages';
 import { isWordToken } from '../../src/types/type-guards';
 import { bookOfRef } from '../../src/utils/analysis-book';
 import { normalizeSurfaceForm } from '../../src/utils/analysis-identity';
-import { bookIndexesOf } from '../../src/utils/book-indexes';
+import { bookIndexesOf, buildBookIndexes } from '../../src/utils/book-indexes';
+import { buildPageIndexes, outlineRangeOf } from '../../src/utils/page-indexes';
+import { computeSplitFreeRefs, sortByDocOrder } from '../../src/utils/phrase-arc';
+import { phraseSurfaceForm } from '../../src/utils/phrase-text';
 import { reanchorSegmentation, segmentationForBook } from '../../src/utils/segmentation';
 import {
   orphanedCardCountAt,
@@ -249,9 +252,12 @@ async function checkPages(
   repository: DraftRepository,
   analysis: TextAnalysis,
   books: readonly Book[],
-): Promise<{ pages: number; mismatches: string[] }> {
+  viewBook: string,
+): Promise<{ pages: number; mismatches: string[]; phrasesCrossing: number; jumps: number }> {
   const mismatches: string[] = [];
   let pages = 0;
+  let phrasesCrossing = 0;
+  let jumps = 0;
   // eslint-disable-next-line no-restricted-syntax -- books are read one at a time to bound memory
   for (const book of books) {
     const expectedFor = expectedPages(analysis, book);
@@ -314,8 +320,112 @@ async function checkPages(
       if (differing.length > 0)
         mismatches.push(`${book.bookRef} ${start}: ${differing.map(([name]) => name).join(', ')}`);
     }
+    if (book.bookRef === viewBook) {
+      const held: SegmentPage[] = [];
+      for (let index = 0; index < book.segments.length; index += 2) {
+        // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
+        held.push(await readSegmentPage(repository, book, index, index + 1));
+      }
+      const bookPhrases = analysis.phraseAnalysisLinks.filter(
+        ({ tokens }) => bookOfRef(tokens[0].tokenRef) === book.bookRef,
+      );
+      phrasesCrossing += checkPageIndexes(book, outline.segments, held, bookPhrases, mismatches);
+      // A jump to a token or segment whose page is not held loads the page that holds it.
+      for (let index = 1; index < book.segments.length; index += 20) {
+        const segment = book.segments[index];
+        const [token] = segment.tokens.filter(isWordToken);
+        const targets = token ? [token.ref, segment.id] : [segment.id];
+        // eslint-disable-next-line no-restricted-syntax -- calls for one draft must not overlap
+        for (const target of targets) {
+          const range = outlineRangeOf(outline.segments, target);
+          // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
+          const page = range && (await readSegmentPage(repository, book, range.start, range.end));
+          const landed = page && buildPageIndexes(outline.segments, [...held, page]);
+          const holds =
+            target === segment.id
+              ? landed?.segmentById.has(target)
+              : landed?.tokenSegmentMap.get(target) === segment.id;
+          if (!holds) mismatches.push(`${book.bookRef} jump to ${target}`);
+          jumps += 1;
+        }
+      }
+    }
   }
-  return { pages, mismatches };
+  return { pages, mismatches, phrasesCrossing, jumps };
+}
+
+/**
+ * Checks that lookups built from the pages `held` read as the whole book's lookups do. The check
+ * covers each phrase's text, arc order, split previews and segments. It also covers the boundary
+ * guard on the held tokens and where each token's segment lies in the outline.
+ *
+ * @returns How many phrases that the held pages name reach a segment that no held page holds.
+ */
+function checkPageIndexes(
+  book: Book,
+  outline: readonly OutlineSegment[],
+  held: readonly SegmentPage[],
+  bookPhrases: readonly PhraseAnalysisLink[],
+  mismatches: string[],
+): number {
+  const whole = buildBookIndexes(book.segments);
+  const paged = buildPageIndexes(outline, held);
+  const links = [
+    ...new Map(
+      held.flatMap((page) => page.analysis?.phraseAnalysisLinks ?? []).map((l) => [l.id, l]),
+    ).values(),
+  ];
+  let crossing = 0;
+  links.forEach((link) => {
+    const refs = link.tokens.map(({ tokenRef }) => tokenRef);
+    if (refs.some((tokenRef) => !paged.segmentById.has(whole.tokenSegmentMap.get(tokenRef) ?? '')))
+      crossing += 1;
+    const differs = (name: string, a: unknown, b: unknown) => {
+      if (JSON.stringify(a) !== JSON.stringify(b))
+        mismatches.push(`${book.bookRef} phrase ${link.id}: ${name}`);
+    };
+    differs('text', phraseSurfaceForm(link.tokens, paged), phraseSurfaceForm(link.tokens, whole));
+    differs(
+      'arc order',
+      sortByDocOrder(link.tokens, paged.tokenDocOrder),
+      sortByDocOrder(link.tokens, whole.tokenDocOrder),
+    );
+    differs(
+      'split previews',
+      refs.map((tokenRef) => computeSplitFreeRefs(link, tokenRef, paged.tokenDocOrder)),
+      refs.map((tokenRef) => computeSplitFreeRefs(link, tokenRef, whole.tokenDocOrder)),
+    );
+    differs(
+      'segments',
+      refs.map((tokenRef) => paged.tokenSegmentMap.get(tokenRef)),
+      refs.map((tokenRef) => whole.tokenSegmentMap.get(tokenRef)),
+    );
+  });
+  const guarded = new Set<string>();
+  bookPhrases.forEach(({ tokens }) => {
+    const orders = tokens.flatMap(({ tokenRef }) => whole.tokenDocOrder.get(tokenRef) ?? []);
+    for (let i = Math.min(...orders) + 1; i <= Math.max(...orders); i += 1)
+      guarded.add(whole.wordRefByOrder[i]);
+  });
+  const heldRefs = held.flatMap((page) =>
+    page.segments.flatMap((segment) => segment.tokens.map((token) => token.ref)),
+  );
+  if (
+    JSON.stringify(heldRefs.filter((tokenRef) => guarded.has(tokenRef))) !==
+    JSON.stringify(heldRefs.filter((tokenRef) => paged.straddledBoundaryRefs.has(tokenRef)))
+  )
+    mismatches.push(`${book.bookRef} boundary guard`);
+  const misplaced = book.segments.flatMap((segment, index) =>
+    segment.tokens.flatMap(({ ref }) => {
+      const range = outlineRangeOf(outline, ref);
+      return range?.start === index && range.end === index + 1 ? [] : [ref];
+    }),
+  );
+  if (misplaced.length > 0)
+    mismatches.push(
+      `${book.bookRef} outline places ${misplaced.length} tokens elsewhere, ${misplaced[0]} first`,
+    );
+  return crossing;
 }
 
 /** The book segmented by `delta`, its segments kept per delta so indexes over them are built once. */
@@ -739,7 +849,7 @@ async function checkTier(tier: TierSpec): Promise<boolean> {
   const storage = memoryStorage();
   await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
   const repository = new DraftRepository(storage, draft.sourceProjectId, SILENT);
-  const pages = await checkPages(repository, draft.analysis, books);
+  const pages = await checkPages(repository, draft.analysis, books, tier.viewBook);
 
   const links = draft.analysis.tokenAnalysisLinks.length;
   // Each change rereads the whole draft twice, so larger tiers get fewer.
@@ -747,7 +857,7 @@ async function checkTier(tier: TierSpec): Promise<boolean> {
   const events = await checkEvents(draft, books, viewBook, steps);
 
   console.log(
-    `${tier.name.padEnd(15)} ${pages.pages} pages, ${pages.mismatches.length} differ  ${events.changes} changes, ${events.mismatches.length} differ  open ${timing.open.toFixed(0)} ms, first page ${timing.first.toFixed(0)} ms, next ${timing.next.toFixed(1)} ms`,
+    `${tier.name.padEnd(15)} ${pages.pages} pages, ${pages.mismatches.length} differ (${pages.phrasesCrossing} phrases reach unheld segments, ${pages.jumps} jumps)  ${events.changes} changes, ${events.mismatches.length} differ  open ${timing.open.toFixed(0)} ms, first page ${timing.first.toFixed(0)} ms, next ${timing.next.toFixed(1)} ms`,
   );
   [...pages.mismatches, ...events.mismatches].slice(0, 20).forEach((m) => console.log(`  ${m}`));
   return pages.mismatches.length === 0 && events.mismatches.length === 0;

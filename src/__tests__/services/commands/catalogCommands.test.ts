@@ -41,7 +41,7 @@ async function bufferOver(analysis: Partial<TextAnalysis>): Promise<ChangeBuffer
 }
 
 describe('catalog commands over an analysis that is not stored', () => {
-  const commands: [string, (buffer: ChangeBuffer) => Promise<void>][] = [
+  const commands: [string, (buffer: ChangeBuffer) => Promise<unknown>][] = [
     [
       'writeAnalysisGloss',
       (buffer) =>
@@ -106,6 +106,53 @@ describe('catalog commands over an analysis that is not stored', () => {
     await command(buffer);
 
     expect(buffer.toChangeSet(intent)).toStrictEqual({ intent });
+  });
+});
+
+describe('writeAnalysisGloss', () => {
+  it('returns the analysis itself when the write keeps it', async () => {
+    const buffer = await bufferOver(glossed);
+
+    await expect(
+      writeAnalysisGloss(buffer, {
+        analysisId: 'ta-in',
+        value: 'into',
+        analysisLanguage: 'en',
+        now: NOW,
+      }),
+    ).resolves.toBe('ta-in');
+  });
+
+  it('returns the payload that an unused analysis was folded into', async () => {
+    const buffer = await bufferOver({
+      ...glossed,
+      tokenAnalyses: [
+        ...(glossed.tokenAnalyses ?? []),
+        { id: 'ta-spare', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'on' } },
+      ],
+    });
+
+    await expect(
+      writeAnalysisGloss(buffer, {
+        analysisId: 'ta-spare',
+        value: 'at',
+        analysisLanguage: 'en',
+        now: NOW,
+      }),
+    ).resolves.toBe('ta-in');
+  });
+
+  it('returns nothing when the write empties the analysis', async () => {
+    const buffer = await bufferOver(glossed);
+
+    await expect(
+      writeAnalysisGloss(buffer, {
+        analysisId: 'ta-in',
+        value: '',
+        analysisLanguage: 'en',
+        now: NOW,
+      }),
+    ).resolves.toBeUndefined();
   });
 });
 

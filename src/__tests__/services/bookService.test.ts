@@ -1384,9 +1384,11 @@ describe('onBookRead', () => {
     expect(edits).toHaveBeenCalledTimes(2);
   });
 
-  it('reports without passing an edited book that is no longer open once read again', async () => {
+  it('passes an edited book once read again after another opens, though the whole-text read fails it', async () => {
     const project = serveProject();
-    const listener = listenForBooks();
+    project.booksPresent = '1';
+    const heard: string[] = [];
+    listenForBooks((_, book) => heard.push(`${book.id} ${book.textVersion}`));
     const edits = jest.fn();
     unsubscribers.push(onBookTextChanged(edits));
     const outline = getBookOutline('src', 'GEN');
@@ -1397,15 +1399,20 @@ describe('onBookRead', () => {
     open.deliver(usj('GEN', 'v2'));
     await settle();
     const [, reread] = subscriptionsTo(project, 'GEN');
+    readStatus();
+    await settle();
+    const [, , read] = subscriptionsTo(project, 'GEN');
 
     const otherOutline = getBookOutline('src', 'EXO');
     await settle();
     subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO'));
     await otherOutline;
+    read.deliver(platformError('busy'));
+    await settle();
     reread.deliver(usj('GEN', 'v2'));
     await settle();
 
-    expect(listener).not.toHaveBeenCalled();
+    expect(heard).toEqual(['GEN v2@en']);
     expect(edits).toHaveBeenCalledWith('src', 'GEN');
   });
 

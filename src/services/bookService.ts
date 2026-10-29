@@ -50,6 +50,18 @@ const closeCounts = new Map<string, number>();
 const outlineCounts = new Map<string, number>();
 
 /**
+ * Tells the read of an edited book whether a later edit to the book has started a read of its own,
+ * by source project and book id.
+ */
+const editCounts = new Map<string, Map<string, number>>();
+
+function countEdit(sourceProjectId: string, bookId: string): void {
+  const counts = editCounts.get(sourceProjectId) ?? new Map<string, number>();
+  counts.set(bookId, (counts.get(bookId) ?? 0) + 1);
+  editCounts.set(sourceProjectId, counts);
+}
+
+/**
  * How many books a whole-text read reads at once. Enough to keep the provider busy while earlier
  * books are tokenized, few enough to bound the fetches in flight.
  */
@@ -185,6 +197,7 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
     const isOpen = openBooks.get(sourceProjectId)?.watch === watch;
     releaseBook(sourceProjectId, watch);
     if (!isOpen) return;
+    countEdit(sourceProjectId, bookId);
     // Read again at once, so the book stays watched and a refetch started by the listeners sees
     // the edit.
     const reheld = holdBook(sourceProjectId, bookId, writingSystem);
@@ -211,14 +224,15 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
 /**
  * Passes the open book's edited text to {@link onBookRead}'s listeners once it is read again, then
  * reports the edit, unless the project closed meanwhile. A book that fails to read again, or has no
- * text, is reported all the same. Text a later read of the open book has replaced is reported
- * without being passed, since the later read may have passed its newer text already.
+ * text, is reported all the same. Text read before a later edit started a read of the book is
+ * reported without being passed, since that read may have passed newer text already.
  */
 async function reportOpenBookEdit(sourceProjectId: string, held: HeldBook): Promise<void> {
   const closeCount = closeCounts.get(sourceProjectId);
+  const editCount = editCounts.get(sourceProjectId)?.get(held.bookId);
   const book = await held.book.catch(() => undefined);
   if (closeCounts.get(sourceProjectId) !== closeCount) return;
-  if (book && openBooks.get(sourceProjectId) === held)
+  if (book && editCounts.get(sourceProjectId)?.get(held.bookId) === editCount)
     bookReadListeners.forEach((listener) => listener(sourceProjectId, book));
   reportEdit(sourceProjectId, held.bookId);
 }
@@ -477,6 +491,7 @@ async function readTextBook(
     bookId,
     () => {
       if (textReads.get(sourceProjectId) !== read || read.watches.get(bookId) !== stop) return;
+      countEdit(sourceProjectId, bookId);
       rereadHeldBook(sourceProjectId, bookId);
       rereadTextBook(sourceProjectId, read, bookId);
     },

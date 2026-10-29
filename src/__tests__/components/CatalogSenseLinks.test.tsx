@@ -19,9 +19,8 @@ const STRINGS = {
 };
 
 const SENSES = {
-  's-word': { gloss: { en: 'word' }, lexemeForm: { grc: 'λόγος' }, senseLabel: '1' },
-  's-stem': { gloss: { en: 'speak' }, lexemeForm: { grc: 'λογ' } },
-  's-bare': { gloss: { en: 'bare' } },
+  's-word': { gloss: { en: 'word' } },
+  's-stem': { gloss: { en: 'speak' } },
 };
 
 /** A morpheme of `form`, linked to `senseId` when one is given. */
@@ -63,24 +62,14 @@ describe('CatalogSenseLinks', () => {
     expect(screen.queryByTestId('catalog-sense-links')).not.toBeInTheDocument();
   });
 
-  it("names the word's sense by its entry and gloss", async () => {
+  it("names the word's sense by its gloss", async () => {
     renderLinks({ glossSenseRef: testSenseRef('s-word') });
 
     const line = screen.getByTestId('catalog-sense-line');
     await waitFor(() =>
-      expect(within(line).getByTestId('catalog-sense-entry')).toHaveTextContent('λόγος 1'),
+      expect(within(line).getByTestId('catalog-sense-gloss')).toHaveTextContent('word'),
     );
-    expect(within(line).getByTestId('catalog-sense-gloss')).toHaveTextContent('word');
-  });
-
-  it('names a sense its lexicon lists under no form by its gloss alone', async () => {
-    renderLinks({ glossSenseRef: testSenseRef('s-bare') });
-
-    const line = screen.getByTestId('catalog-sense-line');
-    await waitFor(() =>
-      expect(within(line).getByTestId('catalog-sense-gloss')).toHaveTextContent('bare'),
-    );
-    expect(within(line).queryByTestId('catalog-sense-entry')).not.toBeInTheDocument();
+    expect(line).toHaveTextContent('λόγος');
   });
 
   it('lists only the morphemes that link to a sense', async () => {
@@ -126,7 +115,6 @@ describe('CatalogSenseLinks', () => {
     expect(within(line).getByTestId('catalog-sense-link')).toHaveTextContent(
       '%interlinearizer_analysisCatalog_senseLinked%',
     );
-    expect(within(line).queryByTestId('catalog-sense-entry')).not.toBeInTheDocument();
     expect(within(line).queryByTestId('catalog-sense-gloss')).not.toBeInTheDocument();
   });
 });

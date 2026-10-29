@@ -1,4 +1,4 @@
-import type { MorphemeAnalysis, MultiString, SenseRef } from 'interlinearizer';
+import type { MorphemeAnalysis, SenseRef } from 'interlinearizer';
 import { BookAlert, BookOpen } from 'lucide-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import LocalizedTooltip from './LocalizedTooltip';
@@ -61,13 +61,8 @@ function markLabel(link: LinkedGloss, localizedStrings: LanguageStrings): string
   return localizedStrings['%interlinearizer_analysisCatalog_senseLinked%'];
 }
 
-/** The first non-blank text a {@link MultiString} holds, whatever its writing system. */
-function anyText(value: MultiString | undefined): string {
-  return Object.values(value ?? {}).find((text) => text.trim() !== '') ?? '';
-}
-
 /**
- * One analysis or morpheme's link: its form, the mark, and the sense it links to once the sense
+ * One analysis or morpheme's link: its form, the mark, and the linked sense's gloss once the sense
  * resolves.
  */
 function SenseLinkLine({
@@ -87,9 +82,6 @@ function SenseLinkLine({
   localizedStrings: LanguageStrings;
 }>) {
   const link = useLinkedGloss(gloss, senseRef, analysisLanguage);
-  const entry = link.sense
-    ? [anyText(link.sense.lexemeForm), link.sense.senseLabel].filter(Boolean).join(' ')
-    : '';
   return (
     <li
       className="tw:flex tw:min-w-0 tw:items-baseline tw:gap-1.5"
@@ -97,7 +89,6 @@ function SenseLinkLine({
     >
       <span className="tw:font-medium">{form || ZERO_MORPHEME}</span>
       <SenseLinkMark link={link} localizedStrings={localizedStrings} />
-      {entry && <span data-testid="catalog-sense-entry">{entry}</span>}
       {link.senseGloss && (
         <span
           className="tw:min-w-0 tw:truncate tw:text-muted-foreground"

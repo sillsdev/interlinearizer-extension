@@ -18,7 +18,8 @@ import { bookOfRef, BOOKLESS_PARTITION } from '../utils/analysis-book';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { splitAnalysisByBook } from '../utils/analysis-book';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
-import { RecordTable } from './recordTable';
+import { preferredLink } from '../utils/pick-rules';
+import { fileId, idsLacking, type IdsByKey, RecordTable, unfileId } from './recordTable';
 
 /** The key a link is filed under for its book and status. */
 function bookStatusKey(bookCode: string, status: AssignmentStatus): string {
@@ -162,6 +163,12 @@ export class AnalysisIndex {
     'analysisId' | 'book' | 'bookStatus' | 'segmentId'
   >;
 
+  /** The analysis each token approves, for tokens approving one. */
+  private readonly approvedByTokenRef = new Map<string, string>();
+
+  /** The tokens that approve each analysis. An analysis that no token approves has no entry. */
+  private readonly approvingTokens: IdsByKey = new Map();
+
   constructor(analysis: TextAnalysis) {
     this.tokenAnalyses = new RecordTable('tokenAnalyses', formKeyers, analysis.tokenAnalyses);
     this.phraseAnalyses = new RecordTable('phraseAnalyses', formKeyers, analysis.phraseAnalyses);
@@ -190,6 +197,9 @@ export class AnalysisIndex {
       },
       analysis.segmentAnalysisLinks,
     );
+    new Set(analysis.tokenAnalysisLinks.map(({ token }) => token.tokenRef)).forEach((tokenRef) =>
+      this.settleApproval(tokenRef),
+    );
   }
 
   /**
@@ -197,12 +207,29 @@ export class AnalysisIndex {
    * put records themselves, not copies.
    */
   apply(changes: ChangeSet): void {
+    const unsettled = this.tokensReachedBy(changes);
     this.tokenAnalyses.apply(changes.tokenAnalyses);
     this.phraseAnalyses.apply(changes.phraseAnalyses);
     this.segmentAnalyses.apply(changes.segmentAnalyses);
     this.tokenLinks.apply(changes.tokenAnalysisLinks);
     this.phraseLinks.apply(changes.phraseAnalysisLinks);
     this.segmentLinks.apply(changes.segmentAnalysisLinks);
+    this.tokensReachedBy(changes).forEach((tokenRef) => unsettled.add(tokenRef));
+    unsettled.forEach((tokenRef) => this.settleApproval(tokenRef));
+  }
+
+  /**
+   * How many tokens approve each of `analysisIds`, leaving out those that no token approves. A
+   * token approves the analysis that its approved link names. Where a token has several approved
+   * links naming stored payloads, the approval tie-break picks one.
+   */
+  countApprovals(analysisIds: readonly string[]): Record<string, number> {
+    return Object.fromEntries(
+      [...new Set(analysisIds)].flatMap((id) => {
+        const size = this.approvingTokens.get(id)?.size;
+        return size ? [[id, size]] : [];
+      }),
+    );
   }
 
   /**
@@ -392,6 +419,15 @@ export class AnalysisIndex {
   /** Where this index differs from one built afresh from `analysis`. */
   differencesFrom(analysis: TextAnalysis): IndexDifference[] {
     const rebuilt = new AnalysisIndex(analysis);
+    const approved = new Set([...this.approvingTokens.keys(), ...rebuilt.approvingTokens.keys()]);
+    const approvalDifferences = [...approved].flatMap((analysisId): IndexDifference[] => {
+      const kept = this.approvingTokens.get(analysisId);
+      const fresh = rebuilt.approvingTokens.get(analysisId);
+      const missing = idsLacking(fresh, kept);
+      const extra = idsLacking(kept, fresh);
+      if (missing.length === 0 && extra.length === 0) return [];
+      return [{ index: 'tokenAnalyses by approving token', key: analysisId, missing, extra }];
+    });
     return [
       ...this.tokenAnalyses.differencesFrom(rebuilt.tokenAnalyses),
       ...this.phraseAnalyses.differencesFrom(rebuilt.phraseAnalyses),
@@ -399,6 +435,42 @@ export class AnalysisIndex {
       ...this.tokenLinks.differencesFrom(rebuilt.tokenLinks),
       ...this.phraseLinks.differencesFrom(rebuilt.phraseLinks),
       ...this.segmentLinks.differencesFrom(rebuilt.segmentLinks),
+      ...approvalDifferences,
     ];
+  }
+
+  /**
+   * The tokens whose approval `changes` may settle differently. They are the tokens of the token
+   * links that the changes put or delete. They also include the tokens of each stored token link
+   * naming a token payload that the changes put or delete.
+   */
+  private tokensReachedBy({ tokenAnalyses, tokenAnalysisLinks }: ChangeSet): Set<string> {
+    return new Set(
+      [
+        ...this.tokenLinks.get(idsNamedBy(tokenAnalysisLinks)),
+        ...this.tokenLinks.find('analysisId', idsNamedBy(tokenAnalyses)),
+      ].map(({ token }) => token.tokenRef),
+    );
+  }
+
+  /** Files `tokenRef` under the analysis that the approval tie-break picks among its approved links. */
+  private settleApproval(tokenRef: string): void {
+    const settled = preferredLink(
+      this.tokenLinks
+        .find('tokenRef', [tokenRef])
+        .filter(
+          ({ status, analysisId }) =>
+            status === 'approved' && this.tokenAnalyses.hasRecord(analysisId),
+        ),
+    )?.analysisId;
+    const held = this.approvedByTokenRef.get(tokenRef);
+    if (held === settled) return;
+    if (held !== undefined) unfileId(this.approvingTokens, held, tokenRef);
+    if (settled === undefined) {
+      this.approvedByTokenRef.delete(tokenRef);
+      return;
+    }
+    this.approvedByTokenRef.set(tokenRef, settled);
+    fileId(this.approvingTokens, settled, tokenRef);
   }
 }

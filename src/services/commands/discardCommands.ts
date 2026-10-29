@@ -12,7 +12,7 @@ import {
 import { deepEqual } from '../../utils/analysis-identity';
 import { scopeRecordOf } from '../../utils/change-set';
 import { analysisHasFreeTranslations } from '../../utils/free-translations';
-import { segmentationForBook } from '../../utils/segmentation';
+import { sameSegmentation, segmentationForBook } from '../../utils/segmentation';
 import type { ChangeBuffer, RecordKind, RecordOf } from './changeBuffer';
 
 /** What an unsaved-change discard tells its caller beside the changes it staged. */
@@ -81,7 +81,7 @@ function stageDiscard(
   };
 
   const changedBooks = new Set(booksLinkedIn(putLinks));
-  if (!deepEqual(draft.segmentation, restored.segmentation)) {
+  if (!sameSegmentation(draft.segmentation, restored.segmentation)) {
     const scope = scopeRecordOf(draft);
     if (restored.segmentation) scope.segmentation = restored.segmentation;
     else delete scope.segmentation;
@@ -94,7 +94,7 @@ function stageDiscard(
     );
     new Set(anchoredBooks).forEach((bookCode) => {
       const before = segmentationForBook(draft.segmentation, bookCode);
-      if (!deepEqual(before, segmentationForBook(restored.segmentation, bookCode)))
+      if (!sameSegmentation(before, segmentationForBook(restored.segmentation, bookCode)))
         changedBooks.add(bookCode);
     });
   }

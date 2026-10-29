@@ -9,12 +9,14 @@ import {
   closeAllProjects,
   closeProject,
   getBookOutline,
-  getBookSegments,
+  getOpenBook,
+  getSegmentedBook,
   getSegments,
   getTextReadStatus,
   getTokenizedBook,
   getVerseBook,
   getWritingSystem,
+  heldBook,
   isFormInText,
   onBookRead,
   onBookTextChanged,
@@ -398,7 +400,10 @@ describe('getBookOutline', () => {
 
     expect(reanchorSegmentation).toHaveBeenCalledWith(VERSE_BOOK, DELTA);
     expect(resegmentBook).toHaveBeenCalledWith(VERSE_BOOK, REANCHORED);
-    expect(buildBookOutline).toHaveBeenCalledWith(VERSE_BOOK, SEGMENTED);
+    expect(buildBookOutline).toHaveBeenCalledWith(
+      expect.objectContaining({ bookRef: 'GEN', textVersion: VERSE_BOOK.textVersion }),
+      SEGMENTED,
+    );
     expect(outline.segments.map((seg) => seg.id)).toEqual(['GEN 1:1', 'GEN 1:3']);
   });
 
@@ -577,7 +582,7 @@ describe('getVerseBook', () => {
   });
 });
 
-describe('getBookSegments', () => {
+describe('getSegmentedBook', () => {
   beforeEach(() => {
     tokenizeToVerseBook();
     segmentStandIns();
@@ -586,9 +591,10 @@ describe('getBookSegments', () => {
   it('serves the book segmented by the boundaries named', async () => {
     serveProject((bookId) => usj(bookId));
 
-    const segments = await getBookSegments('src', 'GEN', JSON.stringify(DELTA));
+    const book = await getSegmentedBook('src', 'GEN', JSON.stringify(DELTA));
 
-    expect(segments).toBe(SEGMENTED);
+    expect(book).toStrictEqual({ ...VERSE_BOOK, segments: SEGMENTED });
+    expect(book?.segments).toBe(SEGMENTED);
     expect(resegmentBook).toHaveBeenCalledWith(VERSE_BOOK, REANCHORED);
   });
 
@@ -596,7 +602,7 @@ describe('getBookSegments', () => {
     serveProject((bookId) => usj(bookId));
     await getSegments('src', 'GEN', 0, 1, JSON.stringify(DELTA));
 
-    await getBookSegments('src', 'GEN', JSON.stringify(DELTA));
+    await getSegmentedBook('src', 'GEN', JSON.stringify(DELTA));
 
     expect(resegmentBook).toHaveBeenCalledTimes(1);
   });
@@ -605,15 +611,103 @@ describe('getBookSegments', () => {
     const timed = jest.spyOn(perfMarks, 'perfTime');
     serveProject((bookId) => usj(bookId));
 
-    await getBookSegments('src', 'GEN');
+    await getSegmentedBook('src', 'GEN');
 
-    expect(timed).toHaveBeenCalledWith('getBookSegments:resegment', expect.any(Function));
+    expect(timed).toHaveBeenCalledWith('getSegmentedBook:resegment', expect.any(Function));
   });
 
   it('resolves undefined when the project has no text for the book', async () => {
     serveProject(() => undefined);
 
-    await expect(getBookSegments('src', 'GEN')).resolves.toBeUndefined();
+    await expect(getSegmentedBook('src', 'GEN')).resolves.toBeUndefined();
+  });
+});
+
+describe('getOpenBook', () => {
+  beforeEach(() => {
+    tokenizeToVerseBook();
+    segmentStandIns();
+  });
+
+  it('serves the book segmented by the boundaries named', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    const book = await getOpenBook('src', 'GEN', JSON.stringify(DELTA));
+
+    expect(book).toStrictEqual({ ...VERSE_BOOK, segments: SEGMENTED });
+    expect(resegmentBook).toHaveBeenCalledWith(VERSE_BOOK, REANCHORED);
+  });
+
+  it('makes the book the open one, whose edits are reported', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    const listener = jest.fn();
+    onBookTextChanged(listener);
+    await getOpenBook('src', 'GEN');
+    await getVerseBook('src', 'EXO');
+
+    subscriptionsTo(project, 'GEN')[0].deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(listener).toHaveBeenCalledWith('src', 'GEN');
+  });
+
+  it('resolves undefined when the project has no text for the book', async () => {
+    serveProject(() => undefined);
+
+    await expect(getOpenBook('src', 'GEN')).resolves.toBeUndefined();
+  });
+});
+
+describe('heldBook', () => {
+  beforeEach(() => {
+    tokenizeToVerseBook();
+    segmentStandIns();
+  });
+
+  it('serves a kept book segmented by the boundaries named', async () => {
+    serveProject((bookId) => usj(bookId));
+    await getVerseBook('src', 'GEN');
+
+    expect(heldBook('src', 'GEN', JSON.stringify(DELTA))).toStrictEqual({
+      ...VERSE_BOOK,
+      segments: SEGMENTED,
+    });
+    expect(resegmentBook).toHaveBeenCalledWith(VERSE_BOOK, REANCHORED);
+  });
+
+  it('serves the open book while another is the latest', async () => {
+    serveProject((bookId) => usj(bookId));
+    await getOpenBook('src', 'GEN');
+    await getVerseBook('src', 'EXO');
+
+    expect(heldBook('src', 'GEN')?.bookRef).toBe('GEN');
+  });
+
+  it('serves nothing for a book it keeps no copy of, reading nothing', async () => {
+    serveProject((bookId) => usj(bookId));
+    await getVerseBook('src', 'GEN');
+    mockPdpGet.mockClear();
+
+    expect(heldBook('src', 'EXO')).toBeUndefined();
+    expect(heldBook('other', 'GEN')).toBeUndefined();
+    expect(mockPdpGet).not.toHaveBeenCalled();
+  });
+
+  it("serves nothing while the kept book's text is on its way", async () => {
+    const project = serveProject();
+    const reading = getVerseBook('src', 'GEN');
+    await settle();
+
+    expect(heldBook('src', 'GEN')).toBeUndefined();
+    await finishReading(project);
+    await reading;
+  });
+
+  it('serves nothing for a kept book the project has no text for', async () => {
+    serveProject(() => undefined);
+    await getVerseBook('src', 'GEN');
+
+    expect(heldBook('src', 'GEN')).toBeUndefined();
   });
 });
 
@@ -1244,7 +1338,7 @@ describe('onBookRead', () => {
   const unsubscribers: Array<() => boolean> = [];
 
   /** A listener for books read, registered for the test and removed once it ends. */
-  function listenForBooks(onCall?: (sourceProjectId: string, book: Book) => void) {
+  function listenForBooks(onCall?: (sourceProjectId: string, book: Book, edited: boolean) => void) {
     const listener = jest.fn(onCall);
     unsubscribers.push(onBookRead(listener));
     return listener;
@@ -1258,7 +1352,7 @@ describe('onBookRead', () => {
     unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
   });
 
-  it('passes each book the whole-text read reads, tokenized, with its project', async () => {
+  it('passes each book the whole-text read reads, tokenized, with its project, as no edit', async () => {
     tokenizeToWords();
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '101';
@@ -1268,10 +1362,14 @@ describe('onBookRead', () => {
     await settle();
 
     expect(
-      listener.mock.calls.map(([sourceProjectId, book]) => [sourceProjectId, book.id]),
+      listener.mock.calls.map(([sourceProjectId, book, edited]) => [
+        sourceProjectId,
+        book.id,
+        edited,
+      ]),
     ).toEqual([
-      ['src', 'GEN'],
-      ['src', 'LEV'],
+      ['src', 'GEN', false],
+      ['src', 'LEV', false],
     ]);
     expect(listener.mock.calls[0][1].segments[0].tokens[1].surfaceText).toBe('GEN-v1');
   });
@@ -1289,12 +1387,12 @@ describe('onBookRead', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
-  it('passes an edited book again before the edit is reported', async () => {
+  it('passes an edited book again, as edited, before the edit is reported', async () => {
     let version = 'v1';
     const project = serveProject((bookId) => usj(bookId, version));
     project.booksPresent = '1';
     const heard: string[] = [];
-    listenForBooks((_, book) => heard.push(`read ${book.textVersion}`));
+    listenForBooks((_, book, edited) => heard.push(`read ${book.textVersion} ${edited}`));
     unsubscribers.push(onBookTextChanged(() => heard.push('edited')));
     readStatus();
     await settle();
@@ -1303,14 +1401,14 @@ describe('onBookRead', () => {
     project.subscriptions[0].deliver(usj('GEN', version));
     await settle();
 
-    expect(heard).toEqual(['read v1@en', 'read v2@en', 'edited']);
+    expect(heard).toEqual(['read v1@en false', 'read v2@en true', 'edited']);
   });
 
-  it('passes the edited open book before the edit is reported, ahead of the read', async () => {
+  it('passes the edited open book, as edited, before the edit is reported, ahead of the read', async () => {
     let version = 'v1';
     const project = serveProject((bookId) => usj(bookId, version));
     const heard: string[] = [];
-    listenForBooks((_, book) => heard.push(`read ${book.textVersion}`));
+    listenForBooks((_, book, edited) => heard.push(`read ${book.textVersion} ${edited}`));
     unsubscribers.push(onBookTextChanged(() => heard.push('edited')));
     await getBookOutline('src', 'GEN');
 
@@ -1318,7 +1416,7 @@ describe('onBookRead', () => {
     project.subscriptions[0].deliver(usj('GEN', version));
     await settle();
 
-    expect(heard).toEqual(['read v2@en', 'edited']);
+    expect(heard).toEqual(['read v2@en true', 'edited']);
   });
 
   it("passes no text of an open book's edit that a later edit's read overtook", async () => {

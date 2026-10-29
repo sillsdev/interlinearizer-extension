@@ -11,17 +11,25 @@ declare module 'papi-shared-types' {
      */
     'interlinearizer.onUndoFromNotification': { notificationId: string | number };
     /**
-     * Emitted when the text changes in a book the extension watches, so views showing it refetch
-     * it: a source project's open book (the one last outlined), and every book its whole-text read
-     * has read. Edits to other books emit nothing.
+     * Emitted when what a view shows of a source project's analysis or text changes, so that the
+     * view refetches what the change touched.
+     *
+     * Addressed by source project, the event names a Scripture edit in a book the extension
+     * watches. Those books are the source's open book (the one last outlined) and every book its
+     * whole-text read has read. Edits to other books emit nothing.
+     *
+     * Addressed by session, the event names what each change to the session's analysis touched,
+     * re-anchoring included. A Scripture edit is named as a book touched whole.
      */
-    'interlinearizer.onAnalysisChanged': {
-      sourceProjectId: string;
-      /** Unique to this change. */
-      changeId: string;
-      /** A Scripture edit, naming the book to refetch whole. */
-      scriptureEdit: { bookId: string };
-    };
+    'interlinearizer.onAnalysisChanged':
+      | {
+          sourceProjectId: string;
+          /** Unique to this change. */
+          changeId: string;
+          /** A Scripture edit, naming the book to refetch whole. */
+          scriptureEdit: { bookId: string };
+        }
+      | import('interlinearizer').SessionAnalysisChange;
   }
 
   /** Project-level settings contributed by the Interlinearizer extension. */
@@ -274,30 +282,35 @@ declare module 'papi-shared-types' {
 
     /**
      * Outlines a book of the source project, segmented by the boundaries `segmentationJson` names
-     * (a JSON `SegmentationDelta`), or one segment per verse when it is omitted.
+     * (a JSON `SegmentationDelta`), or one segment per verse when it is omitted. Addressed by
+     * session, it outlines the session's source as the session's draft segments it, taking no
+     * `segmentationJson`, and counts each segment's orphaned free-translation cards.
      *
      * @returns The `BookOutline` as a JSON string, or `undefined` when the project has no text for
      *   the book.
      * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
-     *   `SegmentationDelta` (logged before rethrowing).
+     *   `SegmentationDelta` or is given with a session. Also if the session is not open, or its
+     *   analysis cannot be read (logged before rethrowing).
      */
     'interlinearizer.getBookOutline': (
-      sourceProjectId: string,
+      address: string | { sessionId: string },
       bookId: string,
       segmentationJson?: string,
     ) => Promise<string | undefined>;
 
     /**
-     * Serves the segments at indexes `[start, end)` of the book's outline for the same
-     * `segmentationJson`; the range is clamped to the outline.
+     * Serves the segments at indexes `[start, end)` of the book's outline for the same address and
+     * `segmentationJson`; the range is clamped to the outline. Addressed by session, it also serves
+     * the analysis the session's draft holds for them.
      *
      * @returns The `SegmentPage` as a JSON string, or `undefined` when the project has no text for
      *   the book.
      * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
-     *   `SegmentationDelta` (logged before rethrowing).
+     *   `SegmentationDelta` or is given with a session. Also if the session is not open, or its
+     *   analysis cannot be read (logged before rethrowing).
      */
     'interlinearizer.getSegments': (
-      sourceProjectId: string,
+      address: string | { sessionId: string },
       bookId: string,
       start: number,
       end: number,
@@ -305,13 +318,16 @@ declare module 'papi-shared-types' {
     ) => Promise<string | undefined>;
 
     /**
-     * Reports how far reading the source project's whole text has got, starting the read when the
-     * project has none.
+     * Reports how far reading the whole text of the source project, or of a session's source, has
+     * got, starting the read when the project has none.
      *
      * @returns Once the text's books are known, the `TextReadStatus` as a JSON string.
-     * @throws If the books or the provider of their text cannot be got. The next call tries again.
+     * @throws If the books or the provider of their text cannot be got; the next call tries again.
+     *   Also if the session is not open.
      */
-    'interlinearizer.getTextReadStatus': (sourceProjectId: string) => Promise<string>;
+    'interlinearizer.getTextReadStatus': (
+      address: string | { sessionId: string },
+    ) => Promise<string>;
 
     /**
      * Persists the draft working buffer for the given source project. Called from the WebView after
@@ -368,24 +384,32 @@ declare module 'papi-shared-types' {
      * text of each book re-anchored since. Marks the draft saved when it restores content the draft
      * was saved with, and unsaved otherwise.
      *
-     * @returns The changes that reverted the edit and re-anchored what the undo restored, as JSON,
-     *   or `undefined` when there is none.
+     * @returns A JSON string of the `CommandReply`: the changes that reverted the edit and
+     *   re-anchored what the undo restored, with the pool buckets they touched. `undefined` when
+     *   there is none.
      * @throws If the session is read-only or not open, or re-anchoring, applying the changes or
      *   marking the draft saved fails (logged before rethrowing).
      */
-    'interlinearizer.undoEdit': (sessionId: string) => Promise<string | undefined>;
+    'interlinearizer.undoEdit': (
+      sessionId: string,
+      changeId?: import('interlinearizer').ChangeId | null,
+    ) => Promise<string | undefined>;
 
     /**
      * Redoes a session's latest undone edit, re-anchoring what it restores to the current text of
      * each book re-anchored since. Marks the draft saved when it restores content the draft was
      * saved with, and unsaved otherwise.
      *
-     * @returns The changes that redid the edit and re-anchored what the redo restored, as JSON, or
-     *   `undefined` when there is none.
+     * @returns A JSON string of the `CommandReply`: the changes that redid the edit and re-anchored
+     *   what the redo restored, with the pool buckets they touched. `undefined` when there is
+     *   none.
      * @throws If the session is read-only or not open, or re-anchoring, applying the changes or
      *   marking the draft saved fails (logged before rethrowing).
      */
-    'interlinearizer.redoEdit': (sessionId: string) => Promise<string | undefined>;
+    'interlinearizer.redoEdit': (
+      sessionId: string,
+      changeId?: import('interlinearizer').ChangeId | null,
+    ) => Promise<string | undefined>;
 
     /**
      * Reports where a session's derived indexes differ from ones built afresh from its records, for
@@ -399,7 +423,8 @@ declare module 'papi-shared-types' {
     /**
      * Writes a token's gloss in a session's analysis language; a blank value clears it.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -408,12 +433,14 @@ declare module 'papi-shared-types' {
       tokenRef: string,
       surfaceText: string,
       value: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Approves a stored token analysis for a token, in place of any approval the token held.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -422,12 +449,14 @@ declare module 'papi-shared-types' {
       tokenRef: string,
       surfaceText: string,
       analysisId: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Writes a token's morpheme breakdown, each form in `writingSystem`.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -437,22 +466,29 @@ declare module 'papi-shared-types' {
       surfaceText: string,
       forms: string[],
       writingSystem: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Removes a token's morpheme breakdown.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
-    'interlinearizer.deleteMorphemes': (sessionId: string, tokenRef: string) => Promise<string>;
+    'interlinearizer.deleteMorphemes': (
+      sessionId: string,
+      tokenRef: string,
+      changeId?: import('interlinearizer').ChangeId | null,
+    ) => Promise<string>;
 
     /**
      * Glosses one morpheme of a token's breakdown in a session's analysis language; a blank value
      * clears the morpheme's gloss.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -461,12 +497,14 @@ declare module 'papi-shared-types' {
       tokenRef: string,
       morphemeId: string,
       value: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Gives up the place an analysis went stale at, leaving its other places alone.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -474,13 +512,15 @@ declare module 'papi-shared-types' {
       sessionId: string,
       analysisId: string,
       tokenRef: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Moves an analysis from a place it went stale at onto a token, approving it there in place of
      * whatever that token held.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -490,13 +530,15 @@ declare module 'papi-shared-types' {
       staleTokenRef: string,
       tokenRef: string,
       surfaceText: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Keeps a stale free translation as a claim about a segment's current text, approving it for
      * that segment.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -505,18 +547,21 @@ declare module 'papi-shared-types' {
       analysisId: string,
       segmentId: string,
       surfaceText: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Drops a stale free translation, even one whose verse the book no longer holds.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
     'interlinearizer.discardStaleFreeTranslation': (
       sessionId: string,
       analysisId: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
@@ -524,7 +569,8 @@ declare module 'papi-shared-types' {
      * it; a blank value clears it. An analysis left empty goes with its links. One made identical
      * to another payload is folded into that payload.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -532,19 +578,22 @@ declare module 'papi-shared-types' {
       sessionId: string,
       analysisId: string,
       value: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Clears the glosses of several token analyses in a session's analysis language, as a blank
      * `interlinearizer.writeAnalysisGloss` clears one.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
     'interlinearizer.clearAnalysisGlosses': (
       sessionId: string,
       analysisIds: string[],
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
@@ -552,7 +601,8 @@ declare module 'papi-shared-types' {
      * its stale mark. A form the breakdown already carried keeps its morpheme. No forms removes the
      * breakdown.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -561,25 +611,29 @@ declare module 'papi-shared-types' {
       analysisId: string,
       forms: string[],
       writingSystem: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Keeps a token analysis's stale breakdown as it stands, for every token linked to it.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
     'interlinearizer.confirmAnalysisMorphemes': (
       sessionId: string,
       analysisId: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Writes the gloss of one morpheme of a token analysis in a session's analysis language, for
      * every token linked to it; a blank value clears it.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -588,22 +642,29 @@ declare module 'papi-shared-types' {
       analysisId: string,
       morphemeId: string,
       value: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Removes token analyses with every token link to them.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
-    'interlinearizer.deleteAnalyses': (sessionId: string, analysisIds: string[]) => Promise<string>;
+    'interlinearizer.deleteAnalyses': (
+      sessionId: string,
+      analysisIds: string[],
+      changeId?: import('interlinearizer').ChangeId | null,
+    ) => Promise<string>;
 
     /**
      * Folds token analyses into a survivor and writes the settled content onto it, in a session's
      * analysis language. The folded analyses' token links move to the survivor.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -612,13 +673,15 @@ declare module 'papi-shared-types' {
       survivorAnalysisId: string,
       mergedAnalysisIds: string[],
       content: import('interlinearizer').MergedContent,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Adds an approved phrase occurrence over `tokens`, given in document order. It shares a
      * content-identical stored payload where one exists.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If `tokens` is empty or not within one segment of the text, the project has no text
      *   for the first token's book, the session is read-only or not open, or the edit is refused or
      *   fails (logged before rethrowing).
@@ -626,13 +689,15 @@ declare module 'papi-shared-types' {
     'interlinearizer.createPhrase': (
       sessionId: string,
       tokens: import('interlinearizer').TokenSnapshot[],
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Gives a phrase occurrence a new token run, in document order, keeping its gloss. An empty run
      * removes the occurrence.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If `tokens` is not within one segment of the text, the project has no text for the
      *   first token's book, the session is read-only or not open, or the edit is refused or fails
      *   (logged before rethrowing).
@@ -641,16 +706,22 @@ declare module 'papi-shared-types' {
       sessionId: string,
       phraseId: string,
       tokens: import('interlinearizer').TokenSnapshot[],
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Removes a phrase occurrence, with its payload unless another occurrence shares that payload.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
-    'interlinearizer.deletePhrase': (sessionId: string, phraseId: string) => Promise<string>;
+    'interlinearizer.deletePhrase': (
+      sessionId: string,
+      phraseId: string,
+      changeId?: import('interlinearizer').ChangeId | null,
+    ) => Promise<string>;
 
     /**
      * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token
@@ -661,7 +732,9 @@ declare module 'papi-shared-types' {
      * @param tokens - In document order.
      * @param absorbedPhraseId - The absorbed occurrence's link ID. Absent or `null` when the
      *   neighbor is a token in no phrase.
-     * @returns A JSON string of the changes it applied.
+     * @param changeId - Names the change; absent or `null`, the session names it.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If `tokens` is empty or not within one segment of the text, the project has no text
      *   for the first token's book, the session is read-only or not open, or the edit is refused or
      *   fails (logged before rethrowing).
@@ -671,12 +744,14 @@ declare module 'papi-shared-types' {
       targetPhraseId: string,
       tokens: import('interlinearizer').TokenSnapshot[],
       absorbedPhraseId?: string | null,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Writes a phrase occurrence's gloss in a session's analysis language; a blank value clears it.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -684,24 +759,31 @@ declare module 'papi-shared-types' {
       sessionId: string,
       phraseId: string,
       value: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
      * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the occurrence would be approved over tokens not within one segment of the text,
      *   the project has no text for their book, the session is read-only or not open, or the edit
      *   is refused or fails (logged before rethrowing).
      */
-    'interlinearizer.approvePhrase': (sessionId: string, phraseId: string) => Promise<string>;
+    'interlinearizer.approvePhrase': (
+      sessionId: string,
+      phraseId: string,
+      changeId?: import('interlinearizer').ChangeId | null,
+    ) => Promise<string>;
 
     /**
      * Splits a phrase occurrence just after `splitAfterTokenRef`, in the document order of that
      * token's book as the session's source project holds it. A half left with a single token leaves
      * that token in no phrase.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the project has no text for the token's book, the session is read-only or not
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
@@ -709,6 +791,7 @@ declare module 'papi-shared-types' {
       sessionId: string,
       phraseId: string,
       splitAfterTokenRef: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
@@ -723,7 +806,8 @@ declare module 'papi-shared-types' {
      * over. Leave `adoptStaleAnalysisId` out, or pass `null`, when the value was typed over no
      * stale translation.
      *
-     * @returns A JSON string of the changes it applied.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -733,6 +817,7 @@ declare module 'papi-shared-types' {
       surfaceText: string,
       value: string,
       adoptStaleAnalysisId?: string | null,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
@@ -743,14 +828,15 @@ declare module 'papi-shared-types' {
      * The same edit re-anchors the book's analysis to the new segments. A free translation whose
      * segment changes goes stale.
      *
-     * @returns A JSON string of the changes it applied, with a scope record carrying the new
-     *   boundaries when they change.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with a scope record
+     *   carrying the new boundaries when they change, and the pool buckets they touched.
      * @throws If the project has no text for the token's book, the session is read-only or not
      *   open, or the edit fails (logged before rethrowing).
      */
     'interlinearizer.mergeSegments': (
       sessionId: string,
       secondSegmentStartRef: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
@@ -760,12 +846,16 @@ declare module 'papi-shared-types' {
      * The same edit re-anchors the book's analysis to the new segments. A free translation whose
      * segment changes goes stale.
      *
-     * @returns A JSON string of the changes it applied, with a scope record carrying the new
-     *   boundaries when they change.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with a scope record
+     *   carrying the new boundaries when they change, and the pool buckets they touched.
      * @throws If the project has no text for the token's book, the session is read-only or not
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
-    'interlinearizer.splitSegment': (sessionId: string, tokenRef: string) => Promise<string>;
+    'interlinearizer.splitSegment': (
+      sessionId: string,
+      tokenRef: string,
+      changeId?: import('interlinearizer').ChangeId | null,
+    ) => Promise<string>;
 
     /**
      * Moves a segment boundary from `fromRef` to `toRef`, as pulling an edge token across a
@@ -775,8 +865,8 @@ declare module 'papi-shared-types' {
      * The same edit re-anchors the book's analysis to the new segments. A free translation whose
      * segment changes goes stale.
      *
-     * @returns A JSON string of the changes it applied, with a scope record carrying the new
-     *   boundaries when they change.
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with a scope record
+     *   carrying the new boundaries when they change, and the pool buckets they touched.
      * @throws If the project has no text for the book of `toRef`, the session is read-only or not
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
@@ -784,6 +874,7 @@ declare module 'papi-shared-types' {
       sessionId: string,
       fromRef: string,
       toRef: string,
+      changeId?: import('interlinearizer').ChangeId | null,
     ) => Promise<string>;
 
     /**
@@ -792,24 +883,31 @@ declare module 'papi-shared-types' {
      * stored analysis could not be read keeps it. A draft saving to a project stays as saved or
      * unsaved as it was; one saving to none is marked unsaved when the discard changes anything.
      *
-     * @returns A JSON string of `{ changes, hasFreeTranslations }`: the changes it applied, and
-     *   whether any segment of the draft it leaves has a free translation.
+     * @returns A JSON string of the `CommandReply`, with `hasFreeTranslations`: whether any segment
+     *   of the draft it leaves has a free translation.
      * @throws If the project the draft saves to cannot be read, the session is read-only or not
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
-    'interlinearizer.discardBook': (sessionId: string, bookCode: string) => Promise<string>;
+    'interlinearizer.discardBook': (
+      sessionId: string,
+      bookCode: string,
+      changeId?: import('interlinearizer').ChangeId | null,
+    ) => Promise<string>;
 
     /**
      * Discards every unsaved change to a session's draft, restoring what the draft's project holds,
      * or emptying the draft when it has no project. A book whose stored analysis could not be read
      * keeps it. The draft is marked saved.
      *
-     * @returns A JSON string of `{ changes, hasFreeTranslations }`: the changes it applied, and
-     *   whether any segment of the draft it leaves has a free translation.
+     * @returns A JSON string of the `CommandReply`, with `hasFreeTranslations`: whether any segment
+     *   of the draft it leaves has a free translation.
      * @throws If the project the draft saves to cannot be read, the session is read-only or not
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
-    'interlinearizer.discardAll': (sessionId: string) => Promise<string>;
+    'interlinearizer.discardAll': (
+      sessionId: string,
+      changeId?: import('interlinearizer').ChangeId | null,
+    ) => Promise<string>;
 
     /**
      * Names the token analyses a command would remove from a session's draft, applying nothing.
@@ -2157,6 +2255,46 @@ declare module 'interlinearizer' {
     features?: Readonly<Record<string, string>>;
     confidence?: Confidence;
   }
+
+  /**
+   * Names a change to a session's analysis. A command sent again under the id of a change the
+   * session has applied replies as it did then, applying nothing. A command sent with none is named
+   * afresh.
+   */
+  export type ChangeId = string;
+
+  /** A host query whose answer spans books, which a view keeps and refetches when a change names it. */
+  export type AnalysisQuery = 'getCatalogRows' | 'getConcordance' | 'getStaleSummary';
+
+  /** Outline indexes `[start, end)` of a book's segments. */
+  export type SegmentRange = { start: number; end: number };
+
+  /** A book a change touched. */
+  export type ChangedBook = {
+    bookId: string;
+    /**
+     * The runs of its segments whose analysis the change touched, in outline order, at the indexes
+     * of the outline the change leaves. Absent when the change touched the whole book: its text or
+     * its boundaries, or analysis in a book the host held no outline for.
+     */
+    ranges?: SegmentRange[];
+  };
+
+  /** What one change to a session's analysis touched. */
+  export type AnalysisChange = {
+    books: ChangedBook[];
+    /** The analyses whose payload, or whose links, the change put or removed. */
+    analysisIds: string[];
+    /** The cross-book queries whose answers the change may have changed. */
+    queries: AnalysisQuery[];
+  };
+
+  /** What one change to a session's analysis touched, as the session reports it. */
+  export type SessionAnalysisChange = {
+    sessionId: string;
+    /** The id the change was sent under, or a fresh one for a change no command made. */
+    changeId: ChangeId;
+  } & AnalysisChange;
 
   /** A command whose removals a preview reports, named by its intent, with its arguments. */
   export type RemovalPreviewRequest =

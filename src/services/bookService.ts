@@ -29,10 +29,12 @@ interface HeldBook {
   writingSystem: string;
   /** `undefined` when the project has no text for the book. */
   book: Promise<Book | undefined>;
+  /** The book once tokenized; absent until then, and when the project has no text for it. */
+  tokenized?: Book;
   /** The tokenized book as JSON, once it has been asked for whole. */
   json?: Promise<string | undefined>;
   /** The book segmented by the boundaries last asked for, keyed by their JSON. */
-  segmented?: { key: string; segments: readonly Segment[] };
+  segmented?: { key: string; segments: Segment[] };
   watch: BookTextWatch;
 }
 
@@ -105,9 +107,9 @@ function reportEdit(sourceProjectId: string, bookId: string): void {
 
 /**
  * Receives the source project and tokenized text of each book that a whole-text read takes in, and
- * of the open book once it is edited.
+ * of the open book once it is edited. Also receives whether the text is an edit's.
  */
-type BookReadListener = (sourceProjectId: string, book: Book) => void;
+type BookReadListener = (sourceProjectId: string, book: Book, edited: boolean) => void;
 
 const bookReadListeners = new Set<BookReadListener>();
 
@@ -134,21 +136,22 @@ function startRead(sourceProjectId: string, bookId: string): number {
 }
 
 /**
- * Passes `book` to {@link onBookRead}'s listeners unless a read numbered above `readNumber` has
- * already found the book's text, or found that it has none. A read that found no text passes
- * nothing, and earlier reads that finish after it pass nothing either.
+ * Passes `book` to {@link onBookRead}'s listeners, as an edit's when `edited`, unless a read
+ * numbered above `readNumber` has already found the book's text, or found that it has none. A read
+ * that found no text passes nothing, and earlier reads that finish after it pass nothing either.
  */
 function finishRead(
   sourceProjectId: string,
   bookId: string,
   readNumber: number,
   book: Book | undefined,
+  edited: boolean,
 ): void {
   const finished = finishedReads.get(sourceProjectId) ?? new Map<string, number>();
   if ((finished.get(bookId) ?? 0) > readNumber) return;
   finished.set(bookId, readNumber);
   finishedReads.set(sourceProjectId, finished);
-  if (book) bookReadListeners.forEach((listener) => listener(sourceProjectId, book));
+  if (book) bookReadListeners.forEach((listener) => listener(sourceProjectId, book, edited));
 }
 
 /** Receives the source project and the books holding text, of a whole-text read with none failed. */
@@ -252,8 +255,14 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
         { writingSystem },
       ),
   );
-  book.catch(() => releaseBook(sourceProjectId, watch));
-  return { bookId, writingSystem, book, watch };
+  const held: HeldBook = { bookId, writingSystem, book, watch };
+  book
+    .then((tokenized) => {
+      held.tokenized = tokenized;
+      return tokenized;
+    })
+    .catch(() => releaseBook(sourceProjectId, watch));
+  return held;
 }
 
 /**
@@ -271,7 +280,8 @@ async function reportOpenBookEdit(sourceProjectId: string, held: HeldBook): Prom
     () => undefined,
   );
   if (closeCounts.get(sourceProjectId) !== closeCount) return;
-  if (delivered) finishRead(sourceProjectId, held.bookId, delivered.readNumber, delivered.book);
+  if (delivered)
+    finishRead(sourceProjectId, held.bookId, delivered.readNumber, delivered.book, true);
   reportEdit(sourceProjectId, held.bookId);
 }
 
@@ -281,7 +291,7 @@ async function reportOpenBookEdit(sourceProjectId: string, held: HeldBook): Prom
  * started. A kept book is served again until its text changes, another book takes its place, or
  * {@link closeProject} lets it go.
  */
-async function heldBook(
+async function keepBook(
   sourceProjectId: string,
   bookId: string,
   isOpen = false,
@@ -321,7 +331,7 @@ export async function getTokenizedBook(
   sourceProjectId: string,
   bookId: string,
 ): Promise<string | undefined> {
-  const held = await heldBook(sourceProjectId, bookId);
+  const held = await keepBook(sourceProjectId, bookId);
   held.json ??= held.book.then(
     (book) => book && perfTime('getTokenizedBook:serialize', () => JSON.stringify(book)),
   );
@@ -350,8 +360,8 @@ function segmentsOf(
   held: HeldBook,
   book: Book,
   segmentationJson: string | undefined,
-  call: 'getBookOutline' | 'getSegments' | 'getBookSegments',
-): readonly Segment[] {
+  call: 'getBookOutline' | 'getSegments' | 'getSegmentedBook' | 'heldBook',
+): Segment[] {
   const key = segmentationJson || '';
   if (held.segmented?.key !== key) {
     const delta = parseSegmentation(segmentationJson);
@@ -378,7 +388,8 @@ export function onBookTextChanged(listener: BookTextListener): () => boolean {
 /**
  * Calls `listener` with each book of a source project that holds text, until the returned function
  * is called. A book is passed when the whole-text read first reaches it, and again each time its
- * text changes. The open book's edited text is passed even before the read reaches that book.
+ * text changes, flagged as edited. The open book's edited text is passed even before the read
+ * reaches that book.
  *
  * For a change, `listener` is called before {@link onBookTextChanged}'s listeners hear of it. The
  * change's text is not passed when a read of the book that started later has finished first. That
@@ -404,6 +415,26 @@ export function onTextRead(listener: TextReadListener): () => boolean {
 }
 
 /**
+ * Reads a book of the source project, segmented by the boundaries `segmentationJson` names. The
+ * book becomes the project's open book, whose edits {@link onBookTextChanged} reports. The book's
+ * segments are shared, so the caller must not change them.
+ *
+ * @returns `undefined` when the project has no text for the book.
+ * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
+ *   `SegmentationDelta`.
+ */
+export async function getOpenBook(
+  sourceProjectId: string,
+  bookId: string,
+  segmentationJson?: string,
+): Promise<Book | undefined> {
+  const held = await keepBook(sourceProjectId, bookId, true);
+  const book = await held.book;
+  if (!book) return undefined;
+  return { ...book, segments: segmentsOf(held, book, segmentationJson, 'getBookOutline') };
+}
+
+/**
  * Outlines a book of the source project: its segments, segmented by the boundaries
  * `segmentationJson` names, each without its text. The book becomes the project's open book, whose
  * edits {@link onBookTextChanged} reports.
@@ -417,13 +448,32 @@ export async function getBookOutline(
   bookId: string,
   segmentationJson?: string,
 ): Promise<string | undefined> {
-  const held = await heldBook(sourceProjectId, bookId, true);
-  const book = await held.book;
+  const book = await getOpenBook(sourceProjectId, bookId, segmentationJson);
   if (!book) return undefined;
-  const segments = segmentsOf(held, book, segmentationJson, 'getBookOutline');
   return perfTime('getBookOutline:serialize', () =>
-    JSON.stringify(buildBookOutline(book, segments)),
+    JSON.stringify(buildBookOutline(book, book.segments)),
   );
+}
+
+/**
+ * The source project's book, segmented by the boundaries `segmentationJson` names, when the project
+ * keeps a tokenized copy as its open or latest book. Reads nothing. The book's segments are shared,
+ * so the caller must not change them.
+ *
+ * @returns `undefined` when the project keeps no tokenized copy of the book.
+ * @throws If `segmentationJson` is not a JSON `SegmentationDelta`.
+ */
+export function heldBook(
+  sourceProjectId: string,
+  bookId: string,
+  segmentationJson?: string,
+): Book | undefined {
+  const held = [openBooks.get(sourceProjectId), latestBooks.get(sourceProjectId)].find(
+    (kept) => kept?.bookId === bookId && kept.tokenized,
+  );
+  const book = held?.tokenized;
+  if (!held || !book) return undefined;
+  return { ...book, segments: segmentsOf(held, book, segmentationJson, 'heldBook') };
 }
 
 /**
@@ -435,7 +485,7 @@ async function keptBook(sourceProjectId: string, bookId: string): Promise<HeldBo
   return (
     [openBooks.get(sourceProjectId), latestBooks.get(sourceProjectId)].find(
       (kept) => kept?.bookId === bookId,
-    ) ?? heldBook(sourceProjectId, bookId)
+    ) ?? keepBook(sourceProjectId, bookId)
   );
 }
 
@@ -486,21 +536,21 @@ export async function getVerseBook(
 
 /**
  * Reads a book of the source project, segmented by the boundaries `segmentationJson` names, as
- * {@link getSegments} pages it. The segments are shared, so the caller must not change them.
+ * {@link getSegments} pages it. The book's segments are shared, so the caller must not change them.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
  *   `SegmentationDelta`.
  */
-export async function getBookSegments(
+export async function getSegmentedBook(
   sourceProjectId: string,
   bookId: string,
   segmentationJson?: string,
-): Promise<readonly Segment[] | undefined> {
+): Promise<Book | undefined> {
   const held = await keptBook(sourceProjectId, bookId);
   const book = await held.book;
   if (!book) return undefined;
-  return segmentsOf(held, book, segmentationJson, 'getBookSegments');
+  return { ...book, segments: segmentsOf(held, book, segmentationJson, 'getSegmentedBook') };
 }
 
 /** Lets go of the source project's kept copies of `bookId`, holding its open book again at once. */
@@ -515,9 +565,9 @@ function rereadHeldBook(sourceProjectId: string, bookId: string): void {
 
 /**
  * Reads `bookId` of `read`'s text into its form index, and watches the book until the read ends or
- * reads it again. The book's text is passed to {@link onBookRead}'s listeners unless the whole-text
- * read has ended, or a later read of the book supersedes this one. An edit to the book lets go of
- * its kept copies, and is reported once the book is read again.
+ * reads it again. The book's text is passed to {@link onBookRead}'s listeners, as an edit's when
+ * `edited`, unless the whole-text read has ended, or a later read of the book supersedes this one.
+ * An edit to the book lets go of its kept copies, and is reported once the book is read again.
  *
  * @returns Once the book's text has arrived, whether this read filed the book as read or failed.
  */
@@ -525,6 +575,7 @@ async function readTextBook(
   sourceProjectId: string,
   read: TextRead,
   bookId: string,
+  edited: boolean,
 ): Promise<boolean> {
   read.watches.get(bookId)?.();
   const { text, readNumber, stop } = watchBookText(
@@ -562,7 +613,7 @@ async function readTextBook(
     read.failedBookIds.add(bookId);
   }
   read.readBookIds.add(bookId);
-  if (delivered) finishRead(sourceProjectId, bookId, delivered.readNumber, delivered.book);
+  if (delivered) finishRead(sourceProjectId, bookId, delivered.readNumber, delivered.book, edited);
   return true;
 }
 
@@ -592,7 +643,7 @@ async function rereadTextBook(
 ): Promise<void> {
   const wasFailed = read.failedBookIds.has(bookId);
   const hadText = read.textBookIds.has(bookId);
-  if (!(await readTextBook(sourceProjectId, read, bookId))) return;
+  if (!(await readTextBook(sourceProjectId, read, bookId, true))) return;
   const isFailed = read.failedBookIds.has(bookId);
   if (!isFailed && (wasFailed || hadText !== read.textBookIds.has(bookId)))
     reportTextRead(sourceProjectId, read);
@@ -626,7 +677,7 @@ async function readText(sourceProjectId: string, read: TextRead): Promise<void> 
   const readNext = async (): Promise<void> => {
     const bookId = unread.shift();
     if (bookId === undefined || !isCurrent()) return;
-    await readTextBook(sourceProjectId, read, bookId);
+    await readTextBook(sourceProjectId, read, bookId, false);
     await readNext();
   };
   await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));

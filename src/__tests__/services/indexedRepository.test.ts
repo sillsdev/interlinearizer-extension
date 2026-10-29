@@ -4,7 +4,7 @@ import type { TextAnalysis } from 'interlinearizer';
 import { AnalysisIndex } from '../../services/analysisIndex';
 import { type IndexedDraft, IndexedRepository } from '../../services/indexedRepository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
-import { FIXTURE_STAMPS } from '../test-helpers';
+import { FIXTURE_STAMPS, makeTokenLink } from '../test-helpers';
 
 /** Answers lookups from an index over `records`, reporting it as kept when `keep` is `'kept'`. */
 class StubRepository extends IndexedRepository {
@@ -42,6 +42,17 @@ describe('IndexedRepository', () => {
     await expect(
       new StubRepository(analysis(), 'none').getTokenAnalyses(['ta-and']),
     ).resolves.toStrictEqual(analysis().tokenAnalyses);
+  });
+
+  it('counts approvals from its index', async () => {
+    const records: TextAnalysis = {
+      ...analysis(),
+      tokenAnalysisLinks: [makeTokenLink('ta-and', 'GEN 1:1:0')],
+    };
+
+    await expect(
+      new StubRepository(records, 'none').countApprovals(['ta-and']),
+    ).resolves.toStrictEqual({ 'ta-and': 1 });
   });
 
   it('hands out copies of the records its index holds', async () => {

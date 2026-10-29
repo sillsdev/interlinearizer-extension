@@ -1,12 +1,20 @@
 /// <reference types="jest" />
 
-import type { Book, DraftProject, InterlinearProject, TextAnalysis } from 'interlinearizer';
+import type {
+  Book,
+  DraftProject,
+  InterlinearProject,
+  SegmentationDelta,
+  SessionAnalysisChange,
+  TextAnalysis,
+} from 'interlinearizer';
 import {
   AnalysisSessions,
   type SessionHost,
   UNDETERMINED_LANGUAGE,
 } from '../../services/analysisSessions';
 import { ApprovalRuleError } from '../../services/commands/approvalRule';
+import type { ChangeBuffer } from '../../services/commands/changeBuffer';
 import { DraftRepository } from '../../services/draftRepository';
 import type { EditOptions } from '../../services/editHistory';
 import { Pt9ImportRepository } from '../../services/pt9ImportRepository';
@@ -78,6 +86,10 @@ function makeSessions(projects: InterlinearProject[] = []) {
     getInterfaceLanguages: jest.fn(async (): Promise<string[]> => []),
     startTextRead: jest.fn<Promise<void>, [string]>(async () => {}),
     stopTextRead: jest.fn<Promise<void>, [string]>(async () => {}),
+    heldBook: jest.fn<Book | undefined, [string, string, SegmentationDelta | undefined]>(
+      () => undefined,
+    ),
+    reportChange: jest.fn<void, [SessionAnalysisChange]>(),
   } satisfies SessionHost;
   const saveDraft = (draft: DraftProject) =>
     new DraftRepository(storage, draft.sourceProjectId, logger).replaceAll(draft);
@@ -117,6 +129,30 @@ describe('AnalysisSessions', () => {
         kind: 'draft',
         sourceProjectId: SOURCE,
       });
+    });
+
+    it("builds the repository's indexes once it opens, without waiting for a command", async () => {
+      const { host, sessions } = makeSessions();
+      const getScope = jest.spyOn(DraftRepository.prototype, 'getScope');
+
+      await sessions.open(SOURCE);
+      await flushPromises();
+
+      expect(getScope).toHaveBeenCalledTimes(1);
+      expect(host.openDraftRepository).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens when building the indexes fails, and the first command meets the failure', async () => {
+      const { sessions } = makeSessions();
+      jest
+        .spyOn(DraftRepository.prototype, 'getScope')
+        .mockRejectedValue(new Error('storage is gone'));
+
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await expect(
+        sessions.run(sessionId, ({ repository }) => repository.getScope()),
+      ).rejects.toThrow('storage is gone');
     });
 
     it('reports a free translation in the draft', async () => {
@@ -364,6 +400,26 @@ describe('AnalysisSessions', () => {
       );
       expect(host.releaseDraftRepository).toHaveBeenCalledWith(SOURCE);
     });
+
+    it('rejects only once every other session has closed', async () => {
+      const { host, sessions } = makeSessions();
+      await sessions.open(SOURCE);
+      await sessions.open(OTHER_SOURCE);
+      const otherRelease = deferred();
+      host.releaseDraftRepository.mockImplementation(async (sourceProjectId) => {
+        if (sourceProjectId === SOURCE) throw new Error('release failed');
+        await otherRelease.promise;
+      });
+      let settled = false;
+      const closing = sessions.closeAll().finally(() => {
+        settled = true;
+      });
+      await flushPromises();
+
+      expect(settled).toBe(false);
+      otherRelease.resolve();
+      await expect(closing).rejects.toThrow('release failed');
+    });
   });
 
   describe('run', () => {
@@ -455,12 +511,11 @@ describe('AnalysisSessions', () => {
       const { sessionId } = await sessions.open(SOURCE);
       await sessions.runEdit(sessionId, (session) => session.history.apply(putting('a')));
 
-      await expect(sessions.undo(sessionId)).resolves.toStrictEqual({
-        intent: 'put a',
-        tokenAnalyses: { puts: [], deletes: ['a'] },
+      await expect(sessions.undo(sessionId)).resolves.toMatchObject({
+        changes: { intent: 'put a', tokenAnalyses: { puts: [], deletes: ['a'] } },
       });
       await expect(storedIds(storage)).resolves.toStrictEqual([]);
-      await expect(sessions.redo(sessionId)).resolves.toStrictEqual(putting('a'));
+      await expect(sessions.redo(sessionId)).resolves.toMatchObject({ changes: putting('a') });
       await expect(storedIds(storage)).resolves.toStrictEqual(['a']);
     });
 
@@ -507,7 +562,7 @@ describe('AnalysisSessions', () => {
       const { sessions, storage } = makeSessions();
       const { sessionId } = await sessions.open(SOURCE);
 
-      const changes = await sessions.edit(sessionId, 'add', async (buffer) => {
+      const { changes } = await sessions.edit(sessionId, 'add', async (buffer) => {
         buffer.create('tokenAnalyses', payload('a'));
         buffer.create('tokenAnalyses', payload('b'));
       });
@@ -559,7 +614,7 @@ describe('AnalysisSessions', () => {
       const { sessionId } = await sessions.open(SOURCE);
       await sessions.setAnalysisLanguage(sessionId, 'de');
 
-      const changes = await sessions.edit(sessionId, 'add', async (buffer) => {
+      const { changes } = await sessions.edit(sessionId, 'add', async (buffer) => {
         buffer.create('tokenAnalyses', payload('a'));
       });
 
@@ -572,7 +627,10 @@ describe('AnalysisSessions', () => {
       const { sessionId } = await sessions.open(SOURCE);
 
       await expect(sessions.edit(sessionId, 'nothing', async () => {})).resolves.toStrictEqual({
-        intent: 'nothing',
+        changeId: expect.any(String),
+        changes: { intent: 'nothing' },
+        poolBuckets: {},
+        poolAnalyses: [],
       });
 
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
@@ -663,23 +721,434 @@ describe('AnalysisSessions', () => {
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
     });
 
-    it('reads options given as a function from the session in the edit turn', async () => {
+    it('reads an unsaved mark given as a function from the session in the edit turn', async () => {
       const { sessions, storage, saveDraft } = makeSessions();
       await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty: true });
       const { sessionId } = await sessions.open(SOURCE);
-      const readOptions = jest.fn((): EditOptions => ({ unsavedMark: 'clear' }));
+      const readMark = jest.fn((): EditOptions['unsavedMark'] => 'clear');
 
       await sessions.edit(
         sessionId,
         'add',
         async (buffer) => buffer.create('tokenAnalyses', payload('a')),
-        readOptions,
+        { unsavedMark: readMark },
       );
 
-      expect(readOptions).toHaveBeenCalledWith(
+      expect(readMark).toHaveBeenCalledWith(
         expect.objectContaining({ scope: expect.objectContaining({ sourceProjectId: SOURCE }) }),
       );
       await expect(stored(storage)).resolves.toMatchObject({ dirty: false });
+    });
+  });
+
+  describe('replies', () => {
+    const payload = (id: string) => ({ id, ...FIXTURE_STAMPS, surfaceText: id });
+    const linking = (buffer: ChangeBuffer, tokenRef: string) => {
+      buffer.create('tokenAnalyses', payload('a'));
+      buffer.create('tokenAnalysisLinks', makeTokenLink('a', tokenRef));
+    };
+
+    it('carries the pool buckets of the forms an edit touched', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const reply = await sessions.edit(sessionId, 'link', async (buffer) =>
+        linking(buffer, 'GEN 1:1:0'),
+      );
+
+      expect(reply.poolBuckets).toStrictEqual({ a: [{ analysisId: 'a', frequency: 1 }] });
+      expect(reply.poolAnalyses).toStrictEqual([payload('a')]);
+    });
+
+    it('carries the change id the edit was sent with', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const reply = await sessions.edit(sessionId, 'nothing', async () => {}, {
+        changeId: 'change-1',
+      });
+
+      expect(reply.changeId).toBe('change-1');
+    });
+
+    it('gives each edit sent without a change id a fresh one', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const first = await sessions.edit(sessionId, 'nothing', async () => {});
+      const second = await sessions.edit(sessionId, 'nothing', async () => {});
+
+      expect(first.changeId).not.toBe(second.changeId);
+    });
+
+    it('answers an edit sent again under its change id with the first reply, applying it once', async () => {
+      const { sessions, storage } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      const command = jest.fn(async (buffer: ChangeBuffer) => linking(buffer, 'GEN 1:1:0'));
+
+      const first = await sessions.edit(sessionId, 'link', command, { changeId: 'change-1' });
+      const again = await sessions.edit(sessionId, 'link', command, { changeId: 'change-1' });
+
+      expect(again).toBe(first);
+      expect(command).toHaveBeenCalledTimes(1);
+      await sessions.undo(sessionId);
+      await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
+      const { draft } = await new DraftRepository(storage, SOURCE, silentLogger()).exportAll();
+      expect(draft.analysis.tokenAnalyses).toStrictEqual([]);
+    });
+
+    it('runs an edit sent again under the change id of an attempt that failed', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      const command = jest
+        .fn<Promise<void>, [ChangeBuffer]>()
+        .mockRejectedValueOnce(new Error('first attempt'))
+        .mockImplementationOnce(async (buffer) => linking(buffer, 'GEN 1:1:0'));
+
+      await expect(
+        sessions.edit(sessionId, 'link', command, { changeId: 'change-1' }),
+      ).rejects.toThrow('first attempt');
+      const again = await sessions.edit(sessionId, 'link', command, { changeId: 'change-1' });
+
+      expect(again.changes.tokenAnalyses?.puts).toStrictEqual([payload('a')]);
+    });
+
+    it("keeps the error of an edit that applied before its reply failed, so it isn't applied again", async () => {
+      const { sessions, host } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      host.heldBook.mockImplementation(() => {
+        throw new Error('read failed');
+      });
+      const command = jest.fn(async (buffer: ChangeBuffer) => linking(buffer, 'GEN 1:1:0'));
+
+      await expect(
+        sessions.edit(sessionId, 'link', command, { changeId: 'change-1' }),
+      ).rejects.toThrow('read failed');
+      await expect(
+        sessions.edit(sessionId, 'link', command, { changeId: 'change-1' }),
+      ).rejects.toThrow('read failed');
+
+      expect(command).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the error of an undo that applied before its reply failed, undoing once', async () => {
+      const { sessions, host } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.edit(sessionId, 'link', async (buffer) => linking(buffer, 'GEN 1:1:0'));
+      await sessions.edit(sessionId, 'link b', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('b'));
+        buffer.create('tokenAnalysisLinks', makeTokenLink('b', 'GEN 1:1:1'));
+      });
+      host.heldBook.mockImplementation(() => {
+        throw new Error('read failed');
+      });
+
+      await expect(sessions.undo(sessionId, 'undo-1')).rejects.toThrow('read failed');
+      await expect(sessions.undo(sessionId, 'undo-1')).rejects.toThrow('read failed');
+      host.heldBook.mockReturnValue(undefined);
+
+      await expect(sessions.undo(sessionId)).resolves.toMatchObject({
+        changes: { intent: 'link' },
+      });
+    });
+
+    it('carries whether a free translation is left, as its command returns, when it applied', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const reply = await sessions.edit(sessionId, 'link', async (buffer) => {
+        linking(buffer, 'GEN 1:1:0');
+        return { hasFreeTranslations: true };
+      });
+
+      expect(reply.hasFreeTranslations).toBe(true);
+    });
+
+    it('carries whether a free translation is left, as its command returns, when it staged nothing', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const reply = await sessions.edit(sessionId, 'nothing', async () => ({
+        hasFreeTranslations: false,
+      }));
+
+      expect(reply.hasFreeTranslations).toBe(false);
+    });
+
+    it('applies again an edit sent under a change id it has since forgotten', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      const command = jest.fn(async () => {});
+      await sessions.edit(sessionId, 'first', command, { changeId: 'change-0' });
+      await Promise.all(
+        Array.from({ length: 16 }, (_unused, i) =>
+          sessions.edit(sessionId, 'later', async () => {}, { changeId: `change-${i + 1}` }),
+        ),
+      );
+
+      await sessions.edit(sessionId, 'first', command, { changeId: 'change-0' });
+
+      expect(command).toHaveBeenCalledTimes(2);
+    });
+
+    it('undoes once for an undo sent again under its change id', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.edit(sessionId, 'link', async (buffer) => linking(buffer, 'GEN 1:1:0'));
+      await sessions.edit(sessionId, 'link b', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('b'));
+      });
+
+      const first = await sessions.undo(sessionId, 'undo-1');
+      const again = await sessions.undo(sessionId, 'undo-1');
+
+      expect(again).toBe(first);
+      expect(first?.changes.intent).toBe('link b');
+      await expect(sessions.undo(sessionId)).resolves.toMatchObject({
+        changes: { intent: 'link' },
+      });
+    });
+
+    it('carries the pool buckets an undo and a redo touched, and their change ids', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      await sessions.edit(sessionId, 'link', async (buffer) => linking(buffer, 'GEN 1:1:0'));
+
+      const undone = await sessions.undo(sessionId, 'undo-1');
+      const redone = await sessions.redo(sessionId, 'redo-1');
+
+      expect(undone).toMatchObject({ changeId: 'undo-1', poolBuckets: { a: [] } });
+      expect(redone).toMatchObject({
+        changeId: 'redo-1',
+        poolBuckets: { a: [{ analysisId: 'a', frequency: 1 }] },
+      });
+    });
+  });
+
+  describe('reported changes', () => {
+    const book = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'alpha beta' },
+      { sid: 'GEN 1:2', text: 'gamma' },
+    ]);
+    const gamma = tokenRefOf(book, 'gamma');
+    const payload = (id: string) => ({ id, ...FIXTURE_STAMPS, surfaceText: id });
+
+    async function sessionHolding() {
+      const made = makeSessions();
+      made.host.heldBook.mockImplementation((_source, bookId) =>
+        bookId === 'GEN' ? book : undefined,
+      );
+      const { sessionId } = await made.sessions.open(SOURCE);
+      return { ...made, sessionId };
+    }
+
+    it('reports what an edit touched under its change id', async () => {
+      const { host, sessions, sessionId } = await sessionHolding();
+
+      await sessions.edit(
+        sessionId,
+        'link',
+        async (buffer) => {
+          buffer.create('tokenAnalyses', payload('ta'));
+          buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma));
+        },
+        { changeId: 'change-1' },
+      );
+
+      expect(host.reportChange).toHaveBeenCalledWith({
+        sessionId,
+        changeId: 'change-1',
+        books: [{ bookId: 'GEN', ranges: [{ start: 1, end: 2 }] }],
+        analysisIds: ['ta'],
+        queries: ['getCatalogRows', 'getConcordance'],
+      });
+    });
+
+    it('names whole a book whose boundaries the edit moved', async () => {
+      const { host, sessions, sessionId } = await sessionHolding();
+      const segmentation = {
+        removedVerseStarts: [],
+        addedStarts: [{ tokenRef: tokenRefOf(book, 'beta'), surfaceText: 'beta' }],
+      };
+
+      await sessions.edit(sessionId, 'split', async (buffer) => {
+        buffer.putScope({ ...(await buffer.getScope()), segmentation });
+        buffer.create('tokenAnalysisLinks', makeTokenLink('ta', 'EXO 1:1:0'));
+      });
+
+      expect(host.heldBook).toHaveBeenCalledWith(SOURCE, 'EXO', undefined);
+      expect(host.reportChange).toHaveBeenCalledWith(
+        expect.objectContaining({ books: [{ bookId: 'GEN' }, { bookId: 'EXO' }] }),
+      );
+    });
+
+    it('passes the boundaries the change leaves in the book it reads', async () => {
+      const { host, sessions, sessionId, saveDraft } = await sessionHolding();
+      const segmentation = {
+        removedVerseStarts: [gamma],
+        addedStarts: [],
+      };
+      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], segmentation });
+      await sessions.close(sessionId);
+      const reopened = await sessions.open(SOURCE);
+
+      await sessions.edit(reopened.sessionId, 'link', async (buffer) => {
+        buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma));
+      });
+
+      expect(host.heldBook).toHaveBeenCalledWith(SOURCE, 'GEN', segmentation);
+    });
+
+    it('reports nothing for a change touching no analysis and no boundaries', async () => {
+      const { host, sessions, sessionId } = await sessionHolding();
+
+      await sessions.edit(sessionId, 'language', async (buffer) => {
+        buffer.putScope({ ...(await buffer.getScope()), analysisLanguages: ['fr'] });
+      });
+
+      expect(host.reportChange).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing for an edit staging nothing', async () => {
+      const { host, sessions, sessionId } = await sessionHolding();
+
+      await sessions.edit(sessionId, 'nothing', async () => {});
+
+      expect(host.reportChange).not.toHaveBeenCalled();
+    });
+
+    it('reports what an undo touched under its change id', async () => {
+      const { host, sessions, sessionId } = await sessionHolding();
+      await sessions.edit(sessionId, 'link', async (buffer) => {
+        buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma));
+      });
+
+      await sessions.undo(sessionId, 'undo-1');
+
+      expect(host.reportChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          changeId: 'undo-1',
+          books: [{ bookId: 'GEN', ranges: [{ start: 1, end: 2 }] }],
+        }),
+      );
+    });
+
+    it('reports what a re-anchor pass changed', async () => {
+      const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta' }]);
+      const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and beta' }]);
+      const made = makeSessions();
+      made.host.heldBook.mockReturnValue(after);
+      await made.saveDraft({
+        ...emptyDraft(SOURCE),
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalysisLinks: [
+            makeTokenLink('ta', tokenRefOf(before, 'beta'), { id: 'tl', surfaceText: 'beta' }),
+          ],
+        },
+      });
+      const { sessionId } = await made.sessions.open(SOURCE);
+
+      await made.sessions.reanchorBook(SOURCE, after);
+
+      expect(made.host.reportChange).toHaveBeenCalledWith({
+        sessionId,
+        changeId: expect.any(String),
+        books: [{ bookId: 'GEN', ranges: [{ start: 0, end: 1 }] }],
+        analysisIds: ['ta'],
+        queries: ['getCatalogRows', 'getConcordance'],
+      });
+    });
+
+    it('reports nothing for a re-anchor pass that changed nothing', async () => {
+      const { host, sessions } = await sessionHolding();
+
+      await sessions.reanchorBook(SOURCE, book);
+
+      expect(host.reportChange).not.toHaveBeenCalled();
+    });
+
+    describe('an edit to a book of the text', () => {
+      const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta' }]);
+      const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and beta' }]);
+
+      async function sessionLinkingBeta() {
+        const made = makeSessions();
+        made.host.heldBook.mockReturnValue(after);
+        await made.saveDraft({
+          ...emptyDraft(SOURCE),
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalysisLinks: [
+              makeTokenLink('ta', tokenRefOf(before, 'beta'), { id: 'tl', surfaceText: 'beta' }),
+            ],
+          },
+        });
+        const { sessionId } = await made.sessions.open(SOURCE);
+        return { ...made, sessionId };
+      }
+
+      it('reports what the pass to the edited text changed only with the edit', async () => {
+        const { host, sessions, sessionId } = await sessionLinkingBeta();
+
+        await sessions.reanchorBook(SOURCE, after, true);
+        expect(host.reportChange).not.toHaveBeenCalled();
+        await sessions.reportScriptureEdit(SOURCE, 'GEN');
+
+        expect(host.reportChange).toHaveBeenCalledTimes(1);
+        expect(host.reportChange).toHaveBeenCalledWith({
+          sessionId,
+          changeId: expect.any(String),
+          books: [{ bookId: 'GEN' }],
+          analysisIds: ['ta'],
+          queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
+        });
+      });
+
+      it('reports an edit whose pass changed nothing, naming the book whole', async () => {
+        const { host, sessions, sessionId } = await sessionHolding();
+
+        await sessions.reanchorBook(SOURCE, book, true);
+        await sessions.reportScriptureEdit(SOURCE, 'GEN');
+
+        expect(host.reportChange).toHaveBeenCalledWith({
+          sessionId,
+          changeId: expect.any(String),
+          books: [{ bookId: 'GEN' }],
+          analysisIds: [],
+          queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
+        });
+      });
+
+      it("reports an edit's passes once", async () => {
+        const { host, sessions } = await sessionLinkingBeta();
+        await sessions.reanchorBook(SOURCE, after, true);
+        await sessions.reportScriptureEdit(SOURCE, 'GEN');
+
+        await sessions.reportScriptureEdit(SOURCE, 'GEN');
+
+        expect(host.reportChange).toHaveBeenLastCalledWith(
+          expect.objectContaining({ analysisIds: [] }),
+        );
+      });
+
+      it('reports nothing for a source with no session open', async () => {
+        const { host, sessions } = makeSessions();
+
+        await sessions.reportScriptureEdit(SOURCE, 'GEN');
+
+        expect(host.reportChange).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('sessionIdFor', () => {
+    it("names the source project's open session", async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      expect(sessions.sessionIdFor(SOURCE)).toBe(sessionId);
+      expect(sessions.sessionIdFor(OTHER_SOURCE)).toBeUndefined();
     });
   });
 
@@ -883,9 +1352,9 @@ describe('AnalysisSessions', () => {
     it("re-anchors an edit to the books its command returns, in the edit's undo step", async () => {
       const { sessions, sessionId, storage } = await sessionGlossingBeta();
 
-      const changes = await sessions.edit(sessionId, 'relink', async (buffer) => {
+      const { changes } = await sessions.edit(sessionId, 'relink', async (buffer) => {
         buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
-        return [AFTER];
+        return { reanchorTo: [AFTER] };
       });
 
       expect(changes.tokenAnalysisLinks?.puts).toEqual([
@@ -906,7 +1375,7 @@ describe('AnalysisSessions', () => {
 
       await sessions.edit(sessionId, 'relink', async (buffer) => {
         buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
-        return books;
+        return { reanchorTo: books };
       });
 
       expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-2'));

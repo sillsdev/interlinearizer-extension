@@ -48,6 +48,15 @@ describe('EditHistory', () => {
     await expect(storedIds()).resolves.toStrictEqual(['a']);
   });
 
+  it('returns what reverts an edit it applies', async () => {
+    const { history } = makeHistory();
+
+    await expect(history.apply(putting('a'))).resolves.toStrictEqual({
+      intent: 'put a',
+      tokenAnalyses: { puts: [], deletes: ['a'] },
+    });
+  });
+
   it('marks the draft unsaved', async () => {
     const { history, storedDirty } = makeHistory();
 
@@ -73,21 +82,21 @@ describe('EditHistory', () => {
     await expect(storedDirty()).resolves.toBe(false);
   });
 
-  it('undoes edits latest first, returning what reverted each', async () => {
+  it('undoes edits latest first, returning what reverted each and what reverts that', async () => {
     const { history, storedIds } = makeHistory();
     await history.apply(putting('a'));
     await history.apply(putting('b'));
 
     await expect(history.undo()).resolves.toStrictEqual({
-      intent: 'put b',
-      tokenAnalyses: { puts: [], deletes: ['b'] },
+      changes: { intent: 'put b', tokenAnalyses: { puts: [], deletes: ['b'] } },
+      inverse: putting('b'),
     });
     await expect(storedIds()).resolves.toStrictEqual(['a']);
     await history.undo();
     await expect(storedIds()).resolves.toStrictEqual([]);
   });
 
-  it('redoes undone edits latest undone first, returning what made each again', async () => {
+  it('redoes undone edits latest undone first, returning what made each again and what reverts that', async () => {
     const { history, storedIds } = makeHistory();
     await history.apply(putting('a'));
     await history.apply(putting('b'));
@@ -95,8 +104,8 @@ describe('EditHistory', () => {
     await history.undo();
 
     await expect(history.redo()).resolves.toStrictEqual({
-      intent: 'put a',
-      tokenAnalyses: { puts: [payload('a')], deletes: [] },
+      changes: { intent: 'put a', tokenAnalyses: { puts: [payload('a')], deletes: [] } },
+      inverse: { intent: 'put a', tokenAnalyses: { puts: [], deletes: ['a'] } },
     });
     await expect(storedIds()).resolves.toStrictEqual(['a']);
     await history.redo();
@@ -169,6 +178,46 @@ describe('EditHistory', () => {
 
     await history.redo();
     await expect(storedIds()).resolves.toStrictEqual(['a']);
+  });
+});
+
+describe("EditHistory's count of applies", () => {
+  it('counts each edit, undo and redo it applies', async () => {
+    const { history } = makeHistory();
+
+    await history.apply(putting('a'));
+    await history.undo();
+    await history.redo();
+
+    expect(history.applied).toBe(3);
+  });
+
+  it('counts an edit whose marking the draft saved fails', async () => {
+    const { history, repository } = makeHistory();
+    jest.spyOn(repository, 'markClean').mockRejectedValue(new Error('disk full'));
+
+    await expect(history.apply(putting('a'), { unsavedMark: 'clear' })).rejects.toThrow(
+      'disk full',
+    );
+
+    expect(history.applied).toBe(1);
+  });
+
+  it('counts no edit that fails to apply', async () => {
+    const { history, repository } = makeHistory();
+    jest.spyOn(repository, 'apply').mockRejectedValue(new Error('disk full'));
+
+    await expect(history.apply(putting('a'))).rejects.toThrow('disk full');
+
+    expect(history.applied).toBe(0);
+  });
+
+  it('counts no undo when there is nothing to undo', async () => {
+    const { history } = makeHistory();
+
+    await history.undo();
+
+    expect(history.applied).toBe(0);
   });
 });
 
@@ -389,7 +438,7 @@ describe('EditHistory re-anchoring', () => {
     await history.apply(linking(betaLink(before, 'ta-2')));
     await pass(after);
 
-    const undone = await history.undo();
+    const undone = (await history.undo())?.changes;
 
     expect(undone?.intent).toBe('link ta-2');
     expect(undone?.tokenAnalysisLinks?.puts).toEqual([
@@ -521,9 +570,8 @@ describe('EditHistory re-anchoring', () => {
     await history.apply(linking(betaLink(genesis('alpha beta'), 'ta-1')));
     history.recordPass(genesis('new alpha beta'));
 
-    await expect(history.undo()).resolves.toStrictEqual({
-      intent: 'link ta-1',
-      tokenAnalysisLinks: { puts: [], deletes: ['tl-beta'] },
+    await expect(history.undo()).resolves.toMatchObject({
+      changes: { intent: 'link ta-1', tokenAnalysisLinks: { puts: [], deletes: ['tl-beta'] } },
     });
   });
 });

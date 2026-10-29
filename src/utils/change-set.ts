@@ -7,6 +7,14 @@ export type AppliedChanges = {
   inverse: ChangeSet;
 };
 
+/** Each record that a kind's changes put, and each that the changes' inverse restores. */
+export function touched<T>(
+  changes: RecordChanges<T> | undefined,
+  inverse: RecordChanges<T> | undefined,
+): T[] {
+  return [...(changes?.puts ?? []), ...(inverse?.puts ?? [])];
+}
+
 /** Whether `changes` change no record, the scope's record included. */
 export function isEmptyChangeSet(changes: ChangeSet): boolean {
   return Object.keys(changes).every((key) => key === 'intent');

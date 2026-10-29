@@ -1,15 +1,26 @@
-import type { Book } from 'interlinearizer';
+import type {
+  AnalysisChange,
+  Book,
+  ChangeId,
+  SegmentationDelta,
+  SessionAnalysisChange,
+} from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
+import type { CommandReply } from '../types/command-reply';
 import { booksMissingFrom } from '../utils/analysis-book';
 import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { missingBook } from '../utils/reanchor-draft';
+import { segmentationForBook } from '../utils/segmentation';
+import { describeChange, describeScriptureEdit, type AppliedChange } from './analysisChanges';
 import { assertApprovalRule } from './commands/approvalRule';
 import { ChangeBuffer } from './commands/changeBuffer';
+import { settleAll } from './draftRepository';
 import { EditHistory, type EditOptions } from './editHistory';
 import { reanchorRestored, reanchorStoredBook } from './reanchorPasses';
+import { readTouchedPoolBuckets } from './sessionPages';
 
 /** BCP 47 tag for a language that cannot be determined. */
 export const UNDETERMINED_LANGUAGE = 'und';
@@ -36,6 +47,24 @@ export type OpenedSession = {
   /** Whether any segment of the opened analysis had a free translation when it opened. */
   hasFreeTranslations: boolean;
 };
+
+/** How a session applies an edit. */
+export type SessionEditOptions = {
+  /** As {@link EditOptions}; given as a function, it is read from the session in the edit's turn. */
+  unsavedMark?: EditOptions['unsavedMark'] | ((session: Session) => EditOptions['unsavedMark']);
+  changeId?: ChangeId;
+};
+
+/** What an edit command returns besides what it stages. */
+export type EditOutcome = {
+  /** The books to re-anchor the draft to, with the staged changes in place. */
+  reanchorTo?: readonly Book[];
+  /** Whether any segment of the draft that a discard leaves has a free translation. */
+  hasFreeTranslations?: boolean;
+};
+
+/** What a session answers an edit with. */
+export type EditReply = CommandReply & Pick<EditOutcome, 'hasFreeTranslations'>;
 
 /** An open session, as seen by the commands sent to it. */
 export type Session = {
@@ -73,16 +102,87 @@ export interface SessionHost {
   startTextRead(sourceProjectId: string): Promise<void>;
   /** Ends the source project's whole-text read. */
   stopTextRead(sourceProjectId: string): Promise<void>;
+  /**
+   * The source project's book as `segmentation` segments it, or `undefined` when the host holds no
+   * tokenized copy of the book. Reads nothing.
+   */
+  heldBook(
+    sourceProjectId: string,
+    bookId: string,
+    segmentation: SegmentationDelta | undefined,
+  ): Book | undefined;
+  /** Tells listeners what a change to a session's analysis touched. */
+  reportChange(change: SessionAnalysisChange): void;
+}
+
+/** How many of a session's latest replies it keeps, to answer an edit sent again. */
+const KEPT_REPLIES = 16;
+
+/**
+ * Describes what an applied change touched, reading each book as segmented by the boundaries that
+ * the change leaves.
+ */
+async function describeApplied(
+  host: SessionHost,
+  session: Session,
+  applied: AppliedChange,
+): Promise<AnalysisChange> {
+  const { segmentation } = await session.repository.getScope();
+  const { sourceProjectId } = session.scope;
+  return describeChange(session.repository, applied, (bookId) =>
+    host.heldBook(sourceProjectId, bookId, segmentationForBook(segmentation, bookId)),
+  );
+}
+
+/** Reports `change` unless it touched nothing. */
+function report(host: SessionHost, session: Session, change: AnalysisChange, changeId: string) {
+  if (change.books.length === 0 && change.analysisIds.length === 0 && change.queries.length === 0)
+    return;
+  host.reportChange({ sessionId: session.id, changeId, ...change });
 }
 
 /**
- * Re-anchors the session's draft to `book`. The pass is recorded in the session's history only when
- * the draft linked into the book or held boundary edits in it, so an undo or redo re-anchors only
- * those books.
+ * Reports what an applied change touched, reading each book as segmented by the boundaries that the
+ * change leaves.
  */
-async function reanchorNow(session: Session, book: Book): Promise<void> {
-  const { heldAnalysis } = await reanchorStoredBook(session.repository, book);
+async function reportApplied(
+  host: SessionHost,
+  session: Session,
+  applied: AppliedChange,
+  changeId: string,
+): Promise<void> {
+  report(host, session, await describeApplied(host, session, applied), changeId);
+}
+
+/** Replies to an applied change, reporting what it touched. */
+async function replyTo(
+  host: SessionHost,
+  session: Session,
+  applied: AppliedChange,
+  changeId: string,
+): Promise<CommandReply> {
+  const pool = await readTouchedPoolBuckets(session.repository, applied);
+  await reportApplied(host, session, applied, changeId);
+  return { changeId, changes: applied.changes, ...pool };
+}
+
+/**
+ * Re-anchors the session's draft to `book`, reporting what the pass changed, or adding it to
+ * `unreported` when given. The pass is recorded in the session's history only when the draft linked
+ * into the book or held boundary edits in it, so an undo or redo re-anchors only those books.
+ */
+async function reanchorNow(
+  host: SessionHost,
+  session: Session,
+  book: Book,
+  unreported?: AnalysisChange[],
+): Promise<void> {
+  const { heldAnalysis, applied } = await reanchorStoredBook(session.repository, book);
   if (heldAnalysis) session.history.recordPass(book);
+  if (!applied) return;
+  const change = await describeApplied(host, session, applied);
+  if (unreported) unreported.push(change);
+  else report(host, session, change, crypto.randomUUID());
 }
 
 /**
@@ -96,7 +196,7 @@ async function applyStaged(
   staged: ChangeSet,
   reanchorTo: void | readonly Book[],
   options: EditOptions | undefined,
-): Promise<ChangeSet> {
+): Promise<AppliedChange> {
   await assertApprovalRule(buffer, session.repository);
   const scope = staged.scope ?? (await session.repository.getScope());
   if (scope.analysisLanguages.length === 0) {
@@ -107,8 +207,22 @@ async function applyStaged(
       ? await reanchorRestored(session.repository)(staged, reanchorTo)
       : undefined;
   const changes = reanchored ? mergeChangeSets(staged, reanchored) : staged;
-  await session.history.apply(changes, options);
-  return changes;
+  const inverse = await session.history.apply(changes, options);
+  return { changes, inverse };
+}
+
+/** Runs `step`, calling `markApplied` when the session's history applied anything meanwhile. */
+async function noticingApplies<T>(
+  session: Session,
+  markApplied: () => void,
+  step: () => Promise<T>,
+): Promise<T> {
+  const before = session.history.applied;
+  try {
+    return await step();
+  } finally {
+    if (session.history.applied !== before) markApplied();
+  }
 }
 
 type OpenSession = {
@@ -117,6 +231,13 @@ type OpenSession = {
   queue: Promise<unknown>;
   /** Settles once the session is closed; set from the moment a close is sent. */
   closed?: Promise<void>;
+  /**
+   * The latest replies, by change id, oldest first. A reply that rejects before its change applied
+   * anything is dropped.
+   */
+  replies: Map<string, Promise<EditReply | undefined>>;
+  /** What each pass to a book's edited text changed, by book, until the edit is reported. */
+  editPasses: Map<string, AnalysisChange[]>;
 };
 
 /**
@@ -144,8 +265,9 @@ export class AnalysisSessions {
    * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
    * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
    * Opening closes the source's earlier session, if any. The new session starts on what storage
-   * holds, with nothing to undo. Opening also starts a fresh read of the source's whole text, which
-   * lasts until the session closes.
+   * holds, with nothing to undo. Its first command waits while the repository builds its indexes.
+   * Opening also starts a fresh read of the source's whole text, which lasts until the session
+   * closes.
    *
    * The session starts on the opened draft's first analysis language. When the draft lists none, it
    * starts on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the
@@ -175,9 +297,16 @@ export class AnalysisSessions {
           opened.analysisLanguages[0] ??
           ((await this.host.getInterfaceLanguages())[0] || UNDETERMINED_LANGUAGE),
       };
-      const entry: OpenSession = { session, queue: Promise.resolve() };
+      const entry: OpenSession = {
+        session,
+        queue: Promise.resolve(),
+        replies: new Map(),
+        editPasses: new Map(),
+      };
       this.sessions.set(session.id, entry);
       this.sessionsBySource.set(sourceProjectId, entry);
+      // Builds the indexes ahead of the first command; the next lookup retries a failed build.
+      this.run(session.id, () => repository.getScope()).catch(() => {});
       await this.host.startTextRead(sourceProjectId);
       return {
         sessionId: session.id,
@@ -201,10 +330,15 @@ export class AnalysisSessions {
     return entry.closed;
   }
 
-  /** Closes every session, including any whose open is still underway. */
+  /**
+   * Closes every session, including any whose open is still underway. Settles after every close has
+   * settled.
+   *
+   * @throws Whatever a failing close throws.
+   */
   async closeAll(): Promise<void> {
     await Promise.all(this.lifecycles.values());
-    await Promise.all([...this.sessions.keys()].map((sessionId) => this.close(sessionId)));
+    await settleAll([...this.sessions.keys()].map((sessionId) => this.close(sessionId)));
   }
 
   /**
@@ -253,39 +387,56 @@ export class AnalysisSessions {
 
   /**
    * Runs `command` as one edit of the session's analysis, in the session's turn. What it stages
-   * applies as one undo step, marking the draft unsaved unless `options` says otherwise. `options`
-   * given as a function is read from the session in the edit's turn. A command staging nothing
-   * applies nothing. When the draft lists no analysis languages, the step adds the session's
-   * analysis language.
+   * applies as one undo step, marking the draft unsaved unless `options` says otherwise. A command
+   * staging nothing applies nothing. When the draft lists no analysis languages, the step adds the
+   * session's analysis language.
    *
-   * When `command` returns books, the step also re-anchors the draft, as the staged changes leave
-   * it, to each book's text in turn.
+   * When `command` returns books to re-anchor to, the step also re-anchors the draft, as the staged
+   * changes leave it, to each book's text in turn.
    *
-   * @returns The changes applied, naming `intent`.
+   * Reports what the changes touched. An edit sent again under a change id that the session has
+   * applied gets that edit's reply, or its error, and applies nothing.
+   *
+   * @returns The changes applied, naming `intent`, with the pool buckets they touched and the
+   *   `hasFreeTranslations` that `command` returns.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {ApprovalRuleError} If the changes would give a token or segment a second approved
    *   link, or put a token in a second approved phrase; nothing is applied.
    * @throws {Error} If the session is not open.
    * @throws Whatever the command, reading the draft, or applying its changes throws; nothing is
    *   applied.
+   * @throws Whatever reading the touched pool buckets or describing the change throws; the changes
+   *   stay applied.
    * @throws Whatever marking the draft saved throws; the changes stay applied.
    */
-  edit(
+  async edit(
     sessionId: string,
     intent: string,
-    command: (buffer: ChangeBuffer, session: Session) => Promise<void | readonly Book[]>,
-    editOptions?: EditOptions | ((session: Session) => EditOptions),
-  ): Promise<ChangeSet> {
-    return this.runEdit(sessionId, async (session) => {
-      const options = typeof editOptions === 'function' ? editOptions(session) : editOptions;
-      const buffer = new ChangeBuffer(session.repository);
-      const reanchorTo = await command(buffer, session);
-      const staged = buffer.toChangeSet(intent);
-      if (!isEmptyChangeSet(staged))
-        return applyStaged(session, buffer, staged, reanchorTo, options);
-      if (options?.unsavedMark === 'clear') await session.history.markRestoredClean();
-      return staged;
-    });
+    command: (buffer: ChangeBuffer, session: Session) => Promise<void | EditOutcome>,
+    options?: SessionEditOptions,
+  ): Promise<EditReply> {
+    const { changeId = crypto.randomUUID(), unsavedMark } = options ?? {};
+    const reply = await this.once(sessionId, changeId, (markApplied) =>
+      this.runEdit(sessionId, (session) =>
+        noticingApplies(session, markApplied, async (): Promise<EditReply> => {
+          const editOptions: EditOptions = {
+            unsavedMark: typeof unsavedMark === 'function' ? unsavedMark(session) : unsavedMark,
+          };
+          const buffer = new ChangeBuffer(session.repository);
+          const { reanchorTo, ...extra } = (await command(buffer, session)) ?? {};
+          const staged = buffer.toChangeSet(intent);
+          if (!isEmptyChangeSet(staged)) {
+            const applied = await applyStaged(session, buffer, staged, reanchorTo, editOptions);
+            return { ...(await replyTo(this.host, session, applied, changeId)), ...extra };
+          }
+          if (editOptions.unsavedMark === 'clear') await session.history.markRestoredClean();
+          return { changeId, changes: staged, poolBuckets: {}, poolAnalyses: [], ...extra };
+        }),
+      ),
+    );
+    /* v8 ignore next -- defensive: only a caller reusing the change id of an empty undo gets none */
+    if (!reply) throw new Error(`Interlinearizer: change ${changeId} was not an edit`);
+    return reply;
   }
 
   /**
@@ -313,16 +464,25 @@ export class AnalysisSessions {
    * text of each book re-anchored since. Marks the draft saved when it restores content the draft
    * was saved with, and unsaved otherwise.
    *
-   * @returns The changes that reverted the edit and re-anchored what the undo restored, or
-   *   `undefined` when there is none.
+   * Reports what the undo touched under `changeId`, named afresh when absent. An undo sent again
+   * under a change id the session has applied gets that undo's reply, or its error, undoing nothing
+   * more.
+   *
+   * @returns The changes that reverted the edit and re-anchored what the undo restored, with the
+   *   pool buckets they touched, or `undefined` when there is none.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
    * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit
    *   stays the next to undo.
+   * @throws Whatever reading the touched pool buckets or describing the change throws; the undo
+   *   stays applied.
    * @throws Whatever marking the draft saved throws; the undo stays applied.
    */
-  undo(sessionId: string): Promise<ChangeSet | undefined> {
-    return this.runEdit(sessionId, (session) => session.history.undo());
+  undo(
+    sessionId: string,
+    changeId: string = crypto.randomUUID(),
+  ): Promise<CommandReply | undefined> {
+    return this.moveThroughHistory(sessionId, changeId, (history) => history.undo());
   }
 
   /**
@@ -330,16 +490,30 @@ export class AnalysisSessions {
    * each book re-anchored since. Marks the draft saved when it restores content the draft was saved
    * with, and unsaved otherwise.
    *
-   * @returns The changes that redid the edit and re-anchored what the redo restored, or `undefined`
-   *   when there is none.
+   * Reports what the redo touched under `changeId`, named afresh when absent. A redo sent again
+   * under a change id the session has applied gets that redo's reply, or its error, redoing nothing
+   * more.
+   *
+   * @returns The changes that redid the edit and re-anchored what the redo restored, with the pool
+   *   buckets they touched, or `undefined` when there is none.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
    * @throws Whatever re-anchoring or applying the changes throws; nothing is applied, and the edit
    *   stays the next to redo.
+   * @throws Whatever reading the touched pool buckets or describing the change throws; the redo
+   *   stays applied.
    * @throws Whatever marking the draft saved throws; the redo stays applied.
    */
-  redo(sessionId: string): Promise<ChangeSet | undefined> {
-    return this.runEdit(sessionId, (session) => session.history.redo());
+  redo(
+    sessionId: string,
+    changeId: string = crypto.randomUUID(),
+  ): Promise<CommandReply | undefined> {
+    return this.moveThroughHistory(sessionId, changeId, (history) => history.redo());
+  }
+
+  /** The id of the session open on the source project, or `undefined` when the source has none open. */
+  sessionIdFor(sourceProjectId: string): string | undefined {
+    return this.sessionsBySource.get(sourceProjectId)?.session.id;
   }
 
   /**
@@ -347,12 +521,36 @@ export class AnalysisSessions {
    * turn and as no undo step. Where the draft links into the book or holds boundary edits in it,
    * what a later undo or redo restores is re-anchored to it too. A book the text lacks is passed as
    * a book with no segments. Does nothing when the source has no session open, or only a read-only
-   * one.
+   * one. When `edited`, what the pass changes is reported with the edit to the book's text, by
+   * {@link reportScriptureEdit}, rather than on its own.
    *
    * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
+   * @throws Whatever describing the applied changes throws; the changes stay applied.
    */
-  reanchorBook(sourceProjectId: string, book: Book): Promise<void> {
-    return this.runOnWritable(sourceProjectId, (session) => reanchorNow(session, book));
+  reanchorBook(sourceProjectId: string, book: Book, edited = false): Promise<void> {
+    return this.runOnWritable(sourceProjectId, ({ session, editPasses }) => {
+      if (!edited) return reanchorNow(this.host, session, book);
+      const unreported = editPasses.get(book.bookRef) ?? [];
+      editPasses.set(book.bookRef, unreported);
+      return reanchorNow(this.host, session, book, unreported);
+    });
+  }
+
+  /**
+   * Reports an edit to the source project's book through the session open on the source, in that
+   * session's turn. The report names the book whole, along with what each pass to the edited text
+   * changed. Does nothing when the source has no session open.
+   *
+   * @throws {Error} If the session is closing.
+   */
+  reportScriptureEdit(sourceProjectId: string, bookId: string): Promise<void> {
+    const entry = this.sessionsBySource.get(sourceProjectId);
+    if (!entry) return Promise.resolve();
+    return this.run(entry.session.id, async (session) => {
+      const passes = entry.editPasses.get(bookId) ?? [];
+      entry.editPasses.delete(bookId);
+      report(this.host, session, describeScriptureEdit(bookId, passes), crypto.randomUUID());
+    });
   }
 
   /**
@@ -363,10 +561,11 @@ export class AnalysisSessions {
    *   re-anchored.
    */
   reanchorMissingBooks(sourceProjectId: string, textBookIds: readonly string[]): Promise<void> {
-    return this.runOnWritable(sourceProjectId, async (session) => {
+    return this.runOnWritable(sourceProjectId, async ({ session }) => {
       const missing = booksMissingFrom(await session.repository.findLinkedBooks(), textBookIds);
       await missing.reduce<Promise<void>>(
-        (previous, bookCode) => previous.then(() => reanchorNow(session, missingBook(bookCode))),
+        (previous, bookCode) =>
+          previous.then(() => reanchorNow(this.host, session, missingBook(bookCode))),
         Promise.resolve(),
       );
     });
@@ -380,14 +579,57 @@ export class AnalysisSessions {
     await this.sessionsBySource.get(sourceProjectId)?.queue;
   }
 
+  /** Moves through the session's history by `move`, as {@link undo} describes. */
+  private moveThroughHistory(
+    sessionId: string,
+    changeId: string,
+    move: (history: EditHistory) => Promise<AppliedChange | undefined>,
+  ): Promise<CommandReply | undefined> {
+    return this.once(sessionId, changeId, (markApplied) =>
+      this.runEdit(sessionId, (session) =>
+        noticingApplies(session, markApplied, async () => {
+          const applied = await move(session.history);
+          return applied && replyTo(this.host, session, applied, changeId);
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Answers with the reply to `changeId`, running `send` only when the session keeps no reply to
+   * that change id. Forgets a reply that rejects before `send` marks its change applied, so that
+   * the change can be sent again. Keeps one that rejects after, so that sending it again applies
+   * nothing.
+   */
+  private once<R extends EditReply | undefined>(
+    sessionId: string,
+    changeId: string,
+    send: (markApplied: () => void) => Promise<R>,
+  ): Promise<R | EditReply | undefined> {
+    let applied = false;
+    const entry = this.sessions.get(sessionId);
+    const kept = entry?.replies.get(changeId);
+    if (kept) return kept;
+    const reply = send(() => {
+      applied = true;
+    });
+    if (!entry) return reply;
+    entry.replies.set(changeId, reply);
+    if (entry.replies.size > KEPT_REPLIES) entry.replies.delete([...entry.replies.keys()][0]);
+    reply.catch(() => {
+      if (!applied && entry.replies.get(changeId) === reply) entry.replies.delete(changeId);
+    });
+    return reply;
+  }
+
   /** Runs `command` on the source project's session unless it has none open or only a read-only one. */
   private runOnWritable(
     sourceProjectId: string,
-    command: (session: Session) => Promise<void>,
+    command: (entry: OpenSession) => Promise<void>,
   ): Promise<void> {
     const entry = this.sessionsBySource.get(sourceProjectId);
     if (!entry || entry.session.repository.capabilities.readOnly) return Promise.resolve();
-    return this.run(entry.session.id, command);
+    return this.run(entry.session.id, () => command(entry));
   }
 
   /**

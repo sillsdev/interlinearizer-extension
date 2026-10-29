@@ -7,6 +7,7 @@ import type {
 } from '../types/analysis-repository';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
+import { jsonCopy } from '../utils/json-copy';
 import { AnalysisIndex } from './analysisIndex';
 import { IndexedRepository, type IndexedDraft } from './indexedRepository';
 
@@ -24,10 +25,16 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
   private readonly revision: () => number;
 
   /**
-   * The import as first read for a lookup, with the index over its records; dropped once a sync
+   * The import that lookups answer from, with the index over its records; dropped once a sync
    * replaces the import or a deletion removes it.
    */
   private loaded: (IndexedDraft & { revision: number }) | undefined;
+
+  /**
+   * A copy of what {@link exportAll} read while no index was kept, for the next index build unless a
+   * sync has landed since.
+   */
+  private exported: { draft: DraftProject; revision: number } | undefined;
 
   /**
    * @param interlinearProjectId - Id of the project to read, which must be a Paratext 9 import.
@@ -56,7 +63,10 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
    * @throws Whatever reading the project throws.
    */
   async exportAll(): Promise<DraftExport> {
-    return { draft: await this.readImport(), unreadableBooks: [] };
+    const revision = this.revision();
+    const draft = await this.readImport();
+    if (!this.keptIndex()) this.exported = { draft: jsonCopy(draft), revision };
+    return { draft, unreadableBooks: [] };
   }
 
   /**
@@ -64,8 +74,8 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
    *
    * @throws Whatever {@link exportAll} throws.
    */
-  exportForCopy(): Promise<DraftExport> {
-    return this.exportAll();
+  async exportForCopy(): Promise<DraftExport> {
+    return { draft: await this.readImport(), unreadableBooks: [] };
   }
 
   /** @throws {ReadOnlyAnalysisError} Always; nothing is written. */
@@ -87,9 +97,13 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
   protected async indexed(): Promise<IndexedDraft> {
     const kept = this.keptIndex();
     if (kept) return kept;
+    const { exported } = this;
+    this.exported = undefined;
     // The revision is taken before the read, so a sync landing during it forces another.
-    const revision = this.revision();
-    const draft = await this.readImport();
+    const { draft, revision } =
+      exported?.revision === this.revision()
+        ? exported
+        : { revision: this.revision(), draft: await this.readImport() };
     this.loaded = { draft, revision, index: new AnalysisIndex(draft.analysis) };
     return this.loaded;
   }

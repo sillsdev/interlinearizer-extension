@@ -7,6 +7,7 @@ import {
   isEmptyChangeSet,
   mergeChangeSets,
   scopeRecordOf,
+  touched,
 } from '../../utils/change-set';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
@@ -285,5 +286,20 @@ describe('mergeChangeSets', () => {
       tokenAnalyses: { puts: [payload('a')], deletes: [] },
       segmentAnalyses: { puts: [], deletes: ['s'] },
     });
+  });
+});
+
+describe('touched', () => {
+  it("lists the changes' puts, then the inverse's", () => {
+    const put = { id: 'a' };
+    const restored = { id: 'b' };
+
+    expect(
+      touched({ puts: [put], deletes: ['b'] }, { puts: [restored], deletes: ['a'] }),
+    ).toStrictEqual([put, restored]);
+  });
+
+  it('lists nothing for a kind that neither side changes', () => {
+    expect(touched(undefined, undefined)).toStrictEqual([]);
   });
 });

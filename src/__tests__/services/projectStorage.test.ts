@@ -2996,6 +2996,11 @@ describe('projectStorage', () => {
         1,
       ],
       ['findPhraseAnalysesByForm', (r: AnalysisRepository) => r.findPhraseAnalysesByForm(['x']), 0],
+      [
+        'countApprovals',
+        (r: AnalysisRepository) => r.countApprovals(['analysis-GEN']).then(Object.keys),
+        1,
+      ],
       ['checkIndexes', (r: AnalysisRepository) => r.checkIndexes(), 0],
       [
         'getScope',

@@ -28,11 +28,11 @@ import { IndexedRepository, type IndexedDraft } from './indexedRepository';
 import { draftAnalysisKey, draftJournalKey, draftKey } from './storageKeys';
 
 /**
- * Awaits every operation, so a caller that rejects leaves none of them still in flight.
+ * Waits for every operation to settle, so that a rejection leaves none of them still in flight.
  *
  * @throws Whatever the first rejecting operation threw, in argument order.
  */
-async function settleAll(operations: readonly Promise<unknown>[]): Promise<void> {
+export async function settleAll(operations: readonly Promise<unknown>[]): Promise<void> {
   const outcomes = await Promise.allSettled(operations);
   const failure = outcomes.find((outcome) => outcome.status === 'rejected');
   if (failure?.status === 'rejected') throw failure.reason;
@@ -146,6 +146,12 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    */
   private current: IndexedDraft | undefined;
 
+  /**
+   * A copy of what {@link exportAll} last loaded, until an index build takes it or a whole save
+   * drops it.
+   */
+  private exported: DraftProject | undefined;
+
   constructor(storage: KeyValueStorage, sourceProjectId: string, logger: WarningLogger) {
     super();
     this.storage = storage;
@@ -176,7 +182,10 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    */
   async exportAll(): Promise<DraftExport> {
     this.current = undefined;
-    return this.read(false);
+    this.exported = undefined;
+    const loaded = await this.read(false);
+    this.exported = jsonCopy(loaded.draft);
+    return loaded;
   }
 
   /**
@@ -223,6 +232,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     if (this.current) {
       this.current = { ...this.current, draft: { ...this.current.draft, dirty: false } };
     }
+    if (this.exported) this.exported = { ...this.exported, dirty: false };
   }
 
   /**
@@ -252,6 +262,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    */
   async replaceAll(draft: DraftProject, options?: ReplaceAllOptions): Promise<string[]> {
     this.current = undefined;
+    this.exported = undefined;
     if (!this.loaded) {
       try {
         await this.read(false);
@@ -273,10 +284,11 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Applies the changes to the draft this instance keeps, loading the stored draft first when it
-   * keeps none, as after {@link exportAll} or a whole save. Rewrites only the books whose content
-   * the changes alter, so an edit to a payload rewrites every book linking it. A draft loaded
-   * inline is written whole. Marks the draft unsaved unless `options` keeps the mark.
+   * Applies the changes to the draft this instance keeps. When it keeps none, the draft comes from
+   * what {@link exportAll} loaded since the last whole save, or else from storage. Rewrites only the
+   * books whose content the changes alter, so an edit to a payload rewrites every book linking it.
+   * A draft loaded inline is written whole. Marks the draft unsaved unless `options` keeps the
+   * mark.
    *
    * After a failed apply, the next apply to succeed also brings back in step any book the failure
    * left out of step with the draft. In the same instance, the next apply restores the book as it
@@ -324,14 +336,16 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * The draft this instance keeps and the index over its records, loading the draft from storage
-   * and building the index when none is kept.
+   * The draft this instance keeps and the index over its records. When none is kept, the draft is
+   * what the latest {@link exportAll} loaded. If that call never ran or failed, or a whole save came
+   * after it, the draft is read afresh from storage.
    *
    * @throws Whatever {@link exportAll} throws.
    */
   protected async indexed(): Promise<IndexedDraft> {
     if (!this.current) {
-      const { draft } = await this.read(false);
+      const draft = this.exported ?? (await this.read(false)).draft;
+      this.exported = undefined;
       this.current = { draft, index: new AnalysisIndex(draft.analysis) };
     }
     return this.current;

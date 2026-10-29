@@ -17,6 +17,9 @@ import type {
 } from '../types/segment-pages';
 import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
+import { indexSegmentTokens, type TokenIndexes } from '../utils/book-indexes';
+import { RecordTable } from '../utils/record-table';
+import { placedAmong, placedIdsIn } from '../utils/stale-free-translations';
 
 /**
  * What a reply leaves to fetch again: nothing, the held pages, the held pages with the outline's
@@ -24,28 +27,13 @@ import { normalizeSurfaceForm } from '../utils/analysis-identity';
  */
 export type Refetch = 'none' | 'pages' | 'placement' | 'outline';
 
-/** Records of one kind by id. */
-type Table<T> = Map<string, T>;
-
-function fileUnder(index: Map<string, Set<string>>, key: string, id: string): void {
-  const ids = index.get(key) ?? new Set<string>();
-  ids.add(id);
-  index.set(key, ids);
-}
-
-function unfileFrom(index: Map<string, Set<string>>, key: string, id: string): void {
-  const ids = index.get(key);
-  ids?.delete(id);
-  if (ids?.size === 0) index.delete(key);
-}
-
-function idsUnder(index: Map<string, Set<string>>, keys: readonly string[]): string[] {
-  return [...new Set(keys.flatMap((key) => [...(index.get(key) ?? [])]))];
-}
-
-function recordsOf<T>(table: Table<T>, ids: readonly string[]): T[] {
-  /* v8 ignore next -- an id comes from an index, or a link, over records the cache holds */
-  return [...new Set(ids)].flatMap((id) => table.get(id) ?? []);
+function firstWordsOf({ segments }: BookOutline): number[] {
+  let words = 0;
+  return segments.map(({ wordTokenCount }) => {
+    const first = words;
+    words += wordTokenCount;
+    return first;
+  });
 }
 
 /**
@@ -66,23 +54,37 @@ export class RecordCache {
 
   private readonly segments = new Map<number, Segment>();
 
-  private readonly tokenLinks: Table<TokenAnalysisLink> = new Map();
+  private readonly tokenLinks = new RecordTable<TokenAnalysisLink, 'tokenRef'>(
+    'tokenLink',
+    { tokenRef: ({ token }) => [token.tokenRef] },
+    [],
+  );
 
-  private readonly phraseLinks: Table<PhraseAnalysisLink> = new Map();
+  private readonly phraseLinks = new RecordTable<PhraseAnalysisLink, 'tokenRef'>(
+    'phraseLink',
+    { tokenRef: ({ tokens }) => tokens.map(({ tokenRef }) => tokenRef) },
+    [],
+  );
 
-  private readonly segmentLinks: Table<SegmentAnalysisLink> = new Map();
+  private readonly segmentLinks = new RecordTable<SegmentAnalysisLink, 'segmentId' | 'analysisId'>(
+    'segmentLink',
+    { segmentId: ({ segmentId }) => [segmentId], analysisId: ({ analysisId }) => [analysisId] },
+    [],
+  );
 
-  private readonly tokenAnalyses: Table<TokenAnalysis> = new Map();
+  private readonly tokenAnalyses = new RecordTable<TokenAnalysis, never>('tokenAnalysis', {}, []);
 
-  private readonly phraseAnalyses: Table<PhraseAnalysis> = new Map();
+  private readonly phraseAnalyses = new RecordTable<PhraseAnalysis, never>(
+    'phraseAnalysis',
+    {},
+    [],
+  );
 
-  private readonly segmentAnalyses: Table<SegmentAnalysis> = new Map();
-
-  private readonly tokenLinksByRef = new Map<string, Set<string>>();
-
-  private readonly phraseLinksByRef = new Map<string, Set<string>>();
-
-  private readonly segmentLinksBySegment = new Map<string, Set<string>>();
+  private readonly segmentAnalyses = new RecordTable<SegmentAnalysis, never>(
+    'segmentAnalysis',
+    {},
+    [],
+  );
 
   private readonly poolBuckets = new Map<string, readonly PoolEntryRef[]>();
 
@@ -99,8 +101,12 @@ export class RecordCache {
   /** The revision that last wrote or removed each record or pool bucket, keyed by kind and id. */
   private readonly writtenAt = new Map<string, number>();
 
+  /** Where each outline segment's word tokens start among the book's word tokens. */
+  private firstWordAt: number[];
+
   constructor(outline: BookOutline) {
     this.outlineHeld = outline;
+    this.firstWordAt = firstWordsOf(outline);
   }
 
   /** The outline that the held pages were cut by. */
@@ -111,6 +117,7 @@ export class RecordCache {
   /** Takes a fresh outline and lets go of every held page, because their indexes may have moved. */
   replaceOutline(outline: BookOutline): void {
     this.outlineHeld = outline;
+    this.firstWordAt = firstWordsOf(outline);
     this.segments.clear();
     this.spanTokens.clear();
   }
@@ -150,9 +157,9 @@ export class RecordCache {
           segment.tokens
             .filter(isWordToken)
             .some(({ surfaceText }) => formSet.has(normalizeSurfaceForm(surfaceText))) ||
-          reads(recordsOf(this.tokenLinks, idsUnder(this.tokenLinksByRef, refs))) ||
-          reads(recordsOf(this.phraseLinks, idsUnder(this.phraseLinksByRef, refs))) ||
-          reads(recordsOf(this.segmentLinks, idsUnder(this.segmentLinksBySegment, [segment.id]))) ||
+          reads(this.tokenLinks.find('tokenRef', refs)) ||
+          reads(this.phraseLinks.find('tokenRef', refs)) ||
+          reads(this.segmentLinks.find('segmentId', [segment.id])) ||
           placed.some((id) => ids.has(id))
         );
       })
@@ -177,58 +184,46 @@ export class RecordCache {
     const refs = page.segments.flatMap((segment) => segment.tokens.map(({ ref }) => ref));
     const segmentIds = page.segments.map(({ id }) => id);
 
-    const putFresh = <T extends { id: string }>(
+    const putFresh = <T extends { id: string }, I extends string>(
       kind: string,
-      table: Table<T>,
+      table: RecordTable<T, I>,
       list: readonly T[],
     ) => {
       list.forEach((record) => {
-        if (isFresh(`${kind}:${record.id}`)) this.put(kind, table, record);
+        if (isFresh(`${kind}:${record.id}`)) table.put(record);
       });
       return new Set(list.map(({ id }) => id));
     };
-    const fetchedTokenLinks = putFresh('tokenLink', this.tokenLinks, analysis.tokenAnalysisLinks);
-    const fetchedPhraseLinks = putFresh(
-      'phraseLink',
-      this.phraseLinks,
-      analysis.phraseAnalysisLinks,
-    );
-    const fetchedSegmentLinks = putFresh(
-      'segmentLink',
-      this.segmentLinks,
-      analysis.segmentAnalysisLinks,
-    );
-    putFresh('tokenAnalysis', this.tokenAnalyses, analysis.tokenAnalyses);
-    putFresh('phraseAnalysis', this.phraseAnalyses, analysis.phraseAnalyses);
-    putFresh('segmentAnalysis', this.segmentAnalyses, analysis.segmentAnalyses);
-
-    const removeMissing = (
+    const removeMissing = <T extends { id: string }, I extends string>(
       kind: string,
-      table: Table<{ id: string }>,
-      held: Iterable<string>,
+      table: RecordTable<T, I>,
+      held: readonly T[],
       fetched: ReadonlySet<string>,
     ) =>
-      [...held].forEach((id) => {
-        if (!fetched.has(id) && isFresh(`${kind}:${id}`)) this.remove(kind, table, id);
+      held.forEach(({ id }) => {
+        if (!fetched.has(id) && isFresh(`${kind}:${id}`)) table.remove(id);
       });
     removeMissing(
       'tokenLink',
       this.tokenLinks,
-      idsUnder(this.tokenLinksByRef, refs),
-      fetchedTokenLinks,
+      this.tokenLinks.find('tokenRef', refs),
+      putFresh('tokenLink', this.tokenLinks, analysis.tokenAnalysisLinks),
     );
     removeMissing(
       'phraseLink',
       this.phraseLinks,
-      idsUnder(this.phraseLinksByRef, refs),
-      fetchedPhraseLinks,
+      this.phraseLinks.find('tokenRef', refs),
+      putFresh('phraseLink', this.phraseLinks, analysis.phraseAnalysisLinks),
     );
     removeMissing(
       'segmentLink',
       this.segmentLinks,
-      idsUnder(this.segmentLinksBySegment, segmentIds),
-      fetchedSegmentLinks,
+      this.segmentLinks.find('segmentId', segmentIds),
+      putFresh('segmentLink', this.segmentLinks, analysis.segmentAnalysisLinks),
     );
+    putFresh('tokenAnalysis', this.tokenAnalyses, analysis.tokenAnalyses);
+    putFresh('phraseAnalysis', this.phraseAnalyses, analysis.phraseAnalyses);
+    putFresh('segmentAnalysis', this.segmentAnalyses, analysis.segmentAnalyses);
 
     Object.entries(analysis.poolBuckets).forEach(([form, bucket]) => {
       if (isFresh(`bucket:${form}`)) this.poolBuckets.set(form, bucket);
@@ -242,29 +237,24 @@ export class RecordCache {
   /**
    * Applies a command's reply.
    *
-   * @returns `'outline'` when the reply moved the book's boundaries. `'placement'` when the reply
-   *   touched a stale free translation, or removed a free translation that the cache does not hold.
-   *   The cache cannot place stale translations or count orphaned cards. `'pages'` when the reply
-   *   put a phrase link over a token that the cache does not hold. Otherwise `'none'`.
+   * @returns The first that applies: `'outline'` when the reply moved the book's boundaries,
+   *   `'placement'` when it put or removed a stale free translation in the book, and `'pages'` when
+   *   it put a phrase link over a token the cache does not hold. Otherwise `'none'`.
    */
-  apply({ changes, poolBuckets, poolAnalyses, resegmentedBooks }: CommandReply): Refetch {
+  apply({
+    changes,
+    poolBuckets,
+    poolAnalyses,
+    resegmentedBooks,
+    staleTranslationBooks,
+  }: CommandReply): Refetch {
     this.revision += 1;
-    const segmentLinks = changes.segmentAnalysisLinks;
-    const reachesStale =
-      [
-        ...(segmentLinks?.puts ?? []),
-        ...(segmentLinks?.puts ?? []).flatMap(({ id }) => this.segmentLinks.get(id) ?? []),
-      ].some(({ status }) => status === 'stale') ||
-      (segmentLinks?.deletes ?? []).some((id) => {
-        const held = this.segmentLinks.get(id);
-        return !held || held.status === 'stale';
-      });
     const reachesUnheld = (changes.phraseAnalysisLinks?.puts ?? []).some(({ tokens }) =>
       tokens.some(({ tokenRef }) => !this.spanTokens.has(tokenRef)),
     );
     let refetch: Refetch = 'none';
     if (resegmentedBooks.includes(this.outlineHeld.bookRef)) refetch = 'outline';
-    else if (reachesStale) refetch = 'placement';
+    else if (staleTranslationBooks.includes(this.outlineHeld.bookRef)) refetch = 'placement';
     else if (reachesUnheld) refetch = 'pages';
 
     this.write('tokenLink', this.tokenLinks, changes.tokenAnalysisLinks);
@@ -296,25 +286,24 @@ export class RecordCache {
     }
     const tokens = segments.flatMap((segment) => segment.tokens);
     const refs = tokens.map(({ ref }) => ref);
-    const tokenAnalysisLinks = recordsOf(this.tokenLinks, idsUnder(this.tokenLinksByRef, refs));
-    const phraseAnalysisLinks = recordsOf(this.phraseLinks, idsUnder(this.phraseLinksByRef, refs));
-    const staleFreeTranslations = this.placedAmong(segments, from === 0);
-    const placed = new Set(
-      [
-        ...Object.values(staleFreeTranslations.bySegment),
-        ...Object.values(staleFreeTranslations.orphanedAfter),
-        staleFreeTranslations.orphanedAhead,
-      ].flat(),
+    const tokenAnalysisLinks = this.tokenLinks.find('tokenRef', refs);
+    const phraseAnalysisLinks = this.phraseLinks.find('tokenRef', refs);
+    const staleFreeTranslations = placedAmong(
+      this.placement,
+      segments.map(({ id }) => id),
+      from === 0,
+      (id) => id,
     );
-    const segmentAnalysisLinks = recordsOf(this.segmentLinks, [
-      ...idsUnder(
-        this.segmentLinksBySegment,
-        segments.map(({ id }) => id),
-      ),
-      ...[...this.segmentLinks.values()]
-        .filter(({ analysisId }) => placed.has(analysisId))
-        .map(({ id }) => id),
-    ]);
+    const placed = placedIdsIn(staleFreeTranslations);
+    const segmentAnalysisLinks = this.segmentLinks.get(
+      [
+        ...this.segmentLinks.find(
+          'segmentId',
+          segments.map(({ id }) => id),
+        ),
+        ...this.segmentLinks.find('analysisId', [...placed]),
+      ].map(({ id }) => id),
+    );
     const poolBuckets: Record<string, readonly PoolEntryRef[]> = {};
     tokens.filter(isWordToken).forEach(({ surfaceText }) => {
       const form = normalizeSurfaceForm(surfaceText);
@@ -335,18 +324,16 @@ export class RecordCache {
         tokenAnalysisLinks,
         phraseAnalysisLinks,
         segmentAnalysisLinks,
-        tokenAnalyses: recordsOf(this.tokenAnalyses, [
+        tokenAnalyses: this.tokenAnalyses.get([
           ...tokenAnalysisLinks.map(({ analysisId }) => analysisId),
           ...Object.values(poolBuckets)
             .flat()
             .map(({ analysisId }) => analysisId),
         ]),
-        phraseAnalyses: recordsOf(
-          this.phraseAnalyses,
+        phraseAnalyses: this.phraseAnalyses.get(
           phraseAnalysisLinks.map(({ analysisId }) => analysisId),
         ),
-        segmentAnalyses: recordsOf(
-          this.segmentAnalyses,
+        segmentAnalyses: this.segmentAnalyses.get(
           segmentAnalysisLinks.map(({ analysisId }) => analysisId),
         ),
         poolBuckets,
@@ -359,20 +346,24 @@ export class RecordCache {
   /** Holds `segment` at outline index `index`, noting where each of its word tokens sits. */
   private holdSegment(index: number, segment: Segment): void {
     this.segments.set(index, segment);
-    let docOrder = this.outlineHeld.segments
-      .slice(0, index)
-      .reduce((sum, { wordTokenCount }) => sum + wordTokenCount, 0);
-    let previous: { charEnd: number } | undefined;
-    segment.tokens.filter(isWordToken).forEach((token) => {
-      const gapText = previous && segment.baselineText.slice(previous.charEnd, token.charStart);
-      this.spanTokens.set(token.ref, {
+    const indexes: TokenIndexes = {
+      tokenDocOrder: new Map(),
+      fullTokenOrder: new Map(),
+      gapTextByWordRef: new Map(),
+      tokenSegmentMap: new Map(),
+      wordTokenByRef: new Map(),
+    };
+    // Numbers tokens from 0 because only word positions are kept.
+    indexSegmentTokens(segment, indexes, this.firstWordAt[index], 0);
+    indexes.wordTokenByRef.forEach((token, ref) => {
+      const gapText = indexes.gapTextByWordRef.get(ref);
+      this.spanTokens.set(ref, {
         token,
         segmentId: segment.id,
-        docOrder,
+        /* v8 ignore next -- the walk numbers every word token it files */
+        docOrder: indexes.tokenDocOrder.get(ref) ?? 0,
         ...(gapText !== undefined && { gapText }),
       });
-      docOrder += 1;
-      previous = token;
     });
   }
 
@@ -389,56 +380,18 @@ export class RecordCache {
     if (isFirst) this.placement.orphanedAhead = placed.orphanedAhead;
   }
 
-  private placedAmong(segments: readonly Segment[], isFirst: boolean): PlacedFreeTranslations {
-    const bySegment: Record<string, readonly string[]> = {};
-    const orphanedAfter: Record<string, readonly string[]> = {};
-    segments.forEach(({ id }) => {
-      const reviewed = this.placement.bySegment.get(id);
-      if (reviewed) bySegment[id] = reviewed;
-      const orphaned = this.placement.orphanedAfter.get(id);
-      if (orphaned) orphanedAfter[id] = orphaned;
-    });
-    return { bySegment, orphanedAfter, orphanedAhead: isFirst ? this.placement.orphanedAhead : [] };
-  }
-
-  private write<T extends { id: string }>(
+  private write<T extends { id: string }, I extends string>(
     kind: string,
-    table: Table<T>,
+    table: RecordTable<T, I>,
     changes: { puts: readonly T[]; deletes: readonly string[] } | undefined,
   ): void {
     changes?.puts.forEach((record) => {
-      this.put(kind, table, record);
+      table.put(record);
       this.writtenAt.set(`${kind}:${record.id}`, this.revision);
     });
     changes?.deletes.forEach((id) => {
-      this.remove(kind, table, id);
+      table.remove(id);
       this.writtenAt.set(`${kind}:${id}`, this.revision);
     });
-  }
-
-  private put<T extends { id: string }>(kind: string, table: Table<T>, record: T): void {
-    this.remove(kind, table, record.id);
-    table.set(record.id, record);
-    this.keysOf(kind, record.id).forEach(([index, key]) => fileUnder(index, key, record.id));
-  }
-
-  private remove<T extends { id: string }>(kind: string, table: Table<T>, id: string): void {
-    if (!table.has(id)) return;
-    this.keysOf(kind, id).forEach(([index, key]) => unfileFrom(index, key, id));
-    table.delete(id);
-  }
-
-  /** The index entries for the `kind` record stored under `id`; none for a payload. */
-  private keysOf(kind: string, id: string): [Map<string, Set<string>>, string][] {
-    const tokenLink = kind === 'tokenLink' ? this.tokenLinks.get(id) : undefined;
-    const phraseLink = kind === 'phraseLink' ? this.phraseLinks.get(id) : undefined;
-    const segmentLink = kind === 'segmentLink' ? this.segmentLinks.get(id) : undefined;
-    return [
-      ...(tokenLink ? [[this.tokenLinksByRef, tokenLink.token.tokenRef] as const] : []),
-      ...(phraseLink?.tokens ?? []).map(
-        ({ tokenRef }) => [this.phraseLinksByRef, tokenRef] as const,
-      ),
-      ...(segmentLink ? [[this.segmentLinksBySegment, segmentLink.segmentId] as const] : []),
-    ].map(([index, key]) => [index, key]);
   }
 }

@@ -153,16 +153,18 @@ function report(host: SessionHost, session: Session, change: AnalysisChange, cha
 }
 
 /**
- * Reports what an applied change touched, reading each book as segmented by the boundaries that the
- * change leaves.
+ * Returns what an applied change touched, and reports that unless the change touched nothing. Reads
+ * each book as segmented by the boundaries that the change leaves.
  */
 async function reportApplied(
   host: SessionHost,
   session: Session,
   applied: AppliedChange,
   changeId: string,
-): Promise<void> {
-  report(host, session, await describeApplied(host, session, applied), changeId);
+): Promise<AnalysisChange> {
+  const change = await describeApplied(host, session, applied);
+  report(host, session, change, changeId);
+  return change;
 }
 
 /** Replies to an applied change, reporting what it touched. */
@@ -173,12 +175,15 @@ async function replyTo(
   changeId: string,
 ): Promise<CommandReply> {
   const pool = await readTouchedPoolBuckets(session.repository, applied);
-  await reportApplied(host, session, applied, changeId);
+  const { books } = await reportApplied(host, session, applied, changeId);
   return {
     changeId,
     changes: applied.changes,
     ...pool,
     resegmentedBooks: booksResegmented(applied),
+    staleTranslationBooks: books
+      .filter(({ staleTranslations }) => staleTranslations)
+      .map(({ bookId }) => bookId),
   };
 }
 
@@ -457,6 +462,7 @@ export class AnalysisSessions {
             poolBuckets: {},
             poolAnalyses: [],
             resegmentedBooks: [],
+            staleTranslationBooks: [],
             ...extra,
           };
         }),

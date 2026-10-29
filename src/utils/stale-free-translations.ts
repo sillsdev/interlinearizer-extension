@@ -1,5 +1,6 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment } from 'interlinearizer';
+import type { PlacedFreeTranslations } from '../types/segment-pages';
 import { bookOfRef } from './analysis-book';
 import { verseOfTokenRef } from './reanchor-analysis';
 import { positionOf, segmentContainsVerse, verseLabelCovers, verseOfId } from './verse-ref';
@@ -138,6 +139,49 @@ export type PlacedStaleFreeTranslations = Readonly<{
   /** Those of verses the book no longer holds that ran ahead of every verse it does. */
   orphanedAhead: readonly StaleFreeTranslation[];
 }>;
+
+/** Stale free translations by where the view places them, each as `T`. */
+type Placement<T> = Readonly<{
+  bySegment: ReadonlyMap<string, readonly T[]>;
+  orphanedAfter: ReadonlyMap<string, readonly T[]>;
+  orphanedAhead: readonly T[];
+}>;
+
+/**
+ * The stale free translations that `placement` puts beside the segments `segmentIds`, each named by
+ * `idOf`. Those ahead of every verse come only when `isFirstPage`.
+ */
+export function placedAmong<T>(
+  placement: Placement<T>,
+  segmentIds: readonly string[],
+  isFirstPage: boolean,
+  idOf: (translation: T) => string,
+): PlacedFreeTranslations {
+  const bySegment: Record<string, readonly string[]> = {};
+  const orphanedAfter: Record<string, readonly string[]> = {};
+  segmentIds.forEach((id) => {
+    const reviewed = placement.bySegment.get(id);
+    if (reviewed) bySegment[id] = reviewed.map(idOf);
+    const orphaned = placement.orphanedAfter.get(id);
+    if (orphaned) orphanedAfter[id] = orphaned.map(idOf);
+  });
+  return {
+    bySegment,
+    orphanedAfter,
+    orphanedAhead: isFirstPage ? placement.orphanedAhead.map(idOf) : [],
+  };
+}
+
+/** The payload ids of every stale free translation in `placement`. */
+export function placedIdsIn(placement: PlacedFreeTranslations): Set<string> {
+  return new Set(
+    [
+      ...Object.values(placement.bySegment),
+      ...Object.values(placement.orphanedAfter),
+      placement.orphanedAhead,
+    ].flat(),
+  );
+}
 
 /**
  * How many orphaned free-translation cards the view shows beside segment `segmentId`, which sits at

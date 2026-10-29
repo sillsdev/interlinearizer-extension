@@ -115,6 +115,33 @@ export class RecordTable<T extends { id: string }, Index extends string> {
     return [...recordDifferences, ...indexDifferences];
   }
 
+  /** Stores `record` in place of any record with the same id, and files `record` under its keys. */
+  put(record: T): void {
+    const prior = this.records.get(record.id);
+    this.records.set(record.id, record);
+    this.indexNames().forEach((index) => {
+      const filed = this.filed(index);
+      const before = prior ? this.keysOf(index, prior) : new Set<string>();
+      const after = this.keysOf(index, record);
+      before.forEach((key) => {
+        if (!after.has(key)) unfileId(filed, key, record.id);
+      });
+      after.forEach((key) => {
+        if (!before.has(key)) fileId(filed, key, record.id);
+      });
+    });
+  }
+
+  /** Removes the record stored under `id`, if there is one. */
+  remove(id: string): void {
+    const record = this.records.get(id);
+    if (!record) return;
+    this.records.delete(id);
+    this.indexNames().forEach((index) =>
+      this.keysOf(index, record).forEach((key) => unfileId(this.filed(index), key, id)),
+    );
+  }
+
   /** The records stored under `ids`, which must be distinct, skipping an id with none stored. */
   private recordsOf(ids: Iterable<string>): T[] {
     const found: T[] = [];
@@ -141,31 +168,5 @@ export class RecordTable<T extends { id: string }, Index extends string> {
   /** The keys `index` files `record` under, each once. */
   private keysOf(index: Index, record: T): Set<string> {
     return new Set(this.keyers[index](record));
-  }
-
-  /** Stores `record`, keeping a replaced record's place under every key it keeps. */
-  private put(record: T): void {
-    const prior = this.records.get(record.id);
-    this.records.set(record.id, record);
-    this.indexNames().forEach((index) => {
-      const filed = this.filed(index);
-      const before = prior ? this.keysOf(index, prior) : new Set<string>();
-      const after = this.keysOf(index, record);
-      before.forEach((key) => {
-        if (!after.has(key)) unfileId(filed, key, record.id);
-      });
-      after.forEach((key) => {
-        if (!before.has(key)) fileId(filed, key, record.id);
-      });
-    });
-  }
-
-  private remove(id: string): void {
-    const record = this.records.get(id);
-    if (!record) return;
-    this.records.delete(id);
-    this.indexNames().forEach((index) =>
-      this.keysOf(index, record).forEach((key) => unfileId(this.filed(index), key, id)),
-    );
   }
 }

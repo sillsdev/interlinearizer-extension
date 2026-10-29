@@ -211,13 +211,15 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
 /**
  * Passes the open book's edited text to {@link onBookRead}'s listeners once it is read again, then
  * reports the edit, unless the project closed meanwhile. A book that fails to read again, or has no
- * text, is reported all the same.
+ * text, is reported all the same. Text a later read of the open book has replaced is reported
+ * without being passed, since the later read may have passed its newer text already.
  */
 async function reportOpenBookEdit(sourceProjectId: string, held: HeldBook): Promise<void> {
   const closeCount = closeCounts.get(sourceProjectId);
   const book = await held.book.catch(() => undefined);
   if (closeCounts.get(sourceProjectId) !== closeCount) return;
-  if (book) bookReadListeners.forEach((listener) => listener(sourceProjectId, book));
+  if (book && openBooks.get(sourceProjectId) === held)
+    bookReadListeners.forEach((listener) => listener(sourceProjectId, book));
   reportEdit(sourceProjectId, held.bookId);
 }
 

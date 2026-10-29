@@ -1321,6 +1321,38 @@ describe('onBookRead', () => {
     expect(heard).toEqual(['read v2@en', 'edited']);
   });
 
+  it('passes no edited open book that a later edit read again first', async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    const heard: string[] = [];
+    listenForBooks((_, book) => heard.push(book.textVersion));
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [open] = project.subscriptions;
+    open.deliver(usj('GEN'));
+    await outline;
+    open.deliver(usj('GEN', 'v2'));
+    await settle();
+    const [, firstReread] = subscriptionsTo(project, 'GEN');
+    readStatus();
+    await settle();
+    const [, , read] = subscriptionsTo(project, 'GEN');
+    read.deliver(usj('GEN', 'v2'));
+    await settle();
+    heard.length = 0;
+
+    read.deliver(usj('GEN', 'v3'));
+    await settle();
+    subscriptionsTo(project, 'GEN')
+      .slice(3)
+      .forEach((s) => s.deliver(usj('GEN', 'v3')));
+    await settle();
+    firstReread.deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(heard).toEqual(['v3@en']);
+  });
+
   it('reports an edit to the open book that no longer reads, passing nothing', async () => {
     let delivery: Delivery = usj('GEN');
     const project = serveProject(() => delivery);

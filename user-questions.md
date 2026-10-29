@@ -375,3 +375,40 @@ Questions we'd like answered:
    deleted or merged?
 
 #400
+
+## Linking glosses to lexicon senses from the Analysis Catalog
+
+A gloss, or a morpheme's gloss, can be linked to a sense in a connected lexicon. Linking is planned
+first in the Analysis Catalog side panel, not in the interlinear view where glossing happens. In
+the catalog, linking a row links that analysis everywhere it is used, and a row that becomes
+identical to another merges with it. The interlinear view may follow, where linking would apply to
+the one occurrence being glossed.
+
+Questions we'd like answered:
+
+1. **What works well about linking from a separate view?** For example: linking many uses at once,
+   seeing every analysis of a form side by side, or linking as a review pass after glossing.
+2. **What gets in the way?** For example: leaving the text to link and losing your place, wanting
+   to link one occurrence rather than every use, or linking falling behind glossing because it
+   happens somewhere else.
+3. **Would you expect to link while glossing in the interlinear view?** In addition to linking
+   from the catalog, or instead of it?
+
+#228
+
+## Marking a morpheme gloss that comes from the lexicon
+
+A morpheme can be linked to a sense in the project's lexicon. Where the morpheme has no gloss of its
+own, its box shows the sense's gloss, with a book mark in a row below it. A gloss typed into the
+field replaces the sense's gloss and removes the mark, but the link stays. Emptying the field brings
+the sense's gloss and the mark back. Token and phrase glosses can also come from the lexicon, but
+they get no mark.
+
+Questions we'd like answered:
+
+1. **What should the mark tell the reader?** Now it says the gloss shown came from the lexicon, so a
+   typed gloss hides the link. It could instead say the morpheme has a link, so a typed gloss beside
+   a link would be marked too.
+2. **Should token and phrase glosses from the lexicon be marked too?**
+
+#227, #228, #514

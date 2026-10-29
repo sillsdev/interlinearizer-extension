@@ -43,7 +43,7 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
  * nothing unsaved, that same write would change nothing and is not offered at all.
  *
  * @param props.sourceProjectId - Source project whose existing interlinear projects to list as
- *   overwrite targets.
+ *   overwrite targets. Paratext 9 imports are left out because they are read-only.
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if
  *   any; the matching overwrite target is badged so the user can tell which project the draft is
  *   currently working against.
@@ -83,6 +83,7 @@ export function SaveAsProjectModal({
   const [name, setName] = useState(defaultName ?? '');
   const [description, setDescription] = useState(defaultDescription ?? '');
   const { projects, isLoading } = useProjectsForSource(sourceProjectId);
+  const overwriteTargets = projects.filter((project) => project.pt9Import === undefined);
 
   // Guards the save controls against double-submit; `isSubmitting` disables them while a save runs.
   const { isSubmitting, runGuarded } = useSubmitGuard();
@@ -181,13 +182,13 @@ export function SaveAsProjectModal({
       <h3 className="tw:text-sm tw:font-medium tw:mb-2">
         {localizedStrings['%interlinearizer_modal_saveAs_existing_section%']}
       </h3>
-      {projects.length === 0 ? (
+      {overwriteTargets.length === 0 ? (
         <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">
           {localizedStrings['%interlinearizer_modal_saveAs_none%']}
         </p>
       ) : (
         <ul className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-x-2 tw:gap-y-1 tw:mb-4 tw:max-h-72 tw:overflow-y-auto">
-          {projects.map((project) => {
+          {overwriteTargets.map((project) => {
             const projectName =
               project.name ?? localizedStrings['%interlinearizer_modal_select_name_unnamed%'];
             // The active project is the one the draft is already open on, so writing to it is the

@@ -18,6 +18,8 @@ import { reanchorSegmentation } from '../utils/segmentation';
 interface BookTextWatch {
   /** The text as first delivered; `undefined` when the project has no text for the book. */
   text: Promise<UsjDocument | undefined>;
+  /** The read's number among reads of the book, given as it subscribes. */
+  readNumber: Promise<number>;
   stop: () => Promise<void>;
 }
 
@@ -109,6 +111,46 @@ type BookReadListener = (sourceProjectId: string, book: Book) => void;
 
 const bookReadListeners = new Set<BookReadListener>();
 
+/**
+ * The latest number given to a read of a book. Keyed by source project, then book id.
+ *
+ * Reads are numbered as they subscribe, because a read that subscribes later sees text at least as
+ * new.
+ */
+const startedReads = new Map<string, Map<string, number>>();
+
+/**
+ * The number of the latest read that found a book's text, or found that it has none. Keyed by
+ * source project, then book id.
+ */
+const finishedReads = new Map<string, Map<string, number>>();
+
+function startRead(sourceProjectId: string, bookId: string): number {
+  const started = startedReads.get(sourceProjectId) ?? new Map<string, number>();
+  const readNumber = (started.get(bookId) ?? 0) + 1;
+  started.set(bookId, readNumber);
+  startedReads.set(sourceProjectId, started);
+  return readNumber;
+}
+
+/**
+ * Passes `book` to {@link onBookRead}'s listeners unless a read numbered above `readNumber` has
+ * already found the book's text, or found that it has none. A read that found no text passes
+ * nothing, and earlier reads that finish after it pass nothing either.
+ */
+function finishRead(
+  sourceProjectId: string,
+  bookId: string,
+  readNumber: number,
+  book: Book | undefined,
+): void {
+  const finished = finishedReads.get(sourceProjectId) ?? new Map<string, number>();
+  if ((finished.get(bookId) ?? 0) > readNumber) return;
+  finished.set(bookId, readNumber);
+  finishedReads.set(sourceProjectId, finished);
+  if (book) bookReadListeners.forEach((listener) => listener(sourceProjectId, book));
+}
+
 /** Receives the source project and the books holding text, of a whole-text read with none failed. */
 type TextReadListener = (sourceProjectId: string, textBookIds: string[]) => void;
 
@@ -137,10 +179,11 @@ function watchBookText(
     reject: rejectText,
   } = Promise.withResolvers<UsjDocument | undefined>();
   let isFirstDelivery = true;
-  const subscription = usjPdp.then((pdp) =>
+  const subscribed = usjPdp.then((pdp) => ({
+    readNumber: startRead(sourceProjectId, bookId),
     // PAPI calls back after the first delivery only for text that differs from the last, or for
     // an error reading it again.
-    pdp.subscribeBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 }, (usj) => {
+    unsubscribe: pdp.subscribeBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 }, (usj) => {
       if (!isFirstDelivery) {
         onChange();
         return;
@@ -149,11 +192,16 @@ function watchBookText(
       if (isPlatformError(usj)) rejectText(new Error(usj.message));
       else resolveText(usj);
     }),
-  );
+  }));
+  const subscription = subscribed.then(({ unsubscribe }) => unsubscribe);
   subscription.catch(rejectText);
+  const readNumber = subscribed.then((watched) => watched.readNumber);
+  // Rejects only alongside `text`, whose readers handle the failure.
+  readNumber.catch(() => undefined);
 
   return {
     text,
+    readNumber,
     stop: async () => {
       // Unsubscribing ahead of the first delivery would leave `text` unsettled.
       await text.catch(() => undefined);
@@ -209,15 +257,21 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
 }
 
 /**
- * Passes the open book's edited text to {@link onBookRead}'s listeners once it is read again, then
- * reports the edit, unless the project closed meanwhile. A book that fails to read again, or has no
- * text, is reported all the same.
+ * Unless the project closes meanwhile, passes the open book's edited text to {@link onBookRead}'s
+ * listeners once the book is read again, then reports the edit. A book that fails to read again, or
+ * has no text, is reported all the same.
+ *
+ * When a read of the book that started later finishes before this text arrives, the edit is
+ * reported without its text. That read found text at least as new, or found none.
  */
 async function reportOpenBookEdit(sourceProjectId: string, held: HeldBook): Promise<void> {
   const closeCount = closeCounts.get(sourceProjectId);
-  const book = await held.book.catch(() => undefined);
+  const delivered = await Promise.all([held.book, held.watch.readNumber]).then(
+    ([book, readNumber]) => ({ book, readNumber }),
+    () => undefined,
+  );
   if (closeCounts.get(sourceProjectId) !== closeCount) return;
-  if (book) bookReadListeners.forEach((listener) => listener(sourceProjectId, book));
+  if (delivered) finishRead(sourceProjectId, held.bookId, delivered.readNumber, delivered.book);
   reportEdit(sourceProjectId, held.bookId);
 }
 
@@ -326,8 +380,10 @@ export function onBookTextChanged(listener: BookTextListener): () => boolean {
  * is called. A book is passed when the whole-text read first reaches it, and again each time its
  * text changes. The open book's edited text is passed even before the read reaches that book.
  *
- * For a change, `listener` is called before {@link onBookTextChanged}'s listeners hear of it. A book
- * whose read fails, or that holds no text, is not passed.
+ * For a change, `listener` is called before {@link onBookTextChanged}'s listeners hear of it. The
+ * change's text is not passed when a read of the book that started later has finished first. That
+ * read passed text at least as new, or found none. A book whose read fails, or that holds no text,
+ * is not passed.
  */
 export function onBookRead(listener: BookReadListener): () => boolean {
   bookReadListeners.add(listener);
@@ -458,9 +514,10 @@ function rereadHeldBook(sourceProjectId: string, bookId: string): void {
 }
 
 /**
- * Reads `bookId` of `read`'s text into its form index, passing its text to {@link onBookRead}'s
- * listeners, and watches the book until the read ends or reads it again. An edit to the book lets
- * go of its kept copies, and is reported once the book is read again.
+ * Reads `bookId` of `read`'s text into its form index, and watches the book until the read ends or
+ * reads it again. The book's text is passed to {@link onBookRead}'s listeners unless the whole-text
+ * read has ended, or a later read of the book supersedes this one. An edit to the book lets go of
+ * its kept copies, and is reported once the book is read again.
  *
  * @returns Once the book's text has arrived, whether this read filed the book as read or failed.
  */
@@ -470,7 +527,7 @@ async function readTextBook(
   bookId: string,
 ): Promise<boolean> {
   read.watches.get(bookId)?.();
-  const { text, stop } = watchBookText(
+  const { text, readNumber, stop } = watchBookText(
     sourceProjectId,
     bookId,
     () => {
@@ -481,12 +538,12 @@ async function readTextBook(
     read.usjPdp,
   );
   read.watches.set(bookId, stop);
-  const delivered = await perfTrack('readText:usj', text)
-    .then((usj): { book?: Book; forms: Set<string> } => {
-      if (!usj) return { forms: new Set<string>() };
+  const delivered = await Promise.all([perfTrack('readText:usj', text), readNumber])
+    .then(([usj, number]): { book?: Book; forms: Set<string>; readNumber: number } => {
+      if (!usj) return { forms: new Set<string>(), readNumber: number };
       return perfTime('readText:tokenize', () => {
         const book = tokenizeBook(extractBookFromUsj(usj, read.writingSystem));
-        return { book, forms: formsOfBook(book) };
+        return { book, forms: formsOfBook(book), readNumber: number };
       });
     })
     .catch((e) => {
@@ -505,8 +562,7 @@ async function readTextBook(
     read.failedBookIds.add(bookId);
   }
   read.readBookIds.add(bookId);
-  const book = delivered?.book;
-  if (book) bookReadListeners.forEach((listener) => listener(sourceProjectId, book));
+  if (delivered) finishRead(sourceProjectId, bookId, delivered.readNumber, delivered.book);
   return true;
 }
 

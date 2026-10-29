@@ -2,11 +2,7 @@
 
 import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
-import {
-  booksLinkedAmong,
-  reanchorRestored,
-  reanchorStoredBook,
-} from '../../services/reanchorPasses';
+import { reanchorRestored, reanchorStoredBook } from '../../services/reanchorPasses';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { missingBook } from '../../utils/reanchor-draft';
 import {
@@ -240,13 +236,5 @@ describe('reanchorRestored', () => {
     await expect(
       reanchorRestored(repository)({ intent: 'undo' }, [verseBook('GEN 1:1', 'alpha beta')]),
     ).resolves.toBeUndefined();
-  });
-});
-
-describe('booksLinkedAmong', () => {
-  it('names the books given that the draft links into', async () => {
-    const { repository } = await storedDraft();
-
-    await expect(booksLinkedAmong(repository, ['GEN', 'LEV'])).resolves.toEqual(['GEN']);
   });
 });

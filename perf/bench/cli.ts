@@ -18,7 +18,12 @@ import analysisReducer, {
 import { createAnalysisStore } from '../../src/store';
 import type { ChangeSet, KeyValueStorage } from '../../src/types/analysis-repository';
 import { emptyAnalysis } from '../../src/types/empty-factories';
-import { booksLinkedIn, mergeAnalyses, splitAnalysisByBook } from '../../src/utils/analysis-book';
+import {
+  booksLinkedIn,
+  booksMissingFrom,
+  mergeAnalyses,
+  splitAnalysisByBook,
+} from '../../src/utils/analysis-book';
 import { applyChangeSet } from '../../src/utils/change-set';
 import {
   approvedAnalysisByToken,
@@ -274,18 +279,18 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
       },
     };
   };
-  const textBookCodes = new Set(books.map((book) => book.bookRef));
+  const textBookCodes = books.map((book) => book.bookRef);
   const passes: [string, BookPass<DraftContent>][] = [
     ...books.map((book): [string, BookPass<DraftContent>] => [
       book.bookRef,
       reanchorDraftToBook(book),
     ]),
-    ...[...booksLinkedIn(analysis)]
-      .filter((bookCode) => !textBookCodes.has(bookCode))
-      .map((bookCode): [string, BookPass<DraftContent>] => [
+    ...booksMissingFrom(booksLinkedIn(analysis), textBookCodes).map(
+      (bookCode): [string, BookPass<DraftContent>] => [
         bookCode,
         reanchorDraftToMissingBook(bookCode),
-      ]),
+      ],
+    ),
   ];
   const hostChanges = (bookCode: string, pass: BookPass<DraftContent>) => {
     const alone = bookAlone(bookCode);

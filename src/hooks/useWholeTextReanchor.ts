@@ -1,6 +1,6 @@
 import type { Book, DraftProject } from 'interlinearizer';
 import { useCallback, useState } from 'react';
-import { booksLinkedIn } from '../utils/analysis-book';
+import { booksLinkedIn, booksMissingFrom } from '../utils/analysis-book';
 import { reanchorDraftToBook, reanchorDraftToMissingBook } from '../utils/reanchor-draft';
 import type { BookPass } from '../utils/undo-history';
 import type { DraftContent } from './useDraftProject';
@@ -73,10 +73,9 @@ export default function useWholeTextReanchor({
       const target = readKeyRef.current;
       const analysis = target === undefined ? undefined : getDraftSnapshot()?.analysis;
       if (!analysis) return;
-      const present = new Set(bookIds);
-      booksLinkedIn(analysis).forEach((bookCode) => {
-        if (!present.has(bookCode)) reanchorBook(bookCode, reanchorDraftToMissingBook(bookCode));
-      });
+      booksMissingFrom(booksLinkedIn(analysis), bookIds).forEach((bookCode) =>
+        reanchorBook(bookCode, reanchorDraftToMissingBook(bookCode)),
+      );
       setTextReanchoredFor(target);
     },
     [getDraftSnapshot, reanchorBook, readKeyRef],

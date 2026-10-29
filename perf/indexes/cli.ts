@@ -8,7 +8,7 @@ import type {
   KeyValueStorage,
   WarningLogger,
 } from '../../src/types/analysis-repository';
-import { bookOfRef } from '../../src/utils/analysis-book';
+import { bookOfRef, booksLinkedIn } from '../../src/utils/analysis-book';
 import { normalizeSurfaceForm } from '../../src/utils/analysis-identity';
 import { chance, createRng, type Rng } from '../dataset/rng';
 import { readDraftJson } from '../dataset/store';
@@ -260,9 +260,14 @@ async function lookupMismatches(
       stored.phraseAnalyses.filter((a) => forms.has(normalizeSurfaceForm(a.surfaceText))),
     ],
   ];
-  return checks
-    .filter(([, answered, scanned]) => canonical(answered) !== canonical(scanned))
-    .map(([name]) => name);
+  const linkedBooks = (await repository.findLinkedBooks()).sort();
+  const scannedBooks = [...booksLinkedIn(stored)].sort();
+  return [
+    ...checks
+      .filter(([, answered, scanned]) => canonical(answered) !== canonical(scanned))
+      .map(([name]) => name),
+    ...(linkedBooks.join() === scannedBooks.join() ? [] : ['findLinkedBooks']),
+  ];
 }
 
 /**

@@ -6,7 +6,7 @@ import type {
   TokenAnalysis,
 } from 'interlinearizer';
 import type { AnalysisRepository } from '../types/analysis-repository';
-import { touched, type AppliedChange } from './analysisChanges';
+import type { AppliedChange } from './analysisChanges';
 import type {
   BookOutline,
   PlacedFreeTranslations,
@@ -16,6 +16,7 @@ import type {
 import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { buildBookOutline } from '../utils/book-outline';
+import { touched } from '../utils/change-set';
 import {
   orphanedCardCountAt,
   placeStaleFreeTranslations,

@@ -8,9 +8,10 @@ import type {
   SegmentationDelta,
   SegmentRange,
 } from 'interlinearizer';
-import type { AnalysisRepository, ChangeSet, RecordChanges } from '../types/analysis-repository';
+import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { bookOfRef } from '../utils/analysis-book';
 import { bookIndexesOf } from '../utils/book-indexes';
+import { touched } from '../utils/change-set';
 import { sameSegmentation, segmentationForBook } from '../utils/segmentation';
 import { placeStaleFreeTranslations } from '../utils/stale-free-translations';
 
@@ -22,14 +23,6 @@ export type AppliedChange = Readonly<{ changes: ChangeSet; inverse: ChangeSet }>
  * holds no outline for the book.
  */
 export type HeldBook = (bookId: string) => Book | undefined;
-
-/** Each record that a kind's changes put, and each that the changes' inverse restores. */
-export function touched<T>(
-  changes: RecordChanges<T> | undefined,
-  inverse: RecordChanges<T> | undefined,
-): T[] {
-  return [...(changes?.puts ?? []), ...(inverse?.puts ?? [])];
-}
 
 /** The books whose boundaries differ between two deltas. */
 export function booksResegmented(

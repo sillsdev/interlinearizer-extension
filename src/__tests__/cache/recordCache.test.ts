@@ -12,7 +12,7 @@ describe('RecordCache', () => {
     const cache = new RecordCache(outline);
     const page = await fetchPage(0, 3);
 
-    cache.absorb(page, cache.revision);
+    cache.absorb(page, cache.beginFetch());
 
     expect(comparable(cache.pageAt(0, 3))).toStrictEqual(comparable(page));
   });
@@ -21,7 +21,7 @@ describe('RecordCache', () => {
     const { fetchPage, outline } = await sessionOver();
     const cache = new RecordCache(outline);
 
-    cache.absorb(await fetchPage(0, 1), cache.revision);
+    cache.absorb(await fetchPage(0, 1), cache.beginFetch());
 
     expect(cache.pageAt(0, 2)).toBeUndefined();
   });
@@ -29,7 +29,7 @@ describe('RecordCache', () => {
   it('gives the pages and pool buckets a refetch gives once a reply applies', async () => {
     const { fetchPage, outline, edit } = await sessionOver();
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     expect(cache.apply(await edit('writeGloss', glossing('earth', 'land')))).toBe('none');
     expect(cache.apply(await edit('writeGloss', glossing('God', '')))).toBe('none');
@@ -40,13 +40,13 @@ describe('RecordCache', () => {
   it('keeps the records a reply wrote when a refetch sent before it lands', async () => {
     const { fetchPage, outline, edit } = await sessionOver();
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
-    const sentAt = cache.revision;
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
+    const request = cache.beginFetch();
     const stale = await fetchPage(0, 3);
 
     cache.apply(await edit('writeGloss', glossing('earth', 'land')));
     cache.apply(await edit('writeGloss', glossing('God', '')));
-    cache.absorb(stale, sentAt);
+    cache.absorb(stale, request);
 
     expect(comparable(cache.pageAt(0, 3))).toStrictEqual(comparable(await fetchPage(0, 3)));
   });
@@ -54,7 +54,7 @@ describe('RecordCache', () => {
   it('asks for the outline again once a reply moves boundaries', async () => {
     const { fetchPage, outline, edit } = await sessionOver();
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reply = await edit('split', async (buffer) => {
       buffer.putScope({
@@ -85,7 +85,7 @@ describe('RecordCache', () => {
       ],
     });
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reply = await edit('keep', (buffer) =>
       freeTranslationCommands.writeSegmentFreeTranslation(buffer, {
@@ -106,7 +106,7 @@ describe('RecordCache', () => {
   it('asks for nothing when the first reply naming boundaries leaves them as they were', async () => {
     const { fetchPage, outline, edit } = await sessionOver();
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reply = await edit('rescope', async (buffer) => {
       buffer.putScope({ ...(await buffer.getScope()), analysisLanguages: ['fr'] });
@@ -145,7 +145,7 @@ describe('RecordCache with phrases and stale translations', () => {
     const { fetchPage, outline } = await sessionOver(phrased);
     const cache = new RecordCache(outline);
 
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     expect(comparable(cache.pageAt(0, 3))).toStrictEqual(comparable(await fetchPage(0, 3)));
     expect(comparable(cache.pageAt(1, 3))).toStrictEqual(comparable(await fetchPage(1, 3)));
@@ -154,7 +154,7 @@ describe('RecordCache with phrases and stale translations', () => {
   it('applies a phrase over tokens it holds without fetching again', async () => {
     const { fetchPage, outline, edit } = await sessionOver(phrased);
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reshaped = await edit('reshape', async (buffer) => {
       buffer.put('phraseAnalysisLinks', phrase([ref('earth'), ref('said')]));
@@ -171,7 +171,7 @@ describe('RecordCache with phrases and stale translations', () => {
   it('asks for its pages again for a phrase over a token it does not hold', async () => {
     const { fetchPage, outline, edit } = await sessionOver(phrased);
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 1), cache.revision);
+    cache.absorb(await fetchPage(0, 1), cache.beginFetch());
 
     const reply = await edit('reshape', async (buffer) => {
       buffer.put('phraseAnalysisLinks', phrase([ref('In'), ref('said')]));
@@ -183,7 +183,7 @@ describe('RecordCache with phrases and stale translations', () => {
   it('asks for its pages and counts again once a reply removes a stale translation it holds', async () => {
     const { fetchPage, outline, edit } = await sessionOver(phrased);
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reply = await edit('discard', async (buffer) => {
       const [link] = await buffer.findLinksBySegment(['GEN 1:2']);
@@ -196,7 +196,7 @@ describe('RecordCache with phrases and stale translations', () => {
   it('lets go of its pages when it takes a new outline', async () => {
     const { fetchPage, outline } = await sessionOver();
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     cache.replaceOutline(outline);
 
@@ -215,10 +215,10 @@ describe('RecordCache with phrases and stale translations', () => {
       phraseAnalysisLinks: [phrase([ref('beginning'), ref('God')])],
     });
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 1), cache.revision);
+    cache.absorb(await fetchPage(0, 1), cache.beginFetch());
 
     cache.replaceOutline(await fetchOutline(shortened));
-    cache.absorb(await fetchPage(0, 1, shortened), cache.revision);
+    cache.absorb(await fetchPage(0, 1, shortened), cache.beginFetch());
 
     expect(comparable(cache.pageAt(0, 1))).toStrictEqual(
       comparable(await fetchPage(0, 1, shortened)),
@@ -228,7 +228,7 @@ describe('RecordCache with phrases and stale translations', () => {
   it('takes the counts of an outline that cuts the book as the held one does, keeping its pages', async () => {
     const { fetchPage, outline } = await sessionOver(phrased);
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
     const recounted = {
       ...outline,
       segments: outline.segments.map((segment) => ({ ...segment, orphanedCardCount: 2 })),
@@ -242,7 +242,7 @@ describe('RecordCache with phrases and stale translations', () => {
   it('takes nothing from an outline that cuts the book otherwise', async () => {
     const { fetchPage, outline } = await sessionOver(phrased);
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     expect(cache.takeCounts({ ...outline, textVersion: 'other' })).toBe(false);
     expect(cache.outline).toBe(outline);
@@ -251,7 +251,7 @@ describe('RecordCache with phrases and stale translations', () => {
   it('names the held segments whose pages read an analysis', async () => {
     const { fetchPage, outline } = await sessionOver(phrased);
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     expect(cache.heldIndexesReading(['ta-god'], [])).toStrictEqual([0]);
     expect(cache.heldIndexesReading([phrased.phraseAnalysisLinks[0].analysisId], [])).toStrictEqual(
@@ -265,7 +265,7 @@ describe('RecordCache with phrases and stale translations', () => {
   it('names the held segments whose pages read the pool bucket of a form', async () => {
     const { fetchPage, outline } = await sessionOver(phrased);
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     expect(cache.heldIndexesReading([], ['god'])).toStrictEqual([0, 2]);
   });
@@ -290,7 +290,7 @@ describe('RecordCache and free translations', () => {
   it('applies a new free translation without fetching again', async () => {
     const { fetchPage, outline, edit } = await sessionOver(translated);
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 2), cache.revision);
+    cache.absorb(await fetchPage(0, 2), cache.beginFetch());
 
     const written = await edit('write', (buffer) =>
       freeTranslationCommands.writeSegmentFreeTranslation(buffer, {
@@ -311,7 +311,7 @@ describe('RecordCache and free translations', () => {
   it('applies the removal of a free translation it never held without fetching again', async () => {
     const { fetchPage, outline, edit } = await sessionOver(translated);
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 2), cache.revision);
+    cache.absorb(await fetchPage(0, 2), cache.beginFetch());
 
     const removed = await edit('remove', async (buffer) => {
       const [link] = await buffer.findLinksBySegment(['GEN 1:3']);
@@ -328,7 +328,7 @@ describe('RecordCache and free translations', () => {
       segmentAnalysisLinks: [{ ...translated.segmentAnalysisLinks[0], status: 'stale' as const }],
     });
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 2), cache.revision);
+    cache.absorb(await fetchPage(0, 2), cache.beginFetch());
 
     const removed = await edit('remove', async (buffer) => {
       const [link] = await buffer.findLinksBySegment(['GEN 1:3']);
@@ -341,10 +341,10 @@ describe('RecordCache and free translations', () => {
   it('lets go of a record a page fetched later no longer holds', async () => {
     const { fetchPage, outline, edit } = await sessionOver();
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
     await edit('writeGloss', glossing('God', ''));
 
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     expect(comparable(cache.pageAt(0, 3))).toStrictEqual(comparable(await fetchPage(0, 3)));
   });
@@ -374,7 +374,7 @@ describe('RecordCache and discards', () => {
   it('gives the pages a refetch gives once a reply discards the book', async () => {
     const { fetchPage, outline, edit } = await sessionOver(analyzed);
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reply = await edit('discardBook', async (buffer, session) => {
       discardCommands.discardBook(buffer, await session.repository.exportAll(), 'GEN', undefined);
@@ -388,7 +388,7 @@ describe('RecordCache and discards', () => {
   it('gives the pages a refetch gives once a reply discards every change', async () => {
     const { fetchPage, outline, edit } = await sessionOver(analyzed);
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reply = await edit('discardAll', async (buffer, session) => {
       discardCommands.discardAll(buffer, await session.repository.exportAll(), undefined);
@@ -405,7 +405,7 @@ describe('RecordCache and discards', () => {
       addedStarts: [{ tokenRef: ref('beginning'), surfaceText: 'beginning' }],
     });
     const cache = new RecordCache(outline);
-    cache.absorb(await fetchPage(0, 3), cache.revision);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reply = await edit('discardBook', async (buffer, session) => {
       discardCommands.discardBook(buffer, await session.repository.exportAll(), 'GEN', undefined);

@@ -773,7 +773,7 @@ async function checkEvents(
           viewBook.bookRef,
           saved,
         );
-        return books.filter(({ bookRef }) => changedBooks.includes(bookRef));
+        return { reanchorTo: books.filter(({ bookRef }) => changedBooks.includes(bookRef)) };
       },
     ],
     [

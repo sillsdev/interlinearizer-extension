@@ -19,6 +19,7 @@ import { DraftRepository } from '../../services/draftRepository';
 import type { EditOptions } from '../../services/editHistory';
 import { Pt9ImportRepository } from '../../services/pt9ImportRepository';
 import { draftKey } from '../../services/storageKeys';
+import * as sessionPages from '../../services/sessionPages';
 import { ReadOnlyAnalysisError } from '../../types/read-only-analysis-error';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
@@ -1000,6 +1001,28 @@ describe('AnalysisSessions', () => {
         forms: ['ta'],
         queries: ['getCatalogRows', 'getConcordance'],
       });
+    });
+
+    it('reports an edit whose pool read fails after it applied', async () => {
+      const { host, sessions, sessionId } = await sessionHolding();
+      jest
+        .spyOn(sessionPages, 'readTouchedPoolBuckets')
+        .mockRejectedValue(new Error('pool read failed'));
+
+      await expect(
+        sessions.edit(
+          sessionId,
+          'link',
+          async (buffer) => {
+            buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma));
+          },
+          { changeId: 'change-1' },
+        ),
+      ).rejects.toThrow('pool read failed');
+
+      expect(host.reportChange).toHaveBeenCalledWith(
+        expect.objectContaining({ changeId: 'change-1' }),
+      );
     });
 
     it('names whole a book whose boundaries the edit moved', async () => {

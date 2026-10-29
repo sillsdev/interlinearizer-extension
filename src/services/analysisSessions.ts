@@ -174,8 +174,8 @@ async function replyTo(
   applied: AppliedChange,
   changeId: string,
 ): Promise<CommandReply> {
-  const pool = await readTouchedPoolBuckets(session.repository, applied);
   const { books } = await reportApplied(host, session, applied, changeId);
+  const pool = await readTouchedPoolBuckets(session.repository, applied);
   return {
     changeId,
     changes: applied.changes,

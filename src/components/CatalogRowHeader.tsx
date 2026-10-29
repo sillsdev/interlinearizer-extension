@@ -69,9 +69,9 @@ export default function CatalogRowHeader({
   const staleCountLabel = localizedStrings['%interlinearizer_analysisCatalog_staleCount%'];
   const notInTextLabel = localizedStrings['%interlinearizer_analysisCatalog_notInText%'];
 
+  const link = useLinkedGloss(row.gloss, row.glossSenseRef, analysisLanguage);
   // This is visible cell text, so blanking an unresolved key would empty the gloss column. The em
   // dash reads as "no gloss" in any language and stands in until the lookup lands.
-  const link = useLinkedGloss(row.gloss, row.glossSenseRef, analysisLanguage);
   const glossLabel =
     link.text ||
     resolvedOrEmpty(localizedStrings['%interlinearizer_analysisCatalog_noGloss%']) ||

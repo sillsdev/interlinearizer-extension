@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TooltipProvider } from 'platform-bible-react';
 import type { ComponentProps } from 'react';
@@ -9,7 +9,10 @@ import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from '../../components/Catal
 import type { CatalogRow } from '../../utils/analysis-query';
 import { testSenseRef, withLexicon } from './test-helpers';
 
-/** Each key resolving to itself, except the check box's label, which names the row's form and gloss. */
+/**
+ * Each key resolving to itself, except the two that fill in placeholders: the check box's label,
+ * which names the row's form and gloss, and the differing mark, which names the sense's gloss.
+ */
 const STRINGS = {
   ...Object.fromEntries(ROW_HEADER_STRING_KEYS.map((k) => [k, k])),
   '%interlinearizer_analysisCatalog_check%': 'Select {form}: {gloss}',
@@ -102,6 +105,10 @@ describe('CatalogRowHeader', () => {
     const { resolveSense } = renderHeader({ row: row({ glossSenseRef: testSenseRef('s-word') }) });
 
     await waitFor(() => expect(resolveSense).toHaveBeenCalled());
+    // An agreeing sense marks the row just as a pending one does, so wait out the lookup itself.
+    await act(async () => {
+      await resolveSense.mock.results[0].value;
+    });
     const mark = screen.getByTestId('catalog-sense-link');
     expect(mark).toHaveAttribute('data-differs', 'false');
     expect(mark).toHaveTextContent('%interlinearizer_analysisCatalog_senseLinked%');
@@ -130,6 +137,9 @@ describe('CatalogRowHeader', () => {
     });
 
     await waitFor(() => expect(resolveSense).toHaveBeenCalled());
+    await act(async () => {
+      await resolveSense.mock.results[0].value;
+    });
     expect(screen.getByTestId('catalog-row-gloss')).toHaveTextContent('—');
     expect(screen.getByTestId('catalog-sense-link')).toHaveTextContent(
       '%interlinearizer_analysisCatalog_senseLinked%',

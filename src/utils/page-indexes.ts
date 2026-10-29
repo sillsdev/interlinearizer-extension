@@ -1,7 +1,8 @@
 import type { PhraseAnalysisLink, Segment, SegmentRange, Token } from 'interlinearizer';
 import type { OutlineSegment, SegmentPage } from '../types/segment-pages';
-import { isWordToken } from '../types/type-guards';
-import { verseOfTokenRef } from './reanchor-analysis';
+import { indexSegmentTokens, type TokenIndexes } from './book-indexes';
+import { straddledRefs } from './phrase-arc';
+import { positionOf } from './verse-ref';
 
 /**
  * The lookups a view reads tokens and segments through, built from the pages it holds and the
@@ -29,8 +30,9 @@ export type PageIndexes = Readonly<{
   /** Each word token held, or spanned by a phrase, by ref. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
-   * The word tokens held before which a segment boundary would cut a phrase that the pages name.
-   * For each such phrase, those are its word tokens after its first, up to and including its last.
+   * The refs of held word tokens before which a segment boundary would cut a phrase that the pages
+   * name. For each such phrase, those are the held word tokens after its first, up to and including
+   * its last, including those in the gaps of a discontiguous phrase.
    */
   straddledBoundaryRefs: ReadonlySet<string>;
 }>;
@@ -61,66 +63,45 @@ export function buildPageIndexes(
   });
 
   const segmentById = new Map<string, Segment>();
-  const tokenDocOrder = new Map<string, number>();
-  const fullTokenOrder = new Map<string, number>();
-  const gapTextByWordRef = new Map<string, string>();
-  const tokenSegmentMap = new Map<string, string>();
-  const wordTokenByRef = new Map<string, Token & { type: 'word' }>();
+  const indexes: TokenIndexes = {
+    tokenDocOrder: new Map(),
+    fullTokenOrder: new Map(),
+    gapTextByWordRef: new Map(),
+    tokenSegmentMap: new Map(),
+    wordTokenByRef: new Map(),
+  };
   const heldWordByOrder = new Map<number, string>();
   const phraseLinks = new Map<string, PhraseAnalysisLink>();
   pages.forEach(({ start, segments, analysis }) => {
     segments.forEach((segment, offset) => {
       segmentById.set(segment.id, segment);
-      let wordOrder = firstWordAt[start + offset];
-      let tokenOrder = firstTokenAt[start + offset];
-      let previousWord: Token | undefined;
-      segment.tokens.forEach((token) => {
-        tokenSegmentMap.set(token.ref, segment.id);
-        fullTokenOrder.set(token.ref, tokenOrder);
-        tokenOrder += 1;
-        if (!isWordToken(token)) return;
-        tokenDocOrder.set(token.ref, wordOrder);
-        heldWordByOrder.set(wordOrder, token.ref);
-        wordOrder += 1;
-        wordTokenByRef.set(token.ref, token);
-        if (previousWord)
-          gapTextByWordRef.set(
-            token.ref,
-            segment.baselineText.slice(previousWord.charEnd, token.charStart),
-          );
-        previousWord = token;
-      });
+      indexSegmentTokens(
+        segment,
+        indexes,
+        firstWordAt[start + offset],
+        firstTokenAt[start + offset],
+        (ref, wordOrder) => heldWordByOrder.set(wordOrder, ref),
+      );
     });
     Object.values(analysis?.phraseSpans ?? {})
       .flat()
       .forEach(({ token, segmentId, docOrder, gapText }) => {
-        tokenSegmentMap.set(token.ref, segmentId);
-        tokenDocOrder.set(token.ref, docOrder);
-        wordTokenByRef.set(token.ref, token);
-        if (gapText !== undefined) gapTextByWordRef.set(token.ref, gapText);
+        indexes.tokenSegmentMap.set(token.ref, segmentId);
+        indexes.tokenDocOrder.set(token.ref, docOrder);
+        indexes.wordTokenByRef.set(token.ref, token);
+        if (gapText !== undefined) indexes.gapTextByWordRef.set(token.ref, gapText);
       });
     analysis?.phraseAnalysisLinks.forEach((link) => phraseLinks.set(link.id, link));
-  });
-
-  const straddledBoundaryRefs = new Set<string>();
-  phraseLinks.forEach(({ tokens: members }) => {
-    const orders = members.flatMap(({ tokenRef }) => tokenDocOrder.get(tokenRef) ?? []);
-    for (let order = Math.min(...orders) + 1; order <= Math.max(...orders); order += 1) {
-      const held = heldWordByOrder.get(order);
-      if (held !== undefined) straddledBoundaryRefs.add(held);
-    }
   });
 
   return {
     outlineSegmentById,
     segmentOrder,
     segmentById,
-    tokenDocOrder,
-    fullTokenOrder,
-    gapTextByWordRef,
-    tokenSegmentMap,
-    wordTokenByRef,
-    straddledBoundaryRefs,
+    ...indexes,
+    straddledBoundaryRefs: straddledRefs(phraseLinks.values(), indexes.tokenDocOrder, (order) =>
+      heldWordByOrder.get(order),
+    ),
   };
 }
 
@@ -132,8 +113,7 @@ export function outlineRangeOf(
   outline: readonly OutlineSegment[],
   ref: string,
 ): SegmentRange | undefined {
-  const verse = verseOfTokenRef(ref);
-  const offset = Number(ref.slice(verse.length + 1));
+  const { verse, offset } = positionOf(ref);
   const chapterAndVerse = verse.slice(verse.indexOf(' ') + 1);
   const holds = (segment: OutlineSegment) => {
     if (segment.id === ref || segment.id === verse) return true;

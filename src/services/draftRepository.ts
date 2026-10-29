@@ -28,11 +28,11 @@ import { IndexedRepository, type IndexedDraft } from './indexedRepository';
 import { draftAnalysisKey, draftJournalKey, draftKey } from './storageKeys';
 
 /**
- * Awaits every operation, so a caller that rejects leaves none of them still in flight.
+ * Waits for every operation to settle, so that a rejection leaves none of them still in flight.
  *
  * @throws Whatever the first rejecting operation threw, in argument order.
  */
-async function settleAll(operations: readonly Promise<unknown>[]): Promise<void> {
+export async function settleAll(operations: readonly Promise<unknown>[]): Promise<void> {
   const outcomes = await Promise.allSettled(operations);
   const failure = outcomes.find((outcome) => outcome.status === 'rejected');
   if (failure?.status === 'rejected') throw failure.reason;

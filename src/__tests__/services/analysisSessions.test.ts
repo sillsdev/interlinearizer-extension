@@ -400,6 +400,26 @@ describe('AnalysisSessions', () => {
       );
       expect(host.releaseDraftRepository).toHaveBeenCalledWith(SOURCE);
     });
+
+    it('rejects only once every other session has closed', async () => {
+      const { host, sessions } = makeSessions();
+      await sessions.open(SOURCE);
+      await sessions.open(OTHER_SOURCE);
+      const otherRelease = deferred();
+      host.releaseDraftRepository.mockImplementation(async (sourceProjectId) => {
+        if (sourceProjectId === SOURCE) throw new Error('release failed');
+        await otherRelease.promise;
+      });
+      let settled = false;
+      const closing = sessions.closeAll().finally(() => {
+        settled = true;
+      });
+      await flushPromises();
+
+      expect(settled).toBe(false);
+      otherRelease.resolve();
+      await expect(closing).rejects.toThrow('release failed');
+    });
   });
 
   describe('run', () => {

@@ -18,6 +18,7 @@ import { segmentationForBook } from '../utils/segmentation';
 import { describeChange, describeScriptureEdit, type AppliedChange } from './analysisChanges';
 import { assertApprovalRule } from './commands/approvalRule';
 import { ChangeBuffer } from './commands/changeBuffer';
+import { settleAll } from './draftRepository';
 import { EditHistory, type EditOptions, type HistoryMove } from './editHistory';
 import { reanchorRestored, reanchorStoredBook } from './reanchorPasses';
 import { readTouchedPoolBuckets } from './sessionPages';
@@ -339,10 +340,15 @@ export class AnalysisSessions {
     return entry.closed;
   }
 
-  /** Closes every session, including any whose open is still underway. */
+  /**
+   * Closes every session, including any whose open is still underway. Settles after every close has
+   * settled.
+   *
+   * @throws Whatever a failing close throws.
+   */
   async closeAll(): Promise<void> {
     await Promise.all(this.lifecycles.values());
-    await Promise.all([...this.sessions.keys()].map((sessionId) => this.close(sessionId)));
+    await settleAll([...this.sessions.keys()].map((sessionId) => this.close(sessionId)));
   }
 
   /**

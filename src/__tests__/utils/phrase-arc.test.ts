@@ -16,6 +16,7 @@ import {
   roundedPolyline,
   splitPhraseAtBoundary,
   SPLIT_BUTTON_WIDTH_PX,
+  straddledRefs,
   type ArcPath,
 } from '../../utils/phrase-arc';
 import { makePhraseLink } from '../test-helpers';
@@ -1026,5 +1027,33 @@ describe('deconflictSplitButtons', () => {
     deconflictSplitButtons([shortRun, longRun]);
     expect(shortRun.midX).toBe(50);
     expect(longRun.midX).toBeGreaterThan(54);
+  });
+});
+
+describe('straddledRefs', () => {
+  const tokenDocOrder = new Map([
+    ['a', 0],
+    ['b', 1],
+    ['c', 2],
+    ['d', 3],
+  ]);
+  const wordRefByOrder = ['a', 'b', 'c', 'd'];
+
+  it("names each word token after a phrase's first, up to and including its last", () => {
+    expect(
+      straddledRefs(
+        [makePhraseLink('p', ['a', 'c'])],
+        tokenDocOrder,
+        (order) => wordRefByOrder[order],
+      ),
+    ).toStrictEqual(new Set(['b', 'c']));
+  });
+
+  it('skips a place that the caller holds no token at', () => {
+    expect(
+      straddledRefs([makePhraseLink('p', ['a', 'd'])], tokenDocOrder, (order) =>
+        order === 2 ? undefined : wordRefByOrder[order],
+      ),
+    ).toStrictEqual(new Set(['b', 'd']));
   });
 });

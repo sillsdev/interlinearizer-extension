@@ -180,6 +180,20 @@ describe('outlineRangeOf', () => {
     });
   });
 
+  it('finds the segment begun mid-verse that a later verse begins in, by the verse', () => {
+    const verses = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the beginning' },
+      { sid: 'GEN 1:2', text: 'And the earth' },
+    ]);
+    const split = resegmentBook(verses, {
+      removedVerseStarts: ['GEN 1:2:0'],
+      addedStarts: [{ tokenRef: ref('beginning', verses), surfaceText: 'beginning' }],
+    });
+    const splitOutline = buildBookOutline(split, split.segments).segments;
+
+    expect(outlineRangeOf(splitOutline, 'GEN 1:2')).toStrictEqual({ start: 1, end: 2 });
+  });
+
   it('finds nothing for a token of a verse the book lacks', () => {
     expect(outlineRangeOf(outline, 'GEN 1:9:0')).toBeUndefined();
   });

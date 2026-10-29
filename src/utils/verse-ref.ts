@@ -1,6 +1,7 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ScriptureRef } from 'interlinearizer';
 import type { OutlineSegment } from '../types/segment-pages';
+import { verseOfTokenRef } from './reanchor-analysis';
 
 /**
  * Whether the two refs name the same verse, bridging {@link ScriptureRef}'s `chapter`/`verse` field
@@ -79,6 +80,18 @@ export function segmentContainsVerse(
  */
 export function toSerializedVerseRef(ref: ScriptureRef): SerializedVerseRef {
   return { book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse };
+}
+
+/**
+ * Reads the verse and character offset that a segment id or token ref names. A verse's SID names
+ * offset `0`. A token ref, or the id of a segment that begins mid-verse, is the SID followed by `:`
+ * and the offset.
+ */
+export function positionOf(id: string): { verse: string; offset: number } {
+  const refPart = id.slice(id.indexOf(' ') + 1);
+  if (refPart.split(':').length < 3) return { verse: id, offset: 0 };
+  const verse = verseOfTokenRef(id);
+  return { verse, offset: Number(id.slice(verse.length + 1)) };
 }
 
 /** The verse a token ref or segment id names, a heading's being the verse it is filed under. */

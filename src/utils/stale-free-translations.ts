@@ -2,7 +2,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment } from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
 import { verseOfTokenRef } from './reanchor-analysis';
-import { segmentContainsVerse, verseLabelCovers, verseOfId } from './verse-ref';
+import { positionOf, segmentContainsVerse, verseLabelCovers, verseOfId } from './verse-ref';
 
 /** A free translation whose segment's text has changed since it was written. */
 export type StaleFreeTranslation = Readonly<{
@@ -32,18 +32,6 @@ type Place = Readonly<{
   /** Position in the book's document order. */
   order: number;
 }>;
-
-/**
- * Reads the verse and character offset a segment id names: a segment begun at a verse is named by
- * the verse's SID, and one begun mid-verse by its first token's ref, one `:`-separated part
- * longer.
- */
-function positionOf(segmentId: string): { verse: string; offset: number } {
-  const refPart = segmentId.slice(segmentId.indexOf(' ') + 1);
-  if (refPart.split(':').length < 3) return { verse: segmentId, offset: 0 };
-  const verse = verseOfTokenRef(segmentId);
-  return { verse, offset: Number(segmentId.slice(verse.length + 1)) };
-}
 
 /**
  * Indexes the book's tokens by the verse their refs name, each list in document order, and each

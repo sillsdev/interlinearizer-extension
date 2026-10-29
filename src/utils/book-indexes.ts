@@ -39,6 +39,50 @@ export interface BookIndexes {
   wordRefByOrder: readonly string[];
 }
 
+/** The writable token lookups of {@link BookIndexes}, filled while segments are indexed. */
+export type TokenIndexes = {
+  tokenDocOrder: Map<string, number>;
+  fullTokenOrder: Map<string, number>;
+  gapTextByWordRef: Map<string, string>;
+  tokenSegmentMap: Map<string, string>;
+  wordTokenByRef: Map<string, Token & { type: 'word' }>;
+};
+
+/**
+ * Records a segment's tokens in `indexes`, numbering its word tokens from `firstWord` and all its
+ * tokens from `firstToken`. Calls `onWord` with each word token's ref and its place among the
+ * book's word tokens. Returns the places where the next segment's word numbering and token
+ * numbering start.
+ */
+export function indexSegmentTokens(
+  segment: Segment,
+  indexes: TokenIndexes,
+  firstWord: number,
+  firstToken: number,
+  onWord?: (ref: string, wordOrder: number) => void,
+): { nextWord: number; nextToken: number } {
+  let wordOrder = firstWord;
+  let tokenOrder = firstToken;
+  let previousWord: Token | undefined;
+  segment.tokens.forEach((token) => {
+    indexes.tokenSegmentMap.set(token.ref, segment.id);
+    indexes.fullTokenOrder.set(token.ref, tokenOrder);
+    tokenOrder += 1;
+    if (!isWordToken(token)) return;
+    indexes.tokenDocOrder.set(token.ref, wordOrder);
+    onWord?.(token.ref, wordOrder);
+    wordOrder += 1;
+    indexes.wordTokenByRef.set(token.ref, token);
+    if (previousWord)
+      indexes.gapTextByWordRef.set(
+        token.ref,
+        segment.baselineText.slice(previousWord.charEnd, token.charStart),
+      );
+    previousWord = token;
+  });
+  return { nextWord: wordOrder, nextToken: tokenOrder };
+}
+
 /**
  * Builds the book-wide lookup indexes over a book's `segments`. Every segmentation of one text
  * gives the same token orders; custom boundaries regroup a book's tokens without reordering them.
@@ -46,44 +90,23 @@ export interface BookIndexes {
 export function buildBookIndexes(segments: readonly Segment[]): BookIndexes {
   const segmentById = new Map<string, Segment>();
   const segmentOrder = new Map<string, number>();
-  const tokenDocOrder = new Map<string, number>();
-  const fullTokenOrder = new Map<string, number>();
-  const gapTextByWordRef = new Map<string, string>();
-  const tokenSegmentMap = new Map<string, string>();
-  const wordTokenByRef = new Map<string, Token & { type: 'word' }>();
-  const wordRefByOrder: string[] = [];
-  let tokenIndex = 0;
-  segments.forEach((seg, segIndex) => {
-    segmentById.set(seg.id, seg);
-    segmentOrder.set(seg.id, segIndex);
-    let prevWord: Token | undefined;
-    seg.tokens.forEach((token) => {
-      tokenSegmentMap.set(token.ref, seg.id);
-      fullTokenOrder.set(token.ref, tokenIndex);
-      tokenIndex += 1;
-      if (isWordToken(token)) {
-        tokenDocOrder.set(token.ref, wordRefByOrder.length);
-        wordRefByOrder.push(token.ref);
-        wordTokenByRef.set(token.ref, token);
-        if (prevWord)
-          gapTextByWordRef.set(
-            token.ref,
-            seg.baselineText.slice(prevWord.charEnd, token.charStart),
-          );
-        prevWord = token;
-      }
-    });
-  });
-  return {
-    segmentById,
-    segmentOrder,
-    tokenDocOrder,
-    fullTokenOrder,
-    gapTextByWordRef,
-    tokenSegmentMap,
-    wordTokenByRef,
-    wordRefByOrder,
+  const indexes: TokenIndexes = {
+    tokenDocOrder: new Map(),
+    fullTokenOrder: new Map(),
+    gapTextByWordRef: new Map(),
+    tokenSegmentMap: new Map(),
+    wordTokenByRef: new Map(),
   };
+  const wordRefByOrder: string[] = [];
+  let next = { nextWord: 0, nextToken: 0 };
+  segments.forEach((segment, index) => {
+    segmentById.set(segment.id, segment);
+    segmentOrder.set(segment.id, index);
+    next = indexSegmentTokens(segment, indexes, next.nextWord, next.nextToken, (ref) =>
+      wordRefByOrder.push(ref),
+    );
+  });
+  return { segmentById, segmentOrder, ...indexes, wordRefByOrder };
 }
 
 const bookIndexesCache = new WeakMap<readonly Segment[], BookIndexes>();

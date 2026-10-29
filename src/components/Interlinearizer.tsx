@@ -19,7 +19,11 @@ import type { PhraseMode } from '../types/phrase-mode';
 import { TOOLTIP_DELAY_MS } from './tooltip-delay';
 import type { ViewOptions } from '../types/view-options';
 import { perfMeasure } from '../utils/perf-marks';
-import { phrasesStraddlingBoundary, splitPhraseAtBoundary } from '../utils/phrase-arc';
+import {
+  phrasesStraddlingBoundary,
+  splitPhraseAtBoundary,
+  straddledRefs,
+} from '../utils/phrase-arc';
 import SegmentListView from './SegmentListView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
 import { FocusProvider } from './FocusStore';
@@ -115,29 +119,11 @@ export default function Interlinearizer({
   const getPhraseLinkById = usePhraseLinkByIdGetter();
   const phraseLinkById = usePhraseLinkByIdMap();
 
-  /**
-   * Word-token refs where placing a segment boundary would cut a phrase — the not-mid-phrase UI
-   * guard, precomputed once per phrase-link change so boundary slots do O(1) set lookups. A
-   * boundary before ref `W` cuts a phrase when the phrase has tokens both strictly before and
-   * at-or-after `W`, i.e. every word ref strictly inside the phrase's document-order span `(min,
-   * max]` — including refs in the gaps of a discontiguous phrase.
-   */
-  const straddledBoundaryRefs = useMemo<ReadonlySet<string>>(() => {
-    const blocked = new Set<string>();
-    phraseLinkById.forEach((link) => {
-      let min = Number.POSITIVE_INFINITY;
-      let max = Number.NEGATIVE_INFINITY;
-      link.tokens.forEach((t) => {
-        const order = tokenDocOrder.get(t.tokenRef);
-        /* v8 ignore next -- phrase tokens are word tokens, which the doc-order map always contains */
-        if (order === undefined) return;
-        if (order < min) min = order;
-        if (order > max) max = order;
-      });
-      for (let i = min + 1; i <= max; i += 1) blocked.add(wordRefByOrder[i]);
-    });
-    return blocked;
-  }, [phraseLinkById, tokenDocOrder, wordRefByOrder]);
+  /** The not-mid-phrase guard: word-token refs before which a segment boundary would cut a phrase. */
+  const straddledBoundaryRefs = useMemo<ReadonlySet<string>>(
+    () => straddledRefs(phraseLinkById.values(), tokenDocOrder, (order) => wordRefByOrder[order]),
+    [phraseLinkById, tokenDocOrder, wordRefByOrder],
+  );
 
   /**
    * Splits every phrase that a new segment boundary before `boundaryRef` would cut, so no phrase

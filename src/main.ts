@@ -51,7 +51,7 @@ import { BOOKLESS_PARTITION, bookOfRef } from './utils/analysis-book';
 import { bookIndexesOf } from './utils/book-indexes';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 import { missingBook } from './utils/reanchor-draft';
-import { segmentationForBook } from './utils/segmentation';
+import { bookSegmentationJson } from './utils/segmentation';
 
 // #region WebView provider
 
@@ -691,8 +691,7 @@ function refuseBoundaries(segmentationJson: string | undefined): void {
 
 /** The boundaries the session's draft sets in the book, as JSON; `undefined` when it sets none. */
 async function sessionBoundaries(session: Session, bookId: string): Promise<string | undefined> {
-  const forBook = segmentationForBook((await session.repository.getScope()).segmentation, bookId);
-  return forBook && JSON.stringify(forBook);
+  return bookSegmentationJson((await session.repository.getScope()).segmentation, bookId);
 }
 
 /**
@@ -1385,11 +1384,10 @@ async function assertOneSegment(
   const { segmentation } = await buffer.getScope();
   const { segments } = await readBookOf(session, tokens[0].tokenRef, (sourceProjectId, bookId) => {
     // Keyed as page reads key it, so that the two share the book's segmentation.
-    const forBook = segmentationForBook(segmentation, bookId);
     return bookService.getSegmentedBook(
       sourceProjectId,
       bookId,
-      forBook && JSON.stringify(forBook),
+      bookSegmentationJson(segmentation, bookId),
     );
   });
   const { tokenSegmentMap } = bookIndexesOf(segments);

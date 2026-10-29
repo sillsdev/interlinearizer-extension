@@ -4,24 +4,26 @@ import type { IndexDifference, RecordChanges } from '../types/analysis-repositor
 export type KeysOf<T> = (record: T) => readonly string[];
 
 /** Ids filed under keys. */
-type IdsByKey = Map<string, Set<string>>;
+export type IdsByKey = Map<string, Set<string>>;
 
-function fileId(index: IdsByKey, key: string, id: string): void {
+/** Files `id` under `key`. */
+export function fileId(index: IdsByKey, key: string, id: string): void {
   const ids = index.get(key);
   if (ids) ids.add(id);
   else index.set(key, new Set([id]));
 }
 
-function unfileId(index: IdsByKey, key: string, id: string): void {
+/** Removes `id` from under `key`, dropping a key left with no ids. */
+export function unfileId(index: IdsByKey, key: string, id: string): void {
   const ids = index.get(key);
-  /* v8 ignore next -- a record's keys were filed when it was put */
+  /* v8 ignore next -- an id is unfiled only from a key it was filed under */
   if (!ids) return;
   ids.delete(id);
   if (ids.size === 0) index.delete(key);
 }
 
 /** The ids in `a` that `b` lacks. */
-function idsLacking(a: ReadonlySet<string> | undefined, b: ReadonlySet<string> | undefined) {
+export function idsLacking(a: ReadonlySet<string> | undefined, b: ReadonlySet<string> | undefined) {
   return [...(a ?? [])].filter((id) => !b?.has(id));
 }
 

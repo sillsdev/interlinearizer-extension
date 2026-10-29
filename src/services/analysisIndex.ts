@@ -19,7 +19,7 @@ import { bookOfRef, BOOKLESS_PARTITION } from '../utils/analysis-book';
 import type { splitAnalysisByBook } from '../utils/analysis-book';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { preferredLink } from '../utils/pick-rules';
-import { RecordTable } from './recordTable';
+import { fileId, idsLacking, type IdsByKey, RecordTable, unfileId } from './recordTable';
 
 /** The key a link is filed under for its book and status. */
 function bookStatusKey(bookCode: string, status: AssignmentStatus): string {
@@ -166,8 +166,8 @@ export class AnalysisIndex {
   /** The analysis each token approves, for tokens approving one. */
   private readonly approvedByTokenRef = new Map<string, string>();
 
-  /** The tokens approving each analysis, for analyses some token approves. */
-  private readonly approvingTokens = new Map<string, Set<string>>();
+  /** The tokens that approve each analysis. An analysis that no token approves has no entry. */
+  private readonly approvingTokens: IdsByKey = new Map();
 
   constructor(analysis: TextAnalysis) {
     this.tokenAnalyses = new RecordTable('tokenAnalyses', formKeyers, analysis.tokenAnalyses);
@@ -421,10 +421,10 @@ export class AnalysisIndex {
     const rebuilt = new AnalysisIndex(analysis);
     const approved = new Set([...this.approvingTokens.keys(), ...rebuilt.approvingTokens.keys()]);
     const approvalDifferences = [...approved].flatMap((analysisId): IndexDifference[] => {
-      const kept = this.approvingTokens.get(analysisId) ?? new Set<string>();
-      const fresh = rebuilt.approvingTokens.get(analysisId) ?? new Set<string>();
-      const missing = [...fresh].filter((tokenRef) => !kept.has(tokenRef));
-      const extra = [...kept].filter((tokenRef) => !fresh.has(tokenRef));
+      const kept = this.approvingTokens.get(analysisId);
+      const fresh = rebuilt.approvingTokens.get(analysisId);
+      const missing = idsLacking(fresh, kept);
+      const extra = idsLacking(kept, fresh);
       if (missing.length === 0 && extra.length === 0) return [];
       return [{ index: 'tokenAnalyses by approving token', key: analysisId, missing, extra }];
     });
@@ -445,18 +445,11 @@ export class AnalysisIndex {
    * naming a token payload that the changes put or delete.
    */
   private tokensReachedBy({ tokenAnalyses, tokenAnalysisLinks }: ChangeSet): Set<string> {
-    const linkIds = [
-      ...(tokenAnalysisLinks?.puts ?? []).map(({ id }) => id),
-      ...(tokenAnalysisLinks?.deletes ?? []),
-    ];
-    const payloadIds = [
-      ...(tokenAnalyses?.puts ?? []).map(({ id }) => id),
-      ...(tokenAnalyses?.deletes ?? []),
-    ];
     return new Set(
-      [...this.tokenLinks.get(linkIds), ...this.tokenLinks.find('analysisId', payloadIds)].map(
-        ({ token }) => token.tokenRef,
-      ),
+      [
+        ...this.tokenLinks.get(idsNamedBy(tokenAnalysisLinks)),
+        ...this.tokenLinks.find('analysisId', idsNamedBy(tokenAnalyses)),
+      ].map(({ token }) => token.tokenRef),
     );
   }
 
@@ -472,18 +465,12 @@ export class AnalysisIndex {
     )?.analysisId;
     const held = this.approvedByTokenRef.get(tokenRef);
     if (held === settled) return;
-    const unsettled = held === undefined ? undefined : this.approvingTokens.get(held);
-    if (held !== undefined && unsettled) {
-      unsettled.delete(tokenRef);
-      if (unsettled.size === 0) this.approvingTokens.delete(held);
-    }
+    if (held !== undefined) unfileId(this.approvingTokens, held, tokenRef);
     if (settled === undefined) {
       this.approvedByTokenRef.delete(tokenRef);
       return;
     }
     this.approvedByTokenRef.set(tokenRef, settled);
-    const tokens = this.approvingTokens.get(settled) ?? new Set<string>();
-    tokens.add(tokenRef);
-    this.approvingTokens.set(settled, tokens);
+    fileId(this.approvingTokens, settled, tokenRef);
   }
 }

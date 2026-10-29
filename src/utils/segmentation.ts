@@ -332,6 +332,36 @@ export function segmentationForBook(
 }
 
 /**
+ * The boundaries that the delta sets in `bookId`, as JSON for a cache key; `undefined` when the
+ * delta sets none there.
+ */
+export function bookSegmentationJson(
+  delta: SegmentationDelta | undefined,
+  bookId: string,
+): string | undefined {
+  const forBook = segmentationForBook(delta, bookId);
+  return forBook && JSON.stringify(forBook);
+}
+
+/** Whether two boundary deltas list the same entries in the same order. */
+export function sameSegmentation(
+  a: SegmentationDelta | undefined,
+  b: SegmentationDelta | undefined,
+): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.removedVerseStarts.length === b.removedVerseStarts.length &&
+    a.removedVerseStarts.every((ref, i) => ref === b.removedVerseStarts[i]) &&
+    a.addedStarts.length === b.addedStarts.length &&
+    a.addedStarts.every(
+      (start, i) =>
+        start.tokenRef === b.addedStarts[i].tokenRef &&
+        start.surfaceText === b.addedStarts[i].surfaceText,
+    )
+  );
+}
+
+/**
  * Whether the delta leaves `verseBook` on the default verse segmentation. One delta spans every
  * book of its draft, so a delta that is custom overall may still say nothing about this book.
  */

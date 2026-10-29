@@ -151,6 +151,22 @@ export type PlacedStaleFreeTranslations = Readonly<{
   orphanedAhead: readonly StaleFreeTranslation[];
 }>;
 
+/**
+ * How many orphaned free-translation cards the view shows beside segment `segmentId`, which sits at
+ * outline `index`. The first segment also shows the cards of verses that ran ahead of every verse
+ * the book holds.
+ */
+export function orphanedCardCountAt(
+  placed: Pick<PlacedStaleFreeTranslations, 'orphanedAfter' | 'orphanedAhead'>,
+  segmentId: string,
+  index: number,
+): number {
+  return (
+    (index === 0 ? placed.orphanedAhead.length : 0) +
+    (placed.orphanedAfter.get(segmentId)?.length ?? 0)
+  );
+}
+
 function fileUnder(
   map: Map<string, StaleFreeTranslation[]>,
   key: string,

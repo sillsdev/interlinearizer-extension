@@ -9,16 +9,14 @@ import type {
   PhraseAnalysisLink,
   SegmentAnalysisLink,
   SegmentationDelta,
+  SessionAnalysisChange,
   TextAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
 import { performance } from 'perf_hooks';
 import { resegmentBook } from '../../src/parsers/papi/resegmentBook';
-import {
-  AnalysisSessions,
-  type ReportedChange,
-  type SessionHost,
-} from '../../src/services/analysisSessions';
+import { booksResegmented, rangesOf } from '../../src/services/analysisChanges';
+import { AnalysisSessions, type SessionHost } from '../../src/services/analysisSessions';
 import * as boundaryCommands from '../../src/services/commands/boundaryCommands';
 import type { ChangeBuffer } from '../../src/services/commands/changeBuffer';
 import * as catalogCommands from '../../src/services/commands/catalogCommands';
@@ -41,7 +39,10 @@ import { bookOfRef } from '../../src/utils/analysis-book';
 import { normalizeSurfaceForm } from '../../src/utils/analysis-identity';
 import { bookIndexesOf } from '../../src/utils/book-indexes';
 import { reanchorSegmentation, segmentationForBook } from '../../src/utils/segmentation';
-import { placeStaleFreeTranslations } from '../../src/utils/stale-free-translations';
+import {
+  orphanedCardCountAt,
+  placeStaleFreeTranslations,
+} from '../../src/utils/stale-free-translations';
 import { loadBooks } from '../books';
 import { createRng, type Rng } from '../dataset/rng';
 import { readDraftJson, readManifest } from '../dataset/store';
@@ -60,7 +61,7 @@ const SILENT: WarningLogger = { warn: () => {} };
 function sessionHost(
   storage: KeyValueStorage,
   heldBook: (bookId: string, segmentation: SegmentationDelta | undefined) => Book | undefined,
-  reportChange: (change: ReportedChange) => void,
+  reportChange: (change: SessionAnalysisChange) => void,
 ): SessionHost {
   return {
     findProject: async () => undefined,
@@ -230,8 +231,7 @@ function expectedPages(analysis: TextAnalysis, book: Book) {
       poolBuckets,
       staleFreeTranslations: { bySegment, orphanedAfter, orphanedAhead },
       orphanedCardCount: (index: number) =>
-        (index === 0 ? placed.orphanedAhead.length : 0) +
-        (placed.orphanedAfter.get(book.segments[index].id)?.length ?? 0),
+        orphanedCardCountAt(placed, book.segments[index].id, index),
     };
   };
 }
@@ -377,29 +377,12 @@ function expectedChange(
     was.phraseAnalysisLinks,
     is.phraseAnalysisLinks,
   );
-  const segmentLinks = versions(
-    changes.segmentAnalysisLinks,
-    was.segmentAnalysisLinks,
-    is.segmentAnalysisLinks,
-  );
+  const segmentLinksWere = versions(changes.segmentAnalysisLinks, was.segmentAnalysisLinks, []);
+  const segmentLinksAre = versions(changes.segmentAnalysisLinks, [], is.segmentAnalysisLinks);
+  const segmentLinks = [...segmentLinksWere, ...segmentLinksAre];
   const links: AnalysisLink[] = [...tokenLinks, ...phraseLinks, ...segmentLinks];
   const payloadIds = [...tokenPayloads, ...segmentPayloads, ...phrasePayloads].map(({ id }) => id);
-  const whole = new Set<string>();
-  const books = new Set(
-    [
-      ...(before.segmentation?.removedVerseStarts ?? []),
-      ...(after.segmentation?.removedVerseStarts ?? []),
-      ...(before.segmentation?.addedStarts ?? []).map((s) => s.tokenRef),
-      ...(after.segmentation?.addedStarts ?? []).map((s) => s.tokenRef),
-    ].map(bookOfRef),
-  );
-  books.forEach((bookId) => {
-    if (
-      JSON.stringify(segmentationForBook(before.segmentation, bookId)) !==
-      JSON.stringify(segmentationForBook(after.segmentation, bookId))
-    )
-      whole.add(bookId);
-  });
+  const whole = new Set(booksResegmented(before.segmentation, after.segmentation));
   const indexes = new Map<string, Set<number>>();
   const mark = (bookId: string, index: number | undefined) => {
     if (whole.has(bookId)) return;
@@ -412,18 +395,37 @@ function expectedChange(
     indexes.set(bookId, (indexes.get(bookId) ?? new Set()).add(index));
   };
   const at = (bookId: string) => segmented(bookId, segmentationForBook(after.segmentation, bookId));
-  segmentLinks.forEach(({ segmentId }) => {
-    const bookId = bookOfRef(segmentId);
-    const book = at(bookId);
-    if (!book) return mark(bookId, undefined);
-    const order = bookIndexesOf(book.segments).segmentOrder;
-    const own = order.get(segmentId);
-    if (own !== undefined) return mark(bookId, own);
-    const placed = placeStaleFreeTranslations([{ analysisId: '', segmentId, text: '' }], book);
-    if (placed.orphanedAhead.length > 0) return mark(bookId, 0);
-    const [placedAt] = [...placed.bySegment.keys(), ...placed.orphanedAfter.keys()];
-    return mark(bookId, placedAt === undefined ? undefined : order.get(placedAt));
-  });
+  // Outline index of each stale free translation, by payload id, cached per analysis version and book.
+  const placements = new Map<string, Map<string, number>>();
+  const placedIn = (analysis: TextAnalysis, version: string, book: Book) => {
+    const key = `${version}:${book.bookRef}`;
+    let byId = placements.get(key);
+    if (!byId) {
+      const { segmentOrder } = bookIndexesOf(book.segments);
+      const placed = placeStaleFreeTranslations(
+        selectStaleFreeTranslations({ analysis, analysisLanguage: 'en' }),
+        book,
+      );
+      byId = new Map(placed.orphanedAhead.map(({ analysisId }) => [analysisId, 0]));
+      [...placed.bySegment, ...placed.orphanedAfter].forEach(([segmentId, translations]) => {
+        const order = segmentOrder.get(segmentId);
+        if (order !== undefined)
+          translations.forEach(({ analysisId }) => byId?.set(analysisId, order));
+      });
+      placements.set(key, byId);
+    }
+    return byId;
+  };
+  const markSegmentLink =
+    (analysis: TextAnalysis, version: string) => (link: SegmentAnalysisLink) => {
+      const bookId = bookOfRef(link.segmentId);
+      const book = at(bookId);
+      if (!book) return mark(bookId, undefined);
+      const own = bookIndexesOf(book.segments).segmentOrder.get(link.segmentId);
+      return mark(bookId, own ?? placedIn(analysis, version, book).get(link.analysisId));
+    };
+  segmentLinksWere.forEach(markSegmentLink(was, 'was'));
+  segmentLinksAre.forEach(markSegmentLink(is, 'is'));
   const markToken = (ref: string) => {
     const bookId = bookOfRef(ref);
     const book = at(bookId);
@@ -434,22 +436,11 @@ function expectedChange(
   };
   tokenLinks.forEach(({ token }) => markToken(token.tokenRef));
   phraseLinks.forEach(({ tokens }) => tokens.forEach(({ tokenRef }) => markToken(tokenRef)));
-  const ranges = (set: ReadonlySet<number>) => {
-    const out: { start: number; end: number }[] = [];
-    [...set]
-      .sort((a, b) => a - b)
-      .forEach((i) => {
-        const last = out.at(-1);
-        if (last?.end === i) last.end = i + 1;
-        else out.push({ start: i, end: i + 1 });
-      });
-    return out;
-  };
   const changedBooks: ChangedBook[] = [...new Set([...whole, ...indexes.keys()])]
     .sort()
     .map((bookId) => {
       const set = indexes.get(bookId);
-      return whole.has(bookId) || !set ? { bookId } : { bookId, ranges: ranges(set) };
+      return whole.has(bookId) || !set ? { bookId } : { bookId, ranges: rangesOf(set) };
     });
   const staleIds = new Set(
     [
@@ -499,7 +490,7 @@ async function checkEvents(
   const storage = memoryStorage();
   await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
   const segmented = segmenter(new Map(books.map((b) => [b.bookRef, b])));
-  const reported = new Map<string, ReportedChange>();
+  const reported = new Map<string, SessionAnalysisChange>();
   const sessions = new AnalysisSessions(
     sessionHost(storage, segmented, (change) => reported.set(change.changeId, change)),
   );

@@ -4,6 +4,7 @@ import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import {
   adoptedStaleTranslation,
   nextSegmentAmong,
+  orphanedCardCountAt,
   placeStaleFreeTranslations,
   type StaleFreeTranslation,
   verseLabelOf,
@@ -304,6 +305,28 @@ describe('adoptedStaleTranslation', () => {
 
   it('adopts nothing from a stale translation with no text in the active language', () => {
     expect(adoptedStaleTranslation([{ ...stale('GEN 1:1'), text: '' }], false)).toBeUndefined();
+  });
+});
+
+describe('orphanedCardCountAt', () => {
+  const orphans = {
+    orphanedAhead: [stale('GEN 1:0')],
+    orphanedAfter: new Map([
+      ['GEN 1:1', [stale('GEN 1:1a')]],
+      ['GEN 1:2', [stale('GEN 1:2a'), stale('GEN 1:2b')]],
+    ]),
+  };
+
+  it("counts the first segment's cards after it and ahead of every verse", () => {
+    expect(orphanedCardCountAt(orphans, 'GEN 1:1', 0)).toBe(2);
+  });
+
+  it('counts only the cards after a later segment', () => {
+    expect(orphanedCardCountAt(orphans, 'GEN 1:2', 1)).toBe(2);
+  });
+
+  it('counts none for a segment with no cards beside it', () => {
+    expect(orphanedCardCountAt(orphans, 'GEN 1:3', 2)).toBe(0);
   });
 });
 

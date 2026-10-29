@@ -5,11 +5,11 @@ import type {
   DraftProject,
   InterlinearProject,
   SegmentationDelta,
+  SessionAnalysisChange,
   TextAnalysis,
 } from 'interlinearizer';
 import {
   AnalysisSessions,
-  type ReportedChange,
   type SessionHost,
   UNDETERMINED_LANGUAGE,
 } from '../../services/analysisSessions';
@@ -89,7 +89,7 @@ function makeSessions(projects: InterlinearProject[] = []) {
     heldBook: jest.fn<Book | undefined, [string, string, SegmentationDelta | undefined]>(
       () => undefined,
     ),
-    reportChange: jest.fn<void, [ReportedChange]>(),
+    reportChange: jest.fn<void, [SessionAnalysisChange]>(),
   } satisfies SessionHost;
   const saveDraft = (draft: DraftProject) =>
     new DraftRepository(storage, draft.sourceProjectId, logger).replaceAll(draft);

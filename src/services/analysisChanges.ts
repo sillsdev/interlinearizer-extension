@@ -11,7 +11,7 @@ import type {
 import type { AnalysisRepository, ChangeSet, RecordChanges } from '../types/analysis-repository';
 import { bookOfRef } from '../utils/analysis-book';
 import { bookIndexesOf } from '../utils/book-indexes';
-import { segmentationForBook } from '../utils/segmentation';
+import { sameSegmentation, segmentationForBook } from '../utils/segmentation';
 import { placeStaleFreeTranslations } from '../utils/stale-free-translations';
 
 /** Changes as applied, with the changes that restore what they replaced. */
@@ -23,8 +23,8 @@ export type AppliedChange = Readonly<{ changes: ChangeSet; inverse: ChangeSet }>
  */
 export type HeldBook = (bookId: string) => Book | undefined;
 
-/** Each record a kind's changes put, and each that its inverse restores. */
-function touched<T>(
+/** Each record that a kind's changes put, and each that the changes' inverse restores. */
+export function touched<T>(
   changes: RecordChanges<T> | undefined,
   inverse: RecordChanges<T> | undefined,
 ): T[] {
@@ -32,7 +32,7 @@ function touched<T>(
 }
 
 /** The books whose boundaries differ between two deltas. */
-function booksResegmented(
+export function booksResegmented(
   before: SegmentationDelta | undefined,
   after: SegmentationDelta | undefined,
 ): string[] {
@@ -44,8 +44,7 @@ function booksResegmented(
   );
   return [...books].filter(
     (bookId) =>
-      JSON.stringify(segmentationForBook(before, bookId)) !==
-      JSON.stringify(segmentationForBook(after, bookId)),
+      !sameSegmentation(segmentationForBook(before, bookId), segmentationForBook(after, bookId)),
   );
 }
 
@@ -65,7 +64,7 @@ function freeTranslationIndex(book: Book, segmentId: string): number | undefined
 }
 
 /** Runs of consecutive indexes, in order. */
-function rangesOf(indexes: ReadonlySet<number>): SegmentRange[] {
+export function rangesOf(indexes: ReadonlySet<number>): SegmentRange[] {
   const ranges: { start: number; end: number }[] = [];
   [...indexes]
     .sort((a, b) => a - b)

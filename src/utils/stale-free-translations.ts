@@ -128,17 +128,18 @@ export function verseLabelOf(segmentId: string): string {
 }
 
 /** A book's stale free translations, filed by where the view shows each. */
-export type PlacedStaleFreeTranslations = Readonly<{
-  /** Those each segment reviews beside its own translation, by segment id, in document order. */
-  bySegment: ReadonlyMap<string, readonly StaleFreeTranslation[]>;
-  /**
-   * Those of verses the book no longer holds, by the id of the segment ending the nearest earlier
-   * verse, in verse order.
-   */
-  orphanedAfter: ReadonlyMap<string, readonly StaleFreeTranslation[]>;
-  /** Those of verses the book no longer holds that ran ahead of every verse it does. */
-  orphanedAhead: readonly StaleFreeTranslation[];
-}>;
+export type PlacedStaleFreeTranslations<T extends StaleFreeTranslation = StaleFreeTranslation> =
+  Readonly<{
+    /** Those each segment reviews beside its own translation, by segment id, in document order. */
+    bySegment: ReadonlyMap<string, readonly T[]>;
+    /**
+     * Those of verses the book no longer holds, by the id of the segment ending the nearest earlier
+     * verse, in verse order.
+     */
+    orphanedAfter: ReadonlyMap<string, readonly T[]>;
+    /** Those of verses the book no longer holds that ran ahead of every verse it does. */
+    orphanedAhead: readonly T[];
+  }>;
 
 /** Stale free translations by where the view places them, each as `T`. */
 type Placement<T> = Readonly<{
@@ -172,7 +173,7 @@ export function placedAmong<T>(
   };
 }
 
-/** The payload ids of every stale free translation in `placement`. */
+/** Every id that `placement` names. */
 export function placedIdsIn(placement: PlacedFreeTranslations): Set<string> {
   return new Set(
     [
@@ -199,11 +200,7 @@ export function orphanedCardCountAt(
   );
 }
 
-function fileUnder(
-  map: Map<string, StaleFreeTranslation[]>,
-  key: string,
-  translation: StaleFreeTranslation,
-) {
+function fileUnder<T>(map: Map<string, T[]>, key: string, translation: T) {
   const list = map.get(key) ?? [];
   list.push(translation);
   map.set(key, list);
@@ -218,15 +215,15 @@ function fileUnder(
  * translation whose verse the book no longer holds is orphaned, following the segment that ends the
  * nearest earlier verse.
  */
-export function placeStaleFreeTranslations(
-  stale: readonly StaleFreeTranslation[],
+export function placeStaleFreeTranslations<T extends StaleFreeTranslation>(
+  stale: readonly T[],
   book: Book,
-): PlacedStaleFreeTranslations {
+): PlacedStaleFreeTranslations<T> {
   const placesByVerse = indexPlacesByVerse(book);
   let inOrder: readonly VersePlace[] | undefined;
-  const placed: { translation: StaleFreeTranslation; covering: Place }[] = [];
+  const placed: { translation: T; covering: Place }[] = [];
   const orphaned: {
-    translation: StaleFreeTranslation;
+    translation: T;
     after: Place | undefined;
     verse: SerializedVerseRef;
   }[] = [];
@@ -249,13 +246,13 @@ export function placeStaleFreeTranslations(
     orphaned.push({ translation, after: placeBefore(verseRef, inOrder), verse: verseRef });
   });
 
-  const bySegment = new Map<string, StaleFreeTranslation[]>();
+  const bySegment = new Map<string, T[]>();
   placed
     .toSorted((a, b) => a.covering.order - b.covering.order)
     .forEach(({ translation, covering }) => fileUnder(bySegment, covering.segmentId, translation));
 
-  const orphanedAfter = new Map<string, StaleFreeTranslation[]>();
-  const orphanedAhead: StaleFreeTranslation[] = [];
+  const orphanedAfter = new Map<string, T[]>();
+  const orphanedAhead: T[] = [];
   orphaned
     .toSorted(
       (a, b) => a.verse.chapterNum - b.verse.chapterNum || a.verse.verseNum - b.verse.verseNum,

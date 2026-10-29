@@ -19,6 +19,7 @@ import {
   placedIdsIn,
   placeStaleFreeTranslations,
   type PlacedStaleFreeTranslations,
+  type StaleFreeTranslation,
 } from '../utils/stale-free-translations';
 import { buildPoolIndex } from '../utils/suggestion-engine';
 
@@ -53,7 +54,10 @@ function uniqueById<T extends { id: string }>(records: readonly T[]): T[] {
   return [...new Map(records.toReversed().map((record) => [record.id, record])).values()];
 }
 
-const NOTHING_PLACED: PlacedStaleFreeTranslations = {
+/** A stale free translation, with the link it was read from. */
+type StaleLink = StaleFreeTranslation & Readonly<{ link: SegmentAnalysisLink }>;
+
+const NOTHING_PLACED: PlacedStaleFreeTranslations<StaleLink> = {
   bySegment: new Map(),
   orphanedAfter: new Map(),
   orphanedAhead: [],
@@ -61,7 +65,7 @@ const NOTHING_PLACED: PlacedStaleFreeTranslations = {
 
 /** The book's stale free translations, placed, with the links and payloads they were read from. */
 type StalePlacement = {
-  placed: PlacedStaleFreeTranslations;
+  placed: PlacedStaleFreeTranslations<StaleLink>;
   links: SegmentAnalysisLink[];
   payloads: SegmentAnalysis[];
 };
@@ -84,7 +88,12 @@ async function readStalePlacement(
   const links = segmentAnalysisLinks.filter(({ analysisId }) => stored.has(analysisId));
   // Placing walks the whole book; a book holding no stale translation skips the walk.
   if (links.length === 0) return { placed: NOTHING_PLACED, links, payloads };
-  const stale = links.map(({ analysisId, segmentId }) => ({ analysisId, segmentId, text: '' }));
+  const stale = links.map((link) => ({
+    analysisId: link.analysisId,
+    segmentId: link.segmentId,
+    text: '',
+    link,
+  }));
   return { placed: placeStaleFreeTranslations(stale, book), links, payloads };
 }
 
@@ -170,13 +179,17 @@ export async function readSegmentPage(
     ...new Set(segmentAnalysisLinks.map(({ analysisId }) => analysisId)),
   ]);
   const placement = await readStalePlacement(repository, book);
+  const segmentIds = segments.map(({ id }) => id);
   const staleFreeTranslations = placedAmong(
     placement.placed,
-    segments.map(({ id }) => id),
+    segmentIds,
     from === 0,
     ({ analysisId }) => analysisId,
   );
   const placedIds = placedIdsIn(staleFreeTranslations);
+  const placedLinkIds = placedIdsIn(
+    placedAmong(placement.placed, segmentIds, from === 0, ({ link }) => link.id),
+  );
   return {
     textVersion: book.textVersion,
     start: from,
@@ -186,7 +199,7 @@ export async function readSegmentPage(
       phraseAnalysisLinks,
       segmentAnalysisLinks: uniqueById([
         ...segmentAnalysisLinks,
-        ...placement.links.filter(({ analysisId }) => placedIds.has(analysisId)),
+        ...placement.links.filter(({ id }) => placedLinkIds.has(id)),
       ]),
       tokenAnalyses: uniqueById([...linked, ...poolAnalyses]),
       phraseAnalyses,

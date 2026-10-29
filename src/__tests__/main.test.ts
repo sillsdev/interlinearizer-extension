@@ -6,7 +6,6 @@ import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
 import type {
   DraftProject,
-  MergedContent,
   PhraseAnalysisLink,
   ProjectConfig,
   RemovalPreviewRequest,
@@ -14,6 +13,7 @@ import type {
   TextAnalysis,
   TokenSnapshot,
 } from 'interlinearizer';
+import type { CommandHandlers } from 'papi-shared-types';
 import { AnalysisSessions } from '../services/analysisSessions';
 import { ApprovalRuleError } from '../services/commands/approvalRule';
 import * as bookService from '../services/bookService';
@@ -2129,171 +2129,110 @@ describe('main', () => {
       };
       return {
         context,
-        openSession: handler<
-          (sourceProjectId: string, interlinearProjectId?: string) => Promise<string>
-        >('interlinearizer.openSession'),
-        closeSession: handler<(sessionId: string) => Promise<void>>('interlinearizer.closeSession'),
-        setAnalysisLanguage: handler<
-          (sessionId: string, analysisLanguage: string) => Promise<void>
-        >('interlinearizer.setAnalysisLanguage'),
-        undoEdit: handler<
-          (sessionId: string, changeId?: string | null) => Promise<string | undefined>
-        >('interlinearizer.undoEdit'),
-        redoEdit: handler<
-          (sessionId: string, changeId?: string | null) => Promise<string | undefined>
-        >('interlinearizer.redoEdit'),
-        checkIndexes: handler<(sessionId: string) => Promise<string>>(
+        openSession: handler<CommandHandlers['interlinearizer.openSession']>(
+          'interlinearizer.openSession',
+        ),
+        closeSession: handler<CommandHandlers['interlinearizer.closeSession']>(
+          'interlinearizer.closeSession',
+        ),
+        setAnalysisLanguage: handler<CommandHandlers['interlinearizer.setAnalysisLanguage']>(
+          'interlinearizer.setAnalysisLanguage',
+        ),
+        undoEdit: handler<CommandHandlers['interlinearizer.undoEdit']>('interlinearizer.undoEdit'),
+        redoEdit: handler<CommandHandlers['interlinearizer.redoEdit']>('interlinearizer.redoEdit'),
+        checkIndexes: handler<CommandHandlers['interlinearizer.checkIndexes']>(
           'interlinearizer.checkIndexes',
         ),
-        writeGloss: handler<
-          (
-            sessionId: string,
-            tokenRef: string,
-            surfaceText: string,
-            value: string,
-            changeId?: string,
-          ) => Promise<string>
-        >('interlinearizer.writeGloss'),
+        writeGloss: handler<CommandHandlers['interlinearizer.writeGloss']>(
+          'interlinearizer.writeGloss',
+        ),
         approveAnalysisForToken: handler<
-          (
-            sessionId: string,
-            tokenRef: string,
-            surfaceText: string,
-            analysisId: string,
-          ) => Promise<string>
+          CommandHandlers['interlinearizer.approveAnalysisForToken']
         >('interlinearizer.approveAnalysisForToken'),
-        writeMorphemes: handler<
-          (
-            sessionId: string,
-            tokenRef: string,
-            surfaceText: string,
-            forms: string[],
-            writingSystem: string,
-          ) => Promise<string>
-        >('interlinearizer.writeMorphemes'),
-        deleteMorphemes: handler<(sessionId: string, tokenRef: string) => Promise<string>>(
+        writeMorphemes: handler<CommandHandlers['interlinearizer.writeMorphemes']>(
+          'interlinearizer.writeMorphemes',
+        ),
+        deleteMorphemes: handler<CommandHandlers['interlinearizer.deleteMorphemes']>(
           'interlinearizer.deleteMorphemes',
         ),
-        writeMorphemeGloss: handler<
-          (
-            sessionId: string,
-            tokenRef: string,
-            morphemeId: string,
-            value: string,
-          ) => Promise<string>
-        >('interlinearizer.writeMorphemeGloss'),
-        discardStaleAnalysis: handler<
-          (sessionId: string, analysisId: string, tokenRef: string) => Promise<string>
-        >('interlinearizer.discardStaleAnalysis'),
-        reapplyStaleAnalysis: handler<
-          (
-            sessionId: string,
-            analysisId: string,
-            staleTokenRef: string,
-            tokenRef: string,
-            surfaceText: string,
-          ) => Promise<string>
-        >('interlinearizer.reapplyStaleAnalysis'),
+        writeMorphemeGloss: handler<CommandHandlers['interlinearizer.writeMorphemeGloss']>(
+          'interlinearizer.writeMorphemeGloss',
+        ),
+        discardStaleAnalysis: handler<CommandHandlers['interlinearizer.discardStaleAnalysis']>(
+          'interlinearizer.discardStaleAnalysis',
+        ),
+        reapplyStaleAnalysis: handler<CommandHandlers['interlinearizer.reapplyStaleAnalysis']>(
+          'interlinearizer.reapplyStaleAnalysis',
+        ),
         keepStaleFreeTranslation: handler<
-          (
-            sessionId: string,
-            analysisId: string,
-            segmentId: string,
-            surfaceText: string,
-          ) => Promise<string>
+          CommandHandlers['interlinearizer.keepStaleFreeTranslation']
         >('interlinearizer.keepStaleFreeTranslation'),
         discardStaleFreeTranslation: handler<
-          (sessionId: string, analysisId: string) => Promise<string>
+          CommandHandlers['interlinearizer.discardStaleFreeTranslation']
         >('interlinearizer.discardStaleFreeTranslation'),
-        createPhrase: handler<(sessionId: string, tokens: TokenSnapshot[]) => Promise<string>>(
+        createPhrase: handler<CommandHandlers['interlinearizer.createPhrase']>(
           'interlinearizer.createPhrase',
         ),
-        updatePhrase: handler<
-          (sessionId: string, phraseId: string, tokens: TokenSnapshot[]) => Promise<string>
-        >('interlinearizer.updatePhrase'),
-        deletePhrase: handler<(sessionId: string, phraseId: string) => Promise<string>>(
+        updatePhrase: handler<CommandHandlers['interlinearizer.updatePhrase']>(
+          'interlinearizer.updatePhrase',
+        ),
+        deletePhrase: handler<CommandHandlers['interlinearizer.deletePhrase']>(
           'interlinearizer.deletePhrase',
         ),
-        mergePhrases: handler<
-          (
-            sessionId: string,
-            targetPhraseId: string,
-            tokens: TokenSnapshot[],
-            absorbedPhraseId?: string | null,
-          ) => Promise<string>
-        >('interlinearizer.mergePhrases'),
-        writePhraseGloss: handler<
-          (sessionId: string, phraseId: string, value: string) => Promise<string>
-        >('interlinearizer.writePhraseGloss'),
-        approvePhrase: handler<(sessionId: string, phraseId: string) => Promise<string>>(
+        mergePhrases: handler<CommandHandlers['interlinearizer.mergePhrases']>(
+          'interlinearizer.mergePhrases',
+        ),
+        writePhraseGloss: handler<CommandHandlers['interlinearizer.writePhraseGloss']>(
+          'interlinearizer.writePhraseGloss',
+        ),
+        approvePhrase: handler<CommandHandlers['interlinearizer.approvePhrase']>(
           'interlinearizer.approvePhrase',
         ),
-        splitPhrase: handler<
-          (sessionId: string, phraseId: string, splitAfterTokenRef: string) => Promise<string>
-        >('interlinearizer.splitPhrase'),
+        splitPhrase: handler<CommandHandlers['interlinearizer.splitPhrase']>(
+          'interlinearizer.splitPhrase',
+        ),
         writeSegmentFreeTranslation: handler<
-          (
-            sessionId: string,
-            segmentId: string,
-            surfaceText: string,
-            value: string,
-            adoptStaleAnalysisId?: string | null,
-          ) => Promise<string>
+          CommandHandlers['interlinearizer.writeSegmentFreeTranslation']
         >('interlinearizer.writeSegmentFreeTranslation'),
-        mergeSegments: handler<
-          (sessionId: string, secondSegmentStartRef: string) => Promise<string>
-        >('interlinearizer.mergeSegments'),
-        splitSegment: handler<(sessionId: string, tokenRef: string) => Promise<string>>(
+        mergeSegments: handler<CommandHandlers['interlinearizer.mergeSegments']>(
+          'interlinearizer.mergeSegments',
+        ),
+        splitSegment: handler<CommandHandlers['interlinearizer.splitSegment']>(
           'interlinearizer.splitSegment',
         ),
-        moveBoundary: handler<
-          (sessionId: string, fromRef: string, toRef: string) => Promise<string>
-        >('interlinearizer.moveBoundary'),
-        writeAnalysisGloss: handler<
-          (sessionId: string, analysisId: string, value: string) => Promise<string>
-        >('interlinearizer.writeAnalysisGloss'),
-        clearAnalysisGlosses: handler<
-          (sessionId: string, analysisIds: string[]) => Promise<string>
-        >('interlinearizer.clearAnalysisGlosses'),
-        writeAnalysisMorphemes: handler<
-          (
-            sessionId: string,
-            analysisId: string,
-            forms: string[],
-            writingSystem: string,
-          ) => Promise<string>
-        >('interlinearizer.writeAnalysisMorphemes'),
+        moveBoundary: handler<CommandHandlers['interlinearizer.moveBoundary']>(
+          'interlinearizer.moveBoundary',
+        ),
+        writeAnalysisGloss: handler<CommandHandlers['interlinearizer.writeAnalysisGloss']>(
+          'interlinearizer.writeAnalysisGloss',
+        ),
+        clearAnalysisGlosses: handler<CommandHandlers['interlinearizer.clearAnalysisGlosses']>(
+          'interlinearizer.clearAnalysisGlosses',
+        ),
+        writeAnalysisMorphemes: handler<CommandHandlers['interlinearizer.writeAnalysisMorphemes']>(
+          'interlinearizer.writeAnalysisMorphemes',
+        ),
         confirmAnalysisMorphemes: handler<
-          (sessionId: string, analysisId: string, tokenRef?: string) => Promise<string>
+          CommandHandlers['interlinearizer.confirmAnalysisMorphemes']
         >('interlinearizer.confirmAnalysisMorphemes'),
         writeAnalysisMorphemeGloss: handler<
-          (
-            sessionId: string,
-            analysisId: string,
-            morphemeId: string,
-            value: string,
-          ) => Promise<string>
+          CommandHandlers['interlinearizer.writeAnalysisMorphemeGloss']
         >('interlinearizer.writeAnalysisMorphemeGloss'),
-        deleteAnalyses: handler<(sessionId: string, analysisIds: string[]) => Promise<string>>(
+        deleteAnalyses: handler<CommandHandlers['interlinearizer.deleteAnalyses']>(
           'interlinearizer.deleteAnalyses',
         ),
-        mergeAnalysesInto: handler<
-          (
-            sessionId: string,
-            survivorAnalysisId: string,
-            mergedAnalysisIds: string[],
-            content: MergedContent,
-          ) => Promise<string>
-        >('interlinearizer.mergeAnalysesInto'),
-        discardBook: handler<
-          (sessionId: string, bookCode: string, changeId?: string) => Promise<string>
-        >('interlinearizer.discardBook'),
-        discardAll: handler<(sessionId: string, changeId?: string) => Promise<string>>(
+        mergeAnalysesInto: handler<CommandHandlers['interlinearizer.mergeAnalysesInto']>(
+          'interlinearizer.mergeAnalysesInto',
+        ),
+        discardBook: handler<CommandHandlers['interlinearizer.discardBook']>(
+          'interlinearizer.discardBook',
+        ),
+        discardAll: handler<CommandHandlers['interlinearizer.discardAll']>(
           'interlinearizer.discardAll',
         ),
-        previewRemovals: handler<
-          (sessionId: string, request: RemovalPreviewRequest) => Promise<string>
-        >('interlinearizer.previewRemovals'),
+        previewRemovals: handler<CommandHandlers['interlinearizer.previewRemovals']>(
+          'interlinearizer.previewRemovals',
+        ),
         getBookOutline: handler<
           (
             address: { sessionId: string },
@@ -2363,7 +2302,7 @@ describe('main', () => {
     it("opens a session on the source project's draft", async () => {
       const { openSession } = await activateSessionCommands();
 
-      const opened = JSON.parse(await openSession('src-project'));
+      const opened = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       expect(opened).toStrictEqual({
         sessionId: expect.any(String),
@@ -2392,7 +2331,9 @@ describe('main', () => {
         .mockReturnValue(await stubRepository(emptyDraft('src-project'), true));
       const { openSession } = await activateSessionCommands();
 
-      const opened = JSON.parse(await openSession('src-project', 'import-id'));
+      const opened = JSON.parse(
+        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'import-id' }),
+      );
 
       expect(opened.readOnly).toBe(true);
       expect(projectStorage.getProjectSummariesForSource).toHaveBeenCalledWith(
@@ -2412,7 +2353,7 @@ describe('main', () => {
       __mockSettingsGet.mockResolvedValue(['fr']);
       const { openSession } = await activateSessionCommands();
 
-      await openSession('src-project');
+      await openSession({ sourceProjectId: 'src-project' });
 
       expect(__mockSettingsGet).toHaveBeenCalledWith('platform.interfaceLanguage');
     });
@@ -2421,9 +2362,9 @@ describe('main', () => {
       jest.mocked(projectStorage.getProjectSummariesForSource).mockResolvedValue([]);
       const { openSession } = await activateSessionCommands();
 
-      await expect(openSession('src-project', 'missing')).rejects.toThrow(
-        'has no interlinear project missing',
-      );
+      await expect(
+        openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'missing' }),
+      ).rejects.toThrow('has no interlinear project missing');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to open a session on project src-project',
         expect.any(Error),
@@ -2432,26 +2373,28 @@ describe('main', () => {
 
     it("closes a session, releasing its draft's repository", async () => {
       const { openSession, closeSession } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await closeSession(sessionId);
+      await closeSession({ sessionId });
 
       expect(projectStorage.releaseDraftRepository).toHaveBeenCalledWith('src-project');
     });
 
     it('sets the analysis language of an open session', async () => {
       const { openSession, setAnalysisLanguage } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await expect(setAnalysisLanguage(sessionId, 'fr')).resolves.toBeUndefined();
+      await expect(
+        setAnalysisLanguage({ sessionId, analysisLanguage: 'fr' }),
+      ).resolves.toBeUndefined();
     });
 
     it('logs the error and rethrows when setting the language of a session that is not open', async () => {
       const { setAnalysisLanguage } = await activateSessionCommands();
 
-      await expect(setAnalysisLanguage('not-a-session', 'fr')).rejects.toThrow(
-        'no session not-a-session is open',
-      );
+      await expect(
+        setAnalysisLanguage({ sessionId: 'not-a-session', analysisLanguage: 'fr' }),
+      ).rejects.toThrow('no session not-a-session is open');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to set the analysis language of session not-a-session',
         expect.any(Error),
@@ -2470,7 +2413,9 @@ describe('main', () => {
       jest.spyOn(AnalysisSessions.prototype, 'undo').mockResolvedValue(reverted);
       const { undoEdit } = await activateSessionCommands();
 
-      await expect(undoEdit('session-id', 'change-1')).resolves.toBe(JSON.stringify(reverted));
+      await expect(undoEdit({ sessionId: 'session-id', changeId: 'change-1' })).resolves.toBe(
+        JSON.stringify(reverted),
+      );
       expect(AnalysisSessions.prototype.undo).toHaveBeenCalledWith('session-id', 'change-1');
     });
 
@@ -2478,24 +2423,24 @@ describe('main', () => {
       jest.spyOn(AnalysisSessions.prototype, 'undo').mockResolvedValue(undefined);
       const { undoEdit } = await activateSessionCommands();
 
-      // Over PAPI an omitted argument arrives as null.
-      // eslint-disable-next-line no-null/no-null
-      await undoEdit('session-id', null);
+      await undoEdit({ sessionId: 'session-id' });
 
       expect(AnalysisSessions.prototype.undo).toHaveBeenCalledWith('session-id', undefined);
     });
 
     it('replies to an undo with nothing when there is no edit to undo', async () => {
       const { openSession, undoEdit } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await expect(undoEdit(sessionId)).resolves.toBeUndefined();
+      await expect(undoEdit({ sessionId })).resolves.toBeUndefined();
     });
 
     it('logs the error and rethrows when an undo fails', async () => {
       const { undoEdit } = await activateSessionCommands();
 
-      await expect(undoEdit('not-a-session')).rejects.toThrow('no session not-a-session is open');
+      await expect(undoEdit({ sessionId: 'not-a-session' })).rejects.toThrow(
+        'no session not-a-session is open',
+      );
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to undo an edit in session not-a-session',
         expect.any(Error),
@@ -2514,21 +2459,25 @@ describe('main', () => {
       jest.spyOn(AnalysisSessions.prototype, 'redo').mockResolvedValue(remade);
       const { redoEdit } = await activateSessionCommands();
 
-      await expect(redoEdit('session-id', 'change-1')).resolves.toBe(JSON.stringify(remade));
+      await expect(redoEdit({ sessionId: 'session-id', changeId: 'change-1' })).resolves.toBe(
+        JSON.stringify(remade),
+      );
       expect(AnalysisSessions.prototype.redo).toHaveBeenCalledWith('session-id', 'change-1');
     });
 
     it('replies to a redo with nothing when there is no undone edit', async () => {
       const { openSession, redoEdit } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await expect(redoEdit(sessionId)).resolves.toBeUndefined();
+      await expect(redoEdit({ sessionId })).resolves.toBeUndefined();
     });
 
     it('logs the error and rethrows when a redo fails', async () => {
       const { redoEdit } = await activateSessionCommands();
 
-      await expect(redoEdit('not-a-session')).rejects.toThrow('no session not-a-session is open');
+      await expect(redoEdit({ sessionId: 'not-a-session' })).rejects.toThrow(
+        'no session not-a-session is open',
+      );
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to redo an edit in session not-a-session',
         expect.any(Error),
@@ -2537,9 +2486,9 @@ describe('main', () => {
 
     it("replies with the differences the session's repository finds in its indexes", async () => {
       const { openSession, checkIndexes } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await expect(checkIndexes(sessionId)).resolves.toBe(
+      await expect(checkIndexes({ sessionId })).resolves.toBe(
         JSON.stringify([{ index: 'tokenAnalyses', key: 'ta-1', missing: ['ta-1'], extra: [] }]),
       );
     });
@@ -2547,7 +2496,7 @@ describe('main', () => {
     it('logs the error and rethrows when the indexes cannot be checked', async () => {
       const { checkIndexes } = await activateSessionCommands();
 
-      await expect(checkIndexes('not-a-session')).rejects.toThrow(
+      await expect(checkIndexes({ sessionId: 'not-a-session' })).rejects.toThrow(
         'no session not-a-session is open',
       );
       expect(__mockLogger.error).toHaveBeenCalledWith(
@@ -2558,10 +2507,12 @@ describe('main', () => {
 
     it("writes a token's gloss in the session's language, replying with the changes", async () => {
       const { openSession, setAnalysisLanguage, writeGloss } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
-      await setAnalysisLanguage(sessionId, 'fr');
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await setAnalysisLanguage({ sessionId, analysisLanguage: 'fr' });
 
-      const { changes } = JSON.parse(await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'au'));
+      const { changes } = JSON.parse(
+        await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'au' }),
+      );
 
       expect(changes).toMatchObject({
         intent: 'writeGloss',
@@ -2592,7 +2543,7 @@ describe('main', () => {
         await seedDraft(orphaned, segmentation);
         jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
         const { openSession, getBookOutline } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
         const json = await getBookOutline({ sessionId }, 'GEN');
 
@@ -2612,7 +2563,7 @@ describe('main', () => {
         await seedDraft(orphaned, segmentation);
         jest.mocked(bookService.getSegmentedBook).mockResolvedValue(VERSE_BOOK);
         const { openSession, getSegments } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
         const page = JSON.parse((await getSegments({ sessionId }, 'GEN', 1, 2)) ?? '');
 
@@ -2631,7 +2582,7 @@ describe('main', () => {
       it('names no boundaries for a book the draft sets none in', async () => {
         jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
         const { openSession, getBookOutline, getSegments } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
         await getBookOutline({ sessionId }, 'GEN');
         await getSegments({ sessionId }, 'GEN', 0, 1);
@@ -2644,7 +2595,7 @@ describe('main', () => {
         jest.mocked(bookService.getOpenBook).mockResolvedValue(undefined);
         jest.mocked(bookService.getSegmentedBook).mockResolvedValue(undefined);
         const { openSession, getBookOutline, getSegments } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
         await expect(getBookOutline({ sessionId }, 'GEN')).resolves.toBeUndefined();
         await expect(getSegments({ sessionId }, 'GEN', 0, 1)).resolves.toBeUndefined();
@@ -2652,7 +2603,7 @@ describe('main', () => {
 
       it('refuses boundaries sent with a session, logging the session', async () => {
         const { openSession, getBookOutline, getSegments } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
         const json = JSON.stringify(segmentation);
 
         await expect(getBookOutline({ sessionId }, 'GEN', json)).rejects.toThrow(
@@ -2674,7 +2625,7 @@ describe('main', () => {
       it("reports how far the session source's text has been read", async () => {
         jest.mocked(bookService.getTextReadStatus).mockResolvedValue('{"booksRead":1}');
         const { openSession, getTextReadStatus } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
         await expect(getTextReadStatus({ sessionId })).resolves.toBe('{"booksRead":1}');
         expect(bookService.getTextReadStatus).toHaveBeenCalledWith('src-project');
@@ -2695,10 +2646,26 @@ describe('main', () => {
 
     it('edits under the change id sent, replying with the pool buckets the edit touched', async () => {
       const { openSession, writeGloss } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      const reply = JSON.parse(await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'at', 'change-1'));
-      const again = JSON.parse(await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'at', 'change-1'));
+      const reply = JSON.parse(
+        await writeGloss({
+          sessionId,
+          tokenRef: 'GEN 1:1:0',
+          surfaceText: 'In',
+          value: 'at',
+          changeId: 'change-1',
+        }),
+      );
+      const again = JSON.parse(
+        await writeGloss({
+          sessionId,
+          tokenRef: 'GEN 1:1:0',
+          surfaceText: 'In',
+          value: 'at',
+          changeId: 'change-1',
+        }),
+      );
 
       expect(reply.changeId).toBe('change-1');
       expect(reply.poolBuckets).toStrictEqual({
@@ -2714,10 +2681,16 @@ describe('main', () => {
       await seedDraft({}, segmentation);
       jest.mocked(bookService.heldBook).mockReturnValue(VERSE_BOOK);
       const { openSession, writeGloss } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       const { changes } = JSON.parse(
-        await writeGloss(sessionId, 'GEN 1:2:0', 'And', 'and', 'change-1'),
+        await writeGloss({
+          sessionId,
+          tokenRef: 'GEN 1:2:0',
+          surfaceText: 'And',
+          value: 'and',
+          changeId: 'change-1',
+        }),
       );
 
       expect(bookService.heldBook).toHaveBeenCalledWith(
@@ -2737,9 +2710,9 @@ describe('main', () => {
 
     it("names no boundaries for a book the session's draft sets none in", async () => {
       const { openSession, writeGloss } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'at');
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'at' });
 
       expect(bookService.heldBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
     });
@@ -2764,16 +2737,16 @@ describe('main', () => {
 
       /** The step that undoing the latest edit of `sessionId` hands back. */
       async function undoneStep(
-        undoEdit: (sessionId: string) => Promise<string | undefined>,
+        undoEdit: CommandHandlers['interlinearizer.undoEdit'],
         sessionId: string,
       ) {
-        return JSON.parse((await undoEdit(sessionId)) ?? '{}').step;
+        return JSON.parse((await undoEdit({ sessionId })) ?? '{}').step;
       }
 
       it('places a token edit at its token', async () => {
         const { openSession, writeGloss, undoEdit } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
-        await writeGloss(sessionId, 'GEN 1:1:0', 'In', 'at');
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'at' });
 
         await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
           location: 'GEN 1:1:0',
@@ -2783,9 +2756,9 @@ describe('main', () => {
       it("places a phrase edit at the phrase's first token", async () => {
         const { openSession, createPhrase, deletePhrase, undoEdit } =
           await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
-        const { changes } = JSON.parse(await createPhrase(sessionId, inThe));
-        await deletePhrase(sessionId, changes.phraseAnalysisLinks.puts[0].id);
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        const { changes } = JSON.parse(await createPhrase({ sessionId, tokens: inThe }));
+        await deletePhrase({ sessionId, phraseId: changes.phraseAnalysisLinks.puts[0].id });
 
         await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
           location: 'GEN 1:1:0',
@@ -2798,9 +2771,13 @@ describe('main', () => {
       it("places a reshaping that empties a phrase at the phrase's first token", async () => {
         const { openSession, createPhrase, updatePhrase, undoEdit } =
           await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
-        const { changes } = JSON.parse(await createPhrase(sessionId, inThe));
-        await updatePhrase(sessionId, changes.phraseAnalysisLinks.puts[0].id, []);
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        const { changes } = JSON.parse(await createPhrase({ sessionId, tokens: inThe }));
+        await updatePhrase({
+          sessionId,
+          phraseId: changes.phraseAnalysisLinks.puts[0].id,
+          tokens: [],
+        });
 
         await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
           location: 'GEN 1:1:0',
@@ -2810,8 +2787,13 @@ describe('main', () => {
       it('places a free-translation edit at its segment', async () => {
         const { openSession, writeSegmentFreeTranslation, undoEdit } =
           await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
-        await writeSegmentFreeTranslation(sessionId, 'GEN 1:2', 'And the earth', 'x');
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await writeSegmentFreeTranslation({
+          sessionId,
+          segmentId: 'GEN 1:2',
+          surfaceText: 'And the earth',
+          value: 'x',
+        });
 
         await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
           location: 'GEN 1:2',
@@ -2821,8 +2803,8 @@ describe('main', () => {
       it('names a catalog edit by its row and the analysis it leaves holding it', async () => {
         await seedDraft(tokenIn);
         const { openSession, writeAnalysisGloss, undoEdit } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
-        await writeAnalysisGloss(sessionId, 'ta-in', 'into');
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await writeAnalysisGloss({ sessionId, analysisId: 'ta-in', value: 'into' });
 
         await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
           summary: {
@@ -2843,8 +2825,8 @@ describe('main', () => {
           ],
         });
         const { openSession, writeAnalysisGloss, undoEdit } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
-        await writeAnalysisGloss(sessionId, 'ta-spare', 'at');
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await writeAnalysisGloss({ sessionId, analysisId: 'ta-spare', value: 'at' });
 
         await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
           summary: {
@@ -2859,8 +2841,8 @@ describe('main', () => {
       it('names a deletion by the form and uses of what it deleted', async () => {
         await seedDraft(tokenIn);
         const { openSession, deleteAnalyses, undoEdit } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
-        await deleteAnalyses(sessionId, ['ta-in']);
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await deleteAnalyses({ sessionId, analysisIds: ['ta-in'] });
 
         await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
           summary: { kind: 'catalogDelete', form: 'In', analysisId: 'ta-in', count: 1 },
@@ -2870,8 +2852,8 @@ describe('main', () => {
       it('names a gloss clear by how many analyses it cleared', async () => {
         await seedDraft(tokenIn);
         const { openSession, clearAnalysisGlosses, undoEdit } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
-        await clearAnalysisGlosses(sessionId, ['ta-in']);
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await clearAnalysisGlosses({ sessionId, analysisIds: ['ta-in'] });
 
         await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
           summary: { kind: 'catalogClearGlossChecked', count: 1 },
@@ -2892,8 +2874,8 @@ describe('main', () => {
           await seedDraft(staleIn);
           const { openSession, confirmAnalysisMorphemes, undoEdit } =
             await activateSessionCommands();
-          const { sessionId } = JSON.parse(await openSession('src-project'));
-          await confirmAnalysisMorphemes(sessionId, 'ta-in', 'GEN 1:1:0');
+          const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+          await confirmAnalysisMorphemes({ sessionId, analysisId: 'ta-in', tokenRef: 'GEN 1:1:0' });
 
           await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
             location: 'GEN 1:1:0',
@@ -2904,8 +2886,8 @@ describe('main', () => {
           await seedDraft(staleIn);
           const { openSession, confirmAnalysisMorphemes, undoEdit } =
             await activateSessionCommands();
-          const { sessionId } = JSON.parse(await openSession('src-project'));
-          await confirmAnalysisMorphemes(sessionId, 'ta-in');
+          const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+          await confirmAnalysisMorphemes({ sessionId, analysisId: 'ta-in' });
 
           await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
             summary: {
@@ -2921,8 +2903,8 @@ describe('main', () => {
       it('names a discard by what it discarded', async () => {
         await seedDraft(tokenIn);
         const { openSession, discardBook, undoEdit } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
-        await discardBook(sessionId, 'GEN');
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await discardBook({ sessionId, bookCode: 'GEN' });
 
         await expect(undoneStep(undoEdit, sessionId)).resolves.toStrictEqual({
           summary: { kind: 'discardBook', book: 'GEN' },
@@ -2932,8 +2914,8 @@ describe('main', () => {
       it('names no step for a stale edit, as the view makes it at no place', async () => {
         await seedDraft(staleToken);
         const { openSession, discardStaleAnalysis, undoEdit } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession('src-project'));
-        await discardStaleAnalysis(sessionId, 'ta-in', 'GEN 1:1:0');
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await discardStaleAnalysis({ sessionId, analysisId: 'ta-in', tokenRef: 'GEN 1:1:0' });
 
         await expect(undoneStep(undoEdit, sessionId)).resolves.toBeUndefined();
       });
@@ -2942,9 +2924,14 @@ describe('main', () => {
     it('logs the error and rethrows when an edit fails', async () => {
       const { writeGloss } = await activateSessionCommands();
 
-      await expect(writeGloss('not-a-session', 'GEN 1:1:0', 'In', 'at')).rejects.toThrow(
-        'no session not-a-session is open',
-      );
+      await expect(
+        writeGloss({
+          sessionId: 'not-a-session',
+          tokenRef: 'GEN 1:1:0',
+          surfaceText: 'In',
+          value: 'at',
+        }),
+      ).rejects.toThrow('no session not-a-session is open');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to writeGloss in session not-a-session',
         expect.any(Error),
@@ -2956,10 +2943,15 @@ describe('main', () => {
         tokenAnalyses: [{ id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'at' } }],
       });
       const { openSession, approveAnalysisForToken } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       const { changes } = JSON.parse(
-        await approveAnalysisForToken(sessionId, 'GEN 1:1:0', 'In', 'ta-in'),
+        await approveAnalysisForToken({
+          sessionId,
+          tokenRef: 'GEN 1:1:0',
+          surfaceText: 'In',
+          analysisId: 'ta-in',
+        }),
       );
 
       expect(changes).toMatchObject({
@@ -2979,10 +2971,16 @@ describe('main', () => {
 
     it("writes a token's morpheme breakdown, replying with the changes", async () => {
       const { openSession, writeMorphemes } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       const { changes } = JSON.parse(
-        await writeMorphemes(sessionId, 'GEN 1:1:0', 'cats', ['cat', '-s'], 'en'),
+        await writeMorphemes({
+          sessionId,
+          tokenRef: 'GEN 1:1:0',
+          surfaceText: 'cats',
+          forms: ['cat', '-s'],
+          writingSystem: 'en',
+        }),
       );
 
       expect(changes).toMatchObject({
@@ -3009,9 +3007,9 @@ describe('main', () => {
     it("removes a token's morpheme breakdown, replying with the changes", async () => {
       await seedDraft(CATS_BREAKDOWN);
       const { openSession, deleteMorphemes } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      const { changes } = JSON.parse(await deleteMorphemes(sessionId, 'GEN 1:1:0'));
+      const { changes } = JSON.parse(await deleteMorphemes({ sessionId, tokenRef: 'GEN 1:1:0' }));
 
       expect(changes).toMatchObject({
         intent: 'deleteMorphemes',
@@ -3024,11 +3022,16 @@ describe('main', () => {
       await seedDraft(CATS_BREAKDOWN);
       const { openSession, setAnalysisLanguage, writeMorphemeGloss } =
         await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
-      await setAnalysisLanguage(sessionId, 'fr');
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await setAnalysisLanguage({ sessionId, analysisLanguage: 'fr' });
 
       const { changes } = JSON.parse(
-        await writeMorphemeGloss(sessionId, 'GEN 1:1:0', 'm-cat', 'chat'),
+        await writeMorphemeGloss({
+          sessionId,
+          tokenRef: 'GEN 1:1:0',
+          morphemeId: 'm-cat',
+          value: 'chat',
+        }),
       );
 
       expect(changes).toMatchObject({
@@ -3045,10 +3048,12 @@ describe('main', () => {
     it('discards the place an analysis went stale at, replying with the changes', async () => {
       await seedDraft(staleToken);
       const { openSession, discardStaleAnalysis } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       await expect(
-        discardStaleAnalysis(sessionId, 'ta-in', 'GEN 1:1:0').then(changesOf),
+        discardStaleAnalysis({ sessionId, analysisId: 'ta-in', tokenRef: 'GEN 1:1:0' }).then(
+          changesOf,
+        ),
       ).resolves.toStrictEqual({
         intent: 'discardStaleAnalysis',
         tokenAnalyses: { puts: [], deletes: ['ta-in'] },
@@ -3059,10 +3064,16 @@ describe('main', () => {
     it('reapplies a stale analysis on a token, replying with the changes', async () => {
       await seedDraft(staleToken);
       const { openSession, reapplyStaleAnalysis } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       const { changes } = JSON.parse(
-        await reapplyStaleAnalysis(sessionId, 'ta-in', 'GEN 1:1:0', 'GEN 1:2:0', 'In'),
+        await reapplyStaleAnalysis({
+          sessionId,
+          analysisId: 'ta-in',
+          staleTokenRef: 'GEN 1:1:0',
+          tokenRef: 'GEN 1:2:0',
+          surfaceText: 'In',
+        }),
       );
 
       expect(changes).toMatchObject({
@@ -3083,10 +3094,15 @@ describe('main', () => {
     it('keeps a stale free translation for a segment, replying with the changes', async () => {
       await seedDraft(staleTranslation);
       const { openSession, keepStaleFreeTranslation } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       const { changes } = JSON.parse(
-        await keepStaleFreeTranslation(sessionId, 'sa-1', 'GEN 1:1', 'In the start'),
+        await keepStaleFreeTranslation({
+          sessionId,
+          analysisId: 'sa-1',
+          segmentId: 'GEN 1:1',
+          surfaceText: 'In the start',
+        }),
       );
 
       expect(changes).toMatchObject({
@@ -3102,10 +3118,10 @@ describe('main', () => {
     it('discards a stale free translation, replying with the changes', async () => {
       await seedDraft(staleTranslation);
       const { openSession, discardStaleFreeTranslation } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       await expect(
-        discardStaleFreeTranslation(sessionId, 'sa-1').then(changesOf),
+        discardStaleFreeTranslation({ sessionId, analysisId: 'sa-1' }).then(changesOf),
       ).resolves.toStrictEqual({
         intent: 'discardStaleFreeTranslation',
         segmentAnalyses: { puts: [], deletes: ['sa-1'] },
@@ -3125,9 +3141,9 @@ describe('main', () => {
 
     it('creates a phrase, replying with the changes', async () => {
       const { openSession, createPhrase } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      const { changes } = JSON.parse(await createPhrase(sessionId, inThe));
+      const { changes } = JSON.parse(await createPhrase({ sessionId, tokens: inThe }));
 
       expect(changes).toMatchObject({
         intent: 'createPhrase',
@@ -3140,9 +3156,9 @@ describe('main', () => {
     it("checks a phrase against the segments the draft's boundaries in its book make", async () => {
       await seedDraft({}, { removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'], addedStarts: [] });
       const { openSession, createPhrase } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await createPhrase(sessionId, inThe);
+      await createPhrase({ sessionId, tokens: inThe });
 
       expect(bookService.getSegmentedBook).toHaveBeenCalledWith(
         'src-project',
@@ -3164,14 +3180,30 @@ describe('main', () => {
     });
 
     it.each([
-      ['createPhrase', (c: SessionCommands, id: string) => c.createPhrase(id, godAnd)],
-      ['updatePhrase', (c: SessionCommands, id: string) => c.updatePhrase(id, 'pl-1', godAnd)],
-      ['mergePhrases', (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', godAnd)],
-      ['approvePhrase', (c: SessionCommands, id: string) => c.approvePhrase(id, 'pl-1')],
+      [
+        'createPhrase',
+        (c: SessionCommands, id: string) => c.createPhrase({ sessionId: id, tokens: godAnd }),
+      ],
+      [
+        'updatePhrase',
+        (c: SessionCommands, id: string) =>
+          c.updatePhrase({ sessionId: id, phraseId: 'pl-1', tokens: godAnd }),
+      ],
+      [
+        'mergePhrases',
+        (c: SessionCommands, id: string) =>
+          c.mergePhrases({ sessionId: id, targetPhraseId: 'pl-1', tokens: godAnd }),
+      ],
+      [
+        'approvePhrase',
+        (c: SessionCommands, id: string) => c.approvePhrase({ sessionId: id, phraseId: 'pl-1' }),
+      ],
     ])('refuses %s over tokens in two segments, logging the error', async (intent, command) => {
       await seedDraft(suggested(godAnd));
       const commands = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+      const { sessionId } = JSON.parse(
+        await commands.openSession({ sourceProjectId: 'src-project' }),
+      );
 
       await expect(command(commands, sessionId)).rejects.toThrow(
         "a phrase's tokens must lie within one segment of the text",
@@ -3184,19 +3216,24 @@ describe('main', () => {
 
     it('refuses a phrase over a token the text lacks', async () => {
       const { openSession, createPhrase } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       await expect(
-        createPhrase(sessionId, [inThe[0], { tokenRef: 'GEN 1:1:1', surfaceText: 'the' }]),
+        createPhrase({
+          sessionId,
+          tokens: [inThe[0], { tokenRef: 'GEN 1:1:1', surfaceText: 'the' }],
+        }),
       ).rejects.toThrow("a phrase's tokens must lie within one segment of the text");
     });
 
     it('approves a suggested phrase within one segment, replying with the changes', async () => {
       await seedDraft(suggested(inThe));
       const { openSession, approvePhrase } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await expect(approvePhrase(sessionId, 'pl-1').then(changesOf)).resolves.toMatchObject({
+      await expect(
+        approvePhrase({ sessionId, phraseId: 'pl-1' }).then(changesOf),
+      ).resolves.toMatchObject({
         intent: 'approvePhrase',
         phraseAnalysisLinks: { puts: [{ id: 'pl-1', status: 'approved' }], deletes: [] },
       });
@@ -3210,9 +3247,11 @@ describe('main', () => {
         ],
       });
       const { openSession, approvePhrase } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await expect(approvePhrase(sessionId, 'pl-1').then(changesOf)).resolves.toStrictEqual({
+      await expect(
+        approvePhrase({ sessionId, phraseId: 'pl-1' }).then(changesOf),
+      ).resolves.toStrictEqual({
         intent: 'approvePhrase',
       });
       expect(bookService.getSegmentedBook).not.toHaveBeenCalled();
@@ -3221,9 +3260,11 @@ describe('main', () => {
     it('removes a phrase given no tokens without reading the text', async () => {
       await seedDraft(suggested(godAnd));
       const { openSession, updatePhrase } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await expect(updatePhrase(sessionId, 'pl-1', []).then(changesOf)).resolves.toMatchObject({
+      await expect(
+        updatePhrase({ sessionId, phraseId: 'pl-1', tokens: [] }).then(changesOf),
+      ).resolves.toMatchObject({
         intent: 'updatePhrase',
         phraseAnalysisLinks: { puts: [], deletes: ['pl-1'] },
       });
@@ -3239,10 +3280,12 @@ describe('main', () => {
       });
       const { openSession, setAnalysisLanguage, writePhraseGloss } =
         await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
-      await setAnalysisLanguage(sessionId, 'fr');
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await setAnalysisLanguage({ sessionId, analysisLanguage: 'fr' });
 
-      const { changes } = JSON.parse(await writePhraseGloss(sessionId, 'pl-1', 'au début'));
+      const { changes } = JSON.parse(
+        await writePhraseGloss({ sessionId, phraseId: 'pl-1', value: 'au début' }),
+      );
 
       expect(changes).toMatchObject({
         intent: 'writePhraseGloss',
@@ -3251,7 +3294,7 @@ describe('main', () => {
       });
     });
 
-    it('merges a token into a phrase when PAPI names no absorbed phrase, replying with the changes', async () => {
+    it('merges a token into a phrase when no absorbed phrase is named, replying with the changes', async () => {
       await seedDraft({
         phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'In the' }],
         phraseAnalysisLinks: [
@@ -3259,12 +3302,11 @@ describe('main', () => {
         ],
       });
       const { openSession, mergePhrases } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
       const inTheBeginning = [...inThe, beginningGod[0]];
 
       const { changes } = JSON.parse(
-        // eslint-disable-next-line no-null/no-null -- PAPI delivers an omitted argument as null
-        await mergePhrases(sessionId, 'pl-1', inTheBeginning, null),
+        await mergePhrases({ sessionId, targetPhraseId: 'pl-1', tokens: inTheBeginning }),
       );
 
       expect(changes).toMatchObject({
@@ -3296,9 +3338,11 @@ describe('main', () => {
         ],
       });
       const { openSession, splitPhrase } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      const { changes } = JSON.parse(await splitPhrase(sessionId, 'pl-1', 'GEN 1:1:3'));
+      const { changes } = JSON.parse(
+        await splitPhrase({ sessionId, phraseId: 'pl-1', splitAfterTokenRef: 'GEN 1:1:3' }),
+      );
 
       expect(changes).toMatchObject({
         intent: 'splitPhrase',
@@ -3318,61 +3362,84 @@ describe('main', () => {
       [
         'updatePhrase',
         'updatePhrase',
-        (c: SessionCommands, id: string) => c.updatePhrase(id, 'pl-1', inThe),
+        (c: SessionCommands, id: string) =>
+          c.updatePhrase({ sessionId: id, phraseId: 'pl-1', tokens: inThe }),
       ],
       [
         'deletePhrase',
         'deletePhrase',
-        (c: SessionCommands, id: string) => c.deletePhrase(id, 'pl-1'),
+        (c: SessionCommands, id: string) => c.deletePhrase({ sessionId: id, phraseId: 'pl-1' }),
       ],
       [
         'mergePhrases absorbing a phrase',
         'mergePhrases',
-        (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', inThe, 'pl-2'),
+        (c: SessionCommands, id: string) =>
+          c.mergePhrases({
+            sessionId: id,
+            targetPhraseId: 'pl-1',
+            tokens: inThe,
+            absorbedPhraseId: 'pl-2',
+          }),
       ],
       [
         'mergePhrases absorbing a token in no phrase',
         'mergePhrases',
-        (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', inThe),
+        (c: SessionCommands, id: string) =>
+          c.mergePhrases({ sessionId: id, targetPhraseId: 'pl-1', tokens: inThe }),
       ],
       [
         'approvePhrase',
         'approvePhrase',
-        (c: SessionCommands, id: string) => c.approvePhrase(id, 'pl-1'),
+        (c: SessionCommands, id: string) => c.approvePhrase({ sessionId: id, phraseId: 'pl-1' }),
       ],
       [
         'writeSegmentFreeTranslation clearing nothing',
         'writeSegmentFreeTranslation',
         (c: SessionCommands, id: string) =>
-          c.writeSegmentFreeTranslation(id, 'GEN 1:1', 'In the beginning', '', 'sa-stale'),
+          c.writeSegmentFreeTranslation({
+            sessionId: id,
+            segmentId: 'GEN 1:1',
+            surfaceText: 'In the beginning',
+            value: '',
+            adoptStaleAnalysisId: 'sa-stale',
+          }),
       ],
       [
-        'writeSegmentFreeTranslation clearing nothing, adopting a translation named null',
+        'writeSegmentFreeTranslation clearing nothing, adopting none',
         'writeSegmentFreeTranslation',
         (c: SessionCommands, id: string) =>
-          // eslint-disable-next-line no-null/no-null -- PAPI delivers an omitted argument as null
-          c.writeSegmentFreeTranslation(id, 'GEN 1:1', 'In the beginning', '', null),
+          c.writeSegmentFreeTranslation({
+            sessionId: id,
+            segmentId: 'GEN 1:1',
+            surfaceText: 'In the beginning',
+            value: '',
+          }),
       ],
       [
         "mergeSegments on the book's first segment",
         'mergeSegments',
-        (c: SessionCommands, id: string) => c.mergeSegments(id, 'GEN 1:1:0'),
+        (c: SessionCommands, id: string) =>
+          c.mergeSegments({ sessionId: id, secondSegmentStartRef: 'GEN 1:1:0' }),
       ],
       [
         'splitSegment before a segment start',
         'splitSegment',
-        (c: SessionCommands, id: string) => c.splitSegment(id, 'GEN 1:2:0'),
+        (c: SessionCommands, id: string) =>
+          c.splitSegment({ sessionId: id, tokenRef: 'GEN 1:2:0' }),
       ],
       [
         'moveBoundary onto the token it is at',
         'moveBoundary',
-        (c: SessionCommands, id: string) => c.moveBoundary(id, 'GEN 1:2:0', 'GEN 1:2:0'),
+        (c: SessionCommands, id: string) =>
+          c.moveBoundary({ sessionId: id, fromRef: 'GEN 1:2:0', toRef: 'GEN 1:2:0' }),
       ],
     ])(
       'runs %s as an edit of the session, replying with the changes',
       async (_name, intent, command) => {
         const commands = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+        const { sessionId } = JSON.parse(
+          await commands.openSession({ sourceProjectId: 'src-project' }),
+        );
 
         await expect(command(commands, sessionId).then(changesOf)).resolves.toStrictEqual({
           intent,
@@ -3381,11 +3448,20 @@ describe('main', () => {
     );
 
     it.each([
-      ['createPhrase', (c: SessionCommands, id: string) => c.createPhrase(id, [])],
-      ['mergePhrases', (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', [])],
+      [
+        'createPhrase',
+        (c: SessionCommands, id: string) => c.createPhrase({ sessionId: id, tokens: [] }),
+      ],
+      [
+        'mergePhrases',
+        (c: SessionCommands, id: string) =>
+          c.mergePhrases({ sessionId: id, targetPhraseId: 'pl-1', tokens: [] }),
+      ],
     ])('refuses %s over no tokens, logging the error', async (intent, command) => {
       const commands = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+      const { sessionId } = JSON.parse(
+        await commands.openSession({ sourceProjectId: 'src-project' }),
+      );
 
       await expect(command(commands, sessionId)).rejects.toThrow(
         'a phrase needs at least one token',
@@ -3399,15 +3475,22 @@ describe('main', () => {
     it.each([
       [
         'createPhrase',
-        (c: SessionCommands, id: string) => c.createPhrase(id, [inThe[1], beginningGod[0]]),
+        (c: SessionCommands, id: string) =>
+          c.createPhrase({ sessionId: id, tokens: [inThe[1], beginningGod[0]] }),
       ],
       [
         'updatePhrase',
-        (c: SessionCommands, id: string) => c.updatePhrase(id, 'pl-2', [inThe[1], ...beginningGod]),
+        (c: SessionCommands, id: string) =>
+          c.updatePhrase({ sessionId: id, phraseId: 'pl-2', tokens: [inThe[1], ...beginningGod] }),
       ],
       [
         'mergePhrases',
-        (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-2', [inThe[1], ...beginningGod]),
+        (c: SessionCommands, id: string) =>
+          c.mergePhrases({
+            sessionId: id,
+            targetPhraseId: 'pl-2',
+            tokens: [inThe[1], ...beginningGod],
+          }),
       ],
     ])('refuses %s over a token in another approved phrase', async (_intent, command) => {
       await seedDraft({
@@ -3427,7 +3510,9 @@ describe('main', () => {
         ],
       });
       const commands = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+      const { sessionId } = JSON.parse(
+        await commands.openSession({ sourceProjectId: 'src-project' }),
+      );
 
       await expect(command(commands, sessionId)).rejects.toThrow(ApprovalRuleError);
     });
@@ -3435,16 +3520,16 @@ describe('main', () => {
     it("writes a segment's free translation in the session's language, replying with the changes", async () => {
       const { openSession, setAnalysisLanguage, writeSegmentFreeTranslation } =
         await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
-      await setAnalysisLanguage(sessionId, 'fr');
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await setAnalysisLanguage({ sessionId, analysisLanguage: 'fr' });
 
       const { changes } = JSON.parse(
-        await writeSegmentFreeTranslation(
+        await writeSegmentFreeTranslation({
           sessionId,
-          'GEN 1:1',
-          'In the beginning',
-          'Au commencement',
-        ),
+          segmentId: 'GEN 1:1',
+          surfaceText: 'In the beginning',
+          value: 'Au commencement',
+        }),
       );
 
       expect(changes).toMatchObject({
@@ -3460,17 +3545,20 @@ describe('main', () => {
     it.each([
       [
         'mergeSegments',
-        (c: SessionCommands, id: string) => c.mergeSegments(id, 'GEN 1:2:0'),
+        (c: SessionCommands, id: string) =>
+          c.mergeSegments({ sessionId: id, secondSegmentStartRef: 'GEN 1:2:0' }),
         { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
       ],
       [
         'splitSegment',
-        (c: SessionCommands, id: string) => c.splitSegment(id, 'GEN 1:1:3'),
+        (c: SessionCommands, id: string) =>
+          c.splitSegment({ sessionId: id, tokenRef: 'GEN 1:1:3' }),
         { removedVerseStarts: [], addedStarts: [{ tokenRef: 'GEN 1:1:3', surfaceText: 'the' }] },
       ],
       [
         'moveBoundary',
-        (c: SessionCommands, id: string) => c.moveBoundary(id, 'GEN 1:2:0', 'GEN 1:2:4'),
+        (c: SessionCommands, id: string) =>
+          c.moveBoundary({ sessionId: id, fromRef: 'GEN 1:2:0', toRef: 'GEN 1:2:4' }),
         {
           removedVerseStarts: ['GEN 1:2:0'],
           addedStarts: [{ tokenRef: 'GEN 1:2:4', surfaceText: 'the' }],
@@ -3480,7 +3568,9 @@ describe('main', () => {
       "runs %s over the token's book of the session's project, replying with the boundaries",
       async (intent, command, segmentation) => {
         const commands = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+        const { sessionId } = JSON.parse(
+          await commands.openSession({ sourceProjectId: 'src-project' }),
+        );
 
         const { changes } = JSON.parse(await command(commands, sessionId));
 
@@ -3506,9 +3596,9 @@ describe('main', () => {
         phraseAnalysisLinks: [phrase],
       });
       const { openSession, splitSegment } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      const { changes } = JSON.parse(await splitSegment(sessionId, 'GEN 1:1:3'));
+      const { changes } = JSON.parse(await splitSegment({ sessionId, tokenRef: 'GEN 1:1:3' }));
 
       expect(changes).toMatchObject({
         intent: 'splitSegment',
@@ -3538,9 +3628,9 @@ describe('main', () => {
         ],
       });
       const { openSession, splitSegment } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      const { changes } = JSON.parse(await splitSegment(sessionId, 'GEN 1:1:3'));
+      const { changes } = JSON.parse(await splitSegment({ sessionId, tokenRef: 'GEN 1:1:3' }));
 
       expect(changes).toMatchObject({
         intent: 'splitSegment',
@@ -3575,10 +3665,12 @@ describe('main', () => {
       await seedDraft(glossedIn);
       const { openSession, setAnalysisLanguage, writeAnalysisGloss } =
         await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
-      await setAnalysisLanguage(sessionId, 'fr');
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await setAnalysisLanguage({ sessionId, analysisLanguage: 'fr' });
 
-      const { changes } = JSON.parse(await writeAnalysisGloss(sessionId, 'ta-in', 'au'));
+      const { changes } = JSON.parse(
+        await writeAnalysisGloss({ sessionId, analysisId: 'ta-in', value: 'au' }),
+      );
 
       expect(changes).toMatchObject({
         intent: 'writeAnalysisGloss',
@@ -3589,9 +3681,11 @@ describe('main', () => {
     it("clears token analyses' glosses in the session's language, replying with the changes", async () => {
       await seedDraft(glossedIn);
       const { openSession, clearAnalysisGlosses } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      const { changes } = JSON.parse(await clearAnalysisGlosses(sessionId, ['ta-in']));
+      const { changes } = JSON.parse(
+        await clearAnalysisGlosses({ sessionId, analysisIds: ['ta-in'] }),
+      );
 
       expect(changes.intent).toBe('clearAnalysisGlosses');
       expect(changes.tokenAnalyses.puts).toStrictEqual([
@@ -3602,10 +3696,15 @@ describe('main', () => {
     it("re-splits a token analysis's breakdown, minting a morpheme for a new form", async () => {
       await seedDraft(glossedIn);
       const { openSession, writeAnalysisMorphemes } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       const { changes } = JSON.parse(
-        await writeAnalysisMorphemes(sessionId, 'ta-in', ['In', 'n'], 'qaa'),
+        await writeAnalysisMorphemes({
+          sessionId,
+          analysisId: 'ta-in',
+          forms: ['In', 'n'],
+          writingSystem: 'qaa',
+        }),
       );
 
       expect(changes).toMatchObject({
@@ -3628,9 +3727,11 @@ describe('main', () => {
     it("keeps a token analysis's stale breakdown, replying with the changes", async () => {
       await seedDraft(glossedIn);
       const { openSession, confirmAnalysisMorphemes } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      const { changes } = JSON.parse(await confirmAnalysisMorphemes(sessionId, 'ta-in'));
+      const { changes } = JSON.parse(
+        await confirmAnalysisMorphemes({ sessionId, analysisId: 'ta-in' }),
+      );
 
       expect(changes.intent).toBe('confirmAnalysisMorphemes');
       expect(changes.tokenAnalyses.puts).toStrictEqual([
@@ -3642,11 +3743,16 @@ describe('main', () => {
       await seedDraft(glossedIn);
       const { openSession, setAnalysisLanguage, writeAnalysisMorphemeGloss } =
         await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
-      await setAnalysisLanguage(sessionId, 'fr');
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await setAnalysisLanguage({ sessionId, analysisLanguage: 'fr' });
 
       const { changes } = JSON.parse(
-        await writeAnalysisMorphemeGloss(sessionId, 'ta-in', 'm-in', 'dans'),
+        await writeAnalysisMorphemeGloss({
+          sessionId,
+          analysisId: 'ta-in',
+          morphemeId: 'm-in',
+          value: 'dans',
+        }),
       );
 
       expect(changes).toMatchObject({
@@ -3658,9 +3764,11 @@ describe('main', () => {
     it('deletes token analyses with their links, replying with the changes', async () => {
       await seedDraft(glossedIn);
       const { openSession, deleteAnalyses } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await expect(deleteAnalyses(sessionId, ['ta-in']).then(changesOf)).resolves.toStrictEqual({
+      await expect(
+        deleteAnalyses({ sessionId, analysisIds: ['ta-in'] }).then(changesOf),
+      ).resolves.toStrictEqual({
         intent: 'deleteAnalyses',
         tokenAnalyses: { puts: [], deletes: ['ta-in'] },
         tokenAnalysisLinks: { puts: [], deletes: ['tl-in'] },
@@ -3685,10 +3793,15 @@ describe('main', () => {
         ],
       });
       const { openSession, mergeAnalysesInto } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       const { changes } = JSON.parse(
-        await mergeAnalysesInto(sessionId, 'ta-in', ['ta-into'], { gloss: 'in', morphemes: [] }),
+        await mergeAnalysesInto({
+          sessionId,
+          survivorAnalysisId: 'ta-in',
+          mergedAnalysisIds: ['ta-into'],
+          content: { gloss: 'in', morphemes: [] },
+        }),
       );
 
       expect(changes).toMatchObject({
@@ -3733,9 +3846,11 @@ describe('main', () => {
     it("discards a book's changes in a draft saving to no project, marking it unsaved", async () => {
       const repository = await seedDraft({ ...glossedIn, ...translatedVerse });
       const { openSession, discardBook } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      const reply = JSON.parse(await discardBook(sessionId, 'GEN', 'change-1'));
+      const reply = JSON.parse(
+        await discardBook({ sessionId, bookCode: 'GEN', changeId: 'change-1' }),
+      );
 
       expect(reply).toStrictEqual({
         changeId: 'change-1',
@@ -3760,9 +3875,11 @@ describe('main', () => {
       await seedDraft({});
       storeProjectHolding(translatedVerse);
       const { openSession, discardBook } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project', 'proj-1'));
+      const { sessionId } = JSON.parse(
+        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'proj-1' }),
+      );
 
-      const reply = JSON.parse(await discardBook(sessionId, 'GEN'));
+      const reply = JSON.parse(await discardBook({ sessionId, bookCode: 'GEN' }));
 
       expect(reply).toMatchObject({
         changes: {
@@ -3780,10 +3897,12 @@ describe('main', () => {
       await seedDraft({});
       storeProjectHolding(translatedVerse);
       const { openSession, discardAll } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project', 'proj-1'));
-      const first = JSON.parse(await discardAll(sessionId, 'change-1'));
+      const { sessionId } = JSON.parse(
+        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'proj-1' }),
+      );
+      const first = JSON.parse(await discardAll({ sessionId, changeId: 'change-1' }));
 
-      const retried = JSON.parse(await discardAll(sessionId, 'change-1'));
+      const retried = JSON.parse(await discardAll({ sessionId, changeId: 'change-1' }));
 
       expect(first.hasFreeTranslations).toBe(true);
       expect(retried).toStrictEqual(first);
@@ -3794,9 +3913,11 @@ describe('main', () => {
       storeProjectHolding(translatedVerse);
       jest.mocked(bookService.getVerseBook).mockResolvedValue(undefined);
       const { openSession, discardBook } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project', 'proj-1'));
+      const { sessionId } = JSON.parse(
+        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'proj-1' }),
+      );
 
-      const reply = JSON.parse(await discardBook(sessionId, 'GEN'));
+      const reply = JSON.parse(await discardBook({ sessionId, bookCode: 'GEN' }));
 
       expect(reply.changes.segmentAnalysisLinks.puts).toStrictEqual([
         expect.objectContaining({ id: 'sl-1', status: 'stale' }),
@@ -3807,10 +3928,12 @@ describe('main', () => {
       const repository = await seedDraft({});
       storeProjectHolding(glossedIn);
       const { openSession, writeGloss, discardAll } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project', 'proj-1'));
-      await writeGloss(sessionId, 'GEN 1:2:0', 'And', 'and');
+      const { sessionId } = JSON.parse(
+        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'proj-1' }),
+      );
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:2:0', surfaceText: 'And', value: 'and' });
 
-      const reply = JSON.parse(await discardAll(sessionId, 'change-1'));
+      const reply = JSON.parse(await discardAll({ sessionId, changeId: 'change-1' }));
 
       expect(reply).toMatchObject({
         changeId: 'change-1',
@@ -3829,9 +3952,11 @@ describe('main', () => {
       storeProjectHolding({});
       jest.mocked(projectStorage.getProject).mockResolvedValue(undefined);
       const { openSession, discardAll } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project', 'proj-1'));
+      const { sessionId } = JSON.parse(
+        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'proj-1' }),
+      );
 
-      await expect(discardAll(sessionId)).rejects.toThrow(
+      await expect(discardAll({ sessionId })).rejects.toThrow(
         'interlinear project proj-1 is not stored',
       );
       expect(__mockLogger.error).toHaveBeenCalledWith(
@@ -3869,12 +3994,12 @@ describe('main', () => {
     ])('names the analysis %s, applying nothing', async (_case, request, analysis) => {
       await seedDraft(analysis);
       const { openSession, previewRemovals, undoEdit } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await expect(previewRemovals(sessionId, request).then(JSON.parse)).resolves.toStrictEqual([
-        'ta-in',
-      ]);
-      await expect(undoEdit(sessionId)).resolves.toBeUndefined();
+      await expect(previewRemovals({ sessionId, request }).then(JSON.parse)).resolves.toStrictEqual(
+        ['ta-in'],
+      );
+      await expect(undoEdit({ sessionId })).resolves.toBeUndefined();
     });
 
     it.each([
@@ -3883,21 +4008,24 @@ describe('main', () => {
     ])('names no analysis for a command that %s', async (_case, analysisId) => {
       await seedDraft(glossedIn);
       const { openSession, previewRemovals } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       await expect(
-        previewRemovals(sessionId, { intent: 'clearAnalysisGlosses', analysisIds: [analysisId] }),
+        previewRemovals({
+          sessionId,
+          request: { intent: 'clearAnalysisGlosses', analysisIds: [analysisId] },
+        }),
       ).resolves.toBe('[]');
     });
 
     it('logs the error and rethrows when asked to preview a command it cannot', async () => {
       const { openSession, previewRemovals } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession('src-project'));
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
       const request: unknown = JSON.parse('{ "intent": "writeGloss" }');
 
       await expect(
         // @ts-expect-error -- a request PAPI passes through unchecked
-        previewRemovals(sessionId, request),
+        previewRemovals({ sessionId, request }),
       ).rejects.toThrow('cannot preview the removals of {"intent":"writeGloss"}');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         `Interlinearizer: failed to preview removals in session ${sessionId}`,
@@ -3911,16 +4039,43 @@ describe('main', () => {
     ];
 
     it.each([
-      ['createPhrase', (c: SessionCommands, id: string) => c.createPhrase(id, exodus)],
-      ['updatePhrase', (c: SessionCommands, id: string) => c.updatePhrase(id, 'pl-1', exodus)],
-      ['mergePhrases', (c: SessionCommands, id: string) => c.mergePhrases(id, 'pl-1', exodus)],
-      ['approvePhrase', (c: SessionCommands, id: string) => c.approvePhrase(id, 'pl-1')],
-      ['splitPhrase', (c: SessionCommands, id: string) => c.splitPhrase(id, 'pl-1', 'EXO 1:1:0')],
-      ['mergeSegments', (c: SessionCommands, id: string) => c.mergeSegments(id, 'EXO 1:2:0')],
-      ['splitSegment', (c: SessionCommands, id: string) => c.splitSegment(id, 'EXO 1:1:3')],
+      [
+        'createPhrase',
+        (c: SessionCommands, id: string) => c.createPhrase({ sessionId: id, tokens: exodus }),
+      ],
+      [
+        'updatePhrase',
+        (c: SessionCommands, id: string) =>
+          c.updatePhrase({ sessionId: id, phraseId: 'pl-1', tokens: exodus }),
+      ],
+      [
+        'mergePhrases',
+        (c: SessionCommands, id: string) =>
+          c.mergePhrases({ sessionId: id, targetPhraseId: 'pl-1', tokens: exodus }),
+      ],
+      [
+        'approvePhrase',
+        (c: SessionCommands, id: string) => c.approvePhrase({ sessionId: id, phraseId: 'pl-1' }),
+      ],
+      [
+        'splitPhrase',
+        (c: SessionCommands, id: string) =>
+          c.splitPhrase({ sessionId: id, phraseId: 'pl-1', splitAfterTokenRef: 'EXO 1:1:0' }),
+      ],
+      [
+        'mergeSegments',
+        (c: SessionCommands, id: string) =>
+          c.mergeSegments({ sessionId: id, secondSegmentStartRef: 'EXO 1:2:0' }),
+      ],
+      [
+        'splitSegment',
+        (c: SessionCommands, id: string) =>
+          c.splitSegment({ sessionId: id, tokenRef: 'EXO 1:1:3' }),
+      ],
       [
         'moveBoundary',
-        (c: SessionCommands, id: string) => c.moveBoundary(id, 'EXO 1:2:0', 'EXO 1:2:4'),
+        (c: SessionCommands, id: string) =>
+          c.moveBoundary({ sessionId: id, fromRef: 'EXO 1:2:0', toRef: 'EXO 1:2:4' }),
       ],
     ])(
       'refuses %s in a book the project has no text for, logging the error',
@@ -3929,7 +4084,9 @@ describe('main', () => {
         jest.mocked(bookService.getVerseBook).mockResolvedValue(undefined);
         jest.mocked(bookService.getSegmentedBook).mockResolvedValue(undefined);
         const commands = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await commands.openSession('src-project'));
+        const { sessionId } = JSON.parse(
+          await commands.openSession({ sourceProjectId: 'src-project' }),
+        );
 
         await expect(command(commands, sessionId)).rejects.toThrow(
           'project src-project has no text for book EXO',
@@ -3943,7 +4100,7 @@ describe('main', () => {
 
     it('closes every session when its registrations are disposed', async () => {
       const { context, openSession } = await activateSessionCommands();
-      await openSession('src-project');
+      await openSession({ sourceProjectId: 'src-project' });
 
       await context.registrations.runAllUnsubscribers();
 

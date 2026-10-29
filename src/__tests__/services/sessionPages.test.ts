@@ -302,6 +302,24 @@ describe('readSegmentPage', () => {
       expect(analysis?.segmentAnalysisLinks).toStrictEqual([]);
     });
 
+    it('leaves out the link of a shared payload placed outside the range', async () => {
+      const shared = staleTranslation('GEN 1:1');
+      const repository = await repositoryOver({
+        segmentAnalyses: shared.segmentAnalyses,
+        segmentAnalysisLinks: [
+          ...(shared.segmentAnalysisLinks ?? []),
+          ...(staleTranslation('GEN 1:3').segmentAnalysisLinks ?? []).map((link) => ({
+            ...link,
+            analysisId: 'sa GEN 1:1',
+          })),
+        ],
+      });
+
+      const { analysis } = await readSegmentPage(repository, book, 0, 1);
+
+      expect(idsOf(analysis?.segmentAnalysisLinks)).toStrictEqual(['sl GEN 1:1']);
+    });
+
     it('leaves out one whose payload is not stored', async () => {
       const { segmentAnalysisLinks } = staleTranslation(ref('created'));
       const repository = await repositoryOver({ segmentAnalysisLinks });

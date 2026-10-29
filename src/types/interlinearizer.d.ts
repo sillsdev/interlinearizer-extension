@@ -358,16 +358,18 @@ declare module 'papi-shared-types' {
      * @throws If the source project has no such interlinear project, or its analysis cannot be
      *   loaded (logged before rethrowing).
      */
-    'interlinearizer.openSession': (
-      sourceProjectId: string,
-      interlinearProjectId?: string,
-    ) => Promise<string>;
+    'interlinearizer.openSession': (args: {
+      sourceProjectId: string;
+      interlinearProjectId?: string;
+    }) => Promise<string>;
 
     /**
      * Closes a session once the commands sent to it settle, refusing any sent after. Closing a
      * session that is not open does nothing.
      */
-    'interlinearizer.closeSession': (sessionId: string) => Promise<void>;
+    'interlinearizer.closeSession': (
+      args: import('interlinearizer').SessionCommandArgs,
+    ) => Promise<void>;
 
     /**
      * Sets the language a session's glosses are read and written in.
@@ -375,8 +377,9 @@ declare module 'papi-shared-types' {
      * @throws If the session is not open (logged before rethrowing).
      */
     'interlinearizer.setAnalysisLanguage': (
-      sessionId: string,
-      analysisLanguage: string,
+      args: import('interlinearizer').SessionCommandArgs & {
+        analysisLanguage: string;
+      },
     ) => Promise<void>;
 
     /**
@@ -391,8 +394,7 @@ declare module 'papi-shared-types' {
      *   marking the draft saved fails (logged before rethrowing).
      */
     'interlinearizer.undoEdit': (
-      sessionId: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs,
     ) => Promise<string | undefined>;
 
     /**
@@ -407,8 +409,7 @@ declare module 'papi-shared-types' {
      *   marking the draft saved fails (logged before rethrowing).
      */
     'interlinearizer.redoEdit': (
-      sessionId: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs,
     ) => Promise<string | undefined>;
 
     /**
@@ -418,7 +419,9 @@ declare module 'papi-shared-types' {
      * @returns A JSON string of the index differences; `"[]"` when none differ.
      * @throws If the session is not open (logged before rethrowing).
      */
-    'interlinearizer.checkIndexes': (sessionId: string) => Promise<string>;
+    'interlinearizer.checkIndexes': (
+      args: import('interlinearizer').SessionCommandArgs,
+    ) => Promise<string>;
 
     /**
      * Writes a token's gloss in a session's analysis language; a blank value clears it.
@@ -429,11 +432,11 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.writeGloss': (
-      sessionId: string,
-      tokenRef: string,
-      surfaceText: string,
-      value: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        tokenRef: string;
+        surfaceText: string;
+        value: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -445,11 +448,11 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.approveAnalysisForToken': (
-      sessionId: string,
-      tokenRef: string,
-      surfaceText: string,
-      analysisId: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        tokenRef: string;
+        surfaceText: string;
+        analysisId: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -461,12 +464,12 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.writeMorphemes': (
-      sessionId: string,
-      tokenRef: string,
-      surfaceText: string,
-      forms: string[],
-      writingSystem: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        tokenRef: string;
+        surfaceText: string;
+        forms: string[];
+        writingSystem: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -478,9 +481,9 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.deleteMorphemes': (
-      sessionId: string,
-      tokenRef: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        tokenRef: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -493,11 +496,11 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.writeMorphemeGloss': (
-      sessionId: string,
-      tokenRef: string,
-      morphemeId: string,
-      value: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        tokenRef: string;
+        morphemeId: string;
+        value: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -509,10 +512,10 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.discardStaleAnalysis': (
-      sessionId: string,
-      analysisId: string,
-      tokenRef: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        tokenRef: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -525,12 +528,12 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.reapplyStaleAnalysis': (
-      sessionId: string,
-      analysisId: string,
-      staleTokenRef: string,
-      tokenRef: string,
-      surfaceText: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        staleTokenRef: string;
+        tokenRef: string;
+        surfaceText: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -543,11 +546,11 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.keepStaleFreeTranslation': (
-      sessionId: string,
-      analysisId: string,
-      segmentId: string,
-      surfaceText: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        segmentId: string;
+        surfaceText: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -559,9 +562,9 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.discardStaleFreeTranslation': (
-      sessionId: string,
-      analysisId: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -575,10 +578,10 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.writeAnalysisGloss': (
-      sessionId: string,
-      analysisId: string,
-      value: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        value: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -591,9 +594,9 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.clearAnalysisGlosses': (
-      sessionId: string,
-      analysisIds: string[],
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisIds: string[];
+      },
     ) => Promise<string>;
 
     /**
@@ -607,11 +610,11 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.writeAnalysisMorphemes': (
-      sessionId: string,
-      analysisId: string,
-      forms: string[],
-      writingSystem: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        forms: string[];
+        writingSystem: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -624,10 +627,10 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.confirmAnalysisMorphemes': (
-      sessionId: string,
-      analysisId: string,
-      tokenRef?: string | null,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        tokenRef?: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -640,11 +643,11 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.writeAnalysisMorphemeGloss': (
-      sessionId: string,
-      analysisId: string,
-      morphemeId: string,
-      value: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        morphemeId: string;
+        value: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -656,9 +659,9 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.deleteAnalyses': (
-      sessionId: string,
-      analysisIds: string[],
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisIds: string[];
+      },
     ) => Promise<string>;
 
     /**
@@ -671,11 +674,11 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.mergeAnalysesInto': (
-      sessionId: string,
-      survivorAnalysisId: string,
-      mergedAnalysisIds: string[],
-      content: import('interlinearizer').MergedContent,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        survivorAnalysisId: string;
+        mergedAnalysisIds: string[];
+        content: import('interlinearizer').MergedContent;
+      },
     ) => Promise<string>;
 
     /**
@@ -689,9 +692,9 @@ declare module 'papi-shared-types' {
      *   fails (logged before rethrowing).
      */
     'interlinearizer.createPhrase': (
-      sessionId: string,
-      tokens: import('interlinearizer').TokenSnapshot[],
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        tokens: import('interlinearizer').TokenSnapshot[];
+      },
     ) => Promise<string>;
 
     /**
@@ -705,10 +708,10 @@ declare module 'papi-shared-types' {
      *   (logged before rethrowing).
      */
     'interlinearizer.updatePhrase': (
-      sessionId: string,
-      phraseId: string,
-      tokens: import('interlinearizer').TokenSnapshot[],
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        phraseId: string;
+        tokens: import('interlinearizer').TokenSnapshot[];
+      },
     ) => Promise<string>;
 
     /**
@@ -720,21 +723,15 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.deletePhrase': (
-      sessionId: string,
-      phraseId: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        phraseId: string;
+      },
     ) => Promise<string>;
 
     /**
      * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token
      * run. The absorbed occurrence, when named, is removed.
      *
-     * @param sessionId - As `interlinearizer.openSession` returned it.
-     * @param targetPhraseId - The target occurrence's link ID.
-     * @param tokens - In document order.
-     * @param absorbedPhraseId - The absorbed occurrence's link ID. Absent or `null` when the
-     *   neighbor is a token in no phrase.
-     * @param changeId - Names the change; absent or `null`, the session names it.
      * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
      *   they touched.
      * @throws If `tokens` is empty or not within one segment of the text, the project has no text
@@ -742,11 +739,14 @@ declare module 'papi-shared-types' {
      *   fails (logged before rethrowing).
      */
     'interlinearizer.mergePhrases': (
-      sessionId: string,
-      targetPhraseId: string,
-      tokens: import('interlinearizer').TokenSnapshot[],
-      absorbedPhraseId?: string | null,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        /** The target occurrence's link ID. */
+        targetPhraseId: string;
+        /** In document order. */
+        tokens: import('interlinearizer').TokenSnapshot[];
+        /** The absorbed occurrence's link ID. Absent when the neighbor is a token in no phrase. */
+        absorbedPhraseId?: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -758,10 +758,10 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.writePhraseGloss': (
-      sessionId: string,
-      phraseId: string,
-      value: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        phraseId: string;
+        value: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -774,9 +774,9 @@ declare module 'papi-shared-types' {
      *   is refused or fails (logged before rethrowing).
      */
     'interlinearizer.approvePhrase': (
-      sessionId: string,
-      phraseId: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        phraseId: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -790,10 +790,10 @@ declare module 'papi-shared-types' {
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
     'interlinearizer.splitPhrase': (
-      sessionId: string,
-      phraseId: string,
-      splitAfterTokenRef: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        phraseId: string;
+        splitAfterTokenRef: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -805,8 +805,7 @@ declare module 'papi-shared-types' {
      *
      * A segment with no approved translation adopts the stale translation `adoptStaleAnalysisId`
      * names, approving it for the segment, so that the stale translation's other languages carry
-     * over. Leave `adoptStaleAnalysisId` out, or pass `null`, when the value was typed over no
-     * stale translation.
+     * over. Leave `adoptStaleAnalysisId` out when the value was typed over no stale translation.
      *
      * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
      *   they touched.
@@ -814,12 +813,12 @@ declare module 'papi-shared-types' {
      *   before rethrowing).
      */
     'interlinearizer.writeSegmentFreeTranslation': (
-      sessionId: string,
-      segmentId: string,
-      surfaceText: string,
-      value: string,
-      adoptStaleAnalysisId?: string | null,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        segmentId: string;
+        surfaceText: string;
+        value: string;
+        adoptStaleAnalysisId?: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -832,13 +831,13 @@ declare module 'papi-shared-types' {
      *
      * @returns A JSON string of the `CommandReply`: the changes it applied, with a scope record
      *   carrying the new boundaries when they change, and the pool buckets they touched.
-     * @throws If the project has no text for the token's book, the session is read-only or not
-     *   open, or the edit fails (logged before rethrowing).
+     * @throws If the project has no text for the book of `secondSegmentStartRef`, the session is
+     *   read-only or not open, or the edit fails (logged before rethrowing).
      */
     'interlinearizer.mergeSegments': (
-      sessionId: string,
-      secondSegmentStartRef: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        secondSegmentStartRef: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -854,9 +853,9 @@ declare module 'papi-shared-types' {
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
     'interlinearizer.splitSegment': (
-      sessionId: string,
-      tokenRef: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        tokenRef: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -873,10 +872,10 @@ declare module 'papi-shared-types' {
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
     'interlinearizer.moveBoundary': (
-      sessionId: string,
-      fromRef: string,
-      toRef: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        fromRef: string;
+        toRef: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -891,9 +890,9 @@ declare module 'papi-shared-types' {
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
     'interlinearizer.discardBook': (
-      sessionId: string,
-      bookCode: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs & {
+        bookCode: string;
+      },
     ) => Promise<string>;
 
     /**
@@ -907,8 +906,7 @@ declare module 'papi-shared-types' {
      *   open, or the edit is refused or fails (logged before rethrowing).
      */
     'interlinearizer.discardAll': (
-      sessionId: string,
-      changeId?: import('interlinearizer').ChangeId | null,
+      args: import('interlinearizer').SessionEditArgs,
     ) => Promise<string>;
 
     /**
@@ -919,8 +917,9 @@ declare module 'papi-shared-types' {
      *   the command fails (logged before rethrowing).
      */
     'interlinearizer.previewRemovals': (
-      sessionId: string,
-      request: import('interlinearizer').RemovalPreviewRequest,
+      args: import('interlinearizer').SessionCommandArgs & {
+        request: import('interlinearizer').RemovalPreviewRequest;
+      },
     ) => Promise<string>;
 
     /**
@@ -2264,6 +2263,18 @@ declare module 'interlinearizer' {
    * afresh.
    */
   export type ChangeId = string;
+
+  /** What every session command's one argument holds beside the command's own fields. */
+  export type SessionCommandArgs = {
+    /** The id that `interlinearizer.openSession` replied with. */
+    sessionId: string;
+  };
+
+  /** What every session edit's one argument holds beside the edit's own fields. */
+  export type SessionEditArgs = SessionCommandArgs & {
+    /** Names the change; absent, the session names it. */
+    changeId?: ChangeId;
+  };
 
   /** A host query whose answer spans books, which a view keeps and refetches when a change names it. */
   export type AnalysisQuery = 'getCatalogRows' | 'getConcordance' | 'getStaleSummary';

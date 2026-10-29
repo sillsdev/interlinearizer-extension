@@ -3,19 +3,13 @@ import type {
   ExecutionActivationContext,
   ExecutionToken,
   IWebViewProvider,
+  MethodDocumentationWithoutName,
   OpenWebViewOptions,
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type {
-  Book,
-  ChangeId,
-  MergedContent,
-  ProjectConfig,
-  RemovalPreviewRequest,
-  TokenSnapshot,
-} from 'interlinearizer';
-import type { NetworkEvents } from 'papi-shared-types';
+import type { Book, ChangeId, ProjectConfig, TokenSnapshot } from 'interlinearizer';
+import type { CommandHandlers, NetworkEvents } from 'papi-shared-types';
 import {
   formatReplacementString,
   type LocalizeKey,
@@ -842,6 +836,12 @@ async function saveInterlinearDraft(
   );
 }
 
+/** A parameter in a command's documentation. */
+type ParamDoc = Extract<MethodDocumentationWithoutName['params'][number], { name: string }>;
+
+/** The one argument that the command `C` takes. */
+type ArgsOf<C extends keyof CommandHandlers> = Parameters<CommandHandlers[C]>[0];
+
 /**
  * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import, otherwise
  * on the source project's draft, which saves to `interlinearProjectId` when given. Closes the
@@ -851,10 +851,10 @@ async function saveInterlinearDraft(
  * @throws If the source project has no such interlinear project, or its analysis cannot be loaded.
  *   The error is logged before rethrowing.
  */
-async function openSession(
-  sourceProjectId: string,
-  interlinearProjectId?: string,
-): Promise<string> {
+async function openSession({
+  sourceProjectId,
+  interlinearProjectId,
+}: ArgsOf<'interlinearizer.openSession'>): Promise<string> {
   try {
     const opened: OpenedSession = await sessions.open(sourceProjectId, interlinearProjectId);
     return JSON.stringify(opened);
@@ -869,7 +869,10 @@ async function openSession(
  *
  * @throws If the session is not open. The error is logged before rethrowing.
  */
-async function setAnalysisLanguage(sessionId: string, analysisLanguage: string): Promise<void> {
+async function setAnalysisLanguage({
+  sessionId,
+  analysisLanguage,
+}: ArgsOf<'interlinearizer.setAnalysisLanguage'>): Promise<void> {
   try {
     await sessions.setAnalysisLanguage(sessionId, analysisLanguage);
   } catch (e) {
@@ -885,12 +888,12 @@ async function setAnalysisLanguage(sessionId: string, analysisLanguage: string):
  * @throws If the session is read-only or not open, or the undo fails. The error is logged before
  *   rethrowing.
  */
-async function undoEdit(
-  sessionId: string,
-  changeId?: ChangeId | null,
-): Promise<string | undefined> {
+async function undoEdit({
+  sessionId,
+  changeId,
+}: ArgsOf<'interlinearizer.undoEdit'>): Promise<string | undefined> {
   try {
-    const reply = await sessions.undo(sessionId, changeId ?? undefined);
+    const reply = await sessions.undo(sessionId, changeId);
     return reply && JSON.stringify(reply);
   } catch (e) {
     logger.error(`Interlinearizer: failed to undo an edit in session ${sessionId}`, e);
@@ -905,12 +908,12 @@ async function undoEdit(
  * @throws If the session is read-only or not open, or the redo fails. The error is logged before
  *   rethrowing.
  */
-async function redoEdit(
-  sessionId: string,
-  changeId?: ChangeId | null,
-): Promise<string | undefined> {
+async function redoEdit({
+  sessionId,
+  changeId,
+}: ArgsOf<'interlinearizer.redoEdit'>): Promise<string | undefined> {
   try {
-    const reply = await sessions.redo(sessionId, changeId ?? undefined);
+    const reply = await sessions.redo(sessionId, changeId);
     return reply && JSON.stringify(reply);
   } catch (e) {
     logger.error(`Interlinearizer: failed to redo an edit in session ${sessionId}`, e);
@@ -925,7 +928,9 @@ async function redoEdit(
  * @returns A JSON string of the differences; `"[]"` when there are none.
  * @throws If the session is not open. The error is logged before rethrowing.
  */
-async function checkIndexes(sessionId: string): Promise<string> {
+async function checkIndexes({
+  sessionId,
+}: ArgsOf<'interlinearizer.checkIndexes'>): Promise<string> {
   try {
     return JSON.stringify(
       await sessions.run(sessionId, (session) => session.repository.checkIndexes()),
@@ -942,7 +947,7 @@ async function checkIndexes(sessionId: string): Promise<string> {
  */
 type EditTarget = {
   sessionId: string;
-  changeId?: ChangeId | null;
+  changeId?: ChangeId;
   step?: EditStep;
 };
 
@@ -962,7 +967,7 @@ async function runSessionEdit(
   try {
     return JSON.stringify(
       await sessions.edit(sessionId, intent, command, {
-        changeId: changeId ?? undefined,
+        changeId,
         step: () => target.step,
       }),
     );
@@ -989,13 +994,13 @@ function editStamp() {
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function writeGloss(
-  sessionId: string,
-  tokenRef: string,
-  surfaceText: string,
-  value: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function writeGloss({
+  sessionId,
+  tokenRef,
+  surfaceText,
+  value,
+  changeId,
+}: ArgsOf<'interlinearizer.writeGloss'>): Promise<string> {
   return runSessionEdit(
     { sessionId, changeId, step: { location: tokenRef } },
     'writeGloss',
@@ -1017,13 +1022,13 @@ function writeGloss(
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function approveAnalysisForToken(
-  sessionId: string,
-  tokenRef: string,
-  surfaceText: string,
-  analysisId: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function approveAnalysisForToken({
+  sessionId,
+  tokenRef,
+  surfaceText,
+  analysisId,
+  changeId,
+}: ArgsOf<'interlinearizer.approveAnalysisForToken'>): Promise<string> {
   return runSessionEdit(
     { sessionId, changeId, step: { location: tokenRef } },
     'approveAnalysisForToken',
@@ -1044,14 +1049,14 @@ function approveAnalysisForToken(
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function writeMorphemes(
-  sessionId: string,
-  tokenRef: string,
-  surfaceText: string,
-  forms: string[],
-  writingSystem: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function writeMorphemes({
+  sessionId,
+  tokenRef,
+  surfaceText,
+  forms,
+  writingSystem,
+  changeId,
+}: ArgsOf<'interlinearizer.writeMorphemes'>): Promise<string> {
   return runSessionEdit(
     { sessionId, changeId, step: { location: tokenRef } },
     'writeMorphemes',
@@ -1073,11 +1078,11 @@ function writeMorphemes(
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function deleteMorphemes(
-  sessionId: string,
-  tokenRef: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function deleteMorphemes({
+  sessionId,
+  tokenRef,
+  changeId,
+}: ArgsOf<'interlinearizer.deleteMorphemes'>): Promise<string> {
   return runSessionEdit(
     { sessionId, changeId, step: { location: tokenRef } },
     'deleteMorphemes',
@@ -1093,13 +1098,13 @@ function deleteMorphemes(
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function writeMorphemeGloss(
-  sessionId: string,
-  tokenRef: string,
-  morphemeId: string,
-  value: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function writeMorphemeGloss({
+  sessionId,
+  tokenRef,
+  morphemeId,
+  value,
+  changeId,
+}: ArgsOf<'interlinearizer.writeMorphemeGloss'>): Promise<string> {
   return runSessionEdit(
     { sessionId, changeId, step: { location: tokenRef } },
     'writeMorphemeGloss',
@@ -1121,12 +1126,12 @@ function writeMorphemeGloss(
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function discardStaleAnalysis(
-  sessionId: string,
-  analysisId: string,
-  tokenRef: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function discardStaleAnalysis({
+  sessionId,
+  analysisId,
+  tokenRef,
+  changeId,
+}: ArgsOf<'interlinearizer.discardStaleAnalysis'>): Promise<string> {
   return runSessionEdit({ sessionId, changeId }, 'discardStaleAnalysis', (buffer) =>
     staleCommands.discardStaleAnalysis(buffer, { analysisId, tokenRef }),
   );
@@ -1140,14 +1145,14 @@ function discardStaleAnalysis(
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function reapplyStaleAnalysis(
-  sessionId: string,
-  analysisId: string,
-  staleTokenRef: string,
-  tokenRef: string,
-  surfaceText: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function reapplyStaleAnalysis({
+  sessionId,
+  analysisId,
+  staleTokenRef,
+  tokenRef,
+  surfaceText,
+  changeId,
+}: ArgsOf<'interlinearizer.reapplyStaleAnalysis'>): Promise<string> {
   const { analysisId: copyId, linkId, now } = editStamp();
   return runSessionEdit({ sessionId, changeId }, 'reapplyStaleAnalysis', (buffer) =>
     staleCommands.reapplyStaleAnalysis(buffer, {
@@ -1170,13 +1175,13 @@ function reapplyStaleAnalysis(
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function keepStaleFreeTranslation(
-  sessionId: string,
-  analysisId: string,
-  segmentId: string,
-  surfaceText: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function keepStaleFreeTranslation({
+  sessionId,
+  analysisId,
+  segmentId,
+  surfaceText,
+  changeId,
+}: ArgsOf<'interlinearizer.keepStaleFreeTranslation'>): Promise<string> {
   return runSessionEdit({ sessionId, changeId }, 'keepStaleFreeTranslation', (buffer) =>
     staleCommands.keepStaleFreeTranslation(buffer, {
       analysisId,
@@ -1194,11 +1199,11 @@ function keepStaleFreeTranslation(
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function discardStaleFreeTranslation(
-  sessionId: string,
-  analysisId: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function discardStaleFreeTranslation({
+  sessionId,
+  analysisId,
+  changeId,
+}: ArgsOf<'interlinearizer.discardStaleFreeTranslation'>): Promise<string> {
   return runSessionEdit({ sessionId, changeId }, 'discardStaleFreeTranslation', (buffer) =>
     staleCommands.discardStaleFreeTranslation(buffer, { analysisId }),
   );
@@ -1211,12 +1216,12 @@ function discardStaleFreeTranslation(
  * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
-function writeAnalysisGloss(
-  sessionId: string,
-  analysisId: string,
-  value: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function writeAnalysisGloss({
+  sessionId,
+  analysisId,
+  value,
+  changeId,
+}: ArgsOf<'interlinearizer.writeAnalysisGloss'>): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'writeAnalysisGloss', async (buffer, session) => {
     const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
@@ -1237,11 +1242,11 @@ function writeAnalysisGloss(
  * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
-function clearAnalysisGlosses(
-  sessionId: string,
-  analysisIds: string[],
-  changeId?: ChangeId | null,
-): Promise<string> {
+function clearAnalysisGlosses({
+  sessionId,
+  analysisIds,
+  changeId,
+}: ArgsOf<'interlinearizer.clearAnalysisGlosses'>): Promise<string> {
   const step = {
     summary: { kind: 'catalogClearGlossChecked', count: analysisIds.length },
   } as const;
@@ -1261,13 +1266,13 @@ function clearAnalysisGlosses(
  * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
-function writeAnalysisMorphemes(
-  sessionId: string,
-  analysisId: string,
-  forms: string[],
-  writingSystem: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function writeAnalysisMorphemes({
+  sessionId,
+  analysisId,
+  forms,
+  writingSystem,
+  changeId,
+}: ArgsOf<'interlinearizer.writeAnalysisMorphemes'>): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'writeAnalysisMorphemes', async (buffer) => {
     const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
@@ -1289,12 +1294,12 @@ function writeAnalysisMorphemes(
  * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
-function confirmAnalysisMorphemes(
-  sessionId: string,
-  analysisId: string,
-  tokenRef?: string | null,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function confirmAnalysisMorphemes({
+  sessionId,
+  analysisId,
+  tokenRef,
+  changeId,
+}: ArgsOf<'interlinearizer.confirmAnalysisMorphemes'>): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'confirmAnalysisMorphemes', async (buffer) => {
     target.step = tokenRef
@@ -1311,13 +1316,13 @@ function confirmAnalysisMorphemes(
  * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
-function writeAnalysisMorphemeGloss(
-  sessionId: string,
-  analysisId: string,
-  morphemeId: string,
-  value: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function writeAnalysisMorphemeGloss({
+  sessionId,
+  analysisId,
+  morphemeId,
+  value,
+  changeId,
+}: ArgsOf<'interlinearizer.writeAnalysisMorphemeGloss'>): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'writeAnalysisMorphemeGloss', async (buffer, session) => {
     const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
@@ -1339,11 +1344,11 @@ function writeAnalysisMorphemeGloss(
  * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
-function deleteAnalyses(
-  sessionId: string,
-  analysisIds: string[],
-  changeId?: ChangeId | null,
-): Promise<string> {
+function deleteAnalyses({
+  sessionId,
+  analysisIds,
+  changeId,
+}: ArgsOf<'interlinearizer.deleteAnalyses'>): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'deleteAnalyses', async (buffer, session) => {
     target.step = await deletionStepOf(buffer, session.repository, analysisIds);
@@ -1358,13 +1363,13 @@ function deleteAnalyses(
  * @returns A JSON string of the {@link CommandReply}.
  * @throws As {@link runSessionEdit} does.
  */
-function mergeAnalysesInto(
-  sessionId: string,
-  survivorAnalysisId: string,
-  mergedAnalysisIds: string[],
-  content: MergedContent,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function mergeAnalysesInto({
+  sessionId,
+  survivorAnalysisId,
+  mergedAnalysisIds,
+  content,
+  changeId,
+}: ArgsOf<'interlinearizer.mergeAnalysesInto'>): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'mergeAnalysesInto', async (buffer, session) => {
     const stepOf = await catalogStepOf(buffer, 'catalogMerge', survivorAnalysisId);
@@ -1446,11 +1451,11 @@ async function assertOneSegment(
  *   the first token's book, the session is read-only or not open, or the edit is refused or fails.
  *   The error is logged before rethrowing.
  */
-function createPhrase(
-  sessionId: string,
-  tokens: TokenSnapshot[],
-  changeId?: ChangeId | null,
-): Promise<string> {
+function createPhrase({
+  sessionId,
+  tokens,
+  changeId,
+}: ArgsOf<'interlinearizer.createPhrase'>): Promise<string> {
   return runSessionEdit(
     { sessionId, changeId, step: { location: tokens[0]?.tokenRef } },
     'createPhrase',
@@ -1471,12 +1476,12 @@ function createPhrase(
  *   token's book, the session is read-only or not open, or the edit is refused or fails. The error
  *   is logged before rethrowing.
  */
-function updatePhrase(
-  sessionId: string,
-  phraseId: string,
-  tokens: TokenSnapshot[],
-  changeId?: ChangeId | null,
-): Promise<string> {
+function updatePhrase({
+  sessionId,
+  phraseId,
+  tokens,
+  changeId,
+}: ArgsOf<'interlinearizer.updatePhrase'>): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'updatePhrase', async (buffer, session) => {
     target.step =
@@ -1493,11 +1498,11 @@ function updatePhrase(
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function deletePhrase(
-  sessionId: string,
-  phraseId: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function deletePhrase({
+  sessionId,
+  phraseId,
+  changeId,
+}: ArgsOf<'interlinearizer.deletePhrase'>): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'deletePhrase', async (buffer) => {
     target.step = await phraseStartOf(buffer, phraseId);
@@ -1509,24 +1514,18 @@ function deletePhrase(
  * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token run.
  * The absorbed occurrence, when named, is removed.
  *
- * @param sessionId - As {@link openSession} returned it.
- * @param targetPhraseId - The target occurrence's link ID.
- * @param tokens - In document order.
- * @param absorbedPhraseId - The absorbed occurrence's link ID. Absent or `null` when the neighbor
- *   is a token in no phrase.
- * @param changeId - Names the change; absent or `null`, the session names it.
  * @returns A JSON string of the {@link CommandReply}.
  * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
  *   the first token's book, the session is read-only or not open, or the edit is refused or fails.
  *   The error is logged before rethrowing.
  */
-function mergePhrases(
-  sessionId: string,
-  targetPhraseId: string,
-  tokens: TokenSnapshot[],
-  absorbedPhraseId?: string | null,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function mergePhrases({
+  sessionId,
+  targetPhraseId,
+  tokens,
+  absorbedPhraseId,
+  changeId,
+}: ArgsOf<'interlinearizer.mergePhrases'>): Promise<string> {
   return runSessionEdit(
     { sessionId, changeId, step: { location: tokens[0]?.tokenRef } },
     'mergePhrases',
@@ -1537,7 +1536,7 @@ function mergePhrases(
         ...editStamp(),
         targetPhraseId,
         tokens,
-        absorbedPhraseId: absorbedPhraseId ?? undefined,
+        absorbedPhraseId,
       });
     },
   );
@@ -1550,12 +1549,12 @@ function mergePhrases(
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function writePhraseGloss(
-  sessionId: string,
-  phraseId: string,
-  value: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function writePhraseGloss({
+  sessionId,
+  phraseId,
+  value,
+  changeId,
+}: ArgsOf<'interlinearizer.writePhraseGloss'>): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'writePhraseGloss', async (buffer, session) => {
     target.step = await phraseStartOf(buffer, phraseId);
@@ -1576,11 +1575,11 @@ function writePhraseGloss(
  *   project has no text for their book, the session is read-only or not open, or the edit is
  *   refused or fails. The error is logged before rethrowing.
  */
-function approvePhrase(
-  sessionId: string,
-  phraseId: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function approvePhrase({
+  sessionId,
+  phraseId,
+  changeId,
+}: ArgsOf<'interlinearizer.approvePhrase'>): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'approvePhrase', async (buffer, session) => {
     target.step = await phraseStartOf(buffer, phraseId);
@@ -1608,12 +1607,12 @@ function verseBookOf(session: Session, tokenRef: string): Promise<Book> {
  * @throws If the project has no text for the token's book, the session is read-only or not open, or
  *   the edit is refused or fails. The error is logged before rethrowing.
  */
-function splitPhrase(
-  sessionId: string,
-  phraseId: string,
-  splitAfterTokenRef: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function splitPhrase({
+  sessionId,
+  phraseId,
+  splitAfterTokenRef,
+  changeId,
+}: ArgsOf<'interlinearizer.splitPhrase'>): Promise<string> {
   const target: EditTarget = { sessionId, changeId };
   return runSessionEdit(target, 'splitPhrase', async (buffer, session) => {
     target.step = await phraseStartOf(buffer, phraseId);
@@ -1628,29 +1627,22 @@ function splitPhrase(
 }
 
 /**
- * Writes a segment's free translation in the session's analysis language.
+ * Writes a segment's free translation in the session's analysis language. A blank value clears the
+ * translation. A non-blank write to a segment with no approved translation adopts the stale
+ * translation that `adoptStaleAnalysisId` names.
  *
- * @param sessionId - The session whose draft the write edits.
- * @param segmentId - `Segment.id` of the segment translated.
- * @param surfaceText - The segment's current baseline text, refreshed on the translation.
- * @param value - The free translation. A blank value clears the translation in the session's
- *   analysis language.
- * @param adoptStaleAnalysisId - Id of the stale translation the value was typed over. The write
- *   adopts that translation when the segment has no approved one. Absent or `null` when the value
- *   was typed over none.
- * @param changeId - Names the change; absent or `null`, the session names it.
  * @returns A JSON string of the {@link CommandReply}.
  * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
  *   logged before rethrowing.
  */
-function writeSegmentFreeTranslation(
-  sessionId: string,
-  segmentId: string,
-  surfaceText: string,
-  value: string,
-  adoptStaleAnalysisId?: string | null,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function writeSegmentFreeTranslation({
+  sessionId,
+  segmentId,
+  surfaceText,
+  value,
+  adoptStaleAnalysisId,
+  changeId,
+}: ArgsOf<'interlinearizer.writeSegmentFreeTranslation'>): Promise<string> {
   return runSessionEdit(
     { sessionId, changeId, step: { location: segmentId } },
     'writeSegmentFreeTranslation',
@@ -1661,7 +1653,7 @@ function writeSegmentFreeTranslation(
         surfaceText,
         value,
         analysisLanguage: session.analysisLanguage,
-        adoptStaleAnalysisId: adoptStaleAnalysisId ?? undefined,
+        adoptStaleAnalysisId,
       }),
   );
 }
@@ -1678,11 +1670,11 @@ function boundaryEditStamp() {
  * @throws If the project has no text for the token's book, the session is read-only or not open, or
  *   the edit fails. The error is logged before rethrowing.
  */
-function mergeSegments(
-  sessionId: string,
-  secondSegmentStartRef: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function mergeSegments({
+  sessionId,
+  secondSegmentStartRef,
+  changeId,
+}: ArgsOf<'interlinearizer.mergeSegments'>): Promise<string> {
   return runSessionEdit(
     { sessionId, changeId, step: { location: secondSegmentStartRef } },
     'mergeSegments',
@@ -1702,11 +1694,11 @@ function mergeSegments(
  * @throws If the project has no text for the token's book, the session is read-only or not open, or
  *   the edit is refused or fails. The error is logged before rethrowing.
  */
-function splitSegment(
-  sessionId: string,
-  tokenRef: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function splitSegment({
+  sessionId,
+  tokenRef,
+  changeId,
+}: ArgsOf<'interlinearizer.splitSegment'>): Promise<string> {
   return runSessionEdit(
     { sessionId, changeId, step: { location: tokenRef } },
     'splitSegment',
@@ -1727,12 +1719,12 @@ function splitSegment(
  *   is read-only or not open, or the edit is refused or fails. The error is logged before
  *   rethrowing.
  */
-function moveBoundary(
-  sessionId: string,
-  fromRef: string,
-  toRef: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function moveBoundary({
+  sessionId,
+  fromRef,
+  toRef,
+  changeId,
+}: ArgsOf<'interlinearizer.moveBoundary'>): Promise<string> {
   return runSessionEdit(
     { sessionId, changeId, step: { location: toRef } },
     'moveBoundary',
@@ -1806,7 +1798,7 @@ async function runDiscard(
       },
       {
         unsavedMark: ({ scope }) => unsavedMark(scope.interlinearProjectId !== undefined),
-        changeId: changeId ?? undefined,
+        changeId,
         step,
       },
     );
@@ -1829,11 +1821,11 @@ async function runDiscard(
  * @returns As {@link runDiscard} does.
  * @throws As {@link runDiscard} does.
  */
-function discardBook(
-  sessionId: string,
-  bookCode: string,
-  changeId?: ChangeId | null,
-): Promise<string> {
+function discardBook({
+  sessionId,
+  bookCode,
+  changeId,
+}: ArgsOf<'interlinearizer.discardBook'>): Promise<string> {
   return runDiscard(
     { sessionId, changeId, step: { summary: { kind: 'discardBook', book: bookCode } } },
     'discardBook',
@@ -1850,7 +1842,10 @@ function discardBook(
  * @returns As {@link runDiscard} does.
  * @throws As {@link runDiscard} does.
  */
-function discardAll(sessionId: string, changeId?: ChangeId | null): Promise<string> {
+function discardAll({
+  sessionId,
+  changeId,
+}: ArgsOf<'interlinearizer.discardAll'>): Promise<string> {
   return runDiscard(
     { sessionId, changeId, step: { summary: { kind: 'discardAll' } } },
     'discardAll',
@@ -1866,7 +1861,10 @@ function discardAll(sessionId: string, changeId?: ChangeId | null): Promise<stri
  * @throws If the session is not open, the request names an intent it can't preview, or staging the
  *   command fails. The error is logged before rethrowing.
  */
-async function previewRemovals(sessionId: string, request: RemovalPreviewRequest): Promise<string> {
+async function previewRemovals({
+  sessionId,
+  request,
+}: ArgsOf<'interlinearizer.previewRemovals'>): Promise<string> {
   try {
     const changes = await sessions.preview(sessionId, request.intent, (buffer, session) => {
       const { now, linkId, analysisId: copyId } = editStamp();
@@ -2468,7 +2466,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  /** The parameter naming the session a session command acts on. */
+  /** The field naming the session that a session command acts on. */
   const sessionIdParam = {
     name: 'sessionId',
     required: true,
@@ -2476,7 +2474,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  /** The parameter naming the change a session command makes. */
+  /** The field naming the change that a session command makes. */
   const changeIdParam = {
     name: 'changeId',
     required: false,
@@ -2485,6 +2483,29 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
+  /** Documents a command's one argument, an object holding `fields`. */
+  const argsParam = (summary: string, fields: ParamDoc[]): ParamDoc[] => [
+    {
+      name: 'args',
+      required: true,
+      summary,
+      schema: {
+        type: 'object',
+        properties: Object.fromEntries(
+          fields.map(({ name, summary: description, schema }) => [
+            name,
+            { description, ...schema },
+          ]),
+        ),
+        required: fields.filter(({ required }) => required).map(({ name }) => name),
+      },
+    },
+  ];
+
+  /** Documents a session command's one argument, which holds `fields` beside `sessionId`. */
+  const sessionArgs = (...fields: ParamDoc[]) =>
+    argsParam("The session, and the command's own fields", [sessionIdParam, ...fields]);
+
   const openSessionCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openSession',
     openSession,
@@ -2492,7 +2513,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Open a session on a source project's draft, or read-only on its Paratext 9 import, closing the source's earlier session",
-        params: [
+        params: argsParam('The source project, and the interlinear project to open with it', [
           {
             name: 'sourceProjectId',
             required: true,
@@ -2506,7 +2527,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
               'UUID of the interlinear project the draft saves to, or of the Paratext 9 import to read; omit for the draft alone',
             schema: { type: 'string' },
           },
-        ],
+        ]),
         result: {
           name: 'return value',
           summary: 'JSON-stringified { sessionId, readOnly, hasFreeTranslations }',
@@ -2518,11 +2539,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const closeSessionCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.closeSession',
-    (sessionId: string) => sessions.close(sessionId),
+    ({ sessionId }: ArgsOf<'interlinearizer.closeSession'>) => sessions.close(sessionId),
     {
       method: {
         summary: 'Close a session once the commands sent to it settle',
-        params: [sessionIdParam],
+        params: sessionArgs(),
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
     },
@@ -2534,15 +2555,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Set the language a session's glosses are read and written in",
-        params: [
-          sessionIdParam,
-          {
-            name: 'analysisLanguage',
-            required: true,
-            summary: 'BCP 47 tag of the language',
-            schema: { type: 'string' },
-          },
-        ],
+        params: sessionArgs({
+          name: 'analysisLanguage',
+          required: true,
+          summary: 'BCP 47 tag of the language',
+          schema: { type: 'string' },
+        }),
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
     },
@@ -2562,7 +2580,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Revert a session's latest edit not yet undone",
-        params: [sessionIdParam, changeIdParam],
+        params: sessionArgs(changeIdParam),
         result: appliedChangesResult,
       },
     },
@@ -2574,13 +2592,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Make a session's latest undone edit again",
-        params: [sessionIdParam, changeIdParam],
+        params: sessionArgs(changeIdParam),
         result: appliedChangesResult,
       },
     },
   );
 
-  /** The parameters naming the token a token edit acts on. */
+  /** The fields giving the token that a token edit acts on, and that token's current text. */
   const tokenParams = [
     {
       name: 'tokenRef',
@@ -2609,8 +2627,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Write a token's gloss in a session's analysis language; a blank value clears it",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           ...tokenParams,
           {
             name: 'value',
@@ -2619,7 +2636,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -2632,8 +2649,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           'Approve a stored token analysis for a token, in place of any approval the token held',
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           ...tokenParams,
           {
             name: 'analysisId',
@@ -2642,7 +2658,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -2654,8 +2670,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Write a token's morpheme breakdown",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           ...tokenParams,
           {
             name: 'forms',
@@ -2670,7 +2685,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -2682,7 +2697,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Remove a token's morpheme breakdown",
-        params: [sessionIdParam, tokenParams[0], changeIdParam],
+        params: sessionArgs(tokenParams[0], changeIdParam),
         result: editResult,
       },
     },
@@ -2695,8 +2710,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Gloss one morpheme of a token's breakdown in a session's analysis language; a blank value clears the morpheme's gloss",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           tokenParams[0],
           {
             name: 'morphemeId',
@@ -2711,7 +2725,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -2730,8 +2744,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: 'Give up the place an analysis went stale at, leaving its other places alone',
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           staleAnalysisParam,
           {
             name: 'tokenRef',
@@ -2740,7 +2753,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -2753,8 +2766,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           'Move an analysis from a place it went stale at onto a token, approving it there in place of whatever the token held',
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           staleAnalysisParam,
           {
             name: 'staleTokenRef',
@@ -2764,7 +2776,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           },
           ...tokenParams,
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -2784,8 +2796,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Keep a stale free translation as a claim about a segment's current text, approving it for that segment",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           staleTranslationParam,
           {
             name: 'segmentId',
@@ -2800,7 +2811,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -2812,13 +2823,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: 'Drop a stale free translation, one whose verse the book no longer holds included',
-        params: [sessionIdParam, staleTranslationParam, changeIdParam],
+        params: sessionArgs(staleTranslationParam, changeIdParam),
         result: editResult,
       },
     },
   );
 
-  /** The parameter naming the token analysis that a catalog-wide edit acts on. */
+  /** The field naming the token analysis that a catalog-wide edit acts on. */
   const catalogAnalysisParam = {
     name: 'analysisId',
     required: true,
@@ -2840,12 +2851,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Write a token analysis's gloss in a session's analysis language, for every token linked to it; a blank value clears it",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           catalogAnalysisParam,
           { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -2857,7 +2867,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Clear the glosses of several token analyses in a session's analysis language",
-        params: [sessionIdParam, analysisIdsParam, changeIdParam],
+        params: sessionArgs(analysisIdsParam, changeIdParam),
         result: editResult,
       },
     },
@@ -2870,8 +2880,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Re-split a token analysis's breakdown, for every token linked to it; no forms removes the breakdown",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           catalogAnalysisParam,
           {
             name: 'forms',
@@ -2886,7 +2895,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -2899,7 +2908,17 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Keep a token analysis's stale breakdown as it stands, for every token linked to it",
-        params: [sessionIdParam, catalogAnalysisParam, changeIdParam],
+        params: sessionArgs(
+          catalogAnalysisParam,
+          {
+            name: 'tokenRef',
+            required: false,
+            summary:
+              "Token.ref the undo step is placed at; omit to name the analysis's catalog row instead",
+            schema: { type: 'string' },
+          },
+          changeIdParam,
+        ),
         result: editResult,
       },
     },
@@ -2912,8 +2931,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Write the gloss of one morpheme of a token analysis in a session's analysis language, for every token linked to it; a blank value clears it",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           catalogAnalysisParam,
           {
             name: 'morphemeId',
@@ -2923,7 +2941,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           },
           { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -2935,7 +2953,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: 'Remove token analyses with every token link to them',
-        params: [sessionIdParam, analysisIdsParam, changeIdParam],
+        params: sessionArgs(analysisIdsParam, changeIdParam),
         result: editResult,
       },
     },
@@ -2948,8 +2966,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Fold token analyses into a survivor and write the settled content onto it, in a session's analysis language",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           {
             name: 'survivorAnalysisId',
             required: true,
@@ -2969,13 +2986,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'object' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
   );
 
-  /** The parameter naming the phrase occurrence a phrase edit acts on. */
+  /** The field naming the phrase occurrence that a phrase edit acts on. */
   const phraseIdParam = {
     name: 'phraseId',
     required: true,
@@ -3002,8 +3019,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           'Add an approved phrase occurrence, sharing a content-identical stored payload where one exists',
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           {
             name: 'tokens',
             required: true,
@@ -3011,7 +3027,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: tokenSnapshotsSchema,
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -3024,8 +3040,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           'Give a phrase occurrence a new token run, keeping its gloss; an empty run removes it',
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           phraseIdParam,
           {
             name: 'tokens',
@@ -3034,7 +3049,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: tokenSnapshotsSchema,
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -3046,7 +3061,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: 'Remove a phrase occurrence, with its payload unless another occurrence shares it',
-        params: [sessionIdParam, phraseIdParam, changeIdParam],
+        params: sessionArgs(phraseIdParam, changeIdParam),
         result: editResult,
       },
     },
@@ -3059,8 +3074,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           'Grow a phrase occurrence to a merged token run, removing the absorbed occurrence when named',
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           {
             name: 'targetPhraseId',
             required: true,
@@ -3081,7 +3095,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -3094,8 +3108,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Write a phrase occurrence's gloss in a session's analysis language; a blank value clears it",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           phraseIdParam,
           {
             name: 'value',
@@ -3104,7 +3117,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -3116,7 +3129,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: 'Approve a phrase occurrence, unless any of its tokens is in an approved phrase',
-        params: [sessionIdParam, phraseIdParam, changeIdParam],
+        params: sessionArgs(phraseIdParam, changeIdParam),
         result: editResult,
       },
     },
@@ -3129,8 +3142,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Split a phrase occurrence just after a token, in the document order of the token's book",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           phraseIdParam,
           {
             name: 'splitAfterTokenRef',
@@ -3139,7 +3151,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -3152,8 +3164,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Write a segment's free translation in a session's analysis language; a blank value clears it",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           {
             name: 'segmentId',
             required: true,
@@ -3180,7 +3191,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -3192,8 +3203,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: 'Merge the segment beginning at a token into the one before it',
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           {
             name: 'secondSegmentStartRef',
             required: true,
@@ -3201,7 +3211,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -3214,8 +3224,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           'Split a segment so a new one begins at a token, first splitting every approved phrase the boundary would cut',
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           {
             name: 'tokenRef',
             required: true,
@@ -3223,7 +3232,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -3236,8 +3245,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           'Move a segment boundary from one token to another, first splitting every approved phrase the moved boundary would cut',
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           {
             name: 'fromRef',
             required: true,
@@ -3251,7 +3259,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: editResult,
       },
     },
@@ -3271,8 +3279,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Discard the unsaved changes to one book of a session's draft, restoring what the project it saves to holds for the book",
-        params: [
-          sessionIdParam,
+        params: sessionArgs(
           {
             name: 'bookCode',
             required: true,
@@ -3280,7 +3287,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           changeIdParam,
-        ],
+        ),
         result: discardResult,
       },
     },
@@ -3293,7 +3300,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Discard every unsaved change to a session's draft, restoring what the project it saves to holds",
-        params: [sessionIdParam, changeIdParam],
+        params: sessionArgs(changeIdParam),
         result: discardResult,
       },
     },
@@ -3305,15 +3312,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: "Name the token analyses a command would remove from a session's draft",
-        params: [
-          sessionIdParam,
-          {
-            name: 'request',
-            required: true,
-            summary: 'RemovalPreviewRequest naming the command by intent, with its arguments',
-            schema: { type: 'object' },
-          },
-        ],
+        params: sessionArgs({
+          name: 'request',
+          required: true,
+          summary: 'RemovalPreviewRequest naming the command by intent, with its arguments',
+          schema: { type: 'object' },
+        }),
         result: {
           name: 'return value',
           summary: 'JSON-stringified ids of the token analyses; "[]" when it would remove none',
@@ -3330,7 +3334,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary:
           "Report where a session's derived indexes differ from ones built afresh from its records, for debugging",
-        params: [sessionIdParam],
+        params: sessionArgs(),
         result: {
           name: 'return value',
           summary: 'JSON-stringified IndexDifference[]; "[]" when none differ',

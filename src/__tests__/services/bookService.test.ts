@@ -1353,6 +1353,62 @@ describe('onBookRead', () => {
     expect(heard).toEqual(['v3@en']);
   });
 
+  it('reports the edit of an open book read that a later edit read again first', async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    const edits = jest.fn();
+    unsubscribers.push(onBookTextChanged(edits));
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [open] = project.subscriptions;
+    open.deliver(usj('GEN'));
+    await outline;
+    open.deliver(usj('GEN', 'v2'));
+    await settle();
+    const [, firstReread] = subscriptionsTo(project, 'GEN');
+    readStatus();
+    await settle();
+    const [, , read] = subscriptionsTo(project, 'GEN');
+    read.deliver(usj('GEN', 'v2'));
+    await settle();
+
+    read.deliver(usj('GEN', 'v3'));
+    await settle();
+    subscriptionsTo(project, 'GEN')
+      .slice(3)
+      .forEach((s) => s.deliver(usj('GEN', 'v3')));
+    await settle();
+    firstReread.deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(edits).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports without passing an edited book that is no longer open once read again', async () => {
+    const project = serveProject();
+    const listener = listenForBooks();
+    const edits = jest.fn();
+    unsubscribers.push(onBookTextChanged(edits));
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [open] = project.subscriptions;
+    open.deliver(usj('GEN'));
+    await outline;
+    open.deliver(usj('GEN', 'v2'));
+    await settle();
+    const [, reread] = subscriptionsTo(project, 'GEN');
+
+    const otherOutline = getBookOutline('src', 'EXO');
+    await settle();
+    subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO'));
+    await otherOutline;
+    reread.deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(edits).toHaveBeenCalledWith('src', 'GEN');
+  });
+
   it('reports an edit to the open book that no longer reads, passing nothing', async () => {
     let delivery: Delivery = usj('GEN');
     const project = serveProject(() => delivery);

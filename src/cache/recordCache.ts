@@ -27,6 +27,9 @@ import { placedAmong, placedIdsIn } from '../utils/stale-free-translations';
  */
 export type Refetch = 'none' | 'pages' | 'placement' | 'outline';
 
+/** A page request as {@link RecordCache.beginFetch} noted it. */
+export type PageRequest = Readonly<{ sentAt: number }>;
+
 function firstWordsOf({ segments }: BookOutline): number[] {
   let words = 0;
   return segments.map(({ wordTokenCount }) => {
@@ -44,11 +47,8 @@ function firstWordsOf({ segments }: BookOutline): number[] {
  * A page fetched before a reply was applied never overwrites what that reply wrote.
  */
 export class RecordCache {
-  /**
-   * How many replies have been applied; a page request notes it when sent, for
-   * {@link RecordCache.absorb}.
-   */
-  revision = 0;
+  /** How many replies have been applied. */
+  private revision = 0;
 
   private outlineHeld: BookOutline;
 
@@ -171,12 +171,17 @@ export class RecordCache {
     return this.segments.has(index);
   }
 
+  /** Notes a page request as sent now, for {@link RecordCache.absorb} to judge its page against. */
+  beginFetch(): PageRequest {
+    return { sentAt: this.revision };
+  }
+
   /**
-   * Takes in a page fetched by a request sent at {@link RecordCache.revision} `sentAt`. Any record
-   * or pool bucket that a reply has written or removed since then stays as that reply left it.
+   * Takes in a page fetched by `request`. Any record or pool bucket that a reply has written or
+   * removed since the request was sent stays as that reply left it.
    */
-  absorb(page: SegmentPage, sentAt: number): void {
-    const isFresh = (key: string) => (this.writtenAt.get(key) ?? -1) <= sentAt;
+  absorb(page: SegmentPage, request: PageRequest): void {
+    const isFresh = (key: string) => (this.writtenAt.get(key) ?? -1) <= request.sentAt;
     page.segments.forEach((segment, offset) => this.holdSegment(page.start + offset, segment));
     const { analysis } = page;
     /* v8 ignore next -- defensive: a session's pages always carry their analysis */

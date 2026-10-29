@@ -40,6 +40,7 @@ import type {
   RecordChanges,
   WarningLogger,
 } from '../../src/types/analysis-repository';
+import type { CommandReply } from '../../src/types/command-reply';
 import type { OutlineSegment, SegmentPage } from '../../src/types/segment-pages';
 import { isWordToken } from '../../src/types/type-guards';
 import { bookOfRef } from '../../src/utils/analysis-book';
@@ -623,8 +624,12 @@ async function checkEvents(
   await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
   const segmented = segmenter(new Map(books.map((b) => [b.bookRef, b])));
   const reported = new Map<string, SessionAnalysisChange>();
+  let hear: (change: SessionAnalysisChange) => void = () => {};
   const sessions = new AnalysisSessions(
-    sessionHost(storage, segmented, (change) => reported.set(change.changeId, change)),
+    sessionHost(storage, segmented, (change) => {
+      reported.set(change.changeId, change);
+      hear(change);
+    }),
   );
   const { sessionId } = await sessions.open(draft.sourceProjectId);
   const read = async () =>
@@ -804,6 +809,7 @@ async function checkEvents(
       readBookOutline(session.repository, await sessionBook(session)),
     );
   const client = new PageClient({ getOutline: fetchOutline, getSegments: fetchPage });
+  hear = (change) => client.hear(change);
   await client.open();
   client.load(0, Number.MAX_SAFE_INTEGER, 'list');
   await client.settled();
@@ -814,62 +820,58 @@ async function checkEvents(
   for (let step = 0; step < steps; step += 1) {
     // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
     const before = await read();
-    const { cache } = client;
-    if (!cache) throw new Error('The client holds no outline');
     const racing =
       rng() < 0.3
         ? Math.floor((rng() * viewBook.segments.length) / PAGE_SIZE) * PAGE_SIZE
         : undefined;
-    const sentAt = cache.revision;
+    const fetch = client.beginFetch();
     const stalePage =
       racing === undefined
         ? undefined
         : // eslint-disable-next-line no-await-in-loop -- a refetch sent ahead of the change
           await fetchPage(racing, racing + PAGE_SIZE);
-    const changeId = `step-${step}`;
+    let changeId = '';
     const roll = rng();
-    let applied: ChangeSet | undefined;
     let name: string;
+    let send: (id: string) => Promise<CommandReply | undefined>;
     if (roll < 0.1) {
       name = 'undo';
-      // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
-      const reply = await sessions.undo(sessionId, changeId);
-      if (reply) client.apply(reply);
-      applied = reply?.changes;
+      send = (id) => sessions.undo(sessionId, id);
     } else if (roll < 0.15) {
       name = 'redo';
-      // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
-      const reply = await sessions.redo(sessionId, changeId);
-      if (reply) client.apply(reply);
-      applied = reply?.changes;
+      send = (id) => sessions.redo(sessionId, id);
     } else {
       const [intent, command] = pick(rng, commands);
       name = intent;
-      // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
-      const reply = await sessions
-        .edit(sessionId, intent, (buffer) => command(buffer, before), { changeId })
-        // A random edit that the approval rule refuses applies nothing, as the host intends.
-        .catch((e) => {
-          if (e instanceof ApprovalRuleError) return undefined;
-          throw e;
-        });
-      if (reply) client.apply(reply);
-      applied = reply?.changes;
+      send = (id) =>
+        sessions
+          .edit(sessionId, intent, (buffer) => command(buffer, before), { changeId: id })
+          // A random edit that the approval rule refuses applies nothing, as the host intends.
+          .catch((e) => {
+            if (e instanceof ApprovalRuleError) return undefined;
+            throw e;
+          });
     }
+    // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
+    const reply = await client.send((id) => {
+      changeId = id;
+      return send(id);
+    });
+    const applied: ChangeSet | undefined = reply?.changes;
     if (stalePage && !applied?.scope) {
-      cache.absorb(stalePage, sentAt);
+      client.absorb(stalePage, fetch);
       races += 1;
     }
     // eslint-disable-next-line no-await-in-loop -- the client settles before it is compared
     await client.settled();
     // eslint-disable-next-line no-await-in-loop -- compared against what the session serves now
     const outline = await fetchOutline();
-    if (JSON.stringify(client.cache?.outline) !== JSON.stringify(outline))
+    if (JSON.stringify(client.outline) !== JSON.stringify(outline))
       mismatches.push(`${name} (${changeId}): cached outline differs`);
     for (let start = 0; start < outline.segments.length; start += PAGE_SIZE) {
       // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
       const fresh = await fetchPage(start, start + PAGE_SIZE);
-      if (canonicalPage(client.cache?.pageAt(start, start + PAGE_SIZE)) !== canonicalPage(fresh))
+      if (canonicalPage(client.pageAt(start, start + PAGE_SIZE)) !== canonicalPage(fresh))
         mismatches.push(`${name} (${changeId}): cached page ${start} differs`);
     }
     // eslint-disable-next-line no-await-in-loop -- each change builds on the one before

@@ -19,6 +19,7 @@ import { DraftRepository } from '../../services/draftRepository';
 import type { EditOptions } from '../../services/editHistory';
 import { Pt9ImportRepository } from '../../services/pt9ImportRepository';
 import { draftKey } from '../../services/storageKeys';
+import * as sessionPages from '../../services/sessionPages';
 import { ReadOnlyAnalysisError } from '../../types/read-only-analysis-error';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
@@ -631,6 +632,8 @@ describe('AnalysisSessions', () => {
         changes: { intent: 'nothing' },
         poolBuckets: {},
         poolAnalyses: [],
+        resegmentedBooks: [],
+        staleTranslationBooks: [],
       });
 
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
@@ -995,8 +998,31 @@ describe('AnalysisSessions', () => {
         changeId: 'change-1',
         books: [{ bookId: 'GEN', ranges: [{ start: 1, end: 2 }] }],
         analysisIds: ['ta'],
+        forms: ['ta'],
         queries: ['getCatalogRows', 'getConcordance'],
       });
+    });
+
+    it('reports an edit whose pool read fails after it applied', async () => {
+      const { host, sessions, sessionId } = await sessionHolding();
+      jest
+        .spyOn(sessionPages, 'readTouchedPoolBuckets')
+        .mockRejectedValue(new Error('pool read failed'));
+
+      await expect(
+        sessions.edit(
+          sessionId,
+          'link',
+          async (buffer) => {
+            buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma));
+          },
+          { changeId: 'change-1' },
+        ),
+      ).rejects.toThrow('pool read failed');
+
+      expect(host.reportChange).toHaveBeenCalledWith(
+        expect.objectContaining({ changeId: 'change-1' }),
+      );
     });
 
     it('names whole a book whose boundaries the edit moved', async () => {
@@ -1091,6 +1117,7 @@ describe('AnalysisSessions', () => {
         changeId: expect.any(String),
         books: [{ bookId: 'GEN', ranges: [{ start: 0, end: 1 }] }],
         analysisIds: ['ta'],
+        forms: [],
         queries: ['getCatalogRows', 'getConcordance'],
       });
     });
@@ -1136,6 +1163,7 @@ describe('AnalysisSessions', () => {
           changeId: expect.any(String),
           books: [{ bookId: 'GEN' }],
           analysisIds: ['ta'],
+          forms: [],
           queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
         });
       });
@@ -1151,6 +1179,7 @@ describe('AnalysisSessions', () => {
           changeId: expect.any(String),
           books: [{ bookId: 'GEN' }],
           analysisIds: [],
+          forms: [],
           queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
         });
       });

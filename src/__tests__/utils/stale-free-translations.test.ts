@@ -5,6 +5,8 @@ import {
   adoptedStaleTranslation,
   nextSegmentAmong,
   orphanedCardCountAt,
+  placedAmong,
+  placedIdsIn,
   placeStaleFreeTranslations,
   type StaleFreeTranslation,
   verseLabelOf,
@@ -327,6 +329,46 @@ describe('orphanedCardCountAt', () => {
 
   it('counts none for a segment with no cards beside it', () => {
     expect(orphanedCardCountAt(orphans, 'GEN 1:3', 2)).toBe(0);
+  });
+});
+
+describe('placedAmong', () => {
+  const placement = {
+    bySegment: new Map([['GEN 1:1', [stale('GEN 1:1')]]]),
+    orphanedAfter: new Map([
+      ['GEN 1:1', [stale('GEN 1:1a')]],
+      ['GEN 1:3', [stale('GEN 1:3a')]],
+    ]),
+    orphanedAhead: [stale('GEN 1:0')],
+  };
+  const idOf = ({ analysisId }: StaleFreeTranslation) => analysisId;
+
+  it('names those filed among the segments, with those ahead on the first page', () => {
+    expect(placedAmong(placement, ['GEN 1:1', 'GEN 1:2'], true, idOf)).toStrictEqual({
+      bySegment: { 'GEN 1:1': ['sa GEN 1:1'] },
+      orphanedAfter: { 'GEN 1:1': ['sa GEN 1:1a'] },
+      orphanedAhead: ['sa GEN 1:0'],
+    });
+  });
+
+  it('leaves out those ahead of every verse on a later page', () => {
+    expect(placedAmong(placement, ['GEN 1:3'], false, idOf)).toStrictEqual({
+      bySegment: {},
+      orphanedAfter: { 'GEN 1:3': ['sa GEN 1:3a'] },
+      orphanedAhead: [],
+    });
+  });
+});
+
+describe('placedIdsIn', () => {
+  it('names every placed translation once', () => {
+    expect(
+      placedIdsIn({
+        bySegment: { 'GEN 1:1': ['a'] },
+        orphanedAfter: { 'GEN 1:1': ['b', 'a'] },
+        orphanedAhead: ['c'],
+      }),
+    ).toStrictEqual(new Set(['a', 'b', 'c']));
   });
 });
 

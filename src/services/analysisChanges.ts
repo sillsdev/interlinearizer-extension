@@ -14,6 +14,7 @@ import { bookIndexesOf } from '../utils/book-indexes';
 import { touched } from '../utils/change-set';
 import { sameSegmentation, segmentationForBook } from '../utils/segmentation';
 import { placeStaleFreeTranslations } from '../utils/stale-free-translations';
+import { touchedForms } from './sessionPages';
 
 /** Changes as applied, with the changes that restore what they replaced. */
 export type AppliedChange = Readonly<{ changes: ChangeSet; inverse: ChangeSet }>;
@@ -25,7 +26,7 @@ export type AppliedChange = Readonly<{ changes: ChangeSet; inverse: ChangeSet }>
 export type HeldBook = (bookId: string) => Book | undefined;
 
 /** The books whose boundaries differ between two deltas. */
-export function booksResegmented(
+export function booksResegmentedBetween(
   before: SegmentationDelta | undefined,
   after: SegmentationDelta | undefined,
 ): string[] {
@@ -39,6 +40,13 @@ export function booksResegmented(
     (bookId) =>
       !sameSegmentation(segmentationForBook(before, bookId), segmentationForBook(after, bookId)),
   );
+}
+
+/** The books whose boundaries an applied change moved. */
+export function booksResegmented({ changes, inverse }: AppliedChange): string[] {
+  return changes.scope && inverse.scope
+    ? booksResegmentedBetween(inverse.scope.segmentation, changes.scope.segmentation)
+    : [];
 }
 
 /**
@@ -88,16 +96,19 @@ async function anyLinkedStale(
  *
  * The description names each segment on which the change put or removed links, at the place where
  * the view shows it. A book whose boundaries the change moved is named whole, as is a book that the
- * host holds no outline for. The description also names the analyses whose payloads or links the
- * change put or removed, and the cross-book queries that those analyses may change.
+ * host holds no outline for. Among the books that it names, the description flags each one where
+ * the change put or removed a stale free translation. The description also names the analyses whose
+ * payloads or links the change put or removed, and the cross-book queries that those analyses may
+ * change. It names the forms whose pool buckets the change may have changed, too.
  *
  * @throws Whatever the repository's lookups throw.
  */
 export async function describeChange(
   repository: AnalysisRepository,
-  { changes, inverse }: AppliedChange,
+  applied: AppliedChange,
   heldBook: HeldBook,
 ): Promise<AnalysisChange> {
+  const { changes, inverse } = applied;
   const tokenPayloads = touched(changes.tokenAnalyses, inverse.tokenAnalyses);
   const tokenLinks = touched(changes.tokenAnalysisLinks, inverse.tokenAnalysisLinks);
   const phraseLinks = touched(changes.phraseAnalysisLinks, inverse.phraseAnalysisLinks);
@@ -110,11 +121,7 @@ export async function describeChange(
     ...segmentPayloads,
   ].map(({ id }) => id);
 
-  const wholeBooks = new Set(
-    changes.scope && inverse.scope
-      ? booksResegmented(inverse.scope.segmentation, changes.scope.segmentation)
-      : [],
-  );
+  const wholeBooks = new Set(booksResegmented(applied));
   const indexesByBook = new Map<string, Set<number>>();
   const books = new Map<string, Book | undefined>();
   const markAt = (bookId: string, indexOf: (book: Book) => number | undefined) => {
@@ -143,13 +150,18 @@ export async function describeChange(
     markAt(bookOfRef(segmentId), (book) => freeTranslationIndex(book, segmentId)),
   );
 
+  const staleTranslationBooks = new Set(
+    segmentLinks
+      .filter(({ status }) => status === 'stale')
+      .map(({ segmentId }) => bookOfRef(segmentId)),
+  );
   const changedBooks: ChangedBook[] = [...new Set([...wholeBooks, ...indexesByBook.keys()])]
     .sort((a, b) => Canon.bookIdToNumber(a) - Canon.bookIdToNumber(b))
     .map((bookId) => {
       const indexes = indexesByBook.get(bookId);
-      return wholeBooks.has(bookId) || !indexes
-        ? { bookId }
-        : { bookId, ranges: rangesOf(indexes) };
+      const book: ChangedBook =
+        wholeBooks.has(bookId) || !indexes ? { bookId } : { bookId, ranges: rangesOf(indexes) };
+      return staleTranslationBooks.has(bookId) ? { ...book, staleTranslations: true } : book;
     });
 
   const queries: AnalysisQuery[] = [];
@@ -167,6 +179,7 @@ export async function describeChange(
   return {
     books: changedBooks,
     analysisIds: [...new Set([...payloadIds, ...links.map(({ analysisId }) => analysisId)])].sort(),
+    forms: await touchedForms(repository, applied),
     queries,
   };
 }
@@ -183,6 +196,7 @@ export function describeScriptureEdit(
   return {
     books: [...bookIds].map((id) => ({ bookId: id })),
     analysisIds: [...new Set(passes.flatMap(({ analysisIds }) => analysisIds))],
+    forms: [...new Set(passes.flatMap(({ forms }) => forms))],
     queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
   };
 }

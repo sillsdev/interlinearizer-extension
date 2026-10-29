@@ -2,28 +2,17 @@ import papi, { logger } from '@papi/frontend';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment, SegmentationDelta } from 'interlinearizer';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  PAGE_RETRY_DELAYS_MS,
+  PAGE_SIZE,
+  pagesCovering,
+  waitMs,
+  type PageCaller,
+} from '../cache/pageClient';
 import type { BookOutline, OutlineSegment, SegmentPage } from '../types/segment-pages';
 import { perfTime, perfTrack } from '../utils/perf-marks';
 import useLatestRef from './useLatestRef';
 import { EXTEND_CHUNK, INITIAL_WINDOW_HALF, findAnchorIndex } from './useSegmentWindow';
-
-/** How many segments one page holds; pages start at multiples of it. */
-export const PAGE_SIZE = 32;
-
-/**
- * How long an outline or page that failed to load waits before each retry, given up once these run
- * out.
- */
-export const PAGE_RETRY_DELAYS_MS: readonly number[] = [1000, 4000, 16000];
-
-/** A view whose latest page range is kept loaded across outlines. */
-export type PageCaller = 'list' | 'strip';
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
 
 /**
  * The loaded book's segment list, as the host segments and serves it. One object per outline: pages
@@ -86,13 +75,6 @@ type PageSource = Readonly<{
   outline: BookOutline;
   segmentationJson: string | undefined;
 }>;
-
-/** Indexes of the pages holding any of the segments at `[start, end)` of `count` segments. */
-function pagesCovering(start: number, end: number, count: number): number[] {
-  const first = Math.floor(Math.max(0, start) / PAGE_SIZE);
-  const last = Math.ceil(Math.min(count, end) / PAGE_SIZE);
-  return Array.from({ length: Math.max(0, last - first) }, (_unused, i) => first + i);
-}
 
 /** Groups page indexes, ascending, into runs of consecutive pages. */
 function runsOf(pageIndexes: readonly number[]): number[][] {
@@ -191,7 +173,7 @@ function createSegmentPages(source: SegmentPagesSource): SegmentPages {
       // Pages with no subscriber are no longer shown, so are not worth asking for again.
       const delay = PAGE_RETRY_DELAYS_MS[attempt];
       if (delay === undefined || listeners.size === 0) return;
-      await wait(delay);
+      await waitMs(delay);
       if (listeners.size > 0) await loadRun(run, attempt + 1);
     } finally {
       run.forEach((pageIndex) => inFlight.delete(pageIndex));
@@ -315,7 +297,7 @@ export default function useSegmentPages({
           setFailure({ verseBook, message: e instanceof Error ? e.message : String(e) });
           return;
         }
-        await wait(delay);
+        await waitMs(delay);
         if (isCurrent) await attempt(retry + 1);
       }
     };

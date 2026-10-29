@@ -19,7 +19,7 @@ import { bookOfRef, BOOKLESS_PARTITION } from '../utils/analysis-book';
 import type { splitAnalysisByBook } from '../utils/analysis-book';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { preferredLink } from '../utils/pick-rules';
-import { fileId, idsLacking, type IdsByKey, RecordTable, unfileId } from './recordTable';
+import { fileId, idsLacking, type IdsByKey, RecordTable, unfileId } from '../utils/record-table';
 
 /** The key a link is filed under for its book and status. */
 function bookStatusKey(bookCode: string, status: AssignmentStatus): string {

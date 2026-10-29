@@ -2280,6 +2280,11 @@ declare module 'interlinearizer' {
      * its boundaries, or analysis in a book the host held no outline for.
      */
     ranges?: SegmentRange[];
+    /**
+     * Present when the change put or removed a stale free translation in the book. Such a change
+     * can move orphaned cards anywhere in the book.
+     */
+    staleTranslations?: true;
   };
 
   /** What one change to a session's analysis touched. */
@@ -2287,6 +2292,8 @@ declare module 'interlinearizer' {
     books: ChangedBook[];
     /** The analyses whose payload, or whose links, the change put or removed. */
     analysisIds: string[];
+    /** The normalized surface forms whose pool buckets the change may have changed. */
+    forms: string[];
     /** The cross-book queries whose answers the change may have changed. */
     queries: AnalysisQuery[];
   };

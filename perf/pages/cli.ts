@@ -15,14 +15,18 @@ import type {
 } from 'interlinearizer';
 import { performance } from 'perf_hooks';
 import { resegmentBook } from '../../src/parsers/papi/resegmentBook';
-import { booksResegmented, rangesOf } from '../../src/services/analysisChanges';
+import { PageClient } from '../../src/cache/pageClient';
+import { booksResegmentedBetween, rangesOf } from '../../src/services/analysisChanges';
 import {
   AnalysisSessions,
   type EditOutcome,
+  type Session,
   type SessionHost,
 } from '../../src/services/analysisSessions';
+import { ApprovalRuleError } from '../../src/services/commands/approvalRule';
 import * as boundaryCommands from '../../src/services/commands/boundaryCommands';
 import type { ChangeBuffer } from '../../src/services/commands/changeBuffer';
+import * as discardCommands from '../../src/services/commands/discardCommands';
 import * as catalogCommands from '../../src/services/commands/catalogCommands';
 import * as freeTranslationCommands from '../../src/services/commands/freeTranslationCommands';
 import * as phraseCommands from '../../src/services/commands/phraseCommands';
@@ -37,6 +41,7 @@ import type {
   RecordChanges,
   WarningLogger,
 } from '../../src/types/analysis-repository';
+import type { CommandReply } from '../../src/types/command-reply';
 import type { OutlineSegment, SegmentPage } from '../../src/types/segment-pages';
 import { isWordToken } from '../../src/types/type-guards';
 import { bookOfRef } from '../../src/utils/analysis-book';
@@ -496,7 +501,7 @@ function expectedChange(
   const segmentLinks = [...segmentLinksWere, ...segmentLinksAre];
   const links: AnalysisLink[] = [...tokenLinks, ...phraseLinks, ...segmentLinks];
   const payloadIds = [...tokenPayloads, ...segmentPayloads, ...phrasePayloads].map(({ id }) => id);
-  const whole = new Set(booksResegmented(before.segmentation, after.segmentation));
+  const whole = new Set(booksResegmentedBetween(before.segmentation, after.segmentation));
   const indexes = new Map<string, Set<number>>();
   const mark = (bookId: string, index: number | undefined) => {
     if (whole.has(bookId)) return;
@@ -550,12 +555,23 @@ function expectedChange(
   };
   tokenLinks.forEach(({ token }) => markToken(token.tokenRef));
   phraseLinks.forEach(({ tokens }) => tokens.forEach(({ tokenRef }) => markToken(tokenRef)));
+  const staleBooks = new Set(
+    segmentLinks.filter((l) => l.status === 'stale').map((l) => bookOfRef(l.segmentId)),
+  );
   const changedBooks: ChangedBook[] = [...new Set([...whole, ...indexes.keys()])]
     .sort()
     .map((bookId) => {
       const set = indexes.get(bookId);
-      return whole.has(bookId) || !set ? { bookId } : { bookId, ranges: rangesOf(set) };
+      const book: ChangedBook =
+        whole.has(bookId) || !set ? { bookId } : { bookId, ranges: rangesOf(set) };
+      return staleBooks.has(bookId) ? { ...book, staleTranslations: true } : book;
     });
+  const payloadsAfter = new Map(is.tokenAnalyses.map((p) => [p.id, p]));
+  const forms = new Set(
+    [...tokenPayloads, ...tokenLinks.flatMap((l) => payloadsAfter.get(l.analysisId) ?? [])].map(
+      (p) => normalizeSurfaceForm(p.surfaceText),
+    ),
+  );
   const staleIds = new Set(
     [
       ...after.analysis.tokenAnalysisLinks,
@@ -574,6 +590,7 @@ function expectedChange(
   return {
     books: changedBooks,
     analysisIds: [...new Set([...payloadIds, ...links.map(({ analysisId }) => analysisId)])].sort(),
+    forms: [...forms].sort(),
     queries,
   };
 }
@@ -581,32 +598,39 @@ function expectedChange(
 /** Sorts books by id, so an expected change compares with one named in canonical order. */
 function comparable(change: AnalysisChange | undefined): string {
   if (!change) return 'nothing';
-  const { books, analysisIds, queries } = change;
+  const { books, analysisIds, forms, queries } = change;
   return JSON.stringify({
     books: [...books].sort((a, b) => a.bookId.localeCompare(b.bookId)),
     analysisIds,
+    forms,
     queries,
   });
 }
 
 /**
- * Runs random commands, undos and redos in a session over the tier, comparing each change's event
- * with what the drafts before and after it say it touched.
+ * Runs random commands, undos and redos in a session over the tier. Compares each change's event
+ * with what the drafts before and after it say it touched. Checks that a page client following the
+ * changes holds what the session serves, including when a refetch is sent before a change.
  *
- * @returns How many changes ran, and those whose event differed.
+ * @returns How many changes ran, those whose event or cached pages differed, and how many refetches
+ *   raced a change.
  */
 async function checkEvents(
   draft: DraftProject,
   books: readonly Book[],
   viewBook: Book,
   steps: number,
-): Promise<{ changes: number; mismatches: string[] }> {
+): Promise<{ changes: number; mismatches: string[]; races: number }> {
   const storage = memoryStorage();
   await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
   const segmented = segmenter(new Map(books.map((b) => [b.bookRef, b])));
   const reported = new Map<string, SessionAnalysisChange>();
+  let hear: (change: SessionAnalysisChange) => void = () => {};
   const sessions = new AnalysisSessions(
-    sessionHost(storage, segmented, (change) => reported.set(change.changeId, change)),
+    sessionHost(storage, segmented, (change) => {
+      reported.set(change.changeId, change);
+      hear(change);
+    }),
   );
   const { sessionId } = await sessions.open(draft.sourceProjectId);
   const read = async () =>
@@ -618,6 +642,7 @@ async function checkEvents(
     return w.slice(1).map((t, i) => [w[i], t]);
   });
   const now = () => new Date().toISOString();
+  const saved = { analysis: draft.analysis, segmentation: draft.segmentation };
   const ids = () => ({
     analysisId: crypto.randomUUID(),
     linkId: crypto.randomUUID(),
@@ -740,6 +765,18 @@ async function checkEvents(
       },
     ],
     [
+      'discardBook',
+      async (buffer, current) => {
+        const { changedBooks } = discardCommands.discardBook(
+          buffer,
+          { draft: current, unreadableBooks: [] },
+          viewBook.bookRef,
+          saved,
+        );
+        return { reanchorTo: books.filter(({ bookRef }) => changedBooks.includes(bookRef)) };
+      },
+    ],
+    [
       'splitSegment',
       async (buffer) => {
         const s = pick(
@@ -758,31 +795,85 @@ async function checkEvents(
     ],
   ];
 
+  const sessionBook = async (session: Session) => {
+    const { segmentation } = await session.repository.getScope();
+    return (
+      segmented(viewBook.bookRef, segmentationForBook(segmentation, viewBook.bookRef)) ?? viewBook
+    );
+  };
+  const fetchPage = (start: number, end: number) =>
+    sessions.run(sessionId, async (session) =>
+      readSegmentPage(session.repository, await sessionBook(session), start, end),
+    );
+  const fetchOutline = () =>
+    sessions.run(sessionId, async (session) =>
+      readBookOutline(session.repository, await sessionBook(session)),
+    );
+  const client = new PageClient({ getOutline: fetchOutline, getSegments: fetchPage });
+  hear = (change) => client.hear(change);
+  await client.open();
+  client.load(0, Number.MAX_SAFE_INTEGER, 'list');
+  await client.settled();
+
   const mismatches: string[] = [];
   let changes = 0;
+  let races = 0;
   for (let step = 0; step < steps; step += 1) {
     // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
     const before = await read();
-    const changeId = `step-${step}`;
+    const racing =
+      rng() < 0.3
+        ? Math.floor((rng() * viewBook.segments.length) / PAGE_SIZE) * PAGE_SIZE
+        : undefined;
+    const fetch = client.beginFetch();
+    const stalePage =
+      racing === undefined
+        ? undefined
+        : // eslint-disable-next-line no-await-in-loop -- a refetch sent ahead of the change
+          await fetchPage(racing, racing + PAGE_SIZE);
+    let changeId = '';
     const roll = rng();
-    let applied: ChangeSet | undefined;
     let name: string;
+    let send: (id: string) => Promise<CommandReply | undefined>;
     if (roll < 0.1) {
       name = 'undo';
-      // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
-      applied = (await sessions.undo(sessionId, changeId))?.changes;
+      send = (id) => sessions.undo(sessionId, id);
     } else if (roll < 0.15) {
       name = 'redo';
-      // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
-      applied = (await sessions.redo(sessionId, changeId))?.changes;
+      send = (id) => sessions.redo(sessionId, id);
     } else {
       const [intent, command] = pick(rng, commands);
       name = intent;
-      // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
-      const reply = await sessions.edit(sessionId, intent, (buffer) => command(buffer, before), {
-        changeId,
-      });
-      applied = reply.changes;
+      send = (id) =>
+        sessions
+          .edit(sessionId, intent, (buffer) => command(buffer, before), { changeId: id })
+          // A random edit that the approval rule refuses applies nothing, as the host intends.
+          .catch((e) => {
+            if (e instanceof ApprovalRuleError) return undefined;
+            throw e;
+          });
+    }
+    // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
+    const reply = await client.send((id) => {
+      changeId = id;
+      return send(id);
+    });
+    const applied: ChangeSet | undefined = reply?.changes;
+    if (stalePage && !applied?.scope) {
+      client.absorb(stalePage, fetch);
+      races += 1;
+    }
+    // eslint-disable-next-line no-await-in-loop -- the client settles before it is compared
+    await client.settled();
+    // eslint-disable-next-line no-await-in-loop -- compared against what the session serves now
+    const outline = await fetchOutline();
+    if (JSON.stringify(client.outline) !== JSON.stringify(outline))
+      mismatches.push(`${name} (${changeId}): cached outline differs`);
+    for (let start = 0; start < outline.segments.length; start += PAGE_SIZE) {
+      // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
+      const fresh = await fetchPage(start, start + PAGE_SIZE);
+      if (canonicalPage(client.pageAt(start, start + PAGE_SIZE)) !== canonicalPage(fresh))
+        mismatches.push(`${name} (${changeId}): cached page ${start} differs`);
     }
     // eslint-disable-next-line no-await-in-loop -- each change builds on the one before
     const after = await read();
@@ -798,7 +889,29 @@ async function checkEvents(
     if (want !== got) mismatches.push(`${name} (${changeId}): expected ${want}, reported ${got}`);
   }
   await sessions.closeAll();
-  return { changes, mismatches };
+  return { changes, mismatches, races };
+}
+
+/** A page with every list in id order and every map in key order, serialized. */
+function canonicalPage(page: SegmentPage | undefined): string {
+  if (!page?.analysis) return JSON.stringify(page);
+  const { analysis, ...rest } = page;
+  return JSON.stringify({
+    ...rest,
+    tokenAnalysisLinks: canonical(analysis.tokenAnalysisLinks),
+    phraseAnalysisLinks: canonical(analysis.phraseAnalysisLinks),
+    segmentAnalysisLinks: canonical(analysis.segmentAnalysisLinks),
+    tokenAnalyses: canonical(analysis.tokenAnalyses),
+    phraseAnalyses: canonical(analysis.phraseAnalyses),
+    segmentAnalyses: canonical(analysis.segmentAnalyses),
+    poolBuckets: canonicalMap(analysis.poolBuckets),
+    staleFreeTranslations: [
+      canonicalMap(analysis.staleFreeTranslations.bySegment),
+      canonicalMap(analysis.staleFreeTranslations.orphanedAfter),
+      analysis.staleFreeTranslations.orphanedAhead,
+    ],
+    phraseSpans: canonicalMap(analysis.phraseSpans),
+  });
 }
 
 /**
@@ -857,7 +970,7 @@ async function checkTier(tier: TierSpec): Promise<boolean> {
   const events = await checkEvents(draft, books, viewBook, steps);
 
   console.log(
-    `${tier.name.padEnd(15)} ${pages.pages} pages, ${pages.mismatches.length} differ (${pages.phrasesCrossing} phrases reach unheld segments, ${pages.jumps} jumps)  ${events.changes} changes, ${events.mismatches.length} differ  open ${timing.open.toFixed(0)} ms, first page ${timing.first.toFixed(0)} ms, next ${timing.next.toFixed(1)} ms`,
+    `${tier.name.padEnd(15)} ${pages.pages} pages, ${pages.mismatches.length} differ (${pages.phrasesCrossing} phrases reach unheld segments, ${pages.jumps} jumps)  ${events.changes} changes (${events.races} refetch races), ${events.mismatches.length} differ  open ${timing.open.toFixed(0)} ms, first page ${timing.first.toFixed(0)} ms, next ${timing.next.toFixed(1)} ms`,
   );
   [...pages.mismatches, ...events.mismatches].slice(0, 20).forEach((m) => console.log(`  ${m}`));
   return pages.mismatches.length === 0 && events.mismatches.length === 0;

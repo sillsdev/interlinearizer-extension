@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import { RecordTable } from '../../services/recordTable';
+import { RecordTable } from '../../utils/record-table';
 
 type Item = { id: string; tags: string[]; note?: string };
 
@@ -145,5 +145,30 @@ describe('RecordTable', () => {
         { index: 'items', key: 'a', missing: ['a'], extra: ['a'] },
       ]);
     });
+  });
+
+  it('puts a record, refiling it under the keys it now has', () => {
+    const table = tableOf({ id: 'a', tags: ['x'] });
+    const moved = { id: 'a', tags: ['y'] };
+    table.put(moved);
+
+    expect(table.find('tag', ['x'])).toStrictEqual([]);
+    expect(table.find('tag', ['y'])).toStrictEqual([moved]);
+  });
+
+  it('removes a record and unfiles it', () => {
+    const table = tableOf({ id: 'a', tags: ['x'] });
+    table.remove('a');
+
+    expect(table.hasRecord('a')).toBe(false);
+    expect(table.has('tag', 'x')).toBe(false);
+  });
+
+  it('removes nothing under an id with no record', () => {
+    const a = { id: 'a', tags: [] };
+    const table = tableOf(a);
+    table.remove('missing');
+
+    expect(table.all()).toStrictEqual([a]);
   });
 });

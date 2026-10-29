@@ -13,6 +13,10 @@ export type CommandReply = {
   changeId: ChangeId;
   /** The changes applied, naming the edit's intent. */
   changes: ChangeSet;
+  /** The books whose boundaries the changes moved. */
+  resegmentedBooks: string[];
+  /** The books in which the changes put or removed a stale free translation that the view places. */
+  staleTranslationBooks: string[];
   /**
    * For an undo or redo, the step that the edit was recorded as; absent when it was recorded with
    * none.

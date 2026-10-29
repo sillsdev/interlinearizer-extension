@@ -15,7 +15,12 @@ import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { missingBook } from '../utils/reanchor-draft';
 import { segmentationForBook } from '../utils/segmentation';
-import { describeChange, describeScriptureEdit, type AppliedChange } from './analysisChanges';
+import {
+  booksResegmented,
+  describeChange,
+  describeScriptureEdit,
+  type AppliedChange,
+} from './analysisChanges';
 import { assertApprovalRule } from './commands/approvalRule';
 import { ChangeBuffer } from './commands/changeBuffer';
 import { settleAll } from './draftRepository';
@@ -148,16 +153,18 @@ function report(host: SessionHost, session: Session, change: AnalysisChange, cha
 }
 
 /**
- * Reports what an applied change touched, reading each book as segmented by the boundaries that the
- * change leaves.
+ * Returns what an applied change touched, and reports that unless the change touched nothing. Reads
+ * each book as segmented by the boundaries that the change leaves.
  */
 async function reportApplied(
   host: SessionHost,
   session: Session,
   applied: AppliedChange,
   changeId: string,
-): Promise<void> {
-  report(host, session, await describeApplied(host, session, applied), changeId);
+): Promise<AnalysisChange> {
+  const change = await describeApplied(host, session, applied);
+  report(host, session, change, changeId);
+  return change;
 }
 
 /** Replies to an applied change, reporting what it touched. */
@@ -167,9 +174,17 @@ async function replyTo(
   applied: AppliedChange,
   changeId: string,
 ): Promise<CommandReply> {
+  const { books } = await reportApplied(host, session, applied, changeId);
   const pool = await readTouchedPoolBuckets(session.repository, applied);
-  await reportApplied(host, session, applied, changeId);
-  return { changeId, changes: applied.changes, ...pool };
+  return {
+    changeId,
+    changes: applied.changes,
+    ...pool,
+    resegmentedBooks: booksResegmented(applied),
+    staleTranslationBooks: books
+      .filter(({ staleTranslations }) => staleTranslations)
+      .map(({ bookId }) => bookId),
+  };
 }
 
 /**
@@ -441,7 +456,15 @@ export class AnalysisSessions {
             return { ...(await replyTo(this.host, session, applied, changeId)), ...extra };
           }
           if (editOptions.unsavedMark === 'clear') await session.history.markRestoredClean();
-          return { changeId, changes: staged, poolBuckets: {}, poolAnalyses: [], ...extra };
+          return {
+            changeId,
+            changes: staged,
+            poolBuckets: {},
+            poolAnalyses: [],
+            resegmentedBooks: [],
+            staleTranslationBooks: [],
+            ...extra,
+          };
         }),
       ),
     );

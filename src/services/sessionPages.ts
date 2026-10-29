@@ -1,20 +1,13 @@
 import type {
   Book,
   PhraseAnalysisLink,
-  Segment,
   SegmentAnalysis,
   SegmentAnalysisLink,
   TokenAnalysis,
 } from 'interlinearizer';
 import type { AnalysisRepository } from '../types/analysis-repository';
 import type { AppliedChange } from './analysisChanges';
-import type {
-  BookOutline,
-  PhraseSpanToken,
-  PlacedFreeTranslations,
-  PoolRead,
-  SegmentPage,
-} from '../types/segment-pages';
+import type { BookOutline, PhraseSpanToken, PoolRead, SegmentPage } from '../types/segment-pages';
 import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { bookIndexesOf } from '../utils/book-indexes';
@@ -22,9 +15,10 @@ import { buildBookOutline } from '../utils/book-outline';
 import { touched } from '../utils/change-set';
 import {
   orphanedCardCountAt,
+  placedAmong,
+  placedIdsIn,
   placeStaleFreeTranslations,
   type PlacedStaleFreeTranslations,
-  type StaleFreeTranslation,
 } from '../utils/stale-free-translations';
 import { buildPoolIndex } from '../utils/suggestion-engine';
 
@@ -92,34 +86,6 @@ async function readStalePlacement(
   if (links.length === 0) return { placed: NOTHING_PLACED, links, payloads };
   const stale = links.map(({ analysisId, segmentId }) => ({ analysisId, segmentId, text: '' }));
   return { placed: placeStaleFreeTranslations(stale, book), links, payloads };
-}
-
-/** The analysis ids of `translations`; `undefined` when `translations` is. */
-function idsIn(
-  translations: readonly StaleFreeTranslation[] | undefined,
-): readonly string[] | undefined {
-  return translations?.map(({ analysisId }) => analysisId);
-}
-
-/**
- * The stale free translations that `placement` files among `segments`. Those ahead of every verse
- * come only with the book's first page.
- */
-function placedAmong(
-  { placed }: StalePlacement,
-  segments: readonly Segment[],
-  isFirstPage: boolean,
-): PlacedFreeTranslations {
-  const bySegment: Record<string, readonly string[]> = {};
-  const orphanedAfter: Record<string, readonly string[]> = {};
-  segments.forEach(({ id }) => {
-    const reviewed = idsIn(placed.bySegment.get(id));
-    if (reviewed) bySegment[id] = reviewed;
-    const orphaned = idsIn(placed.orphanedAfter.get(id));
-    if (orphaned) orphanedAfter[id] = orphaned;
-  });
-  const orphanedAhead = isFirstPage ? placed.orphanedAhead.map(({ analysisId }) => analysisId) : [];
-  return { bySegment, orphanedAfter, orphanedAhead };
 }
 
 /** For each of `links`, by id, the word tokens of the link that `book` holds, with where each sits. */
@@ -204,14 +170,13 @@ export async function readSegmentPage(
     ...new Set(segmentAnalysisLinks.map(({ analysisId }) => analysisId)),
   ]);
   const placement = await readStalePlacement(repository, book);
-  const staleFreeTranslations = placedAmong(placement, segments, from === 0);
-  const placedIds = new Set(
-    [
-      ...Object.values(staleFreeTranslations.bySegment),
-      ...Object.values(staleFreeTranslations.orphanedAfter),
-      staleFreeTranslations.orphanedAhead,
-    ].flat(),
+  const staleFreeTranslations = placedAmong(
+    placement.placed,
+    segments.map(({ id }) => id),
+    from === 0,
+    ({ analysisId }) => analysisId,
   );
+  const placedIds = placedIdsIn(staleFreeTranslations);
   return {
     textVersion: book.textVersion,
     start: from,
@@ -237,17 +202,16 @@ export async function readSegmentPage(
 }
 
 /**
- * Reads the pool buckets that an applied change may have changed, from `repository` as the change
- * leaves it. They are the buckets of each token payload that the change or its inverse puts. They
- * also include the bucket of the payload named by each token link that the change or its inverse
- * puts.
+ * The normalized surface forms whose pool buckets an applied change may have changed, sorted. They
+ * are the forms of each token payload that the change or its inverse puts. They also include the
+ * form of the payload named by each token link that the change or its inverse puts.
  *
  * @throws Whatever the repository's lookups throw.
  */
-export async function readTouchedPoolBuckets(
+export async function touchedForms(
   repository: AnalysisRepository,
   { changes, inverse }: AppliedChange,
-): Promise<PoolRead> {
+): Promise<string[]> {
   const payloads = touched(changes.tokenAnalyses, inverse.tokenAnalyses);
   const known = new Set(payloads.map(({ id }) => id));
   const linkedIds = touched(changes.tokenAnalysisLinks, inverse.tokenAnalysisLinks)
@@ -255,9 +219,24 @@ export async function readTouchedPoolBuckets(
     .filter((id) => !known.has(id));
   const linked =
     linkedIds.length > 0 ? await repository.getTokenAnalyses([...new Set(linkedIds)]) : [];
-  const forms = new Set(
-    [...payloads, ...linked].map(({ surfaceText }) => normalizeSurfaceForm(surfaceText)),
-  );
-  if (forms.size === 0) return { poolBuckets: {}, poolAnalyses: [] };
-  return readPoolBuckets(repository, [...forms].sort());
+  return [
+    ...new Set(
+      [...payloads, ...linked].map(({ surfaceText }) => normalizeSurfaceForm(surfaceText)),
+    ),
+  ].sort();
+}
+
+/**
+ * Reads the pool buckets that an applied change may have changed, from `repository` as the change
+ * leaves it.
+ *
+ * @throws Whatever the repository's lookups throw.
+ */
+export async function readTouchedPoolBuckets(
+  repository: AnalysisRepository,
+  applied: AppliedChange,
+): Promise<PoolRead> {
+  const forms = await touchedForms(repository, applied);
+  if (forms.length === 0) return { poolBuckets: {}, poolAnalyses: [] };
+  return readPoolBuckets(repository, forms);
 }

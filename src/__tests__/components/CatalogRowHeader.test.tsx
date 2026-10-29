@@ -1,18 +1,23 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TooltipProvider } from 'platform-bible-react';
 import type { ComponentProps } from 'react';
 import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from '../../components/CatalogRowHeader';
 import type { CatalogRow } from '../../utils/analysis-query';
+import { testSenseRef, withLexicon } from './test-helpers';
 
 /** Each key resolving to itself, except the check box's label, which names the row's form and gloss. */
 const STRINGS = {
   ...Object.fromEntries(ROW_HEADER_STRING_KEYS.map((k) => [k, k])),
   '%interlinearizer_analysisCatalog_check%': 'Select {form}: {gloss}',
+  '%interlinearizer_analysisCatalog_senseDiffers%': 'Lexicon says {gloss}',
 };
+
+/** The lexicon every header is rendered under. */
+const SENSES = { 's-word': { gloss: { en: 'word' } } };
 
 /** A row of one analysis, carrying only what a case sets beyond its form and gloss. */
 function row(overrides: Partial<CatalogRow> = {}): CatalogRow {
@@ -36,6 +41,7 @@ function row(overrides: Partial<CatalogRow> = {}): CatalogRow {
 function renderHeader(overrides: Partial<ComponentProps<typeof CatalogRowHeader>> = {}) {
   const props = {
     row: row(),
+    analysisLanguage: 'en',
     usageCountInBookLabel: 'uses in Genesis',
     isExpanded: false,
     onToggle: jest.fn(),
@@ -45,12 +51,14 @@ function renderHeader(overrides: Partial<ComponentProps<typeof CatalogRowHeader>
     localizedStrings: STRINGS,
     ...overrides,
   };
-  render(
+  const { ui, resolveSense } = withLexicon(
     <TooltipProvider>
       <CatalogRowHeader {...props} />
     </TooltipProvider>,
+    SENSES,
   );
-  return props;
+  render(ui);
+  return { ...props, resolveSense };
 }
 
 describe('CatalogRowHeader', () => {
@@ -81,6 +89,51 @@ describe('CatalogRowHeader', () => {
     renderHeader({ row: row({ gloss: '' }) });
 
     expect(screen.getByTestId('catalog-row-gloss')).toHaveTextContent('—');
+  });
+
+  it('leaves a gloss unmarked when its analysis links to no lexicon sense', () => {
+    const { resolveSense } = renderHeader();
+
+    expect(screen.queryByTestId('catalog-sense-link')).not.toBeInTheDocument();
+    expect(resolveSense).not.toHaveBeenCalled();
+  });
+
+  it('marks a gloss whose analysis links to a sense glossed the same', async () => {
+    const { resolveSense } = renderHeader({ row: row({ glossSenseRef: testSenseRef('s-word') }) });
+
+    await waitFor(() => expect(resolveSense).toHaveBeenCalled());
+    const mark = screen.getByTestId('catalog-sense-link');
+    expect(mark).toHaveAttribute('data-differs', 'false');
+    expect(mark).toHaveTextContent('%interlinearizer_analysisCatalog_senseLinked%');
+  });
+
+  it("shows the linked sense's gloss where the analysis stores none, marked as from the lexicon", async () => {
+    renderHeader({ row: row({ gloss: '', glossSenseRef: testSenseRef('s-word') }) });
+
+    await waitFor(() => expect(screen.getByTestId('catalog-row-gloss')).toHaveTextContent('word'));
+    expect(screen.getByTestId('catalog-sense-link')).toHaveTextContent(
+      '%interlinearizer_analysisCatalog_senseGloss%',
+    );
+  });
+
+  it("marks a typed gloss that differs from its linked sense's, naming the sense's", async () => {
+    renderHeader({ row: row({ gloss: 'utterance', glossSenseRef: testSenseRef('s-word') }) });
+
+    await waitFor(() => expect(screen.getByTestId('book-alert-icon')).toBeInTheDocument());
+    expect(screen.getByTestId('catalog-row-gloss')).toHaveTextContent('utterance');
+    expect(screen.getByTestId('catalog-sense-link')).toHaveTextContent('Lexicon says word');
+  });
+
+  it('marks a link the lexicon cannot resolve as a link and nothing more', async () => {
+    const { resolveSense } = renderHeader({
+      row: row({ gloss: '', glossSenseRef: testSenseRef('gone') }),
+    });
+
+    await waitFor(() => expect(resolveSense).toHaveBeenCalled());
+    expect(screen.getByTestId('catalog-row-gloss')).toHaveTextContent('—');
+    expect(screen.getByTestId('catalog-sense-link')).toHaveTextContent(
+      '%interlinearizer_analysisCatalog_senseLinked%',
+    );
   });
 
   it('spells out what each usage count means for assistive tech', () => {

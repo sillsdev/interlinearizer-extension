@@ -1,4 +1,5 @@
 import type { SenseRef } from 'interlinearizer';
+import type { ResolvedSense } from 'interlinearizer/lexicon';
 import {
   createContext,
   useContext,
@@ -29,15 +30,6 @@ export function LexiconSensesProvider({
   return <LexiconSensesContext.Provider value={senses}>{children}</LexiconSensesContext.Provider>;
 }
 
-/** Shows every gloss beneath it as stored, resolving no lexicon sense. */
-export function WithoutLexiconSenses({ children }: Readonly<{ children: ReactNode }>) {
-  return (
-    <LexiconSensesContext.Provider value={NO_LEXICON_SENSES}>
-      {children}
-    </LexiconSensesContext.Provider>
-  );
-}
-
 /** A gloss as it is shown. */
 export type DisplayedGloss = Readonly<{
   /** The gloss text, `''` when there is none to show. */
@@ -61,18 +53,60 @@ export function useDisplayedGloss(
   senseRef: SenseRef | undefined,
   language: string,
 ): DisplayedGloss {
-  const senses = useContext(LexiconSensesContext);
-  const wanted = gloss ? undefined : senseRef;
-
-  useEffect(() => {
-    if (wanted) senses.request(wanted);
-  }, [senses, wanted]);
-
-  const sense = useSyncExternalStore(senses.subscribe, () =>
-    wanted ? senses.peek(wanted) : undefined,
-  );
+  const sense = useLexiconSense(gloss ? undefined : senseRef);
 
   if (gloss) return { text: gloss, fromLexicon: false };
   const resolved = multiStringText(sense?.gloss, language);
   return { text: resolved, fromLexicon: resolved !== '' };
+}
+
+/** A gloss as it is shown, set beside the lexicon sense its analysis links to. */
+export type LinkedGloss = DisplayedGloss &
+  Readonly<{
+    /** The linked sense, `undefined` while it is unresolved or when nothing is linked. */
+    sense?: ResolvedSense;
+    /** The linked sense's gloss in the language asked for, `''` when there is none. */
+    senseGloss: string;
+    /**
+     * Whether the analysis's own gloss and the sense's gloss are both present and say different
+     * things. Not an error: a typed gloss takes precedence over the sense.
+     */
+    differs: boolean;
+  }>;
+
+/**
+ * The gloss to show in `language` for an analysis that stores `gloss` and carries `senseRef`, as
+ * {@link useDisplayedGloss} gives it, along with the sense itself. The sense is asked for even where
+ * a stored gloss covers it, so that the two glosses can be compared.
+ */
+export function useLinkedGloss(
+  gloss: string,
+  senseRef: SenseRef | undefined,
+  language: string,
+): LinkedGloss {
+  const sense = useLexiconSense(senseRef);
+  const senseGloss = multiStringText(sense?.gloss, language);
+
+  if (gloss)
+    return {
+      text: gloss,
+      fromLexicon: false,
+      sense,
+      senseGloss,
+      differs: senseGloss !== '' && senseGloss.trim() !== gloss.trim(),
+    };
+  return { text: senseGloss, fromLexicon: senseGloss !== '', sense, senseGloss, differs: false };
+}
+
+/** Asks for the sense `senseRef` points to, and reads it once it arrives. */
+function useLexiconSense(senseRef: SenseRef | undefined): ResolvedSense | undefined {
+  const senses = useContext(LexiconSensesContext);
+
+  useEffect(() => {
+    if (senseRef) senses.request(senseRef);
+  }, [senses, senseRef]);
+
+  return useSyncExternalStore(senses.subscribe, () =>
+    senseRef ? senses.peek(senseRef) : undefined,
+  );
 }

@@ -10,6 +10,8 @@ import {
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
+import { SENSE_LINK_MARK_STRING_KEYS, SenseLinkMark } from './CatalogSenseLinks';
+import { useLinkedGloss } from './LexiconSenses';
 import LocalizedTooltip from './LocalizedTooltip';
 
 /** Localized string keys a row header renders. */
@@ -19,12 +21,15 @@ export const ROW_HEADER_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_usageCount%',
   '%interlinearizer_analysisCatalog_staleCount%',
   '%interlinearizer_analysisCatalog_notInText%',
+  ...SENSE_LINK_MARK_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link CatalogRowHeader}. */
 type CatalogRowHeaderProps = Readonly<{
   /** The analysis the row lists. */
   row: CatalogRow;
+  /** BCP 47 tag of `row.gloss`, which the gloss of a linked lexicon sense is read in too. */
+  analysisLanguage: string;
   /** Finished label for `row.usageCountInBook`, naming the book that count was taken against. */
   usageCountInBookLabel: string;
   /** Whether the row's detail is showing. */
@@ -46,10 +51,12 @@ type CatalogRowHeaderProps = Readonly<{
 
 /**
  * The line a catalog row always shows: its check box, and the toggle naming the analysis by its
- * surface form, gloss, and usage counts.
+ * surface form, gloss, and usage counts. A gloss whose analysis links to a lexicon sense is marked.
+ * Where the analysis stores no gloss, the sense's gloss is shown in its place.
  */
 export default function CatalogRowHeader({
   row,
+  analysisLanguage,
   usageCountInBookLabel,
   isExpanded,
   onToggle,
@@ -64,8 +71,9 @@ export default function CatalogRowHeader({
 
   // This is visible cell text, so blanking an unresolved key would empty the gloss column. The em
   // dash reads as "no gloss" in any language and stands in until the lookup lands.
+  const link = useLinkedGloss(row.gloss, row.glossSenseRef, analysisLanguage);
   const glossLabel =
-    row.gloss ||
+    link.text ||
     resolvedOrEmpty(localizedStrings['%interlinearizer_analysisCatalog_noGloss%']) ||
     '—';
 
@@ -126,20 +134,23 @@ export default function CatalogRowHeader({
           </TooltipTrigger>
           <TooltipContent>{row.surfaceText}</TooltipContent>
         </Tooltip>
-        <Tooltip open={glossTooltip.open}>
-          <TooltipTrigger asChild>
-            <span
-              ref={glossTooltip.ref}
-              className="tw:ms-2 tw:min-w-0 tw:truncate tw:text-sm tw:text-muted-foreground"
-              data-testid="catalog-row-gloss"
-              onPointerEnter={glossTooltip.onPointerEnter}
-              onPointerLeave={glossTooltip.onPointerLeave}
-            >
-              {glossLabel}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>{glossLabel}</TooltipContent>
-        </Tooltip>
+        <span className="tw:ms-2 tw:flex tw:min-w-0 tw:items-baseline tw:gap-1">
+          <Tooltip open={glossTooltip.open}>
+            <TooltipTrigger asChild>
+              <span
+                ref={glossTooltip.ref}
+                className="tw:min-w-0 tw:truncate tw:text-sm tw:text-muted-foreground"
+                data-testid="catalog-row-gloss"
+                onPointerEnter={glossTooltip.onPointerEnter}
+                onPointerLeave={glossTooltip.onPointerLeave}
+              >
+                {glossLabel}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{glossLabel}</TooltipContent>
+          </Tooltip>
+          {row.glossSenseRef && <SenseLinkMark link={link} localizedStrings={localizedStrings} />}
+        </span>
         <LocalizedTooltip label={usageCountLabel}>
           <span
             className="tw:ms-2 tw:text-end tw:text-xs tw:tabular-nums"

@@ -48,6 +48,13 @@ function sameContent(a: DraftContent, b: DraftContent): boolean {
   return a.analysis === b.analysis && a.segmentation === b.segmentation;
 }
 
+/** Whether `content` holds no analysis and no custom segment boundaries. */
+function isEmptyContent({ analysis, segmentation }: DraftContent): boolean {
+  return (
+    Object.values(analysis).every((records) => records.length === 0) && isEmptyDelta(segmentation)
+  );
+}
+
 /** Returns `draft` holding `content`, marked `dirty` or not. */
 function withContent(
   draft: DraftProject,
@@ -238,6 +245,12 @@ export type UseDraftProjectResult = {
    * alignment target.
    */
   discardAll: (saved?: DraftContent) => void;
+  /**
+   * Records that the project the draft saves to was deleted. Marks the draft unsaved unless it is
+   * empty, so nothing it holds is replaced without asking. Settles once the draft has loaded, any
+   * save in progress has finished, and the draft has been marked.
+   */
+  detachFromProject: () => Promise<void>;
   canUndo: boolean;
   canRedo: boolean;
   /**
@@ -300,6 +313,8 @@ export default function useDraftProject(
 ): UseDraftProjectResult {
   const draftRef = useRef<DraftProject | undefined>(undefined);
   const [isDraftLoading, setIsDraftLoading] = useState(true);
+  // Settles with the draft the latest load published, or `undefined` when that load was canceled.
+  const draftLoadedRef = useRef<Promise<DraftProject | undefined>>(Promise.resolve(undefined));
   const [draftVersion, setDraftVersion] = useState(0);
   const [segmentationVersion, setSegmentationVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
@@ -362,6 +377,8 @@ export default function useDraftProject(
 
   const [isSaving, setIsSaving] = useState(false);
   const isSavingRef = useRef(false);
+  // Settles once the save in progress, if any, has finished, whether or not it saved.
+  const saveSettledRef = useRef<Promise<void>>(Promise.resolve());
   // Counts wholesale replacements, so a save can tell whether one landed while its writes settled.
   const replacementCountRef = useRef(0);
 
@@ -374,8 +391,10 @@ export default function useDraftProject(
     /**
      * Loads the stored draft for the source (falling back to an empty draft on failure), seeds a
      * gloss language when none is present, and publishes it to the ref and state.
+     *
+     * @returns The draft published, or `undefined` when the load was canceled first.
      */
-    const load = async () => {
+    const load = async (): Promise<DraftProject | undefined> => {
       let draft: DraftProject;
       try {
         const json = await perfTrack(
@@ -387,7 +406,7 @@ export default function useDraftProject(
         logger.error('Interlinearizer: failed to load draft', e);
         draft = emptyDraft(sourceProjectId);
       }
-      if (canceled) return;
+      if (canceled) return undefined;
 
       // Seed a gloss language in memory when the stored draft has none (a brand-new source). Not
       // persisted here — the first auto-save / New / Open carries it to storage.
@@ -397,9 +416,10 @@ export default function useDraftProject(
       cleanStatesRef.current = new Set(draft.dirty ? [] : [historyRef.current.state]);
       setDirty(draft.dirty);
       setIsDraftLoading(false);
+      return draft;
     };
 
-    load();
+    draftLoadedRef.current = load();
     return () => {
       canceled = true;
       // The last edit before unmount or a source change is written rather than lost.
@@ -594,6 +614,25 @@ export default function useDraftProject(
     [applyReplacement],
   );
 
+  const detachFromProject = useCallback(async () => {
+    // A draft still loading is detached once it loads. A canceled load gave way to another source's
+    // draft, which the deleted project never held.
+    const loaded = await draftLoadedRef.current;
+    if (!loaded) return;
+    // A save that finishes after the delete would mark the draft synced; detaching after it wins.
+    await saveSettledRef.current;
+    const { current } = draftRef;
+    /* v8 ignore next -- a load that published a draft set the ref */
+    if (!current) return;
+
+    // Each history state that reads clean matched the deleted project, so none stays clean. Only an
+    // empty draft has nothing to lose.
+    const empty = isEmptyContent(contentOf(current));
+    const clean = empty && !current.dirty;
+    cleanStatesRef.current = new Set(clean ? [historyRef.current.state] : []);
+    if (!empty && !current.dirty) writeDraft({ ...current, dirty: true });
+  }, [writeDraft]);
+
   /**
    * Marks the draft synced once `saved` has been copied into a project, unless an edit landed
    * meanwhile: then the draft stays dirty, so the indicator and the next Save reflect that edit. An
@@ -621,6 +660,8 @@ export default function useDraftProject(
       if (isSavingRef.current) return false;
       isSavingRef.current = true;
       setIsSaving(true);
+      const { promise: saveSettled, resolve: saveFinished } = Promise.withResolvers<void>();
+      saveSettledRef.current = saveSettled;
       try {
         const replacements = replacementCountRef.current;
         await writer.settle();
@@ -639,6 +680,7 @@ export default function useDraftProject(
       } finally {
         isSavingRef.current = false;
         setIsSaving(false);
+        saveFinished();
       }
     },
     [markSynced, writer],
@@ -744,6 +786,7 @@ export default function useDraftProject(
     newDraft,
     discardBook,
     discardAll,
+    detachFromProject,
     canUndo,
     canRedo,
     getHistoryRevision,

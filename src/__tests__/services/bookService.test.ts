@@ -1321,7 +1321,7 @@ describe('onBookRead', () => {
     expect(heard).toEqual(['read v2@en', 'edited']);
   });
 
-  it('passes no edited open book that a later edit read again first', async () => {
+  it("passes no text of an open book's edit that a later edit's read overtook", async () => {
     const project = serveProject();
     project.booksPresent = '1';
     const heard: string[] = [];
@@ -1353,7 +1353,7 @@ describe('onBookRead', () => {
     expect(heard).toEqual(['v3@en']);
   });
 
-  it('reports the edit of an open book read that a later edit read again first', async () => {
+  it("reports an open book's edit whose text a later edit's read overtook", async () => {
     const project = serveProject();
     project.booksPresent = '1';
     const edits = jest.fn();
@@ -1414,6 +1414,94 @@ describe('onBookRead', () => {
 
     expect(heard).toEqual(['GEN v2@en']);
     expect(edits).toHaveBeenCalledWith('src', 'GEN');
+  });
+
+  it("passes the text of an open book's edit whose later reads all failed", async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    const heard: string[] = [];
+    listenForBooks((_, book) => heard.push(book.textVersion));
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [open] = project.subscriptions;
+    open.deliver(usj('GEN'));
+    await outline;
+    open.deliver(usj('GEN', 'v2'));
+    await settle();
+    const [, firstReread] = subscriptionsTo(project, 'GEN');
+    readStatus();
+    await settle();
+    const [, , read] = subscriptionsTo(project, 'GEN');
+    read.deliver(platformError('busy'));
+    await settle();
+
+    read.deliver(usj('GEN', 'v3'));
+    await settle();
+    subscriptionsTo(project, 'GEN')
+      .slice(3)
+      .forEach((s) => s.deliver(platformError('busy')));
+    await settle();
+    firstReread.deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(heard).toEqual(['v2@en']);
+  });
+
+  it("passes no text of an open book's edit that a later whole-text read overtook", async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    const heard: string[] = [];
+    listenForBooks((_, book) => heard.push(`${book.id} ${book.textVersion}`));
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [open] = project.subscriptions;
+    open.deliver(usj('GEN'));
+    await outline;
+    open.deliver(usj('GEN', 'v2'));
+    await settle();
+    const [, firstReread] = subscriptionsTo(project, 'GEN');
+
+    const otherOutline = getBookOutline('src', 'EXO');
+    await settle();
+    subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO'));
+    await otherOutline;
+    readStatus();
+    await settle();
+    const [, , read] = subscriptionsTo(project, 'GEN');
+    read.deliver(usj('GEN', 'v3'));
+    await settle();
+    firstReread.deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(heard).toEqual(['GEN v3@en']);
+  });
+
+  it("passes no text of an open book's edit once a later whole-text read finds none", async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    const listener = listenForBooks();
+    const outline = getBookOutline('src', 'GEN');
+    await settle();
+    const [open] = project.subscriptions;
+    open.deliver(usj('GEN'));
+    await outline;
+    open.deliver(usj('GEN', 'v2'));
+    await settle();
+    const [, firstReread] = subscriptionsTo(project, 'GEN');
+
+    const otherOutline = getBookOutline('src', 'EXO');
+    await settle();
+    subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO'));
+    await otherOutline;
+    readStatus();
+    await settle();
+    const [, , read] = subscriptionsTo(project, 'GEN');
+    read.deliver(undefined);
+    await settle();
+    firstReread.deliver(usj('GEN', 'v2'));
+    await settle();
+
+    expect(listener).not.toHaveBeenCalled();
   });
 
   it('reports an edit to the open book that no longer reads, passing nothing', async () => {

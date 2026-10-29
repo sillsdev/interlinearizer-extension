@@ -50,18 +50,6 @@ const closeCounts = new Map<string, number>();
 const outlineCounts = new Map<string, number>();
 
 /**
- * Tells the read of an edited book whether a later edit to the book has started a read of its own,
- * by source project and book id.
- */
-const editCounts = new Map<string, Map<string, number>>();
-
-function countEdit(sourceProjectId: string, bookId: string): void {
-  const counts = editCounts.get(sourceProjectId) ?? new Map<string, number>();
-  counts.set(bookId, (counts.get(bookId) ?? 0) + 1);
-  editCounts.set(sourceProjectId, counts);
-}
-
-/**
  * How many books a whole-text read reads at once. Enough to keep the provider busy while earlier
  * books are tokenized, few enough to bound the fetches in flight.
  */
@@ -120,6 +108,46 @@ function reportEdit(sourceProjectId: string, bookId: string): void {
 type BookReadListener = (sourceProjectId: string, book: Book) => void;
 
 const bookReadListeners = new Set<BookReadListener>();
+
+/**
+ * Numbers the reads that may pass a book to {@link onBookRead}'s listeners in the order they start,
+ * so a read numbered later reads text at least as new. Holds the latest number given. Keyed by
+ * source project, then book id.
+ */
+const startedReads = new Map<string, Map<string, number>>();
+
+/**
+ * The number of the latest read that found a book's text, or found that it has none. A read that
+ * fails is left out, so text an earlier read finds is still passed. Keyed by source project, then
+ * book id.
+ */
+const finishedReads = new Map<string, Map<string, number>>();
+
+function startRead(sourceProjectId: string, bookId: string): number {
+  const started = startedReads.get(sourceProjectId) ?? new Map<string, number>();
+  const readNumber = (started.get(bookId) ?? 0) + 1;
+  started.set(bookId, readNumber);
+  startedReads.set(sourceProjectId, started);
+  return readNumber;
+}
+
+/**
+ * Passes `book`, read by read `readNumber`, to {@link onBookRead}'s listeners unless a read started
+ * later has finished already. A read that found no text passes nothing, but earlier reads finishing
+ * after it pass nothing either.
+ */
+function finishRead(
+  sourceProjectId: string,
+  bookId: string,
+  readNumber: number,
+  book: Book | undefined,
+): void {
+  const finished = finishedReads.get(sourceProjectId) ?? new Map<string, number>();
+  if ((finished.get(bookId) ?? 0) > readNumber) return;
+  finished.set(bookId, readNumber);
+  finishedReads.set(sourceProjectId, finished);
+  if (book) bookReadListeners.forEach((listener) => listener(sourceProjectId, book));
+}
 
 /** Receives the source project and the books holding text, of a whole-text read with none failed. */
 type TextReadListener = (sourceProjectId: string, textBookIds: string[]) => void;
@@ -197,7 +225,6 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
     const isOpen = openBooks.get(sourceProjectId)?.watch === watch;
     releaseBook(sourceProjectId, watch);
     if (!isOpen) return;
-    countEdit(sourceProjectId, bookId);
     // Read again at once, so the book stays watched and a refetch started by the listeners sees
     // the edit.
     const reheld = holdBook(sourceProjectId, bookId, writingSystem);
@@ -206,7 +233,7 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
     // read itself reads the book again over a new watch and reports the edit.
     const read = textReads.get(sourceProjectId);
     if (read?.watches.has(bookId)) rereadTextBook(sourceProjectId, read, bookId);
-    else reportOpenBookEdit(sourceProjectId, reheld);
+    else reportOpenBookEdit(sourceProjectId, reheld, startRead(sourceProjectId, bookId));
   });
   const book = perfTrack('getTokenizedBook:usj', watch.text).then(
     (usj) =>
@@ -224,16 +251,22 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
 /**
  * Passes the open book's edited text to {@link onBookRead}'s listeners once it is read again, then
  * reports the edit, unless the project closed meanwhile. A book that fails to read again, or has no
- * text, is reported all the same. Text read before a later edit started a read of the book is
- * reported without being passed, since that read may have passed newer text already.
+ * text, is reported all the same. When a read of the book started later finishes before this text
+ * arrives, the edit is reported without passing the text, because that read found newer text, or
+ * found none.
  */
-async function reportOpenBookEdit(sourceProjectId: string, held: HeldBook): Promise<void> {
+async function reportOpenBookEdit(
+  sourceProjectId: string,
+  held: HeldBook,
+  readNumber: number,
+): Promise<void> {
   const closeCount = closeCounts.get(sourceProjectId);
-  const editCount = editCounts.get(sourceProjectId)?.get(held.bookId);
-  const book = await held.book.catch(() => undefined);
+  const read = await held.book.then(
+    (book) => ({ book }),
+    () => undefined,
+  );
   if (closeCounts.get(sourceProjectId) !== closeCount) return;
-  if (book && editCounts.get(sourceProjectId)?.get(held.bookId) === editCount)
-    bookReadListeners.forEach((listener) => listener(sourceProjectId, book));
+  if (read) finishRead(sourceProjectId, held.bookId, readNumber, read.book);
   reportEdit(sourceProjectId, held.bookId);
 }
 
@@ -342,8 +375,9 @@ export function onBookTextChanged(listener: BookTextListener): () => boolean {
  * is called. A book is passed when the whole-text read first reaches it, and again each time its
  * text changes. The open book's edited text is passed even before the read reaches that book.
  *
- * For a change, `listener` is called before {@link onBookTextChanged}'s listeners hear of it. A book
- * whose read fails, or that holds no text, is not passed.
+ * For a change, `listener` is called before {@link onBookTextChanged}'s listeners hear of it, unless
+ * a read of the book started later finished first. That read passed newer text, or found none, so
+ * the change's text is not passed. A book whose read fails, or that holds no text, is not passed.
  */
 export function onBookRead(listener: BookReadListener): () => boolean {
   bookReadListeners.add(listener);
@@ -491,13 +525,13 @@ async function readTextBook(
     bookId,
     () => {
       if (textReads.get(sourceProjectId) !== read || read.watches.get(bookId) !== stop) return;
-      countEdit(sourceProjectId, bookId);
       rereadHeldBook(sourceProjectId, bookId);
       rereadTextBook(sourceProjectId, read, bookId);
     },
     read.usjPdp,
   );
   read.watches.set(bookId, stop);
+  const readNumber = startRead(sourceProjectId, bookId);
   const delivered = await perfTrack('readText:usj', text)
     .then((usj): { book?: Book; forms: Set<string> } => {
       if (!usj) return { forms: new Set<string>() };
@@ -522,8 +556,7 @@ async function readTextBook(
     read.failedBookIds.add(bookId);
   }
   read.readBookIds.add(bookId);
-  const book = delivered?.book;
-  if (book) bookReadListeners.forEach((listener) => listener(sourceProjectId, book));
+  if (delivered) finishRead(sourceProjectId, bookId, readNumber, delivered.book);
   return true;
 }
 

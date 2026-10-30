@@ -1,11 +1,11 @@
 import type { Browser, Frame, Page } from '@playwright/test';
 import type { DraftProject } from 'interlinearizer';
+import { execFileSync } from 'child_process';
 import path from 'path';
 import { readDraftJson, readManifest } from '../../../perf/dataset/store';
 import { TIERS, type TierSpec } from '../../../perf/dataset/tiers';
 import { provenance, writeResults } from '../../../perf/results';
 import { addSavedProject, readDraft, writeDraft } from '../../../perf/storage';
-import { readCaptureMeta } from '../../../perf/usj-cache';
 import type { TextReadStatus } from '../../../src/types/text-read-status';
 import { expect, test } from '../../fixtures/cdp.fixture';
 import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
@@ -37,6 +37,7 @@ import {
   setBook,
   setHostPerfMarks,
   sourceProjectId,
+  hostPassesPending,
   takeHostEntries,
   waitForMeasure,
   wireBytes,
@@ -282,7 +283,10 @@ async function measureHostPath(
       await clearMeasures(frame);
       // eslint-disable-next-line no-await-in-loop
       const status = await textReadStatus(page, projectId);
-      if (status && status.booksRead < status.bookCount) {
+      const reading =
+        // eslint-disable-next-line no-await-in-loop
+        (status && status.booksRead < status.bookCount) || (await hostPassesPending(page)) > 0;
+      if (reading) {
         // eslint-disable-next-line no-await-in-loop
         await editGloss(frame, 0, `read-${run}`, false);
         // eslint-disable-next-line no-await-in-loop
@@ -728,7 +732,6 @@ async function measureTier(
 test('measure the app', async ({ mainPage }) => {
   const app: App = { page: mainPage };
   await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
-  const meta = readCaptureMeta();
   const projectId = await sourceProjectId(mainPage);
   await makeEditable(mainPage, projectId);
 
@@ -769,7 +772,14 @@ test('measure the app', async ({ mainPage }) => {
   }
 
   const file = writeResults('app', {
-    ...provenance(meta.coreCommit),
+    // Assumes that the packaged app was built from this checkout.
+    ...provenance(
+      execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: path.resolve(__dirname, '../../../../paranext-core'),
+      })
+        .toString()
+        .trim(),
+    ),
     appBuild: app.page.url().startsWith('http://localhost') ? 'dev renderer' : 'packaged',
     ...(PACKAGED_APP_PATH && OZONE_PLATFORM ? { display: OZONE_PLATFORM } : {}),
     extensionBuild:

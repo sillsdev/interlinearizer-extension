@@ -243,7 +243,9 @@ export async function setHostPerfMarks(page: Page, on: boolean): Promise<void> {
   await sendCommand(page, 'interlinearizer.setPerfMarks', on);
 }
 
-async function readHost(page: Page): Promise<{ entries: HostEntry[]; pid: number }> {
+async function readHost(
+  page: Page,
+): Promise<{ entries: HostEntry[]; pid: number; passesPending: number }> {
   const json = await sendCommand(page, 'interlinearizer.readPerf');
   if (typeof json !== 'string') throw new Error("The host's timing entries are off");
   return JSON.parse(json);
@@ -257,6 +259,11 @@ export async function takeHostEntries(page: Page): Promise<HostEntry[]> {
 /** The extension host's process id. Clears the host's timing entries. */
 export async function hostPid(page: Page): Promise<number> {
   return (await readHost(page)).pid;
+}
+
+/** How many re-anchor passes are queued or running on the host. Clears the host's timing entries. */
+export async function hostPassesPending(page: Page): Promise<number> {
+  return (await readHost(page)).passesPending;
 }
 
 /**

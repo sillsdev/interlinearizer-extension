@@ -1557,6 +1557,43 @@ describe('AnalysisSessions', () => {
 
       expect(applied).not.toHaveBeenCalled();
     });
+
+    describe('passesPending', () => {
+      it('counts a re-anchor pass from when it is queued until it settles', async () => {
+        const { sessions } = makeSessions();
+        const { sessionId } = await sessions.open(SOURCE);
+        const command = deferred();
+        sessions.run(sessionId, () => command.promise);
+
+        const pass = sessions.reanchorBook(SOURCE, AFTER);
+        expect(sessions.passesPending()).toBe(1);
+        command.resolve();
+        await pass;
+
+        expect(sessions.passesPending()).toBe(0);
+      });
+
+      it('stops counting a re-anchor pass that fails', async () => {
+        const { sessions } = makeSessions();
+        const { sessionId } = await sessions.open(SOURCE);
+        await sessions.run(sessionId, async (session) => {
+          jest.spyOn(session.repository, 'findLinkedBooks').mockRejectedValue(new Error('failed'));
+        });
+
+        await expect(sessions.reanchorMissingBooks(SOURCE, [])).rejects.toThrow('failed');
+
+        expect(sessions.passesPending()).toBe(0);
+      });
+
+      it('counts no pass for a source with no session open', async () => {
+        const { sessions } = makeSessions();
+
+        const pass = sessions.reanchorBook(SOURCE, AFTER);
+
+        expect(sessions.passesPending()).toBe(0);
+        await pass;
+      });
+    });
   });
 
   describe('settled', () => {

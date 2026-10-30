@@ -985,8 +985,9 @@ declare module 'papi-shared-types' {
     /**
      * Takes the timing entries the extension host recorded since the last reading.
      *
-     * @returns A JSON string of `{ entries, pid }`, `pid` being the host's process id, or
-     *   `undefined` while the host's timing entries are off.
+     * @returns A JSON string of `{ entries, pid, passesPending }`, or `undefined` while the host's
+     *   timing entries are off. `pid` is the host's process id. `passesPending` counts the re-anchor
+     *   passes queued or running on the host's sessions.
      */
     'interlinearizer.readPerf': () => Promise<string | undefined>;
 

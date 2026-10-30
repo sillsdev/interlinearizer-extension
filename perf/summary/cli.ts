@@ -73,7 +73,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'app.scriptureSave':
     "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
   'app.hostEditDuringRead':
-    "On the host path, a gloss committed as soon as a fresh view is editable, while the session's whole-text read still runs. A run whose read had already finished is counted, not timed.",
+    "On the host path, a gloss committed as soon as a fresh view is editable, while the session's whole-text read or its re-anchor passes still run. A run where both had already finished is counted, not timed.",
   'app.hostEdit':
     "On the host path, one gloss committed once the session's whole-text read has finished.",
   'app.hostScriptureSave':
@@ -133,7 +133,7 @@ const METRIC_LABELS: Record<string, string> = {
   'gloss-render': 'Commit gloss to render',
   'scripture-save': 'Save the chapter',
   'save-host-cpu': 'Host CPU over the save',
-  runsAfterRead: 'Runs after the read had finished',
+  runsAfterRead: 'Runs after the read and its passes had finished',
   'autosave-serialize': 'Serialize draft',
   autosave: 'Autosave',
   'projects-fetch': 'Fetch saved projects',

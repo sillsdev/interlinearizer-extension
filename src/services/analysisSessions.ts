@@ -286,6 +286,8 @@ export class AnalysisSessions {
    */
   private readonly lifecycles = new Map<string, Promise<unknown>>();
 
+  private queuedPasses = 0;
+
   constructor(host: SessionHost) {
     this.host = host;
   }
@@ -655,6 +657,11 @@ export class AnalysisSessions {
     });
   }
 
+  /** How many re-anchor passes, across every session, are queued or running. */
+  passesPending(): number {
+    return this.queuedPasses;
+  }
+
   /**
    * Settles once every command sent so far to the source project's session has settled, at once
    * when the source has no session open. Never rejects.
@@ -708,14 +715,20 @@ export class AnalysisSessions {
     return reply;
   }
 
-  /** Runs `command` on the source project's session unless it has none open or only a read-only one. */
+  /**
+   * Runs the re-anchor pass `command` on the source project's session unless it has none open or
+   * only a read-only one. The pass counts toward {@link passesPending} until it settles.
+   */
   private runOnWritable(
     sourceProjectId: string,
     command: (entry: OpenSession) => Promise<void>,
   ): Promise<void> {
     const entry = this.sessionsBySource.get(sourceProjectId);
     if (!entry || entry.session.repository.capabilities.readOnly) return Promise.resolve();
-    return this.run(entry.session.id, () => command(entry));
+    this.queuedPasses += 1;
+    return this.run(entry.session.id, () => command(entry)).finally(() => {
+      this.queuedPasses -= 1;
+    });
   }
 
   /**

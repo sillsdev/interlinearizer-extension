@@ -18,8 +18,8 @@ import {
   useReportGlossEditing,
   useStaleLocationDispatch,
   useStaleLocationReclaims,
-  type AnalysisEditOutcome,
 } from './AnalysisStore';
+import type { AnalysisEditOutcome } from '../utils/edit-outcome';
 import { breakdownDraftForms } from './CatalogRowEditor';
 import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
@@ -43,6 +43,7 @@ import useDraftDiscardGate from '../hooks/useDraftDiscardGate';
 import useRowSelection from '../hooks/useRowSelection';
 import useRowWindow from '../hooks/useRowWindow';
 import type { StepSummary } from '../types/edit-step';
+import { whenSettled, type Settles } from '../utils/settles';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import {
   DELETION_ANNOUNCEMENT_STRING_KEYS,
@@ -569,6 +570,33 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
+   * Runs a row edit as one undo step, summarized as given or from its result, then hands the result
+   * to `then` once it settles. An edit sent to the session settles later and records its own step.
+   */
+  const runRowEdit = useCallback(
+    <T,>(
+      edit: () => Settles<T>,
+      summary: StepSummary | ((settled: T) => StepSummary),
+      then: (settled: T) => void,
+    ) =>
+      whenSettled(
+        asOneStep(
+          edit,
+          typeof summary === 'function'
+            ? (result) => {
+                /* v8 ignore next 2 -- the host path groups no edits; its session records each */
+                if (result instanceof Promise)
+                  throw new Error('Interlinearizer: an edit sent to the session was grouped');
+                return summary(result);
+              }
+            : summary,
+        ),
+        then,
+      ),
+    [asOneStep],
+  );
+
+  /**
    * Records what an edit did, so a collapse is reported rather than left to look like a vanished
    * row. An ordinary edit clears whatever the last one said, the notice naming the edit just made
    * rather than an older one.
@@ -602,43 +630,37 @@ export default function AnalysisCatalogPanel({
   const handleGlossCommit = useCallback(
     (analysisId: string, value: string) => {
       const form = surfaceTextOf(analysisId);
-      reportEditOutcome(
-        asOneStep(
-          () => rowDispatch.writeGloss(analysisId, value),
-          (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
-        ),
-        form,
+      runRowEdit(
+        () => rowDispatch.writeGloss(analysisId, value),
+        (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
+        (outcome) => reportEditOutcome(outcome, form),
       );
     },
-    [asOneStep, reportEditOutcome, rowDispatch, surfaceTextOf],
+    [reportEditOutcome, rowDispatch, runRowEdit, surfaceTextOf],
   );
 
   const handleMorphemesCommit = useCallback(
     (analysisId: string, forms: readonly string[]) => {
       const form = surfaceTextOf(analysisId);
-      reportEditOutcome(
-        asOneStep(
-          () => rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag),
-          (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
-        ),
-        form,
+      runRowEdit(
+        () => rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag),
+        (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
+        (outcome) => reportEditOutcome(outcome, form),
       );
     },
-    [asOneStep, reportEditOutcome, rowDispatch, sourceLanguageTag, surfaceTextOf],
+    [reportEditOutcome, rowDispatch, runRowEdit, sourceLanguageTag, surfaceTextOf],
   );
 
   const handleMorphemeGlossCommit = useCallback(
     (analysisId: string, morphemeId: string, value: string) => {
       const form = surfaceTextOf(analysisId);
-      reportEditOutcome(
-        asOneStep(
-          () => rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
-          (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
-        ),
-        form,
+      runRowEdit(
+        () => rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
+        (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
+        (outcome) => reportEditOutcome(outcome, form),
       );
     },
-    [asOneStep, reportEditOutcome, rowDispatch, surfaceTextOf],
+    [reportEditOutcome, rowDispatch, runRowEdit, surfaceTextOf],
   );
 
   const handleMorphemesConfirm = useCallback(
@@ -663,13 +685,13 @@ export default function AnalysisCatalogPanel({
   const requestDiscard = discardGate.request;
 
   /**
-   * Asks about the unsaved breakdowns on the records `readDroppedIds` names, then runs `run` with
-   * them, dropping any untouched draft with its record rather than reporting it stranded.
+   * Asks about the unsaved breakdowns on the records that `readDroppedIds` names, then runs `run`
+   * with them. Any untouched draft goes with its record rather than being reported stranded.
    */
   const requestDropping = useCallback(
     (
       action: 'clearGloss' | 'stale',
-      readDroppedIds: () => readonly string[],
+      readDroppedIds: () => Settles<readonly string[]>,
       run: (droppedIds: readonly string[]) => void,
     ) =>
       requestDiscard(action, readDroppedIds, (droppedIds) => {
@@ -770,24 +792,26 @@ export default function AnalysisCatalogPanel({
   const clearGlossChecked = useCallback(
     (analysisIds: readonly string[], reclaimedIds: readonly string[]) => {
       const count = analysisIds.length;
-      const deletedIds = asOneStep(() => rowDispatch.clearGlosses(analysisIds), {
-        kind: 'catalogClearGlossChecked',
-        count,
-      });
       setMergeNotice(undefined);
-      const deletedCount = deletedIds.length;
-      const mergedCount = reclaimedIds.filter((id) => !deletedIds.includes(id)).length;
-      if (deletedCount === 0 && mergedCount === 0) return;
-      announceUndoable(
-        formatReplacementString(localizedStrings[clearedGlossKey(deletedCount, mergedCount)], {
-          count,
-          deletedCount,
-          mergedCount,
-          usageCount: distinctUsageCount(catalogRows, new Set(deletedIds)),
-        }),
+      runRowEdit(
+        () => rowDispatch.clearGlosses(analysisIds),
+        { kind: 'catalogClearGlossChecked', count },
+        (deletedIds) => {
+          const deletedCount = deletedIds.length;
+          const mergedCount = reclaimedIds.filter((id) => !deletedIds.includes(id)).length;
+          if (deletedCount === 0 && mergedCount === 0) return;
+          announceUndoable(
+            formatReplacementString(localizedStrings[clearedGlossKey(deletedCount, mergedCount)], {
+              count,
+              deletedCount,
+              mergedCount,
+              usageCount: distinctUsageCount(catalogRows, new Set(deletedIds)),
+            }),
+          );
+        },
       );
     },
-    [announceUndoable, asOneStep, catalogRows, localizedStrings, rowDispatch],
+    [announceUndoable, catalogRows, localizedStrings, rowDispatch, runRowEdit],
   );
 
   const readGlossClearReclaims = useGlossClearReclaims();
@@ -833,7 +857,13 @@ export default function AnalysisCatalogPanel({
       // converging merge folds into another record.
       [survivorAnalysisId, ...mergedAnalysisIds].forEach(discardBreakdownDraft);
 
-      const outcome = asOneStep(
+      setMergeRequest(undefined);
+      const usageCount = distinctUsageCount(
+        catalogRows,
+        new Set([survivorAnalysisId, ...mergedAnalysisIds]),
+      );
+
+      runRowEdit(
         () =>
           rowDispatch.mergeAll(survivorAnalysisId, mergedAnalysisIds, {
             gloss: content.gloss,
@@ -845,47 +875,42 @@ export default function AnalysisCatalogPanel({
             confidence: content.confidence,
           }),
         (merge) => catalogStepSummary('catalogMerge', surfaceText, survivorAnalysisId, merge),
+        // Reported against the record that the merge left standing, not the one it was aimed at.
+        // The reader was warned that content matching an unmerged homograph moves the survivor.
+        (outcome) => {
+          if (outcome.kind === 'merged')
+            announceMerge({
+              survivingAnalysisId: outcome.survivingAnalysisId,
+              survivingGloss: outcome.survivingGloss,
+              surfaceText,
+              usageCount: outcome.survivingUsageCount,
+            });
+          else if (outcome.kind === 'removed') {
+            setMergeNotice(undefined);
+            announceUndoable(
+              formatReplacementString(
+                localizedStrings['%interlinearizer_analysisCatalog_mergedEmpty%'],
+                { form: surfaceText, count: usageCount },
+              ),
+            );
+          } else
+            announceMerge({
+              survivingAnalysisId: survivorAnalysisId,
+              survivingGloss: content.gloss,
+              surfaceText,
+              usageCount,
+            });
+        },
       );
-      setMergeRequest(undefined);
-
-      const usageCount = distinctUsageCount(
-        catalogRows,
-        new Set([survivorAnalysisId, ...mergedAnalysisIds]),
-      );
-
-      // Reported against the record the merge left standing rather than the one it was aimed at:
-      // content matching an unmerged homograph moves the survivor, which the reader was warned of.
-      if (outcome.kind === 'merged')
-        announceMerge({
-          survivingAnalysisId: outcome.survivingAnalysisId,
-          survivingGloss: outcome.survivingGloss,
-          surfaceText,
-          usageCount: outcome.survivingUsageCount,
-        });
-      else if (outcome.kind === 'removed') {
-        setMergeNotice(undefined);
-        announceUndoable(
-          formatReplacementString(
-            localizedStrings['%interlinearizer_analysisCatalog_mergedEmpty%'],
-            { form: surfaceText, count: usageCount },
-          ),
-        );
-      } else
-        announceMerge({
-          survivingAnalysisId: survivorAnalysisId,
-          survivingGloss: content.gloss,
-          surfaceText,
-          usageCount,
-        });
     },
     [
       announceMerge,
       announceUndoable,
-      asOneStep,
       catalogRows,
       discardBreakdownDraft,
       localizedStrings,
       rowDispatch,
+      runRowEdit,
     ],
   );
 

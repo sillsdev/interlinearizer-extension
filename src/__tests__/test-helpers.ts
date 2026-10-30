@@ -17,7 +17,9 @@ import {
   TOKEN_CHIP_LABEL_KEYS,
   type PhraseStripContextValue,
 } from '../components/PhraseStripContext';
+import type { PhraseDispatch } from '../components/AnalysisStore';
 import type { SegmentPages } from '../hooks/useSegmentPages';
+import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { summarizeProject } from '../services/projectSummaries';
 import type { KeyValueStorage, WarningLogger } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
@@ -627,4 +629,23 @@ export function memoryStorage(initial: Record<string, string> = {}) {
 /** A logger whose warnings a test can inspect instead of printing. */
 export function silentLogger(): WarningLogger & { warn: jest.Mock } {
   return { warn: jest.fn() };
+}
+
+/**
+ * Completes `dispatch` into a {@link PhraseDispatch} whose `splitPhrase` splits through `dispatch`'s
+ * create, update and delete. Its `mergePhrases` is a fresh mock unless `dispatch` has one.
+ */
+export function withSplitPhrase(
+  dispatch: Pick<
+    jest.MockedObject<PhraseDispatch>,
+    'createPhrase' | 'updatePhrase' | 'deletePhrase'
+  > &
+    Partial<Pick<jest.MockedObject<PhraseDispatch>, 'mergePhrases'>>,
+): jest.MockedObject<PhraseDispatch> {
+  const splitPhrase = jest.fn();
+  splitPhrase.mockImplementation(
+    (link: PhraseAnalysisLink, splitAfterTokenRef: string, order: ReadonlyMap<string, number>) =>
+      splitPhraseAtBoundary(link, splitAfterTokenRef, dispatch, order),
+  );
+  return { mergePhrases: jest.fn(), ...dispatch, splitPhrase };
 }

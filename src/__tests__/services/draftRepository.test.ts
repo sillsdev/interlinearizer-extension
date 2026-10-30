@@ -549,6 +549,21 @@ describe('DraftRepository', () => {
       expect(read).toHaveBeenCalledTimes(readsAfterFirst);
     });
 
+    it('read the whole draft from what they kept, keeping it for the next lookup', async () => {
+      const { storage } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.findLinksInBooks(['GEN']);
+      const read = jest.spyOn(storage, 'read');
+
+      await expect(repository.getWholeDraft()).resolves.toMatchObject({
+        analysis: twoBookAnalysis(),
+      });
+      await repository.findLinksInBooks(['GEN']);
+
+      expect(read).not.toHaveBeenCalled();
+    });
+
     it.each(['exportForCopy', 'markClean'] as const)(
       'keep what they kept across %s',
       async (call) => {

@@ -81,7 +81,7 @@ export async function sessionOver(
     command: (buffer: ChangeBuffer, session: Session) => Promise<void | EditOutcome>,
     changeId?: ChangeId,
   ) => sessions.edit(sessionId, intent, command, { changeId });
-  return { sessions, sessionId, fetchPage, fetchOutline, outline, edit, onChange };
+  return { sessions, sessionId, fetchPage, fetchOutline, outline, edit, onChange, storage };
 }
 
 /** A page's analysis with each list in id order, so two pages compare without regard to order. */

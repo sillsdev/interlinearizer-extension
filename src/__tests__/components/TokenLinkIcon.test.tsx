@@ -31,12 +31,13 @@ afterEach(() => {
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useAnalysisReadOnly: () => mockAnalysisReadOnly.value,
-  usePhraseDispatch: () => ({
-    createPhrase: mockCreatePhrase,
-    updatePhrase: mockUpdatePhrase,
-    deletePhrase: mockDeletePhrase,
-    mergePhrases: mockMergePhrases,
-  }),
+  usePhraseDispatch: () =>
+    jest.requireActual('../test-helpers').withSplitPhrase({
+      createPhrase: mockCreatePhrase,
+      updatePhrase: mockUpdatePhrase,
+      deletePhrase: mockDeletePhrase,
+      mergePhrases: mockMergePhrases,
+    }),
 }));
 
 /**

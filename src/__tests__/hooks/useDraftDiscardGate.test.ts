@@ -32,6 +32,25 @@ describe('useDraftDiscardGate', () => {
     expect(result.current.asking).toBeUndefined();
   });
 
+  it('runs once the rows it would drop are known, when they arrive later', async () => {
+    const { result } = renderGate(['other']);
+    const run = jest.fn();
+
+    await act(async () => result.current.request('delete', async () => ['a'], run));
+
+    expect(run).toHaveBeenCalledWith(['a']);
+  });
+
+  it('asks about a draft among rows that arrive later', async () => {
+    const { result } = renderGate(['a']);
+    const run = jest.fn();
+
+    await act(async () => result.current.request('delete', async () => ['a'], run));
+
+    expect(run).not.toHaveBeenCalled();
+    expect(result.current.asking).toEqual({ action: 'delete', analysisId: 'a' });
+  });
+
   it('asks about the first draft the action would drop instead of running', () => {
     const { result } = renderGate(['b', 'c']);
     const run = jest.fn();

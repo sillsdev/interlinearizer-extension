@@ -1,12 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
+import { whenSettled, type Settles } from '../utils/settles';
 import useLatestRef from './useLatestRef';
 
 /** An action held back until the reader agrees to give up every unsaved draft it would drop. */
 type HeldAction<Action> = Readonly<{
   /** What the ask names the draft as given up for. */
   action: Action;
-  /** Reads the rows the held action would drop as things stand when it is called. */
-  readAnalysisIds: () => readonly string[];
+  /** Reads the rows that the held action would drop, as things stand at each read. */
+  readAnalysisIds: () => Settles<readonly string[]>;
   /** Rows whose drafts the reader already agreed to discard. */
   confirmedIds: readonly string[];
   /** The held action, given the rows it drops as last read. */
@@ -21,13 +22,14 @@ export type DraftDiscardGate<Action> = Readonly<{
   /** The ask awaiting the reader, naming the row whose draft it asks about. */
   asking: Readonly<{ action: Action; analysisId: string }> | undefined;
   /**
-   * Runs `run` on the rows `readAnalysisIds` names once the reader has agreed to give up every
-   * unsaved draft on them, asking about each in turn, or at once when none holds one. The rows are
-   * read afresh at each step, so an edit landing mid-ask cannot drop a draft never asked about.
+   * Asks the reader, in turn, about each unsaved draft on the rows that `readAnalysisIds` names,
+   * then runs `run` on those rows once every draft is given up. A failed read runs nothing. The
+   * rows are read afresh at each step, so an edit landing mid-ask cannot drop a draft never asked
+   * about.
    */
   request: (
     action: Action,
-    readAnalysisIds: () => readonly string[],
+    readAnalysisIds: () => Settles<readonly string[]>,
     run: (analysisIds: readonly string[]) => void,
   ) => void;
   /**
@@ -56,26 +58,28 @@ export default function useDraftDiscardGate<Action>(
   const hasUnsavedDraftRef = useLatestRef(hasUnsavedDraft);
 
   const proceed = useCallback(
-    (held: HeldAction<Action>) => {
-      const analysisIds = held.readAnalysisIds();
-      const analysisId = analysisIds.find(
-        (id) => !held.confirmedIds.includes(id) && hasUnsavedDraftRef.current(id),
-      );
-      if (analysisId !== undefined) {
-        setAsking({ ...held, analysisId });
-        return;
-      }
-      setAsking(undefined);
-      held.confirmedIds.filter((id) => analysisIds.includes(id)).forEach((id) => discardDraft(id));
-      held.run(analysisIds);
-    },
+    (held: HeldAction<Action>) =>
+      whenSettled(held.readAnalysisIds(), (analysisIds) => {
+        const analysisId = analysisIds.find(
+          (id) => !held.confirmedIds.includes(id) && hasUnsavedDraftRef.current(id),
+        );
+        if (analysisId !== undefined) {
+          setAsking({ ...held, analysisId });
+          return;
+        }
+        setAsking(undefined);
+        held.confirmedIds
+          .filter((id) => analysisIds.includes(id))
+          .forEach((id) => discardDraft(id));
+        held.run(analysisIds);
+      }),
     [discardDraft, hasUnsavedDraftRef],
   );
 
   const request = useCallback(
     (
       action: Action,
-      readAnalysisIds: () => readonly string[],
+      readAnalysisIds: () => Settles<readonly string[]>,
       run: (analysisIds: readonly string[]) => void,
     ) => proceed({ action, readAnalysisIds, confirmedIds: [], run }),
     [proceed],

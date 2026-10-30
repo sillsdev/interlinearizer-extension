@@ -110,6 +110,13 @@ async function getTabTitle(projectId: string): Promise<string> {
   }
 }
 
+/**
+ * The tab that holds each project: the first one served while no other tab holds it. Opening the
+ * project again brings the holder to front. A second tab that a layout restores shows only a notice
+ * that points at the holder.
+ */
+const openWebViewsByProject = new Map<string, string>();
+
 /** WebView provider that provides the Interlinearizer React WebView when Platform.Bible requests it. */
 const mainWebViewProvider: IWebViewProvider = {
   /**
@@ -130,22 +137,28 @@ const mainWebViewProvider: IWebViewProvider = {
       );
     }
     const projectId = openWebViewOptions?.projectId ?? savedWebView.projectId;
-    // Seeded state rides the options only on an explicit open; a tab restore passes no options and
-    // keeps whatever the WebView last stored.
-    const seededState = {
-      ...(openWebViewOptions?.offerPt9Import !== undefined && {
-        offerPt9Import: openWebViewOptions.offerPt9Import,
-      }),
-      ...(openWebViewOptions?.activeProject !== undefined && {
-        activeProject: openWebViewOptions.activeProject,
-      }),
-    };
+    // A duplicate is served inert because the platform offers no way to close a tab.
+    const holder = projectId === undefined ? undefined : openWebViewsByProject.get(projectId);
+    const duplicateOf = holder !== undefined && holder !== savedWebView.id ? holder : undefined;
+    if (projectId !== undefined && duplicateOf === undefined)
+      openWebViewsByProject.set(projectId, savedWebView.id);
+    const state: Record<string, unknown> = { ...savedWebView.state };
+    delete state.duplicateOf;
     return {
       ...savedWebView,
       projectId,
-      ...(Object.keys(seededState).length > 0 && {
-        state: { ...savedWebView.state, ...seededState },
-      }),
+      state: {
+        ...state,
+        // Seeded state rides the options only on an explicit open; a tab restore passes no options
+        // and keeps whatever the WebView last stored.
+        ...(openWebViewOptions?.offerPt9Import !== undefined && {
+          offerPt9Import: openWebViewOptions.offerPt9Import,
+        }),
+        ...(openWebViewOptions?.activeProject !== undefined && {
+          activeProject: openWebViewOptions.activeProject,
+        }),
+        ...(duplicateOf !== undefined && { duplicateOf }),
+      },
       title: projectId ? await getTabTitle(projectId) : baseTabTitle,
       content: interlinearizerReact,
       styles: interlinearizerStyles,
@@ -162,12 +175,6 @@ const mainWebViewProvider: IWebViewProvider = {
  * Set in `activate()` before any command can be invoked.
  */
 let executionToken: ExecutionToken;
-
-/**
- * Tracks the WebView ID opened for each project so subsequent opens of the same project bring that
- * tab to front instead of opening a duplicate.
- */
-const openWebViewsByProject = new Map<string, string>();
 
 /**
  * The active project id, per source, that storage is known to hold: the id last written or read. A
@@ -569,33 +576,68 @@ async function reportUnreadableBooks(
 }
 
 /**
+ * Runs `save`, in the session's turn when `sessionId` is given. When `whole` says that the result
+ * holds the whole draft, the session's history then marks the draft saved. A failed mark is only
+ * logged, because the project holds the saved content either way.
+ *
+ * @throws If the session is not open, or whatever `save` throws.
+ */
+async function savingInSession<T>(
+  sessionId: string | undefined,
+  save: () => Promise<T>,
+  whole: (result: T) => boolean,
+): Promise<T> {
+  if (sessionId === undefined) return save();
+  return sessions.run(sessionId, async ({ history }) => {
+    const result = await save();
+    if (whole(result)) {
+      try {
+        await history.markClean();
+      } catch (e) {
+        logger.warn(`Interlinearizer: could not mark session ${sessionId}'s draft saved`, e);
+      }
+    }
+    return result;
+  });
+}
+
+/**
  * Copies the source project's stored draft into an existing interlinearizer project: Save, and Save
- * As onto an existing project. The WebView writes its pending autosave first, so the stored draft
- * is the one it means to save. A draft that cannot be read for some book is not copied, and the
- * user is told which books and how to recover.
+ * As onto an existing project. The stored draft is the one that the WebView means to save: the
+ * WebView writes its pending autosave first, or the copy runs after the session's earlier edits. A
+ * draft that cannot be read for some book is not copied, and the user is told which books and how
+ * to recover.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param interlinearProjectId - UUID of the interlinearizer project to save into.
  * @param config - The configuration to set on the project in the same write; omit to leave the
  *   project's configuration unchanged.
+ * @param sessionId - The session editing the draft, if any. The copy then runs in the session's
+ *   turn, and the session's history marks the draft saved.
  * @returns The saved project's `InterlinearProjectSummary` (carrying the refreshed `updatedAt`) as
  *   a JSON string, or `undefined` if no project with the given ID exists.
- * @throws If the draft cannot be read for some book, if the project is a Paratext 9 import, which
- *   is read-only, if the stored draft is unreadable, or if storage fails. The error is logged and
- *   an error notification is sent before rethrowing.
+ * @throws If `sessionId` names no open session, if the draft cannot be read for some book, if the
+ *   project is a Paratext 9 import, which is read-only, if the stored draft is unreadable, or if
+ *   storage fails. The error is logged and an error notification is sent before rethrowing.
  */
 async function saveDraftToProject(
   sourceProjectId: string,
   interlinearProjectId: string,
   config?: ProjectConfig,
+  sessionId?: string,
 ): Promise<string | undefined> {
   try {
     return await perfTimeAsync('saveDraftToProject', async () => {
-      const saved = await projectStorage.saveDraftToProject(
-        executionToken,
-        sourceProjectId,
-        interlinearProjectId,
-        config,
+      const saved = await savingInSession(
+        sessionId,
+        () =>
+          projectStorage.saveDraftToProject(
+            executionToken,
+            sourceProjectId,
+            interlinearProjectId,
+            config,
+          ),
+        (project) => project !== undefined,
       );
       return saved ? JSON.stringify(toProjectSummary(saved)) : undefined;
     });
@@ -615,19 +657,21 @@ async function saveDraftToProject(
 
 /**
  * Creates an interlinearizer project holding a copy of the source project's stored draft: Save As
- * to a new project. The WebView writes its pending autosave first, so the stored draft is the one
- * it means to save. A book of the draft that cannot be read is left out, and the user is told
- * which.
+ * to a new project. The stored draft is the one that the WebView means to save: the WebView writes
+ * its pending autosave first, or the copy runs after the session's earlier edits. A book of the
+ * draft that cannot be read is left out, and the user is told which.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param analysisLanguages - BCP 47 tags for the new project's analysis languages.
  * @param targetProjectId - Optional Platform.Bible project ID of the target text.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
+ * @param sessionId - The session editing the draft, if any. The copy then runs in the session's
+ *   turn, and when no book is left out, the session's history marks the draft saved.
  * @returns The created project's summary and the books it left out, as a JSON
  *   {@link SavedAsProject}.
- * @throws If the stored draft is unreadable or storage fails. The error is logged and an error
- *   notification is sent before rethrowing.
+ * @throws If `sessionId` names no open session, the stored draft is unreadable, or storage fails.
+ *   The error is logged and an error notification is sent before rethrowing.
  */
 async function saveDraftAsProject(
   sourceProjectId: string,
@@ -635,16 +679,22 @@ async function saveDraftAsProject(
   targetProjectId?: string,
   name?: string,
   description?: string,
+  sessionId?: string,
 ): Promise<string> {
   try {
     return await perfTimeAsync('saveDraftAsProject', async () => {
-      const created = await projectStorage.saveDraftAsNewProject(
-        executionToken,
-        sourceProjectId,
-        analysisLanguages,
-        targetProjectId,
-        name,
-        description,
+      const created = await savingInSession(
+        sessionId,
+        () =>
+          projectStorage.saveDraftAsNewProject(
+            executionToken,
+            sourceProjectId,
+            analysisLanguages,
+            targetProjectId,
+            name,
+            description,
+          ),
+        ({ omittedBooks }) => omittedBooks.length === 0,
       );
       await reportUnreadableBooks(
         created.omittedBooks,
@@ -953,6 +1003,41 @@ async function setAnalysisLanguage({
 }
 
 /**
+ * Sets which project a session's draft saves to, if any.
+ *
+ * @throws If the session is read-only or not open, the project is missing or an import, or reading
+ *   the source's projects fails. The error is logged before rethrowing.
+ */
+async function setSaveTarget({
+  sessionId,
+  interlinearProjectId,
+}: ArgsOf<'interlinearizer.setSaveTarget'>): Promise<void> {
+  try {
+    await sessions.setSaveTarget(sessionId, interlinearProjectId);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to set the save target of session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/**
+ * Leaves a session's draft with no project to save to, once its project is deleted.
+ *
+ * @throws If the session is read-only or not open, or reading the draft or marking it unsaved
+ *   fails. The error is logged before rethrowing.
+ */
+async function detachFromProject({
+  sessionId,
+}: ArgsOf<'interlinearizer.detachFromProject'>): Promise<void> {
+  try {
+    await sessions.detachFromProject(sessionId);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to detach session ${sessionId} from its project`, e);
+    throw e;
+  }
+}
+
+/**
  * Reverts a session's latest edit not yet undone.
  *
  * @returns A JSON string of the {@link CommandReply}, or `undefined` when there is none.
@@ -1009,6 +1094,27 @@ async function checkIndexes({
     );
   } catch (e) {
     logger.error(`Interlinearizer: failed to check the indexes of session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/**
+ * Reads a session's whole draft, its scope and analysis, as the session's repository holds it. A
+ * bridge until the WebView reads only pages.
+ *
+ * @returns A JSON string of the `DraftProject`.
+ * @throws If the session is not open, or its analysis cannot be loaded. The error is logged before
+ *   rethrowing.
+ */
+async function getFullAnalysis({
+  sessionId,
+}: ArgsOf<'interlinearizer.getFullAnalysis'>): Promise<string> {
+  try {
+    return JSON.stringify(
+      await sessions.run(sessionId, (session) => session.repository.getWholeDraft()),
+    );
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to read the whole draft of session ${sessionId}`, e);
     throw e;
   }
 }
@@ -1311,7 +1417,8 @@ function writeAnalysisGloss({
 /**
  * Clears the glosses of several token analyses in the session's analysis language.
  *
- * @returns A JSON string of the {@link CommandReply}.
+ * @returns A JSON string of the {@link CommandReply}, with `emptiedAnalysisIds`: the token analyses
+ *   that the clear left empty, and so removed.
  * @throws As {@link runSessionEdit} does.
  */
 function clearAnalysisGlosses({
@@ -1322,11 +1429,15 @@ function clearAnalysisGlosses({
   const step = {
     summary: { kind: 'catalogClearGlossChecked', count: analysisIds.length },
   } as const;
-  return runSessionEdit({ sessionId, changeId, step }, 'clearAnalysisGlosses', (buffer, session) =>
-    catalogCommands.clearAnalysisGlosses(buffer, {
-      analysisIds,
-      analysisLanguage: session.analysisLanguage,
-      now: editStamp().now,
+  return runSessionEdit(
+    { sessionId, changeId, step },
+    'clearAnalysisGlosses',
+    async (buffer, session) => ({
+      emptiedAnalysisIds: await catalogCommands.clearAnalysisGlosses(buffer, {
+        analysisIds,
+        analysisLanguage: session.analysisLanguage,
+        now: editStamp().now,
+      }),
     }),
   );
 }
@@ -2023,6 +2134,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   // through the update its provider call triggers.
   function trackWebView({ webView }: { webView: SavedWebViewDefinition }): void {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
+    const holder = openWebViewsByProject.get(webView.projectId);
+    if (holder !== undefined && holder !== webView.id) return;
     openWebViewsByProject.set(webView.projectId, webView.id);
     rememberActiveProject(webView.projectId, webView.state);
   }
@@ -2271,6 +2384,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
               required: ['analysisLanguages'],
             },
           },
+          {
+            name: 'sessionId',
+            required: false,
+            summary:
+              'The session editing the draft; the copy then runs in its turn, and its history marks the draft saved',
+            schema: { type: 'string' },
+          },
         ],
         result: {
           name: 'return value',
@@ -2319,6 +2439,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             name: 'description',
             required: false,
             summary: 'Optional user-facing description for the project',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'sessionId',
+            required: false,
+            summary:
+              'The session editing the draft; the copy then runs in its turn, and when no book is left out, its history marks the draft saved',
             schema: { type: 'string' },
           },
         ],
@@ -2636,6 +2763,35 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           summary: 'BCP 47 tag of the language',
           schema: { type: 'string' },
         }),
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const setSaveTargetCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.setSaveTarget',
+    setSaveTarget,
+    {
+      method: {
+        summary: "Set which project a session's draft saves to, if any",
+        params: sessionArgs({
+          name: 'interlinearProjectId',
+          required: false,
+          summary: 'The interlinear project to save to; absent for none',
+          schema: { type: 'string' },
+        }),
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const detachFromProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.detachFromProject',
+    detachFromProject,
+    {
+      method: {
+        summary: "Leave a session's draft with no project to save to, once its project is deleted",
+        params: sessionArgs(),
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
     },
@@ -3419,6 +3575,22 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const getFullAnalysisCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getFullAnalysis',
+    getFullAnalysis,
+    {
+      method: {
+        summary: "Read a session's whole draft; a bridge until the WebView reads only pages",
+        params: sessionArgs(),
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified DraftProject',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
   const setPerfMarksCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.setPerfMarks',
     async (enabled: boolean) => setHostPerfMarks(enabled),
@@ -3781,9 +3953,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openSessionCommandRegistration,
     closeSessionCommandRegistration,
     setAnalysisLanguageCommandRegistration,
+    setSaveTargetCommandRegistration,
+    detachFromProjectCommandRegistration,
     undoEditCommandRegistration,
     redoEditCommandRegistration,
     checkIndexesCommandRegistration,
+    getFullAnalysisCommandRegistration,
     writeGlossCommandRegistration,
     approveAnalysisForTokenCommandRegistration,
     writeMorphemesCommandRegistration,

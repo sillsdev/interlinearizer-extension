@@ -923,7 +923,7 @@ async function redoEdit({
 
 /**
  * Reports where a session's derived indexes differ from ones built afresh from its records, for
- * debugging.
+ * debugging. Also reports where its stored shards differ from its records.
  *
  * @returns A JSON string of the differences; `"[]"` when there are none.
  * @throws If the session is not open. The error is logged before rethrowing.
@@ -3333,7 +3333,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary:
-          "Report where a session's derived indexes differ from ones built afresh from its records, for debugging",
+          "Report where a session's derived indexes, or stored shards, differ from its records, for debugging",
         params: sessionArgs(),
         result: {
           name: 'return value',

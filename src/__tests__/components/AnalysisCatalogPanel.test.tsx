@@ -3352,6 +3352,47 @@ describe('AnalysisCatalogPanel', () => {
         'word',
       );
     });
+
+    it('leaves the gloss inputs to what is typed where only the senses gloss', async () => {
+      renderPanel({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [
+            {
+              ...FIXTURE_STAMPS,
+              id: 'ta-1',
+              surfaceText: 'λόγος',
+              glossSenseRef: testSenseRef('s-word'),
+              morphemes: [
+                {
+                  ...FIXTURE_STAMPS,
+                  id: 'm-1',
+                  form: 'λογ',
+                  writingSystem: 'el',
+                  senseRef: testSenseRef('s-stem'),
+                },
+              ],
+            },
+          ],
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+        },
+        senses: { 's-word': { gloss: { en: 'word' } }, 's-stem': { gloss: { en: 'speak' } } },
+      });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      const row = rowFor('ta-1');
+      // Both senses resolved, so empty inputs below are not just a lookup still in flight.
+      await waitFor(() =>
+        expect(
+          within(row)
+            .getAllByTestId('catalog-sense-gloss')
+            .map((gloss) => gloss.textContent),
+        ).toEqual(expect.arrayContaining(['word', 'speak'])),
+      );
+      expect(within(row).getByTestId('catalog-row-gloss-input')).toHaveValue('');
+      expect(within(row).getByTestId('catalog-row-morpheme-gloss-input')).toHaveValue('');
+    });
   });
 
   describe('merging on edit', () => {

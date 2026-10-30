@@ -266,11 +266,13 @@ export type UseDraftProjectResult = {
  * per-edit auto-saves never re-render the loader unless the dirty flag actually flips.
  *
  * @param sourceProjectId - The Platform.Bible source project whose draft to manage.
- * @param platformLanguage - BCP 47 tag used to seed the analysis languages of a brand-new source.
+ * @param platformLanguage - BCP 47 tag that seeds a brand-new source's analysis languages, or
+ *   `undefined` while the tag is still loading. A brand-new source's draft stays loading until the
+ *   tag is known.
  */
 export default function useDraftProject(
   sourceProjectId: string,
-  platformLanguage: string,
+  platformLanguage: string | undefined,
 ): UseDraftProjectResult {
   const draftRef = useRef<DraftProject | undefined>(undefined);
   const [isDraftLoading, setIsDraftLoading] = useState(true);
@@ -307,6 +309,9 @@ export default function useDraftProject(
   // does not re-run when the UI language changes after the draft has loaded.
   const platformLanguageRef = useRef(platformLanguage);
   platformLanguageRef.current = platformLanguage;
+  // Settles with the first platform language known. A load that needs a language waits on it.
+  const [platformLanguageKnown] = useState(() => Promise.withResolvers<string>());
+  if (platformLanguage !== undefined) platformLanguageKnown.resolve(platformLanguage);
 
   // Whether the draft has been started over (New, Open) since it loaded, so the host may discard
   // stored analysis it could not read. Every later write says so too: discarding again is harmless,
@@ -340,7 +345,8 @@ export default function useDraftProject(
   const isSavingRef = useRef(false);
   // Settles once the save in progress, if any, has finished, whether or not it saved.
   const saveSettledRef = useRef<Promise<void>>(Promise.resolve());
-  // Counts wholesale replacements, so a save can tell whether one landed while its writes settled.
+  // Counts wholesale replacements, so a save or a load can tell whether one landed while it was
+  // underway.
   const replacementCountRef = useRef(0);
 
   useEffect(() => {
@@ -351,11 +357,14 @@ export default function useDraftProject(
 
     /**
      * Loads the stored draft for the source (falling back to an empty draft on failure), seeds a
-     * gloss language when none is present, and publishes it to the ref and state.
+     * gloss language when none is present, and publishes it to the ref and state. A replacement
+     * that lands while the load waits wins over the stored draft.
      *
-     * @returns The draft published, or `undefined` when the load was canceled first.
+     * @returns The draft published, the replacement that won over the stored draft, or `undefined`
+     *   when the load was canceled first.
      */
     const load = async (): Promise<DraftProject | undefined> => {
+      const replacements = replacementCountRef.current;
       let draft: DraftProject;
       try {
         const json = await perfTrack(
@@ -371,8 +380,16 @@ export default function useDraftProject(
 
       // Seed a gloss language in memory when the stored draft has none (a brand-new source). Not
       // persisted here — the first auto-save / New / Open carries it to storage.
-      if (draft.analysisLanguages.length === 0)
-        draft = { ...draft, analysisLanguages: [platformLanguageRef.current] };
+      if (draft.analysisLanguages.length === 0) {
+        const firstKnown = await platformLanguageKnown.promise;
+        if (canceled) return undefined;
+        draft = { ...draft, analysisLanguages: [platformLanguageRef.current ?? firstKnown] };
+      }
+      // A New or Open while the load waited already replaced the draft; the stored one is older.
+      if (replacementCountRef.current !== replacements) {
+        setIsDraftLoading(false);
+        return draftRef.current;
+      }
       draftRef.current = draft;
       cleanStatesRef.current = new Set(draft.dirty ? [] : [historyRef.current.state]);
       setDirty(draft.dirty);
@@ -386,7 +403,7 @@ export default function useDraftProject(
       // The last edit before unmount or a source change is written rather than lost.
       writer.flush();
     };
-  }, [writer, setHistory, sourceProjectId]);
+  }, [writer, setHistory, sourceProjectId, platformLanguageKnown]);
 
   const getDraftSnapshot = useCallback(() => draftRef.current, []);
 

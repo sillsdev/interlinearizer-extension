@@ -345,7 +345,8 @@ export default function useDraftProject(
   const isSavingRef = useRef(false);
   // Settles once the save in progress, if any, has finished, whether or not it saved.
   const saveSettledRef = useRef<Promise<void>>(Promise.resolve());
-  // Counts wholesale replacements, so a save can tell whether one landed while its writes settled.
+  // Counts wholesale replacements, so a save can tell whether one landed while its writes settled
+  // and a load whether one landed while it waited.
   const replacementCountRef = useRef(0);
 
   useEffect(() => {
@@ -359,8 +360,8 @@ export default function useDraftProject(
      * gloss language when none is present, and publishes it to the ref and state. A replacement
      * that lands while the load waits wins over the stored draft.
      *
-     * @returns The draft published, the replacement that won over it, or `undefined` when the load
-     *   was canceled first.
+     * @returns The draft published, the replacement that won over the stored draft, or `undefined`
+     *   when the load was canceled first.
      */
     const load = async (): Promise<DraftProject | undefined> => {
       const replacements = replacementCountRef.current;

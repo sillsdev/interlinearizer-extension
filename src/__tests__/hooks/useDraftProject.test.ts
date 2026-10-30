@@ -182,17 +182,15 @@ describe('useDraftProject', () => {
   });
 
   it("does not seed the previous source's draft when the source changes while waiting for the platform language", async () => {
+    let resolveSecondGetDraft: (json: string) => void = () => {};
+    const secondDeferred = new Promise<string>((resolve) => {
+      resolveSecondGetDraft = resolve;
+    });
     mockSendCommand.mockImplementation((...args: Parameters<typeof mockSendCommand>) => {
       if (args[0] === 'interlinearizer.getDraft')
-        return Promise.resolve(
-          JSON.stringify(
-            makeDraft(
-              args[1] === SOURCE_PROJECT_ID
-                ? { analysisLanguages: [] }
-                : { sourceProjectId: 'source-project-2', analysisLanguages: [] },
-            ),
-          ),
-        );
+        return args[1] === SOURCE_PROJECT_ID
+          ? Promise.resolve(JSON.stringify(makeDraft({ analysisLanguages: [] })))
+          : secondDeferred;
       return Promise.resolve(undefined);
     });
     const view = renderHook<
@@ -206,6 +204,17 @@ describe('useDraftProject', () => {
     view.rerender({ source: 'source-project-2', language: undefined });
     await act(async () => {});
     view.rerender({ source: 'source-project-2', language: PLATFORM_LANGUAGE });
+    await act(async () => {});
+
+    expect(view.result.current.draft).toBeUndefined();
+    expect(view.result.current.isDraftLoading).toBe(true);
+
+    await act(async () => {
+      resolveSecondGetDraft(
+        JSON.stringify(makeDraft({ sourceProjectId: 'source-project-2', analysisLanguages: [] })),
+      );
+      await secondDeferred;
+    });
     await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
 
     expect(view.result.current.draft?.sourceProjectId).toBe('source-project-2');

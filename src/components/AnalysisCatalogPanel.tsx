@@ -711,25 +711,27 @@ export default function AnalysisCatalogPanel({
       // Cleared before the record goes, so this removal is not reported back to the reader who
       // asked for it.
       discardBreakdownDraft(analysisId);
-      asOneStep(
+      runRowEdit(
         () => rowDispatch.deleteAnalyses([analysisId]),
         outcome.usageCount === 0
           ? { kind: 'catalogDeleteUnused', form, analysisId }
           : { kind: 'catalogDelete', form, analysisId, count: outcome.usageCount },
+        () => {
+          // A deleted row cannot be the one a merge notice points at, and leaving the notice up
+          // would send the reader to a row that is no longer there.
+          setMergeNotice(undefined);
+          announceUndoable(deletionAnnouncement(form, outcome, localizedStrings));
+        },
       );
-      // A deleted row cannot be the one a merge notice points at, and leaving the notice up would
-      // send the reader to a row that is no longer there.
-      setMergeNotice(undefined);
-      announceUndoable(deletionAnnouncement(form, outcome, localizedStrings));
     },
     [
       announceUndoable,
-      asOneStep,
       discardBreakdownDraft,
       liveSurfaceText,
       localizedStrings,
       readDeletionOutcome,
       rowDispatch,
+      runRowEdit,
       surfaceTextOf,
     ],
   );
@@ -751,26 +753,27 @@ export default function AnalysisCatalogPanel({
       const usageCount = distinctUsageCount(catalogRows, new Set(analysisIds));
       // Cleared before the records go, so their removal is not reported back as stranding them.
       analysisIds.forEach(discardBreakdownDraft);
-      asOneStep(() => rowDispatch.deleteAnalyses(analysisIds), {
-        kind: 'catalogDeleteChecked',
-        count,
-        usageCount,
-      });
-      setMergeNotice(undefined);
-      announceUndoable(
-        formatReplacementString(
-          localizedStrings['%interlinearizer_analysisCatalog_deletedChecked%'],
-          { count, usageCount },
-        ),
+      runRowEdit(
+        () => rowDispatch.deleteAnalyses(analysisIds),
+        { kind: 'catalogDeleteChecked', count, usageCount },
+        () => {
+          setMergeNotice(undefined);
+          announceUndoable(
+            formatReplacementString(
+              localizedStrings['%interlinearizer_analysisCatalog_deletedChecked%'],
+              { count, usageCount },
+            ),
+          );
+        },
       );
     },
     [
       announceUndoable,
-      asOneStep,
       catalogRows,
       discardBreakdownDraft,
       localizedStrings,
       rowDispatch,
+      runRowEdit,
     ],
   );
 

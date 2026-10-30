@@ -2157,19 +2157,13 @@ describe('main', () => {
     const mockReadHostPerf = jest.mocked(hostPerf.readHostPerf);
 
     it("returns the host's reading as JSON", async () => {
-      const reading = {
-        entries: [{ name: 'getDraft', duration: 12, detail: undefined }],
-        pid: 42,
-        passesPending: 3,
-      };
+      const reading = { entries: [{ name: 'getDraft', duration: 12, detail: undefined }], pid: 42 };
       mockReadHostPerf.mockReturnValue(reading);
-      jest.spyOn(AnalysisSessions.prototype, 'passesPending').mockReturnValue(3);
       const handler = await activateAndGetHandler<() => Promise<string | undefined>>(
         'interlinearizer.readPerf',
       );
 
       await expect(handler()).resolves.toBe(JSON.stringify(reading));
-      expect(mockReadHostPerf).toHaveBeenCalledWith(3);
     });
 
     it("returns nothing while the host's timing entries are off", async () => {

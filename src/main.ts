@@ -3613,7 +3613,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const readPerfCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.readPerf',
     async () => {
-      const reading = readHostPerf(sessions.passesPending());
+      const reading = readHostPerf();
       return reading && JSON.stringify(reading);
     },
     {
@@ -3622,7 +3622,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         params: [],
         result: {
           name: 'return value',
-          summary: 'JSON-stringified HostPerfReading, or undefined while timing entries are off',
+          summary: 'JSON-stringified { entries, pid }, or undefined while timing entries are off',
           schema: { type: 'string' },
         },
       },

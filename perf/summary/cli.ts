@@ -72,8 +72,8 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     "With a view open, the host reads every book of the source and files its word forms, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes each book's USJ, which the platform keeps for every book subscription.",
   'app.scriptureSave':
     "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
-  'app.hostEditDuringRead':
-    "On the host path, a gloss committed as soon as a fresh view is editable, while the session's whole-text read or its re-anchor passes still run. A run where both had already finished is counted, not timed.",
+  'app.hostOpen':
+    "On the host path, a new view opens on the tier's book while the session's whole-text read starts. The view's pages wait for the read's re-anchor passes, so the read's cost lands here rather than on edits.",
   'app.hostEdit':
     "On the host path, one gloss committed once the session's whole-text read has finished.",
   'app.hostScriptureSave':
@@ -97,7 +97,7 @@ const SECTION_LABELS: Record<string, string> = {
   concordance: 'Open the concordance',
   textRead: 'Read the whole text in the host',
   scriptureSave: 'Save a Scripture chapter',
-  hostEditDuringRead: 'Host path: edit one gloss during the whole-text read',
+  hostOpen: 'Host path: open the view in a running app',
   hostEdit: 'Host path: edit one gloss',
   hostScriptureSave: 'Host path: save a Scripture chapter',
   formsNotInText: 'Catalog forms not in the text',
@@ -129,11 +129,11 @@ const METRIC_LABELS: Record<string, string> = {
   'store-mount': 'Mount analysis store',
   reanchor: 'Reanchor analysis to book',
   'open-to-interactive': 'Total: open to settled',
+  'open-to-editable': 'Open to first gloss editable',
   'dispatch-render': 'Commit gloss to re-render',
   'gloss-render': 'Commit gloss to render',
   'scripture-save': 'Save the chapter',
   'save-host-cpu': 'Host CPU over the save',
-  runsAfterRead: 'Runs after the read and its passes had finished',
   'autosave-serialize': 'Serialize draft',
   autosave: 'Autosave',
   'projects-fetch': 'Fetch saved projects',

@@ -29,13 +29,13 @@ describe('readHostPerf', () => {
   it('reads nothing while timing entries are off', () => {
     jest.mocked(perfMarksEnabled).mockReturnValue(false);
 
-    expect(readHostPerf(0)).toBeUndefined();
+    expect(readHostPerf()).toBeUndefined();
     expect(takePerfEntries).not.toHaveBeenCalled();
   });
 
-  it("takes the recorded entries with the host's process id and the pending passes", () => {
+  it("takes the recorded entries with the host's process id", () => {
     jest.mocked(perfMarksEnabled).mockReturnValue(true);
 
-    expect(readHostPerf(2)).toEqual({ entries, pid: process.pid, passesPending: 2 });
+    expect(readHostPerf()).toEqual({ entries, pid: process.pid });
   });
 });

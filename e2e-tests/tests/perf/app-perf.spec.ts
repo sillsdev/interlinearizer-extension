@@ -37,7 +37,6 @@ import {
   setBook,
   setHostPerfMarks,
   sourceProjectId,
-  hostPassesPending,
   takeHostEntries,
   waitForMeasure,
   wireBytes,
@@ -63,8 +62,32 @@ const MENU_ATTEMPTS = 3;
 /** The app a run drives; restarting a packaged app replaces its connection. */
 type App = { page: Page; browser?: Browser };
 
+const TOKEN_GLOSS_INPUT = 'input[aria-label^="Gloss for "]:not([aria-label^="Gloss for morpheme"])';
+
 function tokenGlossInputs(frame: Frame) {
-  return frame.locator('input[aria-label^="Gloss for "]:not([aria-label^="Gloss for morpheme"])');
+  return frame.locator(TOKEN_GLOSS_INPUT);
+}
+
+/**
+ * Waits for `frame`'s first token gloss input to become editable.
+ *
+ * @returns When that input was first seen editable, in milliseconds since the epoch.
+ */
+async function editableAt(frame: Frame): Promise<number> {
+  const handle = await frame.waitForFunction(
+    (selector) => {
+      const input = document.querySelector(selector);
+      return (
+        input instanceof HTMLInputElement &&
+        !input.disabled &&
+        !input.readOnly &&
+        performance.timeOrigin + performance.now()
+      );
+    },
+    TOKEN_GLOSS_INPUT,
+    { polling: 'raf', timeout: 60_000 },
+  );
+  return Number(await handle.jsonValue());
 }
 
 /**
@@ -255,9 +278,9 @@ async function measureScriptureSaves(
 }
 
 /**
- * Times edits on the host path: while the session's whole-text read runs, once it has finished, and
- * after each Scripture save. Writes its sections into `result`. Leaves no view open and the
- * host-path flag off.
+ * Times the host path: opening a view, edits once the session's whole-text read has finished, and
+ * Scripture saves. Writes its sections into `result`. Leaves no view open and the host-path flag
+ * off.
  */
 async function measureHostPath(
   page: Page,
@@ -269,33 +292,17 @@ async function measureHostPath(
   await closeSettledView(page);
   await page.evaluate((key) => localStorage.setItem(key, 'true'), HOST_PATH_KEY);
   try {
-    // A fresh view each run, because only a session's opening starts its read.
-    const duringRead = new Samples();
-    let runsAfterRead = 0;
+    // The view's pages queue behind the session-open read's passes, so no edit lands during them.
+    const open = new Samples();
     for (let run = 0; run < RUNS; run += 1) {
       // eslint-disable-next-line no-await-in-loop
       await closeView(page);
       // eslint-disable-next-line no-await-in-loop
-      const { frame } = await openView(page, projectId, tier.viewBook);
+      const { frame, openedAt } = await openView(page, projectId, tier.viewBook);
       // eslint-disable-next-line no-await-in-loop
-      await expect(tokenGlossInputs(frame).first()).toBeEditable({ timeout: 60_000 });
-      // eslint-disable-next-line no-await-in-loop
-      await clearMeasures(frame);
-      // eslint-disable-next-line no-await-in-loop
-      const status = await textReadStatus(page, projectId);
-      const reading =
-        // eslint-disable-next-line no-await-in-loop
-        (status && status.booksRead < status.bookCount) || (await hostPassesPending(page)) > 0;
-      if (reading) {
-        // eslint-disable-next-line no-await-in-loop
-        await editGloss(frame, 0, `read-${run}`, false);
-        // eslint-disable-next-line no-await-in-loop
-        duringRead.add(await waitForMeasure(frame, 'gloss-render'), ['gloss-render']);
-      } else {
-        runsAfterRead += 1;
-      }
+      open.addValue('open-to-editable', (await editableAt(frame)) - openedAt);
     }
-    result.hostEditDuringRead = { ...duringRead.summary(), runsAfterRead };
+    result.hostOpen = open.summary();
 
     await closeView(page);
     const { frame } = await openView(page, projectId, tier.viewBook);
@@ -421,9 +428,11 @@ async function measureOpen(
 ): Promise<void> {
   await takeHostEntries(page);
   const { frame, openedAt } = await openView(page, projectId, book);
+  const editable = editableAt(frame);
   await waitForMeasure(frame, 'book-render', book);
   const settled = await waitForMeasure(frame, 'reanchor', book);
   open.webView.add(settled);
+  open.webView.addValue('open-to-editable', (await editable) - openedAt);
   const frameOrigin = await frame.evaluate(() => performance.timeOrigin);
   open.webView.addValue(
     'open-to-interactive',

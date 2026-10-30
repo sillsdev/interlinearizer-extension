@@ -10,9 +10,11 @@ import {
   getProject,
   getProjectSummariesForSource,
   getPt9ImportForSource,
+  getRememberedActiveProject,
   hasDraft,
   openDraftRepository,
   openPt9ImportRepository,
+  rememberActiveProject,
   releaseDraftRepository,
   resetQueuesForTesting,
   saveDraft,
@@ -1356,6 +1358,65 @@ describe('projectStorage', () => {
       __mockReadUserData.mockRejectedValue(new Error('storage unavailable'));
 
       await expect(hasDraft(token, 'src-proj')).rejects.toThrow('storage unavailable');
+    });
+  });
+
+  describe('remembering the active project', () => {
+    it('answers the summary of the project remembered for the source', async () => {
+      const project = makeStubProject('abc');
+      writeThroughStore({ projectSummaries: storedSummaries(project) });
+
+      await rememberActiveProject(token, 'src-project', 'abc');
+
+      await expect(getRememberedActiveProject(token, 'src-project')).resolves.toEqual(
+        summarizeProject(project),
+      );
+    });
+
+    it('answers undefined when nothing is remembered for the source', async () => {
+      writeThroughStore({ projectSummaries: storedSummaries(makeStubProject('abc')) });
+
+      await expect(getRememberedActiveProject(token, 'src-project')).resolves.toBeUndefined();
+    });
+
+    it('answers undefined when the project remembered is no longer listed for the source', async () => {
+      writeThroughStore({
+        'activeProject:src-project': 'deleted',
+        projectSummaries: storedSummaries(makeStubProject('abc')),
+      });
+
+      await expect(getRememberedActiveProject(token, 'src-project')).resolves.toBeUndefined();
+    });
+
+    it('forgets the project remembered', async () => {
+      await rememberActiveProject(token, 'src-project', undefined);
+
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'activeProject:src-project');
+    });
+
+    it('lands remembers for one source in the order they were made', async () => {
+      const landed: (string | undefined)[] = [];
+      let releaseFirst = () => {};
+      __mockWriteUserData.mockImplementationOnce(
+        (_t: unknown, _key: unknown, id: string) =>
+          new Promise<void>((resolve) => {
+            releaseFirst = () => {
+              landed.push(id);
+              resolve();
+            };
+          }),
+      );
+      __mockDeleteUserData.mockImplementation(async () => {
+        landed.push(undefined);
+      });
+
+      const first = rememberActiveProject(token, 'src-project', 'abc');
+      const second = rememberActiveProject(token, 'src-project', undefined);
+      await Promise.resolve();
+      releaseFirst();
+      await Promise.all([first, second]);
+
+      expect(landed).toEqual(['abc', undefined]);
     });
   });
 

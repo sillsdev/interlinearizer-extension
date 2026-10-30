@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import {
+  activeProjectKey,
   draftAnalysisKey,
   draftJournalKey,
   draftKey,
@@ -28,5 +29,11 @@ describe('draftAnalysisKey', () => {
 describe('draftJournalKey', () => {
   it("keys a draft's shard journal under its draft", () => {
     expect(draftJournalKey('src-1')).toBe('draft:src-1:shards');
+  });
+});
+
+describe('activeProjectKey', () => {
+  it('keys the remembered active project by its source project', () => {
+    expect(activeProjectKey('src-1')).toBe('activeProject:src-1');
   });
 });

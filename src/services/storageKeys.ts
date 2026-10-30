@@ -17,3 +17,8 @@ export function draftAnalysisKey(sourceProjectId: string, bookCode: string): str
 export function draftJournalKey(sourceProjectId: string): string {
   return `draft:${sourceProjectId}:shards`;
 }
+
+/** Returns the storage key naming the interlinear project a source project's view last had active. */
+export function activeProjectKey(sourceProjectId: string): string {
+  return `activeProject:${sourceProjectId}`;
+}

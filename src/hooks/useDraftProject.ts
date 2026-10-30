@@ -345,8 +345,8 @@ export default function useDraftProject(
   const isSavingRef = useRef(false);
   // Settles once the save in progress, if any, has finished, whether or not it saved.
   const saveSettledRef = useRef<Promise<void>>(Promise.resolve());
-  // Counts wholesale replacements, so a save can tell whether one landed while its writes settled
-  // and a load whether one landed while it waited.
+  // Counts wholesale replacements, so a save or a load can tell whether one landed while it was
+  // underway.
   const replacementCountRef = useRef(0);
 
   useEffect(() => {

@@ -5,7 +5,7 @@ End-to-end tests for the interlinearizer extension using Playwright + Electron. 
 - **Smoke tests** (`tests/smoke/`, `app.fixture`) launch a fresh Platform.Bible instance with the extension loaded via `--extensions` and verify the extension starts up correctly.
 - **Feature tests** (`tests/features/`, `cdp.fixture`) connect over CDP to a running Platform.Bible instance and exercise interlinearizer UI flows (glossing, draft persistence, project modals).
 
-Run everything with `npm run test:e2e` (smoke tier then CDP tier). Each tier can be run alone with `npm run test:e2e:smoke` and `npm run test:e2e:cdp`.
+Run everything with `npm run test:e2e` (smoke tier then CDP tier). Each tier can be run alone with `npm run test:e2e:smoke` and `npm run test:e2e:cdp`. Set `E2E_HOST_PATH=true` to run either tier with the Interlinearizer on the host path; `npm run test:e2e:host-path` runs the full suite that way.
 
 Global setup rebuilds the extension before launching, so there is no separate build step to remember. This matters more than the few seconds it costs: a `dist/` left over from another branch runs an extension the tests were not written against, and the selector failures that follow look exactly like real regressions.
 

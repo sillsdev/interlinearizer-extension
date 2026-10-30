@@ -225,6 +225,31 @@ describe('useSessionProject history', () => {
       expect.any(Error),
     );
   });
+
+  it('keeps the edit to undo when an undo fails', async () => {
+    const { result } = await renderLoaded();
+    await glossEarth(result, 'land');
+    jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('closed'));
+
+    await act(async () => {
+      await result.current.undo();
+    });
+
+    expect(result.current).toMatchObject({ canUndo: true, canRedo: false });
+  });
+
+  it('keeps the edit to undo when there is nothing to redo', async () => {
+    const { result } = await renderLoaded();
+    await glossEarth(result, 'land');
+
+    let step: unknown = 'none yet';
+    await act(async () => {
+      step = await result.current.redo();
+    });
+
+    expect(step).toBeUndefined();
+    expect(result.current).toMatchObject({ canUndo: true, canRedo: false });
+  });
 });
 
 describe('useSessionProject saving', () => {

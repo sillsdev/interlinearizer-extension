@@ -172,13 +172,13 @@ export default function useSessionProject(
   );
 
   /** Notes what a reply says is left to undo and redo, telling each history listener. */
-  const takeReply = useCallback((reply: CommandReply | undefined) => {
+  const takeReply = useCallback((reply: CommandReply) => {
     setHistory((was) => ({
-      canUndo: reply ? reply.canUndo : false,
-      canRedo: reply ? reply.canRedo : was.canRedo,
+      canUndo: reply.canUndo,
+      canRedo: reply.canRedo,
       revision: was.revision + 1,
     }));
-    if (reply && 'hasFreeTranslations' in reply && typeof reply.hasFreeTranslations === 'boolean')
+    if ('hasFreeTranslations' in reply && typeof reply.hasFreeTranslations === 'boolean')
       setHasFreeTranslations(reply.hasFreeTranslations);
   }, []);
   useEffect(() => client?.subscribeReplies(takeReply), [client, takeReply]);
@@ -212,11 +212,20 @@ export default function useSessionProject(
     async (
       command: 'interlinearizer.undoEdit' | 'interlinearizer.redoEdit',
     ): Promise<EditStep | undefined> => {
-      const reply = await sendEdit(command, (args) => papi.commands.sendCommand(command, args));
-      if (!reply) takeReply(undefined);
+      let movedNothing = false;
+      const reply = await sendEdit(command, async (args) => {
+        const json = await papi.commands.sendCommand(command, args);
+        movedNothing = json === undefined;
+        return json;
+      });
+      // A failed move leaves the flags as they were, because no reply came to report them.
+      if (movedNothing) {
+        const side = command === 'interlinearizer.undoEdit' ? 'canUndo' : 'canRedo';
+        setHistory((was) => ({ ...was, [side]: false, revision: was.revision + 1 }));
+      }
       return reply?.step;
     },
-    [sendEdit, takeReply],
+    [sendEdit],
   );
 
   /** Writes `next` as the stored draft, then opens a fresh session on whatever draft is stored. */

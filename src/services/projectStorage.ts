@@ -63,8 +63,8 @@ const projectQueues = new Map<string, Promise<unknown>>();
 const draftQueues = new Map<string, Promise<unknown>>();
 
 /**
- * Per-source serialization queues for the remembered active project. Keyed by `sourceProjectId`;
- * keeps a fire-and-forget write from landing after one made later.
+ * Per-source serialization queues for the remembered active project, keyed by `sourceProjectId`.
+ * They keep reads and writes for one source in the order they were made.
  */
 const activeProjectQueues = new Map<string, Promise<unknown>>();
 

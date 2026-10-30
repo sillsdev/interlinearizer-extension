@@ -968,7 +968,7 @@ describe('main', () => {
       );
     });
 
-    it('keeps the remembered project when a tab opens without it after a failed read', async () => {
+    it('forgets the remembered project when a tab opens without it after a failed read', async () => {
       __mockGetOpenWebViewDefinition.mockResolvedValue({
         id: 'some-webview',
         webViewType: 'someExtension.view',
@@ -984,7 +984,11 @@ describe('main', () => {
         webView: { id: 'new-tab', webViewType: mainWebViewType, projectId: 'project-from-webview' },
       });
 
-      expect(jest.mocked(projectStorage.rememberActiveProject)).not.toHaveBeenCalled();
+      expect(jest.mocked(projectStorage.rememberActiveProject)).toHaveBeenCalledWith(
+        expect.anything(),
+        'project-from-webview',
+        undefined,
+      );
     });
 
     it('shows a project picker when the WebView has no projectId', async () => {
@@ -1320,6 +1324,37 @@ describe('main', () => {
           expect.any(Error),
         );
         expect(jest.mocked(projectStorage.rememberActiveProject)).toHaveBeenCalledTimes(2);
+      });
+
+      it('writes the active project again when the tab closes after a write of it fails', async () => {
+        jest
+          .mocked(projectStorage.rememberActiveProject)
+          .mockRejectedValueOnce(new Error('disk full'));
+        await activate(createTestActivationContext());
+        reportUpdate({ activeProject });
+        await new Promise(process.nextTick);
+
+        getCloseWebViewCallback()({
+          webView: {
+            id: 'tab',
+            webViewType: mainWebViewType,
+            projectId: 'my-project',
+            state: { activeProject },
+          },
+        });
+
+        expect(jest.mocked(projectStorage.rememberActiveProject)).toHaveBeenCalledTimes(2);
+      });
+
+      it('writes nothing when a tab reports the project it was opened on', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        jest.mocked(projectStorage.getRememberedActiveProject).mockResolvedValue(activeProject);
+        await activate(createTestActivationContext());
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+
+        reportUpdate({ activeProject });
+
+        expect(jest.mocked(projectStorage.rememberActiveProject)).not.toHaveBeenCalled();
       });
     });
 

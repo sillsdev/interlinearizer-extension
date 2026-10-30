@@ -447,12 +447,11 @@ function InterlinearizerLoaderInner({
   const interfaceLocales = isPlatformError(interfaceLanguages) ? undefined : interfaceLanguages;
 
   /**
-   * Persisted snapshot of the active interlinear project. It survives tab restores, and a new tab
-   * on the same source opens on it, so Save keeps writing to the project the draft belongs to. The
-   * project modals write the same `'activeProject'` key as projects are opened, created, or edited.
-   * Read here to gate the project-specific menu items and to route Save to the active project (Save
-   * As when none); written here to fold the refreshed `updatedAt` from a successful save back into
-   * the snapshot.
+   * Persisted snapshot of the active interlinear project, which survives tab restores. A new tab on
+   * the same source opens on the same project. The project modals write the same `'activeProject'`
+   * key as projects are opened, created, or edited. Read here to gate the project-specific menu
+   * items and to route Save to the active project (Save As when none); written here to fold the
+   * refreshed `updatedAt` from a successful save back into the snapshot.
    */
   const [activeProject, setActiveProject] = useWebViewState<InterlinearProjectSummary | undefined>(
     'activeProject',

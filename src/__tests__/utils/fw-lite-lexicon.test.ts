@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import papi, { logger } from '@papi/frontend';
-import type { SenseRef } from 'interlinearizer';
+import type { EntryRef, SenseRef } from 'interlinearizer';
 import type { LexiconEntry } from '../../types/lexicon-extension';
 import { fwLiteLexiconProvider, resetEntryServiceForTesting } from '../../utils/fw-lite-lexicon';
 import { FW_LITE_AUTHORITY } from '../../utils/lexicon-authorities';
@@ -61,6 +61,10 @@ function entry(overrides?: Partial<LexiconEntry>): LexiconEntry {
     senses: [{ id: 's-1', gloss: { en: 'water' } }],
     ...overrides,
   };
+}
+
+function entryRef(projectId?: string): EntryRef {
+  return { authority: FW_LITE_AUTHORITY, projectId, entryId: 'e-1' };
 }
 
 function senseRef(projectId?: string): SenseRef {
@@ -351,6 +355,11 @@ describe('fwLiteLexiconProvider', () => {
                 { id: 's-2', gloss: { en: 'waters' } },
               ],
             }),
+            entry({
+              id: 'e-2',
+              lexemeForm: { hbo: 'mayim2' },
+              senses: [{ id: 's-3', gloss: { en: 'sea' } }],
+            }),
           ]),
         });
         serve(service);
@@ -360,12 +369,20 @@ describe('fwLiteLexiconProvider', () => {
             {
               gloss: { en: 'water' },
               lexemeForm: { hbo: 'mayim' },
-              ref: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-1' },
+              entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-1' },
+              senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-1' },
             },
             {
               gloss: { en: 'waters' },
               lexemeForm: { hbo: 'mayim' },
-              ref: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-2' },
+              entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-1' },
+              senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-2' },
+            },
+            {
+              gloss: { en: 'sea' },
+              lexemeForm: { hbo: 'mayim2' },
+              entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-2' },
+              senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-3' },
             },
           ],
         );
@@ -519,7 +536,9 @@ describe('fwLiteLexiconProvider on a record missing a field its type requires', 
 
     const candidates = await fwLiteLexiconProvider.connect(LEXICON).searchByForm('mayim');
 
-    expect(candidates).toEqual([{ gloss: { en: 'water' }, ref: senseRef(LEXICON) }]);
+    expect(candidates).toEqual([
+      { gloss: { en: 'water' }, entryRef: entryRef(LEXICON), senseRef: senseRef(LEXICON) },
+    ]);
   });
 
   it('says what went wrong when a created entry carries no senses at all', async () => {

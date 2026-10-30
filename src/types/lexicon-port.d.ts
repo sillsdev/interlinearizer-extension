@@ -71,8 +71,11 @@ declare module 'interlinearizer/lexicon' {
 
   /** A sense a search turned up, carrying what an analysis stores to link to it. */
   export interface SenseCandidate extends ResolvedSense {
+    /** Names the entry the sense belongs to, for a morpheme to store beside the sense ref. */
+    entryRef: EntryRef;
+
     /** Names the sense within the authority that minted it. */
-    ref: SenseRef;
+    senseRef: SenseRef;
   }
 
   /** Narrows a search by surface form. */

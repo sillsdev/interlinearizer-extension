@@ -163,7 +163,8 @@ function toCandidates(entry: LexiconEntry, lexiconCode: string): SenseCandidate[
   return (entry.senses ?? []).map((sense) => ({
     ...toResolvedSense(sense),
     lexemeForm: entry.lexemeForm,
-    ref: { authority: FW_LITE_AUTHORITY, projectId: lexiconCode, senseId: sense.id },
+    entryRef: { authority: FW_LITE_AUTHORITY, projectId: lexiconCode, entryId: entry.id },
+    senseRef: { authority: FW_LITE_AUTHORITY, projectId: lexiconCode, senseId: sense.id },
   }));
 }
 

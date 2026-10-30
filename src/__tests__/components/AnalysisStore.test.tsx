@@ -13,7 +13,8 @@ import type {
 import type { ReactNode } from 'react';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink, makeVerseBook } from '../test-helpers';
-import type { AnalysisEditOutcome } from '../../components/AnalysisStore';
+import type { AnalysisEditOutcome } from '../../utils/edit-outcome';
+import type { Settles } from '../../utils/settles';
 import {
   AnalysisStoreProvider,
   useAnalysis,
@@ -508,6 +509,16 @@ describe('performance marks', () => {
     expect(perfMeasureFromFirst).toHaveBeenCalledWith('dispatch-render', 'dispatch');
   });
 
+  it('marks a gloss commit, timing it to the commit rendering the change', () => {
+    jest.mocked(perfMarksEnabled).mockReturnValue(true);
+    const { result } = renderStoreHook(() => useGlossDispatch());
+
+    act(() => result.current('tok-1', 'word', 'hi'));
+
+    expect(perfMark).toHaveBeenCalledWith('gloss-commit');
+    expect(perfMeasureFromFirst).toHaveBeenCalledWith('gloss-render', 'gloss-commit');
+  });
+
   it('times changes rendered by one commit once', () => {
     jest.mocked(perfMarksEnabled).mockReturnValue(true);
     const { result } = renderStoreHook(() => useGlossDispatch());
@@ -517,7 +528,9 @@ describe('performance marks', () => {
       result.current('tok-2', 'word', 'there');
     });
 
-    expect(perfMeasureFromFirst).toHaveBeenCalledTimes(1);
+    expect(
+      jest.mocked(perfMeasureFromFirst).mock.calls.filter(([name]) => name === 'dispatch-render'),
+    ).toHaveLength(1);
   });
 
   it('times a change that restores the seeded analysis', () => {
@@ -532,7 +545,9 @@ describe('performance marks', () => {
 
     act(() => feed.replace(seeded));
 
-    expect(perfMeasureFromFirst).toHaveBeenCalledTimes(2);
+    expect(
+      jest.mocked(perfMeasureFromFirst).mock.calls.filter(([name]) => name === 'dispatch-render'),
+    ).toHaveLength(2);
   });
 
   it('does not time the store’s first render as a change', () => {
@@ -883,6 +898,28 @@ describe('usePhraseDispatch', () => {
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.phraseAnalysisLinks[0].tokens).toHaveLength(1);
     expect(saved.phraseAnalysisLinks[0].tokens[0].tokenRef).toBe('tok-a');
+  });
+
+  it('splitPhrase splits the phrase in document order, as splitting at a boundary does', () => {
+    const onSave = jest.fn();
+    const { result } = renderStoreHook(() => usePhraseDispatch(), {
+      initialAnalysis: PHRASE_ANALYSIS,
+      onSave,
+    });
+
+    act(() =>
+      result.current.splitPhrase(
+        PHRASE_ANALYSIS.phraseAnalysisLinks[0],
+        'tok-a',
+        new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      ),
+    );
+
+    const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+    expect(saved.phraseAnalysisLinks).toHaveLength(0);
   });
 
   it('deletePhrase removes the phrase and calls onSave', () => {
@@ -2164,7 +2201,7 @@ describe('useAnalysisRowDispatch', () => {
       initialAnalysis: twoHomographs([approvedLink('ta-1', 'tok-1')]),
     });
 
-    let outcome: AnalysisEditOutcome | undefined;
+    let outcome: Settles<AnalysisEditOutcome> | undefined;
     act(() => {
       outcome = result.current.writeGloss('ta-1', 'origin');
     });
@@ -2180,7 +2217,7 @@ describe('useAnalysisRowDispatch', () => {
       ]),
     });
 
-    let outcome: AnalysisEditOutcome | undefined;
+    let outcome: Settles<AnalysisEditOutcome> | undefined;
     act(() => {
       outcome = result.current.writeGloss('ta-1', 'beginning');
     });
@@ -2199,7 +2236,7 @@ describe('useAnalysisRowDispatch', () => {
       initialAnalysis: twoHomographs([approvedLink('ta-2', 'tok-2')]),
     });
 
-    let outcome: AnalysisEditOutcome | undefined;
+    let outcome: Settles<AnalysisEditOutcome> | undefined;
     act(() => {
       outcome = result.current.writeGloss('ta-1', 'beginning');
     });
@@ -2222,7 +2259,7 @@ describe('useAnalysisRowDispatch', () => {
     });
 
     // ta-2 is the survivor the first write recorded, so this checks a stale one is not reported.
-    let outcome: AnalysisEditOutcome | undefined;
+    let outcome: Settles<AnalysisEditOutcome> | undefined;
     act(() => {
       outcome = result.current.writeGloss('ta-2', '');
     });
@@ -2249,12 +2286,12 @@ describe('useAnalysisRowDispatch', () => {
       },
     });
 
-    let outcome: AnalysisEditOutcome | undefined;
+    let outcome: Settles<AnalysisEditOutcome> | undefined;
     act(() => {
       outcome = result.current.writeMorphemes('ta-1', ['ἀρχ'], 'el');
     });
 
-    expect(outcome?.kind).toBe('merged');
+    expect(outcome).toMatchObject({ kind: 'merged' });
   });
 
   it('deletes several records in one save', () => {
@@ -2315,7 +2352,7 @@ describe('useAnalysisRowDispatch', () => {
       },
     });
 
-    let deletedIds: readonly string[] | undefined;
+    let deletedIds: Settles<readonly string[]> | undefined;
     act(() => {
       deletedIds = result.current.clearGlosses(['ta-1', 'ta-2']);
     });

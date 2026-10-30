@@ -17,9 +17,10 @@ export type CommandReply = {
   resegmentedBooks: string[];
   /** The books in which the changes put or removed a stale free translation that the view places. */
   staleTranslationBooks: string[];
-  /**
-   * For an undo or redo, the step that the edit was recorded as; absent when it was recorded with
-   * none.
-   */
+  /** Whether the session has an edit to undo, as of this reply. */
+  canUndo: boolean;
+  /** Whether the session has an undone edit to redo, as of this reply. */
+  canRedo: boolean;
+  /** The step that the edit was recorded as; absent when it was recorded with none. */
   step?: EditStep;
 } & PoolRead;

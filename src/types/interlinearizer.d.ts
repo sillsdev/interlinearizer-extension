@@ -211,41 +211,48 @@ declare module 'papi-shared-types' {
     /**
      * Copies the source project's stored draft, its analysis and custom segment boundaries, into an
      * existing interlinearizer project. Called from the WebView on Save and on Save As onto an
-     * existing project, once its pending autosave has been written, so no analysis crosses the
-     * bus.
+     * existing project. The copy reads the stored draft after the WebView's pending autosave, or
+     * after the session's earlier edits, so no analysis crosses the bus.
      *
      * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
      * @param interlinearProjectId - UUID of the interlinearizer project to save into.
      * @param config - The configuration to set on the project in the same write, so Save As onto an
      *   existing project makes its declared configuration match the glosses it now holds; omit to
      *   leave the configuration unchanged, as Save does.
+     * @param sessionId - The session editing the draft, if any. The copy then runs in the session's
+     *   turn, and the session's history marks the draft saved.
      * @returns The saved project's `InterlinearProjectSummary` (with its refreshed `updatedAt`) as
      *   a JSON string, or `undefined` if no project with the given ID exists. The WebView uses the
      *   refreshed `updatedAt` to keep the cached Modified time current after a Save.
-     * @throws If the project is a Paratext 9 import, which is read-only, or if the stored draft
-     *   cannot be read whole, or if storage fails. Error is logged and an error notification is
-     *   sent before rethrowing so callers do not need to send a second notification.
+     * @throws If `sessionId` names no open session, if the project is a Paratext 9 import, which is
+     *   read-only, or if the stored draft cannot be read whole, or if storage fails. Error is
+     *   logged and an error notification is sent before rethrowing so callers do not need to send a
+     *   second notification.
      */
     'interlinearizer.saveDraftToProject': (
       sourceProjectId: string,
       interlinearProjectId: string,
       config?: import('interlinearizer').ProjectConfig,
+      sessionId?: string,
     ) => Promise<string | undefined>;
 
     /**
      * Creates an interlinearizer project holding a copy of the source project's stored draft, its
-     * analysis and custom segment boundaries. Called from the WebView on Save As to a new project,
-     * once its pending autosave has been written.
+     * analysis and custom segment boundaries. Called from the WebView on Save As to a new project.
+     * The copy reads the stored draft after the WebView's pending autosave, or after the session's
+     * earlier edits.
      *
      * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
      * @param analysisLanguages - BCP 47 tags for the new project's analysis languages.
      * @param targetProjectId - Optional Platform.Bible project ID of the target text.
      * @param name - Optional user-facing name for the project.
      * @param description - Optional user-facing description for the project.
+     * @param sessionId - The session editing the draft, if any. The copy then runs in the session's
+     *   turn, and the session's history marks the draft saved when no book is left out.
      * @returns The created project's summary and the books it left out, as a JSON `SavedAsProject`.
-     * @throws If the stored draft itself cannot be read, or if storage fails. Error is logged and
-     *   an error notification is sent before rethrowing so callers do not need to send a second
-     *   notification.
+     * @throws If `sessionId` names no open session, if the stored draft itself cannot be read, or
+     *   if storage fails. Error is logged and an error notification is sent before rethrowing so
+     *   callers do not need to send a second notification.
      */
     'interlinearizer.saveDraftAsProject': (
       sourceProjectId: string,
@@ -253,6 +260,7 @@ declare module 'papi-shared-types' {
       targetProjectId?: string,
       name?: string,
       description?: string,
+      sessionId?: string,
     ) => Promise<string>;
 
     /**
@@ -372,6 +380,29 @@ declare module 'papi-shared-types' {
     ) => Promise<void>;
 
     /**
+     * Sets the project that a session's draft saves to: `interlinearProjectId`, or none when it is
+     * absent. What there is to undo is kept.
+     *
+     * @throws If the session is read-only or not open, the source has no such project, that project
+     *   is a Paratext 9 import, or reading the source's projects fails (logged before rethrowing).
+     */
+    'interlinearizer.setSaveTarget': (
+      args: import('interlinearizer').SessionCommandArgs & { interlinearProjectId?: string },
+    ) => Promise<void>;
+
+    /**
+     * Leaves a session's draft with no project to save to, now that its project is deleted. No
+     * state that the session's history holds counts as saved any more, and the draft is marked
+     * unsaved. The exception is an empty, saved draft, which stays saved.
+     *
+     * @throws If the session is read-only or not open, or reading the draft or marking it unsaved
+     *   fails (logged before rethrowing).
+     */
+    'interlinearizer.detachFromProject': (
+      args: import('interlinearizer').SessionCommandArgs,
+    ) => Promise<void>;
+
+    /**
      * Sets the language a session's glosses are read and written in.
      *
      * @throws If the session is not open (logged before rethrowing).
@@ -421,6 +452,18 @@ declare module 'papi-shared-types' {
      *   read (logged before rethrowing).
      */
     'interlinearizer.checkIndexes': (
+      args: import('interlinearizer').SessionCommandArgs,
+    ) => Promise<string>;
+
+    /**
+     * Reads a session's whole draft, its scope and analysis. A bridge until the WebView reads only
+     * pages.
+     *
+     * @returns A JSON string of the `DraftProject`.
+     * @throws If the session is not open, or its analysis cannot be loaded (logged before
+     *   rethrowing).
+     */
+    'interlinearizer.getFullAnalysis': (
       args: import('interlinearizer').SessionCommandArgs,
     ) => Promise<string>;
 
@@ -589,8 +632,8 @@ declare module 'papi-shared-types' {
      * Clears the glosses of several token analyses in a session's analysis language, as a blank
      * `interlinearizer.writeAnalysisGloss` clears one.
      *
-     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
-     *   they touched.
+     * @returns A JSON string of the `CommandReply`, with `emptiedAnalysisIds`: the token analyses
+     *   that the clear left empty, and so removed.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */

@@ -11,6 +11,9 @@ export const MAX_WEBSOCKET_PAYLOAD_BYTES = 100 * 1024 * 1024;
 /** Storage key that asks the WebView for timing entries. */
 export const PERF_MARKS_KEY = 'interlinearizer.perfMarks';
 
+/** Storage key that, once set, puts each view opened afterward on the host path. */
+export const HOST_PATH_KEY = 'interlinearizer.hostPath';
+
 export const VIEW_TAB = /^Interlinearizer: WEB/;
 
 export type Measure = { name: string; duration: number; end: number; detail: unknown };
@@ -249,6 +252,11 @@ async function readHost(page: Page): Promise<{ entries: HostEntry[]; pid: number
 /** Every duration the host recorded since the last call, which clears them. */
 export async function takeHostEntries(page: Page): Promise<HostEntry[]> {
   return (await readHost(page)).entries;
+}
+
+/** The extension host's process id. Clears the host's timing entries. */
+export async function hostPid(page: Page): Promise<number> {
+  return (await readHost(page)).pid;
 }
 
 /**

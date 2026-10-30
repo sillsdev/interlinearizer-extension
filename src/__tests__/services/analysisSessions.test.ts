@@ -30,6 +30,7 @@ import {
   makeTokenLink,
   makeVerseBook,
   memoryStorage,
+  seedRepository,
   silentLogger,
   tokenRefOf,
 } from '../test-helpers';
@@ -92,9 +93,9 @@ function makeSessions(projects: InterlinearProject[] = []) {
     ),
     reportChange: jest.fn<void, [SessionAnalysisChange]>(),
   } satisfies SessionHost;
-  const saveDraft = (draft: DraftProject) =>
-    new DraftRepository(storage, draft.sourceProjectId, logger).replaceAll(draft);
-  return { host, sessions: new AnalysisSessions(host), saveDraft, storage };
+  const seedDraft = (draft: DraftProject) =>
+    seedRepository(new DraftRepository(storage, draft.sourceProjectId, logger), draft);
+  return { host, sessions: new AnalysisSessions(host), seedDraft, storage };
 }
 
 /** A promise a test settles when it chooses. */
@@ -115,8 +116,8 @@ const flushPromises = () =>
 describe('AnalysisSessions', () => {
   describe('open', () => {
     it('opens an editable session on a draft', async () => {
-      const { host, sessions, saveDraft } = makeSessions();
-      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'] });
+      const { host, sessions, seedDraft } = makeSessions();
+      await seedDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'] });
 
       const opened = await sessions.open(SOURCE);
 
@@ -157,8 +158,8 @@ describe('AnalysisSessions', () => {
     });
 
     it('reports a free translation in the draft', async () => {
-      const { sessions, saveDraft } = makeSessions();
-      await saveDraft({ ...emptyDraft(SOURCE), analysis: FREE_TRANSLATED });
+      const { sessions, seedDraft } = makeSessions();
+      await seedDraft({ ...emptyDraft(SOURCE), analysis: FREE_TRANSLATED });
 
       await expect(sessions.open(SOURCE)).resolves.toMatchObject({ hasFreeTranslations: true });
     });
@@ -200,8 +201,8 @@ describe('AnalysisSessions', () => {
     });
 
     it('starts on the first analysis language its draft lists', async () => {
-      const { host, sessions, saveDraft } = makeSessions();
-      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['fr', 'en'] });
+      const { host, sessions, seedDraft } = makeSessions();
+      await seedDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['fr', 'en'] });
 
       const { sessionId } = await sessions.open(SOURCE);
 
@@ -249,9 +250,9 @@ describe('AnalysisSessions', () => {
     });
 
     it('reopens a source on what storage holds', async () => {
-      const { sessions, saveDraft } = makeSessions();
+      const { sessions, seedDraft } = makeSessions();
       await sessions.open(SOURCE);
-      await saveDraft({ ...emptyDraft(SOURCE), analysis: FREE_TRANSLATED });
+      await seedDraft({ ...emptyDraft(SOURCE), analysis: FREE_TRANSLATED });
 
       await expect(sessions.open(SOURCE)).resolves.toMatchObject({ hasFreeTranslations: true });
     });
@@ -610,8 +611,8 @@ describe('AnalysisSessions', () => {
     });
 
     it('leaves the analysis languages of a draft listing some', async () => {
-      const { sessions, storage, saveDraft } = makeSessions();
-      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['fr', 'en'] });
+      const { sessions, storage, seedDraft } = makeSessions();
+      await seedDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['fr', 'en'] });
       const { sessionId } = await sessions.open(SOURCE);
       await sessions.setAnalysisLanguage(sessionId, 'de');
 
@@ -634,6 +635,8 @@ describe('AnalysisSessions', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        canUndo: false,
+        canRedo: false,
       });
 
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
@@ -678,8 +681,8 @@ describe('AnalysisSessions', () => {
       ['an unsaved', true],
       ['a saved', false],
     ])('leaves %s draft as it was when the edit keeps the unsaved mark', async (_case, dirty) => {
-      const { sessions, storage, saveDraft } = makeSessions();
-      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty });
+      const { sessions, storage, seedDraft } = makeSessions();
+      await seedDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty });
       const { sessionId } = await sessions.open(SOURCE);
 
       await sessions.edit(
@@ -696,8 +699,8 @@ describe('AnalysisSessions', () => {
     });
 
     it('marks the draft saved when the edit clears the mark', async () => {
-      const { sessions, storage, saveDraft } = makeSessions();
-      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty: true });
+      const { sessions, storage, seedDraft } = makeSessions();
+      await seedDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty: true });
       const { sessionId } = await sessions.open(SOURCE);
 
       await sessions.edit(
@@ -714,8 +717,8 @@ describe('AnalysisSessions', () => {
     });
 
     it('marks the draft saved when an edit clearing the mark stages nothing', async () => {
-      const { sessions, storage, saveDraft } = makeSessions();
-      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty: true });
+      const { sessions, storage, seedDraft } = makeSessions();
+      await seedDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty: true });
       const { sessionId } = await sessions.open(SOURCE);
 
       await sessions.edit(sessionId, 'nothing', async () => {}, { unsavedMark: 'clear' });
@@ -725,8 +728,8 @@ describe('AnalysisSessions', () => {
     });
 
     it('reads an unsaved mark given as a function from the session in the edit turn', async () => {
-      const { sessions, storage, saveDraft } = makeSessions();
-      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty: true });
+      const { sessions, storage, seedDraft } = makeSessions();
+      await seedDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], dirty: true });
       const { sessionId } = await sessions.open(SOURCE);
       const readMark = jest.fn((): EditOptions['unsavedMark'] => 'clear');
 
@@ -939,6 +942,41 @@ describe('AnalysisSessions', () => {
       });
     });
 
+    it('replies to an edit with the step it was made as', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await expect(
+        sessions.edit(sessionId, 'link', async (buffer) => linking(buffer, 'GEN 1:1:0'), {
+          step: (changes) => ({ location: changes.tokenAnalysisLinks?.puts[0].token.tokenRef }),
+        }),
+      ).resolves.toMatchObject({ step: { location: 'GEN 1:1:0' } });
+    });
+
+    it('tells with each reply whether there is an edit to undo and one to redo', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const edited = await sessions.edit(sessionId, 'link', async (buffer) =>
+        linking(buffer, 'GEN 1:1:0'),
+      );
+      const undone = await sessions.undo(sessionId);
+      const redone = await sessions.redo(sessionId);
+
+      expect(edited).toMatchObject({ canUndo: true, canRedo: false });
+      expect(undone).toMatchObject({ canUndo: false, canRedo: true });
+      expect(redone).toMatchObject({ canUndo: true, canRedo: false });
+    });
+
+    it('replies to an edit made as no step with none', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await expect(
+        sessions.edit(sessionId, 'link', async (buffer) => linking(buffer, 'GEN 1:1:0')),
+      ).resolves.not.toHaveProperty('step');
+    });
+
     it('hands back no step with an undo of an edit made as none', async () => {
       const { sessions } = makeSessions();
       const { sessionId } = await sessions.open(SOURCE);
@@ -1044,12 +1082,12 @@ describe('AnalysisSessions', () => {
     });
 
     it('passes the boundaries the change leaves in the book it reads', async () => {
-      const { host, sessions, sessionId, saveDraft } = await sessionHolding();
+      const { host, sessions, sessionId, seedDraft } = await sessionHolding();
       const segmentation = {
         removedVerseStarts: [gamma],
         addedStarts: [],
       };
-      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], segmentation });
+      await seedDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'], segmentation });
       await sessions.close(sessionId);
       const reopened = await sessions.open(SOURCE);
 
@@ -1099,7 +1137,7 @@ describe('AnalysisSessions', () => {
       const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and beta' }]);
       const made = makeSessions();
       made.host.heldBook.mockReturnValue(after);
-      await made.saveDraft({
+      await made.seedDraft({
         ...emptyDraft(SOURCE),
         analysis: {
           ...emptyAnalysis(),
@@ -1137,7 +1175,7 @@ describe('AnalysisSessions', () => {
       async function sessionLinkingBeta() {
         const made = makeSessions();
         made.host.heldBook.mockReturnValue(after);
-        await made.saveDraft({
+        await made.seedDraft({
           ...emptyDraft(SOURCE),
           analysis: {
             ...emptyAnalysis(),
@@ -1316,7 +1354,7 @@ describe('AnalysisSessions', () => {
     /** A session over a draft glossing "beta" as `BEFORE` reads it. */
     async function sessionGlossingBeta() {
       const made = makeSessions();
-      await made.saveDraft({
+      await made.seedDraft({
         ...emptyDraft(SOURCE),
         analysis: {
           ...emptyAnalysis(),
@@ -1347,7 +1385,7 @@ describe('AnalysisSessions', () => {
     /** A session over a draft that links into no book, and splits Genesis 1:1 at "beta". */
     async function sessionSplittingBeta() {
       const made = makeSessions();
-      await made.saveDraft({
+      await made.seedDraft({
         ...emptyDraft(SOURCE),
         segmentation: {
           removedVerseStarts: [],
@@ -1462,8 +1500,8 @@ describe('AnalysisSessions', () => {
     });
 
     it('stales the links into a book whose code is outside the canon', async () => {
-      const { sessions, saveDraft, storage } = makeSessions();
-      await saveDraft({
+      const { sessions, seedDraft, storage } = makeSessions();
+      await seedDraft({
         ...emptyDraft(SOURCE),
         analysis: {
           ...emptyAnalysis(),
@@ -1495,8 +1533,8 @@ describe('AnalysisSessions', () => {
     });
 
     it('does nothing for a source with no session open', async () => {
-      const { sessions, saveDraft, storage } = makeSessions();
-      await saveDraft({
+      const { sessions, seedDraft, storage } = makeSessions();
+      await seedDraft({
         ...emptyDraft(SOURCE),
         analysis: { ...emptyAnalysis(), tokenAnalysisLinks: [betaLink(BEFORE, 'ta-1')] },
       });
@@ -1589,5 +1627,108 @@ describe('AnalysisSessions', () => {
         'no session not-a-session is open',
       );
     });
+  });
+});
+
+describe('AnalysisSessions save targets', () => {
+  const payload = (id: string) => ({ id, ...FIXTURE_STAMPS, surfaceText: id });
+  const adding = (id: string) => async (buffer: ChangeBuffer) => {
+    buffer.create('tokenAnalyses', payload(id));
+  };
+  const storedDraft = async (storage: ReturnType<typeof makeSessions>['storage']) =>
+    (await new DraftRepository(storage, SOURCE, silentLogger()).exportAll()).draft;
+  const scopeOf = (sessions: AnalysisSessions, sessionId: string) =>
+    sessions.run(sessionId, async ({ scope }) => scope);
+
+  it('saves the draft to another project from now on, keeping what there is to undo', async () => {
+    const { sessions } = makeSessions([makeStubProject('proj-1'), makeStubProject('proj-2')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+    await sessions.edit(sessionId, 'add', adding('a'));
+
+    await sessions.setSaveTarget(sessionId, 'proj-2');
+
+    await expect(scopeOf(sessions, sessionId)).resolves.toStrictEqual({
+      kind: 'draft',
+      sourceProjectId: SOURCE,
+      interlinearProjectId: 'proj-2',
+    });
+    await expect(sessions.undo(sessionId)).resolves.toMatchObject({ changes: { intent: 'add' } });
+  });
+
+  it('saves the draft to no project once its target is cleared', async () => {
+    const { sessions } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+
+    await sessions.setSaveTarget(sessionId, undefined);
+
+    await expect(scopeOf(sessions, sessionId)).resolves.toStrictEqual({
+      kind: 'draft',
+      sourceProjectId: SOURCE,
+    });
+  });
+
+  it('refuses a target the source has no project for, keeping the one it had', async () => {
+    const { sessions } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+
+    await expect(sessions.setSaveTarget(sessionId, 'gone')).rejects.toThrow(
+      'has no interlinear project gone',
+    );
+    await expect(scopeOf(sessions, sessionId)).resolves.toMatchObject({
+      interlinearProjectId: 'proj-1',
+    });
+  });
+
+  it('refuses a Paratext 9 import as the target of a draft', async () => {
+    const { sessions } = makeSessions([makeImport()]);
+    const { sessionId } = await sessions.open(SOURCE);
+
+    await expect(sessions.setSaveTarget(sessionId, 'import-id')).rejects.toThrow(
+      'cannot save a draft to the Paratext 9 import import-id',
+    );
+  });
+
+  it('refuses to retarget a session on a Paratext 9 import', async () => {
+    const { sessions } = makeSessions([makeImport(), makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'import-id');
+
+    await expect(sessions.setSaveTarget(sessionId, 'proj-1')).rejects.toThrow(
+      ReadOnlyAnalysisError,
+    );
+  });
+
+  it('marks a draft holding analysis unsaved once its project is deleted', async () => {
+    const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+    await sessions.edit(sessionId, 'add', adding('a'), { unsavedMark: 'clear' });
+
+    await sessions.detachFromProject(sessionId);
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: true });
+    await expect(scopeOf(sessions, sessionId)).resolves.toStrictEqual({
+      kind: 'draft',
+      sourceProjectId: SOURCE,
+    });
+  });
+
+  it('counts no content the history holds as saved once its project is deleted', async () => {
+    const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+    await sessions.edit(sessionId, 'add', adding('a'), { unsavedMark: 'clear' });
+    await sessions.edit(sessionId, 'add b', adding('b'));
+
+    await sessions.detachFromProject(sessionId);
+    await sessions.undo(sessionId);
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: true });
+  });
+
+  it('leaves an empty, saved draft saved once its project is deleted', async () => {
+    const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+
+    await sessions.detachFromProject(sessionId);
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: false });
   });
 });

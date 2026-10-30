@@ -18,7 +18,6 @@ import {
 } from '../components/PhraseStripContext';
 import type { PhraseMode } from '../types/phrase-mode';
 import { resolvedOrEmpty } from '../utils/localized-strings';
-import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { phraseSurfaceForm, type PhraseTextIndexes } from '../utils/phrase-text';
 import { formatTemplate } from '../utils/format-template';
 
@@ -40,29 +39,23 @@ export function useEditPhraseTokens(phraseMode: PhraseMode): TokenSnapshot[] | u
 }
 
 /**
- * Returns a stable handler that splits a phrase arc at a token boundary and dispatches the
- * resulting create, update, and delete operations. Reads the by-id phrase map internally, so
- * callers supply only the document order used to keep the split fragments ordered. Splitting a
- * phrase that is not in the map is a no-op.
+ * Returns a stable handler that splits a phrase arc at a token boundary, given the document order
+ * that a WebView-path split keeps its fragments in. Splitting a phrase that is not held is a
+ * no-op.
  */
 export function useArcSplitHandler(
   tokenDocOrder: ReadonlyMap<string, number>,
 ): (phraseId: string, splitAfterTokenRef: string) => void {
   const phraseLinkById = usePhraseLinkByIdMap();
-  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
+  const { splitPhrase } = usePhraseDispatch();
 
   return useCallback(
     (phraseId: string, splitAfterTokenRef: string) => {
       const phraseLink = phraseLinkById.get(phraseId);
       if (!phraseLink) return;
-      splitPhraseAtBoundary(
-        phraseLink,
-        splitAfterTokenRef,
-        { createPhrase, updatePhrase, deletePhrase },
-        tokenDocOrder,
-      );
+      splitPhrase(phraseLink, splitAfterTokenRef, tokenDocOrder);
     },
-    [phraseLinkById, tokenDocOrder, createPhrase, updatePhrase, deletePhrase],
+    [phraseLinkById, tokenDocOrder, splitPhrase],
   );
 }
 

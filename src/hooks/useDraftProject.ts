@@ -160,16 +160,20 @@ export type UseDraftProjectResult = {
   /**
    * Saves the draft to a project: once the draft's writes have settled, passes the draft as it then
    * stands to `copy`, which copies the stored draft into a project and resolves whether the copy
-   * landed. When it landed whole, the draft is marked synced unless an edit landed meanwhile; a
-   * partial copy leaves it unsaved. Resolves whether the copy landed, or `false` without copying
+   * landed. On the host path, the call to `copy` also passes the id of the session that keeps the
+   * draft. When the copy landed whole, the draft is marked synced unless an edit landed meanwhile;
+   * a partial copy leaves it unsaved. Resolves whether the copy landed, or `false` without copying
    * when no draft has loaded, when another save is in flight, or when the draft was replaced while
    * its writes settled.
    *
    * @throws If a draft write fails, so the stored draft lags the one in memory; the draft stays
    *   dirty and nothing is copied.
    * @throws Whatever `copy` throws; the draft stays dirty.
+   * @throws On the host path, if the draft cannot be read again once the copy lands.
    */
-  commitDraft: (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>) => Promise<boolean>;
+  commitDraft: (
+    copy: (snapshot: DraftProject, sessionId?: string) => Promise<DraftCopyResult>,
+  ) => Promise<boolean>;
   /**
    * Persists an edited analysis into the draft and marks it dirty, recording `location` — the token
    * ref or segment id the edit was made at, if one place — for its undo step. Wire as the editor's

@@ -17,6 +17,7 @@ import {
   makeTokenLink,
   makeVerseBook,
   memoryStorage,
+  seedRepository,
   silentLogger,
   tokenRefOf,
 } from '../test-helpers';
@@ -51,7 +52,7 @@ export async function sessionOver(
   const onChange = (listener: (change: ReportedChange) => void) => {
     listeners.add(listener);
   };
-  await new DraftRepository(storage, 'src', silentLogger()).replaceAll({
+  await seedRepository(new DraftRepository(storage, 'src', silentLogger()), {
     ...emptyDraft('src'),
     analysisLanguages: ['en'],
     analysis: { ...emptyAnalysis(), ...analysis },
@@ -81,7 +82,7 @@ export async function sessionOver(
     command: (buffer: ChangeBuffer, session: Session) => Promise<void | EditOutcome>,
     changeId?: ChangeId,
   ) => sessions.edit(sessionId, intent, command, { changeId });
-  return { sessions, sessionId, fetchPage, fetchOutline, outline, edit, onChange };
+  return { sessions, sessionId, fetchPage, fetchOutline, outline, edit, onChange, storage };
 }
 
 /** A page's analysis with each list in id order, so two pages compare without regard to order. */

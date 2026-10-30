@@ -228,6 +228,13 @@ export interface AnalysisRepository {
   apply(changes: ChangeSet, options?: ApplyOptions): Promise<ApplyResult>;
 
   /**
+   * The whole draft, read from the records that the lookups answer from, not loaded afresh.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  getWholeDraft(): Promise<DraftProject>;
+
+  /**
    * The draft's own record, as {@link AnalysisRepository.exportAll} would load it.
    *
    * @throws Whatever {@link AnalysisRepository.exportAll} throws.

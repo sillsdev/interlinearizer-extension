@@ -13,7 +13,7 @@ import {
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, memoryStorage, silentLogger } from '../../test-helpers';
+import { FIXTURE_STAMPS, memoryStorage, seedRepository, silentLogger } from '../../test-helpers';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 
@@ -33,7 +33,7 @@ const glossed: Partial<TextAnalysis> = {
 async function bufferOver(analysis: Partial<TextAnalysis>): Promise<ChangeBuffer> {
   const { storage } = memoryStorage();
   const repository = new DraftRepository(storage, 'src', silentLogger());
-  await repository.replaceAll({
+  await seedRepository(repository, {
     ...emptyDraft('src'),
     analysis: { ...emptyAnalysis(), ...analysis },
   });
@@ -168,5 +168,26 @@ describe('deleteAnalyses', () => {
       intent: 'deleteAnalyses',
       tokenAnalysisLinks: { puts: [], deletes: ['tl-in'] },
     });
+  });
+});
+
+describe('clearAnalysisGlosses', () => {
+  it('names the analyses it left empty, and not those it merged or never found', async () => {
+    const buffer = await bufferOver({
+      tokenAnalyses: [
+        { id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'at' } },
+        { id: 'ta-in-2', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'in', fr: 'dans' } },
+        { id: 'ta-in-3', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { fr: 'dans' } },
+      ],
+      tokenAnalysisLinks: [LINK],
+    });
+
+    await expect(
+      clearAnalysisGlosses(buffer, {
+        analysisIds: ['ta-in', 'ta-in-2', 'ta-missing'],
+        analysisLanguage: 'en',
+        now: NOW,
+      }),
+    ).resolves.toStrictEqual(['ta-in']);
   });
 });

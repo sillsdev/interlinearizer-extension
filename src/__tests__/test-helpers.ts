@@ -3,6 +3,7 @@ import type { ExecutionActivationContext, UseWebViewScrollGroupScrRefHook } from
 import type {
   AssignmentStatus,
   Book,
+  DraftProject,
   InterlinearProject,
   PhraseAnalysisLink,
   Segment,
@@ -17,13 +18,20 @@ import {
   TOKEN_CHIP_LABEL_KEYS,
   type PhraseStripContextValue,
 } from '../components/PhraseStripContext';
+import type { PhraseDispatch } from '../components/AnalysisStore';
 import type { SegmentPages } from '../hooks/useSegmentPages';
+import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { summarizeProject } from '../services/projectSummaries';
-import type { KeyValueStorage, WarningLogger } from '../types/analysis-repository';
+import type {
+  AnalysisRepository,
+  KeyValueStorage,
+  WarningLogger,
+} from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import type { OutlineSegment } from '../types/segment-pages';
+import { scopeRecordOf } from '../utils/change-set';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
 const mockExecutionToken: {
@@ -624,7 +632,45 @@ export function memoryStorage(initial: Record<string, string> = {}) {
   return { storage, records, writes };
 }
 
+/** Stores `draft` through `repository`, which must hold no draft yet, unsaved mark included. */
+export async function seedRepository(
+  repository: AnalysisRepository,
+  draft: DraftProject,
+): Promise<void> {
+  const { analysis } = draft;
+  await repository.apply({
+    intent: 'seed',
+    scope: scopeRecordOf(draft),
+    segmentAnalyses: { puts: analysis.segmentAnalyses, deletes: [] },
+    segmentAnalysisLinks: { puts: analysis.segmentAnalysisLinks, deletes: [] },
+    tokenAnalyses: { puts: analysis.tokenAnalyses, deletes: [] },
+    tokenAnalysisLinks: { puts: analysis.tokenAnalysisLinks, deletes: [] },
+    phraseAnalyses: { puts: analysis.phraseAnalyses, deletes: [] },
+    phraseAnalysisLinks: { puts: analysis.phraseAnalysisLinks, deletes: [] },
+  });
+  if (!draft.dirty) await repository.markClean();
+}
+
 /** A logger whose warnings a test can inspect instead of printing. */
 export function silentLogger(): WarningLogger & { warn: jest.Mock } {
   return { warn: jest.fn() };
+}
+
+/**
+ * Completes `dispatch` into a {@link PhraseDispatch} whose `splitPhrase` splits through `dispatch`'s
+ * create, update and delete. Its `mergePhrases` is a fresh mock unless `dispatch` has one.
+ */
+export function withSplitPhrase(
+  dispatch: Pick<
+    jest.MockedObject<PhraseDispatch>,
+    'createPhrase' | 'updatePhrase' | 'deletePhrase'
+  > &
+    Partial<Pick<jest.MockedObject<PhraseDispatch>, 'mergePhrases'>>,
+): jest.MockedObject<PhraseDispatch> {
+  const splitPhrase = jest.fn();
+  splitPhrase.mockImplementation(
+    (link: PhraseAnalysisLink, splitAfterTokenRef: string, order: ReadonlyMap<string, number>) =>
+      splitPhraseAtBoundary(link, splitAfterTokenRef, dispatch, order),
+  );
+  return { mergePhrases: jest.fn(), ...dispatch, splitPhrase };
 }

@@ -38,6 +38,7 @@ import {
   FIXTURE_STAMPS,
   makePhraseLink,
   makeStubProject,
+  seedRepository,
   storedSummaries,
 } from '../test-helpers';
 
@@ -2990,7 +2991,7 @@ describe('projectStorage', () => {
     it('loads the draft for copying and marks it clean', async () => {
       const repository = openDraftRepository(token, 'src-proj');
       const saved = { ...makeDraftSpanningBooks('src-proj', 'GEN'), dirty: true };
-      await repository.replaceAll(saved);
+      await seedRepository(repository, saved);
 
       await expect(repository.exportForCopy()).resolves.toEqual({
         draft: saved,
@@ -3063,6 +3064,11 @@ describe('projectStorage', () => {
         1,
       ],
       ['checkIndexes', (r: AnalysisRepository) => r.checkIndexes(), 0],
+      [
+        'getWholeDraft',
+        (r: AnalysisRepository) => r.getWholeDraft().then(({ analysis }) => analysis.tokenAnalyses),
+        1,
+      ],
       [
         'getScope',
         (r: AnalysisRepository) => r.getScope().then(({ analysisLanguages }) => analysisLanguages),

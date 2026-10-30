@@ -245,6 +245,9 @@
       "%interlinearizer_viewOptions_label%": "View options",
       "%interlinearizer_analysisLanguage_label%": "Analysis language",
       "%interlinearizer_loading%": "Loading…",
+      "%interlinearizer_duplicateTab_title%": "This project is open in another tab",
+      "%interlinearizer_duplicateTab_description%": "A project can be open in one Interlinearizer tab at a time. Close this tab, or go to the one that has the project open.",
+      "%interlinearizer_duplicateTab_goToTab%": "Go to the open tab",
 
       "%interlinearizer_modal_create_title%": "Create Interlinear Project",
       "%interlinearizer_modal_create_name_label%": "Name",

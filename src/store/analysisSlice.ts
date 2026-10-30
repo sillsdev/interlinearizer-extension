@@ -41,6 +41,7 @@ import {
   deriveTokenSuggestion,
   withoutAnalyses,
   withPendingAnalyses,
+  type PoolIndex,
   type ResolvedTokenAnalysis,
   type TokenSuggestion,
 } from '../utils/suggestion-engine';
@@ -2198,17 +2199,19 @@ function offerForToken(
  * therefore NOT rely on the default `Object.is` equality: subscribe through a per-token memoized
  * selector or pass a shallow/custom `equalityFn` (or `useMemo` the result), or every store change
  * will re-render the token and trip react-redux's "selector returned a different result" warning.
+ *
+ * @param state - The analysis state that holds the token's decisions.
+ * @param tokenRef - The token to resolve.
+ * @param surfaceText - The token's surface form, matched against `pool`.
+ * @param pool - The pool to match against; defaults to the one built from `state`.
  */
 export function selectResolvedTokenAnalysis(
   state: AnalysisState,
   tokenRef: string,
   surfaceText: string,
+  pool: PoolIndex = selectPoolIndex(state),
 ): ResolvedTokenAnalysis | undefined {
-  const offered = offerForToken(
-    state,
-    tokenRef,
-    deriveTokenSuggestion(selectPoolIndex(state), surfaceText),
-  );
+  const offered = offerForToken(state, tokenRef, deriveTokenSuggestion(pool, surfaceText));
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
   if (approvedId !== undefined) {
     const analysis = selectAnalysisById(state).get(approvedId);
@@ -2228,18 +2231,24 @@ export function selectResolvedTokenAnalysis(
  * persisted non-approved analyses rank ahead and those it rejected are left out, as once the
  * deletion commits. Returns `undefined` when the token has no approval (callers only consult this
  * for an approved token) or when nothing is left to offer once that approval is discounted.
+ *
+ * @param state - The analysis state that holds the token's decisions.
+ * @param tokenRef - The approved token whose gloss is being cleared.
+ * @param surfaceText - The token's surface form, matched against `pool`.
+ * @param pool - The pool to match against; defaults to the one built from `state`.
  */
 export function selectSuggestionAfterClearing(
   state: AnalysisState,
   tokenRef: string,
   surfaceText: string,
+  pool: PoolIndex = selectPoolIndex(state),
 ): ResolvedTokenAnalysis | undefined {
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
   if (approvedId === undefined) return undefined;
   const suggestion = offerForToken(
     state,
     tokenRef,
-    deriveTokenSuggestion(selectPoolIndex(state), surfaceText, approvedId),
+    deriveTokenSuggestion(pool, surfaceText, approvedId),
   );
   return suggestion ? { status: 'suggested', ...suggestion } : undefined;
 }

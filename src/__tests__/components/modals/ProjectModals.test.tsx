@@ -296,7 +296,9 @@ type ModalsOverrides = Partial<{
   hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
   detachFromProject: jest.Mock;
-  commitDraft: (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>) => Promise<boolean>;
+  commitDraft: (
+    copy: (snapshot: DraftProject, sessionId?: string) => Promise<DraftCopyResult>,
+  ) => Promise<boolean>;
   loadFromProject: jest.Mock;
   newDraft: jest.Mock;
   modal: ModalState;
@@ -343,16 +345,18 @@ function savedAs(project: InterlinearProjectSummary, omittedBooks: string[] = []
 }
 
 /**
- * A `commitDraft` that runs the copy on `snapshot` at once and records what each copy resolved, so
- * a test can tell a save the draft would count as landed from one it would not.
+ * A `commitDraft` that runs the copy on {@link MOCK_DRAFT}, under `sessionId` when given. It records
+ * what each copy resolved, so a test can tell whether the draft would count each save as landed.
  */
-function recordingCommitDraft(snapshot: DraftProject = MOCK_DRAFT) {
+function recordingCommitDraft(sessionId?: string) {
   const outcomes: DraftCopyResult[] = [];
-  const commitDraft = jest.fn(async (copy: (s: DraftProject) => Promise<DraftCopyResult>) => {
-    const copied = await copy(snapshot);
-    outcomes.push(copied);
-    return copied !== false;
-  });
+  const commitDraft = jest.fn(
+    async (copy: (s: DraftProject, session?: string) => Promise<DraftCopyResult>) => {
+      const copied = await copy(MOCK_DRAFT, sessionId);
+      outcomes.push(copied);
+      return copied !== false;
+    },
+  );
   return { commitDraft, outcomes };
 }
 
@@ -878,6 +882,26 @@ describe('ProjectModals', () => {
       expect(outcomes).toEqual([true]);
     });
 
+    it('saves as a new project through the session that keeps the draft', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(savedAs(MOCK_PROJECT));
+      const { commitDraft } = recordingCommitDraft('session-1');
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft })} />);
+
+      await userEvent.click(screen.getByTestId('saveas-new'));
+
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.saveDraftAsProject',
+          'source-proj',
+          ['en'],
+          undefined,
+          'NewName',
+          'NewDesc',
+          'session-1',
+        ),
+      );
+    });
+
     it('reports a copy that left books out as partial, and closes', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(savedAs(MOCK_PROJECT, ['JHN']));
       const { commitDraft, outcomes } = recordingCommitDraft();
@@ -994,6 +1018,24 @@ describe('ProjectModals', () => {
         { analysisLanguages: ['en'], targetProjectId: undefined },
       );
       expect(outcomes).toEqual([true]);
+    });
+
+    it('overwrites a project through the session that keeps the draft', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+      const { commitDraft } = recordingCommitDraft('session-1');
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft })} />);
+
+      await userEvent.click(screen.getByTestId('saveas-overwrite'));
+
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.saveDraftToProject',
+          'source-proj',
+          'proj-1',
+          { analysisLanguages: ['en'], targetProjectId: undefined },
+          'session-1',
+        ),
+      );
     });
 
     it('sends no overwrite until the draft lets the save run', async () => {

@@ -48,8 +48,9 @@ type PendingReplace =
  * @param props.detachFromProject - Records that the active project, the draft's Save target, was
  *   deleted.
  * @param props.commitDraft - Runs a Save As through the draft: once the stored draft is current,
- *   runs the given copy with the draft snapshot and marks the draft synced when the copy reports it
- *   landed whole. Resolves whether the copy landed, or `false` when no save could run.
+ *   runs the given copy with the draft snapshot and, on the host path, the session's id. Marks the
+ *   draft synced when the copy reports it landed whole. Resolves whether the copy landed, or
+ *   `false` when no save could run.
  * @param props.loadFromProject - Loads a project's analysis + config into the draft (the "Open"
  *   flow).
  * @param props.newDraft - Seeds the in-memory draft with empty analysis and the given config;
@@ -93,7 +94,9 @@ export default function ProjectModals({
   hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
   detachFromProject: () => void;
-  commitDraft: (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>) => Promise<boolean>;
+  commitDraft: (
+    copy: (snapshot: DraftProject, sessionId?: string) => Promise<DraftCopyResult>,
+  ) => Promise<boolean>;
   loadFromProject: (project: OpenableProject) => void;
   newDraft: (config: NewDraftConfig) => void;
   modal: ModalState;
@@ -402,15 +405,27 @@ export default function ProjectModals({
   const handleSaveAsNew = useCallback(
     async (name: string, description?: string) => {
       try {
-        const saved = await commitDraft(async (snapshot) => {
-          const createdJson = await papi.commands.sendCommand(
-            'interlinearizer.saveDraftAsProject',
-            projectId,
-            snapshot.analysisLanguages,
-            snapshot.targetProjectId,
-            name,
-            description,
-          );
+        const saved = await commitDraft(async (snapshot, sessionId) => {
+          const { analysisLanguages, targetProjectId } = snapshot;
+          const createdJson =
+            sessionId === undefined
+              ? await papi.commands.sendCommand(
+                  'interlinearizer.saveDraftAsProject',
+                  projectId,
+                  analysisLanguages,
+                  targetProjectId,
+                  name,
+                  description,
+                )
+              : await papi.commands.sendCommand(
+                  'interlinearizer.saveDraftAsProject',
+                  projectId,
+                  analysisLanguages,
+                  targetProjectId,
+                  name,
+                  description,
+                  sessionId,
+                );
           const created: unknown = JSON.parse(createdJson);
           if (!isSavedAsProject(created)) {
             await papi.notifications
@@ -441,16 +456,26 @@ export default function ProjectModals({
   const handleOverwrite = useCallback(
     async (project: InterlinearProjectSummary) => {
       try {
-        const saved = await commitDraft(async (snapshot) => {
-          const savedJson = await papi.commands.sendCommand(
-            'interlinearizer.saveDraftToProject',
-            projectId,
-            project.id,
-            {
-              analysisLanguages: snapshot.analysisLanguages,
-              targetProjectId: snapshot.targetProjectId,
-            },
-          );
+        const saved = await commitDraft(async (snapshot, sessionId) => {
+          const config = {
+            analysisLanguages: snapshot.analysisLanguages,
+            targetProjectId: snapshot.targetProjectId,
+          };
+          const savedJson =
+            sessionId === undefined
+              ? await papi.commands.sendCommand(
+                  'interlinearizer.saveDraftToProject',
+                  projectId,
+                  project.id,
+                  config,
+                )
+              : await papi.commands.sendCommand(
+                  'interlinearizer.saveDraftToProject',
+                  projectId,
+                  project.id,
+                  config,
+                  sessionId,
+                );
           // `undefined` means the project no longer exists, so nothing was persisted.
           if (!savedJson) {
             await papi.notifications

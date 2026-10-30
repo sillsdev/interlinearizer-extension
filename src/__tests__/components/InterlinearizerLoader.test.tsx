@@ -290,8 +290,8 @@ let probeStore: unknown;
 /** The analysis the store the probe is mounted in holds. */
 let probeAnalysis: TextAnalysis | undefined;
 
-/** Creates a phrase through the store the probe is mounted in, returning its id. */
-let probeCreatePhrase: ((tokens: TokenSnapshot[]) => string) | undefined;
+/** Creates a phrase through the store that the probe is mounted in. */
+let probeCreatePhrase: ((tokens: TokenSnapshot[]) => void) | undefined;
 
 /** The token a pending focus request names in GEN, read by the probe. */
 let probeFocusRequest: string | undefined;
@@ -5820,10 +5820,8 @@ describe('undo and redo', () => {
 
     it('stops editing a phrase an undo removes', async () => {
       await act(async () => renderLoader());
-      let phraseId = '';
-      act(() => {
-        phraseId = probeCreatePhrase?.(ALPHA_BETA) ?? '';
-      });
+      act(() => probeCreatePhrase?.(ALPHA_BETA));
+      const phraseId = probeAnalysis?.phraseAnalysisLinks[0]?.id ?? '';
       editPhrase(phraseId);
 
       act(() => {
@@ -5835,10 +5833,8 @@ describe('undo and redo', () => {
 
     it('keeps editing a phrase the undo leaves in place', async () => {
       await act(async () => renderLoader());
-      let phraseId = '';
-      act(() => {
-        phraseId = probeCreatePhrase?.(ALPHA_BETA) ?? '';
-      });
+      act(() => probeCreatePhrase?.(ALPHA_BETA));
+      const phraseId = probeAnalysis?.phraseAnalysisLinks[0]?.id ?? '';
       act(() => probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha'));
       editPhrase(phraseId);
 

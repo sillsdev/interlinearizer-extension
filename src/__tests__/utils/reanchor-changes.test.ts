@@ -3,7 +3,7 @@
 import type { Book, DraftProject, SegmentationDelta, TextAnalysis } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { REANCHOR_INTENT, reanchorChangesForBook } from '../../utils/reanchor-changes';
-import { missingBook } from '../../utils/reanchor-draft';
+import { missingBook } from '../../utils/reanchor-analysis';
 import { FIXTURE_STAMPS, makeTokenLink, makeVerseBook, tokenRefOf } from '../test-helpers';
 
 /** A book of Genesis 1, one verse per text. */

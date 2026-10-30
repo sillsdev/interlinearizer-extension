@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import type { DraftProject } from 'interlinearizer';
-import type { DraftContent } from '../hooks/useDraftProject';
+import type { DraftContent } from '../types/draft-content';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { splitAnalysisByBook } from '../utils/analysis-book';
 import { applyChangeSet } from '../utils/change-set';

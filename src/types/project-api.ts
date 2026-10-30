@@ -3,12 +3,12 @@ import type { PageClient } from '../cache/pageClient';
 import type { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type {
-  DraftContent,
   NewDraftConfig,
   OpenableProject,
   UseDraftProjectResult,
 } from '../hooks/useDraftProject';
 import type { UseSegmentPagesResult } from '../hooks/useSegmentPages';
+import type { DraftContent } from './draft-content';
 import type { EditStep } from './edit-step';
 import type { Settles } from '../utils/settles';
 

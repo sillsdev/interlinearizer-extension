@@ -1,10 +1,10 @@
 /// <reference types="jest" />
 
+import { MAX_UNDO_STEPS } from '../../services/editHistory';
 import {
   canRedo,
   canUndo,
   emptyHistory,
-  MAX_UNDO_STEPS,
   recordBookPass,
   recordStep,
   redo,

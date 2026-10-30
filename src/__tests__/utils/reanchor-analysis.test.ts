@@ -7,7 +7,7 @@ import type {
   TokenAnalysisLink,
   TokenSnapshot,
 } from 'interlinearizer';
-import type { DraftContent } from '../../hooks/useDraftProject';
+import type { DraftContent } from '../../types/draft-content';
 import { reanchorAnalysisToBook } from '../../utils/reanchor-analysis';
 import type { BookPass } from '../../utils/undo-history';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';

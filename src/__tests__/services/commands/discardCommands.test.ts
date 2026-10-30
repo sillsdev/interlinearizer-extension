@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import type { SegmentationDelta, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
-import type { DraftContent } from '../../../hooks/useDraftProject';
+import type { DraftContent } from '../../../types/draft-content';
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { discardAll, discardBook } from '../../../services/commands/discardCommands';
 import { DraftRepository } from '../../../services/draftRepository';

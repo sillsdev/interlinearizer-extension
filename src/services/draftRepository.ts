@@ -5,6 +5,7 @@ import type {
   ApplyResult,
   ChangeSet,
   DraftExport,
+  IndexDifference,
   KeyValueStorage,
   ReplaceAllOptions,
   RepositoryCapabilities,
@@ -61,6 +62,15 @@ interface ShardJournal {
   unsettled?: string[];
 }
 
+/** A shard journal as read. */
+type JournalRead = ShardJournal & {
+  /**
+   * Set when storage held a journal this build could not use. The books that journal named as
+   * `unsettled` are then unknown.
+   */
+  damaged?: true;
+};
+
 /** A journal naming no shards, which is what a cleared or unusable one recovers as. */
 function emptyShardJournal(): ShardJournal {
   return { adding: [], removing: [] };
@@ -76,6 +86,40 @@ function isShardJournal(value: unknown): value is ShardJournal {
     isStringArray(value.removing) &&
     (!('unsettled' in value) || isStringArray(value.unsettled))
   );
+}
+
+/** The record kinds a shard holds, as {@link TextAnalysis} names its lists. */
+const RECORD_KINDS = [
+  'tokenAnalyses',
+  'tokenAnalysisLinks',
+  'phraseAnalyses',
+  'phraseAnalysisLinks',
+  'segmentAnalyses',
+  'segmentAnalysisLinks',
+] as const satisfies readonly (keyof TextAnalysis)[];
+
+function serializedById(records: readonly { id: string }[]): Map<string, string> {
+  return new Map(records.map((record) => [record.id, JSON.stringify(record)]));
+}
+
+/**
+ * Where a book's stored shard differs from the part of the draft it should hold, with one
+ * difference for each record kind that differs. Records are matched by id, so their order does not
+ * count.
+ */
+function shardDifferencesOf(
+  bookCode: string,
+  expected: TextAnalysis,
+  stored: TextAnalysis,
+): IndexDifference[] {
+  return RECORD_KINDS.flatMap((kind): IndexDifference[] => {
+    const wanted = serializedById(expected[kind]);
+    const held = serializedById(stored[kind]);
+    const missing = [...wanted].filter(([id, json]) => held.get(id) !== json).map(([id]) => id);
+    const extra = [...held].filter(([id, json]) => wanted.get(id) !== json).map(([id]) => id);
+    if (missing.length === 0 && extra.length === 0) return [];
+    return [{ index: `${kind} in shard`, key: bookCode, missing, extra }];
+  });
 }
 
 /** A draft as stored: its `analysis` always empty, with the analysis itself held in shards. */
@@ -293,7 +337,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * After a failed apply, the next apply to succeed also brings back in step any book the failure
    * left out of step with the draft. In the same instance, the next apply restores the book as it
    * was. After a reload or restart, the reloaded draft keeps the first copy of each payload in
-   * manifest order, so a book may take the failed edit instead.
+   * manifest order, so a book may take the failed edit instead. The next apply brings such a book
+   * back in step even when the shard journal won't parse or is malformed. If the journal is lost,
+   * {@link checkIndexes} still reports such a book.
    *
    * What an apply stores matches a whole save of the same draft in content, not order. The manifest
    * may list the books in another order, and a link that a put moves into a book comes last in that
@@ -336,6 +382,23 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
+   * Reports where the kept index differs from one built afresh from the records, for debugging.
+   * Also reports where a stored shard differs from its book's part of the kept draft. Reports
+   * nothing while no index is kept.
+   *
+   * Even after the shard journal is lost, the shard check finds a book that a failed apply left out
+   * of step. Shards are compared by content, not order. A draft stored inline is skipped.
+   *
+   * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
+   * @throws If storage rejects a read.
+   */
+  override async checkIndexes(): Promise<IndexDifference[]> {
+    const kept = this.current;
+    if (!kept) return [];
+    return [...(await super.checkIndexes()), ...(await this.shardDifferences(kept.draft))];
+  }
+
+  /**
    * The draft this instance keeps and the index over its records. When none is kept, the draft is
    * what the latest {@link exportAll} loaded. If that call never ran or failed, or a whole save came
    * after it, the draft is read afresh from storage.
@@ -370,7 +433,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * Saves `draft` over a stored draft whose manifest names `storedBooks`, as {@link replaceAll}
    * describes, taking each book's analysis from the `index` kept over it. Compares only the
    * partitions in `reached`, those the shard journal names as unsettled, and those this instance
-   * holds no saved content for, such as every book of a draft loaded inline.
+   * holds no saved content for, such as every book of a draft loaded inline. When the journal is
+   * damaged, compares every partition.
    *
    * @throws If storage rejects a read, or a write before the envelope lands.
    */
@@ -385,8 +449,11 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     const { books, partitions } = perfTime('saveDraft:compare', () => {
       const keys = index.partitionKeys().filter((bookCode) => !unreadable.has(bookCode));
       const unsaved = keys.filter((bookCode) => !saved.has(bookCode));
+      const comparing = journaled.damaged
+        ? keys
+        : [...reached, ...(journaled.unsettled ?? []), ...unsaved];
       const compared = new Map<string, TextAnalysis>();
-      new Set([...reached, ...(journaled.unsettled ?? []), ...unsaved]).forEach((bookCode) => {
+      new Set(comparing).forEach((bookCode) => {
         const partition = index.partition(bookCode);
         if (partition && keys.includes(bookCode)) compared.set(bookCode, partition);
       });
@@ -609,6 +676,32 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
+   * Where each stored shard differs from its book's part of `draft`, as {@link checkIndexes}
+   * describes.
+   *
+   * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
+   * @throws If storage rejects a read.
+   */
+  private async shardDifferences(draft: DraftProject): Promise<IndexDifference[]> {
+    const { sourceProjectId, storage } = this;
+    const raw = await storage.read(draftKey(sourceProjectId));
+    const stored: unknown = raw === undefined ? undefined : JSON.parse(raw);
+    if (!isDraftProject(stored)) return [];
+    const { analysisBooks } = withoutShardManifest(stored);
+    if (!analysisBooks) return [];
+    const expected = splitAnalysisByBook(draft.analysis);
+    const books = [...new Set([...expected.keys(), ...analysisBooks])];
+    // Read one shard after another, so only one is held in memory at a time.
+    return books.reduce(async (prior, bookCode) => {
+      const differences = await prior;
+      const key = draftAnalysisKey(sourceProjectId, bookCode);
+      const held = this.parseAnalysisShard(await storage.read(key), key).analysis;
+      const wanted = expected.get(bookCode) ?? emptyAnalysis();
+      return [...differences, ...shardDifferencesOf(bookCode, wanted, held)];
+    }, Promise.resolve<IndexDifference[]>([]));
+  }
+
+  /**
    * Parses one book's shard as read from `key`. A missing or unusable shard is treated as empty, so
    * one lost book does not fail the whole load. A shard holding a link with no id is unusable.
    */
@@ -667,16 +760,17 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Reads the shard journal. A missing, unparseable or malformed journal recovers as empty. Every
-   * book it names is checked against storage or the draft before anything acts on it, so a stale
-   * entry costs at most a write.
+   * Reads the shard journal. A missing, unparseable or malformed journal recovers as empty. An
+   * unparseable or malformed one is also marked damaged. Every book it names is checked against
+   * storage or the draft before anything acts on it, so a stale entry costs at most a write.
    *
-   * Losing a journal costs more. A shard it names under `adding` is orphaned, and a book it names
-   * under `unsettled` can stay out of step with the draft until a save that reaches it.
+   * Losing a journal costs more. A shard it names under `adding` is orphaned. A book it names under
+   * `unsettled` can stay out of step with the draft until a save reaches it. Marking a damaged
+   * journal lets the next save compare every book instead.
    *
    * @throws If storage rejects the read.
    */
-  private async readShardJournal(): Promise<ShardJournal> {
+  private async readShardJournal(): Promise<JournalRead> {
     const { sourceProjectId } = this;
     const raw = await this.storage.read(draftJournalKey(sourceProjectId));
     if (raw === undefined) return emptyShardJournal();
@@ -691,7 +785,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
         `Interlinearizer: shard journal for ${sourceProjectId} is not valid JSON; treating as empty`,
       );
     }
-    return emptyShardJournal();
+    return { ...emptyShardJournal(), damaged: true };
   }
 
   /**

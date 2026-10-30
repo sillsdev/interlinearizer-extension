@@ -117,20 +117,28 @@ export type AnalysisLinks = Pick<
   'tokenAnalysisLinks' | 'phraseAnalysisLinks' | 'segmentAnalysisLinks'
 >;
 
-/** A difference between a repository's kept indexes and ones built afresh from its records. */
+/**
+ * A difference between a repository's kept indexes and ones built afresh from its records. It can
+ * also be a difference between a stored shard and the records that shard should hold.
+ */
 export type IndexDifference = {
-  /** The record kind, or `<kind> by <index name>` for a derived index. */
+  /**
+   * The record kind, `<kind> by <index name>` for a derived index, or `<kind> in shard` for a
+   * stored shard.
+   */
   index: string;
-  /** The record id, or the key whose entries differ in a derived index. */
+  /** The record id, the key whose entries differ in a derived index, or a shard's book code. */
   key: string;
   /**
    * Ids filed under `key` in the fresh index and not the kept one; where `index` names a record
-   * kind, also the id of a record whose kept copy differs.
+   * kind, also the id of a record whose kept copy differs. For a shard, the ids of the records it
+   * lacks or holds a different copy of.
    */
   missing: string[];
   /**
    * Ids filed under `key` in the kept index and not the fresh one; where `index` names a record
-   * kind, also the id of a record whose kept copy differs.
+   * kind, also the id of a record whose kept copy differs. For a shard, the ids of the records it
+   * should not hold or holds a different copy of.
    */
   extra: string[];
 };
@@ -320,7 +328,10 @@ export interface AnalysisRepository {
   /**
    * Reports where the derived indexes the repository keeps differ from ones built afresh from its
    * records, for debugging, leaving the kept ones as they are. A repository keeping none reports
-   * nothing.
+   * nothing. A repository that stores its records in shards also reports where a stored shard
+   * differs from the records it should hold.
+   *
+   * @throws If storage rejects a read, or a sharded repository's stored draft is not valid JSON.
    */
   checkIndexes(): Promise<IndexDifference[]>;
 }

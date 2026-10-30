@@ -3,7 +3,7 @@
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
 import { draftAnalysisKey, draftJournalKey, draftKey } from '../../services/storageKeys';
-import type { ChangeSet } from '../../types/analysis-repository';
+import type { ChangeSet, KeyValueStorage } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import { applyChangeSet } from '../../utils/change-set';
@@ -40,6 +40,33 @@ function twoBookAnalysis(): TextAnalysis {
 
 function twoBookDraft(): DraftProject {
   return { ...emptyDraft('src'), analysisLanguages: ['en'], analysis: twoBookAnalysis() };
+}
+
+/**
+ * Applies a gloss edit to the payload that GEN and EXO share, failing the write of `failing`'s
+ * shard. The other book's shard lands with a gloss the draft never takes.
+ */
+async function failGlossEdit(
+  repository: DraftRepository,
+  storage: KeyValueStorage,
+  failing: string,
+): Promise<void> {
+  const [payload] = twoBookAnalysis().tokenAnalyses;
+  const { write: writeThrough } = storage;
+  const write = jest
+    .spyOn(storage, 'write')
+    .mockImplementation((key, data) =>
+      key === draftAnalysisKey('src', failing)
+        ? Promise.reject(new Error('disk full'))
+        : writeThrough(key, data),
+    );
+  await expect(
+    repository.apply({
+      intent: 'writeGloss',
+      tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+    }),
+  ).rejects.toThrow('disk full');
+  write.mockRestore();
 }
 
 describe('DraftRepository', () => {
@@ -388,23 +415,8 @@ describe('DraftRepository', () => {
       async (failing, gloss) => {
         const { storage, records } = memoryStorage();
         await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
-        const [payload] = twoBookAnalysis().tokenAnalyses;
         const [phrase] = twoBookAnalysis().phraseAnalyses;
-        const { write: writeThrough } = storage;
-        const write = jest
-          .spyOn(storage, 'write')
-          .mockImplementation((key, data) =>
-            key === draftAnalysisKey('src', failing)
-              ? Promise.reject(new Error('disk full'))
-              : writeThrough(key, data),
-          );
-        await expect(
-          new DraftRepository(storage, 'src', silentLogger()).apply({
-            intent: 'writeGloss',
-            tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
-          }),
-        ).rejects.toThrow('disk full');
-        write.mockRestore();
+        await failGlossEdit(new DraftRepository(storage, 'src', silentLogger()), storage, failing);
 
         const restarted = new DraftRepository(storage, 'src', silentLogger());
         await restarted.apply({
@@ -420,28 +432,34 @@ describe('DraftRepository', () => {
       },
     );
 
+    it.each([
+      ['not valid JSON', 'not json'],
+      ['malformed', JSON.stringify({ adding: [], removing: [], unsettled: 'EXO' })],
+    ])(
+      'brings back in step a book that a failed apply wrote, after a restart, though the journal is %s',
+      async (_, journal) => {
+        const { storage, records } = memoryStorage();
+        await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+        await failGlossEdit(new DraftRepository(storage, 'src', silentLogger()), storage, 'GEN');
+        records.set(draftJournalKey('src'), journal);
+        const [phrase] = twoBookAnalysis().phraseAnalyses;
+
+        await new DraftRepository(storage, 'src', silentLogger()).apply({
+          intent: 'writePhraseGloss',
+          phraseAnalyses: { puts: [{ ...phrase, gloss: { en: 'within' } }], deletes: [] },
+        });
+
+        expect(records.get(draftAnalysisKey('src', 'EXO'))).not.toContain('and then');
+        expect(records.has(draftJournalKey('src'))).toBe(false);
+      },
+    );
+
     it('rewrites a book a failed apply wrote, though the next apply does not reach it', async () => {
       const { storage, records } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.replaceAll(twoBookDraft());
-      const [payload] = twoBookAnalysis().tokenAnalyses;
       const [phrase] = twoBookAnalysis().phraseAnalyses;
-      // Fails the GEN shard's write, so EXO's lands with the gloss the draft never takes.
-      const { write: writeThrough } = storage;
-      const write = jest
-        .spyOn(storage, 'write')
-        .mockImplementation((key, data) =>
-          key === draftAnalysisKey('src', 'GEN')
-            ? Promise.reject(new Error('disk full'))
-            : writeThrough(key, data),
-        );
-      await expect(
-        repository.apply({
-          intent: 'writeGloss',
-          tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
-        }),
-      ).rejects.toThrow('disk full');
-      write.mockRestore();
+      await failGlossEdit(repository, storage, 'GEN');
       expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('and then');
 
       await repository.apply({
@@ -652,6 +670,91 @@ describe('DraftRepository', () => {
       const { storage } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.replaceAll(twoBookDraft());
+
+      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
+    });
+
+    it('reports nothing while every shard holds its part of the draft', async () => {
+      const { storage } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+      const [payload] = twoBookAnalysis().tokenAnalyses;
+
+      await repository.apply({
+        intent: 'writeGloss',
+        tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+      });
+
+      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
+    });
+
+    it('reports a shard that a failed apply left out of step once the journal is lost', async () => {
+      const { storage, records } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      await failGlossEdit(new DraftRepository(storage, 'src', silentLogger()), storage, 'GEN');
+      records.delete(draftJournalKey('src'));
+      const restarted = new DraftRepository(storage, 'src', silentLogger());
+      await restarted.getTokenAnalyses([]);
+
+      await expect(restarted.checkIndexes()).resolves.toStrictEqual([
+        { index: 'tokenAnalyses in shard', key: 'EXO', missing: ['ta-and'], extra: ['ta-and'] },
+      ]);
+    });
+
+    it('reports the records of a shard gone from storage as missing', async () => {
+      const { storage, records } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+      await repository.getTokenAnalyses([]);
+      records.delete(draftAnalysisKey('src', 'EXO'));
+
+      await expect(repository.checkIndexes()).resolves.toContainEqual({
+        index: 'segmentAnalysisLinks in shard',
+        key: 'EXO',
+        missing: ['sl-1'],
+        extra: [],
+      });
+    });
+
+    it('reports the records of a listed shard the draft carries nothing for as extra', async () => {
+      const { storage, records } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.replaceAll(twoBookDraft());
+      await repository.getTokenAnalyses([]);
+      const envelope = JSON.parse(records.get(draftKey('src')) ?? '');
+      records.set(
+        draftKey('src'),
+        JSON.stringify({ ...envelope, analysisBooks: [...envelope.analysisBooks, 'LEV'] }),
+      );
+      records.set(
+        draftAnalysisKey('src', 'LEV'),
+        JSON.stringify({
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ id: 'ta-so', ...FIXTURE_STAMPS, surfaceText: 'so' }],
+        }),
+      );
+
+      await expect(repository.checkIndexes()).resolves.toStrictEqual([
+        { index: 'tokenAnalyses in shard', key: 'LEV', missing: [], extra: ['ta-so'] },
+      ]);
+    });
+
+    it('reports nothing for a book whose shard could not be read', async () => {
+      const { storage, records } = memoryStorage();
+      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      records.set(draftAnalysisKey('src', 'GEN'), 'not json');
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await repository.getTokenAnalyses([]);
+
+      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
+    });
+
+    it.each([
+      ['stored inline', { [draftKey('src')]: JSON.stringify(twoBookDraft()) }],
+      ['never saved', {}],
+    ])('reports no shards for a draft %s', async (_, initial) => {
+      const repository = new DraftRepository(memoryStorage(initial).storage, 'src', silentLogger());
+      await repository.getTokenAnalyses([]);
 
       await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
     });

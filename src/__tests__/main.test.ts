@@ -2129,6 +2129,14 @@ describe('main', () => {
       expect(result).toBe('{"booksRead":1}');
     });
 
+    it("reports the project's read while session reads are skipped", async () => {
+      jest.mocked(hostPerf.sessionReadsAreSkipped).mockReturnValue(true);
+      mockGetTextReadStatus.mockResolvedValue('{"booksRead":1}');
+      const handler = await getHandler();
+
+      await expect(handler('src-project')).resolves.toBe('{"booksRead":1}');
+    });
+
     it('logs the error and rethrows when the books cannot be listed', async () => {
       mockGetTextReadStatus.mockRejectedValue(new Error('offline'));
       const handler = await getHandler();
@@ -2150,6 +2158,18 @@ describe('main', () => {
       await handler(true);
 
       expect(hostPerf.setHostPerfMarks).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('interlinearizer.setSkipSessionReads command', () => {
+    it('turns skipping session reads on or off as asked', async () => {
+      const handler = await activateAndGetHandler<(skip: boolean) => Promise<void>>(
+        'interlinearizer.setSkipSessionReads',
+      );
+
+      await handler(true);
+
+      expect(hostPerf.setSessionReadsSkipped).toHaveBeenCalledWith(true);
     });
   });
 
@@ -3037,6 +3057,38 @@ describe('main', () => {
 
         await expect(getTextReadStatus({ sessionId })).resolves.toBe('{"booksRead":1}');
         expect(bookService.getTextReadStatus).toHaveBeenCalledWith('src-project');
+      });
+
+      it("starts the session source's read on open", async () => {
+        const { openSession } = await activateSessionCommands();
+
+        await openSession({ sourceProjectId: 'src-project' });
+
+        expect(bookService.startTextRead).toHaveBeenCalledWith('src-project');
+      });
+
+      describe('while session reads are skipped', () => {
+        beforeEach(() => {
+          jest.mocked(hostPerf.sessionReadsAreSkipped).mockReturnValue(true);
+        });
+
+        it('opens a session without starting its read', async () => {
+          const { openSession } = await activateSessionCommands();
+
+          await openSession({ sourceProjectId: 'src-project' });
+
+          expect(bookService.startTextRead).not.toHaveBeenCalled();
+        });
+
+        it("reports a session's read as never finishing", async () => {
+          const { openSession, getTextReadStatus } = await activateSessionCommands();
+          const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+          await expect(getTextReadStatus({ sessionId })).resolves.toBe(
+            JSON.stringify({ booksRead: 0, bookCount: 1, failedBookIds: [] }),
+          );
+          expect(bookService.getTextReadStatus).not.toHaveBeenCalled();
+        });
       });
 
       it('logs the session when its read cannot be reported', async () => {

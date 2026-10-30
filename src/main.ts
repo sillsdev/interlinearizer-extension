@@ -37,7 +37,12 @@ import * as tokenCommands from './services/commands/tokenCommands';
 import { startCSharpHost } from './services/csharpHost';
 import type { EditOptions } from './services/editHistory';
 import { catalogStepOf, deletionStepOf, phraseStartOf } from './services/editSteps';
-import { readHostPerf, setHostPerfMarks } from './services/hostPerf';
+import {
+  readHostPerf,
+  sessionReadsAreSkipped,
+  setHostPerfMarks,
+  setSessionReadsSkipped,
+} from './services/hostPerf';
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
@@ -45,6 +50,7 @@ import { readBookOutline, readSegmentPage } from './services/sessionPages';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
 import type { EditStep } from './types/edit-step';
+import type { TextReadStatus } from './types/text-read-status';
 import {
   toProjectSummary,
   type InterlinearProjectSummary,
@@ -207,7 +213,9 @@ function createSessions(
     openPt9ImportRepository: (interlinearProjectId) =>
       projectStorage.openPt9ImportRepository(executionToken, interlinearProjectId),
     getInterfaceLanguages: () => papi.settings.get('platform.interfaceLanguage'),
-    startTextRead: (sourceProjectId) => bookService.startTextRead(sourceProjectId),
+    startTextRead: async (sourceProjectId) => {
+      if (!sessionReadsAreSkipped()) await bookService.startTextRead(sourceProjectId);
+    },
     stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
     heldBook: (sourceProjectId, bookId, segmentation) =>
       bookService.heldBook(sourceProjectId, bookId, segmentation && JSON.stringify(segmentation)),
@@ -879,7 +887,8 @@ async function getSegments(
 
 /**
  * Reports how far reading the whole text of the source project, or of a session's, has got,
- * starting the read when the project has none.
+ * starting the read when the project has none. While session reads are skipped, a session's read
+ * never finishes.
  *
  * @returns Once the text's books are known, the `TextReadStatus` as JSON.
  * @throws If the books or the provider of their text cannot be got, or the session is not open. The
@@ -887,6 +896,11 @@ async function getSegments(
  */
 async function getTextReadStatus(address: TextAddress): Promise<string> {
   try {
+    if (typeof address !== 'string' && sessionReadsAreSkipped()) {
+      // Never finishes, so the session's view waits as for a read under way.
+      const unread: TextReadStatus = { booksRead: 0, bookCount: 1, failedBookIds: [] };
+      return JSON.stringify(unread);
+    }
     const sourceProjectId =
       typeof address === 'string'
         ? address
@@ -3610,6 +3624,26 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const setSkipSessionReadsCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.setSkipSessionReads',
+    async (skip: boolean) => setSessionReadsSkipped(skip),
+    {
+      method: {
+        summary:
+          'Turn on or off skipping the whole-text read that opening a session starts, for the performance harness',
+        params: [
+          {
+            name: 'skip',
+            required: true,
+            summary: 'Whether sessions open without reading the whole text',
+            schema: { type: 'boolean' },
+          },
+        ],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
   const readPerfCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.readPerf',
     async () => {
@@ -3990,6 +4024,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     discardAllCommandRegistration,
     previewRemovalsCommandRegistration,
     setPerfMarksCommandRegistration,
+    setSkipSessionReadsCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,
     importPt9ProjectCommandRegistration,

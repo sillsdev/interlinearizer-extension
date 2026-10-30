@@ -44,6 +44,9 @@ import {
 
 const RUNS = Number(process.env.PERF_RUNS ?? 10);
 
+/** Whether host-path sessions open without reading the whole text, to isolate that read's cost. */
+const SKIP_SESSION_READS = process.env.PERF_SKIP_SESSION_READS === 'true';
+
 /** Edits made before reading the heap, enough to fill the undo history. */
 const UNDO_FILL_EDITS = 100;
 
@@ -279,8 +282,8 @@ async function measureScriptureSaves(
 
 /**
  * Times the host path: opening a view, edits once the session's whole-text read has finished, and
- * Scripture saves. Writes its sections into `result`. Leaves no view open and the host-path flag
- * off.
+ * Scripture saves. With {@link SKIP_SESSION_READS}, sessions read no text, so nothing waits for it.
+ * Writes its sections into `result`. Leaves no view open and the host-path flag off.
  */
 async function measureHostPath(
   page: Page,
@@ -291,6 +294,7 @@ async function measureHostPath(
 ): Promise<void> {
   await closeSettledView(page);
   await page.evaluate((key) => localStorage.setItem(key, 'true'), HOST_PATH_KEY);
+  if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', true);
   try {
     // The view's pages queue behind the session-open read's passes, so no edit lands during them.
     const open = new Samples();
@@ -306,7 +310,7 @@ async function measureHostPath(
 
     await closeView(page);
     const { frame } = await openView(page, projectId, tier.viewBook);
-    await readWholeText(page, projectId);
+    if (!SKIP_SESSION_READS) await readWholeText(page, projectId);
     const edits = new Samples();
     for (let run = 0; run < RUNS; run += 1) {
       // eslint-disable-next-line no-await-in-loop
@@ -329,6 +333,7 @@ async function measureHostPath(
   } finally {
     await closeView(page);
     await page.evaluate((key) => localStorage.removeItem(key), HOST_PATH_KEY);
+    if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', false);
   }
 }
 
@@ -794,6 +799,7 @@ test('measure the app', async ({ mainPage }) => {
     extensionBuild:
       process.env.E2E_BUILD_SCRIPT === 'build:production' ? 'production' : 'development',
     runs: RUNS,
+    ...(SKIP_SESSION_READS ? { skipSessionReads: true } : {}),
     tiers: results,
   });
   console.log(`Wrote ${path.relative(process.cwd(), file)}`);

@@ -329,6 +329,7 @@ function report(result: Json): string {
       result.display && `${result.display} display`,
       result.extensionBuild && `${result.extensionBuild} extension`,
       `${result.runs} runs`,
+      result.skipSessionReads && 'host-path sessions read no text',
     ]
       .filter(Boolean)
       .join(', '),

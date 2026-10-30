@@ -983,6 +983,13 @@ declare module 'papi-shared-types' {
     'interlinearizer.setPerfMarks': (enabled: boolean) => Promise<void>;
 
     /**
+     * Turns on or off skipping the whole-text read that opening a session starts, so the harness
+     * can time the host path without it. While on, a session's `getTextReadStatus` reports a read
+     * that never finishes. Off until turned on.
+     */
+    'interlinearizer.setSkipSessionReads': (skip: boolean) => Promise<void>;
+
+    /**
      * Takes the timing entries the extension host recorded since the last reading.
      *
      * @returns A JSON string of `{ entries, pid }`, `pid` being the host's process id, or

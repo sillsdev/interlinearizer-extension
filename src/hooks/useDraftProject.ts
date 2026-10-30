@@ -266,11 +266,13 @@ export type UseDraftProjectResult = {
  * per-edit auto-saves never re-render the loader unless the dirty flag actually flips.
  *
  * @param sourceProjectId - The Platform.Bible source project whose draft to manage.
- * @param platformLanguage - BCP 47 tag used to seed the analysis languages of a brand-new source.
+ * @param platformLanguage - BCP 47 tag that seeds a brand-new source's analysis languages, or
+ *   `undefined` while the tag is still loading. A brand-new source's draft stays loading until the
+ *   tag is known.
  */
 export default function useDraftProject(
   sourceProjectId: string,
-  platformLanguage: string,
+  platformLanguage: string | undefined,
 ): UseDraftProjectResult {
   const draftRef = useRef<DraftProject | undefined>(undefined);
   const [isDraftLoading, setIsDraftLoading] = useState(true);
@@ -307,6 +309,9 @@ export default function useDraftProject(
   // does not re-run when the UI language changes after the draft has loaded.
   const platformLanguageRef = useRef(platformLanguage);
   platformLanguageRef.current = platformLanguage;
+  // Settles with the first platform language known. A load that needs a language waits on it.
+  const [platformLanguageKnown] = useState(() => Promise.withResolvers<string>());
+  if (platformLanguage !== undefined) platformLanguageKnown.resolve(platformLanguage);
 
   // Whether the draft has been started over (New, Open) since it loaded, so the host may discard
   // stored analysis it could not read. Every later write says so too: discarding again is harmless,
@@ -371,8 +376,11 @@ export default function useDraftProject(
 
       // Seed a gloss language in memory when the stored draft has none (a brand-new source). Not
       // persisted here — the first auto-save / New / Open carries it to storage.
-      if (draft.analysisLanguages.length === 0)
-        draft = { ...draft, analysisLanguages: [platformLanguageRef.current] };
+      if (draft.analysisLanguages.length === 0) {
+        const firstKnown = await platformLanguageKnown.promise;
+        if (canceled) return undefined;
+        draft = { ...draft, analysisLanguages: [platformLanguageRef.current ?? firstKnown] };
+      }
       draftRef.current = draft;
       cleanStatesRef.current = new Set(draft.dirty ? [] : [historyRef.current.state]);
       setDirty(draft.dirty);
@@ -386,7 +394,7 @@ export default function useDraftProject(
       // The last edit before unmount or a source change is written rather than lost.
       writer.flush();
     };
-  }, [writer, setHistory, sourceProjectId]);
+  }, [writer, setHistory, sourceProjectId, platformLanguageKnown]);
 
   const getDraftSnapshot = useCallback(() => draftRef.current, []);
 

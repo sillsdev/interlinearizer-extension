@@ -133,6 +133,85 @@ describe('useDraftProject', () => {
     expect(result.current.draft?.analysisLanguages).toEqual([PLATFORM_LANGUAGE]);
   });
 
+  it('waits for the platform language before seeding a draft that has no analysis languages', async () => {
+    mockGetDraftResolves(makeDraft({ analysisLanguages: [] }));
+    const view = renderHook<UseDraftProjectResult, { language: string | undefined }>(
+      ({ language }) => useDraftProject(SOURCE_PROJECT_ID, language),
+      { initialProps: { language: undefined } },
+    );
+    await act(async () => {});
+
+    expect(view.result.current.isDraftLoading).toBe(true);
+
+    view.rerender({ language: PLATFORM_LANGUAGE });
+    await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+
+    expect(view.result.current.draft?.analysisLanguages).toEqual([PLATFORM_LANGUAGE]);
+  });
+
+  it('seeds the first platform language known when it becomes unknown again before the load', async () => {
+    let resolveGetDraft: (json: string) => void = () => {};
+    const deferred = new Promise<string>((resolve) => {
+      resolveGetDraft = resolve;
+    });
+    mockSendCommand.mockImplementation((...args: Parameters<typeof mockSendCommand>) => {
+      if (args[0] === 'interlinearizer.getDraft') return deferred;
+      return Promise.resolve(undefined);
+    });
+    const view = renderHook<UseDraftProjectResult, { language: string | undefined }>(
+      ({ language }) => useDraftProject(SOURCE_PROJECT_ID, language),
+      { initialProps: { language: PLATFORM_LANGUAGE } },
+    );
+
+    view.rerender({ language: undefined });
+    await act(async () => {
+      resolveGetDraft(JSON.stringify(makeDraft({ analysisLanguages: [] })));
+      await deferred;
+    });
+
+    expect(view.result.current.draft?.analysisLanguages).toEqual([PLATFORM_LANGUAGE]);
+  });
+
+  it('loads a draft that has analysis languages without waiting for the platform language', async () => {
+    mockGetDraftResolves(makeDraft({ analysisLanguages: ['fr'] }));
+
+    const { result } = renderHook(() => useDraftProject(SOURCE_PROJECT_ID, undefined));
+    await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+
+    expect(result.current.draft?.analysisLanguages).toEqual(['fr']);
+  });
+
+  it("does not seed the previous source's draft when the source changes while waiting for the platform language", async () => {
+    mockSendCommand.mockImplementation((...args: Parameters<typeof mockSendCommand>) => {
+      if (args[0] === 'interlinearizer.getDraft')
+        return Promise.resolve(
+          JSON.stringify(
+            makeDraft(
+              args[1] === SOURCE_PROJECT_ID
+                ? { analysisLanguages: [] }
+                : { sourceProjectId: 'source-project-2', analysisLanguages: [] },
+            ),
+          ),
+        );
+      return Promise.resolve(undefined);
+    });
+    const view = renderHook<
+      UseDraftProjectResult,
+      { source: string; language: string | undefined }
+    >(({ source, language }) => useDraftProject(source, language), {
+      initialProps: { source: SOURCE_PROJECT_ID, language: undefined },
+    });
+    await act(async () => {});
+
+    view.rerender({ source: 'source-project-2', language: undefined });
+    await act(async () => {});
+    view.rerender({ source: 'source-project-2', language: PLATFORM_LANGUAGE });
+    await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+
+    expect(view.result.current.draft?.sourceProjectId).toBe('source-project-2');
+    expect(view.result.current.draft?.analysisLanguages).toEqual([PLATFORM_LANGUAGE]);
+  });
+
   it('keeps the stored analysis languages when the draft already has some', async () => {
     mockGetDraftResolves(makeDraft({ analysisLanguages: ['fr', 'de'] }));
 

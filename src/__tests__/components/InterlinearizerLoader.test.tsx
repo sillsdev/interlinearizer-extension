@@ -731,6 +731,7 @@ function analysisWithFreeTranslation(): TextAnalysis {
  * @param interfaceMode - Value for `platform.interfaceMode`; defaults to `'simple'`.
  * @param interfaceLanguage - Value for `platform.interfaceLanguage`; defaults to `[]`.
  * @param isInterfaceModeLoading - Whether `platform.interfaceMode` is still loading.
+ * @param isInterfaceLanguageLoading - Whether `platform.interfaceLanguage` is still loading.
  * @throws {Error} When `useSetting` is called with any key other than `platform.interfaceMode` or
  *   `platform.interfaceLanguage` (message: `useSetting mock: unexpected key "<key>"`).
  */
@@ -738,12 +739,13 @@ function mockSettings(
   interfaceMode: 'simple' | 'power' = 'simple',
   interfaceLanguage: string[] = [],
   isInterfaceModeLoading = false,
+  isInterfaceLanguageLoading = false,
 ): void {
   jest.mocked(useSetting).mockImplementation((key: string) => {
     if (key === 'platform.interfaceMode')
       return [interfaceMode, jest.fn(), jest.fn(), isInterfaceModeLoading];
     if (key === 'platform.interfaceLanguage')
-      return [interfaceLanguage, jest.fn(), jest.fn(), false];
+      return [interfaceLanguage, jest.fn(), jest.fn(), isInterfaceLanguageLoading];
     throw new Error(`useSetting mock: unexpected key "${key}"`);
   });
 }
@@ -1593,6 +1595,27 @@ describe('InterlinearizerLoader', () => {
     });
 
     expect(capturedStoreProps?.analysisLanguage).toBe('fr');
+  });
+
+  it('waits for interfaceLanguage to load before seeding a draft that has no analysis language', async () => {
+    // While loading, the setting reports its `['und']` default.
+    mockSettings('simple', ['und'], false, true);
+    const view = await act(async () => renderLoader());
+
+    mockSettings('simple', ['en']);
+    await act(async () => {
+      view.rerender(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          webViewId={testWebViewId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+          updateWebViewDefinition={view.updateWebViewDefinition}
+        />,
+      );
+    });
+
+    expect(capturedStoreProps?.analysisLanguage).toBe('en');
   });
 
   it('passes the platform language to ProjectModals as defaultAnalysisLanguage', async () => {

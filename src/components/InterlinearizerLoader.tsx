@@ -438,7 +438,12 @@ function InterlinearizerLoaderInner({
     'platform.interfaceMode',
     'simple',
   );
-  const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
+  // The draft waits for this setting to load, because the `['und']` default would otherwise become
+  // a brand-new source's gloss language.
+  const [interfaceLanguages, , , isInterfaceLanguageLoading] = useSetting(
+    'platform.interfaceLanguage',
+    ['und'],
+  );
   /* v8 ignore next 3 -- useSetting never returns PlatformError for this key in practice */
   const platformLanguage = isPlatformError(interfaceLanguages)
     ? 'und'
@@ -511,7 +516,7 @@ function InterlinearizerLoaderInner({
     redo,
     getHistoryRevision,
     subscribeToHistoryRevisions,
-  } = useDraftProject(projectId, platformLanguage);
+  } = useDraftProject(projectId, isInterfaceLanguageLoading ? undefined : platformLanguage);
 
   /**
    * Whether the active project is a Paratext 9 import, which renders read-only: the view is fed

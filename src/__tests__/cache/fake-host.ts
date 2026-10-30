@@ -40,8 +40,8 @@ export function relayChange(change: unknown): void {
  * views.
  */
 export async function fakeHost(
-  others: (command: string, args: unknown[]) => Promise<unknown> = async () => undefined,
-  intercept: (command: string) => Promise<unknown> | undefined = () => undefined,
+  others: (command: string, args: unknown[]) => Promise<string | undefined> = async () => undefined,
+  intercept: (command: string) => Promise<string | undefined> | undefined = () => undefined,
 ) {
   const made = await sessionOver();
   const { sessions, storage } = made;

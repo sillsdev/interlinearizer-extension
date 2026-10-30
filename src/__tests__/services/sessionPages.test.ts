@@ -16,6 +16,7 @@ import {
   makeTokenLink,
   makeVerseBook,
   memoryStorage,
+  seedRepository,
   silentLogger,
   tokenRefOf,
 } from '../test-helpers';
@@ -32,7 +33,7 @@ function idsOf(records: readonly { id: string }[] | undefined): string[] | undef
 async function repositoryOver(analysis: Partial<TextAnalysis> = {}): Promise<DraftRepository> {
   const { storage } = memoryStorage();
   const repository = new DraftRepository(storage, 'src', silentLogger());
-  await repository.replaceAll({
+  await seedRepository(repository, {
     ...emptyDraft('src'),
     analysis: { ...emptyAnalysis(), ...analysis },
   });

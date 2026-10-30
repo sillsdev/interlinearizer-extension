@@ -4,7 +4,13 @@ import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinear
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, makePhraseLink, memoryStorage, silentLogger } from '../../test-helpers';
+import {
+  FIXTURE_STAMPS,
+  makePhraseLink,
+  memoryStorage,
+  seedRepository,
+  silentLogger,
+} from '../../test-helpers';
 
 function payload(id: string, surfaceText = id): TokenAnalysis {
   return { id, ...FIXTURE_STAMPS, surfaceText };
@@ -24,7 +30,7 @@ function link(id: string, analysisId: string, tokenRef: string): TokenAnalysisLi
 async function bufferOver(analysis: Partial<TextAnalysis> = {}): Promise<ChangeBuffer> {
   const { storage } = memoryStorage();
   const repository = new DraftRepository(storage, 'src', silentLogger());
-  await repository.replaceAll({
+  await seedRepository(repository, {
     ...emptyDraft('src'),
     analysis: { ...emptyAnalysis(), ...analysis },
   });

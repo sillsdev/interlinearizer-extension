@@ -10,6 +10,7 @@ import {
   makeTokenLink,
   makeVerseBook,
   memoryStorage,
+  seedRepository,
   silentLogger,
   tokenRefOf,
 } from '../test-helpers';
@@ -46,7 +47,7 @@ async function storedDraft(extra: Partial<DraftProject> = {}) {
     },
     ...extra,
   };
-  await new DraftRepository(storage, SOURCE, silentLogger()).replaceAll(draft);
+  await seedRepository(new DraftRepository(storage, SOURCE, silentLogger()), draft);
   const repository = new DraftRepository(storage, SOURCE, silentLogger());
   const stored = async () =>
     (await new DraftRepository(storage, SOURCE, silentLogger()).exportAll()).draft;

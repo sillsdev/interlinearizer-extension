@@ -10,6 +10,7 @@ import {
   makePhraseLink,
   makeTokenLink,
   memoryStorage,
+  seedRepository,
   silentLogger,
 } from '../test-helpers';
 
@@ -20,7 +21,7 @@ function payload(id: string, surfaceText = 'word'): TokenAnalysis {
 async function bufferOver(analysis: Partial<TextAnalysis>) {
   const { storage } = memoryStorage();
   const repository = new DraftRepository(storage, 'src', silentLogger());
-  await repository.replaceAll({
+  await seedRepository(repository, {
     ...emptyDraft('src'),
     analysis: { ...emptyAnalysis(), ...analysis },
   });

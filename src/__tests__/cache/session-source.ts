@@ -17,6 +17,7 @@ import {
   makeTokenLink,
   makeVerseBook,
   memoryStorage,
+  seedRepository,
   silentLogger,
   tokenRefOf,
 } from '../test-helpers';
@@ -51,7 +52,7 @@ export async function sessionOver(
   const onChange = (listener: (change: ReportedChange) => void) => {
     listeners.add(listener);
   };
-  await new DraftRepository(storage, 'src', silentLogger()).replaceAll({
+  await seedRepository(new DraftRepository(storage, 'src', silentLogger()), {
     ...emptyDraft('src'),
     analysisLanguages: ['en'],
     analysis: { ...emptyAnalysis(), ...analysis },

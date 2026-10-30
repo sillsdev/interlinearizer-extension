@@ -171,8 +171,8 @@ let executionToken: ExecutionToken;
 const openWebViewsByProject = new Map<string, string>();
 
 /**
- * The id of the interlinear project each source's view last had active, as last sent to storage.
- * Kept so that a WebView update leaving that id unchanged writes nothing.
+ * The id of the interlinear project each source's view last had active. A WebView update that
+ * leaves that id unchanged writes nothing to storage.
  */
 const rememberedActiveProjects = new Map<string, string | undefined>();
 
@@ -251,7 +251,10 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
 
 /**
  * Reads the interlinear project the source's view last had active, or `undefined` when none is
- * remembered. A failed read is logged and answered as `undefined` rather than thrown.
+ * remembered.
+ *
+ * A failed read is logged and answered as `undefined` rather than thrown. The project stays
+ * remembered until the view makes another one active.
  */
 async function readRememberedActiveProject(
   sourceProjectId: string,
@@ -260,6 +263,7 @@ async function readRememberedActiveProject(
     return await projectStorage.getRememberedActiveProject(executionToken, sourceProjectId);
   } catch (e) {
     logger.error('Interlinearizer: failed to read the remembered active project', e);
+    rememberedActiveProjects.set(sourceProjectId, undefined);
     return undefined;
   }
 }

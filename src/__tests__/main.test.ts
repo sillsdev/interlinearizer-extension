@@ -968,6 +968,25 @@ describe('main', () => {
       );
     });
 
+    it('keeps the remembered project when a tab opens without it after a failed read', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue({
+        id: 'some-webview',
+        webViewType: 'someExtension.view',
+        projectId: 'project-from-webview',
+      });
+      jest
+        .mocked(projectStorage.getRememberedActiveProject)
+        .mockRejectedValue(new Error('disk full'));
+      const openForWebView = await getOpenForWebViewHandler();
+      await openForWebView('some-webview');
+
+      getOpenWebViewCallback()({
+        webView: { id: 'new-tab', webViewType: mainWebViewType, projectId: 'project-from-webview' },
+      });
+
+      expect(jest.mocked(projectStorage.rememberActiveProject)).not.toHaveBeenCalled();
+    });
+
     it('shows a project picker when the WebView has no projectId', async () => {
       __mockGetOpenWebViewDefinition.mockResolvedValue({
         id: 'some-webview',

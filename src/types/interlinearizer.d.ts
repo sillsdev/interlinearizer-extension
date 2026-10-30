@@ -416,8 +416,9 @@ declare module 'papi-shared-types' {
      * Reports where a session's derived indexes differ from ones built afresh from its records, for
      * debugging. Also reports where its stored shards differ from its records.
      *
-     * @returns A JSON string of the index differences; `"[]"` when none differ.
-     * @throws If the session is not open (logged before rethrowing).
+     * @returns A JSON string of the index and shard differences; `"[]"` when none differ.
+     * @throws If the session is not open, the stored draft is not valid JSON, or storage rejects a
+     *   read (logged before rethrowing).
      */
     'interlinearizer.checkIndexes': (
       args: import('interlinearizer').SessionCommandArgs,

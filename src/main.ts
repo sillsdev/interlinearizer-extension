@@ -926,7 +926,8 @@ async function redoEdit({
  * debugging. Also reports where its stored shards differ from its records.
  *
  * @returns A JSON string of the differences; `"[]"` when there are none.
- * @throws If the session is not open. The error is logged before rethrowing.
+ * @throws If the session is not open, the stored draft is not valid JSON, or storage rejects a
+ *   read. The error is logged before rethrowing.
  */
 async function checkIndexes({
   sessionId,

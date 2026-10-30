@@ -286,9 +286,10 @@ async function lookupMismatches(
 
 /**
  * Loads a tier, applies random edits and undoes some, then compares the kept indexes with ones
- * built afresh and the lookups with a scan of what storage holds.
+ * built afresh and the lookups with a scan of what storage holds. It also compares each stored
+ * shard with the draft.
  *
- * @returns Whether the indexes and lookups agreed throughout.
+ * @returns Whether the indexes, shards and lookups agreed throughout.
  */
 async function checkTier(tier: TierSpec): Promise<boolean> {
   const draft: DraftProject = JSON.parse(readDraftJson(tier.name));

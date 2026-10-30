@@ -330,6 +330,8 @@ export interface AnalysisRepository {
    * records, for debugging, leaving the kept ones as they are. A repository keeping none reports
    * nothing. A repository that stores its records in shards also reports where a stored shard
    * differs from the records it should hold.
+   *
+   * @throws If a repository that stores its records in shards cannot read them.
    */
   checkIndexes(): Promise<IndexDifference[]>;
 }

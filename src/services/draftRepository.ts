@@ -337,9 +337,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * After a failed apply, the next apply to succeed also brings back in step any book the failure
    * left out of step with the draft. In the same instance, the next apply restores the book as it
    * was. After a reload or restart, the reloaded draft keeps the first copy of each payload in
-   * manifest order, so a book may take the failed edit instead. This survives a restart, even with
-   * a malformed shard journal. If the journal is lost, {@link checkIndexes} still reports those
-   * books.
+   * manifest order, so a book may take the failed edit instead. The next apply brings those books
+   * back in step even when the shard journal won't parse or is malformed. If the journal is lost,
+   * {@link checkIndexes} still reports those books.
    *
    * What an apply stores matches a whole save of the same draft in content, not order. The manifest
    * may list the books in another order, and a link that a put moves into a book comes last in that
@@ -386,8 +386,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * Also reports where a stored shard differs from its book's part of the kept draft. Reports
    * nothing while no index is kept.
    *
-   * The shard check finds a book that a failed apply left out of step after the shard journal was
-   * lost. Shards are compared by content, not order. A book whose shard could not be read is
+   * Even after the shard journal is lost, the shard check finds a book that a failed apply left out
+   * of step. Shards are compared by content, not order. A book whose shard could not be read is
    * skipped, as is a draft stored inline.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.

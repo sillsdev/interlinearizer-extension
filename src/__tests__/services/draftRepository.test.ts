@@ -415,23 +415,8 @@ describe('DraftRepository', () => {
       async (failing, gloss) => {
         const { storage, records } = memoryStorage();
         await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
-        const [payload] = twoBookAnalysis().tokenAnalyses;
         const [phrase] = twoBookAnalysis().phraseAnalyses;
-        const { write: writeThrough } = storage;
-        const write = jest
-          .spyOn(storage, 'write')
-          .mockImplementation((key, data) =>
-            key === draftAnalysisKey('src', failing)
-              ? Promise.reject(new Error('disk full'))
-              : writeThrough(key, data),
-          );
-        await expect(
-          new DraftRepository(storage, 'src', silentLogger()).apply({
-            intent: 'writeGloss',
-            tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
-          }),
-        ).rejects.toThrow('disk full');
-        write.mockRestore();
+        await failGlossEdit(new DraftRepository(storage, 'src', silentLogger()), storage, failing);
 
         const restarted = new DraftRepository(storage, 'src', silentLogger());
         await restarted.apply({
@@ -451,7 +436,7 @@ describe('DraftRepository', () => {
       ['not valid JSON', 'not json'],
       ['malformed', JSON.stringify({ adding: [], removing: [], unsettled: 'EXO' })],
     ])(
-      'brings a book a failed apply wrote back in step after a restart, though the journal is %s',
+      'brings back in step a book that a failed apply wrote, after a restart, though the journal is %s',
       async (_, journal) => {
         const { storage, records } = memoryStorage();
         await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
@@ -473,24 +458,8 @@ describe('DraftRepository', () => {
       const { storage, records } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.replaceAll(twoBookDraft());
-      const [payload] = twoBookAnalysis().tokenAnalyses;
       const [phrase] = twoBookAnalysis().phraseAnalyses;
-      // Fails the GEN shard's write, so EXO's lands with the gloss the draft never takes.
-      const { write: writeThrough } = storage;
-      const write = jest
-        .spyOn(storage, 'write')
-        .mockImplementation((key, data) =>
-          key === draftAnalysisKey('src', 'GEN')
-            ? Promise.reject(new Error('disk full'))
-            : writeThrough(key, data),
-        );
-      await expect(
-        repository.apply({
-          intent: 'writeGloss',
-          tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
-        }),
-      ).rejects.toThrow('disk full');
-      write.mockRestore();
+      await failGlossEdit(repository, storage, 'GEN');
       expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('and then');
 
       await repository.apply({

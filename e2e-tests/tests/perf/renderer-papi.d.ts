@@ -10,6 +10,7 @@ interface RendererPapi {
       projectId: string,
     ): Promise<{
       getSetting(key: string): Promise<unknown>;
+      setSetting(key: string, value: unknown): Promise<unknown>;
       getBookUSJ(verseRef: {
         book: string;
         chapterNum: number;

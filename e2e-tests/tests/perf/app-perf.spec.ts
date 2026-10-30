@@ -161,6 +161,14 @@ function withWord(usj: unknown, word: string): unknown {
   return copy;
 }
 
+/** Makes the project's text editable; the sample WEB installs read-only. */
+async function makeEditable(page: Page, projectId: string): Promise<void> {
+  await page.evaluate(async (id) => {
+    const base = await window.papi.projectDataProviders.get('platform.base', id);
+    await base.setSetting('platform.isEditable', true);
+  }, projectId);
+}
+
 async function chapterUsj(page: Page, projectId: string, book: string): Promise<unknown> {
   return page.evaluate(
     async ([id, bookCode]) => {
@@ -726,6 +734,7 @@ test('measure the app', async ({ mainPage }) => {
   await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
   const meta = readCaptureMeta();
   const projectId = await sourceProjectId(mainPage);
+  await makeEditable(mainPage, projectId);
 
   const requested = (process.env.PERF_TIERS ?? '').split(',').filter(Boolean);
   const tiers = TIERS.filter((t) => requested.length === 0 || requested.includes(t.name));
@@ -774,4 +783,7 @@ test('measure the app', async ({ mainPage }) => {
   });
   console.log(`Wrote ${path.relative(process.cwd(), file)}`);
   await app.browser?.close();
+  const failed = Object.entries(results).filter(([, result]) => 'error' in result);
+  if (failed.length > 0)
+    throw new Error(failed.map(([name, result]) => `${name}: ${String(result.error)}`).join('\n'));
 });

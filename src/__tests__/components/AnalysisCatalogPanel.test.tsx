@@ -3,9 +3,10 @@
 
 import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type { ResolvedSense } from 'interlinearizer/lexicon';
 import {
   createRef,
   useEffect,
@@ -26,7 +27,7 @@ import type { StepSummary } from '../../types/edit-step';
 import { emptyAnalysis } from '../../types/empty-factories';
 import type { HeadingPlacement } from '../../utils/analysis-query';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';
-import { mockKeyAsValueLocalizedStrings } from './test-helpers';
+import { mockKeyAsValueLocalizedStrings, testSenseRef, withLexicon } from './test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
 jest.mock('../../components/TextReadingStatus');
@@ -169,6 +170,8 @@ type PanelOptions = Partial<{
   text: SourceText;
   /** Whether every book has been checked for stale places. Defaults to only the opened ones. */
   staleCoversDraft: boolean;
+  /** Senses of the connected lexicon, keyed by sense id. Omitted, no lexicon is connected. */
+  senses: Record<string, ResolvedSense>;
 }>;
 
 /** Reads every token as still carrying the form its analysis was recorded under. */
@@ -211,7 +214,7 @@ function PanelProviders({
 
 /** Renders the panel inside a seeded analysis store and a real navigation provider. */
 function renderPanel(overrides: PanelOptions = {}) {
-  return render(
+  const panel = (
     <PanelProviders overrides={overrides}>
       <CatalogPanel
         ref={overrides.ref}
@@ -226,8 +229,11 @@ function renderPanel(overrides: PanelOptions = {}) {
         sourceLanguageTag="el"
         staleCoversDraft={overrides.staleCoversDraft ?? false}
       />
-    </PanelProviders>,
+    </PanelProviders>
   );
+  // Without senses the panel is not wrapped, so a test that rerenders through `PanelProviders` keeps
+  // the same tree.
+  return render(overrides.senses ? withLexicon(panel, overrides.senses).ui : panel);
 }
 
 /**
@@ -3240,6 +3246,69 @@ describe('AnalysisCatalogPanel', () => {
       ).toHaveTextContent('%interlinearizer_analysisCatalog_morphemeNoGloss%');
     });
 
+    describe('linked to a lexicon', () => {
+      /**
+       * An analysis glossed only through its sense, with a morpheme glossed only through its own
+       * sense.
+       */
+      const LINKED: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          {
+            ...FIXTURE_STAMPS,
+            id: 'ta-1',
+            surfaceText: 'λόγος',
+            glossSenseRef: testSenseRef('s-word'),
+            morphemes: [
+              {
+                ...FIXTURE_STAMPS,
+                id: 'm-1',
+                form: 'λογ',
+                writingSystem: 'el',
+                senseRef: testSenseRef('s-stem'),
+              },
+            ],
+          },
+        ],
+        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+      };
+
+      /** Expands `ta-1` under a lexicon holding both senses and returns its detail. */
+      async function expandLinkedRow(): Promise<HTMLElement> {
+        renderPanel({
+          analysis: LINKED,
+          readOnly: true,
+          senses: { 's-word': { gloss: { en: 'word' } }, 's-stem': { gloss: { en: 'speak' } } },
+        });
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+        return rowFor('ta-1');
+      }
+
+      it("shows the sense's gloss where the analysis stores none", async () => {
+        const row = await expandLinkedRow();
+
+        await waitFor(() =>
+          expect(within(row).getByTestId('readonly-catalog-gloss')).toHaveTextContent('word'),
+        );
+      });
+
+      it("leaves marking a morpheme's link to the list of senses", async () => {
+        const row = await expandLinkedRow();
+
+        await waitFor(() =>
+          expect(within(row).getByTestId('readonly-catalog-morpheme-gloss')).toHaveTextContent(
+            'speak',
+          ),
+        );
+        expect(within(row).queryByTestId('morpheme-lexicon-mark')).not.toBeInTheDocument();
+        expect(
+          within(row)
+            .getAllByTestId('catalog-sense-line')
+            .map((line) => line.textContent),
+        ).toContainEqual(expect.stringContaining('λογ'));
+      });
+    });
+
     // Reading the catalog is the whole point of opening it on an import, so only the writes go.
     it('still lists the analyses and their usages', async () => {
       const row = await expandReadOnlyRow();
@@ -3249,6 +3318,80 @@ describe('AnalysisCatalogPanel', () => {
         'data-token-ref',
         'GEN 1:1:0',
       );
+    });
+  });
+
+  describe('lexicon links', () => {
+    const LINKED: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        {
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'λόγος',
+          gloss: { en: 'word' },
+          glossSenseRef: testSenseRef('s-word'),
+        },
+      ],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+    };
+
+    it('marks a collapsed linked row without listing its sense', () => {
+      renderPanel({ analysis: LINKED, senses: { 's-word': { gloss: { en: 'word' } } } });
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-sense-link')).toBeInTheDocument();
+      expect(within(rowFor('ta-1')).queryByTestId('catalog-sense-links')).not.toBeInTheDocument();
+    });
+
+    it("lists a linked row's sense once the row is expanded", async () => {
+      renderPanel({ analysis: LINKED, senses: { 's-word': { gloss: { en: 'word' } } } });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      expect(await within(rowFor('ta-1')).findByTestId('catalog-sense-gloss')).toHaveTextContent(
+        'word',
+      );
+    });
+
+    it('leaves the gloss inputs to what is typed where only the senses gloss', async () => {
+      renderPanel({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [
+            {
+              ...FIXTURE_STAMPS,
+              id: 'ta-1',
+              surfaceText: 'λόγος',
+              glossSenseRef: testSenseRef('s-word'),
+              morphemes: [
+                {
+                  ...FIXTURE_STAMPS,
+                  id: 'm-1',
+                  form: 'λογ',
+                  writingSystem: 'el',
+                  senseRef: testSenseRef('s-stem'),
+                },
+              ],
+            },
+          ],
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+        },
+        senses: { 's-word': { gloss: { en: 'word' } }, 's-stem': { gloss: { en: 'speak' } } },
+      });
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      const row = rowFor('ta-1');
+      // Both senses resolved, so empty inputs below are not just a lookup still in flight.
+      await waitFor(() =>
+        expect(
+          within(row)
+            .getAllByTestId('catalog-sense-gloss')
+            .map((gloss) => gloss.textContent),
+        ).toEqual(expect.arrayContaining(['word', 'speak'])),
+      );
+      expect(within(row).getByTestId('catalog-row-gloss-input')).toHaveValue('');
+      expect(within(row).getByTestId('catalog-row-morpheme-gloss-input')).toHaveValue('');
     });
   });
 

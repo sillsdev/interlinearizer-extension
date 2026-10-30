@@ -776,6 +776,13 @@ describe('morphemes linked to a lexicon sense', () => {
     expect(screen.queryByTestId('morpheme-lexicon-mark')).not.toBeInTheDocument();
   });
 
+  it('shows the sense gloss unmarked where lexicon marks are turned off', async () => {
+    renderLinkedBox({ readOnly: true, markLexiconGlosses: false });
+
+    expect(await screen.findByText('greet')).toBeInTheDocument();
+    expect(screen.queryByTestId('morpheme-lexicon-mark')).not.toBeInTheDocument();
+  });
+
   it('marks nothing where the caller renders the glosses', async () => {
     const { container } = renderLinkedBox({
       renderGloss: (morpheme) => <span>{morpheme.form} gloss</span>,

@@ -20,6 +20,13 @@ export function BookOpen(props: Readonly<{ className?: string }>): ReactElement 
 }
 
 /**
+ * Stub for the BookAlert icon.
+ */
+export function BookAlert(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="book-alert-icon" {...props} />;
+}
+
+/**
  * Stub for the ArrowUpToLine icon.
  */
 export function ArrowUpToLine(props: Readonly<{ className?: string }>): ReactElement {

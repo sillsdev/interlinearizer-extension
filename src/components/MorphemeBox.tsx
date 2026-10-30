@@ -62,6 +62,7 @@ function MorphemeBoxInner({
   glossTestId,
   noGlossLabel,
   noBreakdownLabel,
+  markLexiconGlosses = true,
   labels = TOKEN_CHIP_LABEL_KEYS,
 }: Readonly<{
   /**
@@ -118,6 +119,8 @@ function MorphemeBoxInner({
   noGlossLabel?: string;
   /** Shown where the analysis segments nothing. Omitted, nothing renders in that case. */
   noBreakdownLabel?: string;
+  /** Whether a gloss that comes from a lexicon sense is marked as such. Defaults to `true`. */
+  markLexiconGlosses?: boolean;
   /**
    * Accessible labels for this box and its gloss inputs, resolved once per strip. Defaults to the
    * unresolved keys, which is what they show until the strip's lookup lands.
@@ -297,6 +300,7 @@ function MorphemeBoxInner({
         {/* A caller that renders its own glosses decides what they show. This box cannot tell
             whether such a gloss came from the lexicon, so it marks none. */}
         {!renderGloss &&
+          markLexiconGlosses &&
           morphemes.map((m, i) => (
             <LexiconGlossMark
               analysisLanguage={analysisLanguage}

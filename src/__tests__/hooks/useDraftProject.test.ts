@@ -212,6 +212,85 @@ describe('useDraftProject', () => {
     expect(view.result.current.draft?.analysisLanguages).toEqual([PLATFORM_LANGUAGE]);
   });
 
+  it('keeps a project opened while the draft is fetched', async () => {
+    let resolveGetDraft: (json: string) => void = () => {};
+    const deferred = new Promise<string>((resolve) => {
+      resolveGetDraft = resolve;
+    });
+    mockSendCommand.mockImplementation((...args: Parameters<typeof mockSendCommand>) => {
+      if (args[0] === 'interlinearizer.getDraft') return deferred;
+      return Promise.resolve(undefined);
+    });
+    const { result } = renderHook(() => useDraftProject(SOURCE_PROJECT_ID, PLATFORM_LANGUAGE));
+
+    act(() =>
+      result.current.loadFromProject({
+        analysis: analysisWithToken('tok-opened'),
+        analysisLanguages: ['de'],
+      }),
+    );
+    await act(async () => {
+      resolveGetDraft(JSON.stringify(makeDraft()));
+      await deferred;
+    });
+
+    expect(result.current.isDraftLoading).toBe(false);
+    expect(result.current.draft?.analysis).toEqual(analysisWithToken('tok-opened'));
+    expect(result.current.draft?.analysisLanguages).toEqual(['de']);
+  });
+
+  it('keeps a project opened while the draft waits for the platform language', async () => {
+    mockGetDraftResolves(makeDraft({ analysisLanguages: [] }));
+    const view = renderHook<UseDraftProjectResult, { language: string | undefined }>(
+      ({ language }) => useDraftProject(SOURCE_PROJECT_ID, language),
+      { initialProps: { language: undefined } },
+    );
+    await act(async () => {});
+
+    act(() =>
+      view.result.current.loadFromProject({
+        analysis: analysisWithToken('tok-opened'),
+        analysisLanguages: ['de'],
+      }),
+    );
+    view.rerender({ language: PLATFORM_LANGUAGE });
+    await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
+
+    expect(view.result.current.draft?.analysis).toEqual(analysisWithToken('tok-opened'));
+    expect(view.result.current.draft?.analysisLanguages).toEqual(['de']);
+  });
+
+  it('detaches a project opened while the draft waits for the platform language', async () => {
+    mockGetDraftResolves(makeDraft({ analysisLanguages: [] }));
+    const view = renderHook<UseDraftProjectResult, { language: string | undefined }>(
+      ({ language }) => useDraftProject(SOURCE_PROJECT_ID, language),
+      { initialProps: { language: undefined } },
+    );
+    await act(async () => {});
+    act(() =>
+      view.result.current.loadFromProject({
+        analysis: analysisWithToken('tok-opened'),
+        analysisLanguages: ['de'],
+      }),
+    );
+
+    let detached = Promise.resolve();
+    act(() => {
+      detached = view.result.current.detachFromProject();
+    });
+    jest.useFakeTimers();
+    view.rerender({ language: PLATFORM_LANGUAGE });
+    await act(() => detached);
+    act(() => jest.advanceTimersByTime(300));
+    jest.useRealTimers();
+
+    expect(view.result.current.dirty).toBe(true);
+    expect(lastSavedDraft()).toMatchObject({
+      analysis: analysisWithToken('tok-opened'),
+      dirty: true,
+    });
+  });
+
   it('keeps the stored analysis languages when the draft already has some', async () => {
     mockGetDraftResolves(makeDraft({ analysisLanguages: ['fr', 'de'] }));
 

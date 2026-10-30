@@ -356,11 +356,14 @@ export default function useDraftProject(
 
     /**
      * Loads the stored draft for the source (falling back to an empty draft on failure), seeds a
-     * gloss language when none is present, and publishes it to the ref and state.
+     * gloss language when none is present, and publishes it to the ref and state. A replacement
+     * that lands while the load waits wins over the stored draft.
      *
-     * @returns The draft published, or `undefined` when the load was canceled first.
+     * @returns The draft published, the replacement that won over it, or `undefined` when the load
+     *   was canceled first.
      */
     const load = async (): Promise<DraftProject | undefined> => {
+      const replacements = replacementCountRef.current;
       let draft: DraftProject;
       try {
         const json = await perfTrack(
@@ -380,6 +383,11 @@ export default function useDraftProject(
         const firstKnown = await platformLanguageKnown.promise;
         if (canceled) return undefined;
         draft = { ...draft, analysisLanguages: [platformLanguageRef.current ?? firstKnown] };
+      }
+      // A New or Open while the load waited already replaced the draft; the stored one is older.
+      if (replacementCountRef.current !== replacements) {
+        setIsDraftLoading(false);
+        return draftRef.current;
       }
       draftRef.current = draft;
       cleanStatesRef.current = new Set(draft.dirty ? [] : [historyRef.current.state]);

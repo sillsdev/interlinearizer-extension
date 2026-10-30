@@ -183,7 +183,6 @@ async function chapterUsj(page: Page, projectId: string, book: string): Promise<
  * Saves `usj` as `book`'s first chapter, as the Scripture editor does.
  *
  * @returns Milliseconds until the save answered.
- * @throws If the provider reports the save failed.
  */
 async function saveChapter(
   page: Page,
@@ -195,11 +194,8 @@ async function saveChapter(
     async ([id, bookCode, chapter]) => {
       const pdp = await window.papi.projectDataProviders.get('platformScripture.USJ_Chapter', id);
       const start = performance.now();
-      const saved = await pdp.setChapterUSJ(
-        { book: bookCode, chapterNum: 1, verseNum: 1 },
-        chapter,
-      );
-      if (saved === false) throw new Error(`${bookCode} 1 was not saved`);
+      // Resolves false when the text is unchanged; a failed save rejects.
+      await pdp.setChapterUSJ({ book: bookCode, chapterNum: 1, verseNum: 1 }, chapter);
       return performance.now() - start;
     },
     [projectId, book, usj] as const,

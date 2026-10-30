@@ -267,7 +267,7 @@ async function readRememberedActiveProject(
 /**
  * Remembers which interlinear project the WebView `state` has active for `sourceProjectId`, so that
  * the next tab opened on that source opens on it. Forgets the remembered project when the state has
- * none active.
+ * none active; the platform's open and update events carry the WebView's whole state.
  *
  * A write that fails is logged, and the next update writes again.
  */

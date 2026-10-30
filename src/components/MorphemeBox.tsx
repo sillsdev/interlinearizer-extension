@@ -119,10 +119,7 @@ function MorphemeBoxInner({
   noGlossLabel?: string;
   /** Shown where the analysis segments nothing. Omitted, nothing renders in that case. */
   noBreakdownLabel?: string;
-  /**
-   * Whether a gloss that comes from a lexicon sense is marked as such. Defaults to `true`; a caller
-   * that shows the morphemes' links beside the box turns it off, so no link is marked twice.
-   */
+  /** Whether a gloss that comes from a lexicon sense is marked as such. Defaults to `true`. */
   markLexiconGlosses?: boolean;
   /**
    * Accessible labels for this box and its gloss inputs, resolved once per strip. Defaults to the

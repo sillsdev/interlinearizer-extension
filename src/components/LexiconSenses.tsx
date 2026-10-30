@@ -73,9 +73,11 @@ export type LinkedGloss = DisplayedGloss &
   }>;
 
 /**
- * The gloss to show in `language` for an analysis that stores `gloss` and carries `senseRef`, as
- * {@link useDisplayedGloss} gives it, along with the sense's own gloss. The sense is asked for even
- * where a stored gloss covers it, so that the two glosses can be compared.
+ * The gloss to show in `language` for an analysis that stores `gloss` and carries `senseRef`, along
+ * with the sense's own gloss.
+ *
+ * The stored gloss is shown when present; otherwise the sense's gloss is shown. The sense's gloss
+ * is returned even where a stored gloss takes precedence, so that the two glosses can be compared.
  */
 export function useLinkedGloss(
   gloss: string,

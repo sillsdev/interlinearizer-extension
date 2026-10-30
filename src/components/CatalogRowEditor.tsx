@@ -38,7 +38,10 @@ type CatalogRowEditorProps = Readonly<{
   surfaceText: string;
   /** The analysis's gloss in the active language, `''` when it has none. */
   gloss: string;
-  /** The sense the analysis links to, whose gloss a read-only analysis shows where it has none. */
+  /**
+   * The sense the analysis links to, whose gloss a read-only row shows where the analysis stores
+   * none.
+   */
   glossSenseRef?: SenseRef;
   /** How many tokens this analysis is applied to, which every edit here rewrites at once. */
   usageCount: number;
@@ -204,7 +207,7 @@ export default function CatalogRowEditor({
 }: CatalogRowEditorProps) {
   const glossFieldId = useId();
   const readOnly = useAnalysisReadOnly();
-  // Only the read-only line shows the sense's gloss. The input shows what is typed, since editing
+  // Only the read-only line shows the sense's gloss. The input shows what is typed, because editing
   // it would otherwise leave unclear whether the sense's gloss was adopted.
   const { text: displayedGloss } = useDisplayedGloss(
     gloss,

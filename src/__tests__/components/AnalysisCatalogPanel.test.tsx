@@ -231,7 +231,8 @@ function renderPanel(overrides: PanelOptions = {}) {
       />
     </PanelProviders>
   );
-  // Left unwrapped without senses, so a test that rerenders through `PanelProviders` keeps the tree.
+  // Without senses the panel is not wrapped, so a test that rerenders through `PanelProviders` keeps
+  // the same tree.
   return render(overrides.senses ? withLexicon(panel, overrides.senses).ui : panel);
 }
 
@@ -3246,7 +3247,10 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     describe('linked to a lexicon', () => {
-      /** An analysis glossed only through its sense, with a morpheme glossed only through its. */
+      /**
+       * An analysis glossed only through its sense, with a morpheme glossed only through its own
+       * sense.
+       */
       const LINKED: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -3283,7 +3287,9 @@ describe('AnalysisCatalogPanel', () => {
       it("shows the sense's gloss where the analysis stores none", async () => {
         const row = await expandLinkedRow();
 
-        expect(await within(row).findByTestId('readonly-catalog-gloss')).toHaveTextContent('word');
+        await waitFor(() =>
+          expect(within(row).getByTestId('readonly-catalog-gloss')).toHaveTextContent('word'),
+        );
       });
 
       it("leaves marking a morpheme's link to the list of senses", async () => {
@@ -3330,11 +3336,15 @@ describe('AnalysisCatalogPanel', () => {
       tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
     };
 
-    it("marks a linked row, and lists its sense only once it's expanded", async () => {
+    it('marks a collapsed linked row without listing its sense', () => {
       renderPanel({ analysis: LINKED, senses: { 's-word': { gloss: { en: 'word' } } } });
 
       expect(within(rowFor('ta-1')).getByTestId('catalog-sense-link')).toBeInTheDocument();
       expect(within(rowFor('ta-1')).queryByTestId('catalog-sense-links')).not.toBeInTheDocument();
+    });
+
+    it("lists a linked row's sense once the row is expanded", async () => {
+      renderPanel({ analysis: LINKED, senses: { 's-word': { gloss: { en: 'word' } } } });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 

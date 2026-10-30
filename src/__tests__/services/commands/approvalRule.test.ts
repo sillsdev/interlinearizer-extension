@@ -10,7 +10,7 @@ import { ApprovalRuleError, assertApprovalRule } from '../../../services/command
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, memoryStorage, silentLogger } from '../../test-helpers';
+import { FIXTURE_STAMPS, memoryStorage, seedRepository, silentLogger } from '../../test-helpers';
 
 function tokenLink(
   id: string,
@@ -48,7 +48,7 @@ function phraseLink(id: string, ...indexes: number[]): PhraseAnalysisLink {
 async function over(analysis: Partial<TextAnalysis>) {
   const { storage } = memoryStorage();
   const repository = new DraftRepository(storage, 'src', silentLogger());
-  await repository.replaceAll({
+  await seedRepository(repository, {
     ...emptyDraft('src'),
     analysis: { ...emptyAnalysis(), ...analysis },
   });

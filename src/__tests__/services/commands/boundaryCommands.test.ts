@@ -5,7 +5,13 @@ import { AnalysisSessions } from '../../../services/analysisSessions';
 import { splitSegment } from '../../../services/commands/boundaryCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, makeVerseBook, memoryStorage, silentLogger } from '../../test-helpers';
+import {
+  FIXTURE_STAMPS,
+  makeVerseBook,
+  memoryStorage,
+  seedRepository,
+  silentLogger,
+} from '../../test-helpers';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 const SOURCE = 'src-project';
@@ -52,7 +58,7 @@ describe('splitSegment', () => {
     const { storage } = memoryStorage();
     const logger = silentLogger();
     const seeded = draftWith(phraseLink('pl-1', 'pa-1', [IN, THE, GOD]));
-    await new DraftRepository(storage, SOURCE, logger).replaceAll(seeded);
+    await seedRepository(new DraftRepository(storage, SOURCE, logger), seeded);
     const sessions = new AnalysisSessions({
       findProject: async () => undefined,
       openDraftRepository: (sourceProjectId) =>

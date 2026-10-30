@@ -13,7 +13,7 @@ import {
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, memoryStorage, silentLogger } from '../../test-helpers';
+import { FIXTURE_STAMPS, memoryStorage, seedRepository, silentLogger } from '../../test-helpers';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 
@@ -33,7 +33,7 @@ const glossed: Partial<TextAnalysis> = {
 async function bufferOver(analysis: Partial<TextAnalysis>): Promise<ChangeBuffer> {
   const { storage } = memoryStorage();
   const repository = new DraftRepository(storage, 'src', silentLogger());
-  await repository.replaceAll({
+  await seedRepository(repository, {
     ...emptyDraft('src'),
     analysis: { ...emptyAnalysis(), ...analysis },
   });

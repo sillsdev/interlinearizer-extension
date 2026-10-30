@@ -5,7 +5,7 @@ import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { approveAnalysisForToken, writeGloss } from '../../../services/commands/tokenCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, memoryStorage, silentLogger } from '../../test-helpers';
+import { FIXTURE_STAMPS, memoryStorage, seedRepository, silentLogger } from '../../test-helpers';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 const STAMP = { analysisId: 'new-analysis', linkId: 'new-link', now: NOW };
@@ -30,7 +30,7 @@ function link(id: string, tokenRef: string): TokenAnalysisLink {
 async function bufferOver(analysis: Partial<TextAnalysis>): Promise<ChangeBuffer> {
   const { storage } = memoryStorage();
   const repository = new DraftRepository(storage, 'src', silentLogger());
-  await repository.replaceAll({
+  await seedRepository(repository, {
     ...emptyDraft('src'),
     analysis: { ...emptyAnalysis(), ...analysis },
   });

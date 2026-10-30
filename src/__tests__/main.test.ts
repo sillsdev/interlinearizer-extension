@@ -38,6 +38,7 @@ import {
   makeTokenLink,
   makeVerseBook,
   memoryStorage,
+  seedRepository,
   silentLogger,
 } from './test-helpers';
 
@@ -2459,7 +2460,10 @@ describe('main', () => {
     /** A repository holding `draft`, as storage would open one. */
     async function stubRepository(draft: DraftProject, readOnly = false): Promise<StubRepository> {
       const { storage } = memoryStorage();
-      await new DraftRepository(storage, draft.sourceProjectId, silentLogger()).replaceAll(draft);
+      await seedRepository(
+        new DraftRepository(storage, draft.sourceProjectId, silentLogger()),
+        draft,
+      );
       return new StubRepository(storage, draft.sourceProjectId, readOnly);
     }
 

@@ -13,6 +13,7 @@ import {
   makeTokenLink,
   makeVerseBook,
   memoryStorage,
+  seedRepository,
   silentLogger,
   tokenRefOf,
 } from '../test-helpers';
@@ -75,7 +76,7 @@ describe('EditHistory', () => {
 
   it('marks the draft saved when the edit clears the mark', async () => {
     const { history, repository, storedDirty } = makeHistory();
-    await repository.replaceAll({ ...emptyDraft('src'), dirty: true });
+    await seedRepository(repository, { ...emptyDraft('src'), dirty: true });
 
     await history.apply(putting('a'), { unsavedMark: 'clear' });
 
@@ -245,7 +246,7 @@ describe("EditHistory's unsaved mark", () => {
 
   it('marks the draft unsaved when an undo leads away from content it was saved with', async () => {
     const { history, repository, storedDirty } = makeHistory();
-    await repository.replaceAll({ ...emptyDraft('src'), dirty: true });
+    await seedRepository(repository, { ...emptyDraft('src'), dirty: true });
     await history.apply(putting('a'), { unsavedMark: 'clear' });
 
     await history.undo();
@@ -255,7 +256,7 @@ describe("EditHistory's unsaved mark", () => {
 
   it('marks the draft saved when a redo leads back to content an edit cleared the mark on', async () => {
     const { history, repository, storedDirty } = makeHistory();
-    await repository.replaceAll({ ...emptyDraft('src'), dirty: true });
+    await seedRepository(repository, { ...emptyDraft('src'), dirty: true });
     await history.apply(putting('a'), { unsavedMark: 'clear' });
     await history.undo();
 

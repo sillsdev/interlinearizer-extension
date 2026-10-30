@@ -331,7 +331,7 @@ export interface AnalysisRepository {
    * nothing. A repository that stores its records in shards also reports where a stored shard
    * differs from the records it should hold.
    *
-   * @throws If a repository that stores its records in shards cannot read them.
+   * @throws If storage rejects a read, or a sharded repository's stored draft is not valid JSON.
    */
   checkIndexes(): Promise<IndexDifference[]>;
 }

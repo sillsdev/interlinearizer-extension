@@ -337,9 +337,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * After a failed apply, the next apply to succeed also brings back in step any book the failure
    * left out of step with the draft. In the same instance, the next apply restores the book as it
    * was. After a reload or restart, the reloaded draft keeps the first copy of each payload in
-   * manifest order, so a book may take the failed edit instead. The next apply brings those books
+   * manifest order, so a book may take the failed edit instead. The next apply brings such a book
    * back in step even when the shard journal won't parse or is malformed. If the journal is lost,
-   * {@link checkIndexes} still reports those books.
+   * {@link checkIndexes} still reports such a book.
    *
    * What an apply stores matches a whole save of the same draft in content, not order. The manifest
    * may list the books in another order, and a link that a put moves into a book comes last in that

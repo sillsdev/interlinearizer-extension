@@ -785,7 +785,7 @@ test('measure the app', async ({ mainPage }) => {
     await writeDraft(STORAGE_DIR, originalDraft);
   }
 
-  const file = writeResults('app', {
+  const file = await writeResults('app', {
     // Assumes that the packaged app was built from this checkout.
     ...provenance(
       execFileSync('git', ['rev-parse', 'HEAD'], {

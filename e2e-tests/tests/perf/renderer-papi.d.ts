@@ -15,6 +15,15 @@ interface RendererPapi {
         chapterNum: number;
         verseNum: number;
       }): Promise<unknown>;
+      getChapterUSJ(verseRef: {
+        book: string;
+        chapterNum: number;
+        verseNum: number;
+      }): Promise<unknown>;
+      setChapterUSJ(
+        verseRef: { book: string; chapterNum: number; verseNum: number },
+        usj: unknown,
+      ): Promise<unknown>;
     }>;
   };
   scrollGroups: {

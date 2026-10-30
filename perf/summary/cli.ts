@@ -70,6 +70,14 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     "How many of the catalog's forms the text lacks, by the WebView's whole-text read and by the host's form index, and how many forms the two disagree on.",
   'app.textRead':
     "With a view open, the host reads every book of the source and files its word forms, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes each book's USJ, which the platform keeps for every book subscription.",
+  'app.scriptureSave':
+    "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
+  'app.hostEditDuringRead':
+    "On the host path, a gloss committed as soon as a fresh view is editable, while the session's whole-text read still runs. A run whose read had already finished is counted, not timed.",
+  'app.hostEdit':
+    "On the host path, one gloss committed once the session's whole-text read has finished.",
+  'app.hostScriptureSave':
+    "As the Scripture save above, on the host path with the session's whole-text read finished, so the host watches every book.",
   'bench.memory': 'Heap held by the parsed draft, and by an undo history filled to its limit.',
 };
 
@@ -88,6 +96,10 @@ const SECTION_LABELS: Record<string, string> = {
   save: 'Save the analysis to its project',
   concordance: 'Open the concordance',
   textRead: 'Read the whole text in the host',
+  scriptureSave: 'Save a Scripture chapter',
+  hostEditDuringRead: 'Host path: edit one gloss during the whole-text read',
+  hostEdit: 'Host path: edit one gloss',
+  hostScriptureSave: 'Host path: save a Scripture chapter',
   formsNotInText: 'Catalog forms not in the text',
   applyBooksReached: 'Books an apply reaches',
   'timings.load': 'Load',
@@ -118,6 +130,10 @@ const METRIC_LABELS: Record<string, string> = {
   reanchor: 'Reanchor analysis to book',
   'open-to-interactive': 'Total: open to settled',
   'dispatch-render': 'Commit gloss to re-render',
+  'gloss-render': 'Commit gloss to render',
+  'scripture-save': 'Save the chapter',
+  'save-host-cpu': 'Host CPU over the save',
+  runsAfterRead: 'Runs after the read had finished',
   'autosave-serialize': 'Serialize draft',
   autosave: 'Autosave',
   'projects-fetch': 'Fetch saved projects',

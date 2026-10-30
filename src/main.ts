@@ -45,9 +45,13 @@ import { readBookOutline, readSegmentPage } from './services/sessionPages';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
 import type { EditStep } from './types/edit-step';
-import { toProjectSummary, type SavedAsProject } from './types/interlinear-project-summary';
+import {
+  toProjectSummary,
+  type InterlinearProjectSummary,
+  type SavedAsProject,
+} from './types/interlinear-project-summary';
 import { UnreadableBooksError, type DraftExport } from './types/analysis-repository';
-import { isDraftProject } from './types/type-guards';
+import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION, bookOfRef } from './utils/analysis-book';
 import { bookIndexesOf } from './utils/book-indexes';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
@@ -73,6 +77,11 @@ export interface InterlinearizerOpenOptions extends OpenWebViewOptions {
    * WebView's state, where answering the offer clears it.
    */
   offerPt9Import?: boolean;
+  /**
+   * The interlinear project the source's view last had active, set on an explicit open that creates
+   * the tab. Carried into the WebView's state, so the new tab opens on that project.
+   */
+  activeProject?: InterlinearProjectSummary;
 }
 
 /** Tab title used when there is no project to name or the localized title format cannot be read. */
@@ -121,13 +130,21 @@ const mainWebViewProvider: IWebViewProvider = {
       );
     }
     const projectId = openWebViewOptions?.projectId ?? savedWebView.projectId;
+    // Seeded state rides the options only on an explicit open; a tab restore passes no options and
+    // keeps whatever the WebView last stored.
+    const seededState = {
+      ...(openWebViewOptions?.offerPt9Import !== undefined && {
+        offerPt9Import: openWebViewOptions.offerPt9Import,
+      }),
+      ...(openWebViewOptions?.activeProject !== undefined && {
+        activeProject: openWebViewOptions.activeProject,
+      }),
+    };
     return {
       ...savedWebView,
       projectId,
-      // The offer flag rides the options only on an explicit open; a tab restore passes no
-      // options and keeps whatever the WebView last stored.
-      ...(openWebViewOptions?.offerPt9Import !== undefined && {
-        state: { ...savedWebView.state, offerPt9Import: openWebViewOptions.offerPt9Import },
+      ...(Object.keys(seededState).length > 0 && {
+        state: { ...savedWebView.state, ...seededState },
       }),
       title: projectId ? await getTabTitle(projectId) : baseTabTitle,
       content: interlinearizerReact,
@@ -151,6 +168,12 @@ let executionToken: ExecutionToken;
  * tab to front instead of opening a duplicate.
  */
 const openWebViewsByProject = new Map<string, string>();
+
+/**
+ * The active project id, per source, that storage is known to hold: the id last written or read. A
+ * WebView update that reports this id writes nothing to storage.
+ */
+const rememberedActiveProjects = new Map<string, string | undefined>();
 
 /**
  * The unreadable books each source's last draft write left out, so the user is told once, not on
@@ -209,19 +232,67 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
   if (!resolvedProjectId) return undefined;
 
   const existingId = openWebViewsByProject.get(resolvedProjectId);
+  // Computed only when this open creates a tab: focusing an existing tab must not reset an offer or
+  // a project the user may already be looking at.
+  const seededState =
+    existingId === undefined
+      ? await Promise.all([
+          pt9ImportService.hasNoInterlinearizerState(executionToken, resolvedProjectId),
+          readRememberedActiveProject(resolvedProjectId),
+        ]).then(([offerPt9Import, activeProject]) => ({ offerPt9Import, activeProject }))
+      : undefined;
   const options: InterlinearizerOpenOptions = {
     existingId,
     projectId: resolvedProjectId,
-    // Computed only when this open creates a tab: focusing an existing tab must not reset an
-    // offer the user may already be looking at.
-    ...(existingId === undefined && {
-      offerPt9Import: await pt9ImportService.hasNoInterlinearizerState(
-        executionToken,
-        resolvedProjectId,
-      ),
-    }),
+    ...seededState,
   };
   return papi.webViews.openWebView(mainWebViewType, undefined, options);
+}
+
+/**
+ * Reads the interlinear project the source's view last had active, or `undefined` when none is
+ * remembered. A failed read is logged and answered as `undefined` rather than thrown.
+ */
+async function readRememberedActiveProject(
+  sourceProjectId: string,
+): Promise<InterlinearProjectSummary | undefined> {
+  try {
+    const project = await projectStorage.getRememberedActiveProject(
+      executionToken,
+      sourceProjectId,
+    );
+    // The tab this seeds reports the project straight back, and storage already holds it.
+    if (project) rememberedActiveProjects.set(sourceProjectId, project.id);
+    return project;
+  } catch (e) {
+    logger.error('Interlinearizer: failed to read the remembered active project', e);
+    return undefined;
+  }
+}
+
+/**
+ * Remembers which interlinear project the WebView `state` has active for `sourceProjectId`, so that
+ * the next tab opened on that source opens on it. Forgets the remembered project when the state has
+ * none active; the platform's open and update events carry the WebView's whole state.
+ *
+ * A write that fails is logged, and the tab's next update or its close writes again.
+ */
+function rememberActiveProject(
+  sourceProjectId: string,
+  state: SavedWebViewDefinition['state'],
+): void {
+  const active = state?.activeProject;
+  const activeId = isInterlinearProjectSummary(active) ? active.id : undefined;
+  if (
+    rememberedActiveProjects.has(sourceProjectId) &&
+    rememberedActiveProjects.get(sourceProjectId) === activeId
+  )
+    return;
+  rememberedActiveProjects.set(sourceProjectId, activeId);
+  projectStorage.rememberActiveProject(executionToken, sourceProjectId, activeId).catch((e) => {
+    rememberedActiveProjects.delete(sourceProjectId);
+    logger.error('Interlinearizer: failed to remember the active project', e);
+  });
 }
 
 /**
@@ -1935,6 +2006,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   executionToken = context.executionToken;
   leftOutDraftBooks.clear();
+  rememberedActiveProjects.clear();
   context.registrations.add(
     startCSharpHost(executionToken, context.elevatedPrivileges.createProcess),
   );
@@ -1951,6 +2023,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   function trackWebView({ webView }: { webView: SavedWebViewDefinition }): void {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
     openWebViewsByProject.set(webView.projectId, webView.id);
+    rememberActiveProject(webView.projectId, webView.state);
   }
   const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(trackWebView);
   const webViewUpdateUnsubscriber = papi.webViews.onDidUpdateWebView(trackWebView);
@@ -1958,6 +2031,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const webViewCloseUnsubscriber = papi.webViews.onDidCloseWebView(({ webView }) => {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
     if (openWebViewsByProject.get(webView.projectId) !== webView.id) return;
+    rememberActiveProject(webView.projectId, webView.state);
     openWebViewsByProject.delete(webView.projectId);
     bookService.closeProject(webView.projectId);
   });

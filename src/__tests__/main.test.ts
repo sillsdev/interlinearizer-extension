@@ -290,6 +290,8 @@ describe('main', () => {
     __mockNotificationsSend.mockResolvedValue('mock-notification-id');
     __mockCreateNetworkEventEmitterAsync.mockResolvedValue({ emit: jest.fn(), dispose: jest.fn() });
     jest.mocked(projectStorage.sweepPendingCleanup).mockResolvedValue(0);
+    jest.mocked(projectStorage.getRememberedActiveProject).mockResolvedValue(undefined);
+    jest.mocked(projectStorage.rememberActiveProject).mockResolvedValue();
   });
 
   describe('activate', () => {
@@ -744,6 +746,40 @@ describe('main', () => {
       expect(result?.state).toEqual({ offerPt9Import: true });
     });
 
+    it('carries the remembered active project into the WebView state on an explicit open', async () => {
+      const context = createTestActivationContext();
+      await activate(context);
+      const activeProject = toProjectSummary(makeStubProject('interlinear-1'));
+
+      const provider = getRegisteredProvider();
+      const savedWebView: SavedWebViewDefinition = {
+        id: 'test-webview-id',
+        webViewType: mainWebViewType,
+      };
+
+      const options: InterlinearizerOpenOptions = { offerPt9Import: false, activeProject };
+      const result = await provider.getWebView(savedWebView, options);
+
+      expect(result?.state).toEqual({ offerPt9Import: false, activeProject });
+    });
+
+    it('keeps the stored WebView state on a tab restore', async () => {
+      const context = createTestActivationContext();
+      await activate(context);
+      const activeProject = toProjectSummary(makeStubProject('interlinear-1'));
+
+      const provider = getRegisteredProvider();
+      const savedWebView: SavedWebViewDefinition = {
+        id: 'test-webview-id',
+        webViewType: mainWebViewType,
+        state: { activeProject },
+      };
+
+      const result = await provider.getWebView(savedWebView, undefined);
+
+      expect(result?.state).toEqual({ activeProject });
+    });
+
     it('falls back to savedWebView.projectId when options has no projectId', async () => {
       const context = createTestActivationContext();
       await activate(context);
@@ -882,6 +918,76 @@ describe('main', () => {
         mainWebViewType,
         undefined,
         expect.objectContaining({ offerPt9Import: true }),
+      );
+    });
+
+    it('opens a new tab on the project its source last had active', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue({
+        id: 'some-webview',
+        webViewType: 'someExtension.view',
+        projectId: 'project-from-webview',
+      });
+      const activeProject = toProjectSummary(makeStubProject('interlinear-1'));
+      jest.mocked(projectStorage.getRememberedActiveProject).mockResolvedValue(activeProject);
+      const openForWebView = await getOpenForWebViewHandler();
+
+      await openForWebView('some-webview');
+
+      expect(jest.mocked(projectStorage.getRememberedActiveProject)).toHaveBeenCalledWith(
+        expect.anything(),
+        'project-from-webview',
+      );
+      expect(__mockOpenWebView).toHaveBeenCalledWith(
+        mainWebViewType,
+        undefined,
+        expect.objectContaining({ activeProject }),
+      );
+    });
+
+    it('opens a new tab on no project when the remembered one cannot be read', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue({
+        id: 'some-webview',
+        webViewType: 'someExtension.view',
+        projectId: 'project-from-webview',
+      });
+      jest
+        .mocked(projectStorage.getRememberedActiveProject)
+        .mockRejectedValue(new Error('disk full'));
+      const openForWebView = await getOpenForWebViewHandler();
+
+      await openForWebView('some-webview');
+
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to read the remembered active project',
+        expect.any(Error),
+      );
+      expect(__mockOpenWebView).toHaveBeenCalledWith(
+        mainWebViewType,
+        undefined,
+        expect.objectContaining({ activeProject: undefined }),
+      );
+    });
+
+    it('forgets the remembered project when a tab opens without it after a failed read', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue({
+        id: 'some-webview',
+        webViewType: 'someExtension.view',
+        projectId: 'project-from-webview',
+      });
+      jest
+        .mocked(projectStorage.getRememberedActiveProject)
+        .mockRejectedValue(new Error('disk full'));
+      const openForWebView = await getOpenForWebViewHandler();
+      await openForWebView('some-webview');
+
+      getOpenWebViewCallback()({
+        webView: { id: 'new-tab', webViewType: mainWebViewType, projectId: 'project-from-webview' },
+      });
+
+      expect(jest.mocked(projectStorage.rememberActiveProject)).toHaveBeenCalledWith(
+        expect.anything(),
+        'project-from-webview',
+        undefined,
       );
     });
 
@@ -1116,6 +1222,7 @@ describe('main', () => {
         await findRegisteredHandler('interlinearizer.openForWebView')?.();
 
         expect(jest.mocked(pt9ImportService.hasNoInterlinearizerState)).not.toHaveBeenCalled();
+        expect(jest.mocked(projectStorage.getRememberedActiveProject)).not.toHaveBeenCalled();
         expect(__mockOpenWebView).toHaveBeenCalledWith(
           mainWebViewType,
           undefined,
@@ -1155,6 +1262,99 @@ describe('main', () => {
           undefined,
           expect.not.objectContaining({ existingId: expect.any(String) }),
         );
+      });
+    });
+
+    describe('remembering the active project', () => {
+      const activeProject = toProjectSummary(makeStubProject('interlinear-1'));
+
+      /** Reports an update of the source's WebView whose state holds `state`. */
+      function reportUpdate(state?: Record<string, unknown>): void {
+        getUpdateWebViewCallback()({
+          webView: { id: 'tab', webViewType: mainWebViewType, projectId: 'my-project', state },
+        });
+      }
+
+      it("remembers the project a WebView's state has active", async () => {
+        await activate(createTestActivationContext());
+
+        reportUpdate({ activeProject });
+
+        expect(jest.mocked(projectStorage.rememberActiveProject)).toHaveBeenCalledWith(
+          expect.anything(),
+          'my-project',
+          'interlinear-1',
+        );
+      });
+
+      it("forgets the project remembered once a WebView's state has none active", async () => {
+        await activate(createTestActivationContext());
+        reportUpdate({ activeProject });
+
+        reportUpdate({});
+
+        expect(jest.mocked(projectStorage.rememberActiveProject)).toHaveBeenLastCalledWith(
+          expect.anything(),
+          'my-project',
+          undefined,
+        );
+      });
+
+      it('writes nothing when an update leaves the active project as it was', async () => {
+        await activate(createTestActivationContext());
+        reportUpdate({ activeProject });
+
+        reportUpdate({ activeProject, sidePanel: 'catalog' });
+
+        expect(jest.mocked(projectStorage.rememberActiveProject)).toHaveBeenCalledTimes(1);
+      });
+
+      it('writes the active project again after a write of it fails', async () => {
+        jest
+          .mocked(projectStorage.rememberActiveProject)
+          .mockRejectedValueOnce(new Error('disk full'));
+        await activate(createTestActivationContext());
+        reportUpdate({ activeProject });
+        await new Promise(process.nextTick);
+
+        reportUpdate({ activeProject });
+
+        expect(__mockLogger.error).toHaveBeenCalledWith(
+          'Interlinearizer: failed to remember the active project',
+          expect.any(Error),
+        );
+        expect(jest.mocked(projectStorage.rememberActiveProject)).toHaveBeenCalledTimes(2);
+      });
+
+      it('writes the active project again when the tab closes after a write of it fails', async () => {
+        jest
+          .mocked(projectStorage.rememberActiveProject)
+          .mockRejectedValueOnce(new Error('disk full'));
+        await activate(createTestActivationContext());
+        reportUpdate({ activeProject });
+        await new Promise(process.nextTick);
+
+        getCloseWebViewCallback()({
+          webView: {
+            id: 'tab',
+            webViewType: mainWebViewType,
+            projectId: 'my-project',
+            state: { activeProject },
+          },
+        });
+
+        expect(jest.mocked(projectStorage.rememberActiveProject)).toHaveBeenCalledTimes(2);
+      });
+
+      it('writes nothing when a tab reports the project it was opened on', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        jest.mocked(projectStorage.getRememberedActiveProject).mockResolvedValue(activeProject);
+        await activate(createTestActivationContext());
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+
+        reportUpdate({ activeProject });
+
+        expect(jest.mocked(projectStorage.rememberActiveProject)).not.toHaveBeenCalled();
       });
     });
 

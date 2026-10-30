@@ -24,7 +24,7 @@ import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 import { DraftRepository } from './draftRepository';
 import { Pt9ImportRepository } from './pt9ImportRepository';
 import { ProjectSummaries, summarizeProject } from './projectSummaries';
-import { draftKey, projectKey } from './storageKeys';
+import { activeProjectKey, draftKey, projectKey } from './storageKeys';
 
 /**
  * Storage key holding the set of project IDs whose records were orphaned by a failed rollback (see
@@ -61,6 +61,12 @@ const projectQueues = new Map<string, Promise<unknown>>();
  * out of order.
  */
 const draftQueues = new Map<string, Promise<unknown>>();
+
+/**
+ * Per-source serialization queues for the remembered active project, keyed by `sourceProjectId`.
+ * They keep reads and writes for one source in the order they were made.
+ */
+const activeProjectQueues = new Map<string, Promise<unknown>>();
 
 /**
  * Each source project's draft repository, kept across calls until released, so a save rewrites only
@@ -782,6 +788,48 @@ export function getProjectSummariesForSource(
 }
 
 /**
+ * Returns the summary of the interlinear project the source project's view last had active.
+ *
+ * @returns `undefined` when none is remembered, or when the remembered project is no longer listed
+ *   for the source.
+ * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+ * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
+ */
+export async function getRememberedActiveProject(
+  token: ExecutionToken,
+  sourceProjectId: string,
+): Promise<InterlinearProjectSummary | undefined> {
+  const id = await enqueueSerialized(activeProjectQueues, sourceProjectId, () =>
+    readRecord(token, activeProjectKey(sourceProjectId)),
+  );
+  if (id === undefined) return undefined;
+  const summaries = await getProjectSummariesForSource(token, sourceProjectId);
+  return summaries.find((summary) => summary.id === id);
+}
+
+/**
+ * Remembers `interlinearProjectId` as the project the source project's view has active. Forgets the
+ * remembered project when `interlinearProjectId` is `undefined`. Calls for one source land in the
+ * order they were made.
+ *
+ * @throws If `papi.storage.writeUserData` rejects, or `papi.storage.deleteUserData` rejects for any
+ *   non-ENOENT reason.
+ */
+export function rememberActiveProject(
+  token: ExecutionToken,
+  sourceProjectId: string,
+  interlinearProjectId: string | undefined,
+): Promise<void> {
+  const key = activeProjectKey(sourceProjectId);
+  return enqueueSerialized(activeProjectQueues, sourceProjectId, () =>
+    interlinearProjectId === undefined
+      ? userDataStorage(token).delete(key)
+      : papi.storage.writeUserData(token, key, interlinearProjectId),
+  );
+}
+
+/**
  * Replaces the analysis of an existing interlinearizer project, and optionally its custom segment
  * boundaries and its configuration, in one atomic write. Refreshes `updatedAt` to the current
  * time.
@@ -1199,6 +1247,7 @@ export function resetQueuesForTesting(): void {
   pendingCleanupQueue = Promise.resolve();
   projectQueues.clear();
   draftQueues.clear();
+  activeProjectQueues.clear();
   draftRepositories.clear();
   draftWriteCounts.clear();
   importRevisions.clear();

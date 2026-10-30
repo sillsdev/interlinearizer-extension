@@ -50,7 +50,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 - `activate(context)` — stores the `ExecutionToken`, registers the `interlinearizer.mainWebView` WebView provider, command handlers, network event emitters, project settings validators, and the `onDidOpenWebView` / `onDidUpdateWebView` / `onDidCloseWebView` subscriptions. It builds the sessions and their `onAnalysisChanged` emitter before registering any command. One of its registrations closes every session, then lets go of every book `bookService` keeps, then disposes that emitter. All registrations are added to `context.registrations` so the platform disposes them on deactivation.
 - `deactivate()` — clears `openWebViewsByProject` and returns `true`.
 
-`openWebViewsByProject` (`Map<string, string>`) tracks one open WebView ID per project to prevent duplicates; reopening an already-open project brings that tab to front via the `existingId` option.
+`openWebViewsByProject` (`Map<string, string>`) tracks one open WebView ID per project to prevent duplicates; reopening an already-open project brings that tab to front via the `existingId` option. The same open and update subscriptions remember which interlinear project each source's WebView has active. An open that creates a tab seeds that project into the new WebView's state, as it does the Paratext 9 import offer.
 
 ### C# host
 

@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import type { Book, TextAnalysis } from 'interlinearizer';
-import type { DraftContent } from '../../hooks/useDraftProject';
+import type { DraftContent } from '../../types/draft-content';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { reanchorDraftToBook, reanchorDraftToMissingBook } from '../../utils/reanchor-draft';
 import type { BookPass } from '../../utils/undo-history';

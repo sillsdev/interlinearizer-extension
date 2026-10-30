@@ -1,5 +1,5 @@
 import type { TextAnalysis } from 'interlinearizer';
-import type { DraftContent } from '../../hooks/useDraftProject';
+import type { DraftContent } from '../../types/draft-content';
 import type { DraftExport } from '../../types/analysis-repository';
 import { emptyAnalysis } from '../../types/empty-factories';
 import {

@@ -23,7 +23,7 @@ import {
   type OpenedSession,
   type Session,
 } from './services/analysisSessions';
-import type { DraftContent } from './hooks/useDraftProject';
+import type { DraftContent } from './types/draft-content';
 import * as bookService from './services/bookService';
 import * as boundaryCommands from './services/commands/boundaryCommands';
 import * as catalogCommands from './services/commands/catalogCommands';
@@ -55,7 +55,7 @@ import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards
 import { BOOKLESS_PARTITION, bookOfRef } from './utils/analysis-book';
 import { bookIndexesOf } from './utils/book-indexes';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
-import { missingBook } from './utils/reanchor-draft';
+import { missingBook } from './utils/reanchor-analysis';
 import { bookSegmentationJson } from './utils/segmentation';
 
 // #region WebView provider

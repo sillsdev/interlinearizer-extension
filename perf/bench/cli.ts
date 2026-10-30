@@ -2,7 +2,7 @@
 import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
 import path from 'path';
 import { isDeepStrictEqual } from 'util';
-import type { DraftContent } from '../../src/hooks/useDraftProject';
+import type { DraftContent } from '../../src/types/draft-content';
 import { tokenizeBook } from '../../src/parsers/papi/bookTokenizer';
 import { DraftRepository } from '../../src/services/draftRepository';
 import { extractBookFromUsj } from '../../src/parsers/papi/usjBookExtractor';
@@ -36,7 +36,8 @@ import { collatorForTag } from '../../src/utils/language-tags';
 import { reanchorAnalysisToBook } from '../../src/utils/reanchor-analysis';
 import { changesOfReanchor } from '../../src/utils/reanchor-changes';
 import { reanchorDraftToBook, reanchorDraftToMissingBook } from '../../src/utils/reanchor-draft';
-import { type BookPass, MAX_UNDO_STEPS } from '../../src/utils/undo-history';
+import { MAX_UNDO_STEPS } from '../../src/services/editHistory';
+import type { BookPass } from '../../src/utils/undo-history';
 import { loadBooks, readUsj } from '../books';
 import { readDraftJson, readManifest } from '../dataset/store';
 import { TIERS, type TierSpec } from '../dataset/tiers';

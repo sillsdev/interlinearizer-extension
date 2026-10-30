@@ -8,7 +8,7 @@ import type {
   TokenAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
-import type { DraftContent } from '../../../hooks/useDraftProject';
+import type { DraftContent } from '../../../types/draft-content';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../../test-helpers';
 import {

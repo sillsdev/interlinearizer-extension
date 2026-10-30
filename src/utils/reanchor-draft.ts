@@ -1,8 +1,8 @@
 import type { Book } from 'interlinearizer';
-import type { DraftContent } from '../hooks/useDraftProject';
+import type { DraftContent } from '../types/draft-content';
 import { resegmentBook } from '../parsers/papi/resegmentBook';
 import { perfTime } from './perf-marks';
-import { reanchorAnalysisToBook } from './reanchor-analysis';
+import { missingBook, reanchorAnalysisToBook } from './reanchor-analysis';
 import { reanchorSegmentation } from './segmentation';
 import type { BookPass } from './undo-history';
 
@@ -23,11 +23,6 @@ export function reanchorDraftToBook(verseBook: Book): BookPass<DraftContent> {
     );
     return { analysis, segmentation };
   };
-}
-
-/** A book the project no longer has, as a book with no text. */
-export function missingBook(bookCode: string): Book {
-  return { id: bookCode, bookRef: bookCode, textVersion: '', segments: [], duplicateVerseIds: [] };
 }
 
 /** Builds the pass that re-anchors a draft's content to a book the project no longer has. */

@@ -171,8 +171,9 @@ let executionToken: ExecutionToken;
 const openWebViewsByProject = new Map<string, string>();
 
 /**
- * The id of the interlinear project each source's view last had active. A WebView update that
- * leaves that id unchanged writes nothing to storage.
+ * The active project id, per source, that a WebView update may report without a storage write.
+ * Usually the id last written; `undefined` after a failed read, so that a tab opened without the
+ * stored project leaves it in storage.
  */
 const rememberedActiveProjects = new Map<string, string | undefined>();
 

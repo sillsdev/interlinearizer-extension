@@ -387,8 +387,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * nothing while no index is kept.
    *
    * Even after the shard journal is lost, the shard check finds a book that a failed apply left out
-   * of step. Shards are compared by content, not order. A book whose shard could not be read is
-   * skipped, as is a draft stored inline.
+   * of step. Shards are compared by content, not order. A draft stored inline is skipped.
    *
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws If storage rejects a read.
@@ -684,16 +683,14 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects a read.
    */
   private async shardDifferences(draft: DraftProject): Promise<IndexDifference[]> {
-    const { sourceProjectId, storage, unreadableShards: unreadable } = this;
+    const { sourceProjectId, storage } = this;
     const raw = await storage.read(draftKey(sourceProjectId));
     const stored: unknown = raw === undefined ? undefined : JSON.parse(raw);
     if (!isDraftProject(stored)) return [];
     const { analysisBooks } = withoutShardManifest(stored);
     if (!analysisBooks) return [];
     const expected = splitAnalysisByBook(draft.analysis);
-    const books = [...new Set([...expected.keys(), ...analysisBooks])].filter(
-      (bookCode) => !unreadable.has(bookCode),
-    );
+    const books = [...new Set([...expected.keys(), ...analysisBooks])];
     // Read one shard after another, so only one is held in memory at a time.
     return books.reduce(async (prior, bookCode) => {
       const differences = await prior;

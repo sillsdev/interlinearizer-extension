@@ -739,7 +739,7 @@ describe('DraftRepository', () => {
       ]);
     });
 
-    it('skips a book whose shard could not be read', async () => {
+    it('reports nothing for a book whose shard could not be read', async () => {
       const { storage, records } = memoryStorage();
       await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
       records.set(draftAnalysisKey('src', 'GEN'), 'not json');

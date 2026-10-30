@@ -222,6 +222,8 @@ export default function useSessionProject(
   /** Writes `next` as the stored draft, then opens a fresh session on whatever draft is stored. */
   const startOver = useCallback(
     async (next: DraftProject) => {
+      // Dropped first, so that a save target changed meanwhile goes to the fresh session.
+      setOpened(undefined);
       try {
         if (sessionId !== undefined)
           await papi.commands.sendCommand('interlinearizer.closeSession', { sessionId });

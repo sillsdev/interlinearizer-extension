@@ -367,6 +367,31 @@ describe('useSessionProject starting over', () => {
     expect(result.current.session?.sessionId).toBe(sessionId);
   });
 
+  it('opens the fresh session on a save target that changed while starting over', async () => {
+    const { result, rerender } = await renderLoaded();
+    const { sessionId } = result.current.session ?? {};
+
+    await act(async () => {
+      result.current.loadFromProject({
+        analysis: emptyAnalysis(),
+        analysisLanguages: ['de'],
+        segmentation: { removedVerseStarts: [], addedStarts: [] },
+      });
+      rerender({ saveTargetId: 'proj-2' });
+    });
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.openSession', {
+        sourceProjectId: 'src',
+        interlinearProjectId: 'proj-2',
+      }),
+    );
+    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+      'interlinearizer.setSaveTarget',
+      expect.objectContaining({ sessionId }),
+    );
+  });
+
   it('opens a fresh session when the view moves to a Paratext 9 import', async () => {
     await fakeHost();
     const { result, rerender } = renderProject();

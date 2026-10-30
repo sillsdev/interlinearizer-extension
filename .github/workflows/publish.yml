@@ -260,9 +260,11 @@ jobs:
           merge-multiple: true
           path: extension-repo/c-sharp/publish/
 
+      # One zip per operating system, each carrying only its own C# host.
       - name: Package for distribution
         run: |
-          npm run package
+          npm run build:production
+          npm run zip:platforms
 
       # `bodyFile` is copied verbatim and `omitBodyDuringUpdate` stops a re-run from refreshing it,
       # so the placeholders have to be correct the first time the release is created.
@@ -274,10 +276,12 @@ jobs:
           LEXICON_VERSION: ${{ steps.lexicon.outputs.version }}
           LEXICON_BUILD: ${{ steps.lexicon.outputs.build }}
         run: |
-          if ! grep -q 'interlinearizer_<version>\.zip' .github/assets/release-body.md; then
-            echo 'Release body has no `interlinearizer_<version>.zip` placeholder to fill.'
-            exit 1
-          fi
+          for system in windows linux macos; do
+            if ! grep -q "interlinearizer_<version>_${system}\\.zip" .github/assets/release-body.md; then
+              echo "Release body has no \`interlinearizer_<version>_${system}.zip\` placeholder to fill."
+              exit 1
+            fi
+          done
           if ! grep -q '/blob/v<version>/' .github/assets/release-body.md; then
             echo 'Release body has no `/blob/v<version>/` placeholder to fill; its doc links would not be pinned to this release.'
             exit 1
@@ -301,7 +305,7 @@ jobs:
           # `Bump repo versions` step below fails on a dirty working tree. `bodyFile` below is
           # therefore absolute where `artifacts` is not.
           # Pinning the INSTALL.md link to this tag keeps old releases on the docs they shipped with.
-          sed -e "s|interlinearizer_<version>\.zip|interlinearizer_${VERSION}.zip|g" \
+          sed -e "s|interlinearizer_<version>_|interlinearizer_${VERSION}_|g" \
             -e "s|/blob/v<version>/|/blob/v${VERSION}/|g" \
             -e "s|<Studio version>|${STUDIO_VERSION}|g" \
             -e "s|lexicon_<Lexicon version>\.zip|lexicon_${LEXICON_VERSION}.zip|g" \

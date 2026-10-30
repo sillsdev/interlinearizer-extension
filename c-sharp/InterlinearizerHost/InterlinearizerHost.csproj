@@ -14,6 +14,12 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <!-- English only: keeps the localized resource folders of dependencies out of the output. -->
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- One compressed file instead of some 200: Platform.Bible unpacks every file of an
+         extension's zip on the first start after an install, and a slow unpack can make its own
+         startup fail. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>

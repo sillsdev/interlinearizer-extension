@@ -79,10 +79,15 @@ folder you will need in step 3.
 
 ## 2. Download the Interlinearizer
 
-From that same release's **Assets** list, download `interlinearizer_<version>.zip`.
+From that same release's **Assets** list, download the Interlinearizer zip for your platform. Each
+one works only on its own platform.
+
+- **Windows** — `interlinearizer_<version>_windows.zip`
+- **macOS** — `interlinearizer_<version>_macos.zip`
+- **Linux** — `interlinearizer_<version>_linux.zip`
 
 **Leave the file zipped.** Paratext 10 unpacks it for you; an extracted folder is not what it
-looks for here.
+looks for here. Once it has loaded the zip, it renames it to `interlinearizer_<version>.zip`.
 
 ## 3. Copy the zip into the extensions folder
 

@@ -13,7 +13,7 @@ import type { EditStep } from '../types/edit-step';
 import { booksMissingFrom } from '../utils/analysis-book';
 import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
-import { missingBook } from '../utils/reanchor-draft';
+import { missingBook } from '../utils/reanchor-analysis';
 import { segmentationForBook } from '../utils/segmentation';
 import {
   booksResegmented,

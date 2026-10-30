@@ -4,10 +4,8 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { FIXTURE_STAMPS, makeTokenLink } from '../test-helpers';
-import useDraftProject, {
-  type DraftContent,
-  type UseDraftProjectResult,
-} from '../../hooks/useDraftProject';
+import useDraftProject, { type UseDraftProjectResult } from '../../hooks/useDraftProject';
+import type { DraftContent } from '../../types/draft-content';
 import type { StepSummary } from '../../types/edit-step';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';

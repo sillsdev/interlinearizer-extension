@@ -1,5 +1,5 @@
 import type { Book, DraftProject } from 'interlinearizer';
-import type { DraftContent } from '../hooks/useDraftProject';
+import type { DraftContent } from '../types/draft-content';
 import type { ChangeSet, RecordChanges } from '../types/analysis-repository';
 import { scopeRecordOf } from './change-set';
 import { reanchorDraftToBook } from './reanchor-draft';

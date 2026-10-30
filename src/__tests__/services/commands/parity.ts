@@ -10,7 +10,7 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
-import type { DraftContent } from '../../../hooks/useDraftProject';
+import type { DraftContent } from '../../../types/draft-content';
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import {
   discardAll,

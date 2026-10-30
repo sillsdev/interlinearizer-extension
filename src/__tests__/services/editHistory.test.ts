@@ -7,7 +7,7 @@ import type { ChangeSet } from '../../types/analysis-repository';
 import { emptyDraft } from '../../types/empty-factories';
 import { applyChangeSet, mergeChangeSets } from '../../utils/change-set';
 import { reanchorChangesForBook } from '../../utils/reanchor-changes';
-import { MAX_UNDO_STEPS } from '../../utils/undo-history';
+import { MAX_UNDO_STEPS } from '../../services/editHistory';
 import {
   FIXTURE_STAMPS,
   makeTokenLink,

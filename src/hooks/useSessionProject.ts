@@ -167,6 +167,11 @@ export default function useSessionProject(
     ),
   );
 
+  /** Fetches the whole draft again, logging a failure. */
+  const refreshWhole = useCallback(() => {
+    whole.refresh().catch((e) => logger.warn('Interlinearizer: could not read the draft again', e));
+  }, [whole]);
+
   const analysisChangedEvent = useMemo(
     () => papi.network.getNetworkEvent('interlinearizer.onAnalysisChanged'),
     [],
@@ -176,25 +181,32 @@ export default function useSessionProject(
     useCallback(
       (change: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
         if (!('sessionId' in change) || change.sessionId !== sessionId) return;
-        whole
-          .refresh()
-          .catch((e) => logger.warn('Interlinearizer: could not read the draft again', e));
+        // With pages loaded, the client tells which changes its replies left out.
+        if (!client) refreshWhole();
         readTextStatus();
       },
-      [sessionId, whole, readTextStatus],
+      [sessionId, client, refreshWhole, readTextStatus],
     ),
   );
+  useEffect(() => client?.subscribeHeard(refreshWhole), [client, refreshWhole]);
 
-  /** Notes what a reply says is left to undo and redo, telling each history listener. */
-  const takeReply = useCallback((reply: CommandReply) => {
-    setHistory((was) => ({
-      canUndo: reply.canUndo,
-      canRedo: reply.canRedo,
-      revision: was.revision + 1,
-    }));
-    if ('hasFreeTranslations' in reply && typeof reply.hasFreeTranslations === 'boolean')
-      setHasFreeTranslations(reply.hasFreeTranslations);
-  }, []);
+  /**
+   * Applies a reply's changes to the whole draft, and notes what the reply says is left to undo and
+   * redo, telling each history listener.
+   */
+  const takeReply = useCallback(
+    (reply: CommandReply) => {
+      whole.take(reply.changes);
+      setHistory((was) => ({
+        canUndo: reply.canUndo,
+        canRedo: reply.canRedo,
+        revision: was.revision + 1,
+      }));
+      if ('hasFreeTranslations' in reply && typeof reply.hasFreeTranslations === 'boolean')
+        setHasFreeTranslations(reply.hasFreeTranslations);
+    },
+    [whole],
+  );
   useEffect(() => client?.subscribeReplies(takeReply), [client, takeReply]);
   useEffect(() => revisionListeners.current.forEach((listener) => listener()), [history.revision]);
 
@@ -232,6 +244,8 @@ export default function useSessionProject(
         movedNothing = json === undefined;
         return json;
       });
+      // The reply leaves out whether the move returned the draft to its saved state.
+      if (reply) refreshWhole();
       // A failed move leaves the flags as they were, because no reply came to report them.
       if (movedNothing) {
         const side = command === 'interlinearizer.undoEdit' ? 'canUndo' : 'canRedo';
@@ -239,7 +253,7 @@ export default function useSessionProject(
       }
       return reply?.step;
     },
-    [sendEdit],
+    [sendEdit, refreshWhole],
   );
 
   /**
@@ -318,9 +332,12 @@ export default function useSessionProject(
   /** Sends a discard, which replaces the draft's content wholesale. */
   const discard = useCallback(
     async (call: (args: SessionEditArgs) => Promise<string>) => {
-      if (await sendEdit('discard changes', call)) setDraftVersion((version) => version + 1);
+      if (!(await sendEdit('discard changes', call))) return;
+      // The reply leaves out how the discard left the draft's unsaved mark.
+      refreshWhole();
+      setDraftVersion((version) => version + 1);
     },
-    [sendEdit],
+    [sendEdit, refreshWhole],
   );
 
   const boundaries = useMemo<SegmentationDispatch>(

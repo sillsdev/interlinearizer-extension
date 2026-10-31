@@ -180,6 +180,31 @@ describe('useSessionPages', () => {
     await waitFor(() => expect(result.current.error).toBe('offline'));
   });
 
+  it('reports the pages around the verse when they fail every retry', async () => {
+    jest.useFakeTimers();
+    try {
+      const made = await sessionOver();
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call: unknown[]) => {
+        if (call[0] === 'interlinearizer.getBookOutline')
+          return JSON.stringify(await made.fetchOutline(BOOK));
+        throw new Error('offline');
+      });
+
+      const { result } = renderHook(() =>
+        useSessionPages({ sessionId: made.sessionId, bookId: 'GEN', scrRef: SCR_REF }),
+      );
+      await act(() => jest.advanceTimersByTimeAsync(60_000));
+
+      expect(result.current).toMatchObject({
+        pages: undefined,
+        isLoading: false,
+        error: 'Interlinearizer: could not load the segments of GEN',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('reports a book the source has no text for', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
 

@@ -81,6 +81,15 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'bench.memory': 'Heap held by the parsed draft, and by an undo history filled to its limit.',
 };
 
+/** What the host-path sections measure when their sessions read no text. */
+const SKIPPED_READ_DESCRIPTIONS: Record<string, string> = {
+  'app.hostOpen':
+    "On the host path, a new view opens on the tier's book, with the session reading no text.",
+  'app.hostEdit': 'On the host path, one gloss committed, with the session reading no text.',
+  'app.hostScriptureSave':
+    'As the Scripture save above, on the host path with the session reading no text.',
+};
+
 /** The memory reading every other one in its section is taken against. */
 const MEMORY_BASELINE = 'heapBeforeOpenBytes';
 
@@ -343,9 +352,10 @@ function report(result: Json): string {
   ].filter(Boolean);
   const tables = [...sections].map(([section, rows]) => {
     const caveat = kind === 'app' && section === 'memory' ? memoryCaveat(tiers) : undefined;
-    const description = [SECTION_DESCRIPTIONS[`${kind}.${section}`], caveat]
-      .filter(Boolean)
-      .join(' ');
+    const key = `${kind}.${section}`;
+    const sectionDescription =
+      (result.skipSessionReads && SKIPPED_READ_DESCRIPTIONS[key]) || SECTION_DESCRIPTIONS[key];
+    const description = [sectionDescription, caveat].filter(Boolean).join(' ');
     return [
       `### ${SECTION_LABELS[section] ?? (section || 'Other')}`,
       ...(description ? ['', description] : []),

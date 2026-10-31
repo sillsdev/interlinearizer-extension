@@ -65,6 +65,7 @@ interface PapiBackendTestMock {
   __mockGetLocalizedString: jest.Mock;
   __mockCreateNetworkEventEmitterAsync: jest.Mock;
   __mockSettingsGet: jest.Mock;
+  __mockReloadWebView: jest.Mock;
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
@@ -92,6 +93,7 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockGetLocalizedString' in m &&
     '__mockCreateNetworkEventEmitterAsync' in m &&
     '__mockSettingsGet' in m &&
+    '__mockReloadWebView' in m &&
     '__mockLogger' in m
   );
 }
@@ -112,6 +114,7 @@ const {
   __mockGetLocalizedString,
   __mockCreateNetworkEventEmitterAsync,
   __mockSettingsGet,
+  __mockReloadWebView,
   __mockLogger,
 } = papiBackendMock;
 
@@ -476,7 +479,21 @@ describe('main', () => {
         await context.registrations.runAllUnsubscribers();
 
         expect(emitters.get('interlinearizer.onAnalysisChanged')?.dispose).toHaveBeenCalled();
+        expect(emitters.get('interlinearizer.onTextRead')?.dispose).toHaveBeenCalled();
         unsubscribers.forEach((unsubscribe) => expect(unsubscribe).toHaveBeenCalled());
+      });
+
+      it('emits the source of a whole-text read that has read every book', async () => {
+        const emitters = emittersByEvent();
+        jest.spyOn(AnalysisSessions.prototype, 'reanchorMissingBooks').mockResolvedValue();
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onTextRead).mock.calls[0];
+
+        listener('src-project', ['GEN']);
+
+        expect(emitters.get('interlinearizer.onTextRead')?.emit).toHaveBeenCalledWith({
+          sourceProjectId: 'src-project',
+        });
       });
     });
 
@@ -859,6 +876,58 @@ describe('main', () => {
       );
 
       expect(result?.state).toEqual({});
+    });
+
+    describe('when the tab holding a project closes', () => {
+      /** Serves `tab-a` the project, then `tab-b` as its duplicate. */
+      async function serveDuplicate() {
+        await activate(createTestActivationContext());
+        const provider = getRegisteredProvider();
+        await provider.getWebView({ id: 'tab-a', webViewType: mainWebViewType }, myProjectOptions);
+        await provider.getWebView({ id: 'tab-b', webViewType: mainWebViewType }, myProjectOptions);
+      }
+
+      /** Reports that tab `id` on the project has closed. */
+      function close(id: string) {
+        getCloseWebViewCallback()({
+          webView: { id, webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+      }
+
+      it('serves a duplicate afresh, so that it takes the project over', async () => {
+        __mockReloadWebView.mockResolvedValue('tab-b');
+        await serveDuplicate();
+
+        close('tab-a');
+
+        expect(__mockReloadWebView).toHaveBeenCalledWith(mainWebViewType, 'tab-b', {
+          bringToFront: false,
+        });
+      });
+
+      it('serves no duplicate that closed first', async () => {
+        await serveDuplicate();
+        close('tab-b');
+
+        close('tab-a');
+
+        expect(__mockReloadWebView).not.toHaveBeenCalled();
+      });
+
+      it('logs a duplicate that cannot be served afresh', async () => {
+        __mockReloadWebView.mockRejectedValue(new Error('gone'));
+        await serveDuplicate();
+
+        close('tab-a');
+        await new Promise((resolve) => {
+          setTimeout(resolve, 0);
+        });
+
+        expect(__mockLogger.warn).toHaveBeenCalledWith(
+          'Interlinearizer: could not hand my-project to another tab',
+          expect.any(Error),
+        );
+      });
     });
 
     it("titles the WebView with the project's short name", async () => {
@@ -2829,6 +2898,19 @@ describe('main', () => {
       });
     });
 
+    it("lists the session's analysis language for a draft that lists none", async () => {
+      jest
+        .mocked(projectStorage.openDraftRepository)
+        .mockReturnValue(await stubRepository(emptyDraft('src-project')));
+      __mockSettingsGet.mockResolvedValue(['fr']);
+      const { openSession, getFullAnalysis } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+      await expect(getFullAnalysis({ sessionId }).then(JSON.parse)).resolves.toMatchObject({
+        analysisLanguages: ['fr'],
+      });
+    });
+
     it('logs the error and rethrows when the whole draft cannot be read', async () => {
       const { getFullAnalysis } = await activateSessionCommands();
 
@@ -3088,6 +3170,14 @@ describe('main', () => {
             JSON.stringify({ booksRead: 0, bookCount: 1, failedBookIds: [] }),
           );
           expect(bookService.getTextReadStatus).not.toHaveBeenCalled();
+        });
+
+        it('refuses a session that is not open', async () => {
+          const { getTextReadStatus } = await activateSessionCommands();
+
+          await expect(getTextReadStatus({ sessionId: 'no-session' })).rejects.toThrow(
+            'no session no-session is open',
+          );
         });
       });
 

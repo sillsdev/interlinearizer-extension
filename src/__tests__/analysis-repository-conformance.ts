@@ -1316,6 +1316,19 @@ export function describeAnalysisRepositoryConformance(
         const draft = await repository.getWholeDraft();
         expect(scopeRecordOf(draft)).toStrictEqual(scopeRecordOf(expected));
         expect(inIdOrder(draft).analysis).toStrictEqual(inIdOrder(expected).analysis);
+        expect(draft.dirty).toBe(true);
+      });
+
+      it('reads the whole draft as saved once marked clean', async () => {
+        const repository = await overFullDraft();
+        await repository.apply({
+          intent: 'unlinkExodus',
+          tokenAnalysisLinks: { puts: [], deletes: ['tl-exo-and'] },
+        });
+
+        await repository.markClean();
+
+        await expect(repository.getWholeDraft()).resolves.toMatchObject({ dirty: false });
       });
 
       it('reads a draft the caller may change without changing later reads', async () => {

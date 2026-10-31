@@ -53,7 +53,8 @@ function parsed(json: string | undefined) {
 /**
  * Serves the loaded book's segment list from a session: its outline, segmented by the session's
  * draft, and the pages asked for, with their analysis. A new outline is published once the pages
- * around the ranges asked for have loaded. Takes in each change the session reports.
+ * around the ranges asked for have loaded. The first outline fails, as a failed outline read does,
+ * when any of those pages fails every retry. Takes in each change the session reports.
  */
 export default function useSessionPages({
   sessionId,
@@ -112,6 +113,12 @@ export default function useSessionPages({
         const reach = INITIAL_WINDOW_HALF + EXTEND_CHUNK;
         client.load(anchor - reach, anchor + reach + 1, 'list');
         await client.settled();
+        if (client.failedPages.size > 0) {
+          const message = `Interlinearizer: could not load the segments of ${bookId}`;
+          logger.warn(message);
+          setFailure({ key, message });
+          return;
+        }
         ready = true;
         publish();
       } catch (e) {

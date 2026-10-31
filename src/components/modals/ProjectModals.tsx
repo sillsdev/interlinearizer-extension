@@ -8,6 +8,7 @@ import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import { isInterlinearProjectSummary, isSavedAsProject } from '../../types/type-guards';
 import { readOpenableProject } from '../../utils/read-openable-project';
+import type { Settles } from '../../utils/settles';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
 import { DiscardDraftConfirm } from './DiscardDraftConfirm';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
@@ -52,10 +53,10 @@ type PendingReplace =
  *   draft synced when the copy reports it landed whole. Resolves whether the copy landed, or
  *   `false` when no save could run.
  * @param props.loadFromProject - Loads a project's analysis + config into the draft (the "Open"
- *   flow).
- * @param props.newDraft - Seeds the in-memory draft with empty analysis and the given config;
- *   called before the New flow's backend round-trip so the editor is ready regardless of whether
- *   persistence succeeds.
+ *   flow). On the host path, settles once the draft is stored, and rejects when it can't be.
+ * @param props.newDraft - Seeds the draft with empty analysis and the given config; called before
+ *   the New flow's backend round-trip so the editor is ready regardless of whether persistence
+ *   succeeds. On the host path, settles once the draft is stored, and rejects when it can't be.
  * @param props.modal - Which modal is currently open.
  * @param props.onImportPt9 - Called when the user chooses "Import from Paratext 9" in the select
  *   modal; the caller owns the import run and its modal.
@@ -97,8 +98,8 @@ export default function ProjectModals({
   commitDraft: (
     copy: (snapshot: DraftProject, sessionId?: string) => Promise<DraftCopyResult>,
   ) => Promise<boolean>;
-  loadFromProject: (project: OpenableProject) => void;
-  newDraft: (config: NewDraftConfig) => void;
+  loadFromProject: (project: OpenableProject) => Settles<void>;
+  newDraft: (config: NewDraftConfig) => Settles<void>;
   modal: ModalState;
   onImportPt9: () => void;
   onOpenImport: (
@@ -226,7 +227,7 @@ export default function ProjectModals({
           return;
         }
 
-        loadFromProject(openable);
+        await loadFromProject(openable);
         setActiveProject(project);
         setModal('none');
       } catch (e) {
@@ -244,14 +245,15 @@ export default function ProjectModals({
    * draft from it so Save targets the newly created project. This is the "New" flow: the project is
    * persisted immediately so it shows up in "Select Interlinear Project" right away.
    *
-   * `newDraft` is called synchronously before the backend round-trip so the editor is ready
-   * regardless of whether persistence succeeds. This is safe: when `hasUnsavedWork` is `false` the
-   * draft is either already committed to the active project or empty (nothing to lose); when
-   * `hasUnsavedWork` is `true` the {@link DiscardDraftConfirm} dialog has already obtained consent
-   * to discard.
+   * `newDraft` is called before the backend round-trip so the editor is ready regardless of whether
+   * persistence succeeds. On the host path it settles once the draft is stored, and the project is
+   * created only after; a draft that can't be stored creates none. This is safe: when
+   * `hasUnsavedWork` is `false` the draft is either already committed to the active project or
+   * empty (nothing to lose); when `hasUnsavedWork` is `true` the {@link DiscardDraftConfirm} dialog
+   * has already obtained consent to discard.
    *
    * The `interlinearizer.createProject` command sends its own error notification before rethrowing,
-   * so the catch block only needs to log.
+   * so the catch around it only needs to log.
    *
    * @param config - The configuration collected by the New dialog.
    * @returns `true` if the project was created and persisted successfully; `false` otherwise.
@@ -260,11 +262,19 @@ export default function ProjectModals({
    */
   const createAndPersistProject = useCallback(
     async (config: CreateDraftConfig): Promise<boolean> => {
-      newDraft({
-        analysisLanguages: config.analysisLanguages,
-        suggestedName: config.name,
-        ...(config.description !== undefined && { suggestedDescription: config.description }),
-      });
+      try {
+        await newDraft({
+          analysisLanguages: config.analysisLanguages,
+          suggestedName: config.name,
+          ...(config.description !== undefined && { suggestedDescription: config.description }),
+        });
+      } catch (e) {
+        logger.error('Interlinearizer: failed to start the draft from New dialog', e);
+        await papi.notifications
+          .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
+          .catch(() => {});
+        return false;
+      }
       let created: InterlinearProjectSummary | undefined;
       try {
         const createdJson = await papi.commands.sendCommand(

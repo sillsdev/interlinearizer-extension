@@ -54,7 +54,7 @@ export default function useSessionProject(
   historyRef.current = history;
   const revisionListeners = useRef(new Set<() => void>());
   const [hasFreeTranslations, setHasFreeTranslations] = useState(false);
-  const [readStatus, setReadStatus] = useState<TextReadStatus>();
+  const [readStatus, setReadStatus] = useState<{ sessionId: string; status: TextReadStatus }>();
 
   /** The interlinear project that the open session was opened on, or was last told to save to. */
   const targetRef = useRef<string | undefined>(undefined);
@@ -148,10 +148,24 @@ export default function useSessionProject(
     if (sessionId === undefined) return;
     papi.commands
       .sendCommand('interlinearizer.getTextReadStatus', { sessionId })
-      .then((json) => setReadStatus(JSON.parse(json)))
+      .then((json) => setReadStatus({ sessionId, status: JSON.parse(json) }))
       .catch((e) => logger.warn('Interlinearizer: could not read the whole-text status', e));
   }, [sessionId]);
   useEffect(readTextStatus, [readTextStatus]);
+
+  const textReadEvent = useMemo(
+    () => papi.network.getNetworkEvent('interlinearizer.onTextRead'),
+    [],
+  );
+  useEvent(
+    textReadEvent,
+    useCallback(
+      (read: NetworkEvents['interlinearizer.onTextRead']) => {
+        if (read.sourceProjectId === sourceProjectId) readTextStatus();
+      },
+      [sourceProjectId, readTextStatus],
+    ),
+  );
 
   const analysisChangedEvent = useMemo(
     () => papi.network.getNetworkEvent('interlinearizer.onAnalysisChanged'),
@@ -228,7 +242,12 @@ export default function useSessionProject(
     [sendEdit],
   );
 
-  /** Writes `next` as the stored draft, then opens a fresh session on whatever draft is stored. */
+  /**
+   * Writes `next` as the stored draft, then opens a fresh session on whatever draft is stored.
+   *
+   * @throws If the session cannot close or the draft cannot be written. The fresh session then
+   *   opens on the draft stored before.
+   */
   const startOver = useCallback(
     async (next: DraftProject) => {
       // Dropped first, so that a save target changed meanwhile goes to the fresh session.
@@ -236,21 +255,22 @@ export default function useSessionProject(
       try {
         if (sessionId !== undefined)
           await papi.commands.sendCommand('interlinearizer.closeSession', { sessionId });
+        // Started over, so stored analysis that could not be read is replaced, as on the WebView path.
         await papi.commands.sendCommand(
           'interlinearizer.saveDraft',
           sourceProjectId,
           JSON.stringify(next),
+          true,
         );
-      } catch (e) {
-        logger.error(`Interlinearizer: failed to start the draft of ${sourceProjectId} over`, e);
+      } finally {
+        setOpenCount((count) => count + 1);
       }
-      setOpenCount((count) => count + 1);
     },
     [sessionId, sourceProjectId],
   );
 
   const loadFromProject = useCallback(
-    (project: OpenableProject) => {
+    (project: OpenableProject) =>
       startOver({
         sourceProjectId,
         modelVersion: CURRENT_MODEL_VERSION,
@@ -259,13 +279,12 @@ export default function useSessionProject(
         ...(project.segmentation !== undefined && { segmentation: project.segmentation }),
         analysis: project.analysis,
         dirty: false,
-      });
-    },
+      }),
     [startOver, sourceProjectId],
   );
 
   const newDraft = useCallback(
-    (config: NewDraftConfig) => {
+    (config: NewDraftConfig) =>
       startOver({
         sourceProjectId,
         modelVersion: CURRENT_MODEL_VERSION,
@@ -276,8 +295,7 @@ export default function useSessionProject(
         }),
         analysis: emptyAnalysis(),
         dirty: false,
-      });
-    },
+      }),
     [startOver, sourceProjectId],
   );
 
@@ -340,6 +358,26 @@ export default function useSessionProject(
     [sessionId],
   );
 
+  const getDraftSnapshot = useCallback(() => whole.draft, [whole]);
+  const discardBook = useCallback(
+    (bookCode: string) =>
+      discard((args) =>
+        papi.commands.sendCommand('interlinearizer.discardBook', { ...args, bookCode }),
+      ),
+    [discard],
+  );
+  const discardAll = useCallback(
+    () => discard((args) => papi.commands.sendCommand('interlinearizer.discardAll', args)),
+    [discard],
+  );
+  const getHistoryRevision = useCallback(() => historyRef.current.revision, []);
+  const subscribeToHistoryRevisions = useCallback((listener: () => void) => {
+    revisionListeners.current.add(listener);
+    return () => revisionListeners.current.delete(listener);
+  }, []);
+  const undo = useCallback(() => move('interlinearizer.undoEdit'), [move]);
+  const redo = useCallback(() => move('interlinearizer.redoEdit'), [move]);
+
   // The segmentation version, bumped whenever the draft's boundaries change, as a boundary edit
   // bumps it on the WebView path.
   const segmentationKey = JSON.stringify(draft?.segmentation ?? {});
@@ -347,10 +385,9 @@ export default function useSessionProject(
   if (segmentation.current.key !== segmentationKey)
     segmentation.current = { key: segmentationKey, version: segmentation.current.version + 1 };
 
+  const status = readStatus?.sessionId === sessionId ? readStatus?.status : undefined;
   const staleCoversDraft =
-    !!readStatus &&
-    readStatus.booksRead === readStatus.bookCount &&
-    readStatus.failedBookIds.length === 0;
+    !!status && status.booksRead === status.bookCount && status.failedBookIds.length === 0;
 
   return {
     isDraftLoading: !opened || !draft,
@@ -358,29 +395,22 @@ export default function useSessionProject(
     draftVersion,
     segmentationVersion: segmentation.current.version,
     dirty: draft?.dirty ?? false,
-    getDraftSnapshot: () => whole.draft,
+    getDraftSnapshot,
     isSaving,
     commitDraft,
     autosaveAnalysis: ignore,
     autosaveSegmentation: ignore,
     loadFromProject,
     newDraft,
-    discardBook: (bookCode) =>
-      discard((args) =>
-        papi.commands.sendCommand('interlinearizer.discardBook', { ...args, bookCode }),
-      ),
-    discardAll: () =>
-      discard((args) => papi.commands.sendCommand('interlinearizer.discardAll', args)),
+    discardBook,
+    discardAll,
     detachFromProject,
     canUndo: history.canUndo,
     canRedo: history.canRedo,
-    getHistoryRevision: () => historyRef.current.revision,
-    subscribeToHistoryRevisions: (listener) => {
-      revisionListeners.current.add(listener);
-      return () => revisionListeners.current.delete(listener);
-    },
-    undo: () => move('interlinearizer.undoEdit'),
-    redo: () => move('interlinearizer.redoEdit'),
+    getHistoryRevision,
+    subscribeToHistoryRevisions,
+    undo,
+    redo,
     asOneStep: (action) => action(),
     // On the host path, the session re-anchors the draft. No analysis store is fed there.
     reanchorBook: ignore,

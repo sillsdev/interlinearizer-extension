@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { whenSettled, type Settles } from '../utils/settles';
 import useLatestRef from './useLatestRef';
 
@@ -25,7 +25,7 @@ export type DraftDiscardGate<Action> = Readonly<{
    * Asks the reader, in turn, about each unsaved draft on the rows that `readAnalysisIds` names,
    * then runs `run` on those rows once every draft is given up. A failed read runs nothing. The
    * rows are read afresh at each step, so an edit landing mid-ask cannot drop a draft never asked
-   * about.
+   * about. A read that settles after a later request, confirm or cancel does nothing.
    */
   request: (
     action: Action,
@@ -56,10 +56,15 @@ export default function useDraftDiscardGate<Action>(
   // Read at each step rather than at the request, so a draft saved or canceled meanwhile is not
   // asked about.
   const hasUnsavedDraftRef = useLatestRef(hasUnsavedDraft);
+  // Bumped by each step and by a cancel, so a read that settles after either is ignored.
+  const generationRef = useRef(0);
 
   const proceed = useCallback(
-    (held: HeldAction<Action>) =>
-      whenSettled(held.readAnalysisIds(), (analysisIds) => {
+    (held: HeldAction<Action>) => {
+      generationRef.current += 1;
+      const generation = generationRef.current;
+      return whenSettled(held.readAnalysisIds(), (analysisIds) => {
+        if (generation !== generationRef.current) return;
         const analysisId = analysisIds.find(
           (id) => !held.confirmedIds.includes(id) && hasUnsavedDraftRef.current(id),
         );
@@ -72,7 +77,8 @@ export default function useDraftDiscardGate<Action>(
           .filter((id) => analysisIds.includes(id))
           .forEach((id) => discardDraft(id));
         held.run(analysisIds);
-      }),
+      });
+    },
     [discardDraft, hasUnsavedDraftRef],
   );
 
@@ -91,7 +97,10 @@ export default function useDraftDiscardGate<Action>(
     proceed({ ...asking, confirmedIds: [...asking.confirmedIds, asking.analysisId] });
   }, [asking, proceed]);
 
-  const cancel = useCallback(() => setAsking(undefined), []);
+  const cancel = useCallback(() => {
+    generationRef.current += 1;
+    setAsking(undefined);
+  }, []);
 
   return useMemo(
     () => ({

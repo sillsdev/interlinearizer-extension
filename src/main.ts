@@ -119,9 +119,12 @@ async function getTabTitle(projectId: string): Promise<string> {
 /**
  * The tab that holds each project: the first one served while no other tab holds it. Opening the
  * project again brings the holder to front. A second tab that a layout restores shows only a notice
- * that points at the holder.
+ * that points at the holder, until the holder closes and the second tab takes the project over.
  */
 const openWebViewsByProject = new Map<string, string>();
+
+/** The duplicate tabs of each project, which show only the notice until their holder closes. */
+const duplicateWebViewsByProject = new Map<string, Set<string>>();
 
 /** WebView provider that provides the Interlinearizer React WebView when Platform.Bible requests it. */
 const mainWebViewProvider: IWebViewProvider = {
@@ -148,6 +151,10 @@ const mainWebViewProvider: IWebViewProvider = {
     const duplicateOf = holder !== undefined && holder !== savedWebView.id ? holder : undefined;
     if (projectId !== undefined && duplicateOf === undefined)
       openWebViewsByProject.set(projectId, savedWebView.id);
+    if (projectId !== undefined && duplicateOf !== undefined) {
+      const duplicates = duplicateWebViewsByProject.get(projectId) ?? new Set<string>();
+      duplicateWebViewsByProject.set(projectId, duplicates.add(savedWebView.id));
+    }
     const state: Record<string, unknown> = { ...savedWebView.state };
     delete state.duplicateOf;
     return {
@@ -896,15 +903,15 @@ async function getSegments(
  */
 async function getTextReadStatus(address: TextAddress): Promise<string> {
   try {
+    const sourceProjectId =
+      typeof address === 'string'
+        ? address
+        : await sessions.run(address.sessionId, async ({ scope }) => scope.sourceProjectId);
     if (typeof address !== 'string' && sessionReadsAreSkipped()) {
       // Never finishes, so the session's view waits as for a read under way.
       const unread: TextReadStatus = { booksRead: 0, bookCount: 1, failedBookIds: [] };
       return JSON.stringify(unread);
     }
-    const sourceProjectId =
-      typeof address === 'string'
-        ? address
-        : await sessions.run(address.sessionId, async ({ scope }) => scope.sourceProjectId);
     return await bookService.getTextReadStatus(sourceProjectId);
   } catch (e) {
     logger.error(`Interlinearizer: failed to read the text of ${addressed(address)}`, e);
@@ -1114,7 +1121,8 @@ async function checkIndexes({
 
 /**
  * Reads a session's whole draft, its scope and analysis, as the session's repository holds it. A
- * bridge until the WebView reads only pages.
+ * bridge until the WebView reads only pages. When the draft lists no analysis language, the reply
+ * lists the session's; the session's first edit stores it.
  *
  * @returns A JSON string of the `DraftProject`.
  * @throws If the session is not open, or its analysis cannot be loaded. The error is logged before
@@ -1125,7 +1133,12 @@ async function getFullAnalysis({
 }: ArgsOf<'interlinearizer.getFullAnalysis'>): Promise<string> {
   try {
     return JSON.stringify(
-      await sessions.run(sessionId, (session) => session.repository.getWholeDraft()),
+      await sessions.run(sessionId, async ({ repository, analysisLanguage }) => {
+        const draft = await repository.getWholeDraft();
+        return draft.analysisLanguages.length > 0
+          ? draft
+          : { ...draft, analysisLanguages: [analysisLanguage] };
+      }),
     );
   } catch (e) {
     logger.error(`Interlinearizer: failed to read the whole draft of session ${sessionId}`, e);
@@ -2158,10 +2171,20 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const webViewCloseUnsubscriber = papi.webViews.onDidCloseWebView(({ webView }) => {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
-    if (openWebViewsByProject.get(webView.projectId) !== webView.id) return;
-    rememberActiveProject(webView.projectId, webView.state);
-    openWebViewsByProject.delete(webView.projectId);
-    bookService.closeProject(webView.projectId);
+    const { projectId } = webView;
+    const duplicates = duplicateWebViewsByProject.get(projectId);
+    duplicates?.delete(webView.id);
+    if (openWebViewsByProject.get(projectId) !== webView.id) return;
+    rememberActiveProject(projectId, webView.state);
+    openWebViewsByProject.delete(projectId);
+    bookService.closeProject(projectId);
+    // A duplicate takes the project over, served afresh now that no tab holds it.
+    const [successor] = duplicates ?? [];
+    if (successor === undefined) return;
+    duplicates?.delete(successor);
+    papi.webViews
+      .reloadWebView(mainWebViewType, successor, { bringToFront: false })
+      .catch((e) => logger.warn(`Interlinearizer: could not hand ${projectId} to another tab`, e));
   });
   // Added ahead of the registrations below, so a failure among them still disposes these.
   context.registrations.add(
@@ -2186,7 +2209,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         ),
       ),
   );
-  const textReadUnsubscriber = bookService.onTextRead((sourceProjectId, textBookIds) =>
+  const textReadEmitter = await papi.network.createNetworkEventEmitterAsync(
+    'interlinearizer.onTextRead',
+  );
+  const textReadUnsubscriber = bookService.onTextRead((sourceProjectId, textBookIds) => {
+    textReadEmitter.emit({ sourceProjectId });
     activeSessions
       .reanchorMissingBooks(sourceProjectId, textBookIds)
       .catch((e) =>
@@ -2194,8 +2221,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           `Interlinearizer: could not re-anchor the books project ${sourceProjectId} lacks`,
           e,
         ),
-      ),
-  );
+      );
+  });
   const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
     activeSessions
       .reportScriptureEdit(sourceProjectId, bookId)
@@ -2229,6 +2256,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
     bookReadUnsubscriber,
     textReadUnsubscriber,
+    textReadEmitter,
     bookTextUnsubscriber,
   );
 
@@ -4056,6 +4084,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
  */
 export async function deactivate(): Promise<boolean> {
   openWebViewsByProject.clear();
+  duplicateWebViewsByProject.clear();
   logger.debug('Interlinearizer extension is deactivating!');
   return true;
 }

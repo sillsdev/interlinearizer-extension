@@ -72,7 +72,8 @@ export const KEPT_APPLIED = 64;
  *
  * - `inFlight`: a fetch is outstanding; `dirty` when a change has since left its answer out of date.
  * - `backoff`: a fetch failed and the next attempt waits for its delay.
- * - `failed`: every attempt failed, until {@link PageClient.retryFailed}.
+ * - `failed`: every attempt failed, until a view asks for the page again or
+ *   {@link PageClient.retryFailed}.
  */
 type PageState =
   | { kind: 'inFlight'; attempt: number; dirty: boolean }
@@ -105,8 +106,9 @@ function wider(a: OutlineRead | undefined, b: OutlineRead): OutlineRead {
  * range that each view asks for. It sends the commands that a view makes and applies their replies.
  * It fetches again whatever a reply or a reported change leaves out of date.
  *
- * A page that fails every retry, or an outline read that fails, waits for
- * {@link PageClient.retryFailed} or for a later outline read.
+ * A page that fails every retry waits for a view to ask for it again, for
+ * {@link PageClient.retryFailed} or for a later outline read. An outline read that fails waits for
+ * either of the last two.
  */
 export class PageClient {
   private readonly source: PageSource;
@@ -277,7 +279,7 @@ export class PageClient {
 
   /**
    * Asks for the segments at outline indexes `[start, end)`, and remembers them as `caller`'s
-   * range.
+   * range. Pages among them that failed every retry are asked for again.
    */
   load(start: number, end: number, caller: PageCaller): void {
     this.ranges.set(caller, { start, end });
@@ -523,7 +525,7 @@ export class PageClient {
     const state = this.pages.get(pageIndex);
     switch (event) {
       case 'want':
-        if (!state) this.fetchPage(pageIndex, 0);
+        if (!state || state.kind === 'failed') this.fetchPage(pageIndex, 0);
         break;
       case 'stale':
         if (state?.kind === 'inFlight') this.pages.set(pageIndex, { ...state, dirty: true });

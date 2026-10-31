@@ -4,7 +4,7 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import useSessionProject from '../../hooks/useSessionProject';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { fakeHost } from '../cache/fake-host';
+import { fakeHost, relayTextRead } from '../cache/fake-host';
 import { ref } from '../cache/session-source';
 
 const SCR_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
@@ -349,6 +349,35 @@ describe('useSessionProject starting over', () => {
     );
   });
 
+  it('replaces stored analysis that could not be read when starting over', async () => {
+    const { result } = await renderLoaded();
+
+    await act(async () => result.current.newDraft({ analysisLanguages: ['fr'] }));
+
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+      'interlinearizer.saveDraft',
+      'src',
+      expect.any(String),
+      true,
+    );
+  });
+
+  it('hands out the same callbacks across renders', async () => {
+    const { result, rerender } = await renderLoaded();
+    const before = result.current;
+
+    rerender({});
+
+    const after = result.current;
+    expect(after.getDraftSnapshot).toBe(before.getDraftSnapshot);
+    expect(after.discardBook).toBe(before.discardBook);
+    expect(after.discardAll).toBe(before.discardAll);
+    expect(after.getHistoryRevision).toBe(before.getHistoryRevision);
+    expect(after.subscribeToHistoryRevisions).toBe(before.subscribeToHistoryRevisions);
+    expect(after.undo).toBe(before.undo);
+    expect(after.redo).toBe(before.redo);
+  });
+
   it('keeps the description a new draft was started with, for Save As to suggest', async () => {
     const { result } = await renderLoaded();
 
@@ -359,20 +388,18 @@ describe('useSessionProject starting over', () => {
     await waitFor(() => expect(result.current.draft?.suggestedDescription).toBe('D'));
   });
 
-  it('logs a draft it could not start over, and opens the session again on what is stored', async () => {
+  it('rejects a draft it could not start over, and opens the session again on what is stored', async () => {
     const { result } = await renderLoaded();
     const { sessionId } = result.current.session ?? {};
     jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('disk full'));
 
     await act(async () => {
-      result.current.newDraft({ analysisLanguages: ['fr'] });
+      await expect(result.current.newDraft({ analysisLanguages: ['fr'] })).rejects.toThrow(
+        'disk full',
+      );
     });
 
     await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
-    expect(logger.error).toHaveBeenCalledWith(
-      'Interlinearizer: failed to start the draft of src over',
-      expect.any(Error),
-    );
   });
 
   it('retargets its session, keeping it open, when the project the draft saves to changes', async () => {
@@ -652,6 +679,55 @@ describe('useSessionProject whole-text read', () => {
         expect.anything(),
       ),
     );
+    expect(result.current.session?.staleCoversDraft).toBe(false);
+  });
+
+  it('asks again how far the read has got once the source has been read', async () => {
+    const status = { booksRead: 1, bookCount: 2, failedBookIds: [] };
+    const { result } = await renderReading(status);
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.anything(),
+      ),
+    );
+    status.booksRead = 2;
+
+    relayTextRead({ sourceProjectId: 'src' });
+
+    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
+  });
+
+  it("ignores another source's finished read", async () => {
+    await renderReading({ booksRead: 1, bookCount: 2, failedBookIds: [] });
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.anything(),
+      ),
+    );
+    jest.mocked(papi.commands.sendCommand).mockClear();
+
+    relayTextRead({ sourceProjectId: 'other' });
+
+    expect(papi.commands.sendCommand).not.toHaveBeenCalled();
+  });
+
+  it("does not count an earlier session's read toward a fresh session", async () => {
+    let answered = false;
+    await fakeHost(async (command) => {
+      if (command !== 'interlinearizer.getTextReadStatus') return undefined;
+      if (answered) return new Promise<string>(() => {});
+      answered = true;
+      return JSON.stringify({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+    });
+    const { result } = renderProject();
+    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
+    const { sessionId } = result.current.session ?? {};
+
+    await act(async () => result.current.newDraft({ analysisLanguages: ['fr'] }));
+
+    await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
     expect(result.current.session?.staleCoversDraft).toBe(false);
   });
 });

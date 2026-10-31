@@ -2,7 +2,12 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { PageClient } from '../cache/pageClient';
 import type { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
-import type { DraftContent, UseDraftProjectResult } from '../hooks/useDraftProject';
+import type {
+  DraftContent,
+  NewDraftConfig,
+  OpenableProject,
+  UseDraftProjectResult,
+} from '../hooks/useDraftProject';
 import type { UseSegmentPagesResult } from '../hooks/useSegmentPages';
 import type { EditStep } from './edit-step';
 import type { Settles } from '../utils/settles';
@@ -34,8 +39,19 @@ export type SessionView = Readonly<{
  */
 export type ProjectApi = Omit<
   UseDraftProjectResult,
-  'undo' | 'redo' | 'discardBook' | 'discardAll'
+  'undo' | 'redo' | 'discardBook' | 'discardAll' | 'loadFromProject' | 'newDraft'
 > & {
+  /**
+   * Replaces the draft with a working copy of an existing project's analysis and config, the "Open"
+   * flow. On the host path, settles once the draft is stored, and rejects when it can't be.
+   */
+  loadFromProject: (project: OpenableProject) => Settles<void>;
+  /**
+   * Starts a fresh, empty draft for the current source, the "New" flow, as
+   * {@link UseDraftProjectResult.newDraft} describes. On the host path, settles once the draft is
+   * stored, and rejects when it can't be.
+   */
+  newDraft: (config: NewDraftConfig) => Settles<void>;
   /** Reverts the latest undo step; settles on the step undone, or `undefined` when there was none. */
   undo: () => Settles<EditStep | undefined>;
   /**

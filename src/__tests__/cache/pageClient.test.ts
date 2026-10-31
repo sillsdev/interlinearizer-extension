@@ -254,6 +254,22 @@ describe('PageClient', () => {
     expect(client.holds(0)).toBe(true);
   });
 
+  it('asks again for a page that failed every retry when a view asks for it again', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client, fetchPage } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+    failing.mockImplementation(() => fetchPage(0, 1));
+
+    client.load(0, 1, 'list');
+    await client.settled();
+
+    expect(client.failedPages.size).toBe(0);
+    expect(client.holds(0)).toBe(true);
+  });
+
   it('asks again for the outline when a page comes back cut from other text', async () => {
     let stale = true;
     const { client, getOutline, fetchPage } = await clientOver({

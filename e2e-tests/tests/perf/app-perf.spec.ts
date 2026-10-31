@@ -293,9 +293,9 @@ async function measureHostPath(
   result: Record<string, unknown>,
 ): Promise<void> {
   await closeSettledView(page);
-  await page.evaluate((key) => localStorage.setItem(key, 'true'), HOST_PATH_KEY);
-  if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', true);
   try {
+    await page.evaluate((key) => localStorage.setItem(key, 'true'), HOST_PATH_KEY);
+    if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', true);
     // The view's pages queue behind the session-open read's passes, so no edit lands during them.
     const open = new Samples();
     for (let run = 0; run < RUNS; run += 1) {
@@ -331,9 +331,12 @@ async function measureHostPath(
       false,
     );
   } finally {
-    await closeView(page);
-    await page.evaluate((key) => localStorage.removeItem(key), HOST_PATH_KEY);
-    if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', false);
+    try {
+      await closeView(page);
+    } finally {
+      await page.evaluate((key) => localStorage.removeItem(key), HOST_PATH_KEY);
+      if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', false);
+    }
   }
 }
 

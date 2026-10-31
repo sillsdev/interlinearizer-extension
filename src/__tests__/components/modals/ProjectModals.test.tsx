@@ -471,6 +471,36 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
+    it('keeps the active project and the modal when the draft cannot be replaced', async () => {
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT));
+      const loadFromProject = jest.fn().mockRejectedValue(new Error('disk full'));
+      const setModal = jest.fn();
+      const setActiveProject = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'select',
+            loadFromProject,
+            setModal,
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('select-select'));
+
+      await waitFor(() =>
+        expect(papi.notifications.send).toHaveBeenCalledWith({
+          message: '%interlinearizer_error_load_projects_failed%',
+          severity: 'error',
+        }),
+      );
+      expect(setActiveProject).not.toHaveBeenCalled();
+      expect(setModal).not.toHaveBeenCalledWith('none');
+    });
+
     it('marks the select modal as opening while the chosen project loads, and clears it after', async () => {
       let resolveGet: (v: string) => void = () => {};
       jest.mocked(papi.commands.sendCommand).mockImplementationOnce(
@@ -694,6 +724,27 @@ describe('ProjectModals', () => {
       expect(setModal).not.toHaveBeenCalledWith('none');
     });
 
+    it('creates no project and keeps the modal open when the draft cannot be replaced', async () => {
+      const newDraft = jest.fn().mockRejectedValue(new Error('disk full'));
+      const setModal = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'create', newDraft, setModal })} />);
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      await waitFor(() =>
+        expect(papi.notifications.send).toHaveBeenCalledWith({
+          message: '%interlinearizer_error_create_project_failed%',
+          severity: 'error',
+        }),
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to start the draft from New dialog',
+        expect.any(Error),
+      );
+      expect(papi.commands.sendCommand).not.toHaveBeenCalled();
+      expect(setModal).not.toHaveBeenCalledWith('none');
+    });
+
     it('notifies and falls back to resetActiveProject and keeps modal open when backend returns a non-project shape', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify({ bad: true }));
       const setModal = jest.fn();
@@ -788,14 +839,7 @@ describe('ProjectModals', () => {
       expect(screen.getByTestId('discard-modal')).toBeInTheDocument();
       // Neither draft nor project creation should start until the user confirms discarding.
       expect(newDraft).not.toHaveBeenCalled();
-      expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
-        'interlinearizer.createProject',
-        expect.anything(),
-        expect.anything(),
-        undefined,
-        expect.anything(),
-        expect.anything(),
-      );
+      expect(papi.commands.sendCommand).not.toHaveBeenCalled();
 
       await userEvent.click(screen.getByTestId('discard-confirm'));
       await waitFor(() =>

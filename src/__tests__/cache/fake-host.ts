@@ -11,6 +11,20 @@ import { BOOK, NOW, sessionOver } from './session-source';
 /** Stands in for the network event that sessions report their changes on. */
 export const ANALYSIS_CHANGED_EVENT = () => () => true;
 
+/** Stands in for the network event that a source's finished whole-text read is reported on. */
+export const TEXT_READ_EVENT = () => () => true;
+
+/** Hands `read` to every listener that the views registered for {@link TEXT_READ_EVENT}. */
+export function relayTextRead(read: { sourceProjectId: string }): void {
+  const handlers = new Set(
+    jest
+      .mocked(useEvent)
+      .mock.calls.filter(([event]) => event === TEXT_READ_EVENT)
+      .map(([, handler]) => handler),
+  );
+  act(() => handlers.forEach((handler) => typeof handler === 'function' && handler(read)));
+}
+
 /** Reads field `key` of a command's argument object, throwing unless it is a string. */
 function field(args: unknown, key: string): string {
   const value = typeof args === 'object' && args ? Reflect.get(args, key) : undefined;
@@ -52,11 +66,10 @@ export async function fakeHost(
     );
     return resegmentBook(BOOK, segmentation);
   };
-  jest
-    .mocked(papi.network.getNetworkEvent)
-    .mockImplementation((name: string) =>
-      name === 'interlinearizer.onAnalysisChanged' ? ANALYSIS_CHANGED_EVENT : () => () => true,
-    );
+  jest.mocked(papi.network.getNetworkEvent).mockImplementation((name: string) => {
+    if (name === 'interlinearizer.onAnalysisChanged') return ANALYSIS_CHANGED_EVENT;
+    return name === 'interlinearizer.onTextRead' ? TEXT_READ_EVENT : () => () => true;
+  });
   jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call: unknown[]) => {
     const [command, first, ...rest] = call;
     const intercepted = intercept(String(command));

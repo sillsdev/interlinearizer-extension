@@ -150,6 +150,50 @@ describe('useDraftDiscardGate', () => {
     expect(discardDraft).not.toHaveBeenCalled();
   });
 
+  /** A read that answers `['a']` at once, then waits at each later read until `settle` is called. */
+  function deferredRead() {
+    const pending: (() => void)[] = [];
+    let reads = 0;
+    const read = () => {
+      reads += 1;
+      if (reads === 1) return ['a'];
+      return new Promise<readonly string[]>((resolve) => {
+        pending.push(() => resolve(['a']));
+      });
+    };
+    const settle = () => act(async () => pending.splice(0).forEach((resolve) => resolve()));
+    return { read, settle };
+  }
+
+  it('neither discards nor runs when canceled while a read is pending', async () => {
+    const { result, discardDraft } = renderGate(['a']);
+    const run = jest.fn();
+    const { read, settle } = deferredRead();
+    act(() => result.current.request('delete', read, run));
+    act(() => result.current.confirm());
+
+    act(() => result.current.cancel());
+    await settle();
+
+    expect(run).not.toHaveBeenCalled();
+    expect(discardDraft).not.toHaveBeenCalled();
+    expect(result.current.asking).toBeUndefined();
+  });
+
+  it('runs once when confirmed again while a read is pending', async () => {
+    const { result, discardDraft } = renderGate(['a']);
+    const run = jest.fn();
+    const { read, settle } = deferredRead();
+    act(() => result.current.request('delete', read, run));
+    act(() => result.current.confirm());
+
+    act(() => result.current.confirm());
+    await settle();
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(discardDraft).toHaveBeenCalledTimes(1);
+  });
+
   it('abandons the action and keeps the draft when the reader declines', () => {
     const { result, discardDraft } = renderGate(['a']);
     const run = jest.fn();

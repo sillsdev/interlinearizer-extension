@@ -11,6 +11,12 @@ declare module 'papi-shared-types' {
      */
     'interlinearizer.onUndoFromNotification': { notificationId: string | number };
     /**
+     * Emitted once the whole-text read of a source project has read every book with none failing.
+     * Emitted again whenever the set of its books that hold text changes, so that a view asks again
+     * how far the read has got.
+     */
+    'interlinearizer.onTextRead': { sourceProjectId: string };
+    /**
      * Emitted when what a view shows of a source project's analysis or text changes, so that the
      * view refetches what the change touched.
      *
@@ -457,7 +463,8 @@ declare module 'papi-shared-types' {
 
     /**
      * Reads a session's whole draft, its scope and analysis. A bridge until the WebView reads only
-     * pages.
+     * pages. When the draft lists no analysis language, the reply lists the session's; the
+     * session's first edit stores it.
      *
      * @returns A JSON string of the `DraftProject`.
      * @throws If the session is not open, or its analysis cannot be loaded (logged before

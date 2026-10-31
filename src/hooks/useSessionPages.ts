@@ -2,7 +2,7 @@ import papi, { logger } from '@papi/frontend';
 import { useEvent } from 'platform-bible-react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { NetworkEvents } from 'papi-shared-types';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageClient } from '../cache/pageClient';
 import type { BookOutline } from '../types/segment-pages';
 import useLatestRef from './useLatestRef';
@@ -54,7 +54,8 @@ function parsed(json: string | undefined) {
  * Serves the loaded book's segment list from a session: its outline, segmented by the session's
  * draft, and the pages asked for, with their analysis. A new outline is published once the pages
  * around the ranges asked for have loaded. The first outline fails, as a failed outline read does,
- * when any of those pages fails every retry. Takes in each change the session reports.
+ * when any of those pages fails every retry. Takes in each change the session reports, including
+ * those that arrive before the first outline is published.
  */
 export default function useSessionPages({
   sessionId,
@@ -68,6 +69,8 @@ export default function useSessionPages({
   }>();
   const [failure, setFailure] = useState<{ key: string; message: string }>();
   const scrRefRef = useLatestRef(scrRef);
+  /** The current book's client, published or not. */
+  const activeClientRef = useRef<PageClient | undefined>(undefined);
   const key = sessionId && bookId ? `${sessionId}:${bookId}` : undefined;
 
   useEffect(() => {
@@ -89,6 +92,7 @@ export default function useSessionPages({
           ),
         ),
     });
+    activeClientRef.current = client;
     let shown: BookOutline | undefined;
     let version = 0;
     let ready = false;
@@ -132,6 +136,7 @@ export default function useSessionPages({
     })();
     return () => {
       isCurrent = false;
+      activeClientRef.current = undefined;
       unsubscribe();
     };
   }, [sessionId, bookId, key, scrRefRef]);
@@ -145,9 +150,10 @@ export default function useSessionPages({
     analysisChangedEvent,
     useCallback(
       (change: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
-        if ('sessionId' in change && change.sessionId === sessionId) client?.hear(change);
+        if ('sessionId' in change && change.sessionId === sessionId)
+          activeClientRef.current?.hear(change);
       },
-      [client, sessionId],
+      [sessionId],
     ),
   );
 

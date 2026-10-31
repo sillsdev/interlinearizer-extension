@@ -98,6 +98,42 @@ describe('useSessionPages', () => {
     );
   });
 
+  it('takes in a change the session reports before the outline is first published', async () => {
+    const made = await sessionOver();
+    serve(made);
+    const serving = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+    let releasePages = () => {};
+    const pagesHeld = new Promise<void>((resolve) => {
+      releasePages = resolve;
+    });
+    let pageAsked = false;
+    jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+      const reply = await serving?.(...call);
+      if (call[0] !== 'interlinearizer.getSegments') return reply;
+      pageAsked = true;
+      await pagesHeld;
+      return reply;
+    });
+    const { result } = renderHook(() =>
+      useSessionPages({ sessionId: made.sessionId, bookId: 'GEN', scrRef: SCR_REF }),
+    );
+    await waitFor(() => expect(pageAsked).toBe(true));
+    made.onChange(relay);
+
+    await act(async () => {
+      await made.edit('writeGloss', glossing('earth', 'land'));
+      releasePages();
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {
+      await result.current.client?.settled();
+    });
+
+    expect(result.current.client?.heldAnalysis().tokenAnalyses.map(({ id }) => id)).toContain(
+      'ta-land',
+    );
+  });
+
   it("ignores a change another session reports, and the source project's form", async () => {
     const made = await sessionOver();
     serve(made);

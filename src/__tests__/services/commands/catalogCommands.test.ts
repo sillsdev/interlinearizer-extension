@@ -170,3 +170,24 @@ describe('deleteAnalyses', () => {
     });
   });
 });
+
+describe('clearAnalysisGlosses', () => {
+  it('names the analyses it left empty, and not those it merged or never found', async () => {
+    const buffer = await bufferOver({
+      tokenAnalyses: [
+        { id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'at' } },
+        { id: 'ta-in-2', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'in', fr: 'dans' } },
+        { id: 'ta-in-3', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { fr: 'dans' } },
+      ],
+      tokenAnalysisLinks: [LINK],
+    });
+
+    await expect(
+      clearAnalysisGlosses(buffer, {
+        analysisIds: ['ta-in', 'ta-in-2', 'ta-missing'],
+        analysisLanguage: 'en',
+        now: NOW,
+      }),
+    ).resolves.toStrictEqual(['ta-in']);
+  });
+});

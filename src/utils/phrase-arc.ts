@@ -85,7 +85,7 @@ export const GUTTER_LANE_STEP = 10;
  * compatible.
  */
 type SplitPhraseDispatch = {
-  createPhrase: (tokens: TokenSnapshot[]) => string;
+  createPhrase: (tokens: TokenSnapshot[]) => void;
   updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
   deletePhrase: (phraseId: string) => void;
 };

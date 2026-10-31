@@ -376,7 +376,7 @@ async function main(): Promise<void> {
     // eslint-disable-next-line no-await-in-loop -- tiers run one at a time so timings don't overlap
     results.push([tier.name, await benchTier(tier, allBooks)]);
   }
-  const file = writeResults('bench', {
+  const file = await writeResults('bench', {
     ...provenance(meta.coreCommit),
     runs: RUNS,
     tiers: Object.fromEntries(results),

@@ -3064,6 +3064,11 @@ describe('projectStorage', () => {
       ],
       ['checkIndexes', (r: AnalysisRepository) => r.checkIndexes(), 0],
       [
+        'getWholeDraft',
+        (r: AnalysisRepository) => r.getWholeDraft().then(({ analysis }) => analysis.tokenAnalyses),
+        1,
+      ],
+      [
         'getScope',
         (r: AnalysisRepository) => r.getScope().then(({ analysisLanguages }) => analysisLanguages),
         0,

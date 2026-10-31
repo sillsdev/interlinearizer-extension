@@ -31,6 +31,7 @@ import {
   makeSegment,
   makeWordToken,
   segmentPagesOf,
+  withSplitPhrase,
 } from '../test-helpers';
 import {
   allFalseViewOptions,
@@ -68,12 +69,14 @@ function addPhraseLinkWithNewIdentity(link: PhraseAnalysisLink): void {
   link.tokens.forEach((t) => phraseLinkMap.set(t.tokenRef, link));
 }
 
-const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().mockReturnValue({
-  createPhrase: jest.fn(),
-  updatePhrase: jest.fn(),
-  deletePhrase: jest.fn(),
-  mergePhrases: jest.fn(),
-});
+const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().mockReturnValue(
+  withSplitPhrase({
+    createPhrase: jest.fn(),
+    updatePhrase: jest.fn(),
+    deletePhrase: jest.fn(),
+    mergePhrases: jest.fn(),
+  }),
+);
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
@@ -403,12 +406,14 @@ beforeEach(() => {
   scrollIntoViewMock.mockClear();
   tokenLinkIconSpy.mockClear();
   phraseLinkMap.clear();
-  mockUsePhraseDispatch.mockReturnValue({
-    createPhrase: jest.fn(),
-    updatePhrase: jest.fn(),
-    deletePhrase: jest.fn(),
-    mergePhrases: jest.fn(),
-  });
+  mockUsePhraseDispatch.mockReturnValue(
+    withSplitPhrase({
+      createPhrase: jest.fn(),
+      updatePhrase: jest.fn(),
+      deletePhrase: jest.fn(),
+      mergePhrases: jest.fn(),
+    }),
+  );
   mockCandidateTokenRefs.current = new Set();
 });
 
@@ -2218,12 +2223,14 @@ describe('ContinuousView phrase grouping', () => {
 
   it('calls splitPhraseAtBoundary when the arc split button is clicked with a known phrase', async () => {
     const deletePhrase = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: jest.fn(),
-      deletePhrase,
-      mergePhrases: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: jest.fn(),
+        deletePhrase,
+        mergePhrases: jest.fn(),
+      }),
+    );
     // Two-token phrase split at tok-0 → both halves are 1 token → deletePhrase called
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
@@ -2245,12 +2252,14 @@ describe('ContinuousView phrase grouping', () => {
 
   it('splits only the occurrence whose arc fires when two occurrences share a payload', async () => {
     const deletePhrase = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: jest.fn(),
-      deletePhrase,
-      mergePhrases: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: jest.fn(),
+        deletePhrase,
+        mergePhrases: jest.fn(),
+      }),
+    );
     addPhraseLinkWithNewIdentity({
       ...makePhraseLink('phrase-1', ['tok-0', 'tok-1'], ['In', 'the']),
       analysisId: 'pa-shared',
@@ -2267,12 +2276,14 @@ describe('ContinuousView phrase grouping', () => {
 
   it('does nothing when the arc split button fires for an unknown phrase id', async () => {
     const deletePhrase = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: jest.fn(),
-      deletePhrase,
-      mergePhrases: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: jest.fn(),
+        deletePhrase,
+        mergePhrases: jest.fn(),
+      }),
+    );
     const book = makeBook();
     renderStrip(book);
     await userEvent.click(screen.getByTestId('arc-split-btn'));

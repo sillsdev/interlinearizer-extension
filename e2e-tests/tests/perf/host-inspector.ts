@@ -101,3 +101,19 @@ export async function readHostHeap(pid: number): Promise<HostHeap> {
     return { heapUsed, external, rss };
   });
 }
+
+/**
+ * Reads the CPU time that the extension host, process `pid`, has used so far, user and system
+ * summed.
+ *
+ * @returns Milliseconds of CPU time.
+ * @throws If the inspector does not open, or the host reports no CPU usage.
+ */
+export async function readHostCpuMs(pid: number): Promise<number> {
+  return withInspector(pid, async (send) => {
+    const json = await evaluate(send, 'JSON.stringify(process.cpuUsage())');
+    if (typeof json !== 'string') throw new Error('The extension host reported no CPU usage');
+    const { user, system } = JSON.parse(json);
+    return (user + system) / 1000;
+  });
+}

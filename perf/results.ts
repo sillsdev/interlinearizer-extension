@@ -2,6 +2,7 @@ import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { format, resolveConfig } from 'prettier';
 import { RESULTS_DIR } from './paths';
 
 /** What every result file records about where and on what code it was measured. */
@@ -27,16 +28,23 @@ export function provenance(coreCommit: string) {
   };
 }
 
-/** Writes a result file named for its kind, time, and commit, returning its path. */
-export function writeResults<T extends { recordedAt: string; commit: string }>(
+/**
+ * Writes a result file named for its kind, time, and commit, formatted as the repo's format check
+ * expects, returning its path.
+ */
+export async function writeResults<T extends { recordedAt: string; commit: string }>(
   kind: string,
   results: T,
-): string {
+): Promise<string> {
   fs.mkdirSync(RESULTS_DIR, { recursive: true });
   const file = path.join(
     RESULTS_DIR,
     `${kind}-${results.recordedAt.slice(0, 19).replace(/:/g, '')}-${results.commit.slice(0, 8)}.json`,
   );
-  fs.writeFileSync(file, `${JSON.stringify({ kind, ...results }, undefined, 2)}\n`);
+  const options = await resolveConfig(file);
+  fs.writeFileSync(
+    file,
+    await format(JSON.stringify({ kind, ...results }), { ...options, filepath: file }),
+  );
   return file;
 }

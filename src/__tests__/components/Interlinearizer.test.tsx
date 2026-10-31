@@ -452,6 +452,7 @@ function renderInterlinearizer({
   formerBoundaries,
   unmergeableStarts,
   asOneStep,
+  dispatchBreaksPhrases,
 }: {
   book?: Book;
   pages?: SegmentPages;
@@ -464,6 +465,7 @@ function renderInterlinearizer({
   formerBoundaries?: ReadonlyMap<string, string>;
   unmergeableStarts?: ReadonlySet<string>;
   asOneStep?: (action: () => void) => void;
+  dispatchBreaksPhrases?: boolean;
 } = {}) {
   return render(
     withNav(
@@ -475,6 +477,7 @@ function renderInterlinearizer({
         formerBoundaries={formerBoundaries}
         unmergeableStarts={unmergeableStarts}
         asOneStep={asOneStep}
+        dispatchBreaksPhrases={dispatchBreaksPhrases}
         scrRef={scrRef}
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
@@ -2292,6 +2295,22 @@ describe('segmentation dispatch force-break', () => {
     if (!dispatch) throw new Error('expected a captured segmentation dispatch');
     return dispatch;
   }
+
+  it('hands a dispatch that breaks phrases itself straight through', () => {
+    const raw = makeRawDispatch();
+    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      continuousScroll: true,
+      segmentationDispatch: raw,
+      dispatchBreaksPhrases: true,
+    });
+
+    capturedSegmentation?.dispatch.split('GEN 1:2:0');
+
+    expect(raw.split).toHaveBeenCalledWith('GEN 1:2:0');
+    expect(mockDeletePhrase).not.toHaveBeenCalled();
+  });
 
   it('passes merge straight through without touching phrases', () => {
     const raw = makeRawDispatch();

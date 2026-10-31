@@ -1301,6 +1301,52 @@ export function describeAnalysisRepositoryConformance(
         await expect(repository.getScope()).resolves.toStrictEqual(scope);
       });
 
+      it('reads the whole draft the applied changes leave', async () => {
+        const repository = await overFullDraft();
+
+        await repository.apply({
+          intent: 'unlinkExodus',
+          tokenAnalysisLinks: { puts: [], deletes: ['tl-exo-and'] },
+        });
+
+        const expected = fullDraft();
+        expected.analysis.tokenAnalysisLinks = expected.analysis.tokenAnalysisLinks.filter(
+          (link) => link.id !== 'tl-exo-and',
+        );
+        const draft = await repository.getWholeDraft();
+        expect(scopeRecordOf(draft)).toStrictEqual(scopeRecordOf(expected));
+        expect(inIdOrder(draft).analysis).toStrictEqual(inIdOrder(expected).analysis);
+        expect(draft.dirty).toBe(true);
+      });
+
+      it('reads the whole draft as saved once marked clean', async () => {
+        const repository = await overFullDraft();
+        await repository.apply({
+          intent: 'unlinkExodus',
+          tokenAnalysisLinks: { puts: [], deletes: ['tl-exo-and'] },
+        });
+
+        await repository.markClean();
+
+        await expect(repository.getWholeDraft()).resolves.toMatchObject({ dirty: false });
+      });
+
+      it('reads a draft the caller may change without changing later reads', async () => {
+        const repository = await overFullDraft();
+
+        changeInPlace(await repository.getWholeDraft());
+
+        const draft = await repository.getWholeDraft();
+        expect(inIdOrder(draft).analysis).toStrictEqual(inIdOrder(fullDraft()).analysis);
+      });
+
+      it('reads a draft never saved as an empty one', async () => {
+        await expect((await store.open(SOURCE)).getWholeDraft()).resolves.toMatchObject({
+          ...scopeRecordOf(emptyDraft(SOURCE)),
+          analysis: emptyDraft(SOURCE).analysis,
+        });
+      });
+
       it('gets each payload kind by id, once per id, skipping ids with nothing stored', async () => {
         const repository = await overFullDraft();
 

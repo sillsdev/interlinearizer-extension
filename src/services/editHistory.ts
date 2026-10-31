@@ -95,9 +95,27 @@ export class EditHistory {
     this.reanchorBooks = reanchorBooks;
   }
 
+  /** Whether there is an edit to undo. */
+  get canUndo(): boolean {
+    return this.undoable.length > 0;
+  }
+
+  /** Whether there is an undone edit to redo. */
+  get canRedo(): boolean {
+    return this.redoable.length > 0;
+  }
+
   /** How many edits, undos and redos the history has applied to the repository. */
   get applied(): number {
     return this.appliedCount;
+  }
+
+  /**
+   * Forgets every save: no state that the history holds counts as saved any more, except the
+   * current one when `keepCurrent` is set.
+   */
+  forgetSaves(keepCurrent: boolean): void {
+    this.cleanStates = new Set(keepCurrent ? [this.state] : []);
   }
 
   /**

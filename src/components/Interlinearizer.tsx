@@ -74,12 +74,17 @@ type InterlinearizerProps = Readonly<{
   unmergeableStarts?: ReadonlySet<string>;
   /** Runs an action so every edit it makes undoes as one step; ungrouped when omitted. */
   asOneStep?: (action: () => void) => void;
+  /**
+   * Whether `segmentationDispatch` itself breaks the phrases that a new boundary would cut, as a
+   * session's boundary edits do. When it doesn't, they are broken before the boundary is added.
+   */
+  dispatchBreaksPhrases?: boolean;
 }>;
 
 /**
  * Renders the interlinear view for one book: an optional continuous token strip above a segment
- * list. Reads and writes analysis through the store its caller mounts, and expects to be remounted
- * on a book change — the store deliberately outlives that remount, since it holds the whole draft.
+ * list. Reads and writes analysis through the provider that its caller mounts, and expects to be
+ * remounted on a book change.
  */
 export default function Interlinearizer({
   book,
@@ -93,6 +98,7 @@ export default function Interlinearizer({
   formerBoundaries = EMPTY_FORMER_BOUNDARIES,
   unmergeableStarts = EMPTY_UNMERGEABLE_STARTS,
   asOneStep = RUN_UNGROUPED,
+  dispatchBreaksPhrases = false,
 }: InterlinearizerProps) {
   // Navigation surface from the context: `consumeInternalNav` lets the segment window suppress the
   // fade for internal moves, `recenterRequest` asks it to frame a jump navigation alone would not,
@@ -144,23 +150,27 @@ export default function Interlinearizer({
    * The dispatch provided through the segmentation context: wraps the raw boundary writer so any
    * operation that adds a boundary (split, and the add-half of move) first force-breaks the phrases
    * the new boundary would cut. Merge only removes a boundary, which can never leave a phrase
-   * straddling segments, so it passes through.
+   * straddling segments, so it passes through. A dispatch that breaks phrases itself passes through
+   * unwrapped.
    */
   const dispatch = useMemo<SegmentationDispatch>(
-    () => ({
-      merge: segmentationDispatch.merge,
-      split: (tokenRef) =>
-        asOneStep(() => {
-          forceBreakStraddledPhrases(tokenRef);
-          segmentationDispatch.split(tokenRef);
-        }),
-      move: (fromRef, toRef) =>
-        asOneStep(() => {
-          forceBreakStraddledPhrases(toRef);
-          segmentationDispatch.move(fromRef, toRef);
-        }),
-    }),
-    [segmentationDispatch, forceBreakStraddledPhrases, asOneStep],
+    () =>
+      dispatchBreaksPhrases
+        ? segmentationDispatch
+        : {
+            merge: segmentationDispatch.merge,
+            split: (tokenRef) =>
+              asOneStep(() => {
+                forceBreakStraddledPhrases(tokenRef);
+                segmentationDispatch.split(tokenRef);
+              }),
+            move: (fromRef, toRef) =>
+              asOneStep(() => {
+                forceBreakStraddledPhrases(toRef);
+                segmentationDispatch.move(fromRef, toRef);
+              }),
+          },
+    [segmentationDispatch, forceBreakStraddledPhrases, asOneStep, dispatchBreaksPhrases],
   );
 
   /** Segmentation context value — the dispatch paired with the lookups it operates over. */

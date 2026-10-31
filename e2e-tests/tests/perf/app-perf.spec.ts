@@ -1,11 +1,11 @@
 import type { Browser, Frame, Page } from '@playwright/test';
 import type { DraftProject } from 'interlinearizer';
+import { execFileSync } from 'child_process';
 import path from 'path';
 import { readDraftJson, readManifest } from '../../../perf/dataset/store';
 import { TIERS, type TierSpec } from '../../../perf/dataset/tiers';
 import { provenance, writeResults } from '../../../perf/results';
 import { addSavedProject, readDraft, writeDraft } from '../../../perf/storage';
-import { readCaptureMeta } from '../../../perf/usj-cache';
 import type { TextReadStatus } from '../../../src/types/text-read-status';
 import { expect, test } from '../../fixtures/cdp.fixture';
 import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
@@ -16,13 +16,15 @@ import {
   stopPackagedApp,
   STORAGE_DIR,
 } from '../../perf-app';
-import type { HostHeap } from './host-inspector';
+import { type HostHeap, readHostCpuMs } from './host-inspector';
 import {
   clearMeasures,
   closeView,
   connect,
   HOST_CALLS,
+  HOST_PATH_KEY,
   hostHeap,
+  hostPid,
   heapUsed,
   MAX_WEBSOCKET_PAYLOAD_BYTES,
   type Measure,
@@ -42,6 +44,9 @@ import {
 
 const RUNS = Number(process.env.PERF_RUNS ?? 10);
 
+/** Whether host-path sessions open without reading the whole text, to isolate that read's cost. */
+const SKIP_SESSION_READS = process.env.PERF_SKIP_SESSION_READS === 'true';
+
 /** Edits made before reading the heap, enough to fill the undo history. */
 const UNDO_FILL_EDITS = 100;
 
@@ -51,14 +56,41 @@ const AWAY_BOOK = 'JUD';
 /** Names the saved projects a run seeds, so a later run can recognize them. */
 const SAVED_PROJECT_NAME = /^Perf [a-z-]+ \d+$/;
 
+/** How long each Scripture save gets to settle before the next step, its re-fetches included. */
+const SAVE_SETTLE_MS = 3_000;
+
 /** Tries at picking a menu item before a run gives up on it. */
 const MENU_ATTEMPTS = 3;
 
 /** The app a run drives; restarting a packaged app replaces its connection. */
 type App = { page: Page; browser?: Browser };
 
+const TOKEN_GLOSS_INPUT = 'input[aria-label^="Gloss for "]:not([aria-label^="Gloss for morpheme"])';
+
 function tokenGlossInputs(frame: Frame) {
-  return frame.locator('input[aria-label^="Gloss for "]:not([aria-label^="Gloss for morpheme"])');
+  return frame.locator(TOKEN_GLOSS_INPUT);
+}
+
+/**
+ * Waits for `frame`'s first token gloss input to become editable.
+ *
+ * @returns When that input was first seen editable, in milliseconds since the epoch.
+ */
+async function editableAt(frame: Frame): Promise<number> {
+  const handle = await frame.waitForFunction(
+    (selector) => {
+      const input = document.querySelector(selector);
+      return (
+        input instanceof HTMLInputElement &&
+        !input.disabled &&
+        !input.readOnly &&
+        performance.timeOrigin + performance.now()
+      );
+    },
+    TOKEN_GLOSS_INPUT,
+    { polling: 'raf', timeout: 60_000 },
+  );
+  return Number(await handle.jsonValue());
 }
 
 /**
@@ -67,13 +99,26 @@ function tokenGlossInputs(frame: Frame) {
  */
 let unsavedFrame: Frame | undefined;
 
-/** Glosses the `index`th visible word and commits it, as a reader moving on with Tab does. */
-async function editGloss(frame: Frame, index: number, value: string): Promise<void> {
+/**
+ * Glosses the `index`th visible word and commits it, as a reader moving on with Tab does. A view on
+ * the host path passes `autosaves` false, because its session stores each edit itself.
+ */
+async function editGloss(
+  frame: Frame,
+  index: number,
+  value: string,
+  autosaves = true,
+): Promise<void> {
   const input = tokenGlossInputs(frame).nth(index);
   await input.fill(value);
   await input.press('Tab');
-  unsavedFrame = frame;
+  if (autosaves) unsavedFrame = frame;
 }
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, Math.max(0, ms));
+  });
 
 /** Waits for the view's autosave to land, and stops counting the view as unsaved. */
 async function waitForAutosave(frame: Frame): Promise<Measure[]> {
@@ -108,6 +153,191 @@ async function readWholeText(page: Page, projectId: string): Promise<void> {
     )
     .toBe(true);
   expect((await textReadStatus(page, projectId))?.failedBookIds).toEqual([]);
+}
+
+const isNode = (value: unknown): value is { type?: unknown; content?: unknown } =>
+  !!value && typeof value === 'object';
+
+/**
+ * Adds `word` to the first text after a verse marker in `content`, in place.
+ *
+ * @returns Whether it found such text.
+ */
+function addWordAfterVerse(content: unknown[], word: string, state = { inVerse: false }): boolean {
+  return content.some((node, i) => {
+    if (typeof node === 'string') {
+      if (!state.inVerse || !node.trim()) return false;
+      content[i] = `${node} ${word}`;
+      return true;
+    }
+    if (!isNode(node)) return false;
+    if (node.type === 'verse') state.inVerse = true;
+    return Array.isArray(node.content) && addWordAfterVerse(node.content, word, state);
+  });
+}
+
+/**
+ * A copy of chapter `usj` with `word` added to its first verse's text.
+ *
+ * @throws If the chapter holds no verse text.
+ */
+function withWord(usj: unknown, word: string): unknown {
+  const copy: unknown = JSON.parse(JSON.stringify(usj));
+  if (!isNode(copy) || !Array.isArray(copy.content) || !addWordAfterVerse(copy.content, word))
+    throw new Error('The chapter holds no verse text to add a word to');
+  return copy;
+}
+
+/** Makes the project's text editable; the sample WEB installs read-only. */
+async function makeEditable(page: Page, projectId: string): Promise<void> {
+  await page.evaluate(async (id) => {
+    const base = await window.papi.projectDataProviders.get('platform.base', id);
+    await base.setSetting('platform.isEditable', true);
+  }, projectId);
+}
+
+async function chapterUsj(page: Page, projectId: string, book: string): Promise<unknown> {
+  return page.evaluate(
+    async ([id, bookCode]) => {
+      const pdp = await window.papi.projectDataProviders.get('platformScripture.USJ_Chapter', id);
+      return pdp.getChapterUSJ({ book: bookCode, chapterNum: 1, verseNum: 1 });
+    },
+    [projectId, book] as const,
+  );
+}
+
+/**
+ * Saves `usj` as `book`'s first chapter, as the Scripture editor does.
+ *
+ * @returns Milliseconds until the save answered.
+ */
+async function saveChapter(
+  page: Page,
+  projectId: string,
+  book: string,
+  usj: unknown,
+): Promise<number> {
+  return page.evaluate(
+    async ([id, bookCode, chapter]) => {
+      const pdp = await window.papi.projectDataProviders.get('platformScripture.USJ_Chapter', id);
+      const start = performance.now();
+      // Resolves false when the text is unchanged; a failed save rejects.
+      await pdp.setChapterUSJ({ book: bookCode, chapterNum: 1, verseNum: 1 }, chapter);
+      return performance.now() - start;
+    },
+    [projectId, book, usj] as const,
+  );
+}
+
+/**
+ * Times saves of the first chapter of the view's book, each with a word added and followed at once
+ * by a gloss commit. Restores the chapter after each run.
+ *
+ * Reads the extension host's CPU time over each save's settle period when given `cpuPid`. Waits for
+ * each gloss's autosave when `autosaves` is set.
+ */
+async function measureScriptureSaves(
+  page: Page,
+  frame: Frame,
+  projectId: string,
+  book: string,
+  cpuPid: number | undefined,
+  autosaves: boolean,
+): Promise<Record<string, unknown>> {
+  const samples = new Samples();
+  const original = await chapterUsj(page, projectId, book);
+  try {
+    for (let run = 0; run < RUNS; run += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await clearMeasures(frame);
+      // eslint-disable-next-line no-await-in-loop
+      const cpuBefore = cpuPid === undefined ? 0 : await readHostCpuMs(cpuPid);
+      const startedAt = Date.now();
+      samples.addValue(
+        'scripture-save',
+        // eslint-disable-next-line no-await-in-loop
+        await saveChapter(page, projectId, book, withWord(original, `perfsave${run}`)),
+      );
+      // eslint-disable-next-line no-await-in-loop
+      await editGloss(frame, run % 10, `save-${run}`, autosaves);
+      // eslint-disable-next-line no-await-in-loop
+      samples.add(await waitForMeasure(frame, 'gloss-render'), ['gloss-render']);
+      // eslint-disable-next-line no-await-in-loop
+      if (autosaves) await waitForAutosave(frame);
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(SAVE_SETTLE_MS - (Date.now() - startedAt));
+      if (cpuPid !== undefined)
+        // eslint-disable-next-line no-await-in-loop
+        samples.addValue('save-host-cpu', (await readHostCpuMs(cpuPid)) - cpuBefore);
+      // eslint-disable-next-line no-await-in-loop
+      await saveChapter(page, projectId, book, original);
+      // eslint-disable-next-line no-await-in-loop
+      await sleep(SAVE_SETTLE_MS);
+    }
+  } finally {
+    await saveChapter(page, projectId, book, original);
+  }
+  return samples.summary();
+}
+
+/**
+ * Times the host path: opening a view, edits once the session's whole-text read has finished, and
+ * Scripture saves. With {@link SKIP_SESSION_READS}, sessions read no text, so nothing waits for it.
+ * Writes its sections into `result`. Leaves no view open and the host-path flag off.
+ */
+async function measureHostPath(
+  page: Page,
+  projectId: string,
+  tier: TierSpec,
+  cpuPid: number | undefined,
+  result: Record<string, unknown>,
+): Promise<void> {
+  await closeSettledView(page);
+  try {
+    await page.evaluate((key) => localStorage.setItem(key, 'true'), HOST_PATH_KEY);
+    if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', true);
+    // The view's pages queue behind the session-open read's passes, so no edit lands during them.
+    const open = new Samples();
+    for (let run = 0; run < RUNS; run += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await closeView(page);
+      // eslint-disable-next-line no-await-in-loop
+      const { frame, openedAt } = await openView(page, projectId, tier.viewBook);
+      // eslint-disable-next-line no-await-in-loop
+      open.addValue('open-to-editable', (await editableAt(frame)) - openedAt);
+    }
+    result.hostOpen = open.summary();
+
+    await closeView(page);
+    const { frame } = await openView(page, projectId, tier.viewBook);
+    if (!SKIP_SESSION_READS) await readWholeText(page, projectId);
+    const edits = new Samples();
+    for (let run = 0; run < RUNS; run += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await clearMeasures(frame);
+      // eslint-disable-next-line no-await-in-loop
+      await editGloss(frame, run, `host-${run}`, false);
+      // eslint-disable-next-line no-await-in-loop
+      edits.add(await waitForMeasure(frame, 'gloss-render'), ['gloss-render']);
+    }
+    result.hostEdit = edits.summary();
+
+    result.hostScriptureSave = await measureScriptureSaves(
+      page,
+      frame,
+      projectId,
+      tier.viewBook,
+      cpuPid,
+      false,
+    );
+  } finally {
+    try {
+      await closeView(page);
+    } finally {
+      await page.evaluate((key) => localStorage.removeItem(key), HOST_PATH_KEY);
+      if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', false);
+    }
+  }
 }
 
 /** Waits for any autosave an edit or Save started to land. */
@@ -206,9 +436,11 @@ async function measureOpen(
 ): Promise<void> {
   await takeHostEntries(page);
   const { frame, openedAt } = await openView(page, projectId, book);
+  const editable = editableAt(frame);
   await waitForMeasure(frame, 'book-render', book);
   const settled = await waitForMeasure(frame, 'reanchor', book);
   open.webView.add(settled);
+  open.webView.addValue('open-to-editable', (await editable) - openedAt);
   const frameOrigin = await frame.evaluate(() => performance.timeOrigin);
   open.webView.addValue(
     'open-to-interactive',
@@ -359,7 +591,12 @@ async function measureTier(
     await waitForMeasure(frame, 'dispatch-render');
     // eslint-disable-next-line no-await-in-loop
     const measures = await waitForAutosave(frame);
-    edits.webView.add(measures, ['dispatch-render', 'autosave-serialize', 'autosave']);
+    edits.webView.add(measures, [
+      'dispatch-render',
+      'gloss-render',
+      'autosave-serialize',
+      'autosave',
+    ]);
     // eslint-disable-next-line no-await-in-loop
     edits.addHostCall(HOST_CALLS.saveDraft, await takeHostEntries(page), measures);
   }
@@ -491,13 +728,29 @@ async function measureTier(
     if (isLast) await recordMemory('afterTextRead');
   }
   result.textRead = textRead.summary();
+
+  // Scripture saves with no whole-text read running; closing the last view ended it.
+  const cpuPid = hostBefore ? await hostPid(page) : undefined;
+  await closeSettledView(page);
+  const { frame: saveView } = await openView(page, projectId, tier.viewBook);
+  await waitForMeasure(saveView, 'reanchor', tier.viewBook);
+  result.scriptureSave = await measureScriptureSaves(
+    page,
+    saveView,
+    projectId,
+    tier.viewBook,
+    cpuPid,
+    true,
+  );
+
+  await measureHostPath(page, projectId, tier, cpuPid, result);
 }
 
 test('measure the app', async ({ mainPage }) => {
   const app: App = { page: mainPage };
   await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
-  const meta = readCaptureMeta();
   const projectId = await sourceProjectId(mainPage);
+  await makeEditable(mainPage, projectId);
 
   const requested = (process.env.PERF_TIERS ?? '').split(',').filter(Boolean);
   const tiers = TIERS.filter((t) => requested.length === 0 || requested.includes(t.name));
@@ -535,15 +788,26 @@ test('measure the app', async ({ mainPage }) => {
     await writeDraft(STORAGE_DIR, originalDraft);
   }
 
-  const file = writeResults('app', {
-    ...provenance(meta.coreCommit),
+  const file = await writeResults('app', {
+    // Assumes that the packaged app was built from this checkout.
+    ...provenance(
+      execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: path.resolve(__dirname, '../../../../paranext-core'),
+      })
+        .toString()
+        .trim(),
+    ),
     appBuild: app.page.url().startsWith('http://localhost') ? 'dev renderer' : 'packaged',
     ...(PACKAGED_APP_PATH && OZONE_PLATFORM ? { display: OZONE_PLATFORM } : {}),
     extensionBuild:
       process.env.E2E_BUILD_SCRIPT === 'build:production' ? 'production' : 'development',
     runs: RUNS,
+    ...(SKIP_SESSION_READS ? { skipSessionReads: true } : {}),
     tiers: results,
   });
   console.log(`Wrote ${path.relative(process.cwd(), file)}`);
   await app.browser?.close();
+  const failed = Object.entries(results).filter(([, result]) => 'error' in result);
+  if (failed.length > 0)
+    throw new Error(failed.map(([name, result]) => `${name}: ${String(result.error)}`).join('\n'));
 });

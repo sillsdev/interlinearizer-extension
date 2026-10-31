@@ -71,8 +71,39 @@ import analysisReducer, {
   replaceAnalysis,
   setAnalysisLanguage,
   type AnalysisDeletionOutcome,
+  type AnalysisState,
 } from '../store/analysisSlice';
 import useLatestRef from '../hooks/useLatestRef';
+import { readEditOutcome, type AnalysisEditOutcome } from '../utils/edit-outcome';
+import { splitPhraseAtBoundary } from '../utils/phrase-arc';
+import type { Settles } from '../utils/settles';
+import type { PageClient } from '../cache/pageClient';
+import type { WholeAnalysis } from '../cache/wholeAnalysis';
+import {
+  PageClientProvider,
+  usePagePoolSelector,
+  useRepliesApplied,
+  usePageSelector,
+  usePageStateGetter,
+  useWholeSelector as useSessionWholeSelector,
+  useWholeStateGetter as useSessionWholeStateGetter,
+} from '../cache/pageHooks';
+import {
+  useAnalysisRowCommands,
+  useApproveAnalysisCommand,
+  useConfirmMorphemesCommand,
+  useGlossCommand,
+  useMorphemeBreakdownCommand,
+  useMorphemeDeleteCommand,
+  useMorphemeGlossCommand,
+  usePhraseCommands,
+  usePhraseGlossCommand,
+  useRemovalPreviews,
+  useSegmentFreeTranslationCommand,
+  useStaleFreeTranslationCommands,
+  useStaleLocationCommands,
+} from '../cache/sessionEdits';
+import { hostPathEnabled } from '../utils/host-path';
 import { emptyAnalysis } from '../types/empty-factories';
 import type { CatalogRow, HeadingPlacement } from '../utils/analysis-query';
 import {
@@ -210,19 +241,8 @@ export function AnalysisStoreProvider({
   onSaveRef.current = onSave;
   const onGlossChangeRef = useRef(onGlossChange);
   onGlossChangeRef.current = onGlossChange;
-  const onPendingEditsChangeRef = useRef(onPendingEditsChange);
-  onPendingEditsChangeRef.current = onPendingEditsChange;
 
-  // Count of gloss inputs currently holding uncommitted text. Kept in a ref (not state) so
-  // registering/unregistering an editor never re-renders the provider; only the 0↔non-0 crossings
-  // are forwarded to the parent, which owns the indicator.
-  const editingCountRef = useRef(0);
-  const reportEditing = useCallback((active: boolean) => {
-    const wasPending = editingCountRef.current > 0;
-    editingCountRef.current += active ? 1 : -1;
-    const isPending = editingCountRef.current > 0;
-    if (wasPending !== isPending) onPendingEditsChangeRef.current?.(isPending);
-  }, []);
+  const reportEditing = usePendingEdits(onPendingEditsChange);
 
   /**
    * Dispatches {@link writeGloss} (forking any shared payload before writing), then persists via
@@ -235,6 +255,7 @@ export function AnalysisStoreProvider({
    */
   const requestGlossEdit = useCallback(
     (tokenRef: string, surfaceText: string, value: string) => {
+      perfMark('gloss-commit');
       store.dispatch(writeGloss(tokenRef, surfaceText, value));
       onSaveRef.current?.(store.getState().analysis.analysis, tokenRef);
       onGlossChangeRef.current?.(tokenRef, value);
@@ -261,12 +282,124 @@ export function AnalysisStoreProvider({
   );
 }
 
-/** Times each commit of a changed analysis from the earliest dispatch it renders. */
+/**
+ * Counts the gloss inputs holding uncommitted text, telling `onPendingEditsChange` each time the
+ * count leaves or returns to zero.
+ *
+ * @returns The stable callback that each input reports its editing through.
+ */
+function usePendingEdits(
+  onPendingEditsChange: ((pending: boolean) => void) | undefined,
+): (active: boolean) => void {
+  const onChangeRef = useLatestRef(onPendingEditsChange);
+  // A ref, so an input registering never re-renders the provider.
+  const countRef = useRef(0);
+  return useCallback(
+    (active: boolean) => {
+      const wasPending = countRef.current > 0;
+      countRef.current += active ? 1 : -1;
+      const isPending = countRef.current > 0;
+      if (wasPending !== isPending) onChangeRef.current?.(isPending);
+    },
+    [onChangeRef],
+  );
+}
+
+/** Props for {@link SessionAnalysisProvider}. */
+type SessionAnalysisProviderProps = Readonly<{
+  children: ReactNode;
+  /** Holds the open book's pages, and sends the session's edits. */
+  client: PageClient;
+  /** The session's whole analysis, for the answers that span books. */
+  whole: WholeAnalysis;
+  sessionId: string;
+  /** The BCP 47 tag that glosses and free translations are read in. */
+  analysisLanguage: string;
+  /**
+   * Called with `true` when a gloss input starts holding uncommitted text, and with `false` once
+   * none does.
+   */
+  onPendingEditsChange?: (pending: boolean) => void;
+  /** When `true`, the subtree renders the analysis read-only, as for a Paratext 9 import. */
+  readOnly?: boolean;
+}>;
+
+/**
+ * Gives the subtree a session's analysis on the host path, in place of an
+ * {@link AnalysisStoreProvider}.
+ */
+export function SessionAnalysisProvider({
+  children,
+  client,
+  whole,
+  sessionId,
+  analysisLanguage,
+  onPendingEditsChange,
+  readOnly = false,
+}: SessionAnalysisProviderProps) {
+  return (
+    <PageClientProvider
+      client={client}
+      whole={whole}
+      sessionId={sessionId}
+      analysisLanguage={analysisLanguage}
+    >
+      <SessionCallbacks onPendingEditsChange={onPendingEditsChange} readOnly={readOnly}>
+        {children}
+      </SessionCallbacks>
+    </PageClientProvider>
+  );
+}
+
+/** Gives its subtree the analysis callbacks, with gloss edits sent to the session. */
+function SessionCallbacks({
+  children,
+  onPendingEditsChange,
+  readOnly,
+}: Pick<SessionAnalysisProviderProps, 'children' | 'onPendingEditsChange'> & {
+  readOnly: boolean;
+}) {
+  const reportEditing = usePendingEdits(onPendingEditsChange);
+  const requestGlossEdit = useGlossCommand();
+  const callbackRefs = useMemo(
+    () => ({
+      onSaveRef: { current: undefined },
+      onGlossChangeRef: { current: undefined },
+      reportEditing,
+      requestGlossEdit,
+      readOnly,
+    }),
+    [reportEditing, requestGlossEdit, readOnly],
+  );
+  return (
+    <AnalysisCallbackCtx.Provider value={callbackRefs}>
+      {children}
+      {perfMarksEnabled() && <ReplyRenderProbe />}
+    </AnalysisCallbackCtx.Provider>
+  );
+}
+
+/** Times from the earliest pending gloss commit to the render that follows the session's next reply. */
+function ReplyRenderProbe() {
+  const replies = useRepliesApplied();
+  useLayoutEffect(() => {
+    if (replies > 0) perfMeasureFromFirst('gloss-render', 'gloss-commit');
+  }, [replies]);
+  return undefined;
+}
+
+/**
+ * Times each render of a changed analysis from the earliest pending dispatch, and from the earliest
+ * pending gloss commit.
+ */
 function DispatchRenderProbe() {
   const analysis = useSelector((state: AnalysisRootState) => state.analysis.analysis);
   const mountedRef = useRef(false);
   useLayoutEffect(() => {
-    if (mountedRef.current) perfMeasureFromFirst('dispatch-render', 'dispatch');
+    if (mountedRef.current) {
+      perfMeasureFromFirst('dispatch-render', 'dispatch');
+      perfMeasureFromFirst('gloss-render', 'gloss-commit');
+    }
     mountedRef.current = true;
   }, [analysis]);
   return undefined;
@@ -277,15 +410,58 @@ function DispatchRenderProbe() {
 // #region Internal hooks
 
 /**
- * Reads the nearest {@link AnalysisStoreProvider}'s callback refs, naming `hookName` in the guard's
- * error. Centralizes the guard every analysis hook shares.
+ * Reads the nearest provider's callback refs, naming `hookName` in the guard's error. Centralizes
+ * the guard that every analysis hook shares.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside an {@link AnalysisStoreProvider} or a {@link SessionAnalysisProvider}.
  */
 function useRequiredCallbacks(hookName: string): CallbackRefs {
   const ctx = useContext(AnalysisCallbackCtx);
   if (!ctx) throw new Error(`${hookName} must be used inside an AnalysisStoreProvider`);
   return ctx;
+}
+
+function useStoreSelector<T>(
+  select: (state: AnalysisState) => T,
+  isEqual?: (a: T, b: T) => boolean,
+): T {
+  return useSelector((state: AnalysisRootState) => select(state.analysis), isEqual);
+}
+
+/** The store's state as it stands when called. */
+function useStoreStateGetter(): () => AnalysisState {
+  const store = useStore<AnalysisRootState>();
+  return useCallback(() => store.getState().analysis, [store]);
+}
+
+const onHostPath = hostPathEnabled();
+
+/** Reads what the view shows: the held pages on the host path, the store otherwise. */
+const useViewSelector = onHostPath ? usePageSelector : useStoreSelector;
+
+/** Reads an answer that spans books: the session's whole analysis on the host path. */
+const useWholeSelector = onHostPath ? useSessionWholeSelector : useStoreSelector;
+
+/** The state the view reads, as it stands when called. */
+const useViewStateGetter = onHostPath ? usePageStateGetter : useStoreStateGetter;
+
+/** The state read for answers that span books, as it stands when called. */
+const useWholeStateGetter = onHostPath ? useSessionWholeStateGetter : useStoreStateGetter;
+
+/** What the session says a stale discard or reapply would reclaim. */
+function useStaleReclaimsFromSession(): StaleLocationReclaims {
+  const previews = useRemovalPreviews();
+  return useMemo(
+    () => ({ discard: previews.discardStale, reapply: previews.reapplyStale }),
+    [previews],
+  );
+}
+
+/** What the session says a gloss clear would reclaim. */
+function useGlossClearReclaimsFromSession(): (
+  analysisIds: readonly string[],
+) => Settles<readonly string[]> {
+  return useRemovalPreviews().clearGlosses;
 }
 
 /** The first token of the phrase occurrence `phraseId` names, which an edit to it is made at. */
@@ -333,7 +509,7 @@ function useAnalysisSave(hookName: string): {
  *
  * @param isEditing - Whether this input's draft currently differs from its committed value.
  * @param commit - Writes the current draft to the store. May close over the latest render's draft.
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside an {@link AnalysisStoreProvider} or a {@link SessionAnalysisProvider}.
  */
 export function useReportGlossEditing(isEditing: boolean, commit: () => void): void {
   const { reportEditing } = useRequiredCallbacks('useReportGlossEditing');
@@ -359,59 +535,105 @@ export function useReportGlossEditing(isEditing: boolean, commit: () => void): v
 // #region Token hooks
 
 /**
- * Returns the approved gloss string for the given token in the store's active analysis language, or
- * `''` when no approved analysis exists. Re-renders only when that token's approved analysis
- * changes.
+ * Returns the approved gloss string for the given token in the active analysis language, or `''`
+ * when no approved analysis exists. Re-renders only when that token's approved analysis changes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useGloss(tokenRef: string): string {
   useRequiredCallbacks('useGloss');
 
-  return useSelector((state: AnalysisRootState) => selectApprovedGloss(state.analysis, tokenRef));
+  return useViewSelector((state: AnalysisState) => selectApprovedGloss(state, tokenRef));
 }
 
 /**
  * Returns the sense ref on the given token's approved analysis, or `undefined` when the token has
  * no approved analysis or the analysis has no sense ref. Re-renders only when that ref changes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useGlossSenseRef(tokenRef: string): SenseRef | undefined {
   useRequiredCallbacks('useGlossSenseRef');
 
-  return useSelector((state: AnalysisRootState) =>
-    selectApprovedGlossSenseRef(state.analysis, tokenRef),
-  );
+  return useViewSelector((state: AnalysisState) => selectApprovedGlossSenseRef(state, tokenRef));
 }
 
-/**
- * Returns the merged analysis the renderer shows for a token — its approved decision, else what it
- * is offered, else `undefined` ({@link selectResolvedTokenAnalysis}). Subscribes through
- * {@link resolvedTokenAnalysisEqual} so the result stays referentially stable across unrelated store
- * changes, re-rendering only when the decision or suggestion actually changes.
- *
- * When `enabled` is `false` the selector short-circuits to `undefined` without consulting the pool,
- * so a chip that is not currently showing suggestions does no per-token pool lookup or
- * normalization on each store change.
- *
- * @param tokenRef - The `Token.ref` to resolve.
- * @param surfaceText - The token's current surface text, matched against the pool when the token is
- *   unapproved.
- * @param enabled - Whether to resolve at all; `false` returns `undefined` without pool work.
- *   Defaults to `true`.
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useResolvedTokenAnalysis(
+function useResolvedTokenAnalysisFromStore(
   tokenRef: string,
   surfaceText: string,
   enabled = true,
 ): ResolvedTokenAnalysis | undefined {
   useRequiredCallbacks('useResolvedTokenAnalysis');
 
-  return useSelector(
-    (state: AnalysisRootState) =>
-      enabled ? selectResolvedTokenAnalysis(state.analysis, tokenRef, surfaceText) : undefined,
+  return useViewSelector(
+    (state: AnalysisState) =>
+      enabled ? selectResolvedTokenAnalysis(state, tokenRef, surfaceText) : undefined,
+    resolvedTokenAnalysisEqual,
+  );
+}
+
+function useResolvedTokenAnalysisFromPages(
+  tokenRef: string,
+  surfaceText: string,
+  enabled = true,
+): ResolvedTokenAnalysis | undefined {
+  useRequiredCallbacks('useResolvedTokenAnalysis');
+
+  return usePagePoolSelector(
+    (state, pool) =>
+      enabled ? selectResolvedTokenAnalysis(state, tokenRef, surfaceText, pool) : undefined,
+    resolvedTokenAnalysisEqual,
+  );
+}
+
+/**
+ * Returns the merged analysis that the renderer shows for a token — its approved decision, else
+ * what it is offered, else `undefined` ({@link selectResolvedTokenAnalysis}). Subscribes through
+ * {@link resolvedTokenAnalysisEqual} so the result stays referentially stable across unrelated
+ * changes, re-rendering only when the decision or suggestion actually changes.
+ *
+ * When `enabled` is `false` the selector short-circuits to `undefined` without consulting the pool,
+ * so a chip that is not currently showing suggestions does no per-token pool lookup or
+ * normalization on each change.
+ *
+ * @param tokenRef - The `Token.ref` to resolve.
+ * @param surfaceText - The token's current surface text, matched against the pool when the token is
+ *   unapproved.
+ * @param enabled - Whether to resolve at all; `false` returns `undefined` without pool work.
+ *   Defaults to `true`.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
+ */
+export const useResolvedTokenAnalysis = onHostPath
+  ? useResolvedTokenAnalysisFromPages
+  : useResolvedTokenAnalysisFromStore;
+
+function useSuggestionAfterClearingFromStore(
+  tokenRef: string,
+  surfaceText: string,
+  enabled: boolean,
+): ResolvedTokenAnalysis | undefined {
+  useRequiredCallbacks('useSuggestionAfterClearing');
+
+  return useViewSelector(
+    (state: AnalysisState) =>
+      enabled ? selectSuggestionAfterClearing(state, tokenRef, surfaceText) : undefined,
+    resolvedTokenAnalysisEqual,
+  );
+}
+
+function useSuggestionAfterClearingFromPages(
+  tokenRef: string,
+  surfaceText: string,
+  enabled = true,
+): ResolvedTokenAnalysis | undefined {
+  useRequiredCallbacks('useSuggestionAfterClearing');
+
+  return usePagePoolSelector(
+    (state, pool) =>
+      enabled ? selectSuggestionAfterClearing(state, tokenRef, surfaceText, pool) : undefined,
     resolvedTokenAnalysisEqual,
   );
 }
@@ -427,27 +649,18 @@ export function useResolvedTokenAnalysis(
  * @param tokenRef - The `Token.ref` to resolve.
  * @param surfaceText - The token's current surface text.
  * @param enabled - Whether to derive at all; `false` returns `undefined` without pool work.
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
-export function useSuggestionAfterClearing(
-  tokenRef: string,
-  surfaceText: string,
-  enabled: boolean,
-): ResolvedTokenAnalysis | undefined {
-  useRequiredCallbacks('useSuggestionAfterClearing');
-
-  return useSelector(
-    (state: AnalysisRootState) =>
-      enabled ? selectSuggestionAfterClearing(state.analysis, tokenRef, surfaceText) : undefined,
-    resolvedTokenAnalysisEqual,
-  );
-}
+export const useSuggestionAfterClearing = onHostPath
+  ? useSuggestionAfterClearingFromPages
+  : useSuggestionAfterClearingFromStore;
 
 /**
- * Returns whether the analysis in the nearest {@link AnalysisStoreProvider} is read-only, as set by
- * its `readOnly` prop. Editing affordances render their static form when this is `true`.
+ * Returns whether the analysis in the nearest provider is read-only, as set by its `readOnly` prop.
+ * Editing affordances render their static form when this is `true`.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside an {@link AnalysisStoreProvider} or a {@link SessionAnalysisProvider}.
  */
 export function useAnalysisReadOnly(): boolean {
   return useRequiredCallbacks('useAnalysisReadOnly').readOnly;
@@ -458,14 +671,13 @@ export function useAnalysisReadOnly(): boolean {
  * only when the morpheme array changes. Returns a stable empty array when no approved analysis
  * exists or it has no morphemes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
   useRequiredCallbacks('useMorphemes');
 
-  return useSelector((state: AnalysisRootState) =>
-    selectApprovedMorphemes(state.analysis, tokenRef),
-  );
+  return useViewSelector((state: AnalysisState) => selectApprovedMorphemes(state, tokenRef));
 }
 
 /**
@@ -473,7 +685,8 @@ export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
  * import's unreviewed record, or `undefined` when it holds none, has an approval, or `enabled` is
  * `false`.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useUnapprovedTokenAnalysis(
   tokenRef: string,
@@ -481,8 +694,8 @@ export function useUnapprovedTokenAnalysis(
 ): TokenAnalysis | undefined {
   useRequiredCallbacks('useUnapprovedTokenAnalysis');
 
-  return useSelector((state: AnalysisRootState) =>
-    enabled ? selectUnapprovedTokenAnalysis(state.analysis, tokenRef) : undefined,
+  return useViewSelector((state: AnalysisState) =>
+    enabled ? selectUnapprovedTokenAnalysis(state, tokenRef) : undefined,
   );
 }
 
@@ -490,24 +703,16 @@ export function useUnapprovedTokenAnalysis(
  * Returns the id of `tokenRef`'s approved analysis while its breakdown is stale, re-rendering only
  * when that changes; `undefined` when the token has no approval or its breakdown is not stale.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useStaleMorphemesAnalysisId(tokenRef: string): string | undefined {
   useRequiredCallbacks('useStaleMorphemesAnalysisId');
 
-  return useSelector((state: AnalysisRootState) =>
-    selectStaleMorphemesAnalysisId(state.analysis, tokenRef),
-  );
+  return useViewSelector((state: AnalysisState) => selectStaleMorphemesAnalysisId(state, tokenRef));
 }
 
-/**
- * Returns a stable callback that keeps an analysis's stale breakdown as it stands, clearing the
- * mark for every token linked to it. Persists immediately, recording the optional `tokenRef` as the
- * place the confirmation was made at.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useConfirmMorphemesDispatch(): (analysisId: string, tokenRef?: string) => void {
+function useConfirmMorphemesDispatchFromStore(): (analysisId: string, tokenRef?: string) => void {
   const { dispatch, save } = useAnalysisSave('useConfirmMorphemesDispatch');
 
   return useCallback(
@@ -520,18 +725,31 @@ export function useConfirmMorphemesDispatch(): (analysisId: string, tokenRef?: s
 }
 
 /**
+ * Returns a stable callback that keeps an analysis's stale breakdown as it stands, clearing the
+ * mark for every token linked to it. Persists immediately, recording the optional `tokenRef` as the
+ * place the confirmation was made at.
+ *
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
+ */
+export const useConfirmMorphemesDispatch = onHostPath
+  ? useConfirmMorphemesCommand
+  : useConfirmMorphemesDispatchFromStore;
+
+/**
  * Returns whether resetting `tokenRef`'s morpheme breakdown would discard glosses or lexicon
  * references no other token still holds, so the morpheme editor can confirm before discarding them.
  * A payload shared with other tokens does not qualify: it is forked rather than emptied, leaving
  * the co-linked tokens their morphemes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useMorphemeResetLosesAnnotation(tokenRef: string): boolean {
   useRequiredCallbacks('useMorphemeResetLosesAnnotation');
 
-  return useSelector((state: AnalysisRootState) =>
-    selectMorphemeResetLosesAnnotation(state.analysis, tokenRef),
+  return useWholeSelector((state: AnalysisState) =>
+    selectMorphemeResetLosesAnnotation(state, tokenRef),
   );
 }
 
@@ -540,13 +758,14 @@ export function useMorphemeResetLosesAnnotation(tokenRef: string): boolean {
  * glosses it strands rather than leaving them with co-linked tokens. See
  * {@link selectMorphemePayloadIsSolelyOwned} for what counts as sharing.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useMorphemePayloadIsSolelyOwned(tokenRef: string): boolean {
   useRequiredCallbacks('useMorphemePayloadIsSolelyOwned');
 
-  return useSelector((state: AnalysisRootState) =>
-    selectMorphemePayloadIsSolelyOwned(state.analysis, tokenRef),
+  return useWholeSelector((state: AnalysisState) =>
+    selectMorphemePayloadIsSolelyOwned(state, tokenRef),
   );
 }
 
@@ -561,7 +780,8 @@ export function useMorphemePayloadIsSolelyOwned(tokenRef: string): boolean {
  * places each heading's usages among its verse's text, and with the analysis language its glosses
  * are read in.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useCatalogRows(
   currentBook: string,
@@ -569,78 +789,26 @@ export function useCatalogRows(
 ): readonly CatalogRow[] {
   useRequiredCallbacks('useCatalogRows');
 
-  return useSelector((state: AnalysisRootState) =>
-    selectCatalogRows(state.analysis, currentBook, headingPlacements),
+  return useWholeSelector((state: AnalysisState) =>
+    selectCatalogRows(state, currentBook, headingPlacements),
   );
 }
 
 /**
- * Where a catalog row's edit left the record it was aimed at.
- *
- * A write that makes a row content-identical to a sibling collapses the two, so the row the reader
- * edited is gone from the listing and another's usage count has grown by its tokens. That reads as
- * data loss unless it is reported, hence this rather than a bare `void`.
+ * The catalog's write callbacks, each keyed by `analysisId` and so global to that record. On the
+ * host path, a callback's promise rejects when its edit fails, after the failure is logged.
  */
-export type AnalysisEditOutcome =
-  | {
-      /** The record survived the edit under its own id, which is the ordinary case. */
-      kind: 'edited';
-    }
-  | {
-      /** The record collapsed onto a content-identical sibling and no longer exists. */
-      kind: 'merged';
-      /** The surviving record's id, which the listing should now point the reader at. */
-      survivingAnalysisId: string;
-      /** What the survivor now reads as in the active analysis language, `''` when it has none. */
-      survivingGloss: string;
-      /** The survivor's usage count once the collapsed record's tokens joined it. */
-      survivingUsageCount: number;
-    }
-  | {
-      /** The edit emptied the record, which removed it and every link to it. */
-      kind: 'removed';
-    };
-
-/**
- * Reports where an edit left the record `analysisId` named, so a row that vanishes can be explained
- * rather than read as lost work. Only the survivor the write recorded tells a collapse from a
- * removal; the state they leave is the same.
- */
-function readEditOutcome(
-  after: TextAnalysis,
-  survivingAnalysisId: string | undefined,
-  analysisId: string,
-  analysisLanguage: string,
-): AnalysisEditOutcome {
-  if (after.tokenAnalyses.some((ta) => ta.id === analysisId)) return { kind: 'edited' };
-  if (survivingAnalysisId === undefined) return { kind: 'removed' };
-
-  const survivingAnalysis = after.tokenAnalyses.find((ta) => ta.id === survivingAnalysisId);
-  return {
-    kind: 'merged',
-    survivingAnalysisId,
-    /* v8 ignore next -- the survivor was just written into the state this reads */
-    survivingGloss: survivingAnalysis?.gloss?.[analysisLanguage] ?? '',
-    survivingUsageCount: new Set(
-      after.tokenAnalysisLinks
-        .filter((l) => l.analysisId === survivingAnalysisId && l.status === 'approved')
-        .map((l) => l.token.tokenRef),
-    ).size,
-  };
-}
-
-/** The catalog's write callbacks, each keyed by `analysisId` and so global to that record. */
 export type AnalysisRowDispatch = {
   /**
-   * Writes a gloss onto the record itself, changing what it says for every token linked to it. A
-   * blank value clears it.
+   * Writes a gloss onto the record itself, changing what the record says for every token linked to
+   * it. A blank value clears the gloss.
    */
-  writeGloss: (analysisId: string, value: string) => AnalysisEditOutcome;
+  writeGloss: (analysisId: string, value: string) => Settles<AnalysisEditOutcome>;
   /**
    * Clears the gloss on several records at once, as a blank {@link AnalysisRowDispatch.writeGloss}
    * does on one, returning the records it left with nothing and so deleted.
    */
-  clearGlosses: (analysisIds: readonly string[]) => readonly string[];
+  clearGlosses: (analysisIds: readonly string[]) => Settles<readonly string[]>;
   /**
    * Re-segments the record's morpheme breakdown for every token linked to it, keeping the glosses
    * and lexicon links on every form the re-split does not drop.
@@ -649,42 +817,31 @@ export type AnalysisRowDispatch = {
     analysisId: string,
     forms: readonly string[],
     writingSystem: string,
-  ) => AnalysisEditOutcome;
+  ) => Settles<AnalysisEditOutcome>;
   /** Writes a gloss onto one morpheme of the record, for every token linked to it. */
   writeMorphemeGloss: (
     analysisId: string,
     morphemeId: string,
     value: string,
-  ) => AnalysisEditOutcome;
+  ) => Settles<AnalysisEditOutcome>;
   /**
    * Removes the records and every link to them, leaving their tokens on whatever the suggestion
    * pool still offers. See {@link useAnalysisDeletionOutcome} for what deleting one will cost.
    */
-  deleteAnalyses: (analysisIds: readonly string[]) => void;
+  deleteAnalyses: (analysisIds: readonly string[]) => Settles<void>;
   /**
-   * Folds several records into one, writing the content the merge settled onto the survivor.
-   * Reports where it left the survivor, which a merge whose content converges on an unmerged record
-   * moves.
+   * Folds several records into one, writing the merged content onto the survivor. Reports where the
+   * edit left the survivor, because content identical to an unmerged record collapses the survivor
+   * onto that record.
    */
   mergeAll: (
     survivorAnalysisId: string,
     mergedAnalysisIds: readonly string[],
     content: MergedContent,
-  ) => AnalysisEditOutcome;
+  ) => Settles<AnalysisEditOutcome>;
 };
 
-/**
- * Returns stable callbacks for editing the analysis records the catalog lists. Every callback here
- * is keyed by `analysisId` and so rewrites the record for all its tokens at once — the opposite of
- * the `tokenRef`-keyed hooks above, which fork a shared payload to keep an edit local to one token.
- * The key is the whole of the distinction; neither family takes a scope flag.
- *
- * Each write reports where it left the record, so the caller can tell the reader that an edit
- * collapsed the row onto a sibling rather than letting it vanish unexplained.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useAnalysisRowDispatch(): AnalysisRowDispatch {
+function useAnalysisRowDispatchFromStore(): AnalysisRowDispatch {
   const { dispatch, save } = useAnalysisSave('useAnalysisRowDispatch');
   const store = useStore<AnalysisRootState>();
 
@@ -768,6 +925,22 @@ export function useAnalysisRowDispatch(): AnalysisRowDispatch {
 }
 
 /**
+ * Returns stable callbacks for editing the analysis records that the catalog lists. Every callback
+ * here is keyed by `analysisId` and so rewrites the record for all its tokens at once — the
+ * opposite of the `tokenRef`-keyed hooks above, which fork a shared payload to keep an edit local
+ * to one token. The key is the whole of the distinction; neither family takes a scope flag.
+ *
+ * Each write reports where it left the record, so the caller can tell the reader that an edit
+ * collapsed the row onto a sibling rather than letting it vanish unexplained.
+ *
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
+ */
+export const useAnalysisRowDispatch = onHostPath
+  ? useAnalysisRowCommands
+  : useAnalysisRowDispatchFromStore;
+
+/**
  * The write callbacks for the places an analysis went stale at, each keyed by one such place and so
  * local to it.
  */
@@ -786,13 +959,7 @@ export type StaleLocationDispatch = {
   ) => void;
 };
 
-/**
- * Returns stable callbacks for reviewing the places analyses went stale at. Each persists
- * immediately.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useStaleLocationDispatch(): StaleLocationDispatch {
+function useStaleLocationDispatchFromStore(): StaleLocationDispatch {
   const { dispatch, save } = useAnalysisSave('useStaleLocationDispatch');
 
   const discard = useCallback(
@@ -814,6 +981,17 @@ export function useStaleLocationDispatch(): StaleLocationDispatch {
   return useMemo(() => ({ discard, reapply }), [discard, reapply]);
 }
 
+/**
+ * Returns stable callbacks for reviewing the places that analyses went stale at. Each persists
+ * immediately.
+ *
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
+ */
+export const useStaleLocationDispatch = onHostPath
+  ? useStaleLocationCommands
+  : useStaleLocationDispatchFromStore;
+
 /** Returns a stable getter for the ids of the records a write would remove, without committing it. */
 function useReclaimedBy(): (action: Parameters<typeof analysisReducer>[1]) => string[] {
   const store = useStore<AnalysisRootState>();
@@ -834,7 +1012,7 @@ function useReclaimedBy(): (action: Parameters<typeof analysisReducer>[1]) => st
 /** What each {@link StaleLocationDispatch} write would reclaim. */
 export type StaleLocationReclaims = {
   /** Ids of the records that giving up `analysisId`'s stale place at `tokenRef` would reclaim. */
-  discard: (analysisId: string, tokenRef: string) => readonly string[];
+  discard: (analysisId: string, tokenRef: string) => Settles<readonly string[]>;
   /**
    * Ids of the records that moving `analysisId` from its stale place at `staleTokenRef` onto the
    * token at `tokenRef` would reclaim.
@@ -844,16 +1022,10 @@ export type StaleLocationReclaims = {
     staleTokenRef: string,
     tokenRef: string,
     surfaceText: string,
-  ) => readonly string[];
+  ) => Settles<readonly string[]>;
 };
 
-/**
- * Returns stable getters for the ids of the records a stale-place review would reclaim, as the
- * store stands at the call.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useStaleLocationReclaims(): StaleLocationReclaims {
+function useStaleLocationReclaimsFromStore(): StaleLocationReclaims {
   const reclaimedBy = useReclaimedBy();
 
   const discard = useCallback(
@@ -872,18 +1044,37 @@ export function useStaleLocationReclaims(): StaleLocationReclaims {
 }
 
 /**
- * Returns a stable getter for the ids of the records clearing the glosses on `analysisIds` would
- * remove — left empty, or folded into an identical sibling — as the store stands at the call.
+ * Returns stable getters for the ids of the records that a stale-place review would reclaim, as the
+ * draft stands at the call.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
-export function useGlossClearReclaims(): (analysisIds: readonly string[]) => readonly string[] {
+export const useStaleLocationReclaims = onHostPath
+  ? useStaleReclaimsFromSession
+  : useStaleLocationReclaimsFromStore;
+
+function useGlossClearReclaimsFromStore(): (
+  analysisIds: readonly string[],
+) => Settles<readonly string[]> {
   const reclaimedBy = useReclaimedBy();
   return useCallback(
     (analysisIds: readonly string[]) => reclaimedBy(clearAnalysisGlosses({ analysisIds })),
     [reclaimedBy],
   );
 }
+
+/**
+ * Returns a stable getter for the ids of the records that clearing the glosses on `analysisIds`
+ * would remove — left empty, or folded into an identical sibling — as the draft stands at the
+ * call.
+ *
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
+ */
+export const useGlossClearReclaims = onHostPath
+  ? useGlossClearReclaimsFromSession
+  : useGlossClearReclaimsFromStore;
 
 /**
  * Returns a stable getter for what deleting a record would do to the tokens that approve it — left
@@ -896,67 +1087,60 @@ export function useGlossClearReclaims(): (analysisIds: readonly string[]) => rea
  * The getter is given the live-text lookup per call, so it reads the book as it stands at the
  * moment of the delete.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useAnalysisDeletionOutcome(): (
   analysisId: string,
   liveSurfaceText: (tokenRef: string) => string | undefined,
 ) => AnalysisDeletionOutcome | undefined {
   useRequiredCallbacks('useAnalysisDeletionOutcome');
-  const store = useStore<AnalysisRootState>();
+  const getState = useWholeStateGetter();
 
   return useCallback(
     (analysisId: string, liveSurfaceText: (tokenRef: string) => string | undefined) =>
-      selectAnalysisDeletionOutcome(store.getState().analysis, analysisId, liveSurfaceText),
-    [store],
+      selectAnalysisDeletionOutcome(getState(), analysisId, liveSurfaceText),
+    [getState],
   );
 }
 
 /**
- * Returns the active BCP 47 analysis-language tag from the nearest {@link AnalysisStoreProvider}.
+ * Returns the active BCP 47 analysis-language tag.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useAnalysisLanguage(): string {
   useRequiredCallbacks('useAnalysisLanguage');
 
-  return useSelector((state: AnalysisRootState) => selectAnalysisLanguage(state.analysis));
+  return useViewSelector((state: AnalysisState) => selectAnalysisLanguage(state));
 }
 
 /**
  * Returns the current `TextAnalysis` snapshot, re-rendering on every analysis change. Intended for
  * components that need the full analysis (e.g. an analysis-selection popup).
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useAnalysis(): TextAnalysis {
   useRequiredCallbacks('useAnalysis');
 
-  return useSelector((state: AnalysisRootState) => selectAnalysis(state.analysis));
+  return useWholeSelector((state: AnalysisState) => selectAnalysis(state));
 }
 
 /**
  * Returns a stable callback that creates or updates the approved `TokenAnalysis` for a token. The
- * edit is per-token: the reducer forks a shared payload before writing, so editing one token never
- * rewrites the others. Commits immediately, invoking `onSave` and the optional (test-only)
- * `onGlossChange` spy.
+ * edit is per-token: a shared payload is forked before writing, so editing one token never rewrites
+ * the others. Persists immediately.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside an {@link AnalysisStoreProvider} or a {@link SessionAnalysisProvider}.
  */
 export function useGlossDispatch(): (tokenRef: string, surfaceText: string, value: string) => void {
   return useRequiredCallbacks('useGlossDispatch').requestGlossEdit;
 }
 
-/**
- * Returns a stable callback that approves an existing shared `TokenAnalysis` payload for a token —
- * the persisted half of accepting a suggestion (the suggested payload) or promoting a candidate (a
- * chosen alternative). Persists immediately. Accepting approves the token's link to the existing
- * payload — flipping one it already holds, or adding one — and never rewrites the shared content,
- * so no other token's gloss changes.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useApproveAnalysisDispatch(): (
+function useApproveAnalysisDispatchFromStore(): (
   tokenRef: string,
   surfaceText: string,
   analysisId: string,
@@ -973,14 +1157,20 @@ export function useApproveAnalysisDispatch(): (
 }
 
 /**
- * Returns a stable callback that replaces the morpheme breakdown on the approved `TokenAnalysis`
- * for a given token. The edit is per-token: the reducer forks a shared payload before
- * re-segmenting, so editing one token's breakdown never rewrites the others. Commits immediately
- * and triggers `onSave`.
+ * Returns a stable callback that approves an existing shared `TokenAnalysis` payload for a token —
+ * the persisted half of accepting a suggestion (the suggested payload) or promoting a candidate (a
+ * chosen alternative). Persists immediately. Accepting approves the token's link to the existing
+ * payload — flipping one it already holds, or adding one — and never rewrites the shared content,
+ * so no other token's gloss changes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
-export function useMorphemeBreakdownDispatch(): (
+export const useApproveAnalysisDispatch = onHostPath
+  ? useApproveAnalysisCommand
+  : useApproveAnalysisDispatchFromStore;
+
+function useMorphemeBreakdownDispatchFromStore(): (
   tokenRef: string,
   surfaceText: string,
   forms: string[],
@@ -998,14 +1188,18 @@ export function useMorphemeBreakdownDispatch(): (
 }
 
 /**
- * Returns a stable callback that removes the morpheme breakdown from the approved `TokenAnalysis`
- * for a given token (deleting the analysis record entirely when removing the breakdown leaves it
- * with no other content — no gloss, POS, features, or lexicon sense reference). Persists
- * immediately.
+ * Returns a stable callback that replaces the morpheme breakdown on the approved `TokenAnalysis`
+ * for a given token. The edit is per-token: a shared payload is forked before re-segmenting, so
+ * editing one token's breakdown never rewrites the others. Persists immediately.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
-export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
+export const useMorphemeBreakdownDispatch = onHostPath
+  ? useMorphemeBreakdownCommand
+  : useMorphemeBreakdownDispatchFromStore;
+
+function useMorphemeDeleteDispatchFromStore(): (tokenRef: string) => void {
   const { dispatch, save } = useAnalysisSave('useMorphemeDeleteDispatch');
 
   return useCallback(
@@ -1018,14 +1212,19 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
 }
 
 /**
- * Returns a stable callback that writes a gloss on a single morpheme within the approved
- * `TokenAnalysis` for a given token. The edit is per-token: the reducer forks a shared payload
- * before writing, so editing one token's morpheme gloss never rewrites the others. Commits
- * immediately and triggers `onSave`.
+ * Returns a stable callback that removes the morpheme breakdown from the approved `TokenAnalysis`
+ * for a given token (deleting the analysis record entirely when removing the breakdown leaves it
+ * with no other content — no gloss, POS, features, or lexicon sense reference). Persists
+ * immediately.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
-export function useMorphemeGlossDispatch(): (
+export const useMorphemeDeleteDispatch = onHostPath
+  ? useMorphemeDeleteCommand
+  : useMorphemeDeleteDispatchFromStore;
+
+function useMorphemeGlossDispatchFromStore(): (
   tokenRef: string,
   morphemeId: string,
   value: string,
@@ -1041,6 +1240,18 @@ export function useMorphemeGlossDispatch(): (
   );
 }
 
+/**
+ * Returns a stable callback that writes a gloss on a single morpheme within the approved
+ * `TokenAnalysis` for a given token. The edit is per-token: a shared payload is forked before
+ * writing, so editing one token's morpheme gloss never rewrites the others. Persists immediately.
+ *
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
+ */
+export const useMorphemeGlossDispatch = onHostPath
+  ? useMorphemeGlossCommand
+  : useMorphemeGlossDispatchFromStore;
+
 // #endregion
 
 // #region Phrase hooks
@@ -1049,24 +1260,26 @@ export function useMorphemeGlossDispatch(): (
  * Returns a `Map` from every token ref that belongs to an approved phrase to its
  * `PhraseAnalysisLink`. Re-renders only when the phrase link map reference changes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function usePhraseLinkMap(): Map<string, PhraseAnalysisLink> {
   useRequiredCallbacks('usePhraseLinkMap');
 
-  return useSelector((state: AnalysisRootState) => selectPhraseLinkByTokenRef(state.analysis));
+  return useViewSelector((state: AnalysisState) => selectPhraseLinkByTokenRef(state));
 }
 
 /**
  * Returns a `Map` from `PhraseAnalysisLink.id` to the approved `PhraseAnalysisLink` for O(1) lookup
  * of a phrase occurrence. Re-renders only when the phrase link map reference changes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function usePhraseLinkByIdMap(): Map<string, PhraseAnalysisLink> {
   useRequiredCallbacks('usePhraseLinkByIdMap');
 
-  return useSelector((state: AnalysisRootState) => selectPhraseLinkById(state.analysis));
+  return useViewSelector((state: AnalysisState) => selectPhraseLinkById(state));
 }
 
 /**
@@ -1075,13 +1288,14 @@ export function usePhraseLinkByIdMap(): Map<string, PhraseAnalysisLink> {
  * the phrases only when a boundary edit fires and would otherwise re-render the whole view tree on
  * every phrase change.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function usePhraseLinkByIdGetter(): () => Map<string, PhraseAnalysisLink> {
   useRequiredCallbacks('usePhraseLinkByIdGetter');
-  const store = useStore<AnalysisRootState>();
+  const getState = useViewStateGetter();
 
-  return useCallback(() => selectPhraseLinkById(store.getState().analysis), [store]);
+  return useCallback(() => selectPhraseLinkById(getState()), [getState]);
 }
 
 /**
@@ -1089,46 +1303,42 @@ export function usePhraseLinkByIdGetter(): () => Map<string, PhraseAnalysisLink>
  * when the token is not part of any phrase. Re-renders only when the phrase membership of this
  * token changes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function usePhraseLinkForToken(tokenRef: string): PhraseAnalysisLink | undefined {
   useRequiredCallbacks('usePhraseLinkForToken');
 
-  return useSelector((state: AnalysisRootState) =>
-    selectPhraseLinkByTokenRef(state.analysis).get(tokenRef),
-  );
+  return useViewSelector((state: AnalysisState) => selectPhraseLinkByTokenRef(state).get(tokenRef));
 }
 
 /**
- * Returns the gloss string for the given phrase in the store's active analysis language, or `''`
- * when absent. Re-renders only when that phrase's gloss changes.
+ * Returns the gloss string for the given phrase in the active analysis language, or `''` when
+ * absent. Re-renders only when that phrase's gloss changes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function usePhraseGloss(phraseId: string): string {
   useRequiredCallbacks('usePhraseGloss');
 
-  return useSelector((state: AnalysisRootState) => selectPhraseGloss(state.analysis, phraseId));
+  return useViewSelector((state: AnalysisState) => selectPhraseGloss(state, phraseId));
 }
 
 /**
  * Returns the sense ref on the given phrase's payload, or `undefined` when the payload has none.
  * Re-renders only when that ref changes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function usePhraseSenseRef(phraseId: string): SenseRef | undefined {
   useRequiredCallbacks('usePhraseSenseRef');
 
-  return useSelector((state: AnalysisRootState) => selectPhraseSenseRef(state.analysis, phraseId));
+  return useViewSelector((state: AnalysisState) => selectPhraseSenseRef(state, phraseId));
 }
 
-/**
- * Returns a stable callback that writes a gloss value for the given phrase, then calls `onSave`.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function usePhraseGlossDispatch(): (phraseId: string, value: string) => void {
+function usePhraseGlossDispatchFromStore(): (phraseId: string, value: string) => void {
   const { dispatch, save } = useAnalysisSave('usePhraseGlossDispatch');
   const store = useStore<AnalysisRootState>();
 
@@ -1142,15 +1352,25 @@ export function usePhraseGlossDispatch(): (phraseId: string, value: string) => v
   );
 }
 
+/**
+ * Returns a stable callback that writes the gloss of a phrase occurrence, persisting it
+ * immediately.
+ *
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
+ */
+export const usePhraseGlossDispatch = onHostPath
+  ? usePhraseGlossCommand
+  : usePhraseGlossDispatchFromStore;
+
 /** Return value of {@link usePhraseDispatch}. */
 export type PhraseDispatch = {
   /**
-   * Creates a new approved phrase from an ordered list of token snapshots.
+   * Creates a new approved phrase.
    *
-   * @param tokens - Ordered `TokenSnapshot`s in document order.
-   * @returns The `PhraseAnalysisLink.id` of the new occurrence.
+   * @param tokens - The phrase's tokens, in document order.
    */
-  createPhrase: (tokens: TokenSnapshot[]) => string;
+  createPhrase: (tokens: TokenSnapshot[]) => void;
   /**
    * Replaces the token list of an existing phrase occurrence.
    *
@@ -1175,15 +1395,18 @@ export type PhraseDispatch = {
     tokens: TokenSnapshot[],
     absorbedPhraseId: string | undefined,
   ) => void;
+  /**
+   * Splits the occurrence `phraseLink` just after `splitAfterTokenRef`, ordering each part's tokens
+   * by `tokenDocOrder`. On the host path, the session orders the tokens itself.
+   */
+  splitPhrase: (
+    phraseLink: PhraseAnalysisLink,
+    splitAfterTokenRef: string,
+    tokenDocOrder: ReadonlyMap<string, number>,
+  ) => void;
 };
 
-/**
- * Returns stable callbacks for creating, updating, and deleting phrases. Each callback commits
- * immediately and persists the updated analysis.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function usePhraseDispatch(): PhraseDispatch {
+function usePhraseDispatchFromStore(): PhraseDispatch {
   const { dispatch, save } = useAnalysisSave('usePhraseDispatch');
   const store = useStore<AnalysisRootState>();
 
@@ -1227,101 +1450,112 @@ export function usePhraseDispatch(): PhraseDispatch {
       updatePhrase: handleUpdatePhrase,
       deletePhrase: handleDeletePhrase,
       mergePhrases: handleMergePhrases,
+      splitPhrase: (phraseLink, splitAfterTokenRef, tokenDocOrder) =>
+        splitPhraseAtBoundary(
+          phraseLink,
+          splitAfterTokenRef,
+          {
+            createPhrase: handleCreatePhrase,
+            updatePhrase: handleUpdatePhrase,
+            deletePhrase: handleDeletePhrase,
+          },
+          tokenDocOrder,
+        ),
     }),
     [handleCreatePhrase, handleUpdatePhrase, handleDeletePhrase, handleMergePhrases],
   );
 }
+
+/**
+ * Returns stable callbacks for editing phrase occurrences. Each persists immediately.
+ *
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
+ */
+export const usePhraseDispatch = onHostPath ? usePhraseCommands : usePhraseDispatchFromStore;
 
 // #endregion
 
 // #region Segment hooks
 
 /**
- * Returns the approved free-translation string for the given segment in the store's active analysis
+ * Returns the approved free-translation string for the given segment in the active analysis
  * language, or `''` when absent. Re-renders only when that segment's free translation changes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useSegmentFreeTranslation(segmentId: string): string {
   useRequiredCallbacks('useSegmentFreeTranslation');
 
-  return useSelector((state: AnalysisRootState) =>
-    selectSegmentFreeTranslation(state.analysis, segmentId),
-  );
+  return useViewSelector((state: AnalysisState) => selectSegmentFreeTranslation(state, segmentId));
 }
 
 /**
  * Returns the free translation of every segment carrying a non-empty one in the active analysis
  * language, keyed by segment id. Re-renders only when that map changes.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useFreeTranslationsBySegment(): ReadonlyMap<string, string> {
   useRequiredCallbacks('useFreeTranslationsBySegment');
 
-  return useSelector((state: AnalysisRootState) => selectFreeTranslationsBySegment(state.analysis));
+  return useViewSelector((state: AnalysisState) => selectFreeTranslationsBySegment(state));
 }
 
 /**
  * Returns whether the given segment holds an approved free translation, in whatever language.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useSegmentHasApprovedTranslation(segmentId: string): boolean {
   useRequiredCallbacks('useSegmentHasApprovedTranslation');
 
-  return useSelector((state: AnalysisRootState) =>
-    selectSegmentsWithApprovedTranslation(state.analysis).has(segmentId),
+  return useViewSelector((state: AnalysisState) =>
+    selectSegmentsWithApprovedTranslation(state).has(segmentId),
   );
 }
 
 /**
  * Returns the id of every segment holding an approved free translation, in whatever language.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useSegmentsWithApprovedTranslation(): ReadonlySet<string> {
   useRequiredCallbacks('useSegmentsWithApprovedTranslation');
 
-  return useSelector((state: AnalysisRootState) =>
-    selectSegmentsWithApprovedTranslation(state.analysis),
-  );
+  return useViewSelector((state: AnalysisState) => selectSegmentsWithApprovedTranslation(state));
 }
 
 /**
  * Returns `book`'s stale free translations, filed by where the view shows each.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function usePlacedStaleFreeTranslations(book: Book): PlacedStaleFreeTranslations {
   useRequiredCallbacks('usePlacedStaleFreeTranslations');
 
-  const stale = useSelector((state: AnalysisRootState) =>
-    selectStaleFreeTranslations(state.analysis),
-  );
+  const stale = useWholeSelector((state: AnalysisState) => selectStaleFreeTranslations(state));
   return useMemo(() => placeStaleFreeTranslations(stale, book), [stale, book]);
 }
 
 /**
  * Returns every place in the draft an analysis went stale at, as its stale link, in link order.
  *
- * @throws When called outside an {@link AnalysisStoreProvider}.
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
  */
 export function useStaleTokenLinks(): readonly TokenAnalysisLink[] {
   useRequiredCallbacks('useStaleTokenLinks');
 
-  return useSelector((state: AnalysisRootState) => selectStaleTokenLinks(state.analysis));
+  return useWholeSelector((state: AnalysisState) => selectStaleTokenLinks(state));
 }
 
-/**
- * Returns a stable callback that writes a free-translation value for the given segment, then calls
- * `onSave`. Mirrors {@link useGlossDispatch}: a blank value clears the translation and may drop the
- * now-empty `SegmentAnalysis` record. A segment with no approved translation adopts the stale one
- * `adoptStaleAnalysisId` names, where given, as the translation the value was typed over.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useSegmentFreeTranslationDispatch(): (
+function useSegmentFreeTranslationDispatchFromStore(): (
   segmentId: string,
   surfaceText: string,
   value: string,
@@ -1338,6 +1572,20 @@ export function useSegmentFreeTranslationDispatch(): (
   );
 }
 
+/**
+ * Returns a stable callback that writes a free-translation value for the given segment, persisting
+ * it immediately. Mirrors {@link useGlossDispatch}: a blank value clears the translation and may
+ * drop the now-empty `SegmentAnalysis` record. A segment with no approved translation adopts the
+ * stale one that `adoptStaleAnalysisId` names, where given, as the translation the value was typed
+ * over.
+ *
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
+ */
+export const useSegmentFreeTranslationDispatch = onHostPath
+  ? useSegmentFreeTranslationCommand
+  : useSegmentFreeTranslationDispatchFromStore;
+
 /** The write callbacks for reviewing stale free translations. */
 export type StaleFreeTranslationDispatch = {
   /**
@@ -1349,12 +1597,7 @@ export type StaleFreeTranslationDispatch = {
   discard: (analysisId: string) => void;
 };
 
-/**
- * Returns stable callbacks for reviewing stale free translations. Each persists immediately.
- *
- * @throws When called outside an {@link AnalysisStoreProvider}.
- */
-export function useStaleFreeTranslationDispatch(): StaleFreeTranslationDispatch {
+function useStaleFreeTranslationDispatchFromStore(): StaleFreeTranslationDispatch {
   const { dispatch, save } = useAnalysisSave('useStaleFreeTranslationDispatch');
 
   const keep = useCallback(
@@ -1375,5 +1618,15 @@ export function useStaleFreeTranslationDispatch(): StaleFreeTranslationDispatch 
 
   return useMemo(() => ({ keep, discard }), [keep, discard]);
 }
+
+/**
+ * Returns stable callbacks for reviewing stale free translations. Each persists immediately.
+ *
+ * @throws When called outside a {@link SessionAnalysisProvider} on the host path, or outside an
+ *   {@link AnalysisStoreProvider} otherwise.
+ */
+export const useStaleFreeTranslationDispatch = onHostPath
+  ? useStaleFreeTranslationCommands
+  : useStaleFreeTranslationDispatchFromStore;
 
 // #endregion

@@ -35,6 +35,7 @@ import {
   FIXTURE_STAMPS,
   GEN_1_1_BOOK,
   makeStubProject,
+  makeTokenLink,
   makeVerseBook,
   memoryStorage,
   silentLogger,
@@ -64,6 +65,7 @@ interface PapiBackendTestMock {
   __mockGetLocalizedString: jest.Mock;
   __mockCreateNetworkEventEmitterAsync: jest.Mock;
   __mockSettingsGet: jest.Mock;
+  __mockReloadWebView: jest.Mock;
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
@@ -91,6 +93,7 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockGetLocalizedString' in m &&
     '__mockCreateNetworkEventEmitterAsync' in m &&
     '__mockSettingsGet' in m &&
+    '__mockReloadWebView' in m &&
     '__mockLogger' in m
   );
 }
@@ -111,6 +114,7 @@ const {
   __mockGetLocalizedString,
   __mockCreateNetworkEventEmitterAsync,
   __mockSettingsGet,
+  __mockReloadWebView,
   __mockLogger,
 } = papiBackendMock;
 
@@ -475,7 +479,21 @@ describe('main', () => {
         await context.registrations.runAllUnsubscribers();
 
         expect(emitters.get('interlinearizer.onAnalysisChanged')?.dispose).toHaveBeenCalled();
+        expect(emitters.get('interlinearizer.onTextRead')?.dispose).toHaveBeenCalled();
         unsubscribers.forEach((unsubscribe) => expect(unsubscribe).toHaveBeenCalled());
+      });
+
+      it('emits the source of a whole-text read that has read every book', async () => {
+        const emitters = emittersByEvent();
+        jest.spyOn(AnalysisSessions.prototype, 'reanchorMissingBooks').mockResolvedValue();
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onTextRead).mock.calls[0];
+
+        listener('src-project', ['GEN']);
+
+        expect(emitters.get('interlinearizer.onTextRead')?.emit).toHaveBeenCalledWith({
+          sourceProjectId: 'src-project',
+        });
       });
     });
 
@@ -606,9 +624,12 @@ describe('main', () => {
           'interlinearizer.openSession',
           'interlinearizer.closeSession',
           'interlinearizer.setAnalysisLanguage',
+          'interlinearizer.setSaveTarget',
+          'interlinearizer.detachFromProject',
           'interlinearizer.undoEdit',
           'interlinearizer.redoEdit',
           'interlinearizer.checkIndexes',
+          'interlinearizer.getFullAnalysis',
           'interlinearizer.writeGloss',
           'interlinearizer.approveAnalysisForToken',
           'interlinearizer.writeMorphemes',
@@ -794,6 +815,119 @@ describe('main', () => {
       const result = await provider.getWebView(savedWebView, {});
 
       expect(result).toMatchObject({ projectId: 'saved-project' });
+    });
+
+    it('marks a tab restored onto a project another tab holds as a duplicate of it', async () => {
+      await activate(createTestActivationContext());
+      getUpdateWebViewCallback()({
+        webView: { id: 'tab-a', webViewType: mainWebViewType, projectId: 'my-project' },
+      });
+
+      const result = await getRegisteredProvider().getWebView(
+        { id: 'tab-b', webViewType: mainWebViewType, projectId: 'my-project' },
+        {},
+      );
+
+      expect(result?.state).toEqual({ duplicateOf: 'tab-a' });
+    });
+
+    it('gives the project to the first tab it serves for it', async () => {
+      await activate(createTestActivationContext());
+      const provider = getRegisteredProvider();
+
+      await provider.getWebView({ id: 'tab-a', webViewType: mainWebViewType }, myProjectOptions);
+      const second = await provider.getWebView(
+        { id: 'tab-b', webViewType: mainWebViewType },
+        myProjectOptions,
+      );
+
+      expect(second?.state).toEqual({ duplicateOf: 'tab-a' });
+    });
+
+    it('serves a tab asked for again as itself', async () => {
+      await activate(createTestActivationContext());
+      const provider = getRegisteredProvider();
+
+      await provider.getWebView({ id: 'tab-a', webViewType: mainWebViewType }, myProjectOptions);
+      const again = await provider.getWebView(
+        { id: 'tab-a', webViewType: mainWebViewType },
+        myProjectOptions,
+      );
+
+      expect(again?.state).toEqual({});
+    });
+
+    it('lets a duplicate take the project once the tab holding it closes', async () => {
+      await activate(createTestActivationContext());
+      const provider = getRegisteredProvider();
+      await provider.getWebView({ id: 'tab-a', webViewType: mainWebViewType }, myProjectOptions);
+      getCloseWebViewCallback()({
+        webView: { id: 'tab-a', webViewType: mainWebViewType, projectId: 'my-project' },
+      });
+
+      const result = await provider.getWebView(
+        {
+          id: 'tab-b',
+          webViewType: mainWebViewType,
+          projectId: 'my-project',
+          state: { duplicateOf: 'tab-a' },
+        },
+        {},
+      );
+
+      expect(result?.state).toEqual({});
+    });
+
+    describe('when the tab holding a project closes', () => {
+      /** Serves `tab-a` the project, then `tab-b` as its duplicate. */
+      async function serveDuplicate() {
+        await activate(createTestActivationContext());
+        const provider = getRegisteredProvider();
+        await provider.getWebView({ id: 'tab-a', webViewType: mainWebViewType }, myProjectOptions);
+        await provider.getWebView({ id: 'tab-b', webViewType: mainWebViewType }, myProjectOptions);
+      }
+
+      /** Reports that tab `id` on the project has closed. */
+      function close(id: string) {
+        getCloseWebViewCallback()({
+          webView: { id, webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+      }
+
+      it('serves a duplicate afresh, so that it takes the project over', async () => {
+        __mockReloadWebView.mockResolvedValue('tab-b');
+        await serveDuplicate();
+
+        close('tab-a');
+
+        expect(__mockReloadWebView).toHaveBeenCalledWith(mainWebViewType, 'tab-b', {
+          bringToFront: false,
+        });
+      });
+
+      it('serves no duplicate that closed first', async () => {
+        await serveDuplicate();
+        close('tab-b');
+
+        close('tab-a');
+
+        expect(__mockReloadWebView).not.toHaveBeenCalled();
+      });
+
+      it('logs a duplicate that cannot be served afresh', async () => {
+        __mockReloadWebView.mockRejectedValue(new Error('gone'));
+        await serveDuplicate();
+
+        close('tab-a');
+        await new Promise((resolve) => {
+          setTimeout(resolve, 0);
+        });
+
+        expect(__mockLogger.warn).toHaveBeenCalledWith(
+          'Interlinearizer: could not hand my-project to another tab',
+          expect.any(Error),
+        );
+      });
     });
 
     it("titles the WebView with the project's short name", async () => {
@@ -1175,6 +1309,25 @@ describe('main', () => {
           mainWebViewType,
           undefined,
           expect.objectContaining({ existingId: 'restored-tab', projectId: 'my-project' }),
+        );
+      });
+
+      it('keeps the project on the tab holding it when a duplicate reports an update', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        await activate(createTestActivationContext());
+        getUpdateWebViewCallback()({
+          webView: { id: 'tab-a', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        getUpdateWebViewCallback()({
+          webView: { id: 'tab-b', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+        expect(__mockOpenWebView).toHaveBeenCalledWith(
+          mainWebViewType,
+          undefined,
+          expect.objectContaining({ existingId: 'tab-a' }),
         );
       });
 
@@ -2045,6 +2198,14 @@ describe('main', () => {
       expect(result).toBe('{"booksRead":1}');
     });
 
+    it("reports the project's read while session reads are skipped", async () => {
+      jest.mocked(hostPerf.sessionReadsAreSkipped).mockReturnValue(true);
+      mockGetTextReadStatus.mockResolvedValue('{"booksRead":1}');
+      const handler = await getHandler();
+
+      await expect(handler('src-project')).resolves.toBe('{"booksRead":1}');
+    });
+
     it('logs the error and rethrows when the books cannot be listed', async () => {
       mockGetTextReadStatus.mockRejectedValue(new Error('offline'));
       const handler = await getHandler();
@@ -2066,6 +2227,18 @@ describe('main', () => {
       await handler(true);
 
       expect(hostPerf.setHostPerfMarks).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('interlinearizer.setSkipSessionReads command', () => {
+    it('turns skipping session reads on or off as asked', async () => {
+      const handler = await activateAndGetHandler<(skip: boolean) => Promise<void>>(
+        'interlinearizer.setSkipSessionReads',
+      );
+
+      await handler(true);
+
+      expect(hostPerf.setSessionReadsSkipped).toHaveBeenCalledWith(true);
     });
   });
 
@@ -2338,10 +2511,25 @@ describe('main', () => {
         setAnalysisLanguage: handler<CommandHandlers['interlinearizer.setAnalysisLanguage']>(
           'interlinearizer.setAnalysisLanguage',
         ),
+        setSaveTarget: handler<CommandHandlers['interlinearizer.setSaveTarget']>(
+          'interlinearizer.setSaveTarget',
+        ),
+        detachFromProject: handler<CommandHandlers['interlinearizer.detachFromProject']>(
+          'interlinearizer.detachFromProject',
+        ),
         undoEdit: handler<CommandHandlers['interlinearizer.undoEdit']>('interlinearizer.undoEdit'),
         redoEdit: handler<CommandHandlers['interlinearizer.redoEdit']>('interlinearizer.redoEdit'),
         checkIndexes: handler<CommandHandlers['interlinearizer.checkIndexes']>(
           'interlinearizer.checkIndexes',
+        ),
+        getFullAnalysis: handler<CommandHandlers['interlinearizer.getFullAnalysis']>(
+          'interlinearizer.getFullAnalysis',
+        ),
+        saveDraftToProject: handler<CommandHandlers['interlinearizer.saveDraftToProject']>(
+          'interlinearizer.saveDraftToProject',
+        ),
+        saveDraftAsProject: handler<CommandHandlers['interlinearizer.saveDraftAsProject']>(
+          'interlinearizer.saveDraftAsProject',
         ),
         writeGloss: handler<CommandHandlers['interlinearizer.writeGloss']>(
           'interlinearizer.writeGloss',
@@ -2609,6 +2797,8 @@ describe('main', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        canUndo: false,
+        canRedo: false,
       };
       jest.spyOn(AnalysisSessions.prototype, 'undo').mockResolvedValue(reverted);
       const { undoEdit } = await activateSessionCommands();
@@ -2655,6 +2845,8 @@ describe('main', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        canUndo: false,
+        canRedo: false,
       };
       jest.spyOn(AnalysisSessions.prototype, 'redo').mockResolvedValue(remade);
       const { redoEdit } = await activateSessionCommands();
@@ -2691,6 +2883,124 @@ describe('main', () => {
       await expect(checkIndexes({ sessionId })).resolves.toBe(
         JSON.stringify([{ index: 'tokenAnalyses', key: 'ta-1', missing: ['ta-1'], extra: [] }]),
       );
+    });
+
+    it("replies with the session's whole draft as its edits leave it", async () => {
+      await seedDraft(CATS_BREAKDOWN);
+      const { openSession, deleteMorphemes, getFullAnalysis } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await deleteMorphemes({ sessionId, tokenRef: 'GEN 1:1:0' });
+
+      await expect(getFullAnalysis({ sessionId }).then(JSON.parse)).resolves.toMatchObject({
+        sourceProjectId: 'src-project',
+        analysisLanguages: ['en'],
+        analysis: emptyAnalysis(),
+      });
+    });
+
+    it("lists the session's analysis language for a draft that lists none", async () => {
+      jest
+        .mocked(projectStorage.openDraftRepository)
+        .mockReturnValue(await stubRepository(emptyDraft('src-project')));
+      __mockSettingsGet.mockResolvedValue(['fr']);
+      const { openSession, getFullAnalysis } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+      await expect(getFullAnalysis({ sessionId }).then(JSON.parse)).resolves.toMatchObject({
+        analysisLanguages: ['fr'],
+      });
+    });
+
+    it('logs the error and rethrows when the whole draft cannot be read', async () => {
+      const { getFullAnalysis } = await activateSessionCommands();
+
+      await expect(getFullAnalysis({ sessionId: 'not-a-session' })).rejects.toThrow(
+        'no session not-a-session is open',
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to read the whole draft of session not-a-session',
+        expect.any(Error),
+      );
+    });
+
+    it("marks the draft saved in the session's history, so an undo back to the save is saved", async () => {
+      const repository = await seedDraft({});
+      jest.mocked(projectStorage.saveDraftToProject).mockResolvedValue(makeStubProject('proj-1'));
+      const { openSession, writeGloss, undoEdit, saveDraftToProject } =
+        await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'au' });
+
+      await saveDraftToProject('src-project', 'proj-1', undefined, sessionId);
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'av' });
+      await undoEdit({ sessionId });
+
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: false } });
+    });
+
+    it('warns and still replies with the saved project when the session cannot mark it saved', async () => {
+      const repository = await seedDraft({});
+      jest.spyOn(repository, 'markClean').mockRejectedValue(new Error('disk full'));
+      jest.mocked(projectStorage.saveDraftToProject).mockResolvedValue(makeStubProject('proj-1'));
+      const { openSession, saveDraftToProject } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+      await expect(saveDraftToProject('src-project', 'proj-1', undefined, sessionId)).resolves.toBe(
+        JSON.stringify(toProjectSummary(makeStubProject('proj-1'))),
+      );
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        `Interlinearizer: could not mark session ${sessionId}'s draft saved`,
+        expect.any(Error),
+      );
+    });
+
+    it("leaves the session's history unsaved when Save finds no project", async () => {
+      const repository = await seedDraft({});
+      jest.mocked(projectStorage.saveDraftToProject).mockResolvedValue(undefined);
+      const { openSession, writeGloss, undoEdit, saveDraftToProject } =
+        await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'au' });
+
+      await saveDraftToProject('src-project', 'proj-1', undefined, sessionId);
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'av' });
+      await undoEdit({ sessionId });
+
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: true } });
+    });
+
+    it("marks the draft saved in the session's history after Save As copies it whole", async () => {
+      const repository = await seedDraft({});
+      jest
+        .mocked(projectStorage.saveDraftAsNewProject)
+        .mockResolvedValue({ project: makeStubProject('proj-1'), omittedBooks: [] });
+      const { openSession, writeGloss, undoEdit, saveDraftAsProject } =
+        await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'au' });
+
+      await saveDraftAsProject('src-project', ['en'], undefined, 'Name', undefined, sessionId);
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'av' });
+      await undoEdit({ sessionId });
+
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: false } });
+    });
+
+    it("leaves the session's history unsaved when Save As leaves a book out", async () => {
+      const repository = await seedDraft({});
+      jest
+        .mocked(projectStorage.saveDraftAsNewProject)
+        .mockResolvedValue({ project: makeStubProject('proj-1'), omittedBooks: ['EXO'] });
+      const { openSession, writeGloss, undoEdit, saveDraftAsProject } =
+        await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'au' });
+
+      await saveDraftAsProject('src-project', ['en'], undefined, 'Name', undefined, sessionId);
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'av' });
+      await undoEdit({ sessionId });
+
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: true } });
     });
 
     it('logs the error and rethrows when the indexes cannot be checked', async () => {
@@ -2829,6 +3139,46 @@ describe('main', () => {
 
         await expect(getTextReadStatus({ sessionId })).resolves.toBe('{"booksRead":1}');
         expect(bookService.getTextReadStatus).toHaveBeenCalledWith('src-project');
+      });
+
+      it("starts the session source's read on open", async () => {
+        const { openSession } = await activateSessionCommands();
+
+        await openSession({ sourceProjectId: 'src-project' });
+
+        expect(bookService.startTextRead).toHaveBeenCalledWith('src-project');
+      });
+
+      describe('while session reads are skipped', () => {
+        beforeEach(() => {
+          jest.mocked(hostPerf.sessionReadsAreSkipped).mockReturnValue(true);
+        });
+
+        it('opens a session without starting its read', async () => {
+          const { openSession } = await activateSessionCommands();
+
+          await openSession({ sourceProjectId: 'src-project' });
+
+          expect(bookService.startTextRead).not.toHaveBeenCalled();
+        });
+
+        it("reports a session's read as never finishing", async () => {
+          const { openSession, getTextReadStatus } = await activateSessionCommands();
+          const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+          await expect(getTextReadStatus({ sessionId })).resolves.toBe(
+            JSON.stringify({ booksRead: 0, bookCount: 1, failedBookIds: [] }),
+          );
+          expect(bookService.getTextReadStatus).not.toHaveBeenCalled();
+        });
+
+        it('refuses a session that is not open', async () => {
+          const { getTextReadStatus } = await activateSessionCommands();
+
+          await expect(getTextReadStatus({ sessionId: 'no-session' })).rejects.toThrow(
+            'no session no-session is open',
+          );
+        });
       });
 
       it('logs the session when its read cannot be reported', async () => {
@@ -3893,6 +4243,21 @@ describe('main', () => {
       ]);
     });
 
+    it('names in its reply the token analyses a gloss clear left empty', async () => {
+      await seedDraft({
+        tokenAnalyses: [{ id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'in' } }],
+        tokenAnalysisLinks: [
+          makeTokenLink('ta-in', 'GEN 1:1:0', { surfaceText: 'In', id: 'tl-in' }),
+        ],
+      });
+      const { openSession, clearAnalysisGlosses } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+      const reply = JSON.parse(await clearAnalysisGlosses({ sessionId, analysisIds: ['ta-in'] }));
+
+      expect(reply.emptiedAnalysisIds).toStrictEqual(['ta-in']);
+    });
+
     it("re-splits a token analysis's breakdown, minting a morpheme for a new form", async () => {
       await seedDraft(glossedIn);
       const { openSession, writeAnalysisMorphemes } = await activateSessionCommands();
@@ -4043,6 +4408,69 @@ describe('main', () => {
       jest.mocked(projectStorage.getProject).mockResolvedValue(project);
     }
 
+    it('has a session restore from the project it was retargeted to', async () => {
+      await seedDraft(glossedIn);
+      storeProjectHolding({});
+      const { openSession, setSaveTarget, discardAll } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+      await setSaveTarget({ sessionId, interlinearProjectId: 'proj-1' });
+      await discardAll({ sessionId });
+
+      expect(projectStorage.getProject).toHaveBeenCalledWith(expect.anything(), 'proj-1');
+    });
+
+    it('has a session save to no project once its target is cleared', async () => {
+      await seedDraft(glossedIn);
+      storeProjectHolding({});
+      const { openSession, setSaveTarget, discardAll } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(
+        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'proj-1' }),
+      );
+
+      await setSaveTarget({ sessionId });
+      await discardAll({ sessionId });
+
+      expect(projectStorage.getProject).not.toHaveBeenCalled();
+    });
+
+    it('logs the error and rethrows when a session cannot be retargeted', async () => {
+      const { setSaveTarget } = await activateSessionCommands();
+
+      await expect(
+        setSaveTarget({ sessionId: 'not-a-session', interlinearProjectId: 'proj-1' }),
+      ).rejects.toThrow('no session not-a-session is open');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to set the save target of session not-a-session',
+        expect.any(Error),
+      );
+    });
+
+    it('marks the draft unsaved once the project it saves to is deleted', async () => {
+      const repository = await seedDraft(glossedIn);
+      storeProjectHolding({});
+      const { openSession, detachFromProject } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(
+        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'proj-1' }),
+      );
+
+      await detachFromProject({ sessionId });
+
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: true } });
+    });
+
+    it('logs the error and rethrows when a session cannot be detached', async () => {
+      const { detachFromProject } = await activateSessionCommands();
+
+      await expect(detachFromProject({ sessionId: 'not-a-session' })).rejects.toThrow(
+        'no session not-a-session is open',
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to detach session not-a-session from its project',
+        expect.any(Error),
+      );
+    });
+
     it("discards a book's changes in a draft saving to no project, marking it unsaved", async () => {
       const repository = await seedDraft({ ...glossedIn, ...translatedVerse });
       const { openSession, discardBook } = await activateSessionCommands();
@@ -4065,6 +4493,9 @@ describe('main', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        canUndo: true,
+        canRedo: false,
+        step: { summary: { kind: 'discardBook', book: 'GEN' } },
         hasFreeTranslations: false,
       });
       expect(projectStorage.getProject).not.toHaveBeenCalled();

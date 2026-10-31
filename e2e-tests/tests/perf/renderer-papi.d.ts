@@ -10,11 +10,21 @@ interface RendererPapi {
       projectId: string,
     ): Promise<{
       getSetting(key: string): Promise<unknown>;
+      setSetting(key: string, value: unknown): Promise<unknown>;
       getBookUSJ(verseRef: {
         book: string;
         chapterNum: number;
         verseNum: number;
       }): Promise<unknown>;
+      getChapterUSJ(verseRef: {
+        book: string;
+        chapterNum: number;
+        verseNum: number;
+      }): Promise<unknown>;
+      setChapterUSJ(
+        verseRef: { book: string; chapterNum: number; verseNum: number },
+        usj: unknown,
+      ): Promise<unknown>;
     }>;
   };
   scrollGroups: {

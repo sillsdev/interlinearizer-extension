@@ -20,6 +20,7 @@ const mockNotificationsSend = jest.fn();
 const mockProjectDataProvidersGet = jest.fn();
 const mockGetLocalizedString = jest.fn();
 const mockCreateNetworkEventEmitterAsync = jest.fn();
+const mockReloadWebView = jest.fn();
 const mockSettingsGet = jest.fn();
 const mockLogger = {
   debug: jest.fn(),
@@ -68,6 +69,7 @@ const papi = {
     onDidOpenWebView: mockOnDidOpenWebView,
     onDidUpdateWebView: mockOnDidUpdateWebView,
     onDidCloseWebView: mockOnDidCloseWebView,
+    reloadWebView: mockReloadWebView,
   },
 };
 
@@ -94,6 +96,7 @@ const defaultExport = {
   __mockProjectDataProvidersGet: mockProjectDataProvidersGet,
   __mockGetLocalizedString: mockGetLocalizedString,
   __mockCreateNetworkEventEmitterAsync: mockCreateNetworkEventEmitterAsync,
+  __mockReloadWebView: mockReloadWebView,
   __mockSettingsGet: mockSettingsGet,
   __mockLogger: mockLogger,
 };

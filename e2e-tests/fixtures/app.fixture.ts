@@ -8,6 +8,7 @@ import {
   WorkerInfo,
 } from '@playwright/test';
 import {
+  applyHostPathFlag,
   E2E_SETTINGS_OVERRIDES,
   launchElectronWithExtension,
   preConfigureSettings,
@@ -133,6 +134,7 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
           });
 
           console.log(`Window URL: ${page.url()}`);
+          await applyHostPathFlag(page);
           await use(page);
           detachListeners(page);
 

@@ -26,6 +26,7 @@ export type IndexedDraft = {
 /** The reads of a repository that keeps an {@link AnalysisIndex} over its records. */
 export abstract class IndexedRepository implements Pick<
   AnalysisRepository,
+  | 'getWholeDraft'
   | 'getScope'
   | 'getTokenAnalyses'
   | 'getPhraseAnalyses'
@@ -41,6 +42,10 @@ export abstract class IndexedRepository implements Pick<
   | 'countApprovals'
   | 'checkIndexes'
 > {
+  async getWholeDraft(): Promise<DraftProject> {
+    return jsonCopy((await this.indexed()).draft);
+  }
+
   async getScope(): Promise<ScopeRecord> {
     return jsonCopy(scopeRecordOf((await this.indexed()).draft));
   }

@@ -22,6 +22,7 @@ import {
   makeSegment,
   makeVerseBook,
   makeWordToken,
+  withSplitPhrase,
 } from '../test-helpers';
 import {
   allFalseViewOptions,
@@ -38,12 +39,14 @@ const mockUsePhraseLinkMap = jest
   .fn<Map<string, PhraseAnalysisLink>, []>()
   .mockReturnValue(new Map());
 
-const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().mockReturnValue({
-  createPhrase: jest.fn(),
-  updatePhrase: jest.fn(),
-  deletePhrase: jest.fn(),
-  mergePhrases: jest.fn(),
-});
+const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().mockReturnValue(
+  withSplitPhrase({
+    createPhrase: jest.fn(),
+    updatePhrase: jest.fn(),
+    deletePhrase: jest.fn(),
+    mergePhrases: jest.fn(),
+  }),
+);
 
 /** Stable mock fn capturing `useSegmentFreeTranslationDispatch` calls so tests can assert on them. */
 const mockSegmentFreeTranslationDispatch = jest.fn<void, [string, string, string]>();
@@ -275,12 +278,14 @@ describe('SegmentView', () => {
     mockReadOnly = false;
     mockKeyAsValueLocalizedStrings();
     mockUsePhraseLinkMap.mockReturnValue(new Map());
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: jest.fn(),
-      deletePhrase: jest.fn(),
-      mergePhrases: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: jest.fn(),
+        deletePhrase: jest.fn(),
+        mergePhrases: jest.fn(),
+      }),
+    );
     mockCandidateTokenRefs.current = new Set();
     mockSplitFreeTokenRefs.current = new Set();
   });
@@ -971,12 +976,14 @@ describe('SegmentView', () => {
 
   it('calls splitPhraseAtBoundary when the arc split button is clicked with a known phrase', async () => {
     const deletePhrase = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: jest.fn(),
-      deletePhrase,
-      mergePhrases: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: jest.fn(),
+        deletePhrase,
+        mergePhrases: jest.fn(),
+      }),
+    );
     // Two-token phrase split at tok-0 — both halves are 1 token — deletePhrase called
     mockUsePhraseLinkMap.mockReturnValue(
       new Map([['tok-0', makePhraseLink('phrase-1', ['tok-0', 'tok-1'], ['In', 'the'])]]),
@@ -999,12 +1006,14 @@ describe('SegmentView', () => {
 
   it('does nothing when the arc split button fires for an unknown phrase id', async () => {
     const deletePhrase = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: jest.fn(),
-      deletePhrase,
-      mergePhrases: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: jest.fn(),
+        deletePhrase,
+        mergePhrases: jest.fn(),
+      }),
+    );
     render(<SegmentView {...requiredProps()} />, withAnalysisStore);
     await userEvent.click(screen.getByTestId('arc-split-btn'));
     expect(deletePhrase).not.toHaveBeenCalled();

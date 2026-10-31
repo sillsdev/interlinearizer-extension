@@ -4,7 +4,7 @@ import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-
 import { memo, useCallback } from 'react';
 import type { SlotFocusInfo } from '../types/token-layout';
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
-import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
+import { computeSplitFreeRefs, sortByDocOrder } from '../utils/phrase-arc';
 import { useAnalysisReadOnly, usePhraseDispatch } from './AnalysisStore';
 import { useLinkLabel, usePhraseStripContext } from './PhraseStripContext';
 
@@ -78,7 +78,7 @@ function EditableTokenLinkIcon({
     unlinkTokensLabel,
   } = usePhraseStripContext();
   const linkLabel = useLinkLabel();
-  const { createPhrase, updatePhrase, deletePhrase, mergePhrases } = usePhraseDispatch();
+  const { createPhrase, updatePhrase, mergePhrases, splitPhrase } = usePhraseDispatch();
 
   const inSamePhrase =
     prevPhraseLink !== undefined &&
@@ -89,25 +89,8 @@ function EditableTokenLinkIcon({
   const handleUnlinkClick = useCallback(() => {
     /* v8 ignore next -- button only renders when inSamePhrase and both tokens are defined */
     if (!inSamePhrase || !prevPhraseLink || !prevToken) return;
-    splitPhraseAtBoundary(
-      prevPhraseLink,
-      prevToken.ref,
-      {
-        createPhrase,
-        updatePhrase,
-        deletePhrase,
-      },
-      tokenDocOrder,
-    );
-  }, [
-    inSamePhrase,
-    prevPhraseLink,
-    prevToken,
-    updatePhrase,
-    createPhrase,
-    deletePhrase,
-    tokenDocOrder,
-  ]);
+    splitPhrase(prevPhraseLink, prevToken.ref, tokenDocOrder);
+  }, [inSamePhrase, prevPhraseLink, prevToken, splitPhrase, tokenDocOrder]);
 
   /**
    * Joins the neighbor on the far side of this slot into the focused phrase (or free token).

@@ -298,7 +298,7 @@ const wholeHolding = (held: string): TextAnalysis => ({
   tokenAnalysisLinks: [makeTokenLink(held, 'GEN 1:1:0')],
 });
 
-/** A provider whose whole analysis, once refreshed, is `after`. */
+/** A provider whose whole analysis holds `after`. */
 async function catalogWrapper(after: TextAnalysis) {
   const made = await sessionOver();
   const client = new PageClient({
@@ -307,6 +307,7 @@ async function catalogWrapper(after: TextAnalysis) {
   });
   await client.open();
   const whole = new WholeAnalysis(async () => ({ ...emptyDraft('src'), analysis: after }));
+  await whole.refresh();
   const wrapper = ({ children }: { children: ReactNode }) => (
     <PageClientProvider client={client} whole={whole} sessionId="s-1" analysisLanguage="en">
       {children}

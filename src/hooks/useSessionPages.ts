@@ -72,6 +72,7 @@ export default function useSessionPages({
 
   useEffect(() => {
     if (!sessionId || !bookId || !key) return undefined;
+    setFailure((was) => (was?.key === key ? undefined : was));
     let isCurrent = true;
     const address = { sessionId };
     const client = new PageClient({
@@ -113,6 +114,7 @@ export default function useSessionPages({
         const reach = INITIAL_WINDOW_HALF + EXTEND_CHUNK;
         client.load(anchor - reach, anchor + reach + 1, 'list');
         await client.settled();
+        if (!isCurrent) return;
         if (client.failedPages.size > 0) {
           const message = `Interlinearizer: could not load the segments of ${bookId}`;
           logger.warn(message);

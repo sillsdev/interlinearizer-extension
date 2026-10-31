@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import papi from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import { useEvent } from 'platform-bible-react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import useSessionPages from '../../hooks/useSessionPages';
@@ -11,6 +11,10 @@ import { BOOK, glossing, ref, sessionOver } from '../cache/session-source';
 const ANALYSIS_CHANGED_EVENT = () => () => true;
 
 const SCR_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
+
+/** Props of a hook whose book can change. */
+type BookProps = { bookId: string | undefined };
+const GEN_PROPS: BookProps = { bookId: 'GEN' };
 
 /**
  * Routes the session forms of the page queries to `made`'s session, segmenting the book by the
@@ -200,6 +204,61 @@ describe('useSessionPages', () => {
         isLoading: false,
         error: 'Interlinearizer: could not load the segments of GEN',
       });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('drops the failure of a book once the view returns to it and its pages load', async () => {
+    jest.useFakeTimers();
+    try {
+      const made = await sessionOver();
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call: unknown[]) => {
+        if (call[0] === 'interlinearizer.getBookOutline')
+          return JSON.stringify(await made.fetchOutline(BOOK));
+        throw new Error('offline');
+      });
+      const { result, rerender } = renderHook(
+        ({ bookId }: BookProps) =>
+          useSessionPages({ sessionId: made.sessionId, bookId, scrRef: SCR_REF }),
+        { initialProps: GEN_PROPS },
+      );
+      await act(() => jest.advanceTimersByTimeAsync(60_000));
+      expect(result.current.error).toBeDefined();
+
+      rerender({ bookId: undefined });
+      serve(made);
+      rerender({ bookId: 'GEN' });
+      await act(() => jest.advanceTimersByTimeAsync(1_000));
+
+      expect(result.current).toMatchObject({ isLoading: false, error: undefined });
+      expect(result.current.pages?.outline).toStrictEqual(made.outline?.segments);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('reports no failure of the pages of a book the view has moved off', async () => {
+    jest.useFakeTimers();
+    try {
+      const made = await sessionOver();
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call: unknown[]) => {
+        if (call[0] === 'interlinearizer.getBookOutline')
+          return JSON.stringify(await made.fetchOutline(BOOK));
+        throw new Error('offline');
+      });
+      const { result, rerender } = renderHook(
+        ({ bookId }: BookProps) =>
+          useSessionPages({ sessionId: made.sessionId, bookId, scrRef: SCR_REF }),
+        { initialProps: GEN_PROPS },
+      );
+      await act(() => jest.advanceTimersByTimeAsync(0));
+
+      rerender({ bookId: undefined });
+      await act(() => jest.advanceTimersByTimeAsync(60_000));
+
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(result.current.error).toBeUndefined();
     } finally {
       jest.useRealTimers();
     }

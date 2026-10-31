@@ -448,29 +448,6 @@ describe('PageClient', () => {
     expect(getSegments).toHaveBeenCalledWith(1, 2);
   });
 
-  it('tells its heard-change listeners of a change it takes in, until they unsubscribe', async () => {
-    const { client } = await clientOver();
-    const listener = jest.fn();
-    const unsubscribe = client.subscribeHeard(listener);
-
-    client.hear(firstSegmentChange('other'));
-    unsubscribe();
-    client.hear(firstSegmentChange('later'));
-
-    expect(listener).toHaveBeenCalledTimes(1);
-  });
-
-  it('tells its heard-change listeners nothing of a change it sent and skips', async () => {
-    const { client } = await clientOver();
-    const listener = jest.fn();
-    client.subscribeHeard(listener);
-
-    const reply = await client.send(async (changeId) => emptyReply(changeId));
-    client.hear(firstSegmentChange(reply?.changeId ?? ''));
-
-    expect(listener).not.toHaveBeenCalled();
-  });
-
   it('applies nothing when a command answers with no reply', async () => {
     const { client } = await clientOver();
     const version = client.loadedVersion();

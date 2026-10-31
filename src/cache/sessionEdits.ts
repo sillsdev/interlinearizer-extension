@@ -340,19 +340,9 @@ export function useAnalysisRowCommands(): {
         throw e;
       }
     };
-    /**
-     * Where the edit that `reply` answers left `analysisId`, read once the whole analysis has been
-     * fetched again.
-     */
-    const outcomeOf = async (reply: CommandReply | undefined, analysisId: string) => {
-      await whole.refresh();
-      return readEditOutcome(
-        whole.current,
-        survivorOf(reply, analysisId),
-        analysisId,
-        analysisLanguage,
-      );
-    };
+    /** Where the edit that `reply` answers left `analysisId`. */
+    const outcomeOf = (reply: CommandReply | undefined, analysisId: string) =>
+      readEditOutcome(whole.current, survivorOf(reply, analysisId), analysisId, analysisLanguage);
     return {
       writeGloss: async (analysisId, value) =>
         outcomeOf(

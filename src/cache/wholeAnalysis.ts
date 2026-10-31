@@ -1,5 +1,7 @@
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
+import type { ChangeSet } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
+import { applyChangeSet } from '../utils/change-set';
 
 const EMPTY_ANALYSIS = emptyAnalysis();
 
@@ -18,6 +20,9 @@ export class WholeAnalysis {
 
   /** The fetch that runs once the one under way settles, shared by every refresh asked meanwhile. */
   private queued: Promise<void> | undefined;
+
+  /** The change sets taken in since the fetch under way was sent; `undefined` while none is. */
+  private takenDuringFetch: ChangeSet[] | undefined;
 
   constructor(fetch: () => Promise<DraftProject>) {
     this.fetch = fetch;
@@ -54,6 +59,21 @@ export class WholeAnalysis {
     return this.queued;
   }
 
+  /**
+   * Applies `changes`, which the session applied to its draft, to the held draft, telling each
+   * listener. A fetch under way when they are taken in lands with them applied over it, because it
+   * may have been answered before the session applied them.
+   *
+   * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
+   *   record names another source project.
+   */
+  take(changes: ChangeSet): void {
+    this.takenDuringFetch?.push(changes);
+    if (!this.held) return;
+    this.held = applyChangeSet(this.held, changes).draft;
+    this.notify();
+  }
+
   /** Calls `listener` whenever the held draft changes, until the returned function is called. */
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -61,7 +81,18 @@ export class WholeAnalysis {
   }
 
   private async fetchNow(): Promise<void> {
-    this.held = await this.fetch();
+    const taken: ChangeSet[] = [];
+    this.takenDuringFetch = taken;
+    try {
+      const fetched = await this.fetch();
+      this.held = taken.reduce((draft, changes) => applyChangeSet(draft, changes).draft, fetched);
+    } finally {
+      this.takenDuringFetch = undefined;
+    }
+    this.notify();
+  }
+
+  private notify(): void {
     this.listeners.forEach((listener) => listener());
   }
 }

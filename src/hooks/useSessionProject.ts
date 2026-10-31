@@ -9,6 +9,7 @@ import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { CommandReply } from '../types/command-reply';
 import type { EditStep } from '../types/edit-step';
 import { emptyAnalysis } from '../types/empty-factories';
+import { isEmptyChangeSet } from '../utils/change-set';
 import type { ProjectApi, ProjectViewOptions } from '../types/project-api';
 import type { DraftCopyResult, NewDraftConfig, OpenableProject } from './useDraftProject';
 import useSessionPages from './useSessionPages';
@@ -315,12 +316,22 @@ export default function useSessionProject(
     [whole, isSaving, sessionId],
   );
 
-  /** Sends a discard, which replaces the draft's content wholesale. */
+  /**
+   * Sends a discard, which replaces the draft's content wholesale. Reads the draft again after a
+   * discard that changes nothing, because the session reports no change for such a discard, which
+   * still marks the draft saved.
+   */
   const discard = useCallback(
     async (call: (args: SessionEditArgs) => Promise<string>) => {
-      if (await sendEdit('discard changes', call)) setDraftVersion((version) => version + 1);
+      const reply = await sendEdit('discard changes', call);
+      if (!reply) return;
+      setDraftVersion((version) => version + 1);
+      if (isEmptyChangeSet(reply.changes))
+        await whole
+          .refresh()
+          .catch((e) => logger.warn('Interlinearizer: could not read the draft again', e));
     },
-    [sendEdit],
+    [sendEdit, whole],
   );
 
   const boundaries = useMemo<SegmentationDispatch>(

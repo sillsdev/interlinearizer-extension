@@ -582,6 +582,65 @@ describe('useSessionProject edits sent to the session', () => {
     expect(result.current.session?.hasFreeTranslations).toBe(true);
   });
 
+  it('keeps the draft version when the session refuses a discard', async () => {
+    const { result } = await renderAnswering();
+    const version = result.current.draftVersion;
+    jest.mocked(papi.commands.sendCommand).mockRejectedValue(new Error('closed'));
+
+    await act(async () => {
+      await result.current.discardAll();
+    });
+
+    expect(result.current.draftVersion).toBe(version);
+    expect(logger.error).toHaveBeenCalledWith(
+      'Interlinearizer: failed to discard changes',
+      expect.any(Error),
+    );
+  });
+
+  it('reads the draft again after a discard that changes nothing, showing it saved', async () => {
+    const host = await fakeHost(async (command, [args]) => {
+      if (command !== 'interlinearizer.discardAll' || typeof args !== 'object' || !args)
+        return undefined;
+      const sessionId = 'sessionId' in args ? String(args.sessionId) : '';
+      const changeId = 'changeId' in args ? String(args.changeId) : undefined;
+      return JSON.stringify(
+        await host.sessions.edit(sessionId, 'discardAll', async () => {}, {
+          changeId,
+          unsavedMark: 'clear',
+        }),
+      );
+    });
+    const { result } = renderProject();
+    await waitFor(() => expect(result.current.session?.client).toBeDefined());
+    await glossEarth(result, 'land');
+    await waitFor(() => expect(result.current.dirty).toBe(true));
+
+    await act(async () => {
+      await result.current.discardAll();
+    });
+
+    expect(result.current.dirty).toBe(false);
+  });
+
+  it('logs a draft it cannot read again after a discard that changes nothing', async () => {
+    const { result } = await renderAnswering();
+    jest
+      .mocked(papi.commands.sendCommand)
+      .mockImplementation(async (...call) =>
+        call[0] === 'interlinearizer.discardAll' ? EMPTY_REPLY : Promise.reject(new Error('gone')),
+      );
+
+    await act(async () => {
+      await result.current.discardAll();
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interlinearizer: could not read the draft again',
+      expect.any(Error),
+    );
+  });
+
   it.each([
     [
       'mergeSegments',

@@ -4,23 +4,22 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useEvent } from 'platform-bible-react';
 import useSessionProject from '../../hooks/useSessionProject';
-import { emptyAnalysis } from '../../types/empty-factories';
-import { fakeHost, relayTextRead } from '../cache/fake-host';
+import { fakeHost, relayTextRead, STORED_PROJECT } from '../cache/fake-host';
 import { glossing, ref } from '../cache/session-source';
 
 const SCR_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
+type ViewProps = Partial<Record<'saveTargetId' | 'importProjectId' | 'importVersion', string>>;
+
 /** Renders the hook over the source `src`, saving to `saveTargetId` or viewing `importProjectId`. */
 function renderProject(saveTargetId?: string, importProjectId?: string) {
-  const initialProps: Partial<Record<'saveTargetId' | 'importProjectId', string>> = {
-    saveTargetId,
-    importProjectId,
-  };
+  const initialProps: ViewProps = { saveTargetId, importProjectId };
   return renderHook(
-    (props: Partial<Record<'saveTargetId' | 'importProjectId', string>>) =>
+    (props: ViewProps) =>
       useSessionProject('src', 'en', {
         saveTargetId: props.saveTargetId,
         importProjectId: props.importProjectId,
+        importVersion: props.importVersion,
         bookId: 'GEN',
         scrRef: SCR_REF,
       }),
@@ -126,6 +125,7 @@ describe('useSessionProject', () => {
       return useSessionProject('src', 'en', {
         saveTargetId: undefined,
         importProjectId: undefined,
+        importVersion: undefined,
         bookId: 'GEN',
         scrRef: SCR_REF,
       });
@@ -401,12 +401,7 @@ describe('useSessionProject starting over', () => {
     const { sessionId } = result.current.session ?? {};
 
     await act(async () => {
-      result.current.loadFromProject({
-        analysis: emptyAnalysis(),
-        analysisLanguages: ['de'],
-        targetProjectId: 'tgt',
-        segmentation: { removedVerseStarts: [], addedStarts: [] },
-      });
+      result.current.loadFromProject(STORED_PROJECT.id);
     });
 
     await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
@@ -418,17 +413,28 @@ describe('useSessionProject starting over', () => {
     );
   });
 
-  it('replaces stored analysis that could not be read when starting over', async () => {
+  it('sends the host the id of the project that Open copies, never its content', async () => {
     const { result } = await renderLoaded();
 
-    await act(async () => result.current.newDraft({ analysisLanguages: ['fr'] }));
+    await act(async () => result.current.loadFromProject(STORED_PROJECT.id));
 
-    expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-      'interlinearizer.saveDraft',
-      'src',
-      expect.any(String),
-      true,
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.startDraftOver', {
+      sourceProjectId: 'src',
+      from: { interlinearProjectId: STORED_PROJECT.id },
+    });
+  });
+
+  it('sends the host the configuration that New starts the draft over with', async () => {
+    const { result } = await renderLoaded();
+
+    await act(async () =>
+      result.current.newDraft({ analysisLanguages: ['fr'], suggestedName: 'N' }),
     );
+
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.startDraftOver', {
+      sourceProjectId: 'src',
+      from: { analysisLanguages: ['fr'], suggestedName: 'N' },
+    });
   });
 
   it('hands out the same callbacks across renders', async () => {
@@ -493,11 +499,7 @@ describe('useSessionProject starting over', () => {
     const { sessionId } = result.current.session ?? {};
 
     await act(async () => {
-      result.current.loadFromProject({
-        analysis: emptyAnalysis(),
-        analysisLanguages: ['de'],
-        segmentation: { removedVerseStarts: [], addedStarts: [] },
-      });
+      result.current.loadFromProject(STORED_PROJECT.id);
       rerender({ saveTargetId: 'proj-2' });
     });
 
@@ -526,6 +528,26 @@ describe('useSessionProject starting over', () => {
         interlinearProjectId: 'import-1',
       }),
     );
+  });
+
+  it('opens a fresh session when a sync moves the import to a new version', async () => {
+    await fakeHost();
+    const { result, rerender } = renderProject(undefined, 'import-1');
+    await waitFor(() => expect(result.current.session).toBeDefined());
+    const { sessionId } = result.current.session ?? {};
+
+    rerender({ importProjectId: 'import-1', importVersion: 'synced' });
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.closeSession', {
+        sessionId,
+      }),
+    );
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.openSession', {
+      sourceProjectId: 'src',
+      interlinearProjectId: 'import-1',
+    });
+    await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
   });
 
   it('logs a save target the session refuses', async () => {
@@ -828,6 +850,7 @@ describe('useSessionProject whole-text read', () => {
       renders += 1;
       return useSessionProject('src', 'en', {
         saveTargetId: undefined,
+        importVersion: undefined,
         importProjectId: undefined,
         bookId: 'GEN',
         scrRef: SCR_REF,

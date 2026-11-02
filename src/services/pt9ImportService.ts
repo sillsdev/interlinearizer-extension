@@ -3,10 +3,12 @@ import type { ExecutionToken } from '@papi/core';
 import type { Book } from 'interlinearizer';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
+import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { convertPt9Project, Pt9ImportReport, Pt9UnreadableFile } from '../converters/pt9';
 import { getWritingSystem } from './bookService';
 import { readPt9InterlinearData, type Pt9InterlinearReadFile } from './pt9DataReader';
 import * as projectStorage from './projectStorage';
+import { summarizeProject } from './projectSummaries';
 
 /** The outcome of one import run, returned to the caller as the command's JSON payload. */
 export interface Pt9ImportResult {
@@ -34,6 +36,12 @@ export interface Pt9ImportResult {
 
   /** The conversion's report; absent when no conversion ran (`staleKept`). */
   report?: Pt9ImportReport;
+
+  /**
+   * The summary of the import as written; absent when no conversion ran (`staleKept`). The reply
+   * carries it even when the listing's copy could not be refreshed.
+   */
+  summary?: InterlinearProjectSummary;
 }
 
 /**
@@ -219,5 +227,5 @@ export async function importPt9Project(
   logger.info(
     `Interlinearizer: imported Paratext 9 interlinear data from ${sourceProjectId} into ${project.id}`,
   );
-  return { outcome: 'imported', projectId: project.id, report };
+  return { outcome: 'imported', projectId: project.id, report, summary: summarizeProject(project) };
 }

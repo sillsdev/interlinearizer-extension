@@ -368,6 +368,47 @@ describe('AnalysisSessions', () => {
     });
   });
 
+  describe('closeAndRun', () => {
+    it("closes the source's session, releasing its draft, before the step runs", async () => {
+      const { host, sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await sessions.closeAndRun(SOURCE, async () => {
+        expect(host.releaseDraftRepository).toHaveBeenCalledWith(SOURCE);
+      });
+
+      await expect(sessions.run(sessionId, async () => {})).rejects.toThrow(
+        `no session ${sessionId} is open`,
+      );
+    });
+
+    it('runs the step for a source with no session open, answering what it answers', async () => {
+      const { host, sessions } = makeSessions();
+
+      await expect(sessions.closeAndRun(SOURCE, async () => 'ran')).resolves.toBe('ran');
+      expect(host.releaseDraftRepository).not.toHaveBeenCalled();
+    });
+
+    it('opens a session sent meanwhile on what the step leaves stored', async () => {
+      const { sessions, saveDraft } = makeSessions();
+      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'] });
+      const step = deferred();
+
+      const running = sessions.closeAndRun(SOURCE, async () => {
+        await step.promise;
+        await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['fr'] });
+      });
+      const opening = sessions.open(SOURCE);
+      step.resolve();
+      await running;
+      const { sessionId } = await opening;
+
+      await expect(
+        sessions.run(sessionId, (session) => session.repository.getScope()),
+      ).resolves.toMatchObject({ analysisLanguages: ['fr'] });
+    });
+  });
+
   describe('closeAll', () => {
     it('closes every open session', async () => {
       const { host, sessions } = makeSessions();

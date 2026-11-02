@@ -2,12 +2,11 @@ import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
 import type { DraftProject } from 'interlinearizer';
 import { useCallback, useEffect, useState } from 'react';
-import type { DraftCopyResult, NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
+import type { DraftCopyResult, NewDraftConfig } from '../../hooks/useDraftProject';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import { isInterlinearProjectSummary, isSavedAsProject } from '../../types/type-guards';
-import { readOpenableProject } from '../../utils/read-openable-project';
 import type { Settles } from '../../utils/settles';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
 import { DiscardDraftConfirm } from './DiscardDraftConfirm';
@@ -52,8 +51,9 @@ type PendingReplace =
  *   runs the given copy with the draft snapshot and, on the host path, the session's id. Marks the
  *   draft synced when the copy reports it landed whole. Resolves whether the copy landed, or
  *   `false` when no save could run.
- * @param props.loadFromProject - Loads a project's analysis + config into the draft (the "Open"
- *   flow). On the host path, settles once the draft is stored, and rejects when it can't be.
+ * @param props.loadFromProject - Loads the analysis and config of the project with the given id
+ *   into the draft (the "Open" flow). Rejects when the project can't be read; on the host path,
+ *   also when the draft can't be stored.
  * @param props.newDraft - Seeds the draft with empty analysis and the given config; called before
  *   the New flow's backend round-trip so the editor is ready regardless of whether persistence
  *   succeeds. On the host path, settles once the draft is stored, and rejects when it can't be.
@@ -98,7 +98,7 @@ export default function ProjectModals({
   commitDraft: (
     copy: (snapshot: DraftProject, sessionId?: string) => Promise<DraftCopyResult>,
   ) => Promise<boolean>;
-  loadFromProject: (project: OpenableProject) => Settles<void>;
+  loadFromProject: (projectId: string) => Settles<void>;
   newDraft: (config: NewDraftConfig) => Settles<void>;
   modal: ModalState;
   onImportPt9: () => void;
@@ -211,23 +211,13 @@ export default function ProjectModals({
   );
 
   /**
-   * Loads the given project into the draft as a working copy and makes it the Save target. Fetches
-   * the full project (with analysis and any stored segment boundaries) via
-   * `interlinearizer.getProject`, validates it, then seeds the draft and dismisses the modal. Logs
-   * and notifies on failure, leaving the draft untouched.
+   * Loads the given project into the draft as a working copy, makes it the Save target, and
+   * dismisses the modal. Logs and notifies on failure, leaving the draft untouched.
    */
   const openProject = useCallback(
     async (project: InterlinearProjectSummary) => {
       try {
-        const openable = await readOpenableProject(project.id);
-        if (!openable) {
-          await papi.notifications
-            .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
-            .catch(() => {});
-          return;
-        }
-
-        await loadFromProject(openable);
+        await loadFromProject(project.id);
         setActiveProject(project);
         setModal('none');
       } catch (e) {

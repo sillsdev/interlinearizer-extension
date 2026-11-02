@@ -208,11 +208,11 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * fails validation or belongs to another source project, and it is logged.
    *
    * A draft written by a newer build is refused, not discarded, so the build that can read it still
-   * finds it. {@link replaceAll} refuses to overwrite it too.
+   * finds it. A save refuses to overwrite it too.
    *
    * A book whose shard is missing or unusable loads as empty and is named among the unreadable
-   * books. {@link replaceAll} then keeps that shard and its manifest entry until a save starts the
-   * draft over.
+   * books. Later saves keep that shard and its manifest entry until one of them starts the draft
+   * over.
    *
    * A shard holding a link with no id is unusable. A draft holding such a link inline loads as a
    * fresh empty draft. Both are logged.
@@ -280,23 +280,10 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Saves the draft, replacing the stored one whole apart from the {@link CURRENT_MODEL_VERSION}
-   * stamp. A draft written by a newer build is left as it stands.
-   *
-   * No storage transaction spans the shards, so an interrupted save can leave books from two saves.
-   * It never leaves a listed book without its shard. Each shard counts as saved once it lands, so
-   * the save after a failed one rewrites only the books still missing.
-   *
-   * Recovery survives a restart. The next load finds a shard the envelope never came to name, and a
-   * later save retries a failed deletion. A book dropped from the analysis leaves no shard behind,
-   * unless its stored shard cannot be read. Such a book's shard is kept as it stands, and any
-   * analysis the draft carries for the book is left out rather than written over what could not be
-   * read. Starting the draft over, through `options`, lets the save write or wipe the book like any
-   * other.
-   *
-   * A save that fails leaves no storage call of its own in flight. Once the draft has landed, a
-   * wiped book's shard that could not be deleted, or a shard journal that could not be updated, is
-   * no failure of the save: each is logged, and a later save retries it.
+   * Saves the draft as {@link startOver} does, except for a book whose stored shard cannot be read.
+   * Such a book's shard is kept as it stands, and any analysis the draft carries for the book is
+   * left out rather than written over what could not be read. Starting the draft over, through
+   * `options`, lets the save write or wipe the book like any other.
    *
    * @returns The books whose analysis in the draft was left out because their stored shard cannot
    *   be read; empty when the draft was saved whole.
@@ -305,26 +292,32 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects a write.
    */
   async replaceAll(draft: DraftProject, options?: ReplaceAllOptions): Promise<string[]> {
-    this.current = undefined;
-    this.exported = undefined;
-    if (!this.loaded) {
-      try {
-        await this.read(false);
-      } catch (e) {
-        // An unparseable draft names no shard to keep, and this save replaces it.
-        if (!(e instanceof SyntaxError)) throw e;
-      }
-    }
-    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
-      this.assertStoredDraftIsWritable(),
-    );
-    const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(draft.analysis));
-    if (options?.discardUnreadable) this.unreadableShards.clear();
-    const leftOut = [...this.unreadableShards].filter((bookCode) => byBook.has(bookCode));
-    leftOut.forEach((bookCode) => byBook.delete(bookCode));
-    const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
-    await this.writeDraft(draft, storedBooks, journaled, [...byBook.keys()], byBook);
-    return leftOut;
+    return this.save(draft, options?.discardUnreadable === true);
+  }
+
+  /**
+   * Starts the draft over as `draft`, replacing the stored one whole apart from the
+   * {@link CURRENT_MODEL_VERSION} stamp. Stored analysis that could not be read is discarded, so the
+   * save writes or wipes those books like any other. A draft written by a newer build is left as it
+   * stands.
+   *
+   * No storage transaction spans the shards, so an interrupted save can leave books from two saves.
+   * It never leaves a listed book without its shard. Each shard counts as saved once it lands, so
+   * the save after a failed one rewrites only the books still missing.
+   *
+   * Recovery survives a restart. The next load finds a shard the envelope never came to name, and a
+   * later save retries a failed deletion. A book dropped from the analysis leaves no shard behind.
+   *
+   * A save that fails leaves no storage call of its own in flight. Once the draft has landed, a
+   * wiped book's shard that could not be deleted, or a shard journal that could not be updated, is
+   * no failure of the save: each is logged, and a later save retries it.
+   *
+   * @throws {Error} If the stored draft was written by a newer build; nothing is written.
+   * @throws If storage rejects a read; nothing is written.
+   * @throws If storage rejects a write.
+   */
+  async startOver(draft: DraftProject): Promise<void> {
+    await this.save(draft, true);
   }
 
   /**
@@ -350,8 +343,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws {Error} If the changes reach a book whose shard could not be read; nothing is written.
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft was written by a newer build; nothing is written.
-   * @throws If storage rejects a read or a write, as {@link replaceAll} does; this instance's draft
-   *   is left as it was.
+   * @throws If storage rejects a read or a write; this instance's draft is left as it was.
    */
   async apply(changes: ChangeSet, options?: ApplyOptions): Promise<ApplyResult> {
     const { draft: base, index } = await this.indexed();
@@ -419,6 +411,40 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
+   * Saves `draft` as {@link startOver} describes. Unless `discardUnreadable` is set, a book whose
+   * stored shard cannot be read keeps that shard, and the draft's analysis for the book is left
+   * out.
+   *
+   * @returns The books whose analysis in the draft was left out because their stored shard cannot
+   *   be read.
+   * @throws {Error} If the stored draft was written by a newer build; nothing is written.
+   * @throws If storage rejects a read; nothing is written.
+   * @throws If storage rejects a write.
+   */
+  private async save(draft: DraftProject, discardUnreadable: boolean): Promise<string[]> {
+    this.current = undefined;
+    this.exported = undefined;
+    if (!this.loaded) {
+      try {
+        await this.read(false);
+      } catch (e) {
+        // An unparseable draft names no shard to keep, and this save replaces it.
+        if (!(e instanceof SyntaxError)) throw e;
+      }
+    }
+    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
+      this.assertStoredDraftIsWritable(),
+    );
+    const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(draft.analysis));
+    if (discardUnreadable) this.unreadableShards.clear();
+    const leftOut = [...this.unreadableShards].filter((bookCode) => byBook.has(bookCode));
+    leftOut.forEach((bookCode) => byBook.delete(bookCode));
+    const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
+    await this.writeDraft(draft, storedBooks, journaled, [...byBook.keys()], byBook);
+    return leftOut;
+  }
+
+  /**
    * Loads the stored draft as {@link readDraft} does, noting that this instance has loaded it.
    *
    * @throws Whatever {@link readDraft} throws.
@@ -430,7 +456,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Saves `draft` over a stored draft whose manifest names `storedBooks`, as {@link replaceAll}
+   * Saves `draft` over a stored draft whose manifest names `storedBooks`, as {@link startOver}
    * describes, taking each book's analysis from the `index` kept over it. Compares only the
    * partitions in `reached`, those the shard journal names as unsettled, and those this instance
    * holds no saved content for, such as every book of a draft loaded inline. When the journal is
@@ -463,7 +489,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Saves `draft` as {@link replaceAll} describes, comparing only `partitions` against what this
+   * Saves `draft` as {@link startOver} describes, comparing only `partitions` against what this
    * instance last loaded or saved and rewriting those that differ.
    *
    * @param draft - The draft whose envelope is written; its analysis is not read.

@@ -361,6 +361,20 @@ export class AnalysisSessions {
   }
 
   /**
+   * Closes the source project's session, if any, then runs `step` before any later open of the
+   * source. A session opened afterward starts on what `step` leaves stored.
+   *
+   * @throws Whatever closing the session or `step` throws.
+   */
+  closeAndRun<T>(sourceProjectId: string, step: () => Promise<T>): Promise<T> {
+    return this.onLifecycle(sourceProjectId, async () => {
+      const open = this.sessionsBySource.get(sourceProjectId);
+      if (open) await this.closeNow(open);
+      return step();
+    });
+  }
+
+  /**
    * Closes every session, including any whose open is still underway. Settles after every close has
    * settled.
    *

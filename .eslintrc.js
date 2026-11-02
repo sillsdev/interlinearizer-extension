@@ -186,12 +186,7 @@ module.exports = {
     },
     {
       // Jest globals (describe, it, expect, etc.) so ESLint does not report no-undef
-      files: [
-        '**/*.test.{ts,tsx}',
-        '**/*.spec.{ts,tsx}',
-        '**/__tests__/**/*.{ts,tsx}',
-        'jest.setup*.{js,ts}',
-      ],
+      files: ['**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}', '**/__tests__/**/*.{ts,tsx}'],
       plugins: ['jest'],
       env: {
         'jest/globals': true,

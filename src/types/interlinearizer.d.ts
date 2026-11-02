@@ -2414,6 +2414,11 @@ declare module 'interlinearizer' {
     sessionId: string;
     /** The id the change was sent under, or a fresh one for a change no command made. */
     changeId: ChangeId;
+    /**
+     * The change sets that the reported re-anchor passes applied, in order. They leave the draft's
+     * unsaved mark as it was. Absent from the report of an edit command, an undo or a redo.
+     */
+    passChanges?: import('./analysis-repository').ChangeSet[];
   } & AnalysisChange;
 
   /** A command whose removals a preview reports, named by its intent, with its arguments. */

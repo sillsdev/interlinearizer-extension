@@ -30,8 +30,11 @@ export type EditOptions = {
   step?: EditStep;
 };
 
-/** An undo or redo as applied, with the step that the edit was recorded as. */
-export type HistoryMove = AppliedChange & { step?: EditStep };
+/**
+ * An undo or redo as applied, with the step that the edit was recorded as and whether the move left
+ * the draft unsaved.
+ */
+export type HistoryMove = AppliedChange & { step?: EditStep; dirty: boolean };
 
 /** What reverts or redoes one edit. */
 type Step = {
@@ -192,8 +195,8 @@ export class EditHistory {
    * Reverts the latest edit not yet undone, re-anchoring what it restores.
    *
    * @returns The changes that reverted the edit and re-anchored what the undo restored, with what
-   *   restores what they replaced. The move also carries the step that the edit was recorded as.
-   *   `undefined` when there is none.
+   *   restores what they replaced. The move also carries the step that the edit was recorded as,
+   *   and whether it left the draft unsaved. `undefined` when there is none.
    * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
    *   edit stays the next to undo.
    * @throws Whatever marking the draft saved throws; the undo stays applied.
@@ -206,8 +209,8 @@ export class EditHistory {
    * Redoes the latest undone edit, re-anchoring what it restores.
    *
    * @returns The changes that redid the edit and re-anchored what the redo restored, with what
-   *   restores what they replaced. The move also carries the step that the edit was recorded as.
-   *   `undefined` when there is none.
+   *   restores what they replaced. The move also carries the step that the edit was recorded as,
+   *   and whether it left the draft unsaved. `undefined` when there is none.
    * @throws Whatever re-anchoring or applying those changes throws; nothing is applied, and the
    *   edit stays the next to redo.
    * @throws Whatever marking the draft saved throws; the redo stays applied.
@@ -244,8 +247,9 @@ export class EditHistory {
     });
     this.state = step.state;
     this.forgetUnneededPasses();
-    if (this.cleanStates.has(this.state)) await this.repository.markClean();
-    return { changes, inverse, ...(step.step && { step: step.step }) };
+    const clean = this.cleanStates.has(this.state);
+    if (clean) await this.repository.markClean();
+    return { changes, inverse, ...(step.step && { step: step.step }), dirty: !clean };
   }
 
   /** Unless `wasDirty`, makes the current state the only clean one, if it isn't clean already. */

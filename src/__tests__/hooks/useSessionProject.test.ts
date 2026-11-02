@@ -6,6 +6,7 @@ import { useEvent } from 'platform-bible-react';
 import useSessionProject from '../../hooks/useSessionProject';
 import { fakeHost, relayTextRead, STORED_PROJECT } from '../cache/fake-host';
 import { glossing, ref } from '../cache/session-source';
+import { makeVerseBook, tokenRefOf } from '../test-helpers';
 
 const SCR_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
@@ -164,6 +165,48 @@ describe('useSessionProject', () => {
       expect(result.current.draft?.analysis.tokenAnalyses.map(({ id }) => id)).toContain('ta-land'),
     );
   });
+
+  it('applies a re-anchor pass the session reports without reading the draft again', async () => {
+    const { result, host } = await renderCurrent();
+    const edited = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the very beginning God' },
+      { sid: 'GEN 1:2', text: 'And the earth' },
+      { sid: 'GEN 1:3', text: 'And God said' },
+    ]);
+    const reads = fullReads();
+
+    await act(async () => {
+      await host.sessions.reanchorBook('src', edited);
+    });
+
+    const links = result.current.session?.whole.current.tokenAnalysisLinks;
+    expect(links?.find(({ id }) => id === 'tl-god')?.token.tokenRef).toBe(
+      tokenRefOf(edited, 'God'),
+    );
+    expect(result.current.session?.whole.draft?.dirty).toBe(false);
+    expect(fullReads()).toBe(reads);
+  });
+
+  it('applies the passes of a Scripture edit the session reports without reading the draft again', async () => {
+    const { result, host } = await renderCurrent();
+    const edited = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'In the very beginning God' },
+      { sid: 'GEN 1:2', text: 'And the earth' },
+      { sid: 'GEN 1:3', text: 'And God said' },
+    ]);
+    const reads = fullReads();
+
+    await act(async () => {
+      await host.sessions.reanchorBook('src', edited, true);
+      await host.sessions.reportScriptureEdit('src', 'GEN');
+    });
+
+    const links = result.current.session?.whole.current.tokenAnalysisLinks;
+    expect(links?.find(({ id }) => id === 'tl-god')?.token.tokenRef).toBe(
+      tokenRefOf(edited, 'God'),
+    );
+    expect(fullReads()).toBe(reads);
+  });
 });
 
 /** Glosses "earth" through the hook's session, as a gloss input would. */
@@ -214,7 +257,7 @@ describe('useSessionProject history', () => {
     expect(result.current).toMatchObject({ canUndo: false, canRedo: true });
   });
 
-  it('reads the draft again after an undo, which may return it to its saved state', async () => {
+  it('shows an undo back to the saved draft as saved, without reading the draft again', async () => {
     const { result } = await renderCurrent();
     await glossEarth(result, 'land');
     const reads = fullReads();
@@ -223,8 +266,28 @@ describe('useSessionProject history', () => {
       await result.current.undo();
     });
 
-    await waitFor(() => expect(result.current.dirty).toBe(false));
-    expect(fullReads()).toBe(reads + 1);
+    expect(result.current.dirty).toBe(false);
+    expect(result.current.draft?.analysis.tokenAnalyses.map(({ id }) => id)).not.toContain(
+      'ta-land',
+    );
+    expect(fullReads()).toBe(reads);
+  });
+
+  it('shows a redo away from the saved draft as unsaved, without reading the draft again', async () => {
+    const { result } = await renderCurrent();
+    await glossEarth(result, 'land');
+    await act(async () => {
+      await result.current.undo();
+    });
+    const reads = fullReads();
+
+    await act(async () => {
+      await result.current.redo();
+    });
+
+    expect(result.current.dirty).toBe(true);
+    expect(result.current.draft?.analysis.tokenAnalyses.map(({ id }) => id)).toContain('ta-land');
+    expect(fullReads()).toBe(reads);
   });
 
   it('redoes an undone edit through the session', async () => {

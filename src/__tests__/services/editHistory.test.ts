@@ -91,6 +91,7 @@ describe('EditHistory', () => {
     await expect(history.undo()).resolves.toStrictEqual({
       changes: { intent: 'put b', tokenAnalyses: { puts: [], deletes: ['b'] } },
       inverse: putting('b'),
+      dirty: true,
     });
     await expect(storedIds()).resolves.toStrictEqual(['a']);
     await history.undo();
@@ -107,6 +108,7 @@ describe('EditHistory', () => {
     await expect(history.redo()).resolves.toStrictEqual({
       changes: { intent: 'put a', tokenAnalyses: { puts: [payload('a')], deletes: [] } },
       inverse: { intent: 'put a', tokenAnalyses: { puts: [], deletes: ['a'] } },
+      dirty: true,
     });
     await expect(storedIds()).resolves.toStrictEqual(['a']);
     await history.redo();

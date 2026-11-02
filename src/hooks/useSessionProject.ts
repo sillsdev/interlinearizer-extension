@@ -3,6 +3,7 @@ import type { DraftProject, DraftStart, SessionEditArgs } from 'interlinearizer'
 import type { NetworkEvents } from 'papi-shared-types';
 import { useEvent } from 'platform-bible-react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import type { HeardChange } from '../cache/pageClient';
 import { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { CommandReply } from '../types/command-reply';
@@ -207,6 +208,18 @@ export default function useSessionProject(
     whole.refresh().catch((e) => logger.warn('Interlinearizer: could not read the draft again', e));
   }, [whole]);
 
+  /**
+   * Applies a reported change's re-anchor passes to the whole draft. Fetches the draft again for a
+   * change that carries none.
+   */
+  const takeHeard = useCallback(
+    ({ passChanges }: HeardChange) => {
+      if (!passChanges) refreshWhole();
+      else passChanges.forEach((changes) => whole.take(changes, 'kept'));
+    },
+    [whole, refreshWhole],
+  );
+
   const analysisChangedEvent = useMemo(
     () => papi.network.getNetworkEvent('interlinearizer.onAnalysisChanged'),
     [],
@@ -217,21 +230,21 @@ export default function useSessionProject(
       (change: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
         if (!('sessionId' in change) || change.sessionId !== sessionId) return;
         // With pages loaded, the client tells which changes its replies left out.
-        if (!client) refreshWhole();
+        if (!client) takeHeard(change);
         readTextStatus();
       },
-      [sessionId, client, refreshWhole, readTextStatus],
+      [sessionId, client, takeHeard, readTextStatus],
     ),
   );
-  useEffect(() => client?.subscribeHeard(refreshWhole), [client, refreshWhole]);
+  useEffect(() => client?.subscribeHeard(takeHeard), [client, takeHeard]);
 
   /**
-   * Applies a reply's changes to the whole draft, and notes what the reply says is left to undo and
-   * redo, telling each history listener.
+   * Applies a reply's changes to the whole draft, with the reply's unsaved mark, and notes what the
+   * reply says is left to undo and redo, telling each history listener.
    */
   const takeReply = useCallback(
     (reply: CommandReply) => {
-      whole.take(reply.changes);
+      whole.take(reply.changes, reply.dirty);
       noteHistory({ canUndo: reply.canUndo, canRedo: reply.canRedo });
       if ('hasFreeTranslations' in reply && typeof reply.hasFreeTranslations === 'boolean')
         setHasFreeTranslations(reply.hasFreeTranslations);
@@ -274,8 +287,6 @@ export default function useSessionProject(
         movedNothing = json === undefined;
         return json;
       });
-      // The reply leaves out whether the move returned the draft to its saved state.
-      if (reply) refreshWhole();
       // A failed move leaves the flags as they were, because no reply came to report them.
       if (movedNothing) {
         const side = command === 'interlinearizer.undoEdit' ? 'canUndo' : 'canRedo';
@@ -283,7 +294,7 @@ export default function useSessionProject(
       }
       return reply?.step;
     },
-    [sendEdit, refreshWhole, noteHistory],
+    [sendEdit, noteHistory],
   );
 
   /**

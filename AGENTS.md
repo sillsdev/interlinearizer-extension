@@ -133,11 +133,12 @@ An edit, undo, or redo replies with a `CommandReply`, which carries:
 - the `ChangeSet` it applied;
 - the books whose boundaries it moved;
 - the books where it put or removed a stale free translation that the view places;
+- for an undo or redo, whether it left the draft unsaved;
 - the pool buckets of the forms it touched, which [sessionPages](src/services/sessionPages.ts) reads.
 
 A command sent again under a `changeId` the session has applied gets its first reply and applies nothing. Each undo step carries the place it was made at, or a summary of a step made at no one place, as [editSteps](src/services/editSteps.ts) derives them; an undo or redo hands its step back.
 
-Each change a session applies, re-anchor passes included, is described by [describeChange](src/services/analysisChanges.ts) and goes out as the session form of `onAnalysisChanged`. That event carries the change's segment ranges by book, a flag on each book where the change put or removed a stale free translation, analysis ids, touched forms, and cross-book queries. A book the host keeps no tokenized copy of is named whole.
+Each change a session applies, re-anchor passes included, is described by [describeChange](src/services/analysisChanges.ts) and goes out as the session form of `onAnalysisChanged`. That event carries the change's segment ranges by book, a flag on each book where the change put or removed a stale free translation, analysis ids, touched forms, and cross-book queries. A report of re-anchor passes also carries the change sets they applied, which the view applies to its whole-draft copy; any other report it hears makes it fetch that copy again. A book the host keeps no tokenized copy of is named whole.
 
 #### The WebView on the host path
 

@@ -1,10 +1,13 @@
-import type { AnalysisChange, ChangeId, Segment, TextAnalysis } from 'interlinearizer';
+import type { ChangeId, Segment, SessionAnalysisChange, TextAnalysis } from 'interlinearizer';
 import type { CommandReply } from '../types/command-reply';
 import { emptyAnalysis } from '../types/empty-factories';
 import { perfTime, perfTrack } from '../utils/perf-marks';
 import type { PoolEntry, PoolIndex } from '../utils/suggestion-engine';
 import type { BookOutline, SegmentPage } from '../types/segment-pages';
 import { RecordCache, type PageRequest, type Refetch } from './recordCache';
+
+/** A change as a session reports it, without the session's id. */
+export type HeardChange = Omit<SessionAnalysisChange, 'sessionId'>;
 
 /** How many segments one page holds; pages start at multiples of it. */
 export const PAGE_SIZE = 32;
@@ -145,10 +148,7 @@ export class PageClient {
    * The change ids of commands sent and not yet answered, each with its reported change once that
    * arrives.
    */
-  private readonly sent = new Map<
-    ChangeId,
-    (AnalysisChange & { changeId: ChangeId }) | undefined
-  >();
+  private readonly sent = new Map<ChangeId, HeardChange | undefined>();
 
   /** The change ids of applied replies whose reported change has not arrived yet. */
   private readonly applied = new Set<ChangeId>();
@@ -157,7 +157,7 @@ export class PageClient {
 
   private readonly replyListeners = new Set<(reply: CommandReply) => void>();
 
-  private readonly heardListeners = new Set<() => void>();
+  private readonly heardListeners = new Set<(change: HeardChange) => void>();
 
   private version = 0;
 
@@ -346,7 +346,7 @@ export class PageClient {
    * {@link PageClient.send}, because the command's reply carries the same records. It takes the
    * change in when that command throws.
    */
-  hear(change: AnalysisChange & { changeId: ChangeId }): void {
+  hear(change: HeardChange): void {
     const { changeId } = change;
     if (this.sent.has(changeId)) this.sent.set(changeId, change);
     else if (!this.applied.delete(changeId)) this.hearNow(change);
@@ -391,10 +391,10 @@ export class PageClient {
   }
 
   /**
-   * Calls `listener` whenever the client takes in a reported change rather than skipping it, until
+   * Calls `listener` with each reported change that the client takes in rather than skips, until
    * the returned function is called.
    */
-  subscribeHeard(listener: () => void): () => void {
+  subscribeHeard(listener: (change: HeardChange) => void): () => void {
     this.heardListeners.add(listener);
     return () => this.heardListeners.delete(listener);
   }
@@ -419,8 +419,8 @@ export class PageClient {
     if (this.applied.size > KEPT_APPLIED) this.applied.delete([...this.applied][0]);
   }
 
-  private hearNow(change: AnalysisChange): void {
-    this.heardListeners.forEach((listener) => listener());
+  private hearNow(change: HeardChange): void {
+    this.heardListeners.forEach((listener) => listener(change));
     const cache = this.cacheHeld;
     if (!cache) {
       if (this.outlineReading) this.readOutlineAgain('outline');

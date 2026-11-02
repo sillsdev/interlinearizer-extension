@@ -15,9 +15,10 @@ npm run watch            # Continuous rebuild on changes
 npm run build:c-sharp    # Publish the C# host for every platform (or name some: -- win-x64)
 
 # Lint & Format
-npm run lint             # Run ESLint + stylelint + tsc --noEmit + dependency scope
-npm run lint-fix         # Auto-fix linting issues
+npm run lint             # Run ESLint + stylelint + tsc --noEmit + dependency scope + dotnet format check
+npm run lint-fix         # Auto-fix linting issues, C# formatting included
 npm run format           # Format with Prettier
+npm run format:dotnet    # Format the C# projects with dotnet format
 
 # Test
 npm test                 # Run full Jest suite
@@ -25,6 +26,8 @@ npm run test:coverage    # Run with coverage (100% threshold enforced)
 npm test -- path/to/file.test.ts                 # Run a single test file
 npm test -- --testNamePattern="pattern"          # Run tests matching name
 npm run test:c-sharp                             # Check the C# host published for this machine starts
+npm run test:dotnet                              # Run the Harmony entity tests (TUnit; filters go after --)
+cd c-sharp && dotnet ef migrations add <Name> --project InterlinearizerCrdt   # After changing an entity's columns
 
 # Performance (results land in perf/results/)
 npm run perf:capture     # Capture the WEB sample's USJ from a launched app into perf/.cache
@@ -54,7 +57,27 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 
 ### C# host
 
-[c-sharp/InterlinearizerHost](c-sharp/InterlinearizerHost) is a .NET program the extension starts on activation ([csharpHost.ts](src/services/csharpHost.ts)) and stops on deactivation. It registers its commands on the PAPI network, so TypeScript calls them with `papi.commands.sendCommand` like any other. It exits once its connection to Platform.Bible closes. It targets .NET 10, which Harmony needs, and is published self-contained for each platform Platform.Bible ships for, since Platform.Bible's own runtime is private to its process. It talks to the network through its own small client, since core's is not packaged for extensions to use; that client offers the methods core's does, so services can move into core later. The build copies whatever `npm run build:c-sharp` has published; without it the extension logs that the host could not start and carries on.
+[c-sharp/InterlinearizerHost](c-sharp/InterlinearizerHost) is a .NET program the extension starts on activation ([csharpHost.ts](src/services/csharpHost.ts)) and stops on deactivation. It registers its commands on the PAPI network, so TypeScript calls them with `papi.commands.sendCommand` like any other. It exits once its connection to Platform.Bible closes.
+
+- **Runtime**: it targets .NET 10, which Harmony needs, and is published self-contained for each platform Platform.Bible ships for, since Platform.Bible's own runtime is private to its process.
+- **Network client**: it talks to the network through its own small client, since core's is not packaged for extensions to use. That client offers the methods core's does, so services can move into core later.
+- **Build**: the build copies whatever `npm run build:c-sharp` has published; without it the extension logs that the host could not start and carries on.
+- **Services**: they come from one DI container built in `Program`. There is no scope per request: the JSON-RPC layer offers none, and nothing in a request needs isolating from the next. Instead `OpenProjects` opens one DI scope per interlinear project, over that project's own SQLite database, and keeps it until the project is closed, as FieldWorks Lite does. A handler that serves a project takes its id as an argument and resolves the project's `AnalysisRepository` from that scope.
+- **Client id**: the host keeps a per-installation client id, which Harmony tells devices apart by, in its data directory: `--data-dir` names it, defaulting to a per-user folder.
+
+[c-sharp/InterlinearizerCrdt](c-sharp/InterlinearizerCrdt) holds the Harmony (CRDT) model of `TextAnalysis`: one entity per record type the analysis layer lists, with a create, replace, patch, and delete change for each, registered in [InterlinearizerCrdtKernel.cs](c-sharp/InterlinearizerCrdt/InterlinearizerCrdtKernel.cs). Nothing exposes the model over PAPI yet. [c-sharp/Interlinearizer.slnx](c-sharp/Interlinearizer.slnx) groups the three C# projects.
+
+- **Owned values**: values an entity owns, such as a token analysis's morphemes or a link's token snapshots, are stored inside it as JSON, not as entities.
+- **Lookup columns**: each link keeps the book it points into, and each analysis its normalized surface form, as plain columns derived in their setters, so lookups need not read the JSON.
+- **Patch changes**:
+  - A patch change carries each field as a `PatchField<T>`: a field left unset leaves the stored value alone and one set to null clears it.
+  - A multistring or feature map is a plain nullable `MultiStringPatch` instead, because a null patch already means unset. Each key it names is set to its value, or removed when that value is null.
+  - A JSON type-info modifier leaves unset fields out of the change's JSON, which is what keeps them unset when the change is read back.
+- **Empty maps**: an analysis's multistring or feature map field with no keys is stored as null, so every change that writes one whole passes it through `MultiString.NullIfEmpty`, as the per-key merge does. Maps nested in owned values, such as a morpheme's gloss, are stored as given.
+- **Deletes**: a link references its analysis, so deleting the analysis deletes the link.
+- **Migrations**: a project's database is created and upgraded through the EF migrations in [c-sharp/InterlinearizerCrdt/Migrations](c-sharp/InterlinearizerCrdt/Migrations), which `dotnet ef` scaffolds through the design-time factory. A model change without a migration fails the test that checks for pending model changes.
+- **Repository**: [AnalysisRepository.cs](c-sharp/InterlinearizerCrdt/AnalysisRepository.cs) is the C# slice of the TypeScript `AnalysisRepository` seam. It applies a `ChangeSet` of whole-record puts and deletes as one commit. A put of a record not stored creates it; otherwise the caller's `PutMode` says whether to replace the record whole or write a patch of only the fields that differ. It answers the seam's lookups from the projected tables.
+- **Serialization**: every change type's JSON discriminator is pinned by [ChangeSerializationTests.cs](c-sharp/InterlinearizerCrdt.Tests/ChangeSerializationTests.cs). A commit written today must still deserialize later, so a renamed or removed change type needs a migration path, and a new change type is appended to the model versions.
 
 ### WebView UI
 

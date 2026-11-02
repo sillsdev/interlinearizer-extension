@@ -10,7 +10,7 @@ import { scopeRecordOf } from '../utils/change-set';
 import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from './test-helpers';
 
 /**
- * A group of conformance tests an implementation opts into. The core tests, of records by id,
+ * A group of conformance tests an implementation opts into. The required tests, of records by id,
  * lookups, and all-or-nothing applies, always run.
  *
  * - `scope`: {@link AnalysisRepository.getScope} and {@link ChangeSet.scope}.
@@ -517,8 +517,8 @@ async function analysisLoadedBy(repository: AnalysisRepository): Promise<TextAna
 
 /**
  * Declares the tests an {@link AnalysisRepository} implementation must pass, titled with the
- * implementation's name: the core tests, and those of each of `groups`. Each test runs against a
- * fresh store from `createStore`.
+ * implementation's name: the required tests, and those of each of `groups`. Each test runs against
+ * a fresh store from `createStore`.
  */
 export function describeAnalysisRepositoryConformance(
   implementationName: string,
@@ -600,7 +600,7 @@ export function describeAnalysisRepositoryConformance(
       return store.open(SOURCE);
     }
 
-    describe('core', () => {
+    describe('required', () => {
       describe('apply', () => {
         it('puts new records of every kind', async () => {
           await store.seed(SOURCE, fullDraft());

@@ -8,6 +8,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RootNamespace>Interlinearizer.Crdt</RootNamespace>
     <AssemblyName>InterlinearizerCrdt</AssemblyName>
+    <!-- Keeps the symbol file out of the host's published folder. -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>

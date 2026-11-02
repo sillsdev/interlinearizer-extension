@@ -39,7 +39,7 @@ public abstract class CrdtTestBase : IAsyncDisposable
         DbContext.Database.OpenConnection();
         DbContext.Database.EnsureCreated();
         DataModel = _services.GetRequiredService<DataModel>();
-        Repository = new AnalysisRepository(DataModel, ClientId);
+        Repository = new AnalysisRepository(DataModel, new ClientIdentity(ClientId));
     }
 
     /// <summary>Applies through the repository at the next commit time.</summary>

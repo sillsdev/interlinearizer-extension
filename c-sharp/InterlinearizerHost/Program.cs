@@ -1,5 +1,7 @@
+using Interlinearizer.Crdt;
 using Interlinearizer.Host.Papi;
 using Interlinearizer.Host.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Interlinearizer.Host;
 
@@ -10,9 +12,20 @@ namespace Interlinearizer.Host;
 /// </summary>
 internal static class Program
 {
-    public static async Task<int> Main()
+    /// <summary>The argument naming where the host keeps its data; absent, a per-user folder.</summary>
+    private const string DataDirectoryOption = "--data-dir";
+
+    public static async Task<int> Main(string[] args)
     {
-        using var papi = new PapiClient();
+        var dataDirectory = DataDirectory(args);
+        await using var services = new ServiceCollection()
+            .AddSingleton(ClientIdentity.Load(dataDirectory))
+            .AddInterlinearizerCrdt()
+            .AddSingleton<PapiClient>()
+            .AddSingleton<PingService>()
+            .BuildServiceProvider();
+
+        var papi = services.GetRequiredService<PapiClient>();
         try
         {
             await papi.ConnectAsync(CancellationToken.None);
@@ -23,7 +36,7 @@ internal static class Program
             return 1;
         }
 
-        if (!await new PingService(papi).RegisterAsync())
+        if (!await services.GetRequiredService<PingService>().RegisterAsync())
         {
             // Most likely another copy of this process still holds the registration.
             Console.Error.WriteLine($"Could not register {PingService.CommandName}");
@@ -32,6 +45,15 @@ internal static class Program
 
         Console.WriteLine("Interlinearizer host ready");
         await papi.DisconnectTask;
+        // Projects still open flush before the process ends.
+        await services.GetRequiredService<OpenProjects>().DisposeAsync();
         return 0;
+    }
+
+    private static string DataDirectory(string[] args)
+    {
+        var index = Array.IndexOf(args, DataDirectoryOption);
+        if (index >= 0 && index + 1 < args.Length) return args[index + 1];
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "interlinearizer");
     }
 }

@@ -11,7 +11,7 @@ namespace Interlinearizer.Crdt;
 /// in no promised order, and a lookup by several keys returns each record once. Deleted records
 /// are not stored for the purposes of these calls.
 /// </summary>
-public class AnalysisRepository(DataModel dataModel, Guid clientId)
+public class AnalysisRepository(DataModel dataModel, ClientIdentity client)
 {
     /// <summary>The commit metadata key under which an apply records its change set's intent.</summary>
     public const string IntentMetadataKey = "intent";
@@ -69,7 +69,7 @@ public class AnalysisRepository(DataModel dataModel, Guid clientId)
             id => new DeleteChange<PhraseAnalysisLink>(id));
         if (harmonyChanges.Count == 0) return;
 
-        await dataModel.AddChanges(clientId, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
+        await dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
     }
 
     /// <summary>The token analyses stored under <paramref name="ids"/>.</summary>

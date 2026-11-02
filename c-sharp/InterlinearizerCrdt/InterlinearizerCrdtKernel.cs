@@ -11,18 +11,37 @@ namespace Interlinearizer.Crdt;
 /// <summary>Registers Harmony with the interlinearizer's entities and changes.</summary>
 public static class InterlinearizerCrdtKernel
 {
-    public static IServiceCollection AddInterlinearizerCrdt(this IServiceCollection services,
-        Action<DbContextOptionsBuilder> configureDb)
+    /// <summary>
+    /// Registers the model over one database per open project: <see cref="OpenProjects"/> opens
+    /// a scope per project and <see cref="CurrentProject"/> names its database. The container
+    /// must also hold a <see cref="ClientIdentity"/>.
+    /// </summary>
+    public static IServiceCollection AddInterlinearizerCrdt(this IServiceCollection services)
     {
-        services.AddDbContext<InterlinearizerCrdtDbContext>((_, builder) =>
+        services.AddScoped<CurrentProject>();
+        services.AddSingleton<OpenProjects>();
+        return services.AddInterlinearizerCrdt((provider, builder) =>
+            builder.UseSqlite($"Data Source={provider.GetRequiredService<CurrentProject>().DbPath}"));
+    }
+
+    /// <summary>Registers the model over the one database <paramref name="configureDb"/> names.</summary>
+    public static IServiceCollection AddInterlinearizerCrdt(this IServiceCollection services,
+        Action<DbContextOptionsBuilder> configureDb) =>
+        services.AddInterlinearizerCrdt((_, builder) => configureDb(builder));
+
+    private static IServiceCollection AddInterlinearizerCrdt(this IServiceCollection services,
+        Action<IServiceProvider, DbContextOptionsBuilder> configureDb)
+    {
+        services.AddDbContext<InterlinearizerCrdtDbContext>((provider, builder) =>
         {
             // Each container gets its own EF services: cached ones would carry the JSON options of
             // whichever container built them first.
             builder.EnableServiceProviderCaching(false);
-            configureDb(builder);
+            configureDb(provider, builder);
             builder.EnableDetailedErrors();
         });
         services.AddCrdtData<InterlinearizerCrdtDbContext>(ConfigureHarmony);
+        services.AddScoped<AnalysisRepository>();
         return services;
     }
 

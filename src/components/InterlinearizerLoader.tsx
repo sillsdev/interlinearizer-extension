@@ -347,6 +347,15 @@ function manifestFileHashes(manifest: Pt9InterlinearProjectManifest): Record<str
   );
 }
 
+/** The summary an import reply carries, or `undefined` when it carries none or a malformed one. */
+function parseImportedSummary(reply: unknown): InterlinearProjectSummary | undefined {
+  const summary =
+    /* v8 ignore next -- the host's import reply is always an object, carrying a summary on import */
+    reply && typeof reply === 'object' && 'summary' in reply ? reply.summary : undefined;
+  /* v8 ignore next -- the host only sends well-formed summaries */
+  return isInterlinearProjectSummary(summary) ? toProjectSummary(summary) : undefined;
+}
+
 /** Whether two path-to-hash maps are identical: the same keys, with the same hash under each. */
 function fileHashesEqual(a: Record<string, string>, b: Record<string, string>): boolean {
   const aKeys = Object.keys(a);
@@ -551,6 +560,7 @@ function InterlinearizerLoaderInner({
   } = useProject(projectId, isInterfaceLanguageLoading ? undefined : platformLanguage, {
     saveTargetId: activeProject?.pt9Import ? undefined : activeProject?.id,
     importProjectId: activeProject?.pt9Import ? activeProject.id : undefined,
+    importVersion: activeProject?.pt9Import ? activeProject.updatedAt : undefined,
     // The book's outline is asked for once its text has loaded, as the WebView path's is.
     bookId: verseBook?.bookRef,
     scrRef,
@@ -595,11 +605,14 @@ function InterlinearizerLoaderInner({
   );
 
   /**
-   * Which version of the import the view is on: its id and the modification time a sync bumps.
-   * `undefined` while the draft is the view.
+   * Which version of the import the view fetches: its id and the modification time a sync bumps.
+   * `undefined` while the draft is the view, and on the host path, where the session holds the
+   * import.
    */
   const importTag =
-    isImportView && activeProject ? `${activeProject.id}:${activeProject.updatedAt}` : undefined;
+    isImportView && activeProject && !onHostPath
+      ? `${activeProject.id}:${activeProject.updatedAt}`
+      : undefined;
 
   /**
    * The import analysis last fetched, under the version tag it was fetched for; no `analysis` when
@@ -642,8 +655,11 @@ function InterlinearizerLoaderInner({
   /** Whether the version on screen is one whose analysis could not be read. */
   const importLoadFailed = importLoaded !== undefined && importLoaded.analysis === undefined;
 
-  /** Whether the version on screen is an import whose analysis has not arrived yet. */
-  const isImportLoading = isImportView && importLoaded === undefined;
+  /**
+   * Whether the version on screen is an import whose analysis has not arrived yet. On the host
+   * path, the session holds the import, so this is whether the session has yet to open.
+   */
+  const isImportLoading = isImportView && (onHostPath ? !session : importLoaded === undefined);
 
   // Whether any gloss input currently holds uncommitted text. Gloss writes are deferred to blur, so
   // the persisted `dirty` flag does not flip until then; tracking in-progress edits here lets the
@@ -1204,10 +1220,10 @@ function InterlinearizerLoaderInner({
   >(undefined);
   const openRequestIdRef = useRef(0);
 
-  /** Fetches a project by id and returns its summary, or `undefined` when missing or malformed. */
+  /** Fetches a project's summary by id, or `undefined` when it is unlisted or malformed. */
   const fetchSummary = useCallback(
     async (id: string): Promise<InterlinearProjectSummary | undefined> => {
-      const json = await papi.commands.sendCommand('interlinearizer.getProject', id);
+      const json = await papi.commands.sendCommand('interlinearizer.getProjectSummary', id);
       const parsed: unknown = json ? JSON.parse(json) : undefined;
       return isInterlinearProjectSummary(parsed) ? toProjectSummary(parsed) : undefined;
     },
@@ -1239,7 +1255,7 @@ function InterlinearizerLoaderInner({
           parsed && typeof parsed === 'object' && 'report' in parsed ? parsed.report : undefined;
         if (outcome === 'imported' && typeof importedId === 'string' && isPt9ImportReport(report)) {
           if (mode === 'sync') {
-            const summary = await fetchSummary(importedId);
+            const summary = parseImportedSummary(parsed);
             if (summary) setActiveProject(summary);
           }
           setPt9ImportedId(importedId);
@@ -1263,7 +1279,7 @@ function InterlinearizerLoaderInner({
         else setPt9Phase({ kind: 'error' });
       }
     },
-    [projectId, fetchSummary, setActiveProject],
+    [projectId, setActiveProject],
   );
 
   /**
@@ -1289,14 +1305,7 @@ function InterlinearizerLoaderInner({
         const parsed: unknown = JSON.parse(json);
         const outcome =
           parsed && typeof parsed === 'object' && 'outcome' in parsed ? parsed.outcome : undefined;
-        const importedId =
-          parsed && typeof parsed === 'object' && 'projectId' in parsed
-            ? parsed.projectId
-            : undefined;
-        const summary =
-          outcome === 'imported' && typeof importedId === 'string'
-            ? await fetchSummary(importedId)
-            : undefined;
+        const summary = outcome === 'imported' ? parseImportedSummary(parsed) : undefined;
         setActiveProject(summary ?? project);
         setModal('none');
       } catch (e) {
@@ -1308,7 +1317,7 @@ function InterlinearizerLoaderInner({
         setModal('none');
       }
     },
-    [projectId, fetchSummary, setActiveProject],
+    [projectId, setActiveProject],
   );
 
   /**
@@ -1479,7 +1488,8 @@ function InterlinearizerLoaderInner({
         try {
           const bookCode = book?.bookRef;
           let saved: DraftContent | undefined;
-          if (activeProject) {
+          // The host reads the saved content itself.
+          if (activeProject && !onHostPath) {
             const project = await readOpenableProject(activeProject.id).catch((e) => {
               logger.error('Interlinearizer: failed to read the project to discard changes', e);
               return undefined;

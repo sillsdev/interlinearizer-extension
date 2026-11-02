@@ -276,6 +276,24 @@ describe('DraftRepository', () => {
 
       expect(records.has(draftAnalysisKey('src', 'GEN'))).toBe(false);
     });
+
+    it('wipes an unreadable book that a started-over draft carries nothing for', async () => {
+      const { repository, draft, records } = await loadedWithUnreadableGen();
+
+      await repository.startOver({ ...draft, analysis: emptyAnalysis() });
+
+      expect(records.has(draftAnalysisKey('src', 'GEN'))).toBe(false);
+    });
+
+    it('writes what a started-over draft carries for an unreadable book', async () => {
+      const { repository, storage } = await loadedWithUnreadableGen();
+
+      await repository.startOver(twoBookDraft());
+
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).exportAll(),
+      ).resolves.toEqual({ draft: twoBookDraft(), unreadableBooks: [] });
+    });
   });
 
   describe('apply', () => {

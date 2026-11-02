@@ -8,7 +8,14 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type { Book, ChangeId, ProjectConfig, TokenSnapshot } from 'interlinearizer';
+import type {
+  Book,
+  ChangeId,
+  DraftProject,
+  DraftStart,
+  ProjectConfig,
+  TokenSnapshot,
+} from 'interlinearizer';
 import type { CommandHandlers, NetworkEvents } from 'papi-shared-types';
 import {
   formatReplacementString,
@@ -57,6 +64,8 @@ import {
   type SavedAsProject,
 } from './types/interlinear-project-summary';
 import { UnreadableBooksError, type DraftExport } from './types/analysis-repository';
+import { emptyAnalysis } from './types/empty-factories';
+import { CURRENT_MODEL_VERSION } from './types/model-version';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION, bookOfRef } from './utils/analysis-book';
 import { bookIndexesOf } from './utils/book-indexes';
@@ -929,7 +938,7 @@ async function getTextReadStatus(address: TextAddress): Promise<string> {
  * none out.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
- * @param draftJson - JSON-stringified `DraftProject` to persist.
+ * @param draftJson - JSON-stringified {@link DraftProject} to persist.
  * @param discardUnreadable - Whether the draft was started over (New, Open), so stored analysis
  *   that could not be read is discarded rather than kept.
  * @throws If JSON parsing, validation, or storage fails, or if the stored draft was written by a
@@ -942,9 +951,8 @@ async function saveInterlinearDraft(
   draftJson: string,
   discardUnreadable?: boolean,
 ): Promise<void> {
-  let leftOut: string[];
-  try {
-    leftOut = await perfTimeAsync('saveDraft', async () => {
+  await writeDraft(sourceProjectId, () =>
+    perfTimeAsync('saveDraft', async () => {
       const draft = perfTime('saveDraft:parse', () => JSON.parse(draftJson));
       if (!isDraftProject(draft)) {
         throw new TypeError('saveInterlinearDraft: draftJson does not conform to DraftProject');
@@ -952,7 +960,22 @@ async function saveInterlinearDraft(
       return projectStorage.saveDraft(executionToken, sourceProjectId, draft, {
         discardUnreadable: discardUnreadable === true,
       });
-    });
+    }),
+  );
+}
+
+/**
+ * Runs `write`, which writes the source project's draft and resolves with the books it left out.
+ * The user is told which books once, and again only after the draft is reloaded or a write has left
+ * none out.
+ *
+ * @throws Whatever `write` throws. The error is logged and an error notification is sent before
+ *   rethrowing.
+ */
+async function writeDraft(sourceProjectId: string, write: () => Promise<string[]>): Promise<void> {
+  let leftOut: string[];
+  try {
+    leftOut = await write();
   } catch (e) {
     logger.error('Interlinearizer: failed to save draft', e);
     await papi.notifications
@@ -978,6 +1001,84 @@ async function saveInterlinearDraft(
     '%interlinearizer_error_saveDraft_unreadableBooks%',
     'error',
   );
+}
+
+/**
+ * Builds the draft that starting over from `from` writes for the source project: a copy of a stored
+ * project's analysis and configuration, or an empty draft with a New dialog's configuration.
+ *
+ * @throws {Error} If `from` names a project that is not stored.
+ * @throws {TypeError} If the draft does not conform to {@link DraftProject}.
+ * @throws Whatever reading the project throws.
+ */
+async function startedDraft(sourceProjectId: string, from: DraftStart): Promise<DraftProject> {
+  const started = { sourceProjectId, modelVersion: CURRENT_MODEL_VERSION, dirty: false };
+  let draft: DraftProject;
+  if ('interlinearProjectId' in from) {
+    const project = await projectStorage.getProject(executionToken, from.interlinearProjectId);
+    if (!project)
+      throw new Error(
+        `Interlinearizer: interlinear project ${from.interlinearProjectId} is not stored`,
+      );
+    draft = {
+      ...started,
+      analysisLanguages: project.analysisLanguages,
+      ...(project.targetProjectId !== undefined && { targetProjectId: project.targetProjectId }),
+      ...(project.segmentation !== undefined && { segmentation: project.segmentation }),
+      analysis: project.analysis,
+    };
+  } else {
+    draft = {
+      ...started,
+      analysisLanguages: from.analysisLanguages,
+      ...(from.suggestedName !== undefined && { suggestedName: from.suggestedName }),
+      ...(from.suggestedDescription !== undefined && {
+        suggestedDescription: from.suggestedDescription,
+      }),
+      analysis: emptyAnalysis(),
+    };
+  }
+  if (!isDraftProject(draft))
+    throw new TypeError('startDraftOver: the started draft does not conform to DraftProject');
+  return draft;
+}
+
+/**
+ * Starts the source project's draft over from `from`, closing the source's session first. A session
+ * opened afterward has nothing to undo. Stored analysis that could not be read is discarded.
+ *
+ * @throws As {@link startedDraft} does, and if closing the session or writing the draft fails. The
+ *   error is logged and an error notification is sent before rethrowing; the stored draft is left
+ *   as it was.
+ */
+async function startDraftOver({
+  sourceProjectId,
+  from,
+}: ArgsOf<'interlinearizer.startDraftOver'>): Promise<void> {
+  await writeDraft(sourceProjectId, async () => {
+    const draft = await startedDraft(sourceProjectId, from);
+    await sessions.closeAndRun(sourceProjectId, () =>
+      projectStorage.startDraftOver(executionToken, sourceProjectId, draft),
+    );
+    return [];
+  });
+}
+
+/**
+ * Returns the summary of the interlinearizer project with the given ID, without its analysis.
+ *
+ * @returns JSON-stringified `InterlinearProjectSummary`, or `undefined` if no project with that ID
+ *   is listed.
+ * @throws As {@link projectStorage.getProjectSummary} does. The error is logged before rethrowing.
+ */
+async function getProjectSummary(interlinearProjectId: string): Promise<string | undefined> {
+  try {
+    const summary = await projectStorage.getProjectSummary(executionToken, interlinearProjectId);
+    return summary ? JSON.stringify(summary) : undefined;
+  } catch (e) {
+    logger.error('Interlinearizer: failed to get the project summary', e);
+    throw e;
+  }
 }
 
 /** A parameter in a command's documentation. */
@@ -2401,6 +2502,30 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const getProjectSummaryCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getProjectSummary',
+    getProjectSummary,
+    {
+      method: {
+        summary:
+          'Return the summary of the interlinearizer project with the given UUID as a JSON string, without its analysis',
+        params: [
+          {
+            name: 'interlinearProjectId',
+            required: true,
+            summary: 'UUID of the interlinearizer project to summarize',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified InterlinearProjectSummary, or undefined if not listed',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
   const saveDraftToProjectCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.saveDraftToProject',
     saveDraftToProject,
@@ -2711,6 +2836,40 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary:
               'Whether the draft was started over (New, Open), so stored analysis that could not be read is discarded rather than kept',
             schema: { type: 'boolean' },
+          },
+        ],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const startDraftOverCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.startDraftOver',
+    startDraftOver,
+    {
+      method: {
+        summary:
+          "Start a source project's draft over, from a stored project or empty, closing the source's session first",
+        params: [
+          {
+            name: 'args',
+            required: true,
+            summary: 'The source project, and what its draft starts over from',
+            schema: {
+              type: 'object',
+              properties: {
+                sourceProjectId: {
+                  description: 'Platform.Bible source project ID whose draft to start over',
+                  type: 'string',
+                },
+                from: {
+                  description:
+                    'Either { interlinearProjectId } to copy a stored project (Open), or the New configuration { analysisLanguages, suggestedName?, suggestedDescription? }',
+                  type: 'object',
+                },
+              },
+              required: ['sourceProjectId', 'from'],
+            },
           },
         ],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
@@ -3767,7 +3926,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary:
-            "JSON-stringified { outcome: 'imported' | 'staleKept', projectId, report? }; rejects (throws) when the source has nothing to import or the import fails",
+            "JSON-stringified { outcome: 'imported' | 'staleKept', projectId, report?, summary? }; rejects (throws) when the source has nothing to import or the import fails",
           schema: { type: 'string' },
         },
       },
@@ -4014,12 +4173,14 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     saveDraftToProjectCommandRegistration,
     saveDraftAsProjectCommandRegistration,
     getProjectsForSourceCommandRegistration,
+    getProjectSummaryCommandRegistration,
     getDraftCommandRegistration,
     getTokenizedBookCommandRegistration,
     getBookOutlineCommandRegistration,
     getSegmentsCommandRegistration,
     getTextReadStatusCommandRegistration,
     saveDraftCommandRegistration,
+    startDraftOverCommandRegistration,
     openSessionCommandRegistration,
     closeSessionCommandRegistration,
     setAnalysisLanguageCommandRegistration,

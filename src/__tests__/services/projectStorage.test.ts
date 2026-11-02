@@ -9,6 +9,7 @@ import {
   getDraft,
   getProject,
   getProjectSummariesForSource,
+  getProjectSummary,
   getPt9ImportForSource,
   getRememberedActiveProject,
   hasDraft,
@@ -21,6 +22,7 @@ import {
   saveDraftAsNewProject,
   saveDraftToProject,
   savePt9Import,
+  startDraftOver,
   sweepPendingCleanup,
   updateAnalysis,
   updateProjectMetadata,
@@ -1286,6 +1288,25 @@ describe('projectStorage', () => {
     });
   });
 
+  describe('getProjectSummary', () => {
+    it('returns the summary of the listed project with the id, reading no project record', async () => {
+      const project = makeStubProject('id-2');
+      mockStore({
+        projectSummaries: storedSummaries(makeStubProject('id-1'), project),
+        'project:id-2': JSON.stringify(project),
+      });
+
+      await expect(getProjectSummary(token, 'id-2')).resolves.toMatchObject({ id: 'id-2' });
+      expect(__mockReadUserData.mock.calls.map(([, key]) => key)).toEqual(['projectSummaries']);
+    });
+
+    it('returns undefined for a project that is not listed', async () => {
+      mockStore({ projectSummaries: storedSummaries(makeStubProject('id-1')) });
+
+      await expect(getProjectSummary(token, 'id-2')).resolves.toBeUndefined();
+    });
+  });
+
   describe('concurrent index serialization', () => {
     it('does not interleave index reads and writes across concurrent createProject calls', async () => {
       // Track the order of index reads and writes to verify they do not interleave.
@@ -1683,6 +1704,22 @@ describe('projectStorage', () => {
           dirty: true,
           analysis: later.analysis,
         });
+      });
+
+      it('leaves the stored draft dirty when it was started over after the copy read it', async () => {
+        const stored = backStorageWithMap();
+        storeListedProject(stored, makeStubProject('proj-id'));
+        await saveDraft(token, 'src-proj', {
+          ...makeDraftSpanningBooks('src-proj', 'GEN'),
+          dirty: true,
+        });
+        const started = { ...emptyDraft('src-proj'), dirty: true };
+
+        const save = saveDraftToProject(token, 'src-proj', 'proj-id');
+        const write = startDraftOver(token, 'src-proj', started);
+        await Promise.all([save, write]);
+
+        expect((await getDraft(token, 'src-proj')).draft).toMatchObject({ dirty: true });
       });
 
       it('leaves the stored draft dirty when changes were applied after the copy read it', async () => {
@@ -2959,6 +2996,58 @@ describe('projectStorage', () => {
         await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
 
         expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:no book');
+      });
+    });
+  });
+
+  describe('startDraftOver', () => {
+    it("rewrites an unreadable book's shard with what the started draft carries for it", async () => {
+      await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN', 'JHN'));
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return '{not json';
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      const { draft: loaded } = await getDraft(token, 'src-proj');
+      __mockWriteUserData.mockClear();
+
+      await startDraftOver(token, 'src-proj', {
+        ...loaded,
+        analysis: makeDraftSpanningBooks('src-proj', 'JHN').analysis,
+      });
+
+      expect(writtenKeys()).toContain('draft:src-proj:analysis:JHN');
+    });
+
+    it('lets a later edit reach a book that was unreadable before the draft started over', async () => {
+      const started = makeDraftSpanningBooks('src-proj', 'JHN');
+      await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN', 'JHN'));
+      const firstRewrite = __mockWriteUserData.mock.calls.length;
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        const written = __mockWriteUserData.mock.calls.findLastIndex(([, k]) => k === key);
+        if (key === 'draft:src-proj:analysis:JHN' && written < firstRewrite) return '{not json';
+        if (written < 0) throw enoentError();
+        return __mockWriteUserData.mock.calls[written][2];
+      });
+      const { draft: loaded } = await getDraft(token, 'src-proj');
+      await startDraftOver(token, 'src-proj', { ...loaded, analysis: started.analysis });
+      const added = {
+        ...started.analysis.tokenAnalysisLinks[0],
+        id: 'link-JHN-2',
+        token: { tokenRef: 'JHN 1:2!0', surfaceText: 'word-JHN' },
+      };
+
+      await openDraftRepository(token, 'src-proj').apply({
+        intent: 'putLink',
+        tokenAnalysisLinks: { puts: [added], deletes: [] },
+      });
+
+      await expect(getDraft(token, 'src-proj')).resolves.toMatchObject({
+        draft: {
+          analysis: { tokenAnalysisLinks: [started.analysis.tokenAnalysisLinks[0], added] },
+        },
+        unreadableBooks: [],
       });
     });
   });

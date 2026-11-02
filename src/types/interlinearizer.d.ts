@@ -215,6 +215,18 @@ declare module 'papi-shared-types' {
     'interlinearizer.getProject': (interlinearProjectId: string) => Promise<string | undefined>;
 
     /**
+     * Returns the summary of the interlinearizer project with the given UUID, without reading its
+     * analysis.
+     *
+     * @returns JSON-stringified `InterlinearProjectSummary`, or `undefined` if no project by that
+     *   UUID is listed.
+     * @throws If the stored project summaries cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getProjectSummary': (
+      interlinearProjectId: string,
+    ) => Promise<string | undefined>;
+
+    /**
      * Copies the source project's stored draft, its analysis and custom segment boundaries, into an
      * existing interlinearizer project. Called from the WebView on Save and on Save As onto an
      * existing project. The copy reads the stored draft after the WebView's pending autosave, or
@@ -362,6 +374,20 @@ declare module 'papi-shared-types' {
       draftJson: string,
       discardUnreadable?: boolean,
     ) => Promise<void>;
+
+    /**
+     * Starts the source project's draft over from `from`, closing the source's session first. A
+     * session opened afterward has nothing to undo. Stored analysis that could not be read is
+     * discarded.
+     *
+     * @throws If `from` names a project that is not stored, or if reading that project, closing the
+     *   session, or writing the draft fails. The error is logged and an error notification is sent
+     *   before rethrowing; the stored draft is left as it was.
+     */
+    'interlinearizer.startDraftOver': (args: {
+      sourceProjectId: string;
+      from: import('interlinearizer').DraftStart;
+    }) => Promise<void>;
 
     /**
      * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
@@ -1035,9 +1061,10 @@ declare module 'papi-shared-types' {
      *
      * @param sourceProjectId - Platform.Bible project ID whose Paratext 9 interlinear files to
      *   import.
-     * @returns A JSON string of `{ outcome, projectId, report? }`: `outcome` is `'imported'` or
-     *   `'staleKept'`, `projectId` the import project's id, and `report` the conversion report
-     *   (present only when `outcome` is `'imported'`).
+     * @returns A JSON string of `{ outcome, projectId, report?, summary? }`: `outcome` is
+     *   `'imported'` or `'staleKept'`, `projectId` the import project's id, `report` the conversion
+     *   report, and `summary` the import's summary as written. `report` and `summary` are present
+     *   only when `outcome` is `'imported'`.
      * @throws If the source has no Paratext 9 interlinear data and no earlier import exists, if a
      *   file fails to parse, or if persistence fails. The error is logged and an error notification
      *   is sent before rethrowing so callers do not need to send a second notification.
@@ -2321,6 +2348,21 @@ declare module 'interlinearizer' {
    * afresh.
    */
   export type ChangeId = string;
+
+  /**
+   * What a started-over draft starts from: a copy of the stored project `interlinearProjectId`, or
+   * an empty draft with the configuration a New dialog collected.
+   */
+  export type DraftStart =
+    | { interlinearProjectId: string }
+    | {
+        /** BCP 47 tags of the languages that the draft is analyzed in. */
+        analysisLanguages: string[];
+        /** Retained to prefill Save As; omitted when left blank. */
+        suggestedName?: string;
+        /** Retained to prefill Save As; omitted when left blank. */
+        suggestedDescription?: string;
+      };
 
   /** What every session command's one argument holds beside the command's own fields. */
   export type SessionCommandArgs = {

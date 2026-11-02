@@ -1,10 +1,13 @@
 import papi from '@papi/frontend';
 import { act } from '@testing-library/react';
+import type { DraftProject } from 'interlinearizer';
 import { useEvent } from 'platform-bible-react';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import * as tokenCommands from '../../services/commands/tokenCommands';
 import { DraftRepository } from '../../services/draftRepository';
 import { readBookOutline, readSegmentPage } from '../../services/sessionPages';
+import { emptyAnalysis } from '../../types/empty-factories';
+import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import { silentLogger } from '../test-helpers';
 import { BOOK, NOW, sessionOver } from './session-source';
 
@@ -30,6 +33,44 @@ function field(args: unknown, key: string): string {
   const value = typeof args === 'object' && args ? Reflect.get(args, key) : undefined;
   if (typeof value !== 'string') throw new Error(`fake host: ${key} is not a string`);
   return value;
+}
+
+/** The project that {@link fakeHost} starts a draft over from, when Open names its id. */
+export const STORED_PROJECT = {
+  id: 'proj-de',
+  analysisLanguages: ['de'],
+  targetProjectId: 'tgt',
+  segmentation: { removedVerseStarts: [], addedStarts: [] },
+};
+
+/**
+ * Builds the draft that starting over from `from` writes: a copy of {@link STORED_PROJECT} when
+ * `from` names its id, otherwise an empty draft with `from`'s configuration.
+ */
+function startedDraft(sourceProjectId: string, from: unknown): DraftProject {
+  const started = {
+    sourceProjectId,
+    modelVersion: CURRENT_MODEL_VERSION,
+    analysis: emptyAnalysis(),
+    dirty: false,
+  };
+  if (typeof from !== 'object' || !from) throw new Error('fake host: from is not an object');
+  if ('interlinearProjectId' in from) {
+    if (from.interlinearProjectId !== STORED_PROJECT.id)
+      throw new Error(`fake host: no project ${String(from.interlinearProjectId)}`);
+    const { analysisLanguages, targetProjectId, segmentation } = STORED_PROJECT;
+    return { ...started, analysisLanguages, targetProjectId, segmentation };
+  }
+  const analysisLanguages = 'analysisLanguages' in from ? from.analysisLanguages : undefined;
+  if (!Array.isArray(analysisLanguages)) throw new Error('fake host: no analysisLanguages');
+  return {
+    ...started,
+    analysisLanguages: analysisLanguages.map(String),
+    ...('suggestedName' in from && { suggestedName: String(from.suggestedName) }),
+    ...('suggestedDescription' in from && {
+      suggestedDescription: String(from.suggestedDescription),
+    }),
+  };
 }
 
 /**
@@ -129,10 +170,13 @@ export async function fakeHost(
             { changeId: field(first, 'changeId'), step: { location: field(first, 'tokenRef') } },
           ),
         );
-      case 'interlinearizer.saveDraft': {
-        const [json] = rest;
-        await new DraftRepository(storage, String(first), silentLogger()).replaceAll(
-          JSON.parse(String(json)),
+      case 'interlinearizer.startDraftOver': {
+        const sourceProjectId = field(first, 'sourceProjectId');
+        const from: unknown =
+          typeof first === 'object' && first ? Reflect.get(first, 'from') : undefined;
+        const draft = startedDraft(sourceProjectId, from);
+        await sessions.closeAndRun(sourceProjectId, () =>
+          new DraftRepository(storage, sourceProjectId, silentLogger()).startOver(draft),
         );
         return undefined;
       }

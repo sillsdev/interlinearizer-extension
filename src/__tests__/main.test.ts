@@ -28,6 +28,7 @@ import {
   UnreadableBooksError,
 } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
+import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import type { CommandReply } from '../types/command-reply';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import {
@@ -2441,6 +2442,126 @@ describe('main', () => {
     });
   });
 
+  describe('interlinearizer.startDraftOver command', () => {
+    const mockStartDraftOver = jest.mocked(projectStorage.startDraftOver);
+
+    /** Activates the extension and returns the `interlinearizer.startDraftOver` handler. */
+    const getStartDraftOverHandler = () =>
+      activateAndGetHandler<CommandHandlers['interlinearizer.startDraftOver']>(
+        'interlinearizer.startDraftOver',
+      );
+
+    it("starts the draft over as a copy of a stored project's content", async () => {
+      const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+      jest.mocked(projectStorage.getProject).mockResolvedValue({
+        ...makeStubProject('proj-id'),
+        analysisLanguages: ['de'],
+        targetProjectId: 'tgt',
+        segmentation,
+      });
+      mockStartDraftOver.mockResolvedValue();
+      const handler = await getStartDraftOverHandler();
+
+      await handler({ sourceProjectId: 'src-project', from: { interlinearProjectId: 'proj-id' } });
+
+      expect(mockStartDraftOver).toHaveBeenCalledWith(expect.anything(), 'src-project', {
+        sourceProjectId: 'src-project',
+        modelVersion: CURRENT_MODEL_VERSION,
+        dirty: false,
+        analysisLanguages: ['de'],
+        targetProjectId: 'tgt',
+        segmentation,
+        analysis: emptyAnalysis(),
+      });
+    });
+
+    it("starts the draft over empty, with a New dialog's configuration", async () => {
+      mockStartDraftOver.mockResolvedValue();
+      const handler = await getStartDraftOverHandler();
+
+      await handler({
+        sourceProjectId: 'src-project',
+        from: { analysisLanguages: ['fr'], suggestedName: 'N', suggestedDescription: 'D' },
+      });
+
+      expect(mockStartDraftOver).toHaveBeenCalledWith(expect.anything(), 'src-project', {
+        sourceProjectId: 'src-project',
+        modelVersion: CURRENT_MODEL_VERSION,
+        dirty: false,
+        analysisLanguages: ['fr'],
+        suggestedName: 'N',
+        suggestedDescription: 'D',
+        analysis: emptyAnalysis(),
+      });
+    });
+
+    it('logs, notifies, and rethrows for a project that is not stored, writing nothing', async () => {
+      jest.mocked(projectStorage.getProject).mockResolvedValue(undefined);
+      const handler = await getStartDraftOverHandler();
+
+      await expect(
+        handler({ sourceProjectId: 'src-project', from: { interlinearProjectId: 'gone' } }),
+      ).rejects.toThrow('interlinear project gone is not stored');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to save draft',
+        expect.any(Error),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
+      expect(mockStartDraftOver).not.toHaveBeenCalled();
+    });
+
+    it('rejects a configuration that makes no valid draft, writing nothing', async () => {
+      const handler = await getStartDraftOverHandler();
+
+      await expect(
+        handler({
+          sourceProjectId: 'src-project',
+          from: JSON.parse('{ "analysisLanguages": "fr" }'),
+        }),
+      ).rejects.toThrow(TypeError);
+      expect(mockStartDraftOver).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('interlinearizer.getProjectSummary command', () => {
+    const mockGetProjectSummary = jest.mocked(projectStorage.getProjectSummary);
+
+    /** Activates the extension and returns the `interlinearizer.getProjectSummary` handler. */
+    const getProjectSummaryHandler = () =>
+      activateAndGetHandler<CommandHandlers['interlinearizer.getProjectSummary']>(
+        'interlinearizer.getProjectSummary',
+      );
+
+    it('returns the JSON-stringified summary of a listed project', async () => {
+      const summary = toProjectSummary(makeStubProject('proj-id'));
+      mockGetProjectSummary.mockResolvedValue(summary);
+      const handler = await getProjectSummaryHandler();
+
+      await expect(handler('proj-id')).resolves.toBe(JSON.stringify(summary));
+      expect(mockGetProjectSummary).toHaveBeenCalledWith(expect.anything(), 'proj-id');
+    });
+
+    it('returns undefined for a project that is not listed', async () => {
+      mockGetProjectSummary.mockResolvedValue(undefined);
+      const handler = await getProjectSummaryHandler();
+
+      await expect(handler('missing-id')).resolves.toBeUndefined();
+    });
+
+    it('logs the error and rethrows when the summaries cannot be read', async () => {
+      mockGetProjectSummary.mockRejectedValue(new Error('disk full'));
+      const handler = await getProjectSummaryHandler();
+
+      await expect(handler('proj-id')).rejects.toThrow('disk full');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to get the project summary',
+        expect.any(Error),
+      );
+    });
+  });
+
   describe('session commands', () => {
     /** A draft repository in memory whose indexes always report one difference. */
     class StubRepository extends DraftRepository {
@@ -2913,6 +3034,23 @@ describe('main', () => {
         analysisLanguages: ['en'],
         analysis: emptyAnalysis(),
       });
+    });
+
+    it("closes the source's session before starting its draft over", async () => {
+      await seedDraft(CATS_BREAKDOWN);
+      jest.mocked(projectStorage.startDraftOver).mockResolvedValue();
+      const { openSession, getFullAnalysis } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      const startDraftOver = findRegisteredHandler('interlinearizer.startDraftOver');
+
+      await startDraftOver?.({
+        sourceProjectId: 'src-project',
+        from: { analysisLanguages: ['fr'] },
+      });
+
+      await expect(getFullAnalysis({ sessionId })).rejects.toThrow(
+        `no session ${sessionId} is open`,
+      );
     });
 
     it("lists the session's analysis language for a draft that lists none", async () => {

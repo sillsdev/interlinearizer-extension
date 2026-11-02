@@ -37,7 +37,8 @@ public abstract class CrdtTestBase : IAsyncDisposable
         HarmonyConfig = _services.GetRequiredService<Microsoft.Extensions.Options.IOptions<HarmonyConfig>>().Value;
         DbContext = _services.GetRequiredService<InterlinearizerCrdtDbContext>();
         DbContext.Database.OpenConnection();
-        DbContext.Database.EnsureCreated();
+        // Through the migrations, as a real database is, so a test fails where they lag the model.
+        DbContext.Database.Migrate();
         DataModel = _services.GetRequiredService<DataModel>();
         Repository = new AnalysisRepository(DataModel, new ClientIdentity(ClientId));
     }

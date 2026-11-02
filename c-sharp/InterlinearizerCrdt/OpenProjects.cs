@@ -15,7 +15,8 @@ public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposab
 
     /// <summary>
     /// Opens <paramref name="projectId"/> over the database at <paramref name="dbPath"/>, created
-    /// when missing. Two concurrent opens of one project share one scope.
+    /// when missing and brought up to the current schema when behind. Two concurrent opens of one
+    /// project share one scope.
     /// </summary>
     public async Task<IServiceProvider> Open(string projectId, string dbPath)
     {
@@ -65,7 +66,7 @@ public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposab
         {
             scope.ServiceProvider.GetRequiredService<CurrentProject>().Set(projectId, dbPath);
             var db = scope.ServiceProvider.GetRequiredService<InterlinearizerCrdtDbContext>();
-            await db.Database.EnsureCreatedAsync();
+            await db.Database.MigrateAsync();
             return scope;
         }
         catch

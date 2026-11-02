@@ -156,6 +156,8 @@ export class PageClient {
 
   private readonly replyListeners = new Set<(reply: CommandReply) => void>();
 
+  private readonly heardListeners = new Set<() => void>();
+
   private version = 0;
 
   private heldSnapshot: { version: number; analysis: TextAnalysis } = {
@@ -384,6 +386,15 @@ export class PageClient {
     return () => this.replyListeners.delete(listener);
   }
 
+  /**
+   * Calls `listener` whenever the client takes in a reported change rather than skipping it, until
+   * the returned function is called.
+   */
+  subscribeHeard(listener: () => void): () => void {
+    this.heardListeners.add(listener);
+    return () => this.heardListeners.delete(listener);
+  }
+
   /** Calls `listener` whenever what the client holds changes, until the returned function is called. */
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -405,6 +416,7 @@ export class PageClient {
   }
 
   private hearNow(change: AnalysisChange): void {
+    this.heardListeners.forEach((listener) => listener());
     const cache = this.cacheHeld;
     if (!cache) {
       if (this.outlineReading) this.readOutlineAgain('outline');

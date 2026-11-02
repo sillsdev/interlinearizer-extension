@@ -13,6 +13,7 @@ const COPY_TO_EDITABLE_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_copyModal_title%',
   '%interlinearizer_copyModal_defaultName%',
   '%interlinearizer_copyModal_defaultNameNumbered%',
+  '%interlinearizer_copyModal_defaultDescription%',
   '%interlinearizer_copyModal_create%',
   '%interlinearizer_copyModal_cancel%',
   '%interlinearizer_copyModal_info%',
@@ -38,10 +39,13 @@ function uniqueDefaultName(
 /**
  * Dialog for copying a Paratext 9 import into an editable project: a name and an optional
  * description. The name is prefilled with a default that no project in the source's loaded list
- * bears, or with the unnumbered default when the list fails to load. There is no languages field -
- * the copy carries the import's languages verbatim.
+ * bears, or with the unnumbered default when the list fails to load. The description is prefilled
+ * with a default that names the source. There is no languages field - the copy carries the import's
+ * languages verbatim.
  *
  * @param props.sourceProjectId - Platform.Bible project ID the import, and so the copy, belongs to.
+ * @param props.sourceShortName - Short name of the source project, which the default description
+ *   names.
  * @param props.isSubmitting - When `true`, the copy is being created: the buttons go inert and the
  *   modal cannot be dismissed, so the in-flight work cannot be abandoned.
  * @param props.onSubmit - Called with the trimmed name and the trimmed description (or `undefined`
@@ -50,18 +54,20 @@ function uniqueDefaultName(
  */
 export function CopyToEditableModal({
   sourceProjectId,
+  sourceShortName,
   isSubmitting,
   onSubmit,
   onClose,
 }: Readonly<{
   sourceProjectId: string;
+  sourceShortName: string;
   isSubmitting: boolean;
   onSubmit: (name: string, description?: string) => void;
   onClose: () => void;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(COPY_TO_EDITABLE_STRING_KEYS);
   const [name, setName] = useState<string | undefined>(undefined);
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState<string | undefined>(undefined);
   const { projects, isLoading } = useProjectsForSource(sourceProjectId);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
@@ -71,13 +77,18 @@ export function CopyToEditableModal({
     localizedStrings['%interlinearizer_copyModal_defaultName%'],
     localizedStrings['%interlinearizer_copyModal_defaultNameNumbered%'],
   );
-  // The prefill resolves with the strings and the project list, after the first render, so the
-  // draft name starts undefined and falls back to the default until the user edits it.
+  // The prefills resolve with the strings and the project list, after the first render, so the
+  // draft name and description start undefined and fall back to their defaults until edited.
   const nameValue = name ?? defaultName;
+  const descriptionValue =
+    description ??
+    formatReplacementString(localizedStrings['%interlinearizer_copyModal_defaultDescription%'], {
+      projectName: sourceShortName,
+    });
 
   const handleSubmit = () => {
     const trimmedName = nameValue.trim();
-    const trimmedDescription = description.trim();
+    const trimmedDescription = descriptionValue.trim();
     onSubmit(
       trimmedName === '' ? defaultName : trimmedName,
       trimmedDescription === '' ? undefined : trimmedDescription,
@@ -117,7 +128,7 @@ export function CopyToEditableModal({
       <Textarea
         className="tw:mb-4"
         id="copy-to-editable-description"
-        value={description}
+        value={descriptionValue}
         onChange={(e) => setDescription(e.target.value)}
       />
       <div className="tw:modal-actions">

@@ -1,5 +1,6 @@
 import papi, { logger } from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
+import { formatReplacementString } from 'platform-bible-utils';
 import type { Book } from 'interlinearizer';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
@@ -208,12 +209,15 @@ export async function importPt9Project(
     );
   }
 
-  const [name, description] = await Promise.all([
+  const [nameFormat, descriptionFormat, projectName] = await Promise.all([
     papi.localization.getLocalizedString({ localizeKey: '%interlinearizer_pt9Import_name%' }),
     papi.localization.getLocalizedString({
       localizeKey: '%interlinearizer_pt9Import_description%',
     }),
+    readShortName(sourceProjectId),
   ]);
+  const name = formatReplacementString(nameFormat, { projectName });
+  const description = formatReplacementString(descriptionFormat, { projectName });
 
   const project = await projectStorage.savePt9Import(
     token,
@@ -228,4 +232,17 @@ export async function importPt9Project(
     `Interlinearizer: imported Paratext 9 interlinear data from ${sourceProjectId} into ${project.id}`,
   );
   return { outcome: 'imported', projectId: project.id, report, summary: summarizeProject(project) };
+}
+
+/** The source project's short name, or its id when the name cannot be read. */
+async function readShortName(sourceProjectId: string): Promise<string> {
+  try {
+    const pdp = await papi.projectDataProviders.get('platform.base', sourceProjectId);
+    return (await pdp.getSetting('platform.name')) || sourceProjectId;
+  } catch (e) {
+    logger.warn(
+      `Interlinearizer: could not read the short name of project ${sourceProjectId}: ${e}`,
+    );
+    return sourceProjectId;
+  }
 }

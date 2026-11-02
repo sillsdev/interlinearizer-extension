@@ -1,16 +1,16 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Pt9ImportModal } from '../../../components/modals/Pt9ImportModal';
 import type { Pt9ImportReport } from '../../../converters/pt9';
 
 const LOCALIZED: Record<string, string> = {
-  '%interlinearizer_pt9ImportModal_title%': 'Import from Paratext 9',
+  '%interlinearizer_pt9ImportModal_title%': 'Import from Paratext 9: {projectName}',
   '%interlinearizer_pt9ImportModal_syncTitle%': 'Sync from Paratext 9',
-  '%interlinearizer_pt9ImportModal_importing%': 'Importing…',
+  '%interlinearizer_pt9ImportModal_importing%': 'Importing {projectName}…',
   '%interlinearizer_pt9ImportModal_syncing%': 'Syncing…',
   '%interlinearizer_pt9ImportModal_failed%': 'The import failed.',
   '%interlinearizer_pt9ImportModal_tooLarge%': 'The interlinear data is too large.',
@@ -20,7 +20,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_importedCounts%': '{converted} of {total} clusters',
   '%interlinearizer_pt9ImportModal_phraseCounts%': '{phrases} phrases',
   '%interlinearizer_pt9ImportModal_notImported_label%': 'Not imported',
-  '%interlinearizer_pt9ImportModal_notImportedCount%': '{count} clusters: {reasons}',
+  '%interlinearizer_pt9ImportModal_notImportedCount%': '{count} clusters:',
   '%interlinearizer_pt9ImportModal_reason_verseNotFound%': 'verse not found',
   '%interlinearizer_pt9ImportModal_reason_formMismatch%': 'did not match the text',
   '%interlinearizer_pt9ImportModal_reason_lemmaOrOther%': 'unused legacy data',
@@ -116,15 +116,46 @@ describe('Pt9ImportModal', () => {
     jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
   });
 
-  it('shows the import progress line while running, with no dismiss affordances', () => {
-    render(<Pt9ImportModal phase={{ kind: 'running' }} mode="import" onClose={jest.fn()} />);
+  it('titles the import progress with the source short name, with no dismiss affordances', () => {
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'running' }}
+        mode="import"
+        sourceShortName="SRC"
+        onClose={jest.fn()}
+      />,
+    );
 
-    expect(screen.getByTestId('pt9-import-running')).toHaveTextContent('Importing…');
+    expect(screen.getByTestId('pt9-import-modal-title')).toHaveTextContent('Importing SRC…');
+    expect(screen.queryByTestId('pt9-import-running')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
+  it('titles the report with the source short name', () => {
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report: makeReport() }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pt9-import-modal-title')).toHaveTextContent(
+      'Import from Paratext 9: SRC',
+    );
+  });
+
   it('shows the sync progress line and title in sync mode', () => {
-    render(<Pt9ImportModal phase={{ kind: 'running' }} mode="sync" onClose={jest.fn()} />);
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'running' }}
+        mode="sync"
+        sourceShortName="SRC"
+        onClose={jest.fn()}
+      />,
+    );
 
     expect(screen.getByTestId('pt9-import-modal-title')).toHaveTextContent('Sync from Paratext 9');
     expect(screen.getByTestId('pt9-import-running')).toHaveTextContent('Syncing…');
@@ -132,7 +163,14 @@ describe('Pt9ImportModal', () => {
 
   it('shows the failure line with Close on error', async () => {
     const onClose = jest.fn();
-    render(<Pt9ImportModal phase={{ kind: 'error' }} mode="import" onClose={onClose} />);
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'error' }}
+        mode="import"
+        sourceShortName="SRC"
+        onClose={onClose}
+      />,
+    );
 
     expect(screen.getByTestId('pt9-import-error')).toHaveTextContent('The import failed.');
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -144,6 +182,7 @@ describe('Pt9ImportModal', () => {
       <Pt9ImportModal
         phase={{ kind: 'error', reason: 'tooLarge' }}
         mode="import"
+        sourceShortName="SRC"
         onClose={jest.fn()}
       />,
     );
@@ -158,6 +197,7 @@ describe('Pt9ImportModal', () => {
       <Pt9ImportModal
         phase={{ kind: 'report', report: makeReport() }}
         mode="import"
+        sourceShortName="SRC"
         onOpen={jest.fn()}
         onClose={jest.fn()}
       />,
@@ -167,10 +207,39 @@ describe('Pt9ImportModal', () => {
     expect(report).toHaveTextContent('Languages: en, fr');
     expect(report).toHaveTextContent('Books: MAT, MRK');
     expect(report).toHaveTextContent('15 of 25 clusters, 2 phrases');
-    expect(report).toHaveTextContent('11 clusters: 6 verse not found; 4 did not match the text');
+    expect(report).toHaveTextContent('11 clusters:');
     // Only the top two reasons are named; the third stays in the JSON report.
-    expect(report).not.toHaveTextContent('duplicate data');
+    expect(
+      within(report)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual(['6 verse not found', '4 did not match the text']);
     expect(report).toHaveTextContent('Books with no text: MRK');
+  });
+
+  it('groups the digits of large counts', () => {
+    const report = makeReport();
+    report.languages.splice(1, 1);
+    Object.assign(report.languages[0].books[0], {
+      clustersTotal: 624531,
+      clustersConverted: 530155,
+      phrasesConverted: 51256,
+      clusterDrops: { ...report.languages[0].books[0].clusterDrops, formMismatch: 29525 },
+    });
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    const rendered = screen.getByTestId('pt9-import-report');
+    expect(rendered).toHaveTextContent('530,155 of 624,531 clusters, 51,256 phrases');
+    expect(rendered).toHaveTextContent('29,527 clusters:');
+    expect(rendered).toHaveTextContent('29,525 did not match the text');
   });
 
   it('omits the not-imported and missing-book rows when the import was clean', () => {
@@ -189,6 +258,7 @@ describe('Pt9ImportModal', () => {
       <Pt9ImportModal
         phase={{ kind: 'report', report }}
         mode="import"
+        sourceShortName="SRC"
         onOpen={jest.fn()}
         onClose={jest.fn()}
       />,
@@ -226,6 +296,7 @@ describe('Pt9ImportModal', () => {
       <Pt9ImportModal
         phase={{ kind: 'report', report }}
         mode="import"
+        sourceShortName="SRC"
         onOpen={jest.fn()}
         onClose={jest.fn()}
       />,
@@ -255,6 +326,7 @@ describe('Pt9ImportModal', () => {
           ],
         }}
         mode="sync"
+        sourceShortName="SRC"
         onOpen={jest.fn()}
         onClose={jest.fn()}
       />,
@@ -273,6 +345,7 @@ describe('Pt9ImportModal', () => {
       <Pt9ImportModal
         phase={{ kind: 'report', report: makeReport() }}
         mode="import"
+        sourceShortName="SRC"
         onOpen={jest.fn()}
         onClose={jest.fn()}
       />,
@@ -287,6 +360,7 @@ describe('Pt9ImportModal', () => {
       <Pt9ImportModal
         phase={{ kind: 'report', report: makeReport() }}
         mode="import"
+        sourceShortName="SRC"
         onOpen={onOpen}
         onClose={jest.fn()}
       />,
@@ -302,6 +376,7 @@ describe('Pt9ImportModal', () => {
       <Pt9ImportModal
         phase={{ kind: 'report', report: makeReport() }}
         mode="offer"
+        sourceShortName="SRC"
         onOpen={onOpen}
         onClose={jest.fn()}
       />,
@@ -317,6 +392,7 @@ describe('Pt9ImportModal', () => {
       <Pt9ImportModal
         phase={{ kind: 'report', report: makeReport() }}
         mode="sync"
+        sourceShortName="SRC"
         onClose={jest.fn()}
       />,
     );

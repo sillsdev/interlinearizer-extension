@@ -219,7 +219,6 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
   ProjectMetadataModal: ({
     onClose,
     onProjectSaved,
-    onProjectDeleted,
   }: {
     onClose: () => void;
     onProjectSaved?: (u: {
@@ -228,7 +227,6 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
       analysisLanguages: string[];
       updatedAt?: string;
     }) => void;
-    onProjectDeleted?: (id: string) => void;
   }) => (
     <div data-testid="metadata-modal">
       <button type="button" data-testid="metadata-close" onClick={onClose}>
@@ -248,25 +246,35 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
       >
         Save
       </button>
-      <button
-        type="button"
-        data-testid="metadata-delete"
-        onClick={() => {
-          onProjectDeleted?.(MOCK_PROJECT.id);
-          onClose();
-        }}
-      >
-        Delete
+    </div>
+  ),
+}));
+
+jest.mock('../../../components/modals/DeleteProjectConfirm', () => ({
+  __esModule: true,
+  DeleteProjectConfirm: ({
+    projectId,
+    projectName,
+    isPt9Import,
+    onCancel,
+    onDeleted,
+  }: {
+    projectId: string;
+    projectName?: string;
+    isPt9Import: boolean;
+    onCancel: () => void;
+    onDeleted: (id: string) => void;
+  }) => (
+    <div
+      data-testid="delete-confirm"
+      data-project-name={projectName}
+      data-pt9-import={String(isPt9Import)}
+    >
+      <button type="button" data-testid="delete-confirm-cancel" onClick={onCancel}>
+        Cancel
       </button>
-      <button
-        type="button"
-        data-testid="metadata-delete-2"
-        onClick={() => {
-          onProjectDeleted?.(MOCK_PROJECT_2.id);
-          onClose();
-        }}
-      >
-        Delete 2
+      <button type="button" data-testid="delete-confirm-ok" onClick={() => onDeleted(projectId)}>
+        Delete
       </button>
     </div>
   ),
@@ -318,6 +326,7 @@ function buildProps(overrides: ModalsOverrides = {}) {
     openRequest: overrides.openRequest,
     projectId: 'source-proj',
     setModal: overrides.setModal ?? jest.fn(),
+    sourceShortName: 'SRC',
     useWebViewState: overrides.useWebViewState ?? makeWebViewState(),
   };
 }
@@ -1230,14 +1239,28 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('select');
     });
 
-    it('resets the active project when the deleted project is the active one', async () => {
+    it('asks to confirm deleting the active project', () => {
+      render(<ProjectModals {...buildProps({ modal: 'delete', activeProject: MOCK_PROJECT })} />);
+      const confirm = screen.getByTestId('delete-confirm');
+      expect(confirm).toHaveAttribute('data-project-name', MOCK_PROJECT.name);
+      expect(confirm).toHaveAttribute('data-pt9-import', 'false');
+    });
+
+    it('tells the delete confirmation when the active project is a Paratext 9 import', () => {
+      render(
+        <ProjectModals {...buildProps({ modal: 'delete', activeProject: MOCK_IMPORT_PROJECT })} />,
+      );
+      expect(screen.getByTestId('delete-confirm')).toHaveAttribute('data-pt9-import', 'true');
+    });
+
+    it('resets and detaches the active project once it is deleted', async () => {
       const setModal = jest.fn();
       const resetActiveProject = jest.fn();
       const detachFromProject = jest.fn();
       render(
         <ProjectModals
           {...buildProps({
-            modal: 'metadata',
+            modal: 'delete',
             activeProject: MOCK_PROJECT,
             detachFromProject,
             setModal,
@@ -1245,8 +1268,7 @@ describe('ProjectModals', () => {
           })}
         />,
       );
-      // Delete targets MOCK_PROJECT.id, which is the active project, so reset must fire.
-      await userEvent.click(screen.getByTestId('metadata-delete'));
+      await userEvent.click(screen.getByTestId('delete-confirm-ok'));
       expect(resetActiveProject).toHaveBeenCalledTimes(1);
       expect(detachFromProject).toHaveBeenCalledTimes(1);
       expect(setModal).toHaveBeenCalledWith('none');
@@ -1258,17 +1280,34 @@ describe('ProjectModals', () => {
       render(
         <ProjectModals
           {...buildProps({
-            modal: 'metadata',
-            // The mock's Delete targets MOCK_PROJECT.id, so the import takes that id.
-            activeProject: { ...MOCK_PROJECT, pt9Import: MOCK_IMPORT_PROJECT.pt9Import },
+            modal: 'delete',
+            activeProject: MOCK_IMPORT_PROJECT,
             detachFromProject,
             useWebViewState: makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject }),
           })}
         />,
       );
-      await userEvent.click(screen.getByTestId('metadata-delete'));
+      await userEvent.click(screen.getByTestId('delete-confirm-ok'));
       expect(resetActiveProject).toHaveBeenCalledTimes(1);
       expect(detachFromProject).not.toHaveBeenCalled();
+    });
+
+    it('closes without deleting when the delete confirmation is canceled', async () => {
+      const setModal = jest.fn();
+      const resetActiveProject = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'delete',
+            activeProject: MOCK_PROJECT,
+            setModal,
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject }),
+          })}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('delete-confirm-cancel'));
+      expect(setModal).toHaveBeenCalledWith('none');
+      expect(resetActiveProject).not.toHaveBeenCalled();
     });
 
     it('resets the active project when the select modal deletes it', async () => {
@@ -1292,55 +1331,36 @@ describe('ProjectModals', () => {
     });
 
     it('does not reset the active project when a different project is deleted', async () => {
-      const setModal = jest.fn();
       const resetActiveProject = jest.fn();
       const detachFromProject = jest.fn();
-      const useWebViewState = makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject });
-      const { rerender } = render(
+      render(
         <ProjectModals
           {...buildProps({
             modal: 'select',
-            activeProject: MOCK_PROJECT,
+            activeProject: MOCK_PROJECT_2,
             detachFromProject,
-            setModal,
-            useWebViewState,
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject }),
           })}
         />,
       );
-      await userEvent.click(screen.getByTestId('select-view-info-2'));
-      rerender(
-        <ProjectModals
-          {...buildProps({
-            modal: 'metadata',
-            activeProject: MOCK_PROJECT,
-            detachFromProject,
-            setModal,
-            useWebViewState,
-          })}
-        />,
-      );
-      setModal.mockClear();
-      // Delete targets proj-2 while proj-1 is active, so the id guard must skip the reset.
-      await userEvent.click(screen.getByTestId('metadata-delete-2'));
+      // The select mock's Delete targets MOCK_PROJECT while MOCK_PROJECT_2 is active.
+      await userEvent.click(screen.getByTestId('select-delete'));
       expect(resetActiveProject).not.toHaveBeenCalled();
       expect(detachFromProject).not.toHaveBeenCalled();
-      expect(setModal).toHaveBeenCalledWith('select');
     });
 
     it('does not reset the active project when there is none on delete', async () => {
-      const setModal = jest.fn();
       const resetActiveProject = jest.fn();
-      const useWebViewState = makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject });
-      const { rerender } = render(
-        <ProjectModals {...buildProps({ modal: 'select', setModal, useWebViewState })} />,
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'select',
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject }),
+          })}
+        />,
       );
-      await userEvent.click(screen.getByTestId('select-view-info'));
-      rerender(<ProjectModals {...buildProps({ modal: 'metadata', setModal, useWebViewState })} />);
-      setModal.mockClear();
-      await userEvent.click(screen.getByTestId('metadata-delete'));
-      // With no active project, the `activeProject?.id === deletedId` guard is false, so no reset fires.
+      await userEvent.click(screen.getByTestId('select-delete'));
       expect(resetActiveProject).not.toHaveBeenCalled();
-      expect(setModal).toHaveBeenCalledWith('select');
     });
 
     it('prefers the metadata project over the active project when both are set', async () => {

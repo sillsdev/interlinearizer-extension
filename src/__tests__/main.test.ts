@@ -655,6 +655,7 @@ describe('main', () => {
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
           'interlinearizer.openProjectInfoModal',
+          'interlinearizer.openDeleteProjectModal',
           'interlinearizer.openAnalysisCatalog',
           'interlinearizer.openConcordance',
           'interlinearizer.undo',

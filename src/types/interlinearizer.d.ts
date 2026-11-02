@@ -144,6 +144,13 @@ declare module 'papi-shared-types' {
     'interlinearizer.openProjectInfoModal': () => Promise<void>;
 
     /**
+     * Opens the delete confirmation for the active project in the Interlinearizer WebView. The
+     * backend registers this command to make it visible to the platform menu system; all logic
+     * executes in the WebView.
+     */
+    'interlinearizer.openDeleteProjectModal': () => Promise<void>;
+
+    /**
      * Saves the current draft's analysis to the active project (the Save target), or opens the Save
      * As modal when there is no active project. The backend registers this command to make it
      * visible to the platform menu system; all logic executes in the WebView.

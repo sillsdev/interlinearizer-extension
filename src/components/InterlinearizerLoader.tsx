@@ -676,15 +676,14 @@ function InterlinearizerLoaderInner({
     'platform.name',
     '',
   );
+  const sourceShortName =
+    (!isPlatformError(sourceShortNameSetting) && sourceShortNameSetting) || projectId;
   const tabTitleFormat = resolvedOrEmpty(localizedStrings['%interlinearizer_tabTitle%']);
   // Undefined until both inputs resolve, leaving the provider's title in place meanwhile.
   const tabTitle =
     isSourceShortNameLoading || !tabTitleFormat
       ? undefined
-      : formatReplacementString(tabTitleFormat, {
-          projectName:
-            (!isPlatformError(sourceShortNameSetting) && sourceShortNameSetting) || projectId,
-        });
+      : formatReplacementString(tabTitleFormat, { projectName: sourceShortName });
 
   useEffect(() => {
     if (tabTitle === undefined) return;
@@ -1705,7 +1704,8 @@ function InterlinearizerLoaderInner({
           item.command === 'interlinearizer.openNewProjectModal' ||
           item.command === 'interlinearizer.save' ||
           item.command === 'interlinearizer.openSaveAsModal' ||
-          item.command === 'interlinearizer.openDiscardChangesModal');
+          item.command === 'interlinearizer.openDiscardChangesModal' ||
+          item.command === 'interlinearizer.openDeleteProjectModal');
       if (heldWhileSaving) {
         papi.notifications
           .send({ message: '%interlinearizer_info_save_in_progress%', severity: 'info' })
@@ -1720,6 +1720,8 @@ function InterlinearizerLoaderInner({
         if (activeProject) {
           setModal('metadata');
         }
+      } else if (item.command === 'interlinearizer.openDeleteProjectModal') {
+        if (activeProject) setModal('delete');
       } else if (item.command === 'interlinearizer.save') {
         handleSave();
       } else if (item.command === 'interlinearizer.openSaveAsModal') {
@@ -1753,8 +1755,8 @@ function InterlinearizerLoaderInner({
 
   /**
    * Fetches the raw top-menu data for this WebView from the platform's menu data provider. This
-   * call performs no filtering; the active-project hiding of the "View Project Info" item is
-   * applied separately in {@link projectMenuData}.
+   * call performs no filtering; the active-project hiding of the "Interlinear info" and "Delete"
+   * items is applied separately in {@link projectMenuData}.
    */
   const [webViewMenuPossiblyError] = useData(papi.menuData.dataProviderName).WebViewMenu(
     'interlinearizer.mainWebView',
@@ -1775,7 +1777,10 @@ function InterlinearizerLoaderInner({
         ? webViewMenuPossiblyError
         : DEFAULT_WEB_VIEW_MENU;
     const inertCommands = new Set<string>();
-    if (!activeProject) inertCommands.add('interlinearizer.openProjectInfoModal');
+    if (!activeProject) {
+      inertCommands.add('interlinearizer.openProjectInfoModal');
+      inertCommands.add('interlinearizer.openDeleteProjectModal');
+    }
     if (!openLexiconChooser) inertCommands.add('interlinearizer.openLexiconChooser');
     if (!menu.topMenu || inertCommands.size === 0) return menu.topMenu;
     const { items } = menu.topMenu;
@@ -2182,19 +2187,27 @@ function InterlinearizerLoaderInner({
         openRequest={openRequest}
         projectId={projectId}
         setModal={setModal}
+        sourceShortName={sourceShortName}
         useWebViewState={useWebViewState}
       />
 
-      {showPt9Checking && offerProbe === 'pending' && <Pt9CheckingModal />}
+      {showPt9Checking && offerProbe === 'pending' && (
+        <Pt9CheckingModal sourceShortName={sourceShortName} />
+      )}
 
       {offerPt9Import && offerProbe === 'available' && !isDraftLoading && modal === 'none' && (
-        <Pt9ConvertPromptModal onYes={handlePt9OfferYes} onNo={handlePt9OfferNo} />
+        <Pt9ConvertPromptModal
+          sourceShortName={sourceShortName}
+          onYes={handlePt9OfferYes}
+          onNo={handlePt9OfferNo}
+        />
       )}
 
       {modal === 'importPt9' && (
         <Pt9ImportModal
           phase={pt9Phase}
           mode={pt9Mode === 'autoSync' ? 'sync' : pt9Mode}
+          sourceShortName={sourceShortName}
           onOpen={handlePt9Open}
           onClose={handlePt9Close}
         />
@@ -2213,6 +2226,7 @@ function InterlinearizerLoaderInner({
       {copyModalOpen && (
         <CopyToEditableModal
           sourceProjectId={projectId}
+          sourceShortName={sourceShortName}
           isSubmitting={copyGuard.isSubmitting}
           onSubmit={handleCopySubmit}
           onClose={() => setCopyModalOpen(false)}

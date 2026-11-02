@@ -153,6 +153,8 @@ function ReportRow({ label, value }: Readonly<{ label: string; value: string }>)
  *   report; `offer` titles it the same but the report carries a single Open, dismissal included -
  *   the user already chose to convert, so the report is information on the way in, not a fork;
  *   `sync` titles it as a sync and offers only Close (the project is already open).
+ * @param props.sourceShortName - Short name of the source project, which an import's titles end
+ *   with.
  * @param props.onOpen - Called when the user opens the imported project from the report; not
  *   offered in `sync` mode, where the project is already open.
  * @param props.onClose - Called when the user dismisses the report or failure.
@@ -160,11 +162,13 @@ function ReportRow({ label, value }: Readonly<{ label: string; value: string }>)
 export function Pt9ImportModal({
   phase,
   mode,
+  sourceShortName,
   onOpen,
   onClose,
 }: Readonly<{
   phase: Pt9ImportModalPhase;
   mode: 'import' | 'offer' | 'sync';
+  sourceShortName: string;
   onOpen?: () => void;
   onClose: () => void;
 }>) {
@@ -175,15 +179,28 @@ export function Pt9ImportModal({
   const title =
     mode === 'sync'
       ? localizedStrings['%interlinearizer_pt9ImportModal_syncTitle%']
-      : localizedStrings['%interlinearizer_pt9ImportModal_title%'];
+      : formatReplacementString(localizedStrings['%interlinearizer_pt9ImportModal_title%'], {
+          projectName: sourceShortName,
+        });
+
+  if (phase.kind === 'running' && mode !== 'sync') {
+    return (
+      <ModalShell
+        titleTestId="pt9-import-modal-title"
+        title={formatReplacementString(
+          localizedStrings['%interlinearizer_pt9ImportModal_importing%'],
+          { projectName: sourceShortName },
+        )}
+        width="tw:w-96"
+      />
+    );
+  }
 
   if (phase.kind === 'running') {
     return (
       <ModalShell titleTestId="pt9-import-modal-title" title={title} width="tw:w-96">
         <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-import-running">
-          {mode === 'sync'
-            ? localizedStrings['%interlinearizer_pt9ImportModal_syncing%']
-            : localizedStrings['%interlinearizer_pt9ImportModal_importing%']}
+          {localizedStrings['%interlinearizer_pt9ImportModal_syncing%']}
         </p>
       </ModalShell>
     );
@@ -246,13 +263,12 @@ export function Pt9ImportModal({
   const dropTotal = totals.drops.reduce((sum, drop) => sum + drop.count, 0);
   // Plain-word labels for the dominant reasons; the full per-reason detail stays in the command's
   // JSON report for logs.
-  const reasonText = totals.drops
+  const reasonLines = totals.drops
     .slice(0, 2)
     .map(
       (drop) =>
-        `${drop.count} ${localizedStrings[`%interlinearizer_pt9ImportModal_reason_${drop.reason}%`]}`,
-    )
-    .join('; ');
+        `${drop.count.toLocaleString()} ${localizedStrings[`%interlinearizer_pt9ImportModal_reason_${drop.reason}%`]}`,
+    );
 
   return (
     <ModalShell
@@ -274,24 +290,34 @@ export function Pt9ImportModal({
           label={localizedStrings['%interlinearizer_pt9ImportModal_imported_label%']}
           value={`${formatReplacementString(
             localizedStrings['%interlinearizer_pt9ImportModal_importedCounts%'],
-            { converted: String(totals.clustersConverted), total: String(totals.clustersTotal) },
+            {
+              converted: totals.clustersConverted.toLocaleString(),
+              total: totals.clustersTotal.toLocaleString(),
+            },
           )}${
             totals.phrasesConverted > 0
               ? `, ${formatReplacementString(
                   localizedStrings['%interlinearizer_pt9ImportModal_phraseCounts%'],
-                  { phrases: String(totals.phrasesConverted) },
+                  { phrases: totals.phrasesConverted.toLocaleString() },
                 )}`
               : ''
           }`}
         />
         {dropTotal > 0 && (
-          <ReportRow
-            label={localizedStrings['%interlinearizer_pt9ImportModal_notImported_label%']}
-            value={formatReplacementString(
-              localizedStrings['%interlinearizer_pt9ImportModal_notImportedCount%'],
-              { count: String(dropTotal), reasons: reasonText },
-            )}
-          />
+          <>
+            <ReportRow
+              label={localizedStrings['%interlinearizer_pt9ImportModal_notImported_label%']}
+              value={formatReplacementString(
+                localizedStrings['%interlinearizer_pt9ImportModal_notImportedCount%'],
+                { count: dropTotal.toLocaleString() },
+              )}
+            />
+            <ul className="tw:list-disc tw:ps-5 tw:text-sm tw:text-muted-foreground">
+              {reasonLines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </>
         )}
         {totals.missingBooks.length > 0 && (
           <p className="tw:text-sm tw:text-muted-foreground">

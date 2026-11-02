@@ -425,9 +425,11 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     onOpenImport,
     openRequest,
     useWebViewState,
+    sourceShortName,
   }: {
     modal: string;
     setModal: (m: string) => void;
+    sourceShortName: string;
     activeProject: MockProject | undefined;
     defaultAnalysisLanguage?: string;
     hasUnsavedWork: boolean;
@@ -447,6 +449,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
       <div
         data-testid="project-modals"
         data-modal={modal}
+        data-source-short-name={sourceShortName}
         data-default-lang={defaultAnalysisLanguage}
         data-has-unsaved-work={hasUnsavedWork}
         data-active-project-name={activeProject?.name}
@@ -1786,6 +1789,15 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('pt9-import-banner')).not.toBeInTheDocument();
     });
 
+    it('opens the delete confirmation from the Delete menu item while an import is open', async () => {
+      mockImportCommands();
+      await renderImportView();
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-delete-project'));
+
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'delete');
+    });
+
     it('silences Save, Save As, and Discard Unsaved Changes while an import is open', async () => {
       mockImportCommands();
       await renderImportView();
@@ -2288,7 +2300,7 @@ describe('InterlinearizerLoader', () => {
         'interlinearizer.createEditableCopy',
         'import-1',
         '%interlinearizer_copyModal_defaultName%',
-        undefined,
+        '%interlinearizer_copyModal_defaultDescription%',
       );
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-open-request-id', '1');
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
@@ -2904,6 +2916,116 @@ describe('InterlinearizerLoader', () => {
       // The deleted project was the active one, so the loader should now pass `activeProject:
       // undefined` down to ProjectModals (the stub omits the attribute when there is no name).
       expect(screen.getByTestId('project-modals')).not.toHaveAttribute('data-active-project-name');
+    });
+
+    it('opens the delete confirmation from the Delete menu item when a project is active', async () => {
+      await act(async () =>
+        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
+      );
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-delete-project'));
+
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'delete');
+    });
+
+    it('does not open the delete confirmation from the Delete menu item when no project is active', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-delete-project'));
+
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
+    });
+
+    describe('the Delete item', () => {
+      /** Serves a project menu holding the Delete item and one that is never filtered out. */
+      function serveMenuWithDeleteItem() {
+        const menu = {
+          topMenu: {
+            label: 'top',
+            items: [
+              {
+                command: 'interlinearizer.openDeleteProjectModal',
+                label: 'Delete',
+                group: 'interlinearizer.draftActions',
+                order: 2,
+                localizeNotes: '',
+              },
+              {
+                command: 'interlinearizer.openSelectProjectModal',
+                label: 'Select',
+                group: 'interlinearizer.projectActions',
+                order: 1,
+                localizeNotes: '',
+              },
+            ],
+          },
+          includeDefaults: true,
+          contextMenu: undefined,
+        };
+        jest
+          .mocked(useData)
+          .mockReturnValue(
+            new Proxy({}, { get: () => jest.fn().mockReturnValue([menu, jest.fn(), false]) }),
+          );
+      }
+
+      it('is offered while a project is active', async () => {
+        serveMenuWithDeleteItem();
+        await act(async () =>
+          renderLoader({
+            useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }),
+          }),
+        );
+
+        expect(screen.getByTestId('tab-toolbar')).toHaveAttribute(
+          'data-project-menu-commands',
+          'interlinearizer.openDeleteProjectModal interlinearizer.openSelectProjectModal',
+        );
+      });
+
+      it('is gone while no project is active', async () => {
+        serveMenuWithDeleteItem();
+        await act(async () => {
+          renderLoader();
+        });
+
+        expect(screen.getByTestId('tab-toolbar')).toHaveAttribute(
+          'data-project-menu-commands',
+          'interlinearizer.openSelectProjectModal',
+        );
+      });
+    });
+
+    it("hands the project dialogs the source project's short name", async () => {
+      mockSourceShortName('SRC');
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-source-short-name', 'SRC');
+    });
+
+    it('hands the project dialogs the project ID while the short name cannot be read', async () => {
+      jest
+        .mocked(useProjectSetting)
+        .mockImplementation((_source, key, defaultState) => [
+          key === 'platform.name'
+            ? { message: 'Setting failed', platformErrorVersion: 1 }
+            : defaultState,
+          jest.fn(),
+          jest.fn(),
+          false,
+        ]);
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-source-short-name',
+        testProjectId,
+      );
     });
 
     it('updates the active project name when its metadata is saved', async () => {
@@ -4241,6 +4363,18 @@ describe('InterlinearizerLoader', () => {
       expect(
         mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraftToProject'),
       ).toHaveLength(1);
+    });
+
+    it('holds Delete while a save runs', async () => {
+      await startHeldSave();
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-delete-project'));
+
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+        message: '%interlinearizer_info_save_in_progress%',
+        severity: 'info',
+      });
     });
 
     it('shows no save running, and lets the held commands through, once the save ends', async () => {

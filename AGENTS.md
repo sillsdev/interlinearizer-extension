@@ -25,6 +25,7 @@ npm run test:coverage    # Run with coverage (100% threshold enforced)
 npm test -- path/to/file.test.ts                 # Run a single test file
 npm test -- --testNamePattern="pattern"          # Run tests matching name
 npm run test:c-sharp                             # Check the C# host published for this machine starts
+dotnet test c-sharp/InterlinearizerCrdt.Tests    # Run the Harmony entity tests (TUnit; filters go after --)
 
 # Performance (results land in perf/results/)
 npm run perf:capture     # Capture the WEB sample's USJ from a launched app into perf/.cache
@@ -55,6 +56,8 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 ### C# host
 
 [c-sharp/InterlinearizerHost](c-sharp/InterlinearizerHost) is a .NET program the extension starts on activation ([csharpHost.ts](src/services/csharpHost.ts)) and stops on deactivation. It registers its commands on the PAPI network, so TypeScript calls them with `papi.commands.sendCommand` like any other. It exits once its connection to Platform.Bible closes. It targets .NET 10, which Harmony needs, and is published self-contained for each platform Platform.Bible ships for, since Platform.Bible's own runtime is private to its process. It talks to the network through its own small client, since core's is not packaged for extensions to use; that client offers the methods core's does, so services can move into core later. The build copies whatever `npm run build:c-sharp` has published; without it the extension logs that the host could not start and carries on.
+
+[c-sharp/InterlinearizerCrdt](c-sharp/InterlinearizerCrdt) holds the Harmony (CRDT) model of `TextAnalysis`: one entity per record type the analysis layer lists, with a create, replace and delete change for each, registered in [InterlinearizerCrdtKernel.cs](c-sharp/InterlinearizerCrdt/InterlinearizerCrdtKernel.cs). Values an entity owns, such as a token analysis's morphemes or a link's token snapshots, are stored inside it as JSON, not as entities. A link references its analysis, so deleting the analysis deletes the link. Every change type's JSON discriminator is pinned by [ChangeSerializationTests.cs](c-sharp/InterlinearizerCrdt.Tests/ChangeSerializationTests.cs): a commit written today must still deserialize later, so a renamed or removed change type needs a migration path, and a new one is appended to the model versions. Nothing exposes the model over PAPI yet. [c-sharp/Interlinearizer.slnx](c-sharp/Interlinearizer.slnx) groups the three C# projects.
 
 ### WebView UI
 

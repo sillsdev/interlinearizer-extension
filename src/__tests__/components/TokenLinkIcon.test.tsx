@@ -31,12 +31,13 @@ afterEach(() => {
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useAnalysisReadOnly: () => mockAnalysisReadOnly.value,
-  usePhraseDispatch: () => ({
-    createPhrase: mockCreatePhrase,
-    updatePhrase: mockUpdatePhrase,
-    deletePhrase: mockDeletePhrase,
-    mergePhrases: mockMergePhrases,
-  }),
+  usePhraseDispatch: () =>
+    jest.requireActual('../test-helpers').withSplitPhrase({
+      createPhrase: mockCreatePhrase,
+      updatePhrase: mockUpdatePhrase,
+      deletePhrase: mockDeletePhrase,
+      mergePhrases: mockMergePhrases,
+    }),
 }));
 
 /**
@@ -150,7 +151,7 @@ describe('TokenLinkIcon', () => {
     );
   });
 
-  it('clicking unlink calls splitPhraseAtBoundary (deletePhrase for 2-token phrase)', async () => {
+  it('clicking unlink splits the phrase through the dispatch (deletePhrase for 2-token phrase)', async () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     renderIcon(
       <TokenLinkIcon

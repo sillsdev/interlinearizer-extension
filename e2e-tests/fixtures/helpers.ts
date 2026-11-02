@@ -1723,6 +1723,30 @@ export async function discardAllChanges(page: Page): Promise<void> {
   await expect(dialogTitle).not.toBeVisible({ timeout: 10_000 });
 }
 
+/** Storage key that puts the Interlinearizer WebView on the host path when set to `'true'`. */
+const HOST_PATH_KEY = 'interlinearizer.hostPath';
+
+/**
+ * Puts the Interlinearizer on the host path when `E2E_HOST_PATH` is `'true'`, and off it otherwise.
+ * Closes an open Interlinearizer tab when that changes the flag, because each WebView reads the
+ * flag once.
+ */
+export async function applyHostPathFlag(page: Page): Promise<void> {
+  const wanted = process.env.E2E_HOST_PATH === 'true';
+  const was = await page.evaluate(
+    ([key, on]) => {
+      const before = localStorage.getItem(key) === 'true';
+      if (on) localStorage.setItem(key, 'true');
+      else localStorage.removeItem(key);
+      return before;
+    },
+    [HOST_PATH_KEY, wanted] as const,
+  );
+  if (was !== wanted && (await interlinearizerTabLocator(page).count()) > 0) {
+    await closeInterlinearizerTab(page);
+  }
+}
+
 /**
  * Close the Interlinearizer dock tab via its close button and wait for it to disappear.
  *

@@ -296,7 +296,9 @@ type ModalsOverrides = Partial<{
   hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
   detachFromProject: jest.Mock;
-  commitDraft: (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>) => Promise<boolean>;
+  commitDraft: (
+    copy: (snapshot: DraftProject, sessionId?: string) => Promise<DraftCopyResult>,
+  ) => Promise<boolean>;
   loadFromProject: jest.Mock;
   newDraft: jest.Mock;
   modal: ModalState;
@@ -343,16 +345,18 @@ function savedAs(project: InterlinearProjectSummary, omittedBooks: string[] = []
 }
 
 /**
- * A `commitDraft` that runs the copy on `snapshot` at once and records what each copy resolved, so
- * a test can tell a save the draft would count as landed from one it would not.
+ * A `commitDraft` that runs the copy on {@link MOCK_DRAFT}, under `sessionId` when given. It records
+ * what each copy resolved, so a test can tell whether the draft would count each save as landed.
  */
-function recordingCommitDraft(snapshot: DraftProject = MOCK_DRAFT) {
+function recordingCommitDraft(sessionId?: string) {
   const outcomes: DraftCopyResult[] = [];
-  const commitDraft = jest.fn(async (copy: (s: DraftProject) => Promise<DraftCopyResult>) => {
-    const copied = await copy(snapshot);
-    outcomes.push(copied);
-    return copied !== false;
-  });
+  const commitDraft = jest.fn(
+    async (copy: (s: DraftProject, session?: string) => Promise<DraftCopyResult>) => {
+      const copied = await copy(MOCK_DRAFT, sessionId);
+      outcomes.push(copied);
+      return copied !== false;
+    },
+  );
   return { commitDraft, outcomes };
 }
 
@@ -465,6 +469,36 @@ describe('ProjectModals', () => {
         analysis: emptyAnalysis(),
       });
       expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it('keeps the active project and the modal when the draft cannot be replaced', async () => {
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT));
+      const loadFromProject = jest.fn().mockRejectedValue(new Error('disk full'));
+      const setModal = jest.fn();
+      const setActiveProject = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'select',
+            loadFromProject,
+            setModal,
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('select-select'));
+
+      await waitFor(() =>
+        expect(papi.notifications.send).toHaveBeenCalledWith({
+          message: '%interlinearizer_error_load_projects_failed%',
+          severity: 'error',
+        }),
+      );
+      expect(setActiveProject).not.toHaveBeenCalled();
+      expect(setModal).not.toHaveBeenCalledWith('none');
     });
 
     it('marks the select modal as opening while the chosen project loads, and clears it after', async () => {
@@ -690,6 +724,27 @@ describe('ProjectModals', () => {
       expect(setModal).not.toHaveBeenCalledWith('none');
     });
 
+    it('creates no project and keeps the modal open when the draft cannot be replaced', async () => {
+      const newDraft = jest.fn().mockRejectedValue(new Error('disk full'));
+      const setModal = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'create', newDraft, setModal })} />);
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      await waitFor(() =>
+        expect(papi.notifications.send).toHaveBeenCalledWith({
+          message: '%interlinearizer_error_create_project_failed%',
+          severity: 'error',
+        }),
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to start the draft from New dialog',
+        expect.any(Error),
+      );
+      expect(papi.commands.sendCommand).not.toHaveBeenCalled();
+      expect(setModal).not.toHaveBeenCalledWith('none');
+    });
+
     it('notifies and falls back to resetActiveProject and keeps modal open when backend returns a non-project shape', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify({ bad: true }));
       const setModal = jest.fn();
@@ -784,14 +839,7 @@ describe('ProjectModals', () => {
       expect(screen.getByTestId('discard-modal')).toBeInTheDocument();
       // Neither draft nor project creation should start until the user confirms discarding.
       expect(newDraft).not.toHaveBeenCalled();
-      expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
-        'interlinearizer.createProject',
-        expect.anything(),
-        expect.anything(),
-        undefined,
-        expect.anything(),
-        expect.anything(),
-      );
+      expect(papi.commands.sendCommand).not.toHaveBeenCalled();
 
       await userEvent.click(screen.getByTestId('discard-confirm'));
       await waitFor(() =>
@@ -876,6 +924,26 @@ describe('ProjectModals', () => {
       );
       // The copy landed, so the draft counts the save.
       expect(outcomes).toEqual([true]);
+    });
+
+    it('saves as a new project through the session that keeps the draft', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(savedAs(MOCK_PROJECT));
+      const { commitDraft } = recordingCommitDraft('session-1');
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft })} />);
+
+      await userEvent.click(screen.getByTestId('saveas-new'));
+
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.saveDraftAsProject',
+          'source-proj',
+          ['en'],
+          undefined,
+          'NewName',
+          'NewDesc',
+          'session-1',
+        ),
+      );
     });
 
     it('reports a copy that left books out as partial, and closes', async () => {
@@ -994,6 +1062,24 @@ describe('ProjectModals', () => {
         { analysisLanguages: ['en'], targetProjectId: undefined },
       );
       expect(outcomes).toEqual([true]);
+    });
+
+    it('overwrites a project through the session that keeps the draft', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+      const { commitDraft } = recordingCommitDraft('session-1');
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft })} />);
+
+      await userEvent.click(screen.getByTestId('saveas-overwrite'));
+
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.saveDraftToProject',
+          'source-proj',
+          'proj-1',
+          { analysisLanguages: ['en'], targetProjectId: undefined },
+          'session-1',
+        ),
+      );
     });
 
     it('sends no overwrite until the draft lets the save run', async () => {

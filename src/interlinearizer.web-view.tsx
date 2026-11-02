@@ -1,4 +1,5 @@
 import type { WebViewProps } from '@papi/core';
+import DuplicateTabNotice from './components/DuplicateTabNotice';
 import InterlinearizerLoader from './components/InterlinearizerLoader';
 
 /**
@@ -20,6 +21,8 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   useWebViewState,
   updateWebViewDefinition,
 }: WebViewProps) {
+  const [duplicateOf] = useWebViewState<string | undefined>('duplicateOf', undefined);
+  if (projectId && duplicateOf !== undefined) return <DuplicateTabNotice webViewId={id} />;
   return (
     <div className="tw:flex tw:flex-col tw:h-full">
       {projectId ? (

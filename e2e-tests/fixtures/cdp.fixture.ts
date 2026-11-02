@@ -15,6 +15,7 @@
  * connects.
  */
 import { test as base, chromium, Page } from '@playwright/test';
+import { applyHostPathFlag } from './helpers';
 
 export { expect } from '@playwright/test';
 
@@ -66,6 +67,7 @@ export const test = base.extend<CdpFixtures>({
 
     if (!page) throw new Error('No renderer page found via CDP');
 
+    await applyHostPathFlag(page);
     await use(page);
     try {
       await browser.close();

@@ -126,18 +126,30 @@ export async function writeAnalysisGloss(
  * Stages clearing the gloss of each token analysis in `analysisIds`, in order. An analysis left
  * empty goes with every token link to it. One made identical to another payload is folded into that
  * payload.
+ *
+ * @returns The ids of the stored analyses that the clear left empty, in order.
  */
 export async function clearAnalysisGlosses(
   buffer: ChangeBuffer,
   { analysisIds, analysisLanguage, now }: ClearAnalysisGlossesRequest,
-): Promise<void> {
+): Promise<string[]> {
+  const emptied: string[] = [];
+  const clear = async (analysisId: string) => {
+    const [stored] = await buffer.getTokenAnalyses([analysisId]);
+    if (!stored) return;
+    const survivor = await writeAnalysisGloss(buffer, {
+      analysisId,
+      value: '',
+      analysisLanguage,
+      now,
+    });
+    if (survivor === undefined) emptied.push(analysisId);
+  };
   await analysisIds.reduce<Promise<unknown>>(
-    (previous, analysisId) =>
-      previous.then(() =>
-        writeAnalysisGloss(buffer, { analysisId, value: '', analysisLanguage, now }),
-      ),
+    (previous, analysisId) => previous.then(() => clear(analysisId)),
     Promise.resolve(),
   );
+  return emptied;
 }
 
 /**

@@ -14,7 +14,7 @@ import { booksMissingFrom } from '../utils/analysis-book';
 import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { missingBook } from '../utils/reanchor-draft';
-import { segmentationForBook } from '../utils/segmentation';
+import { isEmptyDelta, segmentationForBook } from '../utils/segmentation';
 import {
   booksResegmented,
   describeChange,
@@ -72,15 +72,19 @@ export type EditOutcome = {
   reanchorTo?: readonly Book[];
   /** Whether any segment of the draft that a discard leaves has a free translation. */
   hasFreeTranslations?: boolean;
+  /** The token analyses that clearing glosses left empty, and so removed. */
+  emptiedAnalysisIds?: string[];
 };
 
 /** What a session answers an edit with. */
-export type EditReply = CommandReply & Pick<EditOutcome, 'hasFreeTranslations'>;
+export type EditReply = CommandReply &
+  Pick<EditOutcome, 'hasFreeTranslations' | 'emptiedAnalysisIds'>;
 
 /** An open session, as seen by the commands sent to it. */
 export type Session = {
   readonly id: string;
-  readonly scope: SessionScope;
+  /** Changes only when the project that the draft saves to changes. */
+  scope: SessionScope;
   readonly repository: AnalysisRepository;
   /** Every edit to the session's analysis is applied through it, so that undo can revert each one. */
   readonly history: EditHistory;
@@ -184,6 +188,8 @@ async function replyTo(
     staleTranslationBooks: books
       .filter(({ staleTranslations }) => staleTranslations)
       .map(({ bookId }) => bookId),
+    canUndo: session.history.canUndo,
+    canRedo: session.history.canRedo,
   };
 }
 
@@ -217,7 +223,7 @@ async function applyStaged(
   staged: ChangeSet,
   reanchorTo: void | readonly Book[],
   options: Pick<EditOptions, 'unsavedMark'> & Pick<SessionEditOptions, 'step'>,
-): Promise<AppliedChange> {
+): Promise<AppliedChange & { step?: EditStep }> {
   await assertApprovalRule(buffer, session.repository);
   const scope = staged.scope ?? (await session.repository.getScope());
   if (scope.analysisLanguages.length === 0) {
@@ -228,12 +234,10 @@ async function applyStaged(
       ? await reanchorRestored(session.repository)(staged, reanchorTo)
       : undefined;
   const changes = reanchored ? mergeChangeSets(staged, reanchored) : staged;
-  const { unsavedMark, step } = options;
-  const inverse = await session.history.apply(changes, {
-    unsavedMark,
-    step: typeof step === 'function' ? step(changes) : step,
-  });
-  return { changes, inverse };
+  const { unsavedMark } = options;
+  const step = typeof options.step === 'function' ? options.step(changes) : options.step;
+  const inverse = await session.history.apply(changes, { unsavedMark, step });
+  return { changes, inverse, ...(step && { step }) };
 }
 
 /** Runs `step`, calling `markApplied` when the session's history applied anything meanwhile. */
@@ -422,8 +426,8 @@ export class AnalysisSessions {
    * Reports what the changes touched. An edit sent again under a change id that the session has
    * applied gets that edit's reply, or its error, and applies nothing.
    *
-   * @returns The changes applied, naming `intent`, with the pool buckets they touched and the
-   *   `hasFreeTranslations` that `command` returns.
+   * @returns The changes applied, naming `intent`, with the pool buckets they touched, the step
+   *   they were recorded as, and what else `command` returns besides the books to re-anchor to.
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {ApprovalRuleError} If the changes would give a token or segment a second approved
    *   link, or put a token in a second approved phrase; nothing is applied.
@@ -453,7 +457,8 @@ export class AnalysisSessions {
           const staged = buffer.toChangeSet(intent);
           if (!isEmptyChangeSet(staged)) {
             const applied = await applyStaged(session, buffer, staged, reanchorTo, editOptions);
-            return { ...(await replyTo(this.host, session, applied, changeId)), ...extra };
+            const answered = await replyTo(this.host, session, applied, changeId);
+            return { ...answered, ...(applied.step && { step: applied.step }), ...extra };
           }
           if (editOptions.unsavedMark === 'clear') await session.history.markRestoredClean();
           return {
@@ -463,6 +468,8 @@ export class AnalysisSessions {
             poolAnalyses: [],
             resegmentedBooks: [],
             staleTranslationBooks: [],
+            canUndo: session.history.canUndo,
+            canRedo: session.history.canRedo,
             ...extra,
           };
         }),
@@ -543,6 +550,49 @@ export class AnalysisSessions {
     changeId: string = crypto.randomUUID(),
   ): Promise<CommandReply | undefined> {
     return this.moveThroughHistory(sessionId, changeId, (history) => history.redo());
+  }
+
+  /**
+   * In the session's turn, sets the project that the session's draft saves to:
+   * `interlinearProjectId`, or none when it is absent. What there is to undo is kept.
+   *
+   * @throws {ReadOnlyAnalysisError} If the session is read-only.
+   * @throws {Error} If the session is not open, the source project has no interlinear project
+   *   `interlinearProjectId`, or that project is a Paratext 9 import; the target is left as it
+   *   was.
+   * @throws Whatever finding the project throws; the target is left as it was.
+   */
+  setSaveTarget(sessionId: string, interlinearProjectId: string | undefined): Promise<void> {
+    return this.runEdit(sessionId, async (session) => {
+      const scope = await this.resolveScope(session.scope.sourceProjectId, interlinearProjectId);
+      if (scope.kind === 'pt9Import')
+        throw new Error(
+          `Interlinearizer: cannot save a draft to the Paratext 9 import ${interlinearProjectId}`,
+        );
+      session.scope = scope;
+    });
+  }
+
+  /**
+   * In the session's turn, leaves the session's draft with no project to save to, now that its
+   * project is deleted. No state that the history holds counts as saved any more, and the draft is
+   * marked unsaved. The exception is an empty, saved draft, which has nothing to lose and stays
+   * saved.
+   *
+   * @throws {ReadOnlyAnalysisError} If the session is read-only.
+   * @throws {Error} If the session is not open.
+   * @throws Whatever reading the draft or marking it unsaved throws.
+   */
+  detachFromProject(sessionId: string): Promise<void> {
+    return this.runEdit(sessionId, async (session) => {
+      session.scope = { kind: 'draft', sourceProjectId: session.scope.sourceProjectId };
+      const { analysis, segmentation, dirty } = await session.repository.getWholeDraft();
+      const empty =
+        Object.values(analysis).every((records) => records.length === 0) &&
+        isEmptyDelta(segmentation);
+      session.history.forgetSaves(empty && !dirty);
+      if (!empty && !dirty) await session.repository.apply({ intent: 'detachFromProject' });
+    });
   }
 
   /** The id of the session open on the source project, or `undefined` when the source has none open. */

@@ -1,5 +1,7 @@
-import type { AnalysisChange, ChangeId } from 'interlinearizer';
+import type { AnalysisChange, ChangeId, Segment, TextAnalysis } from 'interlinearizer';
 import type { CommandReply } from '../types/command-reply';
+import { emptyAnalysis } from '../types/empty-factories';
+import type { PoolEntry, PoolIndex } from '../utils/suggestion-engine';
 import type { BookOutline, SegmentPage } from '../types/segment-pages';
 import { RecordCache, type PageRequest, type Refetch } from './recordCache';
 
@@ -70,7 +72,8 @@ export const KEPT_APPLIED = 64;
  *
  * - `inFlight`: a fetch is outstanding; `dirty` when a change has since left its answer out of date.
  * - `backoff`: a fetch failed and the next attempt waits for its delay.
- * - `failed`: every attempt failed, until {@link PageClient.retryFailed}.
+ * - `failed`: every attempt failed, until a view asks for the page again or
+ *   {@link PageClient.retryFailed}.
  */
 type PageState =
   | { kind: 'inFlight'; attempt: number; dirty: boolean }
@@ -103,8 +106,9 @@ function wider(a: OutlineRead | undefined, b: OutlineRead): OutlineRead {
  * range that each view asks for. It sends the commands that a view makes and applies their replies.
  * It fetches again whatever a reply or a reported change leaves out of date.
  *
- * A page that fails every retry, or an outline read that fails, waits for
- * {@link PageClient.retryFailed} or for a later outline read.
+ * A page that fails every retry waits for a view to ask for it again, for
+ * {@link PageClient.retryFailed} or for a later outline read. An outline read that fails waits for
+ * either of the last two.
  */
 export class PageClient {
   private readonly source: PageSource;
@@ -150,7 +154,16 @@ export class PageClient {
 
   private readonly listeners = new Set<() => void>();
 
+  private readonly replyListeners = new Set<(reply: CommandReply) => void>();
+
   private version = 0;
+
+  private heldSnapshot: { version: number; analysis: TextAnalysis } = {
+    version: -1,
+    analysis: emptyAnalysis(),
+  };
+
+  private poolSnapshot: { version: number; pool: PoolIndex } = { version: -1, pool: new Map() };
 
   private failedSnapshot: { version: number; pages: ReadonlySet<number> } = {
     version: -1,
@@ -196,9 +209,35 @@ export class PageClient {
     return this.cacheHeld;
   }
 
+  /**
+   * The suggestion pool of the forms held, with the payloads that its buckets name; empty before
+   * the outline loads. The same map until {@link PageClient.loadedVersion} changes.
+   */
+  poolIndex(): PoolIndex {
+    if (this.poolSnapshot.version !== this.version) {
+      const byId = new Map(this.heldAnalysis().tokenAnalyses.map((a) => [a.id, a]));
+      const pool = new Map<string, PoolEntry[]>();
+      this.cacheHeld?.poolBucketsHeld().forEach((bucket, form) => {
+        const entries = bucket.flatMap(({ analysisId, frequency }) => {
+          const analysis = byId.get(analysisId);
+          /* v8 ignore next -- a page or reply brings the payloads its buckets name */
+          return analysis ? [{ analysis, frequency }] : [];
+        });
+        if (entries.length > 0) pool.set(form, entries);
+      });
+      this.poolSnapshot = { version: this.version, pool };
+    }
+    return this.poolSnapshot.pool;
+  }
+
   /** A number that changes whenever what the client holds changes. */
   loadedVersion(): number {
     return this.version;
+  }
+
+  /** The segment held at outline index `index`; `undefined` until its page has loaded. */
+  segmentAt(index: number): Segment | undefined {
+    return this.cacheHeld?.segmentAt(index);
   }
 
   /** Whether the segment at outline index `index` is held. */
@@ -215,6 +254,20 @@ export class PageClient {
   }
 
   /**
+   * Every record held, as one analysis; empty before the outline loads. The same object until
+   * {@link PageClient.loadedVersion} changes.
+   */
+  heldAnalysis(): TextAnalysis {
+    if (this.heldSnapshot.version !== this.version) {
+      this.heldSnapshot = {
+        version: this.version,
+        analysis: this.cacheHeld?.heldAnalysis() ?? emptyAnalysis(),
+      };
+    }
+    return this.heldSnapshot.analysis;
+  }
+
+  /**
    * Loads the book's outline, then the latest range each view asked for.
    *
    * @throws If the source has no text for the book, or the outline cannot be read.
@@ -226,7 +279,7 @@ export class PageClient {
 
   /**
    * Asks for the segments at outline indexes `[start, end)`, and remembers them as `caller`'s
-   * range.
+   * range. Pages among them that failed every retry are asked for again.
    */
   load(start: number, end: number, caller: PageCaller): void {
     this.ranges.set(caller, { start, end });
@@ -277,6 +330,7 @@ export class PageClient {
     if (!heard) this.rememberApplied(changeId);
     this.refetch(this.held.apply(reply));
     this.changed();
+    this.replyListeners.forEach((listener) => listener(reply));
     return reply;
   }
 
@@ -319,6 +373,15 @@ export class PageClient {
     this.held.absorb(page, fetch.request);
     this.changed();
     return true;
+  }
+
+  /**
+   * Calls `listener` with each reply that the client applies, until the returned function is
+   * called.
+   */
+  subscribeReplies(listener: (reply: CommandReply) => void): () => void {
+    this.replyListeners.add(listener);
+    return () => this.replyListeners.delete(listener);
   }
 
   /** Calls `listener` whenever what the client holds changes, until the returned function is called. */
@@ -462,7 +525,7 @@ export class PageClient {
     const state = this.pages.get(pageIndex);
     switch (event) {
       case 'want':
-        if (!state) this.fetchPage(pageIndex, 0);
+        if (!state || state.kind === 'failed') this.fetchPage(pageIndex, 0);
         break;
       case 'stale':
         if (state?.kind === 'inFlight') this.pages.set(pageIndex, { ...state, dirty: true });

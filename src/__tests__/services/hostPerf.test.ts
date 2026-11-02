@@ -1,6 +1,11 @@
 /// <reference types="jest" />
 
-import { readHostPerf, setHostPerfMarks } from '../../services/hostPerf';
+import {
+  readHostPerf,
+  sessionReadsAreSkipped,
+  setHostPerfMarks,
+  setSessionReadsSkipped,
+} from '../../services/hostPerf';
 import { perfMarksEnabled, setPerfMarksEnabled, takePerfEntries } from '../../utils/perf-marks';
 
 jest.mock('../../utils/perf-marks');
@@ -9,6 +14,21 @@ const entries = [{ name: 'getDraft', duration: 12, detail: undefined }];
 
 beforeEach(() => {
   jest.mocked(takePerfEntries).mockReturnValue(entries);
+});
+
+describe('setSessionReadsSkipped', () => {
+  it('skips session reads once turned on', () => {
+    setSessionReadsSkipped(true);
+
+    expect(sessionReadsAreSkipped()).toBe(true);
+  });
+
+  it('reads again once turned off', () => {
+    setSessionReadsSkipped(true);
+    setSessionReadsSkipped(false);
+
+    expect(sessionReadsAreSkipped()).toBe(false);
+  });
 });
 
 describe('setHostPerfMarks', () => {

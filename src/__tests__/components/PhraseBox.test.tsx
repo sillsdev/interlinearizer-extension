@@ -16,6 +16,7 @@ import {
   makePhraseStripContext,
   makePunctToken,
   makeWordToken,
+  withSplitPhrase,
 } from '../test-helpers';
 import {
   mockKeyAsValueLocalizedStrings,
@@ -28,11 +29,13 @@ import {
 const mockUseGloss = jest.fn<string, [string]>().mockReturnValue('');
 const mockUseGlossDispatch = jest.fn().mockReturnValue(jest.fn());
 const mockUsePhraseLinkForToken = jest.fn().mockReturnValue(undefined);
-const mockUsePhraseDispatch = jest.fn().mockReturnValue({
-  createPhrase: jest.fn(),
-  updatePhrase: jest.fn(),
-  deletePhrase: jest.fn(),
-});
+const mockUsePhraseDispatch = jest.fn().mockReturnValue(
+  withSplitPhrase({
+    createPhrase: jest.fn(),
+    updatePhrase: jest.fn(),
+    deletePhrase: jest.fn(),
+  }),
+);
 const mockUsePhraseGloss = jest.fn<string, [string]>().mockReturnValue('');
 const mockUsePhraseGlossDispatch = jest.fn().mockReturnValue(jest.fn());
 const mockUsePhraseSenseRef = jest.fn<SenseRef | undefined, [string]>();
@@ -212,11 +215,13 @@ describe('PhraseBox', () => {
     mockUsePhraseGloss.mockReturnValue('');
     mockUsePhraseGlossDispatch.mockReturnValue(jest.fn());
     mockUsePhraseLinkForToken.mockReturnValue(undefined);
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: jest.fn(),
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: jest.fn(),
+        deletePhrase: jest.fn(),
+      }),
+    );
   });
 
   it('renders the box as a non-label div so clicks are not forwarded to the first labelable control', () => {
@@ -701,11 +706,13 @@ describe('PhraseBox', () => {
   it('calls updatePhrase when clicked in edit mode for the target phrase', async () => {
     const updatePhraseSpy = jest.fn();
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: jest.fn(),
+      }),
+    );
     renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
       phraseMode: {
         kind: 'edit',
@@ -734,11 +741,13 @@ describe('PhraseBox', () => {
     };
     mockUsePhraseLinkForToken.mockReturnValue(singleTokenLink);
     const updatePhraseSpy = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: jest.fn(),
+      }),
+    );
     renderBox(<PhraseBox {...requiredProps()} phraseLink={singleTokenLink} />, {
       phraseMode: {
         kind: 'edit',
@@ -756,11 +765,13 @@ describe('PhraseBox', () => {
     // token-1 belongs to TEST_PHRASE_LINK (phrase-1), but phraseMode targets a different phrase
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
     const updatePhraseSpy = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: jest.fn(),
+      }),
+    );
     renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
       phraseMode: { kind: 'edit', phraseId: 'other-phrase', originalTokens: [] },
     });
@@ -777,11 +788,13 @@ describe('PhraseBox', () => {
     ];
     mockUsePhraseLinkForToken.mockReturnValue(undefined);
     const updatePhraseSpy = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: jest.fn(),
+      }),
+    );
     renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />, {
       editPhraseTokens: existingPhraseTokens,
       phraseMode: { kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens },
@@ -821,11 +834,13 @@ describe('PhraseBox', () => {
     const updatePhraseSpy = jest.fn();
     const createPhraseSpy = jest.fn();
     const deletePhraseSpy = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: createPhraseSpy,
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: deletePhraseSpy,
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: createPhraseSpy,
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: deletePhraseSpy,
+      }),
+    );
     renderBox(
       <PhraseBox
         {...requiredProps()}
@@ -911,11 +926,13 @@ describe('PhraseBox', () => {
     mockUsePhraseLinkForToken.mockReturnValue(phraseLink);
     const updatePhraseSpy = jest.fn();
     const deletePhraseSpy = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: deletePhraseSpy,
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: deletePhraseSpy,
+      }),
+    );
     renderBox(
       <PhraseBox
         {...requiredProps()}
@@ -947,11 +964,13 @@ describe('PhraseBox', () => {
     ];
     mockUsePhraseLinkForToken.mockReturnValue(undefined);
     const updatePhraseSpy = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: jest.fn(),
+      }),
+    );
     renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />, {
       editPhraseTokens: existingPhraseTokens,
       phraseMode: { kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens },
@@ -974,11 +993,13 @@ describe('PhraseBox', () => {
     // phraseMode targets some other phrase
     mockUsePhraseLinkForToken.mockReturnValue(undefined);
     const updatePhraseSpy = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: jest.fn(),
+      }),
+    );
     renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />, {
       phraseMode: { kind: 'edit', phraseId: 'phrase-1', originalTokens: [] },
     });
@@ -1015,11 +1036,13 @@ describe('PhraseBox', () => {
     };
     mockUsePhraseLinkForToken.mockReturnValue(fourTokenPhrase);
     const updatePhraseSpy = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: jest.fn(),
+      }),
+    );
     renderBox(
       <PhraseBox
         {...requiredProps()}
@@ -1159,11 +1182,13 @@ describe('PhraseBox', () => {
     // In edit-target mode, each token chip wrapper has an onKeyDown that fires on Enter/Space.
     const updatePhraseSpy = jest.fn();
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: jest.fn(),
+      }),
+    );
     renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
       phraseMode: {
         kind: 'edit',
@@ -1179,11 +1204,13 @@ describe('PhraseBox', () => {
   it('pressing Space on a token chip in edit-target mode also removes it', async () => {
     const updatePhraseSpy = jest.fn();
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: jest.fn(),
+      }),
+    );
     renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
       phraseMode: {
         kind: 'edit',
@@ -1202,11 +1229,13 @@ describe('PhraseBox', () => {
     ];
     mockUsePhraseLinkForToken.mockReturnValue(undefined);
     const updatePhraseSpy = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: jest.fn(),
+      }),
+    );
     renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />, {
       editPhraseTokens: existingPhraseTokens,
       phraseMode: { kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens },
@@ -1222,11 +1251,13 @@ describe('PhraseBox', () => {
     ];
     mockUsePhraseLinkForToken.mockReturnValue(undefined);
     const updatePhraseSpy = jest.fn();
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: updatePhraseSpy,
+        deletePhrase: jest.fn(),
+      }),
+    );
     renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />, {
       editPhraseTokens: existingPhraseTokens,
       phraseMode: { kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens },
@@ -1256,11 +1287,13 @@ describe('PhraseBox read-only', () => {
     mockUseGlossDispatch.mockReturnValue(jest.fn());
     mockUsePhraseGloss.mockReturnValue('linked gloss');
     mockUsePhraseGlossDispatch.mockReturnValue(jest.fn());
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: jest.fn(),
-      deletePhrase: jest.fn(),
-    });
+    mockUsePhraseDispatch.mockReturnValue(
+      withSplitPhrase({
+        createPhrase: jest.fn(),
+        updatePhrase: jest.fn(),
+        deletePhrase: jest.fn(),
+      }),
+    );
   });
 
   it('renders the phrase gloss as plain text and hides the phrase controls', () => {

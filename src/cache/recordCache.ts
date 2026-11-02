@@ -4,6 +4,7 @@ import type {
   Segment,
   SegmentAnalysis,
   SegmentAnalysisLink,
+  TextAnalysis,
   TokenAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
@@ -274,6 +275,28 @@ export class RecordCache {
       this.writtenAt.set(`bucket:${form}`, this.revision);
     });
     return refetch;
+  }
+
+  /** The segment held at outline index `index`, if any. */
+  segmentAt(index: number): Segment | undefined {
+    return this.segments.get(index);
+  }
+
+  /** The pool bucket held for each normalized form, ranked best-first as the host ranks them. */
+  poolBucketsHeld(): ReadonlyMap<string, readonly PoolEntryRef[]> {
+    return this.poolBuckets;
+  }
+
+  /** Every record held, as one analysis. */
+  heldAnalysis(): TextAnalysis {
+    return {
+      segmentAnalyses: this.segmentAnalyses.all(),
+      segmentAnalysisLinks: this.segmentLinks.all(),
+      tokenAnalyses: this.tokenAnalyses.all(),
+      tokenAnalysisLinks: this.tokenLinks.all(),
+      phraseAnalyses: this.phraseAnalyses.all(),
+      phraseAnalysisLinks: this.phraseLinks.all(),
+    };
   }
 
   /**

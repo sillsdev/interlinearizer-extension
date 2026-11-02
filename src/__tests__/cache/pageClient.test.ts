@@ -1,5 +1,6 @@
 /// <reference types="jest" />
 
+import type { TextAnalysis } from 'interlinearizer';
 import {
   KEPT_APPLIED,
   PageClient,
@@ -11,6 +12,7 @@ import {
 import type { ChangeBuffer } from '../../services/commands/changeBuffer';
 import type { CommandReply } from '../../types/command-reply';
 import type { BookOutline, SegmentPage } from '../../types/segment-pages';
+import { emptyAnalysis } from '../../types/empty-factories';
 import { makePhraseLink } from '../test-helpers';
 import { BOOK, comparable, glossing, ref, sessionOver } from './session-source';
 
@@ -32,6 +34,20 @@ async function clientOver(source?: Partial<PageSource>, options?: PageClientOpti
   return { ...made, client, getSegments, getOutline };
 }
 
+/** `analysis` with each record list in id order. */
+function inIdOrder(analysis: TextAnalysis): TextAnalysis {
+  const byId = <T extends { id: string }>(records: readonly T[]) =>
+    [...records].sort((a, b) => a.id.localeCompare(b.id));
+  return {
+    tokenAnalyses: byId(analysis.tokenAnalyses),
+    tokenAnalysisLinks: byId(analysis.tokenAnalysisLinks),
+    phraseAnalyses: byId(analysis.phraseAnalyses),
+    phraseAnalysisLinks: byId(analysis.phraseAnalysisLinks),
+    segmentAnalyses: byId(analysis.segmentAnalyses),
+    segmentAnalysisLinks: byId(analysis.segmentAnalysisLinks),
+  };
+}
+
 /** A reply to `changeId` that changes nothing. */
 const emptyReply = (changeId: string): CommandReply => ({
   changeId,
@@ -40,6 +56,8 @@ const emptyReply = (changeId: string): CommandReply => ({
   poolAnalyses: [],
   resegmentedBooks: [],
   staleTranslationBooks: [],
+  canUndo: false,
+  canRedo: false,
 });
 
 /** A change naming the first segment of the book. */
@@ -104,6 +122,51 @@ describe('PageClient', () => {
     await client.settled();
 
     expect(client.holds(0)).toBe(true);
+  });
+
+  it("holds, as one analysis, the records of a whole book's pages", async () => {
+    const { client, sessions, sessionId } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+
+    const stored = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(inIdOrder(client.heldAnalysis())).toStrictEqual(inIdOrder(stored.analysis));
+  });
+
+  it('gives the same held analysis until what it holds changes', async () => {
+    const { client, edit } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+    const before = client.heldAnalysis();
+
+    expect(client.heldAnalysis()).toBe(before);
+    await client.send((changeId) => edit('writeGloss', glossing('earth', 'land'), changeId));
+    expect(client.heldAnalysis()).not.toBe(before);
+    expect(client.heldAnalysis().tokenAnalyses.map(({ id }) => id)).toContain('ta-land');
+  });
+
+  it('holds an empty analysis before the outline loads', () => {
+    const client = new PageClient({
+      getOutline: async () => undefined,
+      getSegments: async () => undefined,
+    });
+
+    expect(client.heldAnalysis()).toStrictEqual(emptyAnalysis());
+  });
+
+  it('tells each reply listener of the replies it applies, until it unsubscribes', async () => {
+    const { client, edit } = await clientOver();
+    const listener = jest.fn();
+    const unsubscribe = client.subscribeReplies(listener);
+
+    const reply = await client.send((changeId) =>
+      edit('writeGloss', glossing('earth', 'land'), changeId),
+    );
+    unsubscribe();
+    await client.send((changeId) => edit('writeGloss', glossing('earth', 'soil'), changeId));
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith(reply);
   });
 
   it('asks for a held page only once', async () => {
@@ -185,6 +248,22 @@ describe('PageClient', () => {
     expect([...client.failedPages]).toStrictEqual([0]);
     failing.mockImplementation(() => fetchPage(0, 1));
     client.retryFailed();
+    await client.settled();
+
+    expect(client.failedPages.size).toBe(0);
+    expect(client.holds(0)).toBe(true);
+  });
+
+  it('asks again for a page that failed every retry when a view asks for it again', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client, fetchPage } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+    failing.mockImplementation(() => fetchPage(0, 1));
+
+    client.load(0, 1, 'list');
     await client.settled();
 
     expect(client.failedPages.size).toBe(0);

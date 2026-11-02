@@ -103,7 +103,7 @@ type UnstampedAnalysis = {
 /** The parts of a draft that a test may compare under the groups that an implementation opts into. */
 type ComparableDraft = Partial<Omit<DraftProject, 'analysis'>> & { analysis: UnstampedAnalysis };
 
-/** `records` in id order, each without its timestamps, since lookups promise no order. */
+/** `records` without their timestamps, in id order because lookups promise no order. */
 function unstampedInIdOrder<T extends { id: string } & Record<Stamps, string>>(
   records: readonly T[],
 ) {
@@ -1226,25 +1226,22 @@ export function describeAnalysisRepositoryConformance(
           expectJsonPlain(inverse);
         });
 
-        it('stores what it applied, unaffected by later changes to the inverse', async () => {
+        it('stores what its inverse restores, unaffected by later changes to that inverse', async () => {
           await store.seed(SOURCE, fullDraft());
           const repository = await store.open(SOURCE);
           const { inverse } = await repository.apply(mixedChanges());
+          await repository.apply(inverse);
 
           inverse.tokenAnalyses?.puts.forEach((payload) => {
             payload.surfaceText = 'changed';
           });
-          inverse.tokenAnalyses?.deletes.push('ta-and');
 
           await expect(
-            repository
-              .getTokenAnalyses(['ta-and', 'ta-god', 'ta-unlinked'])
-              .then(unstampedInIdOrder),
+            repository.getTokenAnalyses(['ta-and', 'ta-unlinked']).then(unstampedInIdOrder),
           ).resolves.toStrictEqual(
-            unstampedInIdOrder([
-              { ...fullAnalysis().tokenAnalyses[0], gloss: { en: 'and then' } },
-              ...newRecords().tokenAnalyses,
-            ]),
+            unstampedInIdOrder(
+              fullAnalysis().tokenAnalyses.filter(({ id }) => id !== 'ta-beginning'),
+            ),
           );
         });
 

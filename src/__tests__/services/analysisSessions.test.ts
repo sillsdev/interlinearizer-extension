@@ -1222,7 +1222,7 @@ describe('AnalysisSessions', () => {
       const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and beta' }]);
       const made = makeSessions();
       made.host.heldBook.mockReturnValue(after);
-      await made.saveDraft({
+      await made.seedDraft({
         ...emptyDraft(SOURCE),
         analysis: {
           ...emptyAnalysis(),

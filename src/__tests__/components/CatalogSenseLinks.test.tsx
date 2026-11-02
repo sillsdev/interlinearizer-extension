@@ -92,7 +92,7 @@ describe('CatalogSenseLinks', () => {
     expect(screen.queryByTestId('catalog-sense-links')).not.toBeInTheDocument();
   });
 
-  it("keeps the word's link while the breakdown is hidden", () => {
+  it("keeps the word's link while the breakdown is hidden", async () => {
     renderLinks({
       glossSenseRef: testSenseRef('s-word'),
       showMorphology: false,
@@ -102,12 +102,15 @@ describe('CatalogSenseLinks', () => {
     const lines = screen.getAllByTestId('catalog-sense-line');
     expect(lines).toHaveLength(1);
     expect(lines[0]).toHaveTextContent('λόγος');
+    await waitFor(() => expect(lines[0]).toHaveTextContent('word'));
   });
 
-  it('shows a zero morpheme by the zero sign', () => {
+  it('shows a zero morpheme by the zero sign', async () => {
     renderLinks({ morphemes: [morpheme('m-1', '', 's-stem')] });
 
-    expect(screen.getByTestId('catalog-sense-line')).toHaveTextContent('∅');
+    const line = screen.getByTestId('catalog-sense-line');
+    expect(line).toHaveTextContent('∅');
+    await waitFor(() => expect(line).toHaveTextContent('speak'));
   });
 
   it("marks a morpheme's typed gloss that differs from its sense's", async () => {

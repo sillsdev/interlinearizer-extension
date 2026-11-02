@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Interlinearizer.Crdt.Entities;
 
 /// <summary>
@@ -6,6 +8,8 @@ namespace Interlinearizer.Crdt.Entities;
 /// </summary>
 public abstract class Analysis
 {
+    private string _surfaceText = "";
+
     public Guid Id { get; init; }
 
     public DateTimeOffset? DeletedAt { get; set; }
@@ -17,7 +21,22 @@ public abstract class Analysis
     public DateTimeOffset UpdatedAt { get; set; }
 
     /// <summary>Surface form of the analyzed text span.</summary>
-    public required string SurfaceText { get; set; }
+    public required string SurfaceText
+    {
+        get => _surfaceText;
+        set
+        {
+            _surfaceText = value;
+            NormalizedForm = Refs.NormalizeSurfaceForm(value);
+        }
+    }
+
+    /// <summary>
+    /// <see cref="SurfaceText"/> as <see cref="Refs.NormalizeSurfaceForm"/> maps it, kept as a
+    /// column so that the analyses of one spelling can be looked up.
+    /// </summary>
+    [JsonIgnore]
+    public string NormalizedForm { get; private set; } = "";
 
     public Confidence? Confidence { get; set; }
 
@@ -57,6 +76,13 @@ public abstract class AnalysisLink
     public AssignmentStatus Status { get; set; }
 
     public Confidence? Confidence { get; set; }
+
+    /// <summary>
+    /// The book this link points into, derived from its target and kept as a column so that a
+    /// book's links can be looked up.
+    /// </summary>
+    [JsonIgnore]
+    public string BookCode { get; protected set; } = "";
 
     public Guid[] GetReferences() => [AnalysisId];
 

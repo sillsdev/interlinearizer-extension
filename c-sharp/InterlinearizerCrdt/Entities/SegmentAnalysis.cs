@@ -29,8 +29,18 @@ public class SegmentAnalysis : Analysis, IObjectBase<SegmentAnalysis>
 /// <summary>Links one <see cref="SegmentAnalysis"/> to a single segment.</summary>
 public class SegmentAnalysisLink : AnalysisLink, IObjectBase<SegmentAnalysisLink>
 {
+    private string _segmentId = "";
+
     /// <summary>The segment's id in the text layer.</summary>
-    public required string SegmentId { get; set; }
+    public required string SegmentId
+    {
+        get => _segmentId;
+        set
+        {
+            _segmentId = value;
+            BookCode = Refs.BookOf(value);
+        }
+    }
 
     public IObjectBase Copy() => new SegmentAnalysisLink
     {

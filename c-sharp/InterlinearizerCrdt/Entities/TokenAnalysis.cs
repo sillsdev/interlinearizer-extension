@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using SIL.Harmony.Entities;
 
 namespace Interlinearizer.Crdt.Entities;
@@ -51,7 +52,22 @@ public class TokenAnalysis : Analysis, IObjectBase<TokenAnalysis>
 /// <summary>Links one <see cref="TokenAnalysis"/> to exactly one token.</summary>
 public class TokenAnalysisLink : AnalysisLink, IObjectBase<TokenAnalysisLink>
 {
-    public required TokenSnapshot Token { get; set; }
+    private TokenSnapshot _token = new("", "");
+
+    public required TokenSnapshot Token
+    {
+        get => _token;
+        set
+        {
+            _token = value;
+            TokenRef = value.TokenRef;
+            BookCode = Refs.BookOf(value.TokenRef);
+        }
+    }
+
+    /// <summary>The linked token's ref, kept as a column so that a token's links can be looked up.</summary>
+    [JsonIgnore]
+    public string TokenRef { get; private set; } = "";
 
     public IObjectBase Copy() => new TokenAnalysisLink
     {

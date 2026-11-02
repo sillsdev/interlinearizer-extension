@@ -24,6 +24,7 @@ public abstract class CrdtTestBase : IAsyncDisposable
     protected readonly DataModel DataModel;
     protected readonly InterlinearizerCrdtDbContext DbContext;
     protected readonly HarmonyConfig HarmonyConfig;
+    protected readonly AnalysisRepository Repository;
 
     protected CrdtTestBase()
     {
@@ -38,6 +39,14 @@ public abstract class CrdtTestBase : IAsyncDisposable
         DbContext.Database.OpenConnection();
         DbContext.Database.EnsureCreated();
         DataModel = _services.GetRequiredService<DataModel>();
+        Repository = new AnalysisRepository(DataModel, ClientId);
+    }
+
+    /// <summary>Applies through the repository at the next commit time.</summary>
+    protected async Task ApplyNext(ChangeSet changes)
+    {
+        _timeProvider.SetNextDateTime(NextDate());
+        await Repository.Apply(changes);
     }
 
     /// <summary>The time the next commit will be made at, one day after the last.</summary>

@@ -75,10 +75,24 @@ public static class InterlinearizerCrdtKernel
 
         config.ObjectTypeListBuilder.DefaultAdapter()
             .Add<SegmentAnalysis>()
-            .Add<SegmentAnalysisLink>(builder => builder.HasIndex(l => l.AnalysisId))
-            .Add<TokenAnalysis>()
-            .Add<TokenAnalysisLink>(builder => builder.HasIndex(l => l.AnalysisId))
-            .Add<PhraseAnalysis>()
-            .Add<PhraseAnalysisLink>(builder => builder.HasIndex(l => l.AnalysisId));
+            .Add<SegmentAnalysisLink>(builder =>
+            {
+                builder.HasIndex(l => l.AnalysisId);
+                builder.HasIndex(l => l.SegmentId);
+                builder.HasIndex(l => new { l.BookCode, l.Status });
+            })
+            .Add<TokenAnalysis>(builder => builder.HasIndex(a => a.NormalizedForm))
+            .Add<TokenAnalysisLink>(builder =>
+            {
+                builder.HasIndex(l => l.AnalysisId);
+                builder.HasIndex(l => l.TokenRef);
+                builder.HasIndex(l => new { l.BookCode, l.Status });
+            })
+            .Add<PhraseAnalysis>(builder => builder.HasIndex(a => a.NormalizedForm))
+            .Add<PhraseAnalysisLink>(builder =>
+            {
+                builder.HasIndex(l => l.AnalysisId);
+                builder.HasIndex(l => new { l.BookCode, l.Status });
+            });
     }
 }

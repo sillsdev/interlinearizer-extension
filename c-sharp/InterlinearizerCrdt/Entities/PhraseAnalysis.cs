@@ -34,7 +34,19 @@ public class PhraseAnalysis : Analysis, IObjectBase<PhraseAnalysis>
 /// </summary>
 public class PhraseAnalysisLink : AnalysisLink, IObjectBase<PhraseAnalysisLink>
 {
-    public required List<TokenSnapshot> Tokens { get; set; }
+    private List<TokenSnapshot> _tokens = [];
+
+    /// <summary>Never empty: the first token places the whole run in its book.</summary>
+    public required List<TokenSnapshot> Tokens
+    {
+        get => _tokens;
+        set
+        {
+            if (value.Count == 0) throw new ArgumentException("A phrase link needs at least one token", nameof(value));
+            _tokens = value;
+            BookCode = Refs.BookOf(value[0].TokenRef);
+        }
+    }
 
     public IObjectBase Copy() => new PhraseAnalysisLink
     {

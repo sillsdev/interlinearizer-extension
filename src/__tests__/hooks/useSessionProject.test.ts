@@ -9,17 +9,17 @@ import { glossing, ref } from '../cache/session-source';
 
 const SCR_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
+type ViewProps = Partial<Record<'saveTargetId' | 'importProjectId' | 'importVersion', string>>;
+
 /** Renders the hook over the source `src`, saving to `saveTargetId` or viewing `importProjectId`. */
 function renderProject(saveTargetId?: string, importProjectId?: string) {
-  const initialProps: Partial<Record<'saveTargetId' | 'importProjectId', string>> = {
-    saveTargetId,
-    importProjectId,
-  };
+  const initialProps: ViewProps = { saveTargetId, importProjectId };
   return renderHook(
-    (props: Partial<Record<'saveTargetId' | 'importProjectId', string>>) =>
+    (props: ViewProps) =>
       useSessionProject('src', 'en', {
         saveTargetId: props.saveTargetId,
         importProjectId: props.importProjectId,
+        importVersion: props.importVersion,
         bookId: 'GEN',
         scrRef: SCR_REF,
       }),
@@ -125,6 +125,7 @@ describe('useSessionProject', () => {
       return useSessionProject('src', 'en', {
         saveTargetId: undefined,
         importProjectId: undefined,
+        importVersion: undefined,
         bookId: 'GEN',
         scrRef: SCR_REF,
       });
@@ -529,6 +530,26 @@ describe('useSessionProject starting over', () => {
     );
   });
 
+  it('opens a fresh session when a sync moves the import to a new version', async () => {
+    await fakeHost();
+    const { result, rerender } = renderProject(undefined, 'import-1');
+    await waitFor(() => expect(result.current.session).toBeDefined());
+    const { sessionId } = result.current.session ?? {};
+
+    rerender({ importProjectId: 'import-1', importVersion: 'synced' });
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.closeSession', {
+        sessionId,
+      }),
+    );
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.openSession', {
+      sourceProjectId: 'src',
+      interlinearProjectId: 'import-1',
+    });
+    await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
+  });
+
   it('logs a save target the session refuses', async () => {
     await fakeHost(async (command) => {
       if (command === 'interlinearizer.setSaveTarget') throw new Error('no such project');
@@ -829,6 +850,7 @@ describe('useSessionProject whole-text read', () => {
       renders += 1;
       return useSessionProject('src', 'en', {
         saveTargetId: undefined,
+        importVersion: undefined,
         importProjectId: undefined,
         bookId: 'GEN',
         scrRef: SCR_REF,

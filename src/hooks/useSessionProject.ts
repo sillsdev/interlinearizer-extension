@@ -43,14 +43,14 @@ function sameEnvelope(a: DraftProject, b: DraftProject): boolean {
 /**
  * Keeps the draft of `sourceProjectId` in a session on the host. The session saves to
  * `saveTargetId`, or views the Paratext 9 import `importProjectId` instead. It closes on unmount,
- * and when the source or the import changes. New and Open have the host start the draft over, then
- * open a fresh session, which has nothing to undo. Undo, redo, discards and boundary edits are
- * commands to the session.
+ * and when the source, the import, or the import's version changes. New and Open have the host
+ * start the draft over, then open a fresh session, which has nothing to undo. Undo, redo, discards
+ * and boundary edits are commands to the session.
  */
 export default function useSessionProject(
   sourceProjectId: string,
   _platformLanguage: string | undefined,
-  { saveTargetId, importProjectId, bookId, scrRef }: ProjectViewOptions,
+  { saveTargetId, importProjectId, importVersion, bookId, scrRef }: ProjectViewOptions,
 ): ProjectApi {
   const [opened, setOpened] = useState<OpenedSession>();
   /** Bumped to open a fresh session on the same project, as New and Open do. */
@@ -126,7 +126,7 @@ export default function useSessionProject(
         )
         .catch((e) => logger.error('Interlinearizer: failed to close a session', e));
     };
-  }, [sourceProjectId, importProjectId, openCount, noteHistory]);
+  }, [sourceProjectId, importProjectId, importVersion, openCount, noteHistory]);
 
   const sessionId = opened?.sessionId;
   const whole = opened?.whole ?? NO_WHOLE;

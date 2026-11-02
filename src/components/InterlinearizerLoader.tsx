@@ -560,6 +560,7 @@ function InterlinearizerLoaderInner({
   } = useProject(projectId, isInterfaceLanguageLoading ? undefined : platformLanguage, {
     saveTargetId: activeProject?.pt9Import ? undefined : activeProject?.id,
     importProjectId: activeProject?.pt9Import ? activeProject.id : undefined,
+    importVersion: activeProject?.pt9Import ? activeProject.updatedAt : undefined,
     // The book's outline is asked for once its text has loaded, as the WebView path's is.
     bookId: verseBook?.bookRef,
     scrRef,

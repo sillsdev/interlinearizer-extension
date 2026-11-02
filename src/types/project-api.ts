@@ -71,6 +71,8 @@ export type ProjectViewOptions = Readonly<{
   saveTargetId: string | undefined;
   /** The Paratext 9 import that the view shows read-only, in place of the draft. */
   importProjectId: string | undefined;
+  /** The import's `updatedAt`, which a sync moves; absent with no import. */
+  importVersion: string | undefined;
   /** The book whose pages to serve; none until its text has loaded. */
   bookId: string | undefined;
   scrRef: SerializedVerseRef;

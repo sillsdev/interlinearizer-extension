@@ -390,13 +390,16 @@ describe('AnalysisSessions', () => {
     });
 
     it('opens a session sent meanwhile on what the step leaves stored', async () => {
-      const { sessions, saveDraft } = makeSessions();
-      await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'] });
+      const { sessions, seedDraft, storage } = makeSessions();
+      await seedDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['en'] });
       const step = deferred();
 
       const running = sessions.closeAndRun(SOURCE, async () => {
         await step.promise;
-        await saveDraft({ ...emptyDraft(SOURCE), analysisLanguages: ['fr'] });
+        await new DraftRepository(storage, SOURCE, silentLogger()).startOver({
+          ...emptyDraft(SOURCE),
+          analysisLanguages: ['fr'],
+        });
       });
       const opening = sessions.open(SOURCE);
       step.resolve();

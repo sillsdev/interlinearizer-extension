@@ -33,6 +33,17 @@ public class OpenProjectsTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task OpeningAProjectUnderASemicolonFolderCreatesItsDatabase()
+    {
+        var dbPath = Path.Combine(_directory, "a;b", "p1.sqlite");
+        Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+
+        await _projects.Open("p1", dbPath);
+
+        await Assert.That(File.Exists(dbPath)).IsTrue();
+    }
+
+    [Test]
     public async Task EachProjectHasItsOwnRepository()
     {
         await _projects.Open("p1", DbPath("p1"));

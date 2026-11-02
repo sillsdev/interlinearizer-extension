@@ -1,5 +1,6 @@
 using Interlinearizer.Crdt.Changes;
 using Interlinearizer.Crdt.Entities;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SIL.Harmony;
@@ -21,7 +22,10 @@ public static class InterlinearizerCrdtKernel
         services.AddScoped<CurrentProject>();
         services.AddSingleton<OpenProjects>();
         return services.AddInterlinearizerCrdt((provider, builder) =>
-            builder.UseSqlite($"Data Source={provider.GetRequiredService<CurrentProject>().DbPath}"));
+            builder.UseSqlite(new SqliteConnectionStringBuilder
+            {
+                DataSource = provider.GetRequiredService<CurrentProject>().DbPath,
+            }.ToString()));
     }
 
     /// <summary>Registers the model over the one database <paramref name="configureDb"/> names.</summary>

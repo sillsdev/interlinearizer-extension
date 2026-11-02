@@ -1,6 +1,7 @@
 import type { AnalysisChange, ChangeId, Segment, TextAnalysis } from 'interlinearizer';
 import type { CommandReply } from '../types/command-reply';
 import { emptyAnalysis } from '../types/empty-factories';
+import { perfTime, perfTrack } from '../utils/perf-marks';
 import type { PoolEntry, PoolIndex } from '../utils/suggestion-engine';
 import type { BookOutline, SegmentPage } from '../types/segment-pages';
 import { RecordCache, type PageRequest, type Refetch } from './recordCache';
@@ -155,6 +156,8 @@ export class PageClient {
   private readonly listeners = new Set<() => void>();
 
   private readonly replyListeners = new Set<(reply: CommandReply) => void>();
+
+  private readonly heardListeners = new Set<() => void>();
 
   private version = 0;
 
@@ -316,7 +319,8 @@ export class PageClient {
     this.sent.set(changeId, undefined);
     let reply: CommandReply | undefined;
     try {
-      reply = await command(changeId);
+      const sentAt = performance.timeOrigin + performance.now();
+      reply = await perfTrack('edit-command', command(changeId), { sentAt });
     } catch (error) {
       const heard = this.sent.get(changeId);
       this.sent.delete(changeId);
@@ -328,9 +332,11 @@ export class PageClient {
     this.sent.delete(changeId);
     if (!reply) return reply;
     if (!heard) this.rememberApplied(changeId);
-    this.refetch(this.held.apply(reply));
-    this.changed();
-    this.replyListeners.forEach((listener) => listener(reply));
+    perfTime('reply-apply', () => {
+      this.refetch(this.held.apply(reply));
+      this.changed();
+      this.replyListeners.forEach((listener) => listener(reply));
+    });
     return reply;
   }
 
@@ -384,6 +390,15 @@ export class PageClient {
     return () => this.replyListeners.delete(listener);
   }
 
+  /**
+   * Calls `listener` whenever the client takes in a reported change rather than skipping it, until
+   * the returned function is called.
+   */
+  subscribeHeard(listener: () => void): () => void {
+    this.heardListeners.add(listener);
+    return () => this.heardListeners.delete(listener);
+  }
+
   /** Calls `listener` whenever what the client holds changes, until the returned function is called. */
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
@@ -405,6 +420,7 @@ export class PageClient {
   }
 
   private hearNow(change: AnalysisChange): void {
+    this.heardListeners.forEach((listener) => listener());
     const cache = this.cacheHeld;
     if (!cache) {
       if (this.outlineReading) this.readOutlineAgain('outline');

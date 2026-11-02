@@ -37,6 +37,9 @@ export class RecordTable<T extends { id: string }, Index extends string> {
 
   private readonly indexes = new Map<Index, IdsByKey>();
 
+  /** What {@link RecordTable.all} last returned, until a record is put or removed. */
+  private allHeld: T[] | undefined;
+
   constructor(kind: string, keyers: Record<Index, KeysOf<T>>, records: readonly T[]) {
     this.kind = kind;
     this.keyers = keyers;
@@ -63,9 +66,10 @@ export class RecordTable<T extends { id: string }, Index extends string> {
     return this.recordsOf(ids);
   }
 
-  /** Every record, in stored order. */
+  /** Every record in stored order, as one array kept until a record is put or removed. */
   all(): T[] {
-    return [...this.records.values()];
+    this.allHeld ??= [...this.records.values()];
+    return this.allHeld;
   }
 
   /** The keys `index` files any record under. */
@@ -119,6 +123,7 @@ export class RecordTable<T extends { id: string }, Index extends string> {
   put(record: T): void {
     const prior = this.records.get(record.id);
     this.records.set(record.id, record);
+    this.allHeld = undefined;
     this.indexNames().forEach((index) => {
       const filed = this.filed(index);
       const before = prior ? this.keysOf(index, prior) : new Set<string>();
@@ -137,6 +142,7 @@ export class RecordTable<T extends { id: string }, Index extends string> {
     const record = this.records.get(id);
     if (!record) return;
     this.records.delete(id);
+    this.allHeld = undefined;
     this.indexNames().forEach((index) =>
       this.keysOf(index, record).forEach((key) => unfileId(this.filed(index), key, id)),
     );

@@ -18,6 +18,7 @@ import {
 } from '../../components/FocusStore';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import { isWordToken } from '../../types/type-guards';
+import * as perfMarks from '../../utils/perf-marks';
 import { makeSegment, makeVerseBook, makeWordToken, type ScrollGroupTuple } from '../test-helpers';
 
 /**
@@ -684,5 +685,35 @@ describe('FocusProvider resolution rules', () => {
 
     expect(harness.read()).toMatchObject({ tokenRef: 'MAT 1:1:0', origin: 'request' });
     expect(jest.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+});
+
+describe('FocusStoreProvider focus timing', () => {
+  /** Mounts a provider over a fresh store with timing on, returning the store and the mark spy. */
+  function mountTimed() {
+    jest.spyOn(perfMarks, 'perfMarksEnabled').mockReturnValue(true);
+    const perfMark = jest.spyOn(perfMarks, 'perfMark').mockImplementation(() => {});
+    const store = createFocusStore('GEN 1:1:0');
+    const actions: FocusActions = { focusToken: () => {}, selectSegment: () => {} };
+    render(
+      <FocusStoreProvider store={store} actions={actions}>
+        <span />
+      </FocusStoreProvider>,
+    );
+    return { store, perfMark };
+  }
+
+  it('marks nothing for the focus it mounts with', () => {
+    const { perfMark } = mountTimed();
+
+    expect(perfMark).not.toHaveBeenCalled();
+  });
+
+  it('marks the commit that renders a focus move', () => {
+    const { store, perfMark } = mountTimed();
+
+    act(() => store.write('GEN 1:2:0', 'list'));
+
+    expect(perfMark).toHaveBeenCalledWith('focus-render');
   });
 });

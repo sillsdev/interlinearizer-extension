@@ -94,6 +94,51 @@ describe('WholeAnalysis', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it('marks the held draft saved when told the changes left it saved', async () => {
+    const whole = new WholeAnalysis(async () => holding('a'));
+    await whole.refresh();
+
+    whole.take({ intent: 'x', tokenAnalyses: { puts: [], deletes: ['a'] } }, false);
+
+    expect(whole.current.tokenAnalyses).toStrictEqual([]);
+    expect(whole.draft?.dirty).toBe(false);
+  });
+
+  it('keeps the held draft as saved as it was when told the changes kept its mark', async () => {
+    const whole = new WholeAnalysis(async () => holding('a'));
+    await whole.refresh();
+
+    whole.take({ intent: 'x', tokenAnalyses: { puts: [], deletes: ['a'] } }, 'kept');
+
+    expect(whole.current.tokenAnalyses).toStrictEqual([]);
+    expect(whole.draft?.dirty).toBe(false);
+  });
+
+  it('lands a fetch with its own mark under changes taken in meanwhile that kept the mark', async () => {
+    const { fetch, resolveNext } = heldFetch();
+    const whole = new WholeAnalysis(fetch);
+    const refreshed = whole.refresh();
+
+    whole.take({ intent: 'x', tokenAnalyses: { puts: [], deletes: ['a'] } }, 'kept');
+    await resolveNext({ ...holding('a'), dirty: true });
+    await refreshed;
+
+    expect(whole.current.tokenAnalyses).toStrictEqual([]);
+    expect(whole.draft?.dirty).toBe(true);
+  });
+
+  it('lands a fetch with the mark that the changes taken in meanwhile left', async () => {
+    const { fetch, resolveNext } = heldFetch();
+    const whole = new WholeAnalysis(fetch);
+    const refreshed = whole.refresh();
+
+    whole.take({ intent: 'x', tokenAnalyses: { puts: [], deletes: ['a'] } }, false);
+    await resolveNext({ ...holding('a'), dirty: true });
+    await refreshed;
+
+    expect(whole.draft?.dirty).toBe(false);
+  });
+
   it('leaves the held draft saved, telling no listener, for changes that change no record', async () => {
     const whole = new WholeAnalysis(async () => holding('a'));
     await whole.refresh();

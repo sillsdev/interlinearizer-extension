@@ -53,7 +53,7 @@ export default function useSessionProject(
   { saveTargetId, importProjectId, importVersion, bookId, scrRef }: ProjectViewOptions,
 ): ProjectApi {
   const [opened, setOpened] = useState<OpenedSession>();
-  /** Bumped to open a fresh session on the same project, as New and Open do. */
+  /** Bumped to open a fresh session on the same project. */
   const [openCount, setOpenCount] = useState(0);
   const [draftVersion, setDraftVersion] = useState(0);
   const [isSaving, setIsSaving] = useState(false);

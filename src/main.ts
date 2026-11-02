@@ -938,7 +938,7 @@ async function getTextReadStatus(address: TextAddress): Promise<string> {
  * none out.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
- * @param draftJson - JSON-stringified `DraftProject` to persist.
+ * @param draftJson - JSON-stringified {@link DraftProject} to persist.
  * @param discardUnreadable - Whether the draft was started over (New, Open), so stored analysis
  *   that could not be read is discarded rather than kept.
  * @throws If JSON parsing, validation, or storage fails, or if the stored draft was written by a
@@ -1008,7 +1008,7 @@ async function writeDraft(sourceProjectId: string, write: () => Promise<string[]
  * project's analysis and configuration, or an empty draft with a New dialog's configuration.
  *
  * @throws {Error} If `from` names a project that is not stored.
- * @throws {TypeError} If the draft does not conform to `DraftProject`.
+ * @throws {TypeError} If the draft does not conform to {@link DraftProject}.
  * @throws Whatever reading the project throws.
  */
 async function startedDraft(sourceProjectId: string, from: DraftStart): Promise<DraftProject> {

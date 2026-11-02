@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useSyncExternalStore,
@@ -13,6 +14,7 @@ import {
 import type { ReactNode } from 'react';
 import useLatestRef from '../hooks/useLatestRef';
 import { isWordToken } from '../types/type-guards';
+import { perfMark, perfMarksEnabled } from '../utils/perf-marks';
 import { isSameVerse, segmentContainsVerse, toSerializedVerseRef } from '../utils/verse-ref';
 import { useInterlinearNav, verseKey } from './InterlinearNavContext';
 
@@ -148,7 +150,23 @@ type FocusStoreProviderProps = Readonly<{
  */
 export function FocusStoreProvider({ store, actions, children }: FocusStoreProviderProps) {
   const value = useMemo<FocusContextValue>(() => ({ store, actions }), [store, actions]);
-  return <FocusContext.Provider value={value}>{children}</FocusContext.Provider>;
+  return (
+    <FocusContext.Provider value={value}>
+      {children}
+      {perfMarksEnabled() && <FocusRenderProbe />}
+    </FocusContext.Provider>
+  );
+}
+
+/** Marks each commit that renders a focus move, so a timing can end once the moved focus shows. */
+function FocusRenderProbe() {
+  const { tokenRef } = useFocus();
+  const mountedRef = useRef(false);
+  useLayoutEffect(() => {
+    if (mountedRef.current) perfMark('focus-render');
+    mountedRef.current = true;
+  }, [tokenRef]);
+  return undefined;
 }
 
 /** Props for {@link FocusProvider}. */

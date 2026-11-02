@@ -231,6 +231,21 @@ export async function waitForMeasure(
   return readMeasures(frame);
 }
 
+/**
+ * Waits until the WebView has made the mark `name`, and returns the start time of the earliest one.
+ * Only marks made since the last {@link clearMeasures} count.
+ */
+export async function waitForMark(frame: Frame, name: string): Promise<number> {
+  const handle = await frame.waitForFunction(
+    (markName) => performance.getEntriesByName(markName, 'mark')[0]?.startTime,
+    `ilz:${name}`,
+    { timeout: 10 * 60_000, polling: 50 },
+  );
+  const at: unknown = await handle.jsonValue();
+  if (typeof at !== 'number') throw new Error(`Mark ${name} has no start time`);
+  return at;
+}
+
 /** Bytes of JS heap the renderer holds after a full collection. */
 export async function heapUsed(page: Page): Promise<number> {
   const session = await page.context().newCDPSession(page);

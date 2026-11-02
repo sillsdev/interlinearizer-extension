@@ -38,6 +38,7 @@ import {
   setHostPerfMarks,
   sourceProjectId,
   takeHostEntries,
+  waitForMark,
   waitForMeasure,
   wireBytes,
 } from './view-driver';
@@ -113,6 +114,19 @@ async function editGloss(
   await input.fill(value);
   await input.press('Tab');
   if (autosaves) unsavedFrame = frame;
+}
+
+/**
+ * Milliseconds from the gloss commit timed in `measures` until the view shows both the gloss and
+ * the focus move of the Tab that follows the commit.
+ *
+ * @throws If `measures` holds no `gloss-render`.
+ */
+async function glossSettle(frame: Frame, measures: Measure[]): Promise<number> {
+  const render = measures.find(({ name }) => name === 'gloss-render');
+  if (!render) throw new Error('No gloss-render measure to settle');
+  const focusAt = await waitForMark(frame, 'focus-render');
+  return Math.max(render.end, focusAt) - (render.end - render.duration);
 }
 
 const sleep = (ms: number) =>
@@ -331,6 +345,8 @@ async function measureHostPath(
       // eslint-disable-next-line no-await-in-loop
       const measures = await waitForMeasure(frame, 'gloss-render');
       edits.webView.add(measures, ['gloss-render', 'edit-command', 'reply-apply']);
+      // eslint-disable-next-line no-await-in-loop
+      edits.webView.addValue('gloss-settle', await glossSettle(frame, measures));
       // eslint-disable-next-line no-await-in-loop
       const hostEntries = await takeHostEntries(page);
       edits.addHostCall(HOST_CALLS.writeGloss, hostEntries, measures);
@@ -624,6 +640,8 @@ async function measureTier(
       'autosave-serialize',
       'autosave',
     ]);
+    // eslint-disable-next-line no-await-in-loop
+    edits.webView.addValue('gloss-settle', await glossSettle(frame, measures));
     // eslint-disable-next-line no-await-in-loop
     edits.addHostCall(HOST_CALLS.saveDraft, await takeHostEntries(page), measures);
   }

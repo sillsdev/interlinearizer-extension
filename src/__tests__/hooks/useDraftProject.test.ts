@@ -4,16 +4,32 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { FIXTURE_STAMPS, makeTokenLink } from '../test-helpers';
-import useDraftProject, { type UseDraftProjectResult } from '../../hooks/useDraftProject';
+import useDraftProject, {
+  type OpenableProject,
+  type UseDraftProjectResult,
+} from '../../hooks/useDraftProject';
 import type { DraftContent } from '../../types/draft-content';
 import type { StepSummary } from '../../types/edit-step';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
+import { readOpenableProject } from '../../utils/read-openable-project';
+
+jest.mock('../../utils/read-openable-project');
 
 const SOURCE_PROJECT_ID = 'source-project-1';
 const PLATFORM_LANGUAGE = 'en';
 
 const mockSendCommand = jest.mocked(papi.commands.sendCommand);
+const mockReadOpenableProject = jest.mocked(readOpenableProject);
+
+/** Opens `project` into the draft, as Open does with a stored project that reads as `project`. */
+async function openProject(
+  draft: Pick<UseDraftProjectResult, 'loadFromProject'>,
+  project: OpenableProject,
+): Promise<void> {
+  mockReadOpenableProject.mockResolvedValueOnce(project);
+  await act(() => draft.loadFromProject('opened-project'));
+}
 
 /**
  * Builds a {@link DraftProject} for seeding the `getDraft` mock, overriding any fields needed by a
@@ -230,12 +246,10 @@ describe('useDraftProject', () => {
     });
     const { result } = renderHook(() => useDraftProject(SOURCE_PROJECT_ID, PLATFORM_LANGUAGE));
 
-    act(() =>
-      result.current.loadFromProject({
-        analysis: analysisWithToken('tok-opened'),
-        analysisLanguages: ['de'],
-      }),
-    );
+    await openProject(result.current, {
+      analysis: analysisWithToken('tok-opened'),
+      analysisLanguages: ['de'],
+    });
     await act(async () => {
       resolveGetDraft(JSON.stringify(makeDraft()));
       await deferred;
@@ -254,12 +268,10 @@ describe('useDraftProject', () => {
     );
     await act(async () => {});
 
-    act(() =>
-      view.result.current.loadFromProject({
-        analysis: analysisWithToken('tok-opened'),
-        analysisLanguages: ['de'],
-      }),
-    );
+    await openProject(view.result.current, {
+      analysis: analysisWithToken('tok-opened'),
+      analysisLanguages: ['de'],
+    });
     view.rerender({ language: PLATFORM_LANGUAGE });
     await waitFor(() => expect(view.result.current.isDraftLoading).toBe(false));
 
@@ -274,12 +286,10 @@ describe('useDraftProject', () => {
       { initialProps: { language: undefined } },
     );
     await act(async () => {});
-    act(() =>
-      view.result.current.loadFromProject({
-        analysis: analysisWithToken('tok-opened'),
-        analysisLanguages: ['de'],
-      }),
-    );
+    await openProject(view.result.current, {
+      analysis: analysisWithToken('tok-opened'),
+      analysisLanguages: ['de'],
+    });
 
     let detached = Promise.resolve();
     act(() => {
@@ -818,6 +828,28 @@ describe('useDraftProject', () => {
   });
 
   describe('loadFromProject', () => {
+    it('reads the stored project it is given the id of', async () => {
+      const { result } = await renderLoaded();
+
+      await openProject(result.current, { analysis: emptyAnalysis(), analysisLanguages: ['de'] });
+
+      expect(mockReadOpenableProject).toHaveBeenCalledWith('opened-project');
+    });
+
+    it('rejects, leaving the draft untouched, when the project is missing or malformed', async () => {
+      const { result } = await renderLoaded();
+      const before = result.current.getDraftSnapshot();
+      mockReadOpenableProject.mockResolvedValueOnce(undefined);
+
+      await act(() =>
+        expect(result.current.loadFromProject('missing')).rejects.toThrow(
+          'project missing is missing or malformed',
+        ),
+      );
+
+      expect(result.current.getDraftSnapshot()).toBe(before);
+    });
+
     it('copies a project segmentation delta into the draft when present', async () => {
       const { result } = await renderLoaded();
 
@@ -825,12 +857,10 @@ describe('useDraftProject', () => {
         removedVerseStarts: ['GEN 1:2:0'],
         addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
       };
-      act(() => {
-        result.current.loadFromProject({
-          analysis: analysisWithToken('tok-open'),
-          analysisLanguages: ['de'],
-          segmentation: delta,
-        });
+      await openProject(result.current, {
+        analysis: analysisWithToken('tok-open'),
+        analysisLanguages: ['de'],
+        segmentation: delta,
       });
 
       expect(result.current.draft?.segmentation).toEqual(delta);
@@ -841,12 +871,10 @@ describe('useDraftProject', () => {
       const versionBefore = result.current.draftVersion;
 
       const projectAnalysis = analysisWithToken('tok-open');
-      act(() => {
-        result.current.loadFromProject({
-          analysis: projectAnalysis,
-          analysisLanguages: ['de'],
-          targetProjectId: 'target-9',
-        });
+      await openProject(result.current, {
+        analysis: projectAnalysis,
+        analysisLanguages: ['de'],
+        targetProjectId: 'target-9',
       });
 
       expect(result.current.draft?.analysis.tokenAnalyses[0].id).toBe('tok-open');
@@ -860,11 +888,9 @@ describe('useDraftProject', () => {
     it('omits the target project id when the opened project has none', async () => {
       const { result } = await renderLoaded();
 
-      act(() => {
-        result.current.loadFromProject({
-          analysis: emptyAnalysis(),
-          analysisLanguages: ['de'],
-        });
+      await openProject(result.current, {
+        analysis: emptyAnalysis(),
+        analysisLanguages: ['de'],
       });
 
       expect(result.current.draft?.targetProjectId).toBeUndefined();
@@ -880,11 +906,9 @@ describe('useDraftProject', () => {
       act(() => {
         result.current.autosaveAnalysis(analysisWithToken('pending'));
       });
-      act(() => {
-        result.current.loadFromProject({
-          analysis: analysisWithToken('replaced'),
-          analysisLanguages: ['de'],
-        });
+      await openProject(result.current, {
+        analysis: analysisWithToken('replaced'),
+        analysisLanguages: ['de'],
       });
       act(() => {
         jest.advanceTimersByTime(300);
@@ -1553,9 +1577,7 @@ describe('useDraftProject', () => {
     it('says the draft was started over with Open', async () => {
       const { result } = await renderLoaded();
 
-      act(() =>
-        result.current.loadFromProject({ analysis: emptyAnalysis(), analysisLanguages: ['en'] }),
-      );
+      await openProject(result.current, { analysis: emptyAnalysis(), analysisLanguages: ['en'] });
 
       expect(startedOverPerWrite()).toEqual([true]);
     });
@@ -1735,7 +1757,7 @@ describe('useDraftProject', () => {
       const opened = analysisWithToken('tok-open');
 
       act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
-      act(() => result.current.loadFromProject({ analysis: opened, analysisLanguages: ['de'] }));
+      await openProject(result.current, { analysis: opened, analysisLanguages: ['de'] });
       act(() => result.current.undo());
 
       expect(result.current.getDraftSnapshot()?.analysis).toBe(opened);
@@ -1781,9 +1803,7 @@ describe('useDraftProject', () => {
       const { result } = await renderLoaded();
 
       act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
-      act(() =>
-        result.current.loadFromProject({ analysis: emptyAnalysis(), analysisLanguages: [] }),
-      );
+      await openProject(result.current, { analysis: emptyAnalysis(), analysisLanguages: [] });
 
       expect(result.current.canUndo).toBe(false);
     });
@@ -2137,12 +2157,10 @@ describe('useDraftProject', () => {
       it('is clean again when an undo returns to an opened project', async () => {
         const { result } = await renderLoaded();
 
-        act(() =>
-          result.current.loadFromProject({
-            analysis: analysisWithToken('tok-open'),
-            analysisLanguages: ['de'],
-          }),
-        );
+        await openProject(result.current, {
+          analysis: analysisWithToken('tok-open'),
+          analysisLanguages: ['de'],
+        });
         act(() => result.current.autosaveAnalysis(analysisWithToken('tok-edited')));
         act(() => result.current.undo());
 
@@ -2156,12 +2174,10 @@ describe('useDraftProject', () => {
         act(() => result.current.autosaveAnalysis(analysisWithToken('tok-first')));
         act(() => result.current.autosaveAnalysis(saved));
         await saveNow(result);
-        act(() =>
-          result.current.loadFromProject({
-            analysis: analysisWithToken('tok-open'),
-            analysisLanguages: ['de'],
-          }),
-        );
+        await openProject(result.current, {
+          analysis: analysisWithToken('tok-open'),
+          analysisLanguages: ['de'],
+        });
         act(() => result.current.autosaveAnalysis(analysisWithToken('tok-a')));
         act(() => result.current.autosaveAnalysis(analysisWithToken('tok-b')));
         act(() => result.current.autosaveAnalysis(analysisWithToken('tok-c')));

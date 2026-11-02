@@ -2,11 +2,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { PageClient } from '../cache/pageClient';
 import type { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
-import type {
-  NewDraftConfig,
-  OpenableProject,
-  UseDraftProjectResult,
-} from '../hooks/useDraftProject';
+import type { NewDraftConfig, UseDraftProjectResult } from '../hooks/useDraftProject';
 import type { UseSegmentPagesResult } from '../hooks/useSegmentPages';
 import type { DraftContent } from './draft-content';
 import type { EditStep } from './edit-step';
@@ -42,10 +38,11 @@ export type ProjectApi = Omit<
   'undo' | 'redo' | 'discardBook' | 'discardAll' | 'loadFromProject' | 'newDraft'
 > & {
   /**
-   * Replaces the draft with a working copy of an existing project's analysis and config, the "Open"
-   * flow. On the host path, settles once the draft is stored, and rejects when it can't be.
+   * Replaces the draft with a working copy of the stored project `projectId`'s analysis and config,
+   * the "Open" flow. Settles once the draft holds the copy; on the host path, once the draft is
+   * stored. Rejects when the project can't be read or the draft can't be stored.
    */
-  loadFromProject: (project: OpenableProject) => Settles<void>;
+  loadFromProject: (projectId: string) => Settles<void>;
   /**
    * Starts a fresh, empty draft for the current source, the "New" flow, as
    * {@link UseDraftProjectResult.newDraft} describes. On the host path, settles once the draft is

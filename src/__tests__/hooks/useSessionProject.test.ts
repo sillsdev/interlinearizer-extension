@@ -4,8 +4,7 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useEvent } from 'platform-bible-react';
 import useSessionProject from '../../hooks/useSessionProject';
-import { emptyAnalysis } from '../../types/empty-factories';
-import { fakeHost, relayTextRead } from '../cache/fake-host';
+import { fakeHost, relayTextRead, STORED_PROJECT } from '../cache/fake-host';
 import { glossing, ref } from '../cache/session-source';
 
 const SCR_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
@@ -401,12 +400,7 @@ describe('useSessionProject starting over', () => {
     const { sessionId } = result.current.session ?? {};
 
     await act(async () => {
-      result.current.loadFromProject({
-        analysis: emptyAnalysis(),
-        analysisLanguages: ['de'],
-        targetProjectId: 'tgt',
-        segmentation: { removedVerseStarts: [], addedStarts: [] },
-      });
+      result.current.loadFromProject(STORED_PROJECT.id);
     });
 
     await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
@@ -418,17 +412,28 @@ describe('useSessionProject starting over', () => {
     );
   });
 
-  it('replaces stored analysis that could not be read when starting over', async () => {
+  it('sends the host the id of the project that Open copies, never its content', async () => {
     const { result } = await renderLoaded();
 
-    await act(async () => result.current.newDraft({ analysisLanguages: ['fr'] }));
+    await act(async () => result.current.loadFromProject(STORED_PROJECT.id));
 
-    expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-      'interlinearizer.saveDraft',
-      'src',
-      expect.any(String),
-      true,
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.startDraftOver', {
+      sourceProjectId: 'src',
+      from: { interlinearProjectId: STORED_PROJECT.id },
+    });
+  });
+
+  it('sends the host the configuration that New starts the draft over with', async () => {
+    const { result } = await renderLoaded();
+
+    await act(async () =>
+      result.current.newDraft({ analysisLanguages: ['fr'], suggestedName: 'N' }),
     );
+
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.startDraftOver', {
+      sourceProjectId: 'src',
+      from: { analysisLanguages: ['fr'], suggestedName: 'N' },
+    });
   });
 
   it('hands out the same callbacks across renders', async () => {
@@ -493,11 +498,7 @@ describe('useSessionProject starting over', () => {
     const { sessionId } = result.current.session ?? {};
 
     await act(async () => {
-      result.current.loadFromProject({
-        analysis: emptyAnalysis(),
-        analysisLanguages: ['de'],
-        segmentation: { removedVerseStarts: [], addedStarts: [] },
-      });
+      result.current.loadFromProject(STORED_PROJECT.id);
       rerender({ saveTargetId: 'proj-2' });
     });
 

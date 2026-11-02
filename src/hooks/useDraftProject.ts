@@ -14,6 +14,7 @@ import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { restoreBookInAnalysis, restoreBookInSegmentation } from '../utils/analysis-book';
 import { DebouncedWriter } from '../utils/debounced-writer';
 import { perfTime, perfTrack } from '../utils/perf-marks';
+import { readOpenableProject } from '../utils/read-openable-project';
 import { isEmptyDelta } from '../utils/segmentation';
 import {
   canRedo as historyCanRedo,
@@ -182,10 +183,12 @@ export type UseDraftProjectResult = {
    */
   autosaveSegmentation: (segmentation: SegmentationDelta | undefined, location?: string) => void;
   /**
-   * Replaces the draft with a working copy of an existing project's analysis and config — the
-   * "Open" flow.
+   * Replaces the draft with a working copy of the stored project `projectId`'s analysis and config
+   * — the "Open" flow.
+   *
+   * @throws If the project cannot be read, or is missing or malformed; the draft is left untouched.
    */
-  loadFromProject: (project: OpenableProject) => void;
+  loadFromProject: (projectId: string) => Promise<void>;
   /**
    * Starts a fresh, empty draft for the current source — the "New" flow. Seeds the chosen analysis
    * languages and retains the typed name/description as `suggestedName`/`suggestedDescription`. The
@@ -506,7 +509,10 @@ export default function useDraftProject(
   );
 
   const loadFromProject = useCallback(
-    (project: OpenableProject) => {
+    async (projectId: string) => {
+      const project = await readOpenableProject(projectId);
+      if (!project)
+        throw new Error(`Interlinearizer: project ${projectId} is missing or malformed`);
       startedOverRef.current = true;
       applyReplacement(
         {

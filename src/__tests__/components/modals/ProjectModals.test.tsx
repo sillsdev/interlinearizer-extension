@@ -39,25 +39,8 @@ const MOCK_IMPORT_PROJECT: InterlinearProjectSummary = {
   pt9Import: { fileHashes: {}, importedAt: '2026-08-01T00:00:00.000Z' },
 };
 
-/** A full project (with analysis) returned by the mocked `interlinearizer.getProject` command. */
+/** A full project (with analysis), as the mocked project-creating commands return. */
 const MOCK_FULL_PROJECT = { ...MOCK_PROJECT, analysis: emptyAnalysis() };
-
-/** The same project but bilateral, to exercise the target-project branch of openProject. */
-const MOCK_FULL_PROJECT_WITH_TARGET = {
-  ...MOCK_PROJECT,
-  targetProjectId: 'target-proj',
-  analysis: emptyAnalysis(),
-};
-
-/** A custom boundary delta used to exercise the segmentation branches of open and Save As. */
-const MOCK_SEGMENTATION = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
-
-/** The same project carrying stored segment boundaries, for the openProject segmentation branch. */
-const MOCK_FULL_PROJECT_WITH_SEGMENTATION = {
-  ...MOCK_PROJECT,
-  analysis: emptyAnalysis(),
-  segmentation: MOCK_SEGMENTATION,
-};
 
 /** Draft snapshot returned by the default `getDraftSnapshot`. */
 const MOCK_DRAFT: DraftProject = {
@@ -448,33 +431,18 @@ describe('ProjectModals', () => {
   });
 
   describe('open (select) flow', () => {
-    it('loads the chosen project into the draft and closes when not dirty', async () => {
-      jest
-        .mocked(papi.commands.sendCommand)
-        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT));
+    it('loads the chosen project into the draft by id and closes when not dirty', async () => {
       const loadFromProject = jest.fn();
       const setModal = jest.fn();
       render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject, setModal })} />);
 
       await userEvent.click(screen.getByTestId('select-select'));
 
-      await waitFor(() =>
-        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-          'interlinearizer.getProject',
-          'proj-1',
-        ),
-      );
-      expect(loadFromProject).toHaveBeenCalledWith({
-        analysisLanguages: ['en'],
-        analysis: emptyAnalysis(),
-      });
-      expect(setModal).toHaveBeenCalledWith('none');
+      await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
+      expect(loadFromProject).toHaveBeenCalledWith('proj-1');
     });
 
     it('keeps the active project and the modal when the draft cannot be replaced', async () => {
-      jest
-        .mocked(papi.commands.sendCommand)
-        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT));
       const loadFromProject = jest.fn().mockRejectedValue(new Error('disk full'));
       const setModal = jest.fn();
       const setActiveProject = jest.fn();
@@ -502,14 +470,14 @@ describe('ProjectModals', () => {
     });
 
     it('marks the select modal as opening while the chosen project loads, and clears it after', async () => {
-      let resolveGet: (v: string) => void = () => {};
-      jest.mocked(papi.commands.sendCommand).mockImplementationOnce(
+      let finishLoad: () => void = () => {};
+      const loadFromProject = jest.fn(
         () =>
-          new Promise((resolve) => {
-            resolveGet = resolve;
+          new Promise<void>((resolve) => {
+            finishLoad = resolve;
           }),
       );
-      render(<ProjectModals {...buildProps({ modal: 'select' })} />);
+      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
       expect(screen.getByTestId('select-modal')).toHaveAttribute('data-is-opening', 'false');
 
       await userEvent.click(screen.getByTestId('select-select'));
@@ -517,109 +485,10 @@ describe('ProjectModals', () => {
         expect(screen.getByTestId('select-modal')).toHaveAttribute('data-is-opening', 'true'),
       );
 
-      resolveGet(JSON.stringify(MOCK_FULL_PROJECT));
+      finishLoad();
       await waitFor(() =>
         expect(screen.getByTestId('select-modal')).toHaveAttribute('data-is-opening', 'false'),
       );
-    });
-
-    it('carries the target project id into the draft for a bilateral project', async () => {
-      jest
-        .mocked(papi.commands.sendCommand)
-        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT_WITH_TARGET));
-      const loadFromProject = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
-
-      await userEvent.click(screen.getByTestId('select-select'));
-
-      await waitFor(() =>
-        expect(loadFromProject).toHaveBeenCalledWith({
-          analysisLanguages: ['en'],
-          targetProjectId: 'target-proj',
-          analysis: emptyAnalysis(),
-        }),
-      );
-    });
-
-    it('passes a stored segmentation delta into the draft when the project has one', async () => {
-      jest
-        .mocked(papi.commands.sendCommand)
-        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT_WITH_SEGMENTATION));
-      const loadFromProject = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
-
-      await userEvent.click(screen.getByTestId('select-select'));
-
-      await waitFor(() =>
-        expect(loadFromProject).toHaveBeenCalledWith({
-          analysisLanguages: ['en'],
-          segmentation: MOCK_SEGMENTATION,
-          analysis: emptyAnalysis(),
-        }),
-      );
-    });
-
-    it('notifies and does not load when the stored segmentation is malformed', async () => {
-      jest
-        .mocked(papi.commands.sendCommand)
-        .mockResolvedValueOnce(
-          JSON.stringify({ ...MOCK_PROJECT, analysis: emptyAnalysis(), segmentation: { bad: 1 } }),
-        );
-      const loadFromProject = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
-
-      await userEvent.click(screen.getByTestId('select-select'));
-
-      await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
-      expect(loadFromProject).not.toHaveBeenCalled();
-    });
-
-    it('notifies and does not load when getProject returns a non-project shape', async () => {
-      jest
-        .mocked(papi.commands.sendCommand)
-        .mockResolvedValueOnce(JSON.stringify({ not: 'a project' }));
-      const loadFromProject = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
-
-      await userEvent.click(screen.getByTestId('select-select'));
-
-      await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
-      expect(loadFromProject).not.toHaveBeenCalled();
-    });
-
-    it('notifies and does not load when getProject returns a project without valid analysis', async () => {
-      jest
-        .mocked(papi.commands.sendCommand)
-        .mockResolvedValueOnce(JSON.stringify({ ...MOCK_PROJECT, analysis: { bad: true } }));
-      const loadFromProject = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
-
-      await userEvent.click(screen.getByTestId('select-select'));
-
-      await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
-      expect(loadFromProject).not.toHaveBeenCalled();
-    });
-
-    it('notifies when getProject returns nothing (project missing)', async () => {
-      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(undefined);
-      const loadFromProject = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
-
-      await userEvent.click(screen.getByTestId('select-select'));
-
-      await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
-      expect(loadFromProject).not.toHaveBeenCalled();
-    });
-
-    it('logs and notifies when getProject rejects', async () => {
-      jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('network'));
-      const loadFromProject = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
-
-      await userEvent.click(screen.getByTestId('select-select'));
-
-      await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
-      expect(loadFromProject).not.toHaveBeenCalled();
     });
 
     it('calls setModal with none when the select modal is closed', async () => {
@@ -792,9 +661,6 @@ describe('ProjectModals', () => {
 
   describe('discard confirmation (dirty draft)', () => {
     it('confirms before opening a project when the draft is dirty', async () => {
-      jest
-        .mocked(papi.commands.sendCommand)
-        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT));
       const loadFromProject = jest.fn();
       render(
         <ProjectModals
@@ -883,13 +749,18 @@ describe('ProjectModals', () => {
     });
 
     it('disables the discard-confirm button while an open is in flight', async () => {
-      let resolveGet!: (value: string) => void;
-      jest.mocked(papi.commands.sendCommand).mockReturnValueOnce(
-        new Promise<string>((resolve) => {
-          resolveGet = resolve;
-        }),
+      let finishLoad: () => void = () => {};
+      const loadFromProject = jest.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finishLoad = resolve;
+          }),
       );
-      render(<ProjectModals {...buildProps({ modal: 'select', hasUnsavedWork: true })} />);
+      render(
+        <ProjectModals
+          {...buildProps({ modal: 'select', hasUnsavedWork: true, loadFromProject })}
+        />,
+      );
 
       await userEvent.click(screen.getByTestId('select-select'));
       expect(screen.getByTestId('discard-confirm')).toBeEnabled();
@@ -897,7 +768,7 @@ describe('ProjectModals', () => {
       await userEvent.click(screen.getByTestId('discard-confirm'));
       expect(screen.getByTestId('discard-confirm')).toBeDisabled();
 
-      resolveGet(JSON.stringify(MOCK_FULL_PROJECT));
+      finishLoad();
       await waitFor(() => expect(screen.queryByTestId('discard-modal')).toBeNull());
     });
   });

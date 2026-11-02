@@ -5,6 +5,7 @@ import { useData, useProjectSetting, useSetting } from '@papi/frontend/react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useGloss, useGlossDispatch } from '../../components/AnalysisStore';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
+import { emptyPt9ImportReport } from '../../converters/pt9/report';
 import type { SegmentationDispatch } from '../../components/SegmentationStore';
 import useConcordanceEntries from '../../hooks/useConcordanceEntries';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
@@ -15,7 +16,7 @@ import useProjectBookIds from '../../hooks/useProjectBookIds';
 import useSegmentPages from '../../hooks/useSegmentPages';
 import useSourceTextReader from '../../hooks/useSourceTextReader';
 import useStaleAnalysisDismissal from '../../hooks/useStaleAnalysisDismissal';
-import { fakeHost } from '../cache/fake-host';
+import { fakeHost, STORED_PROJECT } from '../cache/fake-host';
 import { BOOK, ref } from '../cache/session-source';
 import { makeScrollGroupHook, makeWebViewState } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
@@ -50,6 +51,46 @@ jest.mock('../../components/ContinuousView', () => ({
 }));
 
 let capturedBoundaries: SegmentationDispatch | undefined;
+
+jest.mock('../../components/modals/ProjectModals', () => ({
+  __esModule: true,
+  /** Offers Open, New and a Paratext 9 import as buttons, in place of the project dialogs. */
+  default: ({
+    loadFromProject,
+    newDraft,
+    onImportPt9,
+  }: {
+    loadFromProject: (projectId: string) => Promise<void>;
+    newDraft: (config: { analysisLanguages: string[] }) => Promise<void>;
+    onImportPt9: () => void;
+  }) => (
+    <div>
+      <button type="button" data-testid="open-project" onClick={() => loadFromProject('proj-de')}>
+        Open
+      </button>
+      <button
+        type="button"
+        data-testid="new-draft"
+        onClick={() => newDraft({ analysisLanguages: ['fr'] })}
+      >
+        New
+      </button>
+      <button type="button" data-testid="import-pt9" onClick={onImportPt9}>
+        Import
+      </button>
+    </div>
+  ),
+}));
+
+jest.mock('../../components/modals/DiscardChangesModal', () => ({
+  __esModule: true,
+  /** Confirms a whole-draft discard from one button, in place of the scope picker. */
+  DiscardChangesModal: ({ onConfirm }: { onConfirm: (scope: 'book' | 'all') => void }) => (
+    <button type="button" data-testid="discard-all" onClick={() => onConfirm('all')}>
+      Discard draft
+    </button>
+  ),
+}));
 
 /** Shows the gloss of "earth", and writes one when clicked, as a token chip would. */
 function EarthProbe() {
@@ -140,13 +181,26 @@ function mockLoaderHooks(): void {
   mockKeyAsValueLocalizedStrings();
 }
 
+/** The project the draft saves to, as the WebView's stored state holds it. */
+const ACTIVE_PROJECT = {
+  id: 'proj-1',
+  sourceProjectId: 'src',
+  analysisLanguages: ['en'],
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
 /**
  * Renders the loader on the source `src` and waits for its session's view to show.
  *
  * @param state - What the WebView's stored state starts with.
+ * @param others - Answers the commands that the fake host does not serve.
  */
-async function renderLoaded(state: Record<string, unknown> = {}) {
-  const host = await fakeHost();
+async function renderLoaded(
+  state: Record<string, unknown> = {},
+  others: Parameters<typeof fakeHost>[0] = async () => undefined,
+) {
+  const host = await fakeHost(others);
   jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
   render(
     <InterlinearizerLoader
@@ -226,15 +280,7 @@ describe('InterlinearizerLoader on the host path', () => {
 
 describe('InterlinearizerLoader saving on the host path', () => {
   it('saves the draft to the active project through its session', async () => {
-    await renderLoaded({
-      activeProject: {
-        id: 'proj-1',
-        sourceProjectId: 'src',
-        analysisLanguages: ['en'],
-        createdAt: '2026-01-01T00:00:00.000Z',
-        updatedAt: '2026-01-01T00:00:00.000Z',
-      },
-    });
+    await renderLoaded({ activeProject: ACTIVE_PROJECT });
 
     fireEvent.click(screen.getByTestId('tab-toolbar-save'));
 
@@ -246,6 +292,95 @@ describe('InterlinearizerLoader saving on the host path', () => {
         undefined,
         expect.any(String),
       ),
+    );
+  });
+});
+
+describe('InterlinearizerLoader starting over on the host path', () => {
+  it('opens a project by sending the host its id, reading no project', async () => {
+    await renderLoaded();
+
+    fireEvent.click(screen.getByTestId('open-project'));
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.startDraftOver', {
+        sourceProjectId: 'src',
+        from: { interlinearProjectId: STORED_PROJECT.id },
+      }),
+    );
+    await screen.findByTestId('earth');
+    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+      'interlinearizer.getProject',
+      expect.anything(),
+    );
+  });
+
+  it('starts a new draft by sending the host its configuration', async () => {
+    await renderLoaded();
+
+    fireEvent.click(screen.getByTestId('new-draft'));
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.startDraftOver', {
+        sourceProjectId: 'src',
+        from: { analysisLanguages: ['fr'] },
+      }),
+    );
+  });
+});
+
+describe('InterlinearizerLoader discarding on the host path', () => {
+  it("discards the draft through its session, leaving the saved project's content to the host", async () => {
+    await renderLoaded({ activeProject: ACTIVE_PROJECT });
+
+    fireEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+    fireEvent.click(screen.getByTestId('discard-all'));
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.discardAll', {
+        sessionId: expect.any(String),
+        changeId: expect.any(String),
+      }),
+    );
+    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+      'interlinearizer.getProject',
+      expect.anything(),
+    );
+  });
+});
+
+describe('InterlinearizerLoader opening a Paratext 9 import on the host path', () => {
+  const IMPORT_SUMMARY = {
+    ...ACTIVE_PROJECT,
+    id: 'import-1',
+    pt9Import: { fileHashes: {}, importedAt: '2026-01-01T00:00:00.000Z' },
+  };
+
+  it("opens the report's import from its summary, reading no project", async () => {
+    await renderLoaded({}, async (command) => {
+      if (command === 'interlinearizer.importPt9Project')
+        return JSON.stringify({
+          outcome: 'imported',
+          projectId: IMPORT_SUMMARY.id,
+          report: emptyPt9ImportReport(),
+        });
+      if (command === 'interlinearizer.getProjectSummary') return JSON.stringify(IMPORT_SUMMARY);
+      return undefined;
+    });
+
+    fireEvent.click(screen.getByTestId('import-pt9'));
+    fireEvent.click(
+      await screen.findByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
+    );
+
+    await screen.findByTestId('pt9-import-banner');
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+      'interlinearizer.getProjectSummary',
+      IMPORT_SUMMARY.id,
+    );
+    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+      'interlinearizer.getProject',
+      expect.anything(),
     );
   });
 });

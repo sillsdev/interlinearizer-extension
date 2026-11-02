@@ -305,26 +305,20 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects a write.
    */
   async replaceAll(draft: DraftProject, options?: ReplaceAllOptions): Promise<string[]> {
-    this.current = undefined;
-    this.exported = undefined;
-    if (!this.loaded) {
-      try {
-        await this.read(false);
-      } catch (e) {
-        // An unparseable draft names no shard to keep, and this save replaces it.
-        if (!(e instanceof SyntaxError)) throw e;
-      }
-    }
-    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
-      this.assertStoredDraftIsWritable(),
-    );
-    const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(draft.analysis));
-    if (options?.discardUnreadable) this.unreadableShards.clear();
-    const leftOut = [...this.unreadableShards].filter((bookCode) => byBook.has(bookCode));
-    leftOut.forEach((bookCode) => byBook.delete(bookCode));
-    const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
-    await this.writeDraft(draft, storedBooks, journaled, [...byBook.keys()], byBook);
-    return leftOut;
+    return this.save(draft, options?.discardUnreadable === true);
+  }
+
+  /**
+   * Starts the draft over as `draft`, replacing the stored one as {@link replaceAll} does. Stored
+   * analysis that could not be read is discarded, so the save writes or wipes those books like any
+   * other.
+   *
+   * @throws {Error} If the stored draft was written by a newer build; nothing is written.
+   * @throws If storage rejects a read; nothing is written.
+   * @throws If storage rejects a write.
+   */
+  async startOver(draft: DraftProject): Promise<void> {
+    await this.save(draft, true);
   }
 
   /**
@@ -416,6 +410,37 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
 
   protected keptIndex(): IndexedDraft | undefined {
     return this.current;
+  }
+
+  /**
+   * Saves `draft` as {@link replaceAll} describes, first discarding the unreadable books when
+   * `discardUnreadable` is set.
+   *
+   * @returns The books whose analysis in the draft was left out because their stored shard cannot
+   *   be read.
+   * @throws Whatever {@link replaceAll} throws.
+   */
+  private async save(draft: DraftProject, discardUnreadable: boolean): Promise<string[]> {
+    this.current = undefined;
+    this.exported = undefined;
+    if (!this.loaded) {
+      try {
+        await this.read(false);
+      } catch (e) {
+        // An unparseable draft names no shard to keep, and this save replaces it.
+        if (!(e instanceof SyntaxError)) throw e;
+      }
+    }
+    const storedBooks = await perfTimeAsync('saveDraft:read', () =>
+      this.assertStoredDraftIsWritable(),
+    );
+    const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(draft.analysis));
+    if (discardUnreadable) this.unreadableShards.clear();
+    const leftOut = [...this.unreadableShards].filter((bookCode) => byBook.has(bookCode));
+    leftOut.forEach((bookCode) => byBook.delete(bookCode));
+    const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
+    await this.writeDraft(draft, storedBooks, journaled, [...byBook.keys()], byBook);
+    return leftOut;
   }
 
   /**

@@ -176,7 +176,7 @@ export async function fakeHost(
           typeof first === 'object' && first ? Reflect.get(first, 'from') : undefined;
         const draft = startedDraft(sourceProjectId, from);
         await sessions.closeAndRun(sourceProjectId, () =>
-          new DraftRepository(storage, sourceProjectId, silentLogger()).replaceAll(draft),
+          new DraftRepository(storage, sourceProjectId, silentLogger()).startOver(draft),
         );
         return undefined;
       }

@@ -2443,7 +2443,7 @@ describe('main', () => {
   });
 
   describe('interlinearizer.startDraftOver command', () => {
-    const mockSaveDraft = jest.mocked(projectStorage.saveDraft);
+    const mockStartDraftOver = jest.mocked(projectStorage.startDraftOver);
 
     /** Activates the extension and returns the `interlinearizer.startDraftOver` handler. */
     const getStartDraftOverHandler = () =>
@@ -2459,29 +2459,24 @@ describe('main', () => {
         targetProjectId: 'tgt',
         segmentation,
       });
-      mockSaveDraft.mockResolvedValue([]);
+      mockStartDraftOver.mockResolvedValue();
       const handler = await getStartDraftOverHandler();
 
       await handler({ sourceProjectId: 'src-project', from: { interlinearProjectId: 'proj-id' } });
 
-      expect(mockSaveDraft).toHaveBeenCalledWith(
-        expect.anything(),
-        'src-project',
-        {
-          sourceProjectId: 'src-project',
-          modelVersion: CURRENT_MODEL_VERSION,
-          dirty: false,
-          analysisLanguages: ['de'],
-          targetProjectId: 'tgt',
-          segmentation,
-          analysis: emptyAnalysis(),
-        },
-        { discardUnreadable: true },
-      );
+      expect(mockStartDraftOver).toHaveBeenCalledWith(expect.anything(), 'src-project', {
+        sourceProjectId: 'src-project',
+        modelVersion: CURRENT_MODEL_VERSION,
+        dirty: false,
+        analysisLanguages: ['de'],
+        targetProjectId: 'tgt',
+        segmentation,
+        analysis: emptyAnalysis(),
+      });
     });
 
     it("starts the draft over empty, with a New dialog's configuration", async () => {
-      mockSaveDraft.mockResolvedValue([]);
+      mockStartDraftOver.mockResolvedValue();
       const handler = await getStartDraftOverHandler();
 
       await handler({
@@ -2489,32 +2484,14 @@ describe('main', () => {
         from: { analysisLanguages: ['fr'], suggestedName: 'N', suggestedDescription: 'D' },
       });
 
-      expect(mockSaveDraft).toHaveBeenCalledWith(
-        expect.anything(),
-        'src-project',
-        {
-          sourceProjectId: 'src-project',
-          modelVersion: CURRENT_MODEL_VERSION,
-          dirty: false,
-          analysisLanguages: ['fr'],
-          suggestedName: 'N',
-          suggestedDescription: 'D',
-          analysis: emptyAnalysis(),
-        },
-        { discardUnreadable: true },
-      );
-    });
-
-    it('tells the user which books starting over left out', async () => {
-      __mockGetLocalizedString.mockResolvedValue('Changes lost: {books}');
-      mockSaveDraft.mockResolvedValue(['JHN']);
-      const handler = await getStartDraftOverHandler();
-
-      await handler({ sourceProjectId: 'src-project', from: { analysisLanguages: ['fr'] } });
-
-      expect(__mockNotificationsSend).toHaveBeenCalledWith({
-        message: 'Changes lost: JHN',
-        severity: 'error',
+      expect(mockStartDraftOver).toHaveBeenCalledWith(expect.anything(), 'src-project', {
+        sourceProjectId: 'src-project',
+        modelVersion: CURRENT_MODEL_VERSION,
+        dirty: false,
+        analysisLanguages: ['fr'],
+        suggestedName: 'N',
+        suggestedDescription: 'D',
+        analysis: emptyAnalysis(),
       });
     });
 
@@ -2532,7 +2509,7 @@ describe('main', () => {
       expect(__mockNotificationsSend).toHaveBeenCalledWith(
         expect.objectContaining({ severity: 'error' }),
       );
-      expect(mockSaveDraft).not.toHaveBeenCalled();
+      expect(mockStartDraftOver).not.toHaveBeenCalled();
     });
 
     it('rejects a configuration that makes no valid draft, writing nothing', async () => {
@@ -2544,7 +2521,7 @@ describe('main', () => {
           from: JSON.parse('{ "analysisLanguages": "fr" }'),
         }),
       ).rejects.toThrow(TypeError);
-      expect(mockSaveDraft).not.toHaveBeenCalled();
+      expect(mockStartDraftOver).not.toHaveBeenCalled();
     });
   });
 
@@ -3061,7 +3038,7 @@ describe('main', () => {
 
     it("closes the source's session before starting its draft over", async () => {
       await seedDraft(CATS_BREAKDOWN);
-      jest.mocked(projectStorage.saveDraft).mockResolvedValue([]);
+      jest.mocked(projectStorage.startDraftOver).mockResolvedValue();
       const { openSession, getFullAnalysis } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
       const startDraftOver = findRegisteredHandler('interlinearizer.startDraftOver');

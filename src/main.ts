@@ -1057,9 +1057,10 @@ async function startDraftOver({
 }: ArgsOf<'interlinearizer.startDraftOver'>): Promise<void> {
   await writeDraft(sourceProjectId, async () => {
     const draft = await startedDraft(sourceProjectId, from);
-    return sessions.closeAndRun(sourceProjectId, () =>
-      projectStorage.saveDraft(executionToken, sourceProjectId, draft, { discardUnreadable: true }),
+    await sessions.closeAndRun(sourceProjectId, () =>
+      projectStorage.startDraftOver(executionToken, sourceProjectId, draft),
     );
+    return [];
   });
 }
 

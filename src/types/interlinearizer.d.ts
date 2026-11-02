@@ -378,7 +378,7 @@ declare module 'papi-shared-types' {
     /**
      * Starts the source project's draft over from `from`, as New and Open do, closing the source's
      * session first. A session opened afterward has nothing to undo. Stored analysis that could not
-     * be read is discarded, and the user is told which books once.
+     * be read is discarded.
      *
      * @throws If `from` names a project that is not stored, or if reading that project, closing the
      *   session, or writing the draft fails. The error is logged and an error notification is sent

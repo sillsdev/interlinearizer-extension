@@ -22,6 +22,7 @@ import {
   saveDraftAsNewProject,
   saveDraftToProject,
   savePt9Import,
+  startDraftOver,
   sweepPendingCleanup,
   updateAnalysis,
   updateProjectMetadata,
@@ -1705,6 +1706,22 @@ describe('projectStorage', () => {
         });
       });
 
+      it('leaves the stored draft dirty when it was started over after the copy read it', async () => {
+        const stored = backStorageWithMap();
+        storeListedProject(stored, makeStubProject('proj-id'));
+        await saveDraft(token, 'src-proj', {
+          ...makeDraftSpanningBooks('src-proj', 'GEN'),
+          dirty: true,
+        });
+        const started = { ...emptyDraft('src-proj'), dirty: true };
+
+        const save = saveDraftToProject(token, 'src-proj', 'proj-id');
+        const write = startDraftOver(token, 'src-proj', started);
+        await Promise.all([save, write]);
+
+        expect((await getDraft(token, 'src-proj')).draft).toMatchObject({ dirty: true });
+      });
+
       it('leaves the stored draft dirty when changes were applied after the copy read it', async () => {
         const stored = backStorageWithMap();
         storeListedProject(stored, makeStubProject('proj-id'));
@@ -2980,6 +2997,27 @@ describe('projectStorage', () => {
 
         expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'draft:src-proj:analysis:no book');
       });
+    });
+  });
+
+  describe('startDraftOver', () => {
+    it("rewrites an unreadable book's shard with what the started draft carries for it", async () => {
+      await saveDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN', 'JHN'));
+      __mockReadUserData.mockImplementation(async (_t: unknown, key: unknown) => {
+        if (key === 'draft:src-proj:analysis:JHN') return '{not json';
+        const written = __mockWriteUserData.mock.calls.findLast(([, k]) => k === key);
+        if (!written) throw enoentError();
+        return written[2];
+      });
+      const { draft: loaded } = await getDraft(token, 'src-proj');
+      __mockWriteUserData.mockClear();
+
+      await startDraftOver(token, 'src-proj', {
+        ...loaded,
+        analysis: makeDraftSpanningBooks('src-proj', 'JHN').analysis,
+      });
+
+      expect(writtenKeys()).toContain('draft:src-proj:analysis:JHN');
     });
   });
 

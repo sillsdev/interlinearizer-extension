@@ -1184,6 +1184,47 @@ export async function saveDraft(
 }
 
 /**
+ * Starts the source project's draft over as `draft`, saving it as {@link saveDraft} does. Stored
+ * analysis that could not be read is discarded, so those books are written or wiped like any other.
+ * Waits for every draft call already made for that source.
+ *
+ * @throws {Error} If the stored draft was written by a newer build; nothing is written.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason; nothing is written.
+ * @throws If `papi.storage.writeUserData` rejects.
+ */
+export function startDraftOver(
+  token: ExecutionToken,
+  sourceProjectId: string,
+  draft: DraftProject,
+): Promise<void> {
+  return countedDraftCall(token, sourceProjectId, (repository) => repository.startOver(draft));
+}
+
+/** Runs `call` on the source project's draft repository once its earlier draft calls settle. */
+function queuedDraftCall<T>(
+  token: ExecutionToken,
+  sourceProjectId: string,
+  call: (repository: DraftRepository) => Promise<T>,
+): Promise<T> {
+  return enqueueSerialized(draftQueues, sourceProjectId, () =>
+    call(draftRepositoryFor(token, sourceProjectId)),
+  );
+}
+
+/**
+ * Runs a draft write once the source's earlier draft calls settle. The write is counted when
+ * queued, so that a copy can tell that a write was sent after the copy read the draft.
+ */
+function countedDraftCall<T>(
+  token: ExecutionToken,
+  sourceProjectId: string,
+  call: (repository: DraftRepository) => Promise<T>,
+): Promise<T> {
+  draftWriteCounts.set(sourceProjectId, (draftWriteCounts.get(sourceProjectId) ?? 0) + 1);
+  return queuedDraftCall(token, sourceProjectId, call);
+}
+
+/**
  * The source project's draft repository. Calls on it wait for every draft call already made for
  * that source, through any handle, so calls never overlap.
  */
@@ -1192,14 +1233,9 @@ export function openDraftRepository(
   sourceProjectId: string,
 ): AnalysisRepository {
   const queued = <T>(call: (repository: DraftRepository) => Promise<T>) =>
-    enqueueSerialized(draftQueues, sourceProjectId, () =>
-      call(draftRepositoryFor(token, sourceProjectId)),
-    );
-  // Counted when queued, so a copy can tell a write was sent after it read the draft.
-  const counted = <T>(call: (repository: DraftRepository) => Promise<T>) => {
-    draftWriteCounts.set(sourceProjectId, (draftWriteCounts.get(sourceProjectId) ?? 0) + 1);
-    return queued(call);
-  };
+    queuedDraftCall(token, sourceProjectId, call);
+  const counted = <T>(call: (repository: DraftRepository) => Promise<T>) =>
+    countedDraftCall(token, sourceProjectId, call);
   return {
     capabilities: { readOnly: false },
     exportAll: () => queued((repository) => repository.exportAll()),

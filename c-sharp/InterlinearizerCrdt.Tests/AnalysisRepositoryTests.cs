@@ -118,6 +118,48 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyInPatchModeSetsTheFieldsThePutCarriesAndMergesMultistrings()
+    {
+        await ApplyNext(FullAnalysis());
+        var put = new TokenAnalysis
+        {
+            Id = TaBeginning,
+            SurfaceText = "Beginning",
+            Gloss = new MultiString { ["fr"] = "début" },
+        };
+
+        await ApplyNext(new ChangeSet { Intent = "patch", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }, PutMode.Patch);
+
+        var stored = (await Repository.GetTokenAnalyses([TaBeginning])).Single();
+        await Assert.That(stored.SurfaceText).IsEqualTo("Beginning");
+        await Assert.That(stored.Gloss).IsEquivalentTo(new Dictionary<string, string> { ["en"] = "start", ["fr"] = "début" });
+        var changes = await DbContext.ChangeEntities.ToListAsync();
+        await Assert.That(changes.Select(c => c.Change).OfType<PatchTokenAnalysisChange>().Count()).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task ApplyInPatchModeLeavesAMultistringThePutLacksAlone()
+    {
+        await ApplyNext(FullAnalysis());
+        var put = new TokenAnalysis { Id = TaBeginning, SurfaceText = "beginning" };
+
+        await ApplyNext(new ChangeSet { Intent = "patch", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }, PutMode.Patch);
+
+        var stored = (await Repository.GetTokenAnalyses([TaBeginning])).Single();
+        await Assert.That(stored.Gloss).IsEquivalentTo(new Dictionary<string, string> { ["en"] = "start" });
+    }
+
+    [Test]
+    public async Task ApplyInPatchModeStillCreatesARecordNotStored()
+    {
+        var fresh = Guid.NewGuid();
+
+        await ApplyNext(new ChangeSet { Intent = "patch", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(fresh, "new", "new")) }, PutMode.Patch);
+
+        await Assert.That(IdsOf(await Repository.GetTokenAnalyses([fresh]))).IsEquivalentTo([fresh]);
+    }
+
+    [Test]
     public async Task ApplyKeepsTheCreationTimeOfAReplacedRecord()
     {
         await ApplyNext(FullAnalysis());

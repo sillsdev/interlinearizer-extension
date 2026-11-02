@@ -43,10 +43,10 @@ public abstract class CrdtTestBase : IAsyncDisposable
     }
 
     /// <summary>Applies through the repository at the next commit time.</summary>
-    protected async Task ApplyNext(ChangeSet changes)
+    protected async Task ApplyNext(ChangeSet changes, PutMode putMode = PutMode.Replace)
     {
         _timeProvider.SetNextDateTime(NextDate());
-        await Repository.Apply(changes);
+        await Repository.Apply(changes, putMode);
     }
 
     /// <summary>The time the next commit will be made at, one day after the last.</summary>

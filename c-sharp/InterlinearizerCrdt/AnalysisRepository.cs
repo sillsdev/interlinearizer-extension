@@ -18,14 +18,14 @@ public class AnalysisRepository(DataModel dataModel, Guid clientId)
 
     /// <summary>
     /// Applies <paramref name="changes"/> as one commit, so whole or not at all. A put of a record
-    /// not stored creates it, and of one stored replaces it whole; the timestamps a put carries are
-    /// ignored, since the commit stamps them. A delete of a record not stored is skipped. A change
-    /// set that changes nothing writes no commit.
+    /// not stored creates it, and of one stored writes it as <paramref name="putMode"/> says; the
+    /// timestamps a put carries are ignored, since the commit stamps them. A delete of a record
+    /// not stored is skipped. A change set that changes nothing writes no commit.
     /// </summary>
     /// <exception cref="ArgumentException">
     /// If an id appears more than once in one record kind's changes; nothing is applied.
     /// </exception>
-    public async Task Apply(ChangeSet changes)
+    public async Task Apply(ChangeSet changes, PutMode putMode = PutMode.Replace)
     {
         AssertIdsDistinct(changes.SegmentAnalyses, "segment analysis");
         AssertIdsDistinct(changes.SegmentAnalysisLinks, "segment analysis link");
@@ -36,17 +36,29 @@ public class AnalysisRepository(DataModel dataModel, Guid clientId)
 
         var harmonyChanges = new List<IChange>();
         await AddChanges(harmonyChanges, changes.SegmentAnalyses,
-            a => new CreateSegmentAnalysisChange(a), a => new ReplaceSegmentAnalysisChange(a), id => new DeleteChange<SegmentAnalysis>(id));
+            a => new CreateSegmentAnalysisChange(a),
+            putMode == PutMode.Patch ? a => new PatchSegmentAnalysisChange(a) : a => new ReplaceSegmentAnalysisChange(a),
+            id => new DeleteChange<SegmentAnalysis>(id));
         await AddChanges(harmonyChanges, changes.TokenAnalyses,
-            a => new CreateTokenAnalysisChange(a), a => new ReplaceTokenAnalysisChange(a), id => new DeleteChange<TokenAnalysis>(id));
+            a => new CreateTokenAnalysisChange(a),
+            putMode == PutMode.Patch ? a => new PatchTokenAnalysisChange(a) : a => new ReplaceTokenAnalysisChange(a),
+            id => new DeleteChange<TokenAnalysis>(id));
         await AddChanges(harmonyChanges, changes.PhraseAnalyses,
-            a => new CreatePhraseAnalysisChange(a), a => new ReplacePhraseAnalysisChange(a), id => new DeleteChange<PhraseAnalysis>(id));
+            a => new CreatePhraseAnalysisChange(a),
+            putMode == PutMode.Patch ? a => new PatchPhraseAnalysisChange(a) : a => new ReplacePhraseAnalysisChange(a),
+            id => new DeleteChange<PhraseAnalysis>(id));
         await AddChanges(harmonyChanges, changes.SegmentAnalysisLinks,
-            l => new CreateSegmentAnalysisLinkChange(l), l => new ReplaceSegmentAnalysisLinkChange(l), id => new DeleteChange<SegmentAnalysisLink>(id));
+            l => new CreateSegmentAnalysisLinkChange(l),
+            putMode == PutMode.Patch ? l => new PatchSegmentAnalysisLinkChange(l) : l => new ReplaceSegmentAnalysisLinkChange(l),
+            id => new DeleteChange<SegmentAnalysisLink>(id));
         await AddChanges(harmonyChanges, changes.TokenAnalysisLinks,
-            l => new CreateTokenAnalysisLinkChange(l), l => new ReplaceTokenAnalysisLinkChange(l), id => new DeleteChange<TokenAnalysisLink>(id));
+            l => new CreateTokenAnalysisLinkChange(l),
+            putMode == PutMode.Patch ? l => new PatchTokenAnalysisLinkChange(l) : l => new ReplaceTokenAnalysisLinkChange(l),
+            id => new DeleteChange<TokenAnalysisLink>(id));
         await AddChanges(harmonyChanges, changes.PhraseAnalysisLinks,
-            l => new CreatePhraseAnalysisLinkChange(l), l => new ReplacePhraseAnalysisLinkChange(l), id => new DeleteChange<PhraseAnalysisLink>(id));
+            l => new CreatePhraseAnalysisLinkChange(l),
+            putMode == PutMode.Patch ? l => new PatchPhraseAnalysisLinkChange(l) : l => new ReplacePhraseAnalysisLinkChange(l),
+            id => new DeleteChange<PhraseAnalysisLink>(id));
         if (harmonyChanges.Count == 0) return;
 
         await dataModel.AddChanges(clientId, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
@@ -173,14 +185,14 @@ public class AnalysisRepository(DataModel dataModel, Guid clientId)
         List<IChange> into,
         RecordChanges<T>? changes,
         Func<T, IChange> create,
-        Func<T, IChange> replace,
+        Func<T, IChange> update,
         Func<Guid, IChange> delete) where T : class, IObjectBase
     {
         if (changes is null) return;
         var ids = changes.Puts.Select(r => r.Id).Concat(changes.Deletes).ToList();
         if (ids.Count == 0) return;
         var stored = (await Query<T, Guid>(q => q.Where(e => ids.Contains(e.Id)).Select(e => e.Id))).ToHashSet();
-        into.AddRange(changes.Puts.Select(record => stored.Contains(IdOf(record)) ? replace(record) : create(record)));
+        into.AddRange(changes.Puts.Select(record => stored.Contains(IdOf(record)) ? update(record) : create(record)));
         into.AddRange(changes.Deletes.Where(stored.Contains).Select(delete));
     }
 

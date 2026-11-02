@@ -39,6 +39,35 @@ public class ChangeSerializationTests
         yield return () => ("CreatePhraseAnalysisLinkChange", Fixtures.CreatePhraseAnalysisLink(Id, AnalysisId));
         yield return () => ("ReplacePhraseAnalysisLinkChange", Fixtures.ReplacePhraseAnalysisLink(Id, AnalysisId));
         yield return () => ("delete:PhraseAnalysisLink", new DeleteChange<PhraseAnalysisLink>(Id));
+        yield return () => ("PatchSegmentAnalysisChange", Fixtures.PatchSegmentAnalysis(Id));
+        yield return () => ("PatchSegmentAnalysisLinkChange", Fixtures.PatchSegmentAnalysisLink(Id));
+        yield return () => ("PatchTokenAnalysisChange", Fixtures.PatchTokenAnalysis(Id));
+        yield return () => ("PatchTokenAnalysisLinkChange", Fixtures.PatchTokenAnalysisLink(Id));
+        yield return () => ("PatchPhraseAnalysisChange", Fixtures.PatchPhraseAnalysis(Id));
+        yield return () => ("PatchPhraseAnalysisLinkChange", Fixtures.PatchPhraseAnalysisLink(Id));
+    }
+
+    [Test]
+    public async Task APatchLeavesUnsetFieldsOutAndKeepsFieldsSetToNull()
+    {
+        var json = JsonSerializer.Serialize(Fixtures.PatchTokenAnalysis(Id), Options.Value);
+
+        using var document = JsonDocument.Parse(json);
+        var names = document.RootElement.EnumerateObject().Select(p => p.Name).ToList();
+        await Assert.That(names).DoesNotContain("SurfaceText");
+        await Assert.That(names).DoesNotContain("Morphemes");
+        await Assert.That(document.RootElement.GetProperty("Pos").ValueKind).IsEqualTo(JsonValueKind.Null);
+        await Assert.That(document.RootElement.GetProperty("Gloss").GetProperty("fr").ValueKind).IsEqualTo(JsonValueKind.Null);
+
+        var roundTripped = JsonSerializer.Deserialize<IChange>(json, Options.Value);
+        var patch = roundTripped as PatchTokenAnalysisChange;
+        await Assert.That(patch).IsNotNull();
+        await Assert.That(patch!.SurfaceText.HasValue).IsFalse();
+        await Assert.That(patch.Morphemes.HasValue).IsFalse();
+        await Assert.That(patch.Pos.HasValue).IsTrue();
+        await Assert.That(patch.Pos.Value).IsNull();
+        await Assert.That(patch.Gloss!["fr"]).IsNull();
+        await Assert.That(patch.Gloss["de"]).IsEqualTo("Anfang");
     }
 
     [Test]

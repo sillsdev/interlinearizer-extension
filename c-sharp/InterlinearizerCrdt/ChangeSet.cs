@@ -28,6 +28,18 @@ public record ChangeSet
     public RecordChanges<PhraseAnalysisLink>? PhraseAnalysisLinks { get; init; }
 }
 
+/// <summary>How an apply writes a put whose record is already stored.</summary>
+public enum PutMode
+{
+    /// <summary>Replace the stored record whole, dropping any field the put lacks.</summary>
+    Replace,
+    /// <summary>
+    /// Set every field the put carries, merging a multistring or feature map per key. A field or
+    /// key the put lacks is left as stored.
+    /// </summary>
+    Patch,
+}
+
 /// <summary>Links of every kind, one list per kind, each in no set order.</summary>
 public record AnalysisLinks(
     List<TokenAnalysisLink> TokenAnalysisLinks,

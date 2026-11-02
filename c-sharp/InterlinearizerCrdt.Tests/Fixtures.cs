@@ -42,6 +42,46 @@ public static class Fixtures
         LiteralTranslation = null,
     };
 
+    /// <summary>Sets some fields, clears one, and edits one translation key while removing another.</summary>
+    public static PatchSegmentAnalysisChange PatchSegmentAnalysis(Guid id) => new(id)
+    {
+        Confidence = Confidence.Low,
+        SourceUser = null,
+        FreeTranslation = new MultiStringPatch { ["en"] = "At first", ["fr"] = null },
+    };
+
+    public static PatchSegmentAnalysisLinkChange PatchSegmentAnalysisLink(Guid id) => new(id)
+    {
+        Status = AssignmentStatus.Rejected,
+        Confidence = null,
+    };
+
+    public static PatchTokenAnalysisChange PatchTokenAnalysis(Guid id) => new(id)
+    {
+        Pos = null,
+        Features = new MultiStringPatch { ["Case"] = "Gen", ["Number"] = null, ["Gender"] = "Fem" },
+        Gloss = new MultiStringPatch { ["fr"] = null, ["de"] = "Anfang" },
+        GlossSenseRef = null,
+    };
+
+    public static PatchTokenAnalysisLinkChange PatchTokenAnalysisLink(Guid id) => new(id)
+    {
+        Token = Token2,
+        Status = AssignmentStatus.Approved,
+    };
+
+    public static PatchPhraseAnalysisChange PatchPhraseAnalysis(Guid id) => new(id)
+    {
+        SurfaceText = "in the beginning",
+        Gloss = new MultiStringPatch { ["en"] = null, ["fr"] = null },
+    };
+
+    public static PatchPhraseAnalysisLinkChange PatchPhraseAnalysisLink(Guid id) => new(id)
+    {
+        Tokens = new List<TokenSnapshot> { Token2, Token1 },
+        Confidence = Confidence.High,
+    };
+
     public static CreateSegmentAnalysisLinkChange CreateSegmentAnalysisLink(Guid id, Guid analysisId) => new(id)
     {
         AnalysisId = analysisId,

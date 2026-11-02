@@ -251,13 +251,15 @@ describe('useSourceTextReader', () => {
       genesisReads += 1;
       return genesisReads === 1 ? Promise.reject(new Error('unreadable')) : secondGenesis.promise;
     });
-    const { result } = renderHook(() => useSourceTextReader(baseArgs));
+    const { result, unmount } = renderHook(() => useSourceTextReader(baseArgs));
     await waitFor(() => expect(result.current.isPartial).toBe(true));
 
     act(() => result.current.refresh());
 
     expect(result.current.status).toBe('loading');
     expect(result.current.isPartial).toBe(false);
+    // Abandons the re-read, so it cannot land after the test.
+    unmount();
   });
 
   it('reports the text forms once a re-read takes in the book that failed', async () => {
@@ -387,7 +389,7 @@ describe('useSourceTextReader', () => {
 
   it("keeps only the live book's live version on refresh", async () => {
     serveProject('111', async (id) => book(id, 'v1'));
-    const { result, rerender } = renderHook(
+    const { result, rerender, unmount } = renderHook(
       (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
       { initialProps: { ...baseArgs, liveBook: book('GEN', 'v2') } },
     );
@@ -397,12 +399,14 @@ describe('useSourceTextReader', () => {
     act(() => result.current.refresh());
 
     expect(builtFrom(result.current.liveVersions)).toEqual(['EXO@v2']);
+    // Abandons the re-read, so it cannot land after the test.
+    unmount();
   });
 
   it('forgets live versions of other books on refresh when no book is live', async () => {
     serveProject('1', async (id) => book(id, 'v1'));
     const genesisLive: UseSourceTextReaderArgs = { ...baseArgs, liveBook: book('GEN', 'v2') };
-    const { result, rerender } = renderHook(
+    const { result, rerender, unmount } = renderHook(
       (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
       { initialProps: genesisLive },
     );
@@ -412,6 +416,8 @@ describe('useSourceTextReader', () => {
     act(() => result.current.refresh());
 
     expect(builtFrom(result.current.liveVersions)).toEqual([]);
+    // Abandons the re-read, so it cannot land after the test.
+    unmount();
   });
 
   it('abandons a read in progress when refreshed', async () => {

@@ -61,7 +61,10 @@ export type ProjectApi = Omit<
   redo: () => Settles<EditStep | undefined>;
   discardBook: (bookCode: string, saved?: DraftContent) => Settles<void>;
   discardAll: (saved?: DraftContent) => Settles<void>;
-  /** The session that keeps the draft; absent on the WebView path. */
+  /**
+   * The session that keeps the draft. Absent on the WebView path, and on the host path until the
+   * session opens.
+   */
   session?: SessionView;
 };
 

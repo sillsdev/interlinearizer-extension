@@ -974,7 +974,7 @@ describe('SegmentView', () => {
     expect(onHoverPhrase).toHaveBeenCalledWith(undefined);
   });
 
-  it('calls splitPhraseAtBoundary when the arc split button is clicked with a known phrase', async () => {
+  it('splits a known phrase through the dispatch when the arc split button is clicked', async () => {
     const deletePhrase = jest.fn();
     mockUsePhraseDispatch.mockReturnValue(
       withSplitPhrase({

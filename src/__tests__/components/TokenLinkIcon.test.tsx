@@ -151,7 +151,7 @@ describe('TokenLinkIcon', () => {
     );
   });
 
-  it('clicking unlink calls splitPhraseAtBoundary (deletePhrase for 2-token phrase)', async () => {
+  it('clicking unlink splits the phrase through the dispatch (deletePhrase for 2-token phrase)', async () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     renderIcon(
       <TokenLinkIcon

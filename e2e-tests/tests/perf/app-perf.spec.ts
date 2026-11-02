@@ -296,7 +296,8 @@ async function measureHostPath(
   try {
     await page.evaluate((key) => localStorage.setItem(key, 'true'), HOST_PATH_KEY);
     if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', true);
-    // The view's pages queue behind the session-open read's passes, so no edit lands during them.
+    // A view's first fetches wait only for the passes already queued. Edits made during the read
+    // go untimed here (#578).
     const open = new Samples();
     for (let run = 0; run < RUNS; run += 1) {
       // eslint-disable-next-line no-await-in-loop

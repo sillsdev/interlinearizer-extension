@@ -134,9 +134,9 @@ type CallbackRefs = {
   reportEditing: (active: boolean) => void;
   /**
    * Stable entry point {@link useGlossDispatch} returns for writing a gloss. Every gloss edit is
-   * per-token: the reducer forks any shared payload before the edit lands, so editing one token
-   * never rewrites the others. (Editing every occurrence of a shared analysis is deferred; see
-   * user-questions.md "separating per-token edits from global analysis edits".)
+   * per-token: editing one token never rewrites the other tokens that share its analysis. (Editing
+   * every occurrence of a shared analysis is deferred; see user-questions.md "separating per-token
+   * edits from global analysis edits".)
    */
   requestGlossEdit: (tokenRef: string, surfaceText: string, value: string) => void;
   /**
@@ -147,7 +147,7 @@ type CallbackRefs = {
   readOnly: boolean;
 };
 
-/** Internal context that carries callback refs alongside the Redux {@link ReduxProvider}. */
+/** Internal context that carries the enclosing analysis provider's callback refs. */
 const AnalysisCallbackCtx = createContext<CallbackRefs | undefined>(undefined);
 
 // #endregion

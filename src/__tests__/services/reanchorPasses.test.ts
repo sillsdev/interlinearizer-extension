@@ -4,7 +4,7 @@ import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
 import { reanchorRestored, reanchorStoredBook } from '../../services/reanchorPasses';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
-import { missingBook } from '../../utils/reanchor-draft';
+import { missingBook } from '../../utils/reanchor-analysis';
 import {
   FIXTURE_STAMPS,
   makeTokenLink,

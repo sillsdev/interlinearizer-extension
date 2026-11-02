@@ -36,8 +36,9 @@ import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useLatestRef from '../hooks/useLatestRef';
 import useUndoRedoKeys from '../hooks/useUndoRedoKeys';
 import useWholeTextReanchor from '../hooks/useWholeTextReanchor';
-import useDraftProject, { type DraftContent } from '../hooks/useDraftProject';
+import useDraftProject from '../hooks/useDraftProject';
 import useSessionProject from '../hooks/useSessionProject';
+import type { DraftContent } from '../types/draft-content';
 import type { ProjectApi, ProjectViewOptions } from '../types/project-api';
 import { hostPathEnabled } from '../utils/host-path';
 import { whenSettled } from '../utils/settles';
@@ -61,7 +62,7 @@ import {
   unmergeableVerseStarts,
 } from '../utils/segmentation';
 import { perfTrack } from '../utils/perf-marks';
-import { reanchorDraftToBook } from '../utils/reanchor-draft';
+import { reanchorDraftToBook } from '../utils/reanchor-changes';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
 import { readOpenableProject } from '../utils/read-openable-project';
 import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';

@@ -6,6 +6,8 @@ import type {
   TextAnalysis,
 } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { BookPass } from '../types/book-pass';
+import type { DraftContent } from '../types/draft-content';
 import type { EditStep, StepSummary } from '../types/edit-step';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
@@ -21,7 +23,6 @@ import {
   recordStep,
   redo as redoStep,
   undo as undoStep,
-  type BookPass,
   type HistoryMove,
   type UndoHistory,
 } from '../utils/undo-history';
@@ -34,12 +35,6 @@ const AUTOSAVE_DEBOUNCE_MS = 300;
  * out.
  */
 export type DraftCopyResult = boolean | 'partial';
-
-/** The part of a draft its undo history covers. */
-export type DraftContent = Readonly<{
-  analysis: TextAnalysis;
-  segmentation: SegmentationDelta | undefined;
-}>;
 
 function contentOf(draft: DraftProject): DraftContent {
   return { analysis: draft.analysis, segmentation: draft.segmentation };

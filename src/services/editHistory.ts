@@ -3,7 +3,9 @@ import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository
 import type { EditStep } from '../types/edit-step';
 import type { AppliedChange } from './analysisChanges';
 import { mergeChangeSets } from '../utils/change-set';
-import { MAX_UNDO_STEPS } from '../utils/undo-history';
+
+/** How many of the most recent steps stay undoable; older ones are forgotten. */
+export const MAX_UNDO_STEPS = 100;
 
 /**
  * The changes that re-anchor the stored draft, as `changes` would leave it, to the current text of

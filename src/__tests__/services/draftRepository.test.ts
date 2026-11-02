@@ -319,6 +319,33 @@ describe('DraftRepository', () => {
       expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('and then');
     });
 
+    // The conformance suite leaves timestamps out, since an implementation may stamp records
+    // itself. Undo, Save As, and imports rely on this one keeping what a put carries.
+    it('keeps the timestamps a put carries', async () => {
+      const { storage } = memoryStorage();
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
+      const stamps = {
+        createdAt: '2025-06-01T00:00:00.000Z',
+        updatedAt: '2025-07-01T00:00:00.000Z',
+      };
+      const [payload] = twoBookAnalysis().tokenAnalyses;
+      const [link] = twoBookAnalysis().tokenAnalysisLinks;
+
+      await new DraftRepository(storage, 'src', silentLogger()).apply({
+        intent: 'restamp',
+        tokenAnalyses: { puts: [{ ...payload, ...stamps }], deletes: [] },
+        tokenAnalysisLinks: { puts: [{ ...link, ...stamps }], deletes: [] },
+      });
+
+      const reopened = new DraftRepository(storage, 'src', silentLogger());
+      await expect(reopened.getTokenAnalyses([payload.id])).resolves.toStrictEqual([
+        { ...payload, ...stamps },
+      ]);
+      await expect(reopened.findLinksToAnalyses([payload.id])).resolves.toMatchObject({
+        tokenAnalysisLinks: expect.arrayContaining([{ ...link, ...stamps }]),
+      });
+    });
+
     describe('with a book whose shard could not be read', () => {
       /** A repository that loaded {@link twoBookDraft} with its GEN shard unusable. */
       async function loadedWithUnusableGenesis() {

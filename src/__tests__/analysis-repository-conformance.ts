@@ -14,9 +14,11 @@ import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from './test-helpers';
  * lookups, and all-or-nothing applies, always run.
  *
  * - `scope`: {@link AnalysisRepository.getScope} and {@link ChangeSet.scope}.
- * - `undo`: the inverse that {@link AnalysisRepository.apply} returns.
+ * - `undo`: the inverse that {@link AnalysisRepository.apply} returns. Without it, `apply` may return
+ *   an inverse that restores nothing (`{ intent }`), which no other group reads.
  * - `draftState`: the unsaved mark (`dirty`, `keepDirty`, `wasDirty`, and
- *   {@link AnalysisRepository.markClean}) and {@link AnalysisRepository.exportForCopy}.
+ *   {@link AnalysisRepository.markClean}) and {@link AnalysisRepository.exportForCopy}. Without it,
+ *   `apply` may report `wasDirty: false`, which no other group reads.
  * - `wholeRead`: {@link AnalysisRepository.exportAll} and {@link AnalysisRepository.getWholeDraft}
  *   themselves, and loading a draft again through `exportAll` after another repository changes it.
  * - `storage`: how today's storage keeps a draft: unreadable books, the refusal of a newer build's
@@ -700,10 +702,10 @@ export function describeAnalysisRepositoryConformance(
           ).toHaveLength(2);
         });
 
-        it('stores what it was given, unaffected by later changes to the changes or their inverse', async () => {
+        it('stores what it was given, unaffected by later changes to the changes', async () => {
           const repository = await store.open(SOURCE);
           const changes = puttingNewRecords();
-          const { inverse } = await repository.apply(changes);
+          await repository.apply(changes);
           const applied = await readStored();
 
           changes.tokenAnalyses?.puts.push({
@@ -711,7 +713,6 @@ export function describeAnalysisRepositoryConformance(
             ...FIXTURE_STAMPS,
             surfaceText: 'later',
           });
-          inverse.tokenAnalyses?.deletes.push('ta-later');
           const [god] = changes.tokenAnalyses?.puts ?? [];
           god.surfaceText = 'changed';
 
@@ -1217,6 +1218,23 @@ export function describeAnalysisRepositoryConformance(
 
           expect(inverse.intent).toBe('mixedChanges');
           expectJsonPlain(inverse);
+        });
+
+        it('stores what it applied, unaffected by later changes to the inverse', async () => {
+          const repository = await store.open(SOURCE);
+          const { inverse } = await repository.apply(puttingNewRecords());
+          const applied = await readStored();
+
+          inverse.tokenAnalyses?.deletes.push('ta-later');
+          inverse.tokenAnalyses?.puts.push({
+            id: 'ta-later',
+            ...FIXTURE_STAMPS,
+            surfaceText: 'later',
+          });
+
+          await expect(readStored()).resolves.toStrictEqual(applied);
+          await repository.apply({ intent: 'nothing' });
+          await expect(readStored()).resolves.toStrictEqual(applied);
         });
 
         it('returns an inverse with nothing to restore for a delete it skipped', async () => {

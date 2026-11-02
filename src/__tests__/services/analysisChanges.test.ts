@@ -11,6 +11,7 @@ import {
   makeTokenLink,
   makeVerseBook,
   memoryStorage,
+  seedRepository,
   silentLogger,
   tokenRefOf,
 } from '../test-helpers';
@@ -25,7 +26,7 @@ const ref = (surfaceText: string) => tokenRefOf(book, surfaceText);
 async function repositoryOver(analysis: Partial<TextAnalysis> = {}): Promise<DraftRepository> {
   const { storage } = memoryStorage();
   const repository = new DraftRepository(storage, 'src', silentLogger());
-  await repository.replaceAll({
+  await seedRepository(repository, {
     ...emptyDraft('src'),
     analysis: { ...emptyAnalysis(), ...analysis },
   });

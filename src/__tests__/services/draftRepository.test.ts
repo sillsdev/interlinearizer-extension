@@ -6,8 +6,14 @@ import { draftAnalysisKey, draftJournalKey, draftKey } from '../../services/stor
 import type { ChangeSet, KeyValueStorage } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
-import { applyChangeSet } from '../../utils/change-set';
-import { FIXTURE_STAMPS, makePhraseLink, memoryStorage, silentLogger } from '../test-helpers';
+import { BOOKLESS_PARTITION } from '../../utils/analysis-book';
+import {
+  FIXTURE_STAMPS,
+  makePhraseLink,
+  memoryStorage,
+  seedRepository,
+  silentLogger,
+} from '../test-helpers';
 
 /** An analysis with a token payload shared by GEN and EXO, a phrase in GEN and a segment in EXO. */
 function twoBookAnalysis(): TextAnalysis {
@@ -72,7 +78,7 @@ async function failGlossEdit(
 describe('DraftRepository', () => {
   it('loads a payload shared by several books once', async () => {
     const { storage, records } = memoryStorage();
-    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+    await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
     expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('ta-and');
     expect(records.get(draftAnalysisKey('src', 'GEN'))).toContain('ta-and');
 
@@ -119,7 +125,7 @@ describe('DraftRepository', () => {
 
   it('reports a stored shard it cannot use to its logger', async () => {
     const { storage, records } = memoryStorage();
-    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+    await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
     records.set(draftAnalysisKey('src', 'GEN'), 'not json');
     const logger = silentLogger();
 
@@ -163,7 +169,7 @@ describe('DraftRepository', () => {
   describe('markClean', () => {
     it('records the stored draft as clean, rewriting only its envelope', async () => {
       const { storage, records, writes } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll({
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), {
         ...twoBookDraft(),
         dirty: true,
       });
@@ -191,7 +197,7 @@ describe('DraftRepository', () => {
 
     it('writes nothing when the stored draft is already clean', async () => {
       const { storage, writes } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
       writes.length = 0;
 
       await new DraftRepository(storage, 'src', silentLogger()).markClean();
@@ -300,7 +306,7 @@ describe('DraftRepository', () => {
     it('rewrites only the books whose records the changes alter', async () => {
       const { storage, writes } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll(twoBookDraft());
+      await seedRepository(repository, twoBookDraft());
       writes.length = 0;
       const [segment] = twoBookAnalysis().segmentAnalyses;
 
@@ -319,7 +325,7 @@ describe('DraftRepository', () => {
     it('rewrites every book linking a payload it edits', async () => {
       const { storage, records } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll(twoBookDraft());
+      await seedRepository(repository, twoBookDraft());
       const [payload] = twoBookAnalysis().tokenAnalyses;
 
       await repository.apply({
@@ -331,11 +337,38 @@ describe('DraftRepository', () => {
       expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('and then');
     });
 
+    // The conformance suite leaves timestamps out, since an implementation may stamp records
+    // itself. Undo, Save As, and imports rely on this one keeping what a put carries.
+    it('keeps the timestamps a put carries', async () => {
+      const { storage } = memoryStorage();
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
+      const stamps = {
+        createdAt: '2025-06-01T00:00:00.000Z',
+        updatedAt: '2025-07-01T00:00:00.000Z',
+      };
+      const [payload] = twoBookAnalysis().tokenAnalyses;
+      const [link] = twoBookAnalysis().tokenAnalysisLinks;
+
+      await new DraftRepository(storage, 'src', silentLogger()).apply({
+        intent: 'restamp',
+        tokenAnalyses: { puts: [{ ...payload, ...stamps }], deletes: [] },
+        tokenAnalysisLinks: { puts: [{ ...link, ...stamps }], deletes: [] },
+      });
+
+      const reopened = new DraftRepository(storage, 'src', silentLogger());
+      await expect(reopened.getTokenAnalyses([payload.id])).resolves.toStrictEqual([
+        { ...payload, ...stamps },
+      ]);
+      await expect(reopened.findLinksToAnalyses([payload.id])).resolves.toMatchObject({
+        tokenAnalysisLinks: expect.arrayContaining([{ ...link, ...stamps }]),
+      });
+    });
+
     describe('with a book whose shard could not be read', () => {
       /** A repository that loaded {@link twoBookDraft} with its GEN shard unusable. */
       async function loadedWithUnusableGenesis() {
         const { storage, records, writes } = memoryStorage();
-        await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+        await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
         records.set(draftAnalysisKey('src', 'GEN'), 'not json');
         const repository = new DraftRepository(storage, 'src', silentLogger());
         await repository.exportAll();
@@ -379,7 +412,7 @@ describe('DraftRepository', () => {
     it('keeps its draft as it was when a write fails, so the next apply leaves the failed one out', async () => {
       const { storage, records } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll(twoBookDraft());
+      await seedRepository(repository, twoBookDraft());
       const [payload] = twoBookAnalysis().tokenAnalyses;
       const [segment] = twoBookAnalysis().segmentAnalyses;
       const write = jest.spyOn(storage, 'write').mockRejectedValueOnce(new Error('disk full'));
@@ -432,7 +465,7 @@ describe('DraftRepository', () => {
       'brings the books back in step after a restart when the %s write fails, both glossed %p',
       async (failing, gloss) => {
         const { storage, records } = memoryStorage();
-        await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+        await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
         const [phrase] = twoBookAnalysis().phraseAnalyses;
         await failGlossEdit(new DraftRepository(storage, 'src', silentLogger()), storage, failing);
 
@@ -457,7 +490,7 @@ describe('DraftRepository', () => {
       'brings back in step a book that a failed apply wrote, after a restart, though the journal is %s',
       async (_, journal) => {
         const { storage, records } = memoryStorage();
-        await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+        await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
         await failGlossEdit(new DraftRepository(storage, 'src', silentLogger()), storage, 'GEN');
         records.set(draftJournalKey('src'), journal);
         const [phrase] = twoBookAnalysis().phraseAnalyses;
@@ -475,7 +508,7 @@ describe('DraftRepository', () => {
     it('rewrites a book a failed apply wrote, though the next apply does not reach it', async () => {
       const { storage, records } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll(twoBookDraft());
+      await seedRepository(repository, twoBookDraft());
       const [phrase] = twoBookAnalysis().phraseAnalyses;
       await failGlossEdit(repository, storage, 'GEN');
       expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('and then');
@@ -489,13 +522,24 @@ describe('DraftRepository', () => {
       expect((await repository.getTokenAnalyses(['ta-and']))[0].gloss).toEqual({ en: 'and' });
     });
 
-    it('stores what a whole save of the same draft would, up to the order of its books', async () => {
+    it("stores each book's records in its shard, the bookless ones apart, dropping an emptied book's", async () => {
       const { storage, records } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll(twoBookDraft());
-      const [genesisLink, exodusLink] = twoBookAnalysis().tokenAnalysisLinks;
-      const [segmentLink] = twoBookAnalysis().segmentAnalysisLinks;
+      await seedRepository(repository, twoBookDraft());
+      const {
+        tokenAnalyses: [payload],
+        tokenAnalysisLinks: [genesisLink, exodusLink],
+        phraseAnalyses: [phrase],
+        segmentAnalyses: [segment],
+        segmentAnalysisLinks: [segmentLink],
+      } = twoBookAnalysis();
       const unlinked = { id: 'ta-so', ...FIXTURE_STAMPS, surfaceText: 'so' };
+      const leviticusLink = {
+        ...genesisLink,
+        id: 'tl-LEV',
+        token: { tokenRef: 'LEV 1:1!0', surfaceText: 'and' },
+      };
+      const relinked = { ...genesisLink, analysisId: unlinked.id };
       // Unlinks a payload, adds a book, empties EXO of links, then links a bookless payload.
       const changeSets: ChangeSet[] = [
         {
@@ -503,28 +547,13 @@ describe('DraftRepository', () => {
           phraseAnalysisLinks: { puts: [], deletes: ['pa-1'] },
           tokenAnalyses: { puts: [unlinked], deletes: [] },
         },
-        {
-          intent: 'writeGloss',
-          tokenAnalysisLinks: {
-            puts: [
-              {
-                ...genesisLink,
-                id: 'tl-LEV',
-                token: { tokenRef: 'LEV 1:1!0', surfaceText: 'and' },
-              },
-            ],
-            deletes: [],
-          },
-        },
+        { intent: 'writeGloss', tokenAnalysisLinks: { puts: [leviticusLink], deletes: [] } },
         {
           intent: 'clear',
           tokenAnalysisLinks: { puts: [], deletes: [exodusLink.id] },
           segmentAnalysisLinks: { puts: [], deletes: [segmentLink.id] },
         },
-        {
-          intent: 'relink',
-          tokenAnalysisLinks: { puts: [{ ...genesisLink, analysisId: unlinked.id }], deletes: [] },
-        },
+        { intent: 'relink', tokenAnalysisLinks: { puts: [relinked], deletes: [] } },
       ];
 
       await changeSets.reduce(async (prior, changes) => {
@@ -532,12 +561,6 @@ describe('DraftRepository', () => {
         await repository.apply(changes);
       }, Promise.resolve());
 
-      const whole = memoryStorage();
-      const expected = changeSets.reduce(
-        (draft, changes) => applyChangeSet(draft, changes).draft,
-        twoBookDraft(),
-      );
-      await new DraftRepository(whole.storage, 'src', silentLogger()).replaceAll(expected);
       /** Each record parsed, with the envelope's manifest sorted. */
       const parsed = (stored: Map<string, string>) =>
         new Map(
@@ -547,15 +570,39 @@ describe('DraftRepository', () => {
             return [key, value];
           }),
         );
-      expect(parsed(records)).toEqual(parsed(whole.records));
-      expect(records.has(draftAnalysisKey('src', 'EXO'))).toBe(false);
+      const shard = (analysis: Partial<TextAnalysis>) => ({ ...emptyAnalysis(), ...analysis });
+      expect(parsed(records)).toEqual(
+        new Map<string, unknown>([
+          [
+            draftKey('src'),
+            {
+              ...twoBookDraft(),
+              analysis: emptyAnalysis(),
+              dirty: true,
+              analysisBooks: ['GEN', 'LEV', BOOKLESS_PARTITION],
+            },
+          ],
+          [
+            draftAnalysisKey('src', 'GEN'),
+            shard({ tokenAnalyses: [unlinked], tokenAnalysisLinks: [relinked] }),
+          ],
+          [
+            draftAnalysisKey('src', 'LEV'),
+            shard({ tokenAnalyses: [payload], tokenAnalysisLinks: [leviticusLink] }),
+          ],
+          [
+            draftAnalysisKey('src', BOOKLESS_PARTITION),
+            shard({ segmentAnalyses: [segment], phraseAnalyses: [phrase] }),
+          ],
+        ]),
+      );
     });
   });
 
   describe('lookups', () => {
     it('load the draft once, answering later lookups from what they kept', async () => {
       const { storage } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
       const repository = new DraftRepository(storage, 'src', silentLogger());
       const read = jest.spyOn(storage, 'read');
 
@@ -569,7 +616,7 @@ describe('DraftRepository', () => {
 
     it('read the whole draft from what they kept, keeping it for the next lookup', async () => {
       const { storage } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.findLinksInBooks(['GEN']);
       const read = jest.spyOn(storage, 'read');
@@ -587,7 +634,7 @@ describe('DraftRepository', () => {
       async (call) => {
         const { storage } = memoryStorage();
         const repository = new DraftRepository(storage, 'src', silentLogger());
-        await repository.replaceAll({ ...twoBookDraft(), dirty: true });
+        await seedRepository(repository, { ...twoBookDraft(), dirty: true });
         await repository.findLinksInBooks(['GEN']);
         await repository[call]();
         const read = jest.spyOn(storage, 'read');
@@ -600,7 +647,7 @@ describe('DraftRepository', () => {
 
     it('answer from what exportAll loaded, reading nothing more', async () => {
       const { storage } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.exportAll();
       const read = jest.spyOn(storage, 'read');
@@ -612,9 +659,13 @@ describe('DraftRepository', () => {
     it('answer from what exportAll loaded, not from what an earlier lookup kept', async () => {
       const { storage } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll(twoBookDraft());
+      await seedRepository(repository, twoBookDraft());
       await repository.findLinksInBooks(['GEN']);
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(emptyDraft('src'));
+      await new DraftRepository(storage, 'src', silentLogger()).apply({
+        intent: 'deletePayload',
+        tokenAnalyses: { puts: [], deletes: ['ta-and'] },
+        tokenAnalysisLinks: { puts: [], deletes: ['tl-GEN', 'tl-EXO'] },
+      });
 
       await repository.exportAll();
 
@@ -623,7 +674,7 @@ describe('DraftRepository', () => {
 
     it('read the draft again after a later exportAll fails', async () => {
       const { storage, records } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.exportAll();
       records.set(draftKey('src'), '{');
@@ -634,7 +685,7 @@ describe('DraftRepository', () => {
 
     it('are unchanged by changes to the draft exportAll returned', async () => {
       const { storage } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
       const repository = new DraftRepository(storage, 'src', silentLogger());
       const { draft } = await repository.exportAll();
 
@@ -664,7 +715,7 @@ describe('DraftRepository', () => {
         token: { ...genesis.token, tokenRef: 'GEN 1:1!4' },
       };
       const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll({
+      await seedRepository(repository, {
         ...twoBookDraft(),
         analysis: { ...twoBookAnalysis(), tokenAnalysisLinks: [genesis, later] },
       });
@@ -701,16 +752,17 @@ describe('DraftRepository', () => {
   describe('checkIndexes', () => {
     it('reports nothing while it keeps no index', async () => {
       const { storage } = memoryStorage();
-      const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll(twoBookDraft());
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
 
-      await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).checkIndexes(),
+      ).resolves.toStrictEqual([]);
     });
 
     it('reports nothing while every shard holds its part of the draft', async () => {
       const { storage } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll(twoBookDraft());
+      await seedRepository(repository, twoBookDraft());
       const [payload] = twoBookAnalysis().tokenAnalyses;
 
       await repository.apply({
@@ -723,7 +775,7 @@ describe('DraftRepository', () => {
 
     it('reports a shard that a failed apply left out of step once the journal is lost', async () => {
       const { storage, records } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
       await failGlossEdit(new DraftRepository(storage, 'src', silentLogger()), storage, 'GEN');
       records.delete(draftJournalKey('src'));
       const restarted = new DraftRepository(storage, 'src', silentLogger());
@@ -737,7 +789,7 @@ describe('DraftRepository', () => {
     it('reports the records of a shard gone from storage as missing', async () => {
       const { storage, records } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll(twoBookDraft());
+      await seedRepository(repository, twoBookDraft());
       await repository.getTokenAnalyses([]);
       records.delete(draftAnalysisKey('src', 'EXO'));
 
@@ -752,7 +804,7 @@ describe('DraftRepository', () => {
     it('reports the records of a listed shard the draft carries nothing for as extra', async () => {
       const { storage, records } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
-      await repository.replaceAll(twoBookDraft());
+      await seedRepository(repository, twoBookDraft());
       await repository.getTokenAnalyses([]);
       const envelope = JSON.parse(records.get(draftKey('src')) ?? '');
       records.set(
@@ -774,7 +826,7 @@ describe('DraftRepository', () => {
 
     it('reports nothing for a book whose shard could not be read', async () => {
       const { storage, records } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
       records.set(draftAnalysisKey('src', 'GEN'), 'not json');
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.getTokenAnalyses([]);

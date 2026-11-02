@@ -6,8 +6,12 @@ import { Pt9ImportRepository } from '../../services/pt9ImportRepository';
 import { draftAnalysisKey, draftKey, projectKey } from '../../services/storageKeys';
 import { emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
-import { describeAnalysisRepositoryConformance } from '../analysis-repository-conformance';
-import { memoryStorage, silentLogger } from '../test-helpers';
+import {
+  describeAnalysisRepositoryConformance,
+  describeReadOnlyRepositoryConformance,
+  type ReadOnlyConformanceStore,
+} from '../analysis-repository-conformance';
+import { memoryStorage, seedRepository, silentLogger } from '../test-helpers';
 
 const logger = silentLogger();
 
@@ -16,7 +20,11 @@ let warningsExpected = false;
 
 const IMPORT_ID = 'pt9-import';
 
-describeAnalysisRepositoryConformance('DraftRepository with Pt9ImportRepository', () => {
+/**
+ * One store of {@link DraftRepository} drafts, beside a {@link Pt9ImportRepository} it opens for
+ * read-only tests.
+ */
+function createStore(): ReadOnlyConformanceStore {
   const { storage: memory, records } = memoryStorage();
   warningsExpected = false;
   /** The key of the draft whose cleanup fails; unset while cleanup succeeds. */
@@ -41,44 +49,60 @@ describeAnalysisRepositoryConformance('DraftRepository with Pt9ImportRepository'
   };
   return {
     open: async (sourceProjectId) => new DraftRepository(storage, sourceProjectId, logger),
-    storeNewerBuildDraft: (sourceProjectId) =>
-      memory.write(
-        draftKey(sourceProjectId),
-        JSON.stringify({ ...emptyDraft(sourceProjectId), modelVersion: CURRENT_MODEL_VERSION + 1 }),
-      ),
-    damageBook: async (sourceProjectId, bookCode, damage) => {
-      warningsExpected = true;
-      const key = draftAnalysisKey(sourceProjectId, bookCode);
-      if (damage === 'lost') records.delete(key);
-      else records.set(key, 'not json');
+    seed: (sourceProjectId, draft) =>
+      seedRepository(new DraftRepository(storage, sourceProjectId, logger), draft),
+    readAll: async (sourceProjectId) => {
+      const { draft, unreadableBooks } = await new DraftRepository(
+        storage,
+        sourceProjectId,
+        logger,
+      ).exportAll();
+      if (unreadableBooks.length > 0) throw new Error(`Unreadable books: ${unreadableBooks}`);
+      return draft;
     },
-    damageDraft: async (sourceProjectId) => {
-      warningsExpected = true;
-      records.set(draftKey(sourceProjectId), JSON.stringify({ dirty: true }));
-    },
-    failCleanup: (sourceProjectId) => {
-      warningsExpected = true;
-      failingDraftKey = draftKey(sourceProjectId);
-      return () => {
-        failingDraftKey = undefined;
-        landed = false;
-      };
-    },
-    holdsLeftovers: async (sourceProjectId) => {
-      const stored: { analysisBooks?: string[] } = JSON.parse(
-        records.get(draftKey(sourceProjectId)) ?? '{}',
-      );
-      const needed = new Set([
-        draftKey(sourceProjectId),
-        ...(stored.analysisBooks ?? []).map((bookCode) =>
-          draftAnalysisKey(sourceProjectId, bookCode),
+    storage: {
+      storeNewerBuildDraft: (sourceProjectId) =>
+        memory.write(
+          draftKey(sourceProjectId),
+          JSON.stringify({
+            ...emptyDraft(sourceProjectId),
+            modelVersion: CURRENT_MODEL_VERSION + 1,
+          }),
         ),
-      ]);
-      return [...records.keys()].some(
-        (key) => key.startsWith(`${draftKey(sourceProjectId)}:`) && !needed.has(key),
-      );
+      damageBook: async (sourceProjectId, bookCode, damage) => {
+        warningsExpected = true;
+        const key = draftAnalysisKey(sourceProjectId, bookCode);
+        if (damage === 'lost') records.delete(key);
+        else records.set(key, 'not json');
+      },
+      damageDraft: async (sourceProjectId) => {
+        warningsExpected = true;
+        records.set(draftKey(sourceProjectId), JSON.stringify({ dirty: true }));
+      },
+      failCleanup: (sourceProjectId) => {
+        warningsExpected = true;
+        failingDraftKey = draftKey(sourceProjectId);
+        return () => {
+          failingDraftKey = undefined;
+          landed = false;
+        };
+      },
+      holdsLeftovers: async (sourceProjectId) => {
+        const stored: { analysisBooks?: string[] } = JSON.parse(
+          records.get(draftKey(sourceProjectId)) ?? '{}',
+        );
+        const needed = new Set([
+          draftKey(sourceProjectId),
+          ...(stored.analysisBooks ?? []).map((bookCode) =>
+            draftAnalysisKey(sourceProjectId, bookCode),
+          ),
+        ]);
+        return [...records.keys()].some(
+          (key) => key.startsWith(`${draftKey(sourceProjectId)}:`) && !needed.has(key),
+        );
+      },
     },
-    async openReadOnly({ sourceProjectId, analysisLanguages, analysis }) {
+    openReadOnly: async ({ sourceProjectId, analysisLanguages, analysis }) => {
       const project: InterlinearProject = {
         id: IMPORT_ID,
         modelVersion: CURRENT_MODEL_VERSION,
@@ -100,7 +124,14 @@ describeAnalysisRepositoryConformance('DraftRepository with Pt9ImportRepository'
       );
     },
   };
-});
+}
+
+describeAnalysisRepositoryConformance(
+  'DraftRepository',
+  ['scope', 'undo', 'draftState', 'wholeRead', 'storage'],
+  createStore,
+);
+describeReadOnlyRepositoryConformance('Pt9ImportRepository', createStore);
 
 // A conforming save and load of well-formed drafts has nothing to warn about, so a warning there
 // means the repository found fault with records it wrote itself.

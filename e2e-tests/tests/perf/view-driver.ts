@@ -19,7 +19,7 @@ export const VIEW_TAB = /^Interlinearizer: WEB/;
 export type Measure = { name: string; duration: number; end: number; detail: unknown };
 
 /** A duration the extension host recorded, named without its prefix. */
-export type HostEntry = { name: string; duration: number };
+export type HostEntry = { name: string; duration: number; detail?: unknown };
 
 /**
  * A host command a WebView measure times end to end, and the storage functions whose phases run
@@ -41,6 +41,11 @@ export const HOST_CALLS = {
     phasePrefixes: ['getBookOutline'],
   },
   saveDraft: { measure: 'autosave', command: 'saveDraft', phasePrefixes: ['saveDraft'] },
+  writeGloss: {
+    measure: 'edit-command',
+    command: 'writeGloss',
+    phasePrefixes: ['writeGloss', 'saveDraft'],
+  },
   getProjectsForSource: {
     measure: 'projects-fetch',
     command: 'getProjectsForSource',

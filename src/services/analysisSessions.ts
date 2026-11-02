@@ -13,6 +13,7 @@ import type { EditStep } from '../types/edit-step';
 import { booksMissingFrom } from '../utils/analysis-book';
 import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
+import { perfTimeAsync } from '../utils/perf-marks';
 import { missingBook } from '../utils/reanchor-draft';
 import { isEmptyDelta, segmentationForBook } from '../utils/segmentation';
 import {
@@ -453,11 +454,16 @@ export class AnalysisSessions {
             step,
           };
           const buffer = new ChangeBuffer(session.repository);
-          const { reanchorTo, ...extra } = (await command(buffer, session)) ?? {};
+          const { reanchorTo, ...extra } =
+            (await perfTimeAsync(`${intent}:stage`, () => command(buffer, session))) ?? {};
           const staged = buffer.toChangeSet(intent);
           if (!isEmptyChangeSet(staged)) {
-            const applied = await applyStaged(session, buffer, staged, reanchorTo, editOptions);
-            const answered = await replyTo(this.host, session, applied, changeId);
+            const applied = await perfTimeAsync(`${intent}:apply`, () =>
+              applyStaged(session, buffer, staged, reanchorTo, editOptions),
+            );
+            const answered = await perfTimeAsync(`${intent}:reply`, () =>
+              replyTo(this.host, session, applied, changeId),
+            );
             return { ...answered, ...(applied.step && { step: applied.step }), ...extra };
           }
           if (editOptions.unsavedMark === 'clear') await session.history.markRestoredClean();

@@ -32,6 +32,16 @@ const NO_WHOLE = new WholeAnalysis(async () => {
 /* v8 ignore next -- stands in for WebView-path members that do nothing on the host path */
 const ignore = () => {};
 
+/** Whether `a` and `b` hold equal fields, their analysis aside. */
+function sameEnvelope(a: DraftProject, b: DraftProject): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  keys.delete('analysis');
+  return [...keys].every((key) => {
+    const [was, is] = [Reflect.get(a, key), Reflect.get(b, key)];
+    return Object.is(was, is) || JSON.stringify(was) === JSON.stringify(is);
+  });
+}
+
 /**
  * Keeps the draft of `sourceProjectId` in a session on the host. The session saves to
  * `saveTargetId`, or views the Paratext 9 import `importProjectId` instead. It closes on unmount,
@@ -49,12 +59,24 @@ export default function useSessionProject(
   const [openCount, setOpenCount] = useState(0);
   const [draftVersion, setDraftVersion] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
-  const [history, setHistory] = useState({ canUndo: false, canRedo: false, revision: 0 });
-  const historyRef = useRef(history);
-  historyRef.current = history;
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const historyFlags = useRef({ canUndo: false, canRedo: false });
+  const historyRevision = useRef(0);
   const revisionListeners = useRef(new Set<() => void>());
+  /** Notes a move through the history, and what it leaves to undo and redo. */
+  const noteHistory = useCallback((flags: { canUndo?: boolean; canRedo?: boolean }) => {
+    historyRevision.current += 1;
+    revisionListeners.current.forEach((listener) => listener());
+    // Unchanged flags set no state, so the view does not render again for them.
+    const next = { ...historyFlags.current, ...flags };
+    if (next.canUndo !== historyFlags.current.canUndo) setCanUndo(next.canUndo);
+    if (next.canRedo !== historyFlags.current.canRedo) setCanRedo(next.canRedo);
+    historyFlags.current = next;
+  }, []);
   const [hasFreeTranslations, setHasFreeTranslations] = useState(false);
   const [readStatus, setReadStatus] = useState<{ sessionId: string; status: TextReadStatus }>();
+  const readStatusJson = useRef<string | undefined>(undefined);
 
   /** The interlinear project that the open session was opened on, or was last told to save to. */
   const targetRef = useRef<string | undefined>(undefined);
@@ -83,7 +105,7 @@ export default function useSessionProject(
         targetRef.current = interlinearProjectId;
         setOpened({ ...reply, whole });
         setHasFreeTranslations(reply.hasFreeTranslations);
-        setHistory((was) => ({ canUndo: false, canRedo: false, revision: was.revision + 1 }));
+        noteHistory({ canUndo: false, canRedo: false });
         setDraftVersion((version) => version + 1);
         return reply.sessionId;
       } catch (e) {
@@ -106,7 +128,7 @@ export default function useSessionProject(
         )
         .catch((e) => logger.error('Interlinearizer: failed to close a session', e));
     };
-  }, [sourceProjectId, importProjectId, openCount]);
+  }, [sourceProjectId, importProjectId, openCount, noteHistory]);
 
   const sessionId = opened?.sessionId;
   const whole = opened?.whole ?? NO_WHOLE;
@@ -136,10 +158,19 @@ export default function useSessionProject(
       logger.error('Interlinearizer: failed to detach the draft from its project', e);
     }
   }, [sessionId, whole]);
-  const draft = useSyncExternalStore(
+  // Re-renders only when the draft's envelope changes; its analysis is read at render, as the
+  // WebView path reads its draft.
+  const envelope = useRef<DraftProject | undefined>(undefined);
+  useSyncExternalStore(
     useCallback((listener: () => void) => whole.subscribe(listener), [whole]),
-    () => whole.draft,
+    () => {
+      const next = whole.draft;
+      if (!envelope.current || !next || !sameEnvelope(envelope.current, next))
+        envelope.current = next;
+      return envelope.current;
+    },
   );
+  const { draft } = whole;
   const pages = useSessionPages({ sessionId, bookId, scrRef });
   const { client } = pages;
 
@@ -148,7 +179,13 @@ export default function useSessionProject(
     if (sessionId === undefined) return;
     papi.commands
       .sendCommand('interlinearizer.getTextReadStatus', { sessionId })
-      .then((json) => setReadStatus({ sessionId, status: JSON.parse(json) }))
+      .then((json) => {
+        const status: TextReadStatus = JSON.parse(json);
+        const seen = readStatusJson.current;
+        readStatusJson.current = `${sessionId}:${json}`;
+        // An unchanged status sets no state, so the view does not render again for it.
+        return seen === readStatusJson.current ? undefined : setReadStatus({ sessionId, status });
+      })
       .catch((e) => logger.warn('Interlinearizer: could not read the whole-text status', e));
   }, [sessionId]);
   useEffect(readTextStatus, [readTextStatus]);
@@ -197,18 +234,13 @@ export default function useSessionProject(
   const takeReply = useCallback(
     (reply: CommandReply) => {
       whole.take(reply.changes);
-      setHistory((was) => ({
-        canUndo: reply.canUndo,
-        canRedo: reply.canRedo,
-        revision: was.revision + 1,
-      }));
+      noteHistory({ canUndo: reply.canUndo, canRedo: reply.canRedo });
       if ('hasFreeTranslations' in reply && typeof reply.hasFreeTranslations === 'boolean')
         setHasFreeTranslations(reply.hasFreeTranslations);
     },
-    [whole],
+    [whole, noteHistory],
   );
   useEffect(() => client?.subscribeReplies(takeReply), [client, takeReply]);
-  useEffect(() => revisionListeners.current.forEach((listener) => listener()), [history.revision]);
 
   /**
    * Sends an edit through the client so that its reply lands in the pages. A failure is logged and
@@ -249,11 +281,11 @@ export default function useSessionProject(
       // A failed move leaves the flags as they were, because no reply came to report them.
       if (movedNothing) {
         const side = command === 'interlinearizer.undoEdit' ? 'canUndo' : 'canRedo';
-        setHistory((was) => ({ ...was, [side]: false, revision: was.revision + 1 }));
+        noteHistory({ [side]: false });
       }
       return reply?.step;
     },
-    [sendEdit, refreshWhole],
+    [sendEdit, refreshWhole, noteHistory],
   );
 
   /**
@@ -387,7 +419,7 @@ export default function useSessionProject(
     () => discard((args) => papi.commands.sendCommand('interlinearizer.discardAll', args)),
     [discard],
   );
-  const getHistoryRevision = useCallback(() => historyRef.current.revision, []);
+  const getHistoryRevision = useCallback(() => historyRevision.current, []);
   const subscribeToHistoryRevisions = useCallback((listener: () => void) => {
     revisionListeners.current.add(listener);
     return () => revisionListeners.current.delete(listener);
@@ -422,8 +454,8 @@ export default function useSessionProject(
     discardBook,
     discardAll,
     detachFromProject,
-    canUndo: history.canUndo,
-    canRedo: history.canRedo,
+    canUndo,
+    canRedo,
     getHistoryRevision,
     subscribeToHistoryRevisions,
     undo,

@@ -75,7 +75,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'app.hostOpen':
     "On the host path, a new view opens on the tier's book while the session's whole-text read starts. The view's first pages wait only for the re-anchor passes queued before them.",
   'app.hostEdit':
-    "On the host path, one gloss committed once the session's whole-text read has finished.",
+    "On the host path, one gloss committed once the session's whole-text read has finished. `edit-command` is the command's round trip, and its `:outbound` and `:inbound` rows split the transport at the host's start and end. `reply-apply` takes the reply into the view's pages.",
   'app.hostScriptureSave':
     "As the Scripture save above, on the host path with the session's whole-text read finished, so the host watches every book.",
   'bench.memory': 'Heap held by the parsed draft, and by an undo history filled to its limit.',

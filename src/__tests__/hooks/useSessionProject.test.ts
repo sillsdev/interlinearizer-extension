@@ -118,6 +118,37 @@ describe('useSessionProject', () => {
     expect(fullReads()).toBe(reads);
   });
 
+  it("does not render again for an edit that leaves the draft's envelope as it was", async () => {
+    await fakeHost();
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useSessionProject('src', 'en', {
+        saveTargetId: undefined,
+        importProjectId: undefined,
+        bookId: 'GEN',
+        scrRef: SCR_REF,
+      });
+    });
+    await waitFor(() => expect(result.current.session?.client).toBeDefined());
+    await glossEarth(result, 'land');
+    const before = renders;
+
+    await glossEarth(result, 'ground');
+
+    expect(renders).toBe(before);
+  });
+
+  it('reads the latest analysis at its next render', async () => {
+    const { result, rerender } = await renderCurrent();
+    await glossEarth(result, 'land');
+    await glossEarth(result, 'ground');
+
+    rerender({});
+
+    expect(JSON.stringify(result.current.draft?.analysis.tokenAnalyses)).toContain('ground');
+  });
+
   it('reads the draft again once the session reports a change it did not send', async () => {
     const { result, host } = await renderCurrent();
 
@@ -785,6 +816,40 @@ describe('useSessionProject whole-text read', () => {
     relayTextRead({ sourceProjectId: 'src' });
 
     await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
+  });
+
+  it('does not render again for a read status that has not changed', async () => {
+    const status = { booksRead: 1, bookCount: 2, failedBookIds: [] };
+    await fakeHost(async (command) =>
+      command === 'interlinearizer.getTextReadStatus' ? JSON.stringify(status) : undefined,
+    );
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useSessionProject('src', 'en', {
+        saveTargetId: undefined,
+        importProjectId: undefined,
+        bookId: 'GEN',
+        scrRef: SCR_REF,
+      });
+    });
+    await waitFor(() => expect(result.current.session?.client).toBeDefined());
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.anything(),
+      ),
+    );
+    const asked = () =>
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mock.calls.filter(([command]) => command === 'interlinearizer.getTextReadStatus').length;
+    const before = { renders, asked: asked() };
+
+    await act(async () => relayTextRead({ sourceProjectId: 'src' }));
+
+    await waitFor(() => expect(asked()).toBe(before.asked + 1));
+    expect(renders).toBe(before.renders);
   });
 
   it("ignores another source's finished read", async () => {

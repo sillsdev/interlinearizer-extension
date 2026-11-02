@@ -1,6 +1,7 @@
 import type { AnalysisChange, ChangeId, Segment, TextAnalysis } from 'interlinearizer';
 import type { CommandReply } from '../types/command-reply';
 import { emptyAnalysis } from '../types/empty-factories';
+import { perfTime, perfTrack } from '../utils/perf-marks';
 import type { PoolEntry, PoolIndex } from '../utils/suggestion-engine';
 import type { BookOutline, SegmentPage } from '../types/segment-pages';
 import { RecordCache, type PageRequest, type Refetch } from './recordCache';
@@ -318,7 +319,8 @@ export class PageClient {
     this.sent.set(changeId, undefined);
     let reply: CommandReply | undefined;
     try {
-      reply = await command(changeId);
+      const sentAt = performance.timeOrigin + performance.now();
+      reply = await perfTrack('edit-command', command(changeId), { sentAt });
     } catch (error) {
       const heard = this.sent.get(changeId);
       this.sent.delete(changeId);
@@ -330,9 +332,11 @@ export class PageClient {
     this.sent.delete(changeId);
     if (!reply) return reply;
     if (!heard) this.rememberApplied(changeId);
-    this.refetch(this.held.apply(reply));
-    this.changed();
-    this.replyListeners.forEach((listener) => listener(reply));
+    perfTime('reply-apply', () => {
+      this.refetch(this.held.apply(reply));
+      this.changed();
+      this.replyListeners.forEach((listener) => listener(reply));
+    });
     return reply;
   }
 

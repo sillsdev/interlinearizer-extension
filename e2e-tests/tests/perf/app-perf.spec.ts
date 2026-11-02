@@ -253,7 +253,8 @@ async function saveChapter(
  * by a gloss commit. Restores the chapter after each run.
  *
  * Reads the extension host's CPU time over each save's settle period when given `cpuPid`. Waits for
- * each gloss's autosave when `autosaves` is set.
+ * each gloss's autosave when `autosaves` is set. Each gloss starts with `glossPrefix`, which must
+ * differ between calls on the same draft, since a gloss committed unchanged sends no edit.
  */
 async function measureScriptureSaves(
   page: Page,
@@ -262,6 +263,7 @@ async function measureScriptureSaves(
   book: string,
   cpuPid: number | undefined,
   autosaves: boolean,
+  glossPrefix: string,
 ): Promise<Record<string, unknown>> {
   const samples = new Samples();
   const original = await chapterUsj(page, projectId, book);
@@ -278,7 +280,7 @@ async function measureScriptureSaves(
         await saveChapter(page, projectId, book, withWord(original, `perfsave${run}`)),
       );
       // eslint-disable-next-line no-await-in-loop
-      await editGloss(frame, run % 10, `save-${run}`, autosaves);
+      await editGloss(frame, run % 10, `${glossPrefix}-${run}`, autosaves);
       // eslint-disable-next-line no-await-in-loop
       samples.add(await waitForMeasure(frame, 'gloss-render'), ['gloss-render']);
       // eslint-disable-next-line no-await-in-loop
@@ -347,6 +349,7 @@ async function measureHostPath(
       tier.viewBook,
       cpuPid,
       false,
+      'host-save',
     );
 
     await sendCommand(page, 'interlinearizer.startSessionTextRead', projectId);
@@ -407,6 +410,7 @@ async function measureHostPath(
       tier.viewBook,
       cpuPid,
       false,
+      'host-read-save',
     );
   } finally {
     try {
@@ -821,6 +825,7 @@ async function measureTier(
     tier.viewBook,
     cpuPid,
     true,
+    'save',
   );
 
   await measureHostPath(page, projectId, tier, cpuPid, result);

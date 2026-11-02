@@ -57,6 +57,18 @@ it('fails the file when a console.error lands after its last test', () => {
   expect(fileStatuses['console-guard-after-last-test.fixture.ts']).toBe('failed');
 });
 
+it('fails the test whose cleanup hook logs, not the test after it', () => {
+  expect(statuses['logs from its cleanup']).toBe('failed');
+});
+
+it('passes the test after a cleanup hook that logged', () => {
+  expect(statuses['runs after a cleanup that logged']).toBe('passed');
+});
+
+it('fails the file when its own afterAll logs', () => {
+  expect(fileStatuses['console-guard-after-all.fixture.ts']).toBe('failed');
+});
+
 it('finishes a file that leaves fake timers on', () => {
   expect(fileStatuses['console-guard-fake-timers.fixture.ts']).toBe('passed');
 });

@@ -961,7 +961,7 @@ describe('useSessionProject whole-text read', () => {
   });
 
   it('does not render again for a read status that has not changed', async () => {
-    const status = { booksRead: 1, bookCount: 2, failedBookIds: [] };
+    const status = { booksRead: 2, bookCount: 2, failedBookIds: [] };
     await fakeHost(async (command) =>
       command === 'interlinearizer.getTextReadStatus' ? JSON.stringify(status) : undefined,
     );
@@ -977,12 +977,8 @@ describe('useSessionProject whole-text read', () => {
       });
     });
     await waitFor(() => expect(result.current.session?.client).toBeDefined());
-    await waitFor(() =>
-      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-        'interlinearizer.getTextReadStatus',
-        expect.anything(),
-      ),
-    );
+    act(() => result.current.session?.requestTextRead());
+    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
     const asked = () =>
       jest
         .mocked(papi.commands.sendCommand)

@@ -76,6 +76,7 @@ export default function useSessionProject(
   const [hasFreeTranslations, setHasFreeTranslations] = useState(false);
   const [readStatus, setReadStatus] = useState<{ sessionId: string; status: TextReadStatus }>();
   const readStatusJson = useRef<string | undefined>(undefined);
+  const [isTextWanted, setIsTextWanted] = useState(false);
 
   /** The interlinear project that the open session was opened on, or was last told to save to. */
   const targetRef = useRef<string | undefined>(undefined);
@@ -173,9 +174,12 @@ export default function useSessionProject(
   const pages = useSessionPages({ sessionId, bookId, scrRef });
   const { client } = pages;
 
-  /** Fetches how far the session's read of the whole text has progressed. */
+  /**
+   * Fetches how far the session's read of the whole text has progressed, once the text is wanted.
+   * The first fetch starts the session's read.
+   */
   const readTextStatus = useCallback(() => {
-    if (sessionId === undefined) return;
+    if (sessionId === undefined || !isTextWanted) return;
     papi.commands
       .sendCommand('interlinearizer.getTextReadStatus', { sessionId })
       .then((json) => {
@@ -186,8 +190,9 @@ export default function useSessionProject(
         return seen === readStatusJson.current ? undefined : setReadStatus({ sessionId, status });
       })
       .catch((e) => logger.warn('Interlinearizer: could not read the whole-text status', e));
-  }, [sessionId]);
+  }, [sessionId, isTextWanted]);
   useEffect(readTextStatus, [readTextStatus]);
+  const requestTextRead = useCallback(() => setIsTextWanted(true), []);
 
   const textReadEvent = useMemo(
     () => papi.network.getNetworkEvent('interlinearizer.onTextRead'),
@@ -465,6 +470,7 @@ export default function useSessionProject(
       client,
       hasFreeTranslations,
       staleCoversDraft,
+      requestTextRead,
       boundaries,
       setAnalysisLanguage,
     },

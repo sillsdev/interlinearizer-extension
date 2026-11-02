@@ -386,6 +386,28 @@ describe('InterlinearizerLoader opening a Paratext 9 import on the host path', (
 });
 
 describe('InterlinearizerLoader stale filter on the host path', () => {
+  /** The latest wanted-text listener that the loader handed the source-text reader. */
+  const latestOnWanted = () => jest.mocked(useSourceTextReader).mock.lastCall?.[0].onWanted;
+
+  it("asks nothing of the session's whole-text read until the text is wanted", async () => {
+    await fakeHost();
+    render(
+      <InterlinearizerLoader
+        projectId="src"
+        webViewId="web-view-1"
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState({ sidePanel: 'catalog' })}
+        updateWebViewDefinition={jest.fn(() => true)}
+      />,
+    );
+
+    await waitFor(() => expect(latestOnWanted()).toBeDefined());
+    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+      'interlinearizer.getTextReadStatus',
+      expect.anything(),
+    );
+  });
+
   it("covers the whole draft once the session's whole-text read has read every book", async () => {
     jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
     await fakeHost(async (command) =>
@@ -402,6 +424,9 @@ describe('InterlinearizerLoader stale filter on the host path', () => {
         updateWebViewDefinition={jest.fn(() => true)}
       />,
     );
+
+    await waitFor(() => expect(latestOnWanted()).toBeDefined());
+    act(() => latestOnWanted()?.());
 
     await waitFor(() => expect(capturedStaleCoversDraft).toBe(true));
   });

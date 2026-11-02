@@ -151,6 +151,12 @@ async function textReadStatus(page: Page, projectId: string): Promise<TextReadSt
   return typeof json === 'string' ? JSON.parse(json) : undefined;
 }
 
+/** Whether the host's whole-text read of the source has read every book. */
+async function isTextRead(page: Page, projectId: string): Promise<boolean> {
+  const status = await textReadStatus(page, projectId);
+  return status !== undefined && status.booksRead === status.bookCount;
+}
+
 /**
  * Starts the host's read of the source's whole text, and waits until it has read every book.
  *
@@ -158,13 +164,7 @@ async function textReadStatus(page: Page, projectId: string): Promise<TextReadSt
  */
 async function readWholeText(page: Page, projectId: string): Promise<void> {
   await expect
-    .poll(
-      async () => {
-        const status = await textReadStatus(page, projectId);
-        return status !== undefined && status.booksRead === status.bookCount;
-      },
-      { timeout: 300_000, intervals: [250] },
-    )
+    .poll(() => isTextRead(page, projectId), { timeout: 300_000, intervals: [250] })
     .toBe(true);
   expect((await textReadStatus(page, projectId))?.failedBookIds).toEqual([]);
 }
@@ -302,9 +302,14 @@ function epochIn(detail: unknown, key: string): number | undefined {
 }
 
 /**
- * Times the host path: opening a view, edits once the session's whole-text read has finished, and
- * Scripture saves. With {@link SKIP_SESSION_READS}, sessions read no text, so nothing waits for it.
- * Writes its sections into `result`. Leaves no view open and the host-path flag off.
+ * Times the host path. It first times opening a view and Scripture saves before any feature needs
+ * the whole text, so the session reads none. It then starts the session's read, as such a feature
+ * would. It times edits committed while the read runs and once it has finished, then Scripture
+ * saves with every book watched.
+ *
+ * With {@link SKIP_SESSION_READS}, the session never reads the text, so nothing waits for the read
+ * and edits during it go untimed. Writes its sections into `result`. Leaves no view open and the
+ * host-path flag off.
  */
 async function measureHostPath(
   page: Page,
@@ -317,8 +322,6 @@ async function measureHostPath(
   try {
     await page.evaluate((key) => localStorage.setItem(key, 'true'), HOST_PATH_KEY);
     if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', true);
-    // A view's first fetches wait only for the passes already queued. Edits made during the read
-    // go untimed here (#578).
     const open = new Samples();
     for (let run = 0; run < RUNS; run += 1) {
       // eslint-disable-next-line no-await-in-loop
@@ -332,7 +335,34 @@ async function measureHostPath(
 
     await closeView(page);
     const { frame } = await openView(page, projectId, tier.viewBook);
-    if (!SKIP_SESSION_READS) await readWholeText(page, projectId);
+    result.hostScriptureSave = await measureScriptureSaves(
+      page,
+      frame,
+      projectId,
+      tier.viewBook,
+      cpuPid,
+      false,
+    );
+
+    await sendCommand(page, 'interlinearizer.startSessionTextRead', projectId);
+    if (!SKIP_SESSION_READS) {
+      // Only edits that the read outlasts are counted, so a quick read yields fewer samples.
+      const editsDuringRead = new Samples();
+      for (let run = 0; run < RUNS; run += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await clearMeasures(frame);
+        // eslint-disable-next-line no-await-in-loop
+        await editGloss(frame, run, `host-read-${run}`, false);
+        // eslint-disable-next-line no-await-in-loop
+        const measures = await waitForMeasure(frame, 'gloss-render');
+        // eslint-disable-next-line no-await-in-loop
+        if (await isTextRead(page, projectId)) break;
+        editsDuringRead.add(measures, ['gloss-render']);
+      }
+      result.hostEditDuringRead = editsDuringRead.summary();
+      await readWholeText(page, projectId);
+    }
+
     const edits = scenarioSamples();
     const origin = await frame.evaluate(() => performance.timeOrigin);
     for (let run = 0; run < RUNS; run += 1) {
@@ -365,7 +395,7 @@ async function measureHostPath(
     }
     result.hostEdit = edits.summary();
 
-    result.hostScriptureSave = await measureScriptureSaves(
+    result.hostScriptureSaveAfterRead = await measureScriptureSaves(
       page,
       frame,
       projectId,

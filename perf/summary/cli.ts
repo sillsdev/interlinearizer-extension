@@ -74,20 +74,22 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'app.scriptureSave':
     "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
   'app.hostOpen':
-    "On the host path, a new view opens on the tier's book while the session's whole-text read starts. The view's first pages wait only for the re-anchor passes queued before them.",
+    "On the host path, a new view opens on the tier's book, with no feature needing the whole text, so the session reads none.",
+  'app.hostEditDuringRead':
+    "On the host path, one gloss committed while the session's whole-text read runs, started as a feature needing the text would start it. Only edits that the read outlasts are counted.",
   'app.hostEdit':
     "On the host path, one gloss committed once the session's whole-text read has finished. `edit-command` is the command's round trip, and its `:outbound` and `:inbound` rows split the transport at the host's start and end. `reply-apply` takes the reply into the view's pages. `gloss-settle` ends once the view shows both the gloss and the Tab's focus move.",
   'app.hostScriptureSave':
+    'As the Scripture save above, on the host path before any feature needs the whole text, so the session reads none.',
+  'app.hostScriptureSaveAfterRead':
     "As the Scripture save above, on the host path with the session's whole-text read finished, so the host watches every book.",
   'bench.memory': 'Heap held by the parsed draft, and by an undo history filled to its limit.',
 };
 
 /** What the host-path sections measure when their sessions read no text. */
 const SKIPPED_READ_DESCRIPTIONS: Record<string, string> = {
-  'app.hostOpen':
-    "On the host path, a new view opens on the tier's book, with the session reading no text.",
   'app.hostEdit': 'On the host path, one gloss committed, with the session reading no text.',
-  'app.hostScriptureSave':
+  'app.hostScriptureSaveAfterRead':
     'As the Scripture save above, on the host path with the session reading no text.',
 };
 
@@ -108,8 +110,10 @@ const SECTION_LABELS: Record<string, string> = {
   textRead: 'Read the whole text in the host',
   scriptureSave: 'Save a Scripture chapter',
   hostOpen: 'Host path: open the view in a running app',
+  hostEditDuringRead: 'Host path: edit one gloss during the whole-text read',
   hostEdit: 'Host path: edit one gloss',
   hostScriptureSave: 'Host path: save a Scripture chapter',
+  hostScriptureSaveAfterRead: 'Host path: save a Scripture chapter after the whole-text read',
   formsNotInText: 'Catalog forms not in the text',
   applyBooksReached: 'Books an apply reaches',
   'timings.load': 'Load',

@@ -91,6 +91,54 @@ describe('useSourceTextReader', () => {
     expect(formsOf(result.current)).toEqual(['GEN@v1']);
   });
 
+  it('says nothing of the text being wanted until it is', () => {
+    serveProject('1', async () => book('GEN', 'v1'));
+    const onWanted = jest.fn();
+
+    renderHook(() => useSourceTextReader({ ...baseArgs, enabled: false, onWanted }));
+
+    expect(onWanted).not.toHaveBeenCalled();
+  });
+
+  it('says the text is wanted once it is requested', () => {
+    serveProject('1', async () => book('GEN', 'v1'));
+    const onWanted = jest.fn();
+    const { result } = renderHook(() =>
+      useSourceTextReader({ ...baseArgs, enabled: false, onWanted }),
+    );
+
+    act(() => result.current.request());
+
+    expect(onWanted).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the text is wanted once it is enabled', () => {
+    serveProject('1', async () => book('GEN', 'v1'));
+    const onWanted = jest.fn();
+    const { rerender } = renderHook(
+      ({ enabled }) => useSourceTextReader({ ...baseArgs, enabled, onWanted }),
+      { initialProps: { enabled: false } },
+    );
+
+    rerender({ enabled: true });
+
+    expect(onWanted).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the text is wanted to a listener given after it became wanted', () => {
+    serveProject('1', async () => book('GEN', 'v1'));
+    const onWanted = jest.fn();
+    const { rerender } = renderHook(
+      ({ listener }: { listener: () => void }) =>
+        useSourceTextReader({ ...baseArgs, onWanted: listener }),
+      { initialProps: { listener: jest.fn() } },
+    );
+
+    rerender({ listener: onWanted });
+
+    expect(onWanted).toHaveBeenCalledTimes(1);
+  });
+
   it('reads every book the project marks present', async () => {
     const readTokenizedBook = serveProject('1010', async (id) => book(id, 'v1'));
 

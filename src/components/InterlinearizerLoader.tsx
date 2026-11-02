@@ -2158,6 +2158,7 @@ function InterlinearizerLoaderInner({
           liveBook={verseBook}
           onBookRead={wholeTextReanchor.onBookRead}
           onTextRead={wholeTextReanchor.onTextRead}
+          onWanted={session?.requestTextRead}
           readKey={wholeTextReanchor.readKey}
           projectId={projectId}
           shown={sidePanel === 'concordance'}

@@ -1413,17 +1413,70 @@ describe('AnalysisSessions', () => {
   });
 
   describe('the whole-text read', () => {
-    it("starts reading the source's whole text afresh when a session opens", async () => {
+    it("starts no read of the source's whole text when a session opens", async () => {
       const { host, sessions } = makeSessions();
 
       await sessions.open(SOURCE);
 
+      expect(host.startTextRead).not.toHaveBeenCalled();
+    });
+
+    it("starts reading the source's whole text the first time the session asks", async () => {
+      const { host, sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await sessions.startTextRead(sessionId);
+
       expect(host.startTextRead).toHaveBeenCalledWith(SOURCE);
+    });
+
+    it('starts the read only once however often the session asks', async () => {
+      const { host, sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await Promise.all([sessions.startTextRead(sessionId), sessions.startTextRead(sessionId)]);
+
+      expect(host.startTextRead).toHaveBeenCalledTimes(1);
+    });
+
+    it('starts the read without waiting on the commands sent before', async () => {
+      const { host, sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      const command = deferred();
+      const running = sessions.run(sessionId, () => command.promise);
+
+      await sessions.startTextRead(sessionId);
+
+      expect(host.startTextRead).toHaveBeenCalledWith(SOURCE);
+      command.resolve();
+      await running;
+    });
+
+    it('refuses to start the read of a session that is not open', async () => {
+      const { host, sessions } = makeSessions();
+
+      await expect(sessions.startTextRead('no-session')).rejects.toThrow(
+        'no session no-session is open',
+      );
+      expect(host.startTextRead).not.toHaveBeenCalled();
+    });
+
+    it('refuses to start the read of a closing session', async () => {
+      const { host, sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      const closing = sessions.close(sessionId);
+
+      await expect(sessions.startTextRead(sessionId)).rejects.toThrow(
+        `no session ${sessionId} is open`,
+      );
+      await closing;
+      expect(host.startTextRead).not.toHaveBeenCalled();
     });
 
     it('ends the read once the commands sent before the close settle', async () => {
       const { host, sessions } = makeSessions();
       const { sessionId } = await sessions.open(SOURCE);
+      await sessions.startTextRead(sessionId);
       const command = deferred();
       const running = sessions.run(sessionId, () => command.promise);
 
@@ -1436,11 +1489,22 @@ describe('AnalysisSessions', () => {
       expect(host.stopTextRead).toHaveBeenCalledWith(SOURCE);
     });
 
-    it("reads a reopened source's text again", async () => {
+    it('leaves alone a read that the session never started when it closes', async () => {
       const { host, sessions } = makeSessions();
-      await sessions.open(SOURCE);
+      const { sessionId } = await sessions.open(SOURCE);
 
-      await sessions.open(SOURCE);
+      await sessions.close(sessionId);
+
+      expect(host.stopTextRead).not.toHaveBeenCalled();
+    });
+
+    it("reads a reopened source's text again once its new session asks", async () => {
+      const { host, sessions } = makeSessions();
+      const first = await sessions.open(SOURCE);
+      await sessions.startTextRead(first.sessionId);
+
+      const second = await sessions.open(SOURCE);
+      await sessions.startTextRead(second.sessionId);
 
       expect(host.stopTextRead).toHaveBeenCalledTimes(1);
       expect(host.startTextRead).toHaveBeenCalledTimes(2);

@@ -21,8 +21,16 @@ export type SessionView = Readonly<{
   client: PageClient | undefined;
   /** Whether any segment of the draft has a free translation, as of opening or the last discard. */
   hasFreeTranslations: boolean;
-  /** Whether the session has read the whole text, so stale analysis covers the whole draft. */
+  /**
+   * Whether the session has read the whole text, so stale analysis covers the whole draft. Stays
+   * false until {@link requestTextRead} is called.
+   */
   staleCoversDraft: boolean;
+  /**
+   * Marks the whole text as wanted, for this session and every later one that the view opens. Each
+   * such session then starts reading the text.
+   */
+  requestTextRead: () => void;
   /** The boundary edits, sent to the session. */
   boundaries: SegmentationDispatch;
   /** Makes `tag` the language that the session's edits are made in. */

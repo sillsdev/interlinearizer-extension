@@ -905,8 +905,8 @@ async function getSegments(
 
 /**
  * Reports how far reading the whole text of the source project, or of a session's, has got,
- * starting the read when the project has none. While session reads are skipped, a session's read
- * never finishes.
+ * starting the read when the project or the session has none. While session reads are skipped, a
+ * session's read never finishes.
  *
  * @returns Once the text's books are known, the `TextReadStatus` as JSON.
  * @throws If the books or the provider of their text cannot be got, or the session is not open. The
@@ -914,6 +914,7 @@ async function getSegments(
  */
 async function getTextReadStatus(address: TextAddress): Promise<string> {
   try {
+    if (typeof address !== 'string') await sessions.startTextRead(address.sessionId);
     const sourceProjectId =
       typeof address === 'string'
         ? address
@@ -2800,7 +2801,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary:
-          "Return how far reading a source project's whole text has got, starting the read when the project has none, as a JSON string",
+          "Return how far reading a source project's whole text has got, starting the read when the project or the session has none, as a JSON string",
         params: [textAddressParam],
         result: {
           name: 'return value',
@@ -3825,13 +3826,39 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary:
-          'Turn on or off skipping the whole-text read that opening a session starts, for the performance harness',
+          'Turn on or off skipping the whole-text read that a session starts, for the performance harness',
         params: [
           {
             name: 'skip',
             required: true,
-            summary: 'Whether sessions open without reading the whole text',
+            summary: 'Whether sessions read no text, even when a feature needs it',
             schema: { type: 'boolean' },
+          },
+        ],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const startSessionTextReadCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.startSessionTextRead',
+    async (sourceProjectId: string) => {
+      const sessionId = sessions.sessionIdFor(sourceProjectId);
+      if (sessionId === undefined) {
+        throw new Error(`Interlinearizer: source project ${sourceProjectId} has no session open`);
+      }
+      await sessions.startTextRead(sessionId);
+    },
+    {
+      method: {
+        summary:
+          "Start the whole-text read of the source's open session, as a feature needing the text would, for the performance harness",
+        params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Source project whose open session reads its text',
+            schema: { type: 'string' },
           },
         ],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
@@ -4222,6 +4249,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     previewRemovalsCommandRegistration,
     setPerfMarksCommandRegistration,
     setSkipSessionReadsCommandRegistration,
+    startSessionTextReadCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,
     importPt9ProjectCommandRegistration,

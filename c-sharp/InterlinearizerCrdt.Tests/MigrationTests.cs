@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 namespace Interlinearizer.Crdt.Tests;
 
 /// <summary>A real database is built through the migrations, so they must describe the model.</summary>

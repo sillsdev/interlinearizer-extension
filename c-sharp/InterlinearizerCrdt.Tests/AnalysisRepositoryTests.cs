@@ -78,6 +78,31 @@ public class AnalysisRepositoryTests : CrdtTestBase
     private static IEnumerable<Guid> IdsOf(IEnumerable<Analysis> records) => records.Select(r => r.Id);
     private static IEnumerable<Guid> IdsOf(IEnumerable<AnalysisLink> records) => records.Select(r => r.Id);
 
+    private static ChangeSet EmptyMaps(Guid tokenId, Guid phraseId, Guid segmentId) => new()
+    {
+        Intent = "empty maps",
+        TokenAnalyses = RecordChanges<TokenAnalysis>.Put(new TokenAnalysis { Id = tokenId, SurfaceText = "and", Gloss = new(), Features = new() }),
+        PhraseAnalyses = RecordChanges<PhraseAnalysis>.Put(new PhraseAnalysis { Id = phraseId, SurfaceText = "in the", Gloss = new() }),
+        SegmentAnalyses = RecordChanges<SegmentAnalysis>.Put(new SegmentAnalysis
+        {
+            Id = segmentId,
+            SurfaceText = "And these",
+            FreeTranslation = new(),
+            LiteralTranslation = new(),
+        }),
+    };
+
+    private async Task AssertMapsAbsent(Guid tokenId, Guid phraseId, Guid segmentId)
+    {
+        var token = (await Repository.GetTokenAnalyses([tokenId])).Single();
+        await Assert.That(token.Gloss).IsNull();
+        await Assert.That(token.Features).IsNull();
+        await Assert.That((await Repository.GetPhraseAnalyses([phraseId])).Single().Gloss).IsNull();
+        var segment = (await Repository.GetSegmentAnalyses([segmentId])).Single();
+        await Assert.That(segment.FreeTranslation).IsNull();
+        await Assert.That(segment.LiteralTranslation).IsNull();
+    }
+
     [Test]
     public async Task ApplyPutsNewRecordsOfEveryKind()
     {
@@ -154,6 +179,26 @@ public class AnalysisRepositoryTests : CrdtTestBase
 
         var stored = (await Repository.GetTokenAnalyses([TaBeginning])).Single();
         await Assert.That(stored.Gloss).IsNull();
+    }
+
+    [Test]
+    public async Task ApplyStoresACreatedEmptyMapAsAbsent()
+    {
+        var (tokenId, phraseId, segmentId) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        await ApplyNext(EmptyMaps(tokenId, phraseId, segmentId));
+
+        await AssertMapsAbsent(tokenId, phraseId, segmentId);
+    }
+
+    [Test]
+    public async Task ApplyStoresAnEmptyMapReplacingAFullOneAsAbsent()
+    {
+        await ApplyNext(FullAnalysis());
+
+        await ApplyNext(EmptyMaps(TaBeginning, PaInThe, SaExo));
+
+        await AssertMapsAbsent(TaBeginning, PaInThe, SaExo);
     }
 
     [Test]

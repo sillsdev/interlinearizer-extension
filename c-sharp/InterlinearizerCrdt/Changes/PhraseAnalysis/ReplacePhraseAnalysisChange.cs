@@ -39,7 +39,7 @@ public class ReplacePhraseAnalysisChange(Guid entityId)
         entity.Confidence = Confidence;
         entity.Producer = Producer;
         entity.SourceUser = SourceUser;
-        entity.Gloss = Gloss;
+        entity.Gloss = MultiString.NullIfEmpty(Gloss);
         entity.SenseRef = SenseRef;
         return ValueTask.CompletedTask;
     }

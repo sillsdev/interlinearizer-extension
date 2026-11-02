@@ -53,8 +53,8 @@ public class CreateTokenAnalysisChange(Guid entityId)
             Morphemes = Morphemes,
             MorphemesStale = MorphemesStale,
             Pos = Pos,
-            Features = Features,
-            Gloss = Gloss,
+            Features = MultiString.NullIfEmpty(Features),
+            Gloss = MultiString.NullIfEmpty(Gloss),
             GlossSenseRef = GlossSenseRef,
         });
     }

@@ -50,8 +50,8 @@ public class ReplaceTokenAnalysisChange(Guid entityId)
         entity.Morphemes = Morphemes;
         entity.MorphemesStale = MorphemesStale;
         entity.Pos = Pos;
-        entity.Features = Features;
-        entity.Gloss = Gloss;
+        entity.Features = MultiString.NullIfEmpty(Features);
+        entity.Gloss = MultiString.NullIfEmpty(Gloss);
         entity.GlossSenseRef = GlossSenseRef;
         return ValueTask.CompletedTask;
     }

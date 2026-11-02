@@ -42,7 +42,7 @@ public class CreatePhraseAnalysisChange(Guid entityId)
             Confidence = Confidence,
             Producer = Producer,
             SourceUser = SourceUser,
-            Gloss = Gloss,
+            Gloss = MultiString.NullIfEmpty(Gloss),
             SenseRef = SenseRef,
         });
     }

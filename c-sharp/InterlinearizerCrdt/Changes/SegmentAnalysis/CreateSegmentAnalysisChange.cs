@@ -42,8 +42,8 @@ public class CreateSegmentAnalysisChange(Guid entityId)
             Confidence = Confidence,
             Producer = Producer,
             SourceUser = SourceUser,
-            FreeTranslation = FreeTranslation,
-            LiteralTranslation = LiteralTranslation,
+            FreeTranslation = MultiString.NullIfEmpty(FreeTranslation),
+            LiteralTranslation = MultiString.NullIfEmpty(LiteralTranslation),
         });
     }
 }

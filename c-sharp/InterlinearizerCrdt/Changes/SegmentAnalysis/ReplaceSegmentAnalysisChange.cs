@@ -39,8 +39,8 @@ public class ReplaceSegmentAnalysisChange(Guid entityId)
         entity.Confidence = Confidence;
         entity.Producer = Producer;
         entity.SourceUser = SourceUser;
-        entity.FreeTranslation = FreeTranslation;
-        entity.LiteralTranslation = LiteralTranslation;
+        entity.FreeTranslation = MultiString.NullIfEmpty(FreeTranslation);
+        entity.LiteralTranslation = MultiString.NullIfEmpty(LiteralTranslation);
         return ValueTask.CompletedTask;
     }
 }

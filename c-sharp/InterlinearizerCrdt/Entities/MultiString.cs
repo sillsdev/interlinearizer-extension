@@ -25,6 +25,13 @@ public class MultiString : Dictionary<string, string>
     }
 
     /// <summary>
+    /// <paramref name="map"/>, or null when it has no keys, because absence is how a missing value
+    /// is stored.
+    /// </summary>
+    public static T? NullIfEmpty<T>(T? map) where T : class, IReadOnlyDictionary<string, string> =>
+        map is { Count: > 0 } ? map : null;
+
+    /// <summary>
     /// <paramref name="current"/> with <paramref name="patch"/> merged in: each key the patch
     /// names is set to its value, or removed when that value is null. Keys the patch leaves out
     /// stay as they are. A result with no keys is null, since absence is how a missing value is

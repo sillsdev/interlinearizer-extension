@@ -34,10 +34,10 @@ import {
 import { FormIndex, formsOfBook } from '../../src/utils/form-index';
 import { collatorForTag } from '../../src/utils/language-tags';
 import { reanchorAnalysisToBook } from '../../src/utils/reanchor-analysis';
-import { changesOfReanchor } from '../../src/utils/reanchor-changes';
-import { reanchorDraftToBook, reanchorDraftToMissingBook } from '../../src/utils/reanchor-draft';
+import { changesOfReanchor, reanchorDraftToBook } from '../../src/utils/reanchor-changes';
+import { reanchorDraftToMissingBook } from '../../src/utils/reanchor-draft';
 import { MAX_UNDO_STEPS } from '../../src/services/editHistory';
-import type { BookPass } from '../../src/utils/undo-history';
+import type { BookPass } from '../../src/types/book-pass';
 import { loadBooks, readUsj } from '../books';
 import { readDraftJson, readManifest } from '../dataset/store';
 import { TIERS, type TierSpec } from '../dataset/tiers';

@@ -3,8 +3,9 @@
 import type { Book, TextAnalysis } from 'interlinearizer';
 import type { DraftContent } from '../../types/draft-content';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { reanchorDraftToBook, reanchorDraftToMissingBook } from '../../utils/reanchor-draft';
-import type { BookPass } from '../../utils/undo-history';
+import { reanchorDraftToBook } from '../../utils/reanchor-changes';
+import { reanchorDraftToMissingBook } from '../../utils/reanchor-draft';
+import type { BookPass } from '../../types/book-pass';
 import { expectHostReanchorParity } from '../host-reanchor-parity';
 import { FIXTURE_STAMPS, makeVerseBook } from '../test-helpers';
 

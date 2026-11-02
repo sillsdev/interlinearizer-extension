@@ -6,6 +6,7 @@ import type {
   TextAnalysis,
 } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { BookPass } from '../types/book-pass';
 import type { DraftContent } from '../types/draft-content';
 import type { EditStep, StepSummary } from '../types/edit-step';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
@@ -22,7 +23,6 @@ import {
   recordStep,
   redo as redoStep,
   undo as undoStep,
-  type BookPass,
   type HistoryMove,
   type UndoHistory,
 } from '../utils/undo-history';

@@ -6,11 +6,13 @@ import useWholeTextReanchor, {
   type UseWholeTextReanchorArgs,
 } from '../../hooks/useWholeTextReanchor';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
-import { reanchorDraftToBook, reanchorDraftToMissingBook } from '../../utils/reanchor-draft';
+import { reanchorDraftToBook } from '../../utils/reanchor-changes';
+import { reanchorDraftToMissingBook } from '../../utils/reanchor-draft';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
 // What a pass does to the draft is the re-anchoring core's concern; these tests check only which
 // pass each book is handed.
+jest.mock('../../utils/reanchor-changes');
 jest.mock('../../utils/reanchor-draft');
 
 const toBookPass = jest.fn();

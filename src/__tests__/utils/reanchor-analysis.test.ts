@@ -9,7 +9,7 @@ import type {
 } from 'interlinearizer';
 import type { DraftContent } from '../../types/draft-content';
 import { reanchorAnalysisToBook } from '../../utils/reanchor-analysis';
-import type { BookPass } from '../../utils/undo-history';
+import type { BookPass } from '../../types/book-pass';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import { mergeSegments, reanchorSegmentation } from '../../utils/segmentation';
 import { emptyAnalysis } from '../../types/empty-factories';

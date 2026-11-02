@@ -6,7 +6,7 @@ import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { splitAnalysisByBook } from '../utils/analysis-book';
 import { applyChangeSet } from '../utils/change-set';
 import { changesOfReanchor } from '../utils/reanchor-changes';
-import type { BookPass } from '../utils/undo-history';
+import type { BookPass } from '../types/book-pass';
 
 function draftHolding({ analysis, segmentation }: DraftContent): DraftProject {
   return { ...emptyDraft('src'), analysis, ...(segmentation && { segmentation }) };

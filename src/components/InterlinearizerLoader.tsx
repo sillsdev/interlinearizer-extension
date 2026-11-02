@@ -62,7 +62,7 @@ import {
   unmergeableVerseStarts,
 } from '../utils/segmentation';
 import { perfTrack } from '../utils/perf-marks';
-import { reanchorDraftToBook } from '../utils/reanchor-draft';
+import { reanchorDraftToBook } from '../utils/reanchor-changes';
 import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
 import { readOpenableProject } from '../utils/read-openable-project';
 import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';

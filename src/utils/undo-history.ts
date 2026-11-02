@@ -1,7 +1,5 @@
 import { MAX_UNDO_STEPS } from '../services/editHistory';
-
-/** Re-anchors content to one book's current text. */
-export type BookPass<T> = (content: T) => T;
+import type { BookPass } from '../types/book-pass';
 
 /** Content the history can restore. */
 type Snapshot<T, S> = Readonly<{

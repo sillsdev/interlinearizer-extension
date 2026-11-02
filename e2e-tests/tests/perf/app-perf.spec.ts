@@ -26,6 +26,7 @@ import {
   hostHeap,
   hostPid,
   heapUsed,
+  lastFocusWrite,
   MAX_WEBSOCKET_PAYLOAD_BYTES,
   type Measure,
   openView,
@@ -118,14 +119,18 @@ async function editGloss(
 
 /**
  * Milliseconds from the gloss commit timed in `measures` until the view shows both the gloss and
- * the focus move of the Tab that follows the commit.
+ * the focus move of the Tab that follows the commit. When that Tab moves no focus, as within the
+ * focused phrase, the time ends with the gloss.
  *
- * @throws If `measures` holds no `gloss-render`.
+ * @throws If `measures` holds no `gloss-render`, or the view made no focus write.
  */
 async function glossSettle(frame: Frame, measures: Measure[]): Promise<number> {
   const render = measures.find(({ name }) => name === 'gloss-render');
   if (!render) throw new Error('No gloss-render measure to settle');
-  const focusAt = await waitForMark(frame, 'focus-render');
+  const write = await lastFocusWrite(frame);
+  if (!write) throw new Error('No focus write to settle');
+  if (!write.moved) return render.duration;
+  const focusAt = await waitForMark(frame, 'focus-render', write.at);
   return Math.max(render.end, focusAt) - (render.end - render.duration);
 }
 

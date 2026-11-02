@@ -232,18 +232,38 @@ export async function waitForMeasure(
 }
 
 /**
- * Waits until the WebView has made the mark `name`, and returns the start time of the earliest one.
- * Only marks made since the last {@link clearMeasures} count.
+ * Waits until the WebView has made the mark `name` at or after `after`, and returns the start time
+ * of the earliest such mark. Only marks made since the last {@link clearMeasures} count.
  */
-export async function waitForMark(frame: Frame, name: string): Promise<number> {
+export async function waitForMark(frame: Frame, name: string, after = 0): Promise<number> {
   const handle = await frame.waitForFunction(
-    (markName) => performance.getEntriesByName(markName, 'mark')[0]?.startTime,
-    `ilz:${name}`,
+    ([markName, from]) =>
+      performance.getEntriesByName(markName, 'mark').find((entry) => entry.startTime >= from)
+        ?.startTime,
+    [`ilz:${name}`, after] as const,
     { timeout: 10 * 60_000, polling: 50 },
   );
   const at: unknown = await handle.jsonValue();
   if (typeof at !== 'number') throw new Error(`Mark ${name} has no start time`);
   return at;
+}
+
+/**
+ * The WebView's latest focus write: when it was made, and whether it moved the focus. Undefined
+ * when the WebView has made no focus write since the last {@link clearMeasures}.
+ */
+export async function lastFocusWrite(
+  frame: Frame,
+): Promise<{ at: number; moved: boolean } | undefined> {
+  return frame.evaluate(() => {
+    const write = performance.getEntriesByName('ilz:focus-write', 'mark').at(-1);
+    if (!write) return undefined;
+    const { detail } = write instanceof PerformanceMark ? write : { detail: undefined };
+    return {
+      at: write.startTime,
+      moved: !!detail && typeof detail === 'object' && 'moved' in detail && detail.moved === true,
+    };
+  });
 }
 
 /** Bytes of JS heap the renderer holds after a full collection. */

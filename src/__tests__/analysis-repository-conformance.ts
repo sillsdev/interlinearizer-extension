@@ -1508,9 +1508,9 @@ export function describeAnalysisRepositoryConformance(
             const repository = await overFullDraft();
             changeInPlace((await repository.exportAll()).draft);
 
-            await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([
-              fullAnalysis().tokenAnalyses[0],
-            ]);
+            await expect(
+              repository.getTokenAnalyses(['ta-and']).then(unstampedInIdOrder),
+            ).resolves.toStrictEqual([unstamped(fullAnalysis().tokenAnalyses[0])]);
             await repository.apply(puttingNewRecords());
 
             await expect(
@@ -2091,12 +2091,12 @@ export function describeReadOnlyRepositoryConformance(
       );
       const { analysis } = exodusOnlyDraft();
       await expect(
-        store.readAll(SOURCE).then((draft) => inIdOrder(draft).analysis),
+        store.readAll(SOURCE).then((draft) => unstampedAnalysis(draft.analysis)),
       ).resolves.toStrictEqual(
-        inIdOrder({
-          ...exodusOnlyDraft(),
-          analysis: { ...analysis, segmentAnalyses: translating.segmentAnalyses?.puts ?? [] },
-        }).analysis,
+        unstampedAnalysis({
+          ...analysis,
+          segmentAnalyses: translating.segmentAnalyses?.puts ?? [],
+        }),
       );
     });
   });

@@ -664,6 +664,7 @@ describe('DraftRepository', () => {
       await new DraftRepository(storage, 'src', silentLogger()).apply({
         intent: 'deletePayload',
         tokenAnalyses: { puts: [], deletes: ['ta-and'] },
+        tokenAnalysisLinks: { puts: [], deletes: ['tl-GEN', 'tl-EXO'] },
       });
 
       await repository.exportAll();

@@ -3925,7 +3925,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary:
-            "JSON-stringified { outcome: 'imported' | 'staleKept', projectId, report? }; rejects (throws) when the source has nothing to import or the import fails",
+            "JSON-stringified { outcome: 'imported' | 'staleKept', projectId, report?, summary? }; rejects (throws) when the source has nothing to import or the import fails",
           schema: { type: 'string' },
         },
       },

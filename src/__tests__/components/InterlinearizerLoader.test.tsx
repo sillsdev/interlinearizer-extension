@@ -2083,7 +2083,12 @@ describe('InterlinearizerLoader', () => {
 
     it('syncs from the banner and shows the report with Close only', async () => {
       mockImportCommands({
-        importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
+        importResult: {
+          outcome: 'imported',
+          projectId: 'import-1',
+          report: IMPORT_REPORT,
+          summary: FRESH_IMPORT_SUMMARY,
+        },
       });
       await renderImportView();
 
@@ -2164,7 +2169,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('auto-syncs a changed import before opening, with no report step', async () => {
-      mockImportCommands({ importResult: { outcome: 'imported', projectId: 'import-1' } });
+      mockImportCommands({
+        importResult: { outcome: 'imported', projectId: 'import-1', summary: FRESH_IMPORT_SUMMARY },
+      });
       mockPdpGet.mockResolvedValue({
         getPt9InterlinearManifest: async () => probeOf({ 'Lexicon.xml': 'bbbb2222' }),
       });
@@ -2353,14 +2360,16 @@ describe('InterlinearizerLoader', () => {
               ? { ...FRESH_IMPORT_SUMMARY, analysis: syncedAnalysis }
               : { ...STUB_IMPORT_PROJECT, analysis: emptyAnalysis() },
           );
+        // The listing still holds the pre-sync summary, as when a sync fails to refresh it.
         if (args[0] === 'interlinearizer.getProjectSummary')
-          return JSON.stringify(FRESH_IMPORT_SUMMARY);
+          return JSON.stringify(STUB_IMPORT_PROJECT);
         if (args[0] === 'interlinearizer.importPt9Project') {
           synced = true;
           return JSON.stringify({
             outcome: 'imported',
             projectId: 'import-1',
             report: IMPORT_REPORT,
+            summary: FRESH_IMPORT_SUMMARY,
           });
         }
         return JSON.stringify(emptyDraft(testProjectId));
@@ -2390,6 +2399,7 @@ describe('InterlinearizerLoader', () => {
             outcome: 'imported',
             projectId: 'import-1',
             report: IMPORT_REPORT,
+            summary: FRESH_IMPORT_SUMMARY,
           });
         }
         return JSON.stringify(emptyDraft(testProjectId));

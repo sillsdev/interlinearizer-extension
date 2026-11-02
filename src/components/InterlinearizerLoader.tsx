@@ -347,6 +347,15 @@ function manifestFileHashes(manifest: Pt9InterlinearProjectManifest): Record<str
   );
 }
 
+/** The summary an import reply carries, or `undefined` when it carries none or a malformed one. */
+function parseImportedSummary(reply: unknown): InterlinearProjectSummary | undefined {
+  const summary =
+    /* v8 ignore next -- the host's import reply is always an object, carrying a summary on import */
+    reply && typeof reply === 'object' && 'summary' in reply ? reply.summary : undefined;
+  /* v8 ignore next -- the host only sends well-formed summaries */
+  return isInterlinearProjectSummary(summary) ? toProjectSummary(summary) : undefined;
+}
+
 /** Whether two path-to-hash maps are identical: the same keys, with the same hash under each. */
 function fileHashesEqual(a: Record<string, string>, b: Record<string, string>): boolean {
   const aKeys = Object.keys(a);
@@ -1245,7 +1254,7 @@ function InterlinearizerLoaderInner({
           parsed && typeof parsed === 'object' && 'report' in parsed ? parsed.report : undefined;
         if (outcome === 'imported' && typeof importedId === 'string' && isPt9ImportReport(report)) {
           if (mode === 'sync') {
-            const summary = await fetchSummary(importedId);
+            const summary = parseImportedSummary(parsed);
             if (summary) setActiveProject(summary);
           }
           setPt9ImportedId(importedId);
@@ -1269,7 +1278,7 @@ function InterlinearizerLoaderInner({
         else setPt9Phase({ kind: 'error' });
       }
     },
-    [projectId, fetchSummary, setActiveProject],
+    [projectId, setActiveProject],
   );
 
   /**
@@ -1295,14 +1304,7 @@ function InterlinearizerLoaderInner({
         const parsed: unknown = JSON.parse(json);
         const outcome =
           parsed && typeof parsed === 'object' && 'outcome' in parsed ? parsed.outcome : undefined;
-        const importedId =
-          parsed && typeof parsed === 'object' && 'projectId' in parsed
-            ? parsed.projectId
-            : undefined;
-        const summary =
-          outcome === 'imported' && typeof importedId === 'string'
-            ? await fetchSummary(importedId)
-            : undefined;
+        const summary = outcome === 'imported' ? parseImportedSummary(parsed) : undefined;
         setActiveProject(summary ?? project);
         setModal('none');
       } catch (e) {
@@ -1314,7 +1316,7 @@ function InterlinearizerLoaderInner({
         setModal('none');
       }
     },
-    [projectId, fetchSummary, setActiveProject],
+    [projectId, setActiveProject],
   );
 
   /**

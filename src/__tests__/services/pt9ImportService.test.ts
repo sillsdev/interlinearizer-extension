@@ -249,6 +249,13 @@ describe('importPt9Project', () => {
     expect(result).toMatchObject({ outcome: 'imported', projectId: 'import-id' });
   });
 
+  it('replies with the summary of the import as written', async () => {
+    const result = await importPt9Project(token, 'src-project');
+
+    const project = writtenProject();
+    expect(result.summary).toMatchObject({ id: project.id, updatedAt: project.updatedAt });
+  });
+
   it('imports the books it can and names the book it could not get', async () => {
     mockPdps({
       manifest: manifestOf(

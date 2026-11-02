@@ -10,14 +10,17 @@ public class PatchChangeTests : CrdtTestBase
     {
         var created = Fixtures.CreateTokenAnalysis(_analysisId);
         var createdAt = await WriteNextChange(created);
-        var patched = await WriteNextChange(Fixtures.PatchTokenAnalysis(_analysisId));
+        var patched = await WriteNextChange(new PatchTokenAnalysisChange(_analysisId) { Pos = "N" });
 
         var analysis = await DataModel.GetLatest<TokenAnalysis>(_analysisId);
-        await Assert.That(analysis!.SurfaceText).IsEqualTo(created.SurfaceText);
+        await Assert.That(analysis!.Pos).IsEqualTo("N");
+        await Assert.That(analysis.SurfaceText).IsEqualTo(created.SurfaceText);
         await Assert.That(analysis.Confidence).IsEqualTo(created.Confidence);
         await Assert.That(analysis.Producer).IsEqualTo(created.Producer);
         await Assert.That(analysis.Morphemes).IsEquivalentTo(created.Morphemes!);
         await Assert.That(analysis.MorphemesStale).IsEqualTo(created.MorphemesStale);
+        await Assert.That(analysis.Gloss).IsEquivalentTo(created.Gloss!);
+        await Assert.That(analysis.GlossSenseRef).IsEqualTo(created.GlossSenseRef);
         await Assert.That(analysis.CreatedAt).IsEqualTo(createdAt.DateTime);
         await Assert.That(analysis.UpdatedAt).IsEqualTo(patched.DateTime);
     }
@@ -26,7 +29,7 @@ public class PatchChangeTests : CrdtTestBase
     public async Task AFieldSetToNullIsCleared()
     {
         await WriteNextChange(Fixtures.CreateTokenAnalysis(_analysisId));
-        await WriteNextChange(Fixtures.PatchTokenAnalysis(_analysisId));
+        await WriteNextChange(new PatchTokenAnalysisChange(_analysisId) { Pos = null, GlossSenseRef = null });
 
         var analysis = await DataModel.GetLatest<TokenAnalysis>(_analysisId);
         await Assert.That(analysis!.Pos).IsNull();
@@ -37,7 +40,11 @@ public class PatchChangeTests : CrdtTestBase
     public async Task AMultiStringPatchSetsAndRemovesKeysLeavingOthersAlone()
     {
         await WriteNextChange(Fixtures.CreateTokenAnalysis(_analysisId));
-        await WriteNextChange(Fixtures.PatchTokenAnalysis(_analysisId));
+        await WriteNextChange(new PatchTokenAnalysisChange(_analysisId)
+        {
+            Gloss = new MultiStringPatch { ["fr"] = null, ["de"] = "Anfang" },
+            Features = new MultiStringPatch { ["Case"] = "Gen", ["Number"] = null, ["Gender"] = "Fem" },
+        });
 
         var analysis = await DataModel.GetLatest<TokenAnalysis>(_analysisId);
         await Assert.That(analysis!.Gloss).IsEquivalentTo(new Dictionary<string, string> { ["en"] = "beginning", ["de"] = "Anfang" });
@@ -58,19 +65,17 @@ public class PatchChangeTests : CrdtTestBase
     public async Task AMultiStringEmptiedOfEveryKeyBecomesAbsent()
     {
         await WriteNextChange(Fixtures.CreatePhraseAnalysis(_analysisId));
-        await WriteNextChange(Fixtures.PatchPhraseAnalysis(_analysisId));
+        await WriteNextChange(new PatchPhraseAnalysisChange(_analysisId) { Gloss = new MultiStringPatch { ["en"] = null, ["fr"] = null } });
 
         var analysis = await DataModel.GetLatest<PhraseAnalysis>(_analysisId);
         await Assert.That(analysis!.Gloss).IsNull();
-        await Assert.That(analysis.SurfaceText).IsEqualTo("in the beginning");
-        await Assert.That(analysis.SenseRef).IsEqualTo(Fixtures.Sense);
     }
 
     [Test]
     public async Task APatchedSurfaceTextRefilesTheAnalysisUnderItsNewForm()
     {
         await WriteNextChange(Fixtures.CreatePhraseAnalysis(_analysisId));
-        await WriteNextChange(Fixtures.PatchPhraseAnalysis(_analysisId));
+        await WriteNextChange(new PatchPhraseAnalysisChange(_analysisId) { SurfaceText = "In the beginning" });
 
         await Assert.That(await Repository.FindPhraseAnalysesByForm(["in the"])).IsEmpty();
         await Assert.That((await Repository.FindPhraseAnalysesByForm(["in the beginning"])).Select(a => a.Id)).IsEquivalentTo([_analysisId]);
@@ -82,11 +87,11 @@ public class PatchChangeTests : CrdtTestBase
         await WriteNextChange(Fixtures.CreateTokenAnalysis(_analysisId));
         var created = Fixtures.CreateTokenAnalysisLink(_linkId, _analysisId);
         await WriteNextChange(created);
-        await WriteNextChange(Fixtures.PatchTokenAnalysisLink(_linkId));
+        await WriteNextChange(new PatchTokenAnalysisLinkChange(_linkId) { Token = Fixtures.Token2 });
 
         var link = await DataModel.GetLatest<TokenAnalysisLink>(_linkId);
         await Assert.That(link!.Token).IsEqualTo(Fixtures.Token2);
-        await Assert.That(link.Status).IsEqualTo(AssignmentStatus.Approved);
+        await Assert.That(link.Status).IsEqualTo(created.Status);
         await Assert.That(link.Confidence).IsEqualTo(created.Confidence);
         await Assert.That(link.AnalysisId).IsEqualTo(_analysisId);
         await Assert.That((await Repository.FindLinksByToken([Fixtures.Token2.TokenRef])).TokenAnalysisLinks.Select(l => l.Id)).IsEquivalentTo([_linkId]);
@@ -111,29 +116,31 @@ public class PatchChangeTests : CrdtTestBase
     {
         await WriteNextChange(Fixtures.CreatePhraseAnalysis(_analysisId));
         await WriteNextChange(Fixtures.CreatePhraseAnalysisLink(_linkId, _analysisId));
-        await WriteNextChange(Fixtures.PatchPhraseAnalysisLink(_linkId));
+        await WriteNextChange(new PatchPhraseAnalysisLinkChange(_linkId) { Tokens = new List<TokenSnapshot> { Fixtures.Token2 } });
 
         var link = await DataModel.GetLatest<PhraseAnalysisLink>(_linkId);
-        await Assert.That(link!.Tokens).IsEquivalentTo([Fixtures.Token2, Fixtures.Token1]);
-        await Assert.That(link.Confidence).IsEqualTo(Confidence.High);
-        await Assert.That(link.Status).IsEqualTo(AssignmentStatus.Candidate);
+        await Assert.That(link!.Tokens).IsEquivalentTo([Fixtures.Token2]);
     }
 
     [Test]
-    public async Task ASegmentPatchAppliesAfterARestart()
+    public async Task APatchAppliesTheSameAfterASnapshotRegeneration()
     {
-        await WriteNextChange(Fixtures.CreateSegmentAnalysis(_analysisId));
-        await WriteNextChange(Fixtures.PatchSegmentAnalysis(_analysisId));
+        var created = Fixtures.CreateSegmentAnalysis(_analysisId);
+        await WriteNextChange(created);
+        await WriteNextChange(new PatchSegmentAnalysisChange(_analysisId)
+        {
+            SourceUser = null,
+            FreeTranslation = new MultiStringPatch { ["en"] = "At first", ["fr"] = null },
+        });
 
         // A regeneration reads the stored patch back, so an unset field must still read as unset.
         await DataModel.RegenerateSnapshots();
 
         var analysis = await DataModel.GetLatest<SegmentAnalysis>(_analysisId);
-        await Assert.That(analysis!.SurfaceText).IsEqualTo("In the beginning");
-        await Assert.That(analysis.Confidence).IsEqualTo(Confidence.Low);
-        await Assert.That(analysis.SourceUser).IsNull();
-        await Assert.That(analysis.Producer).IsEqualTo("human");
+        await Assert.That(analysis!.SourceUser).IsNull();
         await Assert.That(analysis.FreeTranslation).IsEquivalentTo(new Dictionary<string, string> { ["en"] = "At first" });
-        await Assert.That(analysis.LiteralTranslation).IsEquivalentTo(Fixtures.CreateSegmentAnalysis(_analysisId).LiteralTranslation!);
+        await Assert.That(analysis.SurfaceText).IsEqualTo(created.SurfaceText);
+        await Assert.That(analysis.Producer).IsEqualTo(created.Producer);
+        await Assert.That(analysis.LiteralTranslation).IsEquivalentTo(created.LiteralTranslation!);
     }
 }

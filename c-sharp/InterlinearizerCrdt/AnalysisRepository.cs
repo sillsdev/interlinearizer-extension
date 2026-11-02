@@ -20,7 +20,7 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client)
     /// Applies <paramref name="changes"/> as one commit, so whole or not at all. A put of a record
     /// not stored creates it. A put of one stored replaces it whole, or, when
     /// <paramref name="putMode"/> asks for a patch, writes only the fields that differ from the
-    /// stored record and nothing when none does. The timestamps a put carries are ignored, since
+    /// stored record and nothing when none does. The timestamps a put carries are ignored, because
     /// the commit stamps them. A delete of a record not stored is skipped. A change set that
     /// changes nothing writes no commit.
     /// </summary>

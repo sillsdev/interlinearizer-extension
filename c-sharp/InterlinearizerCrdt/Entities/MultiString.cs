@@ -34,7 +34,7 @@ public class MultiString : Dictionary<string, string>
     /// <summary>
     /// <paramref name="current"/> with <paramref name="patch"/> merged in: each key the patch
     /// names is set to its value, or removed when that value is null. Keys the patch leaves out
-    /// stay as they are. A result with no keys is null, since absence is how a missing value is
+    /// stay as they are. A result with no keys is null, because absence is how a missing value is
     /// stored.
     /// </summary>
     public static MultiString? Patch(MultiString? current, IReadOnlyDictionary<string, string?> patch)

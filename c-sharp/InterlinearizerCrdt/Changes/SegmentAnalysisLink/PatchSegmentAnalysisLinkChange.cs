@@ -9,6 +9,7 @@ namespace Interlinearizer.Crdt.Changes;
 /// Sets the fields it carries on a <see cref="SegmentAnalysisLink"/>: a field left unset is left as
 /// stored, and one set to null is cleared. Pointing the link at an analysis already deleted deletes
 /// the link.
+/// A link already deleted stays deleted, even when pointed at a live analysis.
 /// </summary>
 public class PatchSegmentAnalysisLinkChange(Guid entityId)
     : EditChange<SegmentAnalysisLink>(entityId), ISelfNamedType<PatchSegmentAnalysisLinkChange>

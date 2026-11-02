@@ -9,6 +9,7 @@ namespace Interlinearizer.Crdt.Changes;
 /// <summary>
 /// Replaces every field of a <see cref="PhraseAnalysisLink"/> but its identity and creation
 /// time. Pointing the link at an analysis already deleted deletes the link.
+/// A link already deleted stays deleted, even when pointed at a live analysis.
 /// </summary>
 [method: JsonConstructor]
 public class ReplacePhraseAnalysisLinkChange(Guid entityId)

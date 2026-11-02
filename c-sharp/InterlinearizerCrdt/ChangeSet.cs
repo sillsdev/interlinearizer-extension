@@ -3,7 +3,7 @@ using Interlinearizer.Crdt.Entities;
 namespace Interlinearizer.Crdt;
 
 /// <summary>Whole-record puts and deletes of one record kind.</summary>
-/// <param name="Puts">Records to store whole, each replacing any stored under its id.</param>
+/// <param name="Puts">Records as wanted whole; <see cref="PutMode"/> decides how a stored one is written.</param>
 /// <param name="Deletes">Ids of records to remove; an id with nothing stored under it is skipped.</param>
 public record RecordChanges<T>(IReadOnlyList<T> Puts, IReadOnlyList<Guid> Deletes)
 {

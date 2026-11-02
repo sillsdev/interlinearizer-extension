@@ -4,8 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Interlinearizer.Crdt;
 
 /// <summary>
-/// How <c>dotnet ef</c> builds the context to scaffold a migration: the host's container as
-/// <c>Program</c> builds it, over a database no one opens.
+/// How <c>dotnet ef</c> builds the context to scaffold a migration: the model's container, over a
+/// database no one opens.
 /// </summary>
 public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<InterlinearizerCrdtDbContext>
 {

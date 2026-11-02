@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Interlinearizer.Crdt.Tests;
 
-/// <summary>The host's container as Program builds it, over databases in a temporary folder.</summary>
+/// <summary>The model's container over databases in a temporary folder.</summary>
 public class OpenProjectsTests : IAsyncDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "i13r-open-projects", Guid.NewGuid().ToString("N"));

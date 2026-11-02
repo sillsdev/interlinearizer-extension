@@ -10,11 +10,14 @@ public class CurrentProject
     private string? _dbPath;
 
     /// <summary>The interlinear project's id.</summary>
+    /// <exception cref="InvalidOperationException">If no project is set for this scope.</exception>
     public string ProjectId => _projectId ?? throw new InvalidOperationException("No project is open in this scope");
 
     /// <summary>The SQLite file Harmony stores the project's analysis in.</summary>
+    /// <exception cref="InvalidOperationException">If no project is set for this scope.</exception>
     public string DbPath => _dbPath ?? throw new InvalidOperationException("No project is open in this scope");
 
+    /// <exception cref="InvalidOperationException">If this scope already serves a project.</exception>
     public void Set(string projectId, string dbPath)
     {
         if (_projectId is not null) throw new InvalidOperationException($"This scope already serves project {_projectId}");

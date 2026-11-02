@@ -49,10 +49,7 @@ public static class InterlinearizerCrdtKernel
         return services;
     }
 
-    /// <summary>
-    /// The interlinearizer's registrations, exposed so that a test can build the same config
-    /// without a container.
-    /// </summary>
+    /// <summary>The interlinearizer's entity, change, and JSON registrations.</summary>
     public static void ConfigureHarmony(HarmonyConfig config)
     {
         config.ConfigureJsonOptions(PatchFieldJson.Configure);

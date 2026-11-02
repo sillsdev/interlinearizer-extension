@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Interlinearizer.Crdt.Entities;
 using SIL.Harmony.Changes;
@@ -11,24 +10,35 @@ namespace Interlinearizer.Crdt.Changes;
 /// Sets the fields it carries on a <see cref="SegmentAnalysis"/>: a field left unset is left as
 /// stored, and one set to null is cleared.
 /// </summary>
-[method: JsonConstructor]
 public class PatchSegmentAnalysisChange(Guid entityId)
     : EditChange<SegmentAnalysis>(entityId), ISelfNamedType<PatchSegmentAnalysisChange>
 {
     /// <summary>
-    /// Sets every field of <paramref name="analysis"/> but its timestamps; a multistring it lacks
-    /// is left alone.
+    /// The patch that takes <paramref name="stored"/> to <paramref name="put"/>, timestamps
+    /// aside; null when nothing differs.
     /// </summary>
-    [SetsRequiredMembers]
-    public PatchSegmentAnalysisChange(SegmentAnalysis analysis) : this(analysis.Id)
+    public static PatchSegmentAnalysisChange? Diff(SegmentAnalysis stored, SegmentAnalysis put)
     {
-        SurfaceText = analysis.SurfaceText;
-        Confidence = analysis.Confidence;
-        Producer = analysis.Producer;
-        SourceUser = analysis.SourceUser;
-        FreeTranslation = MultiStringPatch.Of(analysis.FreeTranslation);
-        LiteralTranslation = MultiStringPatch.Of(analysis.LiteralTranslation);
+        var patch = new PatchSegmentAnalysisChange(put.Id)
+        {
+            SurfaceText = Patches.Changed(stored.SurfaceText, put.SurfaceText) ? new(put.SurfaceText) : default,
+            Confidence = Patches.Changed(stored.Confidence, put.Confidence) ? new(put.Confidence) : default,
+            Producer = Patches.Changed(stored.Producer, put.Producer) ? new(put.Producer) : default,
+            SourceUser = Patches.Changed(stored.SourceUser, put.SourceUser) ? new(put.SourceUser) : default,
+            FreeTranslation = MultiStringPatch.Diff(stored.FreeTranslation, put.FreeTranslation),
+            LiteralTranslation = MultiStringPatch.Diff(stored.LiteralTranslation, put.LiteralTranslation),
+        };
+        return patch.IsEmpty ? null : patch;
     }
+
+    [JsonIgnore]
+    public bool IsEmpty =>
+        !SurfaceText.HasValue &&
+        !Confidence.HasValue &&
+        !Producer.HasValue &&
+        !SourceUser.HasValue &&
+        FreeTranslation is null &&
+        LiteralTranslation is null;
 
     public PatchField<string> SurfaceText { get; init; }
     public PatchField<Confidence?> Confidence { get; init; }

@@ -16,6 +16,14 @@ public class MultiString : Dictionary<string, string>
 
     public MultiString Copy() => new(this);
 
+    /// <summary>Whether two maps hold the same keys with the same values; two nulls are equal.</summary>
+    public static bool ContentEquals(IReadOnlyDictionary<string, string>? a, IReadOnlyDictionary<string, string>? b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a is null || b is null) return false;
+        return a.Count == b.Count && a.All(pair => b.TryGetValue(pair.Key, out var value) && value == pair.Value);
+    }
+
     /// <summary>
     /// <paramref name="current"/> with <paramref name="patch"/> merged in: each key the patch
     /// names is set to its value, or removed when that value is null. Keys the patch leaves out
@@ -56,14 +64,26 @@ public class MultiStringPatch : Dictionary<string, string?>
     }
 
     /// <summary>
-    /// A patch setting every key of <paramref name="values"/>, removing none; null when there are
-    /// no values, so that the patch changes nothing.
+    /// The patch that takes <paramref name="from"/> to <paramref name="to"/>: each key added or
+    /// changed, and null for each key removed. Null when the two hold the same content.
     /// </summary>
-    public static MultiStringPatch? Of(IReadOnlyDictionary<string, string>? values)
+    public static MultiStringPatch? Diff(IReadOnlyDictionary<string, string>? from, IReadOnlyDictionary<string, string>? to)
     {
-        if (values is null) return null;
         var patch = new MultiStringPatch();
-        foreach (var (key, value) in values) patch[key] = value;
-        return patch;
+        if (to is not null)
+        {
+            foreach (var (key, value) in to)
+            {
+                if (from is null || !from.TryGetValue(key, out var old) || old != value) patch[key] = value;
+            }
+        }
+        if (from is not null)
+        {
+            foreach (var key in from.Keys)
+            {
+                if (to is null || !to.ContainsKey(key)) patch[key] = null;
+            }
+        }
+        return patch.Count == 0 ? null : patch;
     }
 }

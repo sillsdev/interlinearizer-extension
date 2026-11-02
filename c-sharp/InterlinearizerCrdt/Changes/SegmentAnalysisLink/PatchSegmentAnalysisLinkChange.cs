@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Interlinearizer.Crdt.Entities;
 using SIL.Harmony.Changes;
@@ -12,22 +11,31 @@ namespace Interlinearizer.Crdt.Changes;
 /// stored, and one set to null is cleared. Pointing the link at an analysis already deleted deletes
 /// the link.
 /// </summary>
-[method: JsonConstructor]
 public class PatchSegmentAnalysisLinkChange(Guid entityId)
     : EditChange<SegmentAnalysisLink>(entityId), ISelfNamedType<PatchSegmentAnalysisLinkChange>
 {
     /// <summary>
-    /// Sets every field of <paramref name="link"/> but its timestamps; a multistring it lacks is
-    /// is left alone.
+    /// The patch that takes <paramref name="stored"/> to <paramref name="put"/>, timestamps
+    /// aside; null when nothing differs.
     /// </summary>
-    [SetsRequiredMembers]
-    public PatchSegmentAnalysisLinkChange(SegmentAnalysisLink link) : this(link.Id)
+    public static PatchSegmentAnalysisLinkChange? Diff(SegmentAnalysisLink stored, SegmentAnalysisLink put)
     {
-        AnalysisId = link.AnalysisId;
-        SegmentId = link.SegmentId;
-        Status = link.Status;
-        Confidence = link.Confidence;
+        var patch = new PatchSegmentAnalysisLinkChange(put.Id)
+        {
+            AnalysisId = Patches.Changed(stored.AnalysisId, put.AnalysisId) ? new(put.AnalysisId) : default,
+            SegmentId = Patches.Changed(stored.SegmentId, put.SegmentId) ? new(put.SegmentId) : default,
+            Status = Patches.Changed(stored.Status, put.Status) ? new(put.Status) : default,
+            Confidence = Patches.Changed(stored.Confidence, put.Confidence) ? new(put.Confidence) : default,
+        };
+        return patch.IsEmpty ? null : patch;
     }
+
+    [JsonIgnore]
+    public bool IsEmpty =>
+        !AnalysisId.HasValue &&
+        !SegmentId.HasValue &&
+        !Status.HasValue &&
+        !Confidence.HasValue;
 
     public PatchField<Guid> AnalysisId { get; init; }
     public PatchField<string> SegmentId { get; init; }

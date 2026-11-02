@@ -34,8 +34,9 @@ public enum PutMode
     /// <summary>Replace the stored record whole, dropping any field the put lacks.</summary>
     Replace,
     /// <summary>
-    /// Set every field the put carries, merging a multistring or feature map per key. A field or
-    /// key the put lacks is left as stored.
+    /// Write only what differs between the stored record and the put, key by key for a
+    /// multistring or feature map, and nothing when the two agree. The put is still the whole
+    /// record wanted: a field or key it lacks is cleared.
     /// </summary>
     Patch,
 }

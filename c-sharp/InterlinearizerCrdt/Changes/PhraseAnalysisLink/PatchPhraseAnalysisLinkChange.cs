@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Interlinearizer.Crdt.Entities;
 using SIL.Harmony.Changes;
@@ -12,22 +11,31 @@ namespace Interlinearizer.Crdt.Changes;
 /// stored, and one set to null is cleared. Pointing the link at an analysis already deleted deletes
 /// the link.
 /// </summary>
-[method: JsonConstructor]
 public class PatchPhraseAnalysisLinkChange(Guid entityId)
     : EditChange<PhraseAnalysisLink>(entityId), ISelfNamedType<PatchPhraseAnalysisLinkChange>
 {
     /// <summary>
-    /// Sets every field of <paramref name="link"/> but its timestamps; a multistring it lacks is
-    /// is left alone.
+    /// The patch that takes <paramref name="stored"/> to <paramref name="put"/>, timestamps
+    /// aside; null when nothing differs.
     /// </summary>
-    [SetsRequiredMembers]
-    public PatchPhraseAnalysisLinkChange(PhraseAnalysisLink link) : this(link.Id)
+    public static PatchPhraseAnalysisLinkChange? Diff(PhraseAnalysisLink stored, PhraseAnalysisLink put)
     {
-        AnalysisId = link.AnalysisId;
-        Tokens = link.Tokens;
-        Status = link.Status;
-        Confidence = link.Confidence;
+        var patch = new PatchPhraseAnalysisLinkChange(put.Id)
+        {
+            AnalysisId = Patches.Changed(stored.AnalysisId, put.AnalysisId) ? new(put.AnalysisId) : default,
+            Status = Patches.Changed(stored.Status, put.Status) ? new(put.Status) : default,
+            Confidence = Patches.Changed(stored.Confidence, put.Confidence) ? new(put.Confidence) : default,
+            Tokens = Patches.ListChanged(stored.Tokens, put.Tokens) ? new(put.Tokens) : default,
+        };
+        return patch.IsEmpty ? null : patch;
     }
+
+    [JsonIgnore]
+    public bool IsEmpty =>
+        !AnalysisId.HasValue &&
+        !Status.HasValue &&
+        !Confidence.HasValue &&
+        !Tokens.HasValue;
 
     public PatchField<Guid> AnalysisId { get; init; }
     /// <summary>The whole run; a token list is not merged.</summary>

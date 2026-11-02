@@ -118,27 +118,34 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ApplyInPatchModeSetsTheFieldsThePutCarriesAndMergesMultistrings()
+    public async Task ApplyInPatchModeWritesOnlyWhatDiffersFromTheStoredRecord()
     {
         await ApplyNext(FullAnalysis());
         var put = new TokenAnalysis
         {
             Id = TaBeginning,
             SurfaceText = "Beginning",
-            Gloss = new MultiString { ["fr"] = "début" },
+            Gloss = new MultiString { ["en"] = "start", ["fr"] = "début" },
         };
 
         await ApplyNext(new ChangeSet { Intent = "patch", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }, PutMode.Patch);
 
         var stored = (await Repository.GetTokenAnalyses([TaBeginning])).Single();
         await Assert.That(stored.SurfaceText).IsEqualTo("Beginning");
-        await Assert.That(stored.Gloss).IsEquivalentTo(new Dictionary<string, string> { ["en"] = "start", ["fr"] = "début" });
+        await Assert.That(stored.Gloss).IsEquivalentTo(put.Gloss);
         var changes = await DbContext.ChangeEntities.ToListAsync();
-        await Assert.That(changes.Select(c => c.Change).OfType<PatchTokenAnalysisChange>().Count()).IsEqualTo(1);
+        var patch = changes.Select(c => c.Change).OfType<PatchTokenAnalysisChange>().Single();
+        await Assert.That(patch.SurfaceText.HasValue).IsTrue();
+        await Assert.That(patch.Gloss).IsEquivalentTo(new Dictionary<string, string?> { ["fr"] = "début" });
+        await Assert.That(patch.Confidence.HasValue).IsFalse();
+        await Assert.That(patch.Producer.HasValue).IsFalse();
+        await Assert.That(patch.Morphemes.HasValue).IsFalse();
+        await Assert.That(patch.Pos.HasValue).IsFalse();
+        await Assert.That(patch.Features).IsNull();
     }
 
     [Test]
-    public async Task ApplyInPatchModeLeavesAMultistringThePutLacksAlone()
+    public async Task ApplyInPatchModeClearsWhatThePutLacks()
     {
         await ApplyNext(FullAnalysis());
         var put = new TokenAnalysis { Id = TaBeginning, SurfaceText = "beginning" };
@@ -146,7 +153,50 @@ public class AnalysisRepositoryTests : CrdtTestBase
         await ApplyNext(new ChangeSet { Intent = "patch", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }, PutMode.Patch);
 
         var stored = (await Repository.GetTokenAnalyses([TaBeginning])).Single();
-        await Assert.That(stored.Gloss).IsEquivalentTo(new Dictionary<string, string> { ["en"] = "start" });
+        await Assert.That(stored.Gloss).IsNull();
+    }
+
+    [Test]
+    public async Task ApplyInPatchModeWritesNothingForAPutEqualToTheStoredRecord()
+    {
+        await ApplyNext(FullAnalysis());
+        var same = Token(TaBeginning, "beginning", "start");
+
+        await ApplyNext(new ChangeSet { Intent = "noop", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(same) }, PutMode.Patch);
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task ApplyInPatchModeComparesMorphemesByContent()
+    {
+        var analysisId = Guid.NewGuid();
+        await WriteNextChange(Fixtures.CreateTokenAnalysis(analysisId));
+        var stored = (await Repository.GetTokenAnalyses([analysisId])).Single();
+        var put = new TokenAnalysis
+        {
+            Id = analysisId,
+            SurfaceText = stored.SurfaceText,
+            Confidence = stored.Confidence,
+            Producer = stored.Producer,
+            // Fresh instances with the same content, as a put read from the wire would carry.
+            Morphemes = stored.Morphemes!.Select(m => m with { Gloss = m.Gloss?.Copy() }).ToList(),
+            MorphemesStale = stored.MorphemesStale,
+            Pos = "N",
+            Features = new Dictionary<string, string>(stored.Features!),
+            Gloss = stored.Gloss!.Copy(),
+            GlossSenseRef = stored.GlossSenseRef,
+        };
+
+        await ApplyNext(new ChangeSet { Intent = "patch", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }, PutMode.Patch);
+
+        var changes = await DbContext.ChangeEntities.ToListAsync();
+        var patch = changes.Select(c => c.Change).OfType<PatchTokenAnalysisChange>().Single();
+        await Assert.That(patch.Pos.HasValue).IsTrue();
+        await Assert.That(patch.Morphemes.HasValue).IsFalse();
+        await Assert.That(patch.Features).IsNull();
+        await Assert.That(patch.Gloss).IsNull();
+        await Assert.That(patch.GlossSenseRef.HasValue).IsFalse();
     }
 
     [Test]

@@ -27,4 +27,18 @@ public record MorphemeAnalysis
 
     /// <summary>Takes precedence over any gloss resolved through <see cref="SenseRef"/>.</summary>
     public MultiString? Gloss { get; init; }
+
+    /// <summary>Two morphemes are equal by content, the gloss included.</summary>
+    public virtual bool Equals(MorphemeAnalysis? other) =>
+        other is not null &&
+        Id == other.Id &&
+        Form == other.Form &&
+        WritingSystem == other.WritingSystem &&
+        EntryRef == other.EntryRef &&
+        SenseRef == other.SenseRef &&
+        AllomorphRef == other.AllomorphRef &&
+        GrammarRef == other.GrammarRef &&
+        MultiString.ContentEquals(Gloss, other.Gloss);
+
+    public override int GetHashCode() => HashCode.Combine(Id, Form, WritingSystem, EntryRef, SenseRef, AllomorphRef, GrammarRef);
 }

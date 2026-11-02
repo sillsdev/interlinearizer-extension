@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Interlinearizer.Crdt.Entities;
 using SIL.Harmony.Changes;
@@ -11,28 +10,43 @@ namespace Interlinearizer.Crdt.Changes;
 /// Sets the fields it carries on a <see cref="TokenAnalysis"/>: a field left unset is left as
 /// stored, and one set to null is cleared.
 /// </summary>
-[method: JsonConstructor]
 public class PatchTokenAnalysisChange(Guid entityId)
     : EditChange<TokenAnalysis>(entityId), ISelfNamedType<PatchTokenAnalysisChange>
 {
     /// <summary>
-    /// Sets every field of <paramref name="analysis"/> but its timestamps; a multistring it lacks
-    /// is left alone.
+    /// The patch that takes <paramref name="stored"/> to <paramref name="put"/>, timestamps
+    /// aside; null when nothing differs.
     /// </summary>
-    [SetsRequiredMembers]
-    public PatchTokenAnalysisChange(TokenAnalysis analysis) : this(analysis.Id)
+    public static PatchTokenAnalysisChange? Diff(TokenAnalysis stored, TokenAnalysis put)
     {
-        SurfaceText = analysis.SurfaceText;
-        Confidence = analysis.Confidence;
-        Producer = analysis.Producer;
-        SourceUser = analysis.SourceUser;
-        Morphemes = analysis.Morphemes;
-        MorphemesStale = analysis.MorphemesStale;
-        Pos = analysis.Pos;
-        GlossSenseRef = analysis.GlossSenseRef;
-        Features = MultiStringPatch.Of(analysis.Features);
-        Gloss = MultiStringPatch.Of(analysis.Gloss);
+        var patch = new PatchTokenAnalysisChange(put.Id)
+        {
+            SurfaceText = Patches.Changed(stored.SurfaceText, put.SurfaceText) ? new(put.SurfaceText) : default,
+            Confidence = Patches.Changed(stored.Confidence, put.Confidence) ? new(put.Confidence) : default,
+            Producer = Patches.Changed(stored.Producer, put.Producer) ? new(put.Producer) : default,
+            SourceUser = Patches.Changed(stored.SourceUser, put.SourceUser) ? new(put.SourceUser) : default,
+            MorphemesStale = Patches.Changed(stored.MorphemesStale, put.MorphemesStale) ? new(put.MorphemesStale) : default,
+            Pos = Patches.Changed(stored.Pos, put.Pos) ? new(put.Pos) : default,
+            GlossSenseRef = Patches.Changed(stored.GlossSenseRef, put.GlossSenseRef) ? new(put.GlossSenseRef) : default,
+            Morphemes = Patches.ListChanged(stored.Morphemes, put.Morphemes) ? new(put.Morphemes) : default,
+            Features = MultiStringPatch.Diff(stored.Features, put.Features),
+            Gloss = MultiStringPatch.Diff(stored.Gloss, put.Gloss),
+        };
+        return patch.IsEmpty ? null : patch;
     }
+
+    [JsonIgnore]
+    public bool IsEmpty =>
+        !SurfaceText.HasValue &&
+        !Confidence.HasValue &&
+        !Producer.HasValue &&
+        !SourceUser.HasValue &&
+        !MorphemesStale.HasValue &&
+        !Pos.HasValue &&
+        !GlossSenseRef.HasValue &&
+        !Morphemes.HasValue &&
+        Features is null &&
+        Gloss is null;
 
     public PatchField<string> SurfaceText { get; init; }
     public PatchField<Confidence?> Confidence { get; init; }

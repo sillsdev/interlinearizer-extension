@@ -66,6 +66,15 @@ public class OpenProjectsTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task OpeningAnOpenProjectOverAnotherDatabaseThrows()
+    {
+        await _projects.Open("p1", DbPath("p1"));
+
+        await Assert.That(async () => await _projects.Open("p1", DbPath("other"))).Throws<InvalidOperationException>();
+        await Assert.That(_projects.IsOpen("p1")).IsTrue();
+    }
+
+    [Test]
     public async Task AClosedProjectIsNoLongerOpen()
     {
         await _projects.Open("p1", DbPath("p1"));

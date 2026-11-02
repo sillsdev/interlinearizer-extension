@@ -6,8 +6,8 @@ namespace Interlinearizer.Crdt;
 
 /// <summary>
 /// The projects the host has open, one DI scope each. A scope holds the project's Harmony
-/// services over its own database and lives from <see cref="Open"/> to <see cref="Close"/>, so
-/// no request creates one. Opening a project already open returns its scope.
+/// services over its own database and lives from <see cref="Open"/> to <see cref="Close"/>;
+/// requests never create scopes.
 /// </summary>
 public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposable
 {
@@ -15,21 +15,28 @@ public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposab
 
     /// <summary>
     /// Opens <paramref name="projectId"/> over the database at <paramref name="dbPath"/>, created
-    /// when missing and brought up to the current schema when behind. Two concurrent opens of one
-    /// project share one scope.
+    /// when missing and brought up to the current schema when behind. Opening a project already
+    /// open returns its services. Two concurrent opens of one project share one scope.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// If the project is already open over a different database.
+    /// </exception>
     public async Task<IServiceProvider> Open(string projectId, string dbPath)
     {
         var scope = _scopes.GetOrAdd(projectId, _ => new Lazy<Task<AsyncServiceScope>>(() => OpenScope(projectId, dbPath)));
+        IServiceProvider services;
         try
         {
-            return (await scope.Value).ServiceProvider;
+            services = (await scope.Value).ServiceProvider;
         }
         catch
         {
             _scopes.TryRemove(new KeyValuePair<string, Lazy<Task<AsyncServiceScope>>>(projectId, scope));
             throw;
         }
+        var openPath = services.GetRequiredService<CurrentProject>().DbPath;
+        if (Path.GetFullPath(openPath) != Path.GetFullPath(dbPath)) throw new InvalidOperationException($"Project {projectId} is already open over {openPath}");
+        return services;
     }
 
     /// <summary>The services of an open project.</summary>

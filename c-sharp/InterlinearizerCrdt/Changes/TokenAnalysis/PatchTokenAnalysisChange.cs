@@ -2,7 +2,6 @@ using System.Text.Json.Serialization;
 using Interlinearizer.Crdt.Entities;
 using SIL.Harmony.Changes;
 using SIL.Harmony.Entities;
-using ZibStack.NET.Dto;
 
 namespace Interlinearizer.Crdt.Changes;
 

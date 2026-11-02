@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
-using ZibStack.NET.Dto;
 
 namespace Interlinearizer.Crdt.Changes;
 
@@ -16,7 +15,6 @@ public static class PatchFieldJson
 
     public static void Configure(JsonSerializerOptions options)
     {
-        options.Converters.Add(new PatchFieldJsonConverterFactory());
         options.TypeInfoResolver = (options.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver())
             .WithAddedModifier(SkipUnsetPatchFields);
     }

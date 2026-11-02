@@ -19,7 +19,7 @@ export const VIEW_TAB = /^Interlinearizer: WEB/;
 export type Measure = { name: string; duration: number; end: number; detail: unknown };
 
 /** A duration the extension host recorded, named without its prefix. */
-export type HostEntry = { name: string; duration: number };
+export type HostEntry = { name: string; duration: number; detail?: unknown };
 
 /**
  * A host command a WebView measure times end to end, and the storage functions whose phases run
@@ -41,6 +41,11 @@ export const HOST_CALLS = {
     phasePrefixes: ['getBookOutline'],
   },
   saveDraft: { measure: 'autosave', command: 'saveDraft', phasePrefixes: ['saveDraft'] },
+  writeGloss: {
+    measure: 'edit-command',
+    command: 'writeGloss',
+    phasePrefixes: ['writeGloss', 'saveDraft'],
+  },
   getProjectsForSource: {
     measure: 'projects-fetch',
     command: 'getProjectsForSource',
@@ -224,6 +229,21 @@ export async function waitForMeasure(
     { timeout: 10 * 60_000, polling: 50 },
   );
   return readMeasures(frame);
+}
+
+/**
+ * Waits until the WebView has made the mark `name`, and returns the start time of the earliest one.
+ * Only marks made since the last {@link clearMeasures} count.
+ */
+export async function waitForMark(frame: Frame, name: string): Promise<number> {
+  const handle = await frame.waitForFunction(
+    (markName) => performance.getEntriesByName(markName, 'mark')[0]?.startTime,
+    `ilz:${name}`,
+    { timeout: 10 * 60_000, polling: 50 },
+  );
+  const at: unknown = await handle.jsonValue();
+  if (typeof at !== 'number') throw new Error(`Mark ${name} has no start time`);
+  return at;
 }
 
 /** Bytes of JS heap the renderer holds after a full collection. */

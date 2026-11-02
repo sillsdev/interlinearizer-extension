@@ -38,6 +38,7 @@ import {
   setHostPerfMarks,
   sourceProjectId,
   takeHostEntries,
+  waitForMark,
   waitForMeasure,
   wireBytes,
 } from './view-driver';
@@ -113,6 +114,19 @@ async function editGloss(
   await input.fill(value);
   await input.press('Tab');
   if (autosaves) unsavedFrame = frame;
+}
+
+/**
+ * Milliseconds from the gloss commit timed in `measures` until the view shows both the gloss and
+ * the focus move of the Tab that follows the commit.
+ *
+ * @throws If `measures` holds no `gloss-render`.
+ */
+async function glossSettle(frame: Frame, measures: Measure[]): Promise<number> {
+  const render = measures.find(({ name }) => name === 'gloss-render');
+  if (!render) throw new Error('No gloss-render measure to settle');
+  const focusAt = await waitForMark(frame, 'focus-render');
+  return Math.max(render.end, focusAt) - (render.end - render.duration);
 }
 
 const sleep = (ms: number) =>
@@ -280,6 +294,13 @@ async function measureScriptureSaves(
   return samples.summary();
 }
 
+/** The number that `detail` holds under `key`, if any. */
+function epochIn(detail: unknown, key: string): number | undefined {
+  if (!detail || typeof detail !== 'object' || !(key in detail)) return undefined;
+  const value: unknown = Reflect.get(detail, key);
+  return typeof value === 'number' ? value : undefined;
+}
+
 /**
  * Times the host path: opening a view, edits once the session's whole-text read has finished, and
  * Scripture saves. With {@link SKIP_SESSION_READS}, sessions read no text, so nothing waits for it.
@@ -312,14 +333,35 @@ async function measureHostPath(
     await closeView(page);
     const { frame } = await openView(page, projectId, tier.viewBook);
     if (!SKIP_SESSION_READS) await readWholeText(page, projectId);
-    const edits = new Samples();
+    const edits = scenarioSamples();
+    const origin = await frame.evaluate(() => performance.timeOrigin);
     for (let run = 0; run < RUNS; run += 1) {
       // eslint-disable-next-line no-await-in-loop
       await clearMeasures(frame);
       // eslint-disable-next-line no-await-in-loop
+      await takeHostEntries(page);
+      // eslint-disable-next-line no-await-in-loop
       await editGloss(frame, run, `host-${run}`, false);
       // eslint-disable-next-line no-await-in-loop
-      edits.add(await waitForMeasure(frame, 'gloss-render'), ['gloss-render']);
+      const measures = await waitForMeasure(frame, 'gloss-render');
+      edits.webView.add(measures, ['gloss-render', 'edit-command', 'reply-apply']);
+      // eslint-disable-next-line no-await-in-loop
+      edits.webView.addValue('gloss-settle', await glossSettle(frame, measures));
+      // eslint-disable-next-line no-await-in-loop
+      const hostEntries = await takeHostEntries(page);
+      edits.addHostCall(HOST_CALLS.writeGloss, hostEntries, measures);
+      // Splits the transport at the host's start and end, by the wall clock both processes share.
+      const command = measures.find(({ name }) => name === 'edit-command');
+      const hostCall = hostEntries.find(({ name }) => name === HOST_CALLS.writeGloss.command);
+      const sentAt = epochIn(command?.detail, 'sentAt');
+      const startedAt = epochIn(hostCall?.detail, 'startedAt');
+      if (command && hostCall && sentAt !== undefined && startedAt !== undefined) {
+        edits.webView.addValue('edit-command:outbound', startedAt - sentAt);
+        edits.webView.addValue(
+          'edit-command:inbound',
+          origin + command.end - (startedAt + hostCall.duration),
+        );
+      }
     }
     result.hostEdit = edits.summary();
 
@@ -598,6 +640,8 @@ async function measureTier(
       'autosave-serialize',
       'autosave',
     ]);
+    // eslint-disable-next-line no-await-in-loop
+    edits.webView.addValue('gloss-settle', await glossSettle(frame, measures));
     // eslint-disable-next-line no-await-in-loop
     edits.addHostCall(HOST_CALLS.saveDraft, await takeHostEntries(page), measures);
   }

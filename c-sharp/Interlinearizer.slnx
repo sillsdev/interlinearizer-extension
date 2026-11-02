@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="InterlinearizerHost/InterlinearizerHost.csproj" />
+  <Project Path="InterlinearizerCrdt/InterlinearizerCrdt.csproj" />
+  <Project Path="InterlinearizerCrdt.Tests/InterlinearizerCrdt.Tests.csproj" />
+</Solution>

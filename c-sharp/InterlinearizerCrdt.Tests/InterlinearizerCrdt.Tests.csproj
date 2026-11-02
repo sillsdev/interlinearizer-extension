@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RootNamespace>Interlinearizer.Crdt.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="TUnit" Version="1.78.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\InterlinearizerCrdt\InterlinearizerCrdt.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Interlinearizer.Crdt" />
+    <Using Include="Interlinearizer.Crdt.Changes" />
+    <Using Include="Interlinearizer.Crdt.Entities" />
+    <Using Include="SIL.Harmony" />
+    <Using Include="SIL.Harmony.Changes" />
+    <Using Include="SIL.Harmony.Core" />
+  </ItemGroup>
+
+</Project>

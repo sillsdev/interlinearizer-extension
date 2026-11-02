@@ -23,7 +23,7 @@ import {
   type OpenedSession,
   type Session,
 } from './services/analysisSessions';
-import type { DraftContent } from './hooks/useDraftProject';
+import type { DraftContent } from './types/draft-content';
 import * as bookService from './services/bookService';
 import * as boundaryCommands from './services/commands/boundaryCommands';
 import * as catalogCommands from './services/commands/catalogCommands';
@@ -61,7 +61,7 @@ import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards
 import { BOOKLESS_PARTITION, bookOfRef } from './utils/analysis-book';
 import { bookIndexesOf } from './utils/book-indexes';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
-import { missingBook } from './utils/reanchor-draft';
+import { missingBook } from './utils/reanchor-analysis';
 import { bookSegmentationJson } from './utils/segmentation';
 
 // #region WebView provider
@@ -1172,11 +1172,16 @@ async function runSessionEdit(
 ): Promise<string> {
   const { sessionId, changeId } = target;
   try {
-    return JSON.stringify(
-      await sessions.edit(sessionId, intent, command, {
-        changeId,
-        step: () => target.step,
-      }),
+    return await perfTimeAsync(
+      intent,
+      async () => {
+        const reply = await sessions.edit(sessionId, intent, command, {
+          changeId,
+          step: () => target.step,
+        });
+        return perfTime(`${intent}:serialize`, () => JSON.stringify(reply));
+      },
+      { startedAt: performance.timeOrigin + performance.now() },
     );
   } catch (e) {
     logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);

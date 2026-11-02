@@ -39,6 +39,33 @@ describe('RecordTable', () => {
     expect(tableOf(a, b).all()).toStrictEqual([a, b]);
   });
 
+  it('lists the same array until a record changes', () => {
+    const table = tableOf({ id: 'a', tags: [] });
+
+    expect(table.all()).toBe(table.all());
+  });
+
+  it('lists a fresh array once a record is put', () => {
+    const table = tableOf({ id: 'a', tags: [] });
+    const before = table.all();
+    const b = { id: 'b', tags: [] };
+
+    table.put(b);
+
+    expect(table.all()).not.toBe(before);
+    expect(table.all()).toContain(b);
+  });
+
+  it('lists a fresh array once a record is removed', () => {
+    const table = tableOf({ id: 'a', tags: [] }, { id: 'b', tags: [] });
+    const before = table.all();
+
+    table.remove('a');
+
+    expect(table.all()).not.toBe(before);
+    expect(table.all().map(({ id }) => id)).toStrictEqual(['b']);
+  });
+
   it('counts the records filed under a key', () => {
     const table = tableOf({ id: 'a', tags: ['x'] }, { id: 'b', tags: ['x', 'y'] });
 

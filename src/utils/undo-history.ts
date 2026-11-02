@@ -1,8 +1,5 @@
-/** How many of the most recent steps stay undoable; older ones are forgotten. */
-export const MAX_UNDO_STEPS = 100;
-
-/** Re-anchors content to one book's current text. */
-export type BookPass<T> = (content: T) => T;
+import { MAX_UNDO_STEPS } from '../services/editHistory';
+import type { BookPass } from '../types/book-pass';
 
 /** Content the history can restore. */
 type Snapshot<T, S> = Readonly<{

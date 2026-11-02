@@ -1,9 +1,10 @@
 import type { Book, DraftProject } from 'interlinearizer';
 import { useCallback, useState } from 'react';
 import { booksLinkedIn, booksMissingFrom } from '../utils/analysis-book';
-import { reanchorDraftToBook, reanchorDraftToMissingBook } from '../utils/reanchor-draft';
-import type { BookPass } from '../utils/undo-history';
-import type { DraftContent } from './useDraftProject';
+import { reanchorDraftToBook } from '../utils/reanchor-changes';
+import { reanchorDraftToMissingBook } from '../utils/reanchor-draft';
+import type { BookPass } from '../types/book-pass';
+import type { DraftContent } from '../types/draft-content';
 import useLatestRef from './useLatestRef';
 
 /** Arguments for {@link useWholeTextReanchor}. */

@@ -632,7 +632,7 @@ export function memoryStorage(initial: Record<string, string> = {}) {
   return { storage, records, writes };
 }
 
-/** Stores `draft` through `repository`, which must hold no draft yet, unsaved mark included. */
+/** Stores `draft`, unsaved mark included, through `repository`, which must hold no draft yet. */
 export async function seedRepository(
   repository: AnalysisRepository,
   draft: DraftProject,

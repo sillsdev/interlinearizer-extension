@@ -15,9 +15,10 @@ npm run watch            # Continuous rebuild on changes
 npm run build:c-sharp    # Publish the C# host for every platform (or name some: -- win-x64)
 
 # Lint & Format
-npm run lint             # Run ESLint + stylelint + tsc --noEmit + dependency scope
-npm run lint-fix         # Auto-fix linting issues
+npm run lint             # Run ESLint + stylelint + tsc --noEmit + dependency scope + dotnet format check
+npm run lint-fix         # Auto-fix linting issues, C# formatting included
 npm run format           # Format with Prettier
+npm run format:dotnet    # Format the C# projects with dotnet format
 
 # Test
 npm test                 # Run full Jest suite
@@ -25,7 +26,7 @@ npm run test:coverage    # Run with coverage (100% threshold enforced)
 npm test -- path/to/file.test.ts                 # Run a single test file
 npm test -- --testNamePattern="pattern"          # Run tests matching name
 npm run test:c-sharp                             # Check the C# host published for this machine starts
-dotnet test c-sharp/InterlinearizerCrdt.Tests    # Run the Harmony entity tests (TUnit; filters go after --)
+npm run test:dotnet                              # Run the Harmony entity tests (TUnit; filters go after --)
 cd c-sharp && dotnet ef migrations add <Name> --project InterlinearizerCrdt   # After changing an entity's columns
 
 # Performance (results land in perf/results/)

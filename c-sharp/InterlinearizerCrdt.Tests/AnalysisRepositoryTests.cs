@@ -29,12 +29,12 @@ public class AnalysisRepositoryTests : CrdtTestBase
 
     private static TokenAnalysisLink TokenLink(Guid id, Guid analysisId, string tokenRef, string surfaceText,
         AssignmentStatus status = AssignmentStatus.Approved) => new()
-    {
-        Id = id,
-        AnalysisId = analysisId,
-        Token = new TokenSnapshot(tokenRef, surfaceText),
-        Status = status,
-    };
+        {
+            Id = id,
+            AnalysisId = analysisId,
+            Token = new TokenSnapshot(tokenRef, surfaceText),
+            Status = status,
+        };
 
     private static ChangeSet FullAnalysis() => new()
     {

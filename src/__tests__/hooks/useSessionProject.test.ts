@@ -2,10 +2,11 @@
 
 import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { useEvent } from 'platform-bible-react';
 import useSessionProject from '../../hooks/useSessionProject';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { fakeHost, relayTextRead } from '../cache/fake-host';
-import { ref } from '../cache/session-source';
+import { glossing, ref } from '../cache/session-source';
 
 const SCR_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
@@ -27,12 +28,30 @@ function renderProject(saveTargetId?: string, importProjectId?: string) {
   );
 }
 
+/** How often the WebView has read a session's whole draft. */
+function fullReads(): number {
+  return jest
+    .mocked(papi.commands.sendCommand)
+    .mock.calls.filter(([command]) => command === 'interlinearizer.getFullAnalysis').length;
+}
+
 /** Renders the hook and waits until its session's draft and pages have loaded. */
 async function renderLoaded() {
   const host = await fakeHost();
   const rendered = renderProject();
   await waitFor(() => expect(rendered.result.current.session?.client).toBeDefined());
   return { host, ...rendered };
+}
+
+/**
+ * Renders the hook as {@link renderLoaded} does, then leaves only the latest render's change
+ * listeners for the host to relay changes to, as the platform does.
+ */
+async function renderCurrent() {
+  const loaded = await renderLoaded();
+  jest.mocked(useEvent).mockClear();
+  loaded.rerender({});
+  return loaded;
 }
 
 describe('useSessionProject', () => {
@@ -88,25 +107,62 @@ describe('useSessionProject', () => {
     );
   });
 
-  it('reads the draft again once the session reports a change', async () => {
-    const { result } = await renderLoaded();
+  it('applies its own edit to the draft without reading the whole draft again', async () => {
+    const { result } = await renderCurrent();
+    const reads = fullReads();
+
+    await glossEarth(result, 'land');
+
+    expect(result.current.dirty).toBe(true);
+    expect(result.current.draft?.analysis.tokenAnalyses.map(({ id }) => id)).toContain('ta-land');
+    expect(fullReads()).toBe(reads);
+  });
+
+  it("does not render again for an edit that leaves the draft's envelope as it was", async () => {
+    await fakeHost();
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useSessionProject('src', 'en', {
+        saveTargetId: undefined,
+        importProjectId: undefined,
+        bookId: 'GEN',
+        scrRef: SCR_REF,
+      });
+    });
+    await waitFor(() => expect(result.current.session?.client).toBeDefined());
+    await glossEarth(result, 'land');
+    const before = renders;
+
+    await glossEarth(result, 'ground');
+
+    expect(renders).toBe(before);
+  });
+
+  it('reads the latest analysis at its next render', async () => {
+    const { result, rerender } = await renderCurrent();
+    await glossEarth(result, 'land');
+    await glossEarth(result, 'ground');
+
+    rerender({});
+
+    expect(JSON.stringify(result.current.draft?.analysis.tokenAnalyses)).toContain('ground');
+  });
+
+  it('reads the draft again once the session reports a change it did not send', async () => {
+    const { result, host } = await renderCurrent();
 
     await act(async () => {
-      await result.current.session?.client?.send((changeId) =>
-        papi.commands
-          .sendCommand('interlinearizer.writeGloss', {
-            sessionId: result.current.session?.sessionId ?? '',
-            changeId,
-            tokenRef: ref('earth'),
-            surfaceText: 'earth',
-            value: 'land',
-          })
-          .then((reply) => JSON.parse(reply)),
+      await host.sessions.edit(
+        result.current.session?.sessionId ?? '',
+        'writeGloss',
+        glossing('earth', 'land'),
       );
     });
 
-    await waitFor(() => expect(result.current.dirty).toBe(true));
-    expect(result.current.draft?.analysis.tokenAnalyses.map(({ id }) => id)).toContain('ta-land');
+    await waitFor(() =>
+      expect(result.current.draft?.analysis.tokenAnalyses.map(({ id }) => id)).toContain('ta-land'),
+    );
   });
 });
 
@@ -156,6 +212,19 @@ describe('useSessionProject history', () => {
 
     expect(step).toStrictEqual({ location: ref('earth') });
     expect(result.current).toMatchObject({ canUndo: false, canRedo: true });
+  });
+
+  it('reads the draft again after an undo, which may return it to its saved state', async () => {
+    const { result } = await renderCurrent();
+    await glossEarth(result, 'land');
+    const reads = fullReads();
+
+    await act(async () => {
+      await result.current.undo();
+    });
+
+    await waitFor(() => expect(result.current.dirty).toBe(false));
+    expect(fullReads()).toBe(reads + 1);
   });
 
   it('redoes an undone edit through the session', async () => {
@@ -582,48 +651,40 @@ describe('useSessionProject edits sent to the session', () => {
     expect(result.current.session?.hasFreeTranslations).toBe(true);
   });
 
-  it('keeps the draft version when the session refuses a discard', async () => {
+  it('reads the draft again after a discard, which may leave it saved', async () => {
     const { result } = await renderAnswering();
+    const reads = fullReads();
+
+    await act(async () => {
+      await result.current.discardAll();
+    });
+
+    expect(fullReads()).toBe(reads + 1);
+  });
+
+  it('leaves the draft as it was when a discard fails', async () => {
+    await fakeHost(async (command) => {
+      if (command === 'interlinearizer.discardAll') throw new Error('refused');
+      return undefined;
+    });
+    const { result } = renderProject();
+    await waitFor(() => expect(result.current.session?.client).toBeDefined());
     const version = result.current.draftVersion;
-    jest.mocked(papi.commands.sendCommand).mockRejectedValue(new Error('closed'));
+    const reads = fullReads();
 
     await act(async () => {
       await result.current.discardAll();
     });
 
     expect(result.current.draftVersion).toBe(version);
+    expect(fullReads()).toBe(reads);
     expect(logger.error).toHaveBeenCalledWith(
       'Interlinearizer: failed to discard changes',
       expect.any(Error),
     );
   });
 
-  it('reads the draft again after a discard that changes nothing, showing it saved', async () => {
-    const host = await fakeHost(async (command, [args]) => {
-      if (command !== 'interlinearizer.discardAll' || typeof args !== 'object' || !args)
-        return undefined;
-      const sessionId = 'sessionId' in args ? String(args.sessionId) : '';
-      const changeId = 'changeId' in args ? String(args.changeId) : undefined;
-      return JSON.stringify(
-        await host.sessions.edit(sessionId, 'discardAll', async () => {}, {
-          changeId,
-          unsavedMark: 'clear',
-        }),
-      );
-    });
-    const { result } = renderProject();
-    await waitFor(() => expect(result.current.session?.client).toBeDefined());
-    await glossEarth(result, 'land');
-    await waitFor(() => expect(result.current.dirty).toBe(true));
-
-    await act(async () => {
-      await result.current.discardAll();
-    });
-
-    expect(result.current.dirty).toBe(false);
-  });
-
-  it('logs a draft it cannot read again after a discard that changes nothing', async () => {
+  it('logs a draft it cannot read again after a discard', async () => {
     const { result } = await renderAnswering();
     jest
       .mocked(papi.commands.sendCommand)
@@ -755,6 +816,40 @@ describe('useSessionProject whole-text read', () => {
     relayTextRead({ sourceProjectId: 'src' });
 
     await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
+  });
+
+  it('does not render again for a read status that has not changed', async () => {
+    const status = { booksRead: 1, bookCount: 2, failedBookIds: [] };
+    await fakeHost(async (command) =>
+      command === 'interlinearizer.getTextReadStatus' ? JSON.stringify(status) : undefined,
+    );
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useSessionProject('src', 'en', {
+        saveTargetId: undefined,
+        importProjectId: undefined,
+        bookId: 'GEN',
+        scrRef: SCR_REF,
+      });
+    });
+    await waitFor(() => expect(result.current.session?.client).toBeDefined());
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.anything(),
+      ),
+    );
+    const asked = () =>
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mock.calls.filter(([command]) => command === 'interlinearizer.getTextReadStatus').length;
+    const before = { renders, asked: asked() };
+
+    await act(async () => relayTextRead({ sourceProjectId: 'src' }));
+
+    await waitFor(() => expect(asked()).toBe(before.asked + 1));
+    expect(renders).toBe(before.renders);
   });
 
   it("ignores another source's finished read", async () => {

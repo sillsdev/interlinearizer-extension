@@ -1172,11 +1172,16 @@ async function runSessionEdit(
 ): Promise<string> {
   const { sessionId, changeId } = target;
   try {
-    return JSON.stringify(
-      await sessions.edit(sessionId, intent, command, {
-        changeId,
-        step: () => target.step,
-      }),
+    return await perfTimeAsync(
+      intent,
+      async () => {
+        const reply = await sessions.edit(sessionId, intent, command, {
+          changeId,
+          step: () => target.step,
+        });
+        return perfTime(`${intent}:serialize`, () => JSON.stringify(reply));
+      },
+      { startedAt: performance.timeOrigin + performance.now() },
     );
   } catch (e) {
     logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);

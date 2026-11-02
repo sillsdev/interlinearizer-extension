@@ -47,7 +47,8 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     "A new view opens on the tier's book in an app that is already running. Some steps run at the same time, so they do not add up to the total.",
   'app.switchBook':
     "With the view open, the book changes to Jude and back; the times are for the return. Book change to rendered includes fetching the book's text.",
-  'app.edit': 'One gloss typed and committed with Tab, then the autosave that commit sets off.',
+  'app.edit':
+    "One gloss typed and committed with Tab, then the autosave that commit sets off. `gloss-settle` ends once the view shows both the gloss and the Tab's focus move. The host path times it the same way.",
   'app.picker':
     'The Select Interlinear Project dialog opens, listing every saved project for the source.',
   'app.save': 'Save from the Project menu writes the analysis to the project it came from.',
@@ -75,7 +76,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'app.hostOpen':
     "On the host path, a new view opens on the tier's book while the session's whole-text read starts. The view's first pages wait only for the re-anchor passes queued before them.",
   'app.hostEdit':
-    "On the host path, one gloss committed once the session's whole-text read has finished.",
+    "On the host path, one gloss committed once the session's whole-text read has finished. `edit-command` is the command's round trip, and its `:outbound` and `:inbound` rows split the transport at the host's start and end. `reply-apply` takes the reply into the view's pages. `gloss-settle` ends once the view shows both the gloss and the Tab's focus move.",
   'app.hostScriptureSave':
     "As the Scripture save above, on the host path with the session's whole-text read finished, so the host watches every book.",
   'bench.memory': 'Heap held by the parsed draft, and by an undo history filled to its limit.',
@@ -141,6 +142,7 @@ const METRIC_LABELS: Record<string, string> = {
   'open-to-editable': 'Open to first gloss editable',
   'dispatch-render': 'Commit gloss to re-render',
   'gloss-render': 'Commit gloss to render',
+  'gloss-settle': 'Commit gloss to gloss and focus rendered',
   'scripture-save': 'Save the chapter',
   'save-host-cpu': 'Host CPU over the save',
   'autosave-serialize': 'Serialize draft',

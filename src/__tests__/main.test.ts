@@ -928,6 +928,23 @@ describe('main', () => {
           expect.any(Error),
         );
       });
+
+      it('hands the project to a duplicate whose reload failed once the next holder closes', async () => {
+        __mockReloadWebView.mockRejectedValueOnce(new Error('gone')).mockResolvedValue('tab-b');
+        await serveDuplicate();
+        close('tab-a');
+        await getRegisteredProvider().getWebView(
+          { id: 'tab-c', webViewType: mainWebViewType },
+          myProjectOptions,
+        );
+        __mockReloadWebView.mockClear();
+
+        close('tab-c');
+
+        expect(__mockReloadWebView).toHaveBeenCalledWith(mainWebViewType, 'tab-b', {
+          bringToFront: false,
+        });
+      });
     });
 
     it("titles the WebView with the project's short name", async () => {

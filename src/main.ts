@@ -149,8 +149,10 @@ const mainWebViewProvider: IWebViewProvider = {
     // A duplicate is served inert because the platform offers no way to close a tab.
     const holder = projectId === undefined ? undefined : openWebViewsByProject.get(projectId);
     const duplicateOf = holder !== undefined && holder !== savedWebView.id ? holder : undefined;
-    if (projectId !== undefined && duplicateOf === undefined)
+    if (projectId !== undefined && duplicateOf === undefined) {
       openWebViewsByProject.set(projectId, savedWebView.id);
+      duplicateWebViewsByProject.get(projectId)?.delete(savedWebView.id);
+    }
     if (projectId !== undefined && duplicateOf !== undefined) {
       const duplicates = duplicateWebViewsByProject.get(projectId) ?? new Set<string>();
       duplicateWebViewsByProject.set(projectId, duplicates.add(savedWebView.id));
@@ -2178,10 +2180,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     rememberActiveProject(projectId, webView.state);
     openWebViewsByProject.delete(projectId);
     bookService.closeProject(projectId);
-    // A duplicate takes the project over, served afresh now that no tab holds it.
+    // A duplicate takes the project over, served afresh now that no tab holds it. The duplicate
+    // stays registered until it is served as the holder. A failed reload leaves it for the next
+    // holder's close.
     const [successor] = duplicates ?? [];
     if (successor === undefined) return;
-    duplicates?.delete(successor);
     papi.webViews
       .reloadWebView(mainWebViewType, successor, { bringToFront: false })
       .catch((e) => logger.warn(`Interlinearizer: could not hand ${projectId} to another tab`, e));

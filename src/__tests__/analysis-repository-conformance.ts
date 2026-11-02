@@ -40,15 +40,15 @@ export interface ConformanceStore {
 
   /**
    * Stores `draft` for `sourceProjectId`, which has no draft stored yet. An implementation may drop
-   * what the groups it leaves out cover, such as the draft's own record without `scope`, or its
-   * unsaved mark without `draftState`.
+   * any part of `draft` that only a group it leaves out covers, such as the draft's own record
+   * without `scope`, or its unsaved mark without `draftState`.
    */
   seed(sourceProjectId: string, draft: DraftProject): Promise<void>;
 
   /**
    * Reads every record stored for `sourceProjectId`, for a test to check what its calls left. It
-   * need not go through a repository, and it fills only what the groups the implementation opts
-   * into cover.
+   * need not go through a repository. It fills only the parts that a group the implementation opts
+   * into covers.
    *
    * @throws If part of what is stored cannot be read.
    */
@@ -100,8 +100,15 @@ type UnstampedAnalysis = {
   [Kind in keyof TextAnalysis]: Omit<TextAnalysis[Kind][number], Stamps>[];
 };
 
-/** The parts of a draft that the groups an implementation opts into let a test compare. */
+/** The parts of a draft that a test may compare under the groups that an implementation opts into. */
 type ComparableDraft = Partial<Omit<DraftProject, 'analysis'>> & { analysis: UnstampedAnalysis };
+
+/** `records` in id order, each without its timestamps, since lookups promise no order. */
+function unstampedInIdOrder<T extends { id: string } & Record<Stamps, string>>(
+  records: readonly T[],
+) {
+  return [...records].sort((a, b) => a.id.localeCompare(b.id)).map(unstamped);
+}
 
 /** `record` without its timestamps. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave them out
@@ -539,9 +546,9 @@ export function describeAnalysisRepositoryConformance(
   }
 
   /**
-   * What of `draft` the groups opted into let a test compare: its analysis with record lists in id
-   * order and no timestamps, its own record under `scope`, and its unsaved mark under
-   * `draftState`.
+   * The parts of `draft` that a test may compare under the groups that were opted into: its
+   * analysis with record lists in id order and no timestamps, its own record under `scope`, and its
+   * unsaved mark under `draftState`.
    */
   function comparable(draft: DraftProject): ComparableDraft {
     return {
@@ -706,7 +713,6 @@ export function describeAnalysisRepositoryConformance(
           const repository = await store.open(SOURCE);
           const changes = puttingNewRecords();
           await repository.apply(changes);
-          const applied = await readStored();
 
           changes.tokenAnalyses?.puts.push({
             id: 'ta-later',
@@ -716,9 +722,9 @@ export function describeAnalysisRepositoryConformance(
           const [god] = changes.tokenAnalyses?.puts ?? [];
           god.surfaceText = 'changed';
 
-          await expect(readStored()).resolves.toStrictEqual(applied);
-          await repository.apply({ intent: 'nothing' });
-          await expect(readStored()).resolves.toStrictEqual(applied);
+          await expect(
+            repository.getTokenAnalyses(['ta-god', 'ta-later']).then(unstampedInIdOrder),
+          ).resolves.toStrictEqual(unstampedInIdOrder(newRecords().tokenAnalyses));
         });
 
         it('refuses an id named twice in one record kind, applying nothing', async () => {
@@ -1221,20 +1227,25 @@ export function describeAnalysisRepositoryConformance(
         });
 
         it('stores what it applied, unaffected by later changes to the inverse', async () => {
+          await store.seed(SOURCE, fullDraft());
           const repository = await store.open(SOURCE);
-          const { inverse } = await repository.apply(puttingNewRecords());
-          const applied = await readStored();
+          const { inverse } = await repository.apply(mixedChanges());
 
-          inverse.tokenAnalyses?.deletes.push('ta-later');
-          inverse.tokenAnalyses?.puts.push({
-            id: 'ta-later',
-            ...FIXTURE_STAMPS,
-            surfaceText: 'later',
+          inverse.tokenAnalyses?.puts.forEach((payload) => {
+            payload.surfaceText = 'changed';
           });
+          inverse.tokenAnalyses?.deletes.push('ta-and');
 
-          await expect(readStored()).resolves.toStrictEqual(applied);
-          await repository.apply({ intent: 'nothing' });
-          await expect(readStored()).resolves.toStrictEqual(applied);
+          await expect(
+            repository
+              .getTokenAnalyses(['ta-and', 'ta-god', 'ta-unlinked'])
+              .then(unstampedInIdOrder),
+          ).resolves.toStrictEqual(
+            unstampedInIdOrder([
+              { ...fullAnalysis().tokenAnalyses[0], gloss: { en: 'and then' } },
+              ...newRecords().tokenAnalyses,
+            ]),
+          );
         });
 
         it('returns an inverse with nothing to restore for a delete it skipped', async () => {

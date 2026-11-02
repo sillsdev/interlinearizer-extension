@@ -21,8 +21,8 @@ let warningsExpected = false;
 const IMPORT_ID = 'pt9-import';
 
 /**
- * One store of `DraftRepository` drafts, beside a `Pt9ImportRepository` it opens for read-only
- * tests.
+ * One store of {@link DraftRepository} drafts, beside a {@link Pt9ImportRepository} it opens for
+ * read-only tests.
  */
 function createStore(): ReadOnlyConformanceStore {
   const { storage: memory, records } = memoryStorage();

@@ -21,6 +21,11 @@ export type CommandReply = {
   canUndo: boolean;
   /** Whether the session has an undone edit to redo, as of this reply. */
   canRedo: boolean;
+  /**
+   * Whether an undo or redo left the draft unsaved; absent from an edit's reply, whose changes mark
+   * the draft unsaved unless the edit said otherwise.
+   */
+  dirty?: boolean;
   /** The step that the edit was recorded as; absent when it was recorded with none. */
   step?: EditStep;
 } & PoolRead;

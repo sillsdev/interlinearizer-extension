@@ -150,12 +150,26 @@ async function describeApplied(
   );
 }
 
-/** Reports `change` unless it touched nothing. */
-function report(host: SessionHost, session: Session, change: AnalysisChange, changeId: string) {
+/** Reports `change` unless it touched nothing, carrying `passChanges` when given. */
+function report(
+  host: SessionHost,
+  session: Session,
+  change: AnalysisChange,
+  changeId: string,
+  passChanges?: ChangeSet[],
+) {
   if (change.books.length === 0 && change.analysisIds.length === 0 && change.queries.length === 0)
     return;
-  host.reportChange({ sessionId: session.id, changeId, ...change });
+  host.reportChange({
+    sessionId: session.id,
+    changeId,
+    ...change,
+    ...(passChanges && { passChanges }),
+  });
 }
+
+/** What a pass to a book's edited text changed, kept until the edit is reported. */
+type UnreportedPass = Readonly<{ change: AnalysisChange; changes: ChangeSet }>;
 
 /**
  * Returns what an applied change touched, and reports that unless the change touched nothing. Reads
@@ -203,14 +217,14 @@ async function reanchorNow(
   host: SessionHost,
   session: Session,
   book: Book,
-  unreported?: AnalysisChange[],
+  unreported?: UnreportedPass[],
 ): Promise<void> {
   const { heldAnalysis, applied } = await reanchorStoredBook(session.repository, book);
   if (heldAnalysis) session.history.recordPass(book);
   if (!applied) return;
   const change = await describeApplied(host, session, applied);
-  if (unreported) unreported.push(change);
-  else report(host, session, change, crypto.randomUUID());
+  if (unreported) unreported.push({ change, changes: applied.changes });
+  else report(host, session, change, crypto.randomUUID(), [applied.changes]);
 }
 
 /**
@@ -267,7 +281,7 @@ type OpenSession = {
    */
   replies: Map<string, Promise<EditReply | undefined>>;
   /** What each pass to a book's edited text changed, by book, until the edit is reported. */
-  editPasses: Map<string, AnalysisChange[]>;
+  editPasses: Map<string, UnreportedPass[]>;
 };
 
 /**
@@ -653,7 +667,16 @@ export class AnalysisSessions {
     return this.run(entry.session.id, async (session) => {
       const passes = entry.editPasses.get(bookId) ?? [];
       entry.editPasses.delete(bookId);
-      report(this.host, session, describeScriptureEdit(bookId, passes), crypto.randomUUID());
+      report(
+        this.host,
+        session,
+        describeScriptureEdit(
+          bookId,
+          passes.map(({ change }) => change),
+        ),
+        crypto.randomUUID(),
+        passes.map(({ changes }) => changes),
+      );
     });
   }
 
@@ -695,7 +718,7 @@ export class AnalysisSessions {
           const moved = await move(session.history);
           if (!moved) return undefined;
           const reply = await replyTo(this.host, session, moved, changeId);
-          return moved.step ? { ...reply, step: moved.step } : reply;
+          return { ...reply, ...(moved.step && { step: moved.step }), dirty: moved.dirty };
         }),
       ),
     );

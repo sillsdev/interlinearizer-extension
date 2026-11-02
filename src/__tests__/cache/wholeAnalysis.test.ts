@@ -94,6 +94,30 @@ describe('WholeAnalysis', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it('leaves the held draft saved, telling no listener, for changes that change no record', async () => {
+    const whole = new WholeAnalysis(async () => holding('a'));
+    await whole.refresh();
+    const listener = jest.fn();
+    whole.subscribe(listener);
+
+    whole.take({ intent: 'x' });
+
+    expect(whole.draft).toStrictEqual(holding('a'));
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('lands a fetch saved when the changes taken in meanwhile change no record', async () => {
+    const { fetch, resolveNext } = heldFetch();
+    const whole = new WholeAnalysis(fetch);
+    const refreshed = whole.refresh();
+
+    whole.take({ intent: 'x' });
+    await resolveNext(holding('a'));
+    await refreshed;
+
+    expect(whole.draft).toStrictEqual(holding('a'));
+  });
+
   it('holds no draft for changes taken in before its first fetch lands', () => {
     const whole = new WholeAnalysis(async () => holding('a'));
 

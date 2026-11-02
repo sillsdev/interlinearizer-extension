@@ -1,7 +1,7 @@
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import type { ChangeSet } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
-import { applyChangeSet } from '../utils/change-set';
+import { applyChangeSet, isEmptyChangeSet } from '../utils/change-set';
 
 const EMPTY_ANALYSIS = emptyAnalysis();
 
@@ -62,12 +62,14 @@ export class WholeAnalysis {
   /**
    * Applies `changes`, which the session applied to its draft, to the held draft, telling each
    * listener. A fetch under way when they are taken in lands with them applied over it, because it
-   * may have been answered before the session applied them.
+   * may have been answered before the session applied them. Changes that touch no record leave the
+   * held draft as it was, its unsaved mark included.
    *
    * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
    *   record names another source project.
    */
   take(changes: ChangeSet): void {
+    if (isEmptyChangeSet(changes)) return;
     this.takenDuringFetch?.push(changes);
     if (!this.held) return;
     this.held = applyChangeSet(this.held, changes).draft;

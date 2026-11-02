@@ -788,6 +788,21 @@ export function getProjectSummariesForSource(
 }
 
 /**
+ * Returns the summary of project `id`, without reading its record.
+ *
+ * @returns `undefined` when no project by that id is listed.
+ * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+ * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
+ */
+export async function getProjectSummary(
+  token: ExecutionToken,
+  id: string,
+): Promise<InterlinearProjectSummary | undefined> {
+  return (await projectSummaries(token).list()).find((summary) => summary.id === id);
+}
+
+/**
  * Returns the summary of the interlinear project the source project's view last had active.
  *
  * @returns `undefined` when none is remembered, or when the remembered project is no longer listed

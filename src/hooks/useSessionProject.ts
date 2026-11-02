@@ -1,17 +1,15 @@
 import papi, { logger } from '@papi/frontend';
-import type { DraftProject, SessionEditArgs } from 'interlinearizer';
+import type { DraftProject, DraftStart, SessionEditArgs } from 'interlinearizer';
 import type { NetworkEvents } from 'papi-shared-types';
 import { useEvent } from 'platform-bible-react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { CommandReply } from '../types/command-reply';
 import type { EditStep } from '../types/edit-step';
-import { emptyAnalysis } from '../types/empty-factories';
 import { isEmptyChangeSet } from '../utils/change-set';
 import type { ProjectApi, ProjectViewOptions } from '../types/project-api';
-import type { DraftCopyResult, NewDraftConfig, OpenableProject } from './useDraftProject';
+import type { DraftCopyResult, NewDraftConfig } from './useDraftProject';
 import useSessionPages from './useSessionPages';
 
 /** The session open on the source, with what opening it answered. */
@@ -36,9 +34,9 @@ const ignore = () => {};
 /**
  * Keeps the draft of `sourceProjectId` in a session on the host. The session saves to
  * `saveTargetId`, or views the Paratext 9 import `importProjectId` instead. It closes on unmount,
- * and when the source or the import changes. New and Open write the draft they start and open a
- * fresh session, which has nothing to undo. Undo, redo, discards and boundary edits are commands to
- * the session.
+ * and when the source or the import changes. New and Open have the host start the draft over, then
+ * open a fresh session, which has nothing to undo. Undo, redo, discards and boundary edits are
+ * commands to the session.
  */
 export default function useSessionProject(
   sourceProjectId: string,
@@ -244,60 +242,43 @@ export default function useSessionProject(
   );
 
   /**
-   * Writes `next` as the stored draft, then opens a fresh session on whatever draft is stored.
+   * Starts the stored draft over from `from`, then opens a fresh session on whatever draft is
+   * stored.
    *
-   * @throws If the session cannot close or the draft cannot be written. The fresh session then
-   *   opens on the draft stored before.
+   * @throws If the host cannot start the draft over. The fresh session then opens on the draft
+   *   stored before.
    */
   const startOver = useCallback(
-    async (next: DraftProject) => {
+    async (from: DraftStart) => {
       // Dropped first, so that a save target changed meanwhile goes to the fresh session.
       setOpened(undefined);
       try {
-        if (sessionId !== undefined)
-          await papi.commands.sendCommand('interlinearizer.closeSession', { sessionId });
-        // Started over, so stored analysis that could not be read is replaced, as on the WebView path.
-        await papi.commands.sendCommand(
-          'interlinearizer.saveDraft',
+        await papi.commands.sendCommand('interlinearizer.startDraftOver', {
           sourceProjectId,
-          JSON.stringify(next),
-          true,
-        );
+          from,
+        });
       } finally {
         setOpenCount((count) => count + 1);
       }
     },
-    [sessionId, sourceProjectId],
+    [sourceProjectId],
   );
 
   const loadFromProject = useCallback(
-    (project: OpenableProject) =>
-      startOver({
-        sourceProjectId,
-        modelVersion: CURRENT_MODEL_VERSION,
-        analysisLanguages: project.analysisLanguages,
-        ...(project.targetProjectId !== undefined && { targetProjectId: project.targetProjectId }),
-        ...(project.segmentation !== undefined && { segmentation: project.segmentation }),
-        analysis: project.analysis,
-        dirty: false,
-      }),
-    [startOver, sourceProjectId],
+    (interlinearProjectId: string) => startOver({ interlinearProjectId }),
+    [startOver],
   );
 
   const newDraft = useCallback(
     (config: NewDraftConfig) =>
       startOver({
-        sourceProjectId,
-        modelVersion: CURRENT_MODEL_VERSION,
         analysisLanguages: config.analysisLanguages,
         ...(config.suggestedName !== undefined && { suggestedName: config.suggestedName }),
         ...(config.suggestedDescription !== undefined && {
           suggestedDescription: config.suggestedDescription,
         }),
-        analysis: emptyAnalysis(),
-        dirty: false,
       }),
-    [startOver, sourceProjectId],
+    [startOver],
   );
 
   const commitDraft = useCallback(

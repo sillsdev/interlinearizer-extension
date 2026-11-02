@@ -41,7 +41,7 @@ import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting
 import useProjectBookIds from '../../hooks/useProjectBookIds';
 import useStaleAnalysisDismissal from '../../hooks/useStaleAnalysisDismissal';
 import type { StaleAnalysesReport } from '../../components/StaleAnalysesReporter';
-import type { DraftCopyResult, OpenableProject } from '../../hooks/useDraftProject';
+import type { DraftCopyResult } from '../../hooks/useDraftProject';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { PT9_MANIFEST_TIMEOUT_MS } from '../../utils/pt9-manifest';
 import type { PhraseMode } from '../../types/phrase-mode';
@@ -406,24 +406,14 @@ const STUB_IMPORT_PROJECT: MockProject = {
   pt9Import: { fileHashes: { 'Lexicon.xml': 'aaaa1111' }, importedAt: '2026-08-01T00:00:00Z' },
 };
 
-/**
- * The project the stub picker's "Open project" button loads into the draft. Mutable so a test can
- * choose the boundaries the opened project carries.
- */
-let openableProjectForStub: OpenableProject = {
-  analysis: emptyAnalysis(),
-  analysisLanguages: ['en'],
-};
-
 jest.mock('../../components/modals/ProjectModals', () => ({
   __esModule: true,
   /**
    * Minimal ProjectModals stand-in that drives modal state and active-project state through the
    * same `useWebViewState` hook the real component uses, so tests can assert on state transitions
    * without mounting the full modal tree. Accepts (and mostly ignores) the draft-related props the
-   * loader passes (`hasUnsavedWork`, `getDraftSnapshot`, `loadFromProject`, `commitDraft`);
-   * `hasUnsavedWork` is surfaced as a `data-*` attribute so tests can assert the loader feeds it
-   * the combined committed-and-pending unsaved state.
+   * loader passes; `hasUnsavedWork` is surfaced as a `data-*` attribute so that tests can assert
+   * that the loader feeds it the combined committed-and-pending unsaved state.
    */
   default: function StubProjectModals({
     modal,
@@ -431,7 +421,6 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     activeProject,
     defaultAnalysisLanguage,
     hasUnsavedWork,
-    loadFromProject,
     onImportPt9,
     onOpenImport,
     openRequest,
@@ -443,7 +432,6 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     defaultAnalysisLanguage?: string;
     hasUnsavedWork: boolean;
     getDraftSnapshot: () => DraftProject | undefined;
-    loadFromProject: (project: OpenableProject) => void;
     commitDraft: (copy: (snapshot: DraftProject) => Promise<DraftCopyResult>) => Promise<boolean>;
     onImportPt9: () => void;
     onOpenImport: (project: MockProject) => void;
@@ -504,16 +492,6 @@ jest.mock('../../components/modals/ProjectModals', () => ({
               onClick={() => setModal('metadata')}
             >
               View info
-            </button>
-            <button
-              type="button"
-              data-testid="select-modal-open-project"
-              onClick={() => {
-                loadFromProject(openableProjectForStub);
-                setModal('none');
-              }}
-            >
-              Open project
             </button>
           </div>
         )}
@@ -864,7 +842,6 @@ describe('InterlinearizerLoader', () => {
     capturedInterlinearizerProps = undefined;
     capturedStoreProps = undefined;
     interlinearizerMountCount = 0;
-    openableProjectForStub = { analysis: emptyAnalysis(), analysisLanguages: ['en'] };
     mockBookData();
     mockOptimisticSetting();
     mockLostBoundaries([]);
@@ -1700,8 +1677,9 @@ describe('InterlinearizerLoader', () => {
     const FRESH_IMPORT_SUMMARY = { ...STUB_IMPORT_PROJECT, updatedAt: '2026-08-21T00:00:00Z' };
 
     /**
-     * Routes the loader's commands for these tests: draft loads stay empty, the stored import loads
-     * with an empty analysis, and the import and copy commands resolve as configured.
+     * Routes the loader's commands for these tests: draft loads stay empty, and the stored import
+     * loads with an empty analysis. Its summary reads as the fresh one, and the import and copy
+     * commands resolve as configured.
      */
     function mockImportCommands({
       importResult,
@@ -1715,6 +1693,8 @@ describe('InterlinearizerLoader', () => {
       mockSendCommand.mockImplementation(async (...args) => {
         if (args[0] === 'interlinearizer.getProject')
           return JSON.stringify({ ...FRESH_IMPORT_SUMMARY, analysis: emptyAnalysis() });
+        if (args[0] === 'interlinearizer.getProjectSummary')
+          return JSON.stringify(FRESH_IMPORT_SUMMARY);
         if (args[0] === 'interlinearizer.importPt9Project') {
           if (importError) throw importError;
           return JSON.stringify(importResult);
@@ -2373,6 +2353,8 @@ describe('InterlinearizerLoader', () => {
               ? { ...FRESH_IMPORT_SUMMARY, analysis: syncedAnalysis }
               : { ...STUB_IMPORT_PROJECT, analysis: emptyAnalysis() },
           );
+        if (args[0] === 'interlinearizer.getProjectSummary')
+          return JSON.stringify(FRESH_IMPORT_SUMMARY);
         if (args[0] === 'interlinearizer.importPt9Project') {
           synced = true;
           return JSON.stringify({
@@ -2394,12 +2376,14 @@ describe('InterlinearizerLoader', () => {
     it('empties the import view when a refresh brings back no analysis, rather than keeping the pre-sync one', async () => {
       let synced = false;
       mockSendCommand.mockImplementation(async (...args) => {
-        // Once synced, the record comes back as a valid summary carrying no analysis at all: the
-        // sync's own summary fetch is satisfied, while the refresh behind it finds nothing to show.
+        // Once synced, the record comes back carrying no analysis at all, so the refresh behind
+        // the sync finds nothing to show.
         if (args[0] === 'interlinearizer.getProject')
           return JSON.stringify(
             synced ? FRESH_IMPORT_SUMMARY : { ...STUB_IMPORT_PROJECT, analysis: emptyAnalysis() },
           );
+        if (args[0] === 'interlinearizer.getProjectSummary')
+          return JSON.stringify(FRESH_IMPORT_SUMMARY);
         if (args[0] === 'interlinearizer.importPt9Project') {
           synced = true;
           return JSON.stringify({
@@ -2575,7 +2559,9 @@ describe('InterlinearizerLoader', () => {
 
       jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
       mockSendCommand.mockImplementation(async (...args) =>
-        args[0] === 'interlinearizer.getProject' ? '' : JSON.stringify(emptyDraft(testProjectId)),
+        args[0] === 'interlinearizer.getProjectSummary'
+          ? undefined
+          : JSON.stringify(emptyDraft(testProjectId)),
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
@@ -2593,7 +2579,7 @@ describe('InterlinearizerLoader', () => {
       let imported = false;
       let releaseSummary: (() => void) | undefined;
       mockSendCommand.mockImplementation(async (...args) => {
-        if (args[0] === 'interlinearizer.getProject' && imported) {
+        if (args[0] === 'interlinearizer.getProjectSummary' && imported) {
           // Hold the summary until the test has taken the user off the report.
           await new Promise<void>((resolve) => {
             releaseSummary = resolve;
@@ -2638,7 +2624,7 @@ describe('InterlinearizerLoader', () => {
       jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
       let imported = false;
       mockSendCommand.mockImplementation(async (...args) => {
-        if (args[0] === 'interlinearizer.getProject' && imported)
+        if (args[0] === 'interlinearizer.getProjectSummary' && imported)
           throw new Error('storage offline');
         if (args[0] === 'interlinearizer.importPt9Project') {
           imported = true;

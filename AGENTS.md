@@ -95,7 +95,7 @@ Saved projects are listed through [ProjectSummaries](src/services/projectSummari
 
 [AnalysisSessions](src/services/analysisSessions.ts) keeps the host's sessions, behind the `openSession`, `closeSession`, and `setAnalysisLanguage` commands. A session is a handle on either one source project's draft, paired with the interlinear project it saves to, or a read-only Paratext 9 import. A source has at most one session: opening another closes it.
 
-Opening a session starts building its repository's indexes ahead of the session's first command. It also starts a fresh whole-text read of the source, which lasts until the session closes. `setSaveTarget` changes the project that a draft's session saves to, and `detachFromProject` leaves it none once that project is deleted.
+Opening a session starts building its repository's indexes ahead of the session's first command. It also starts a fresh whole-text read of the source, which lasts until the session closes. `setSaveTarget` changes the project that a draft's session saves to, and `detachFromProject` leaves it none once that project is deleted. New and Open send `startDraftOver` the configuration or the id of the project to copy. It closes the source's session and writes the draft on the host, so no draft crosses PAPI. The WebView then opens a fresh session.
 
 #### Running commands
 

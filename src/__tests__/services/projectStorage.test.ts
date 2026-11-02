@@ -9,6 +9,7 @@ import {
   getDraft,
   getProject,
   getProjectSummariesForSource,
+  getProjectSummary,
   getPt9ImportForSource,
   getRememberedActiveProject,
   hasDraft,
@@ -1283,6 +1284,25 @@ describe('projectStorage', () => {
       mockStore({ projectSummaries: JSON.stringify([]) });
 
       await expect(getProjectSummariesForSource(token, 'src-a')).rejects.toThrow('is corrupt');
+    });
+  });
+
+  describe('getProjectSummary', () => {
+    it('returns the summary of the listed project with the id, reading no project record', async () => {
+      const project = makeStubProject('id-2');
+      mockStore({
+        projectSummaries: storedSummaries(makeStubProject('id-1'), project),
+        'project:id-2': JSON.stringify(project),
+      });
+
+      await expect(getProjectSummary(token, 'id-2')).resolves.toMatchObject({ id: 'id-2' });
+      expect(__mockReadUserData.mock.calls.map(([, key]) => key)).toEqual(['projectSummaries']);
+    });
+
+    it('returns undefined for a project that is not listed', async () => {
+      mockStore({ projectSummaries: storedSummaries(makeStubProject('id-1')) });
+
+      await expect(getProjectSummary(token, 'id-2')).resolves.toBeUndefined();
     });
   });
 

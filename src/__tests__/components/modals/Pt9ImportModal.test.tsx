@@ -208,12 +208,11 @@ describe('Pt9ImportModal', () => {
     expect(report).toHaveTextContent('Books: MAT, MRK');
     expect(report).toHaveTextContent('15 of 25 clusters, 2 phrases');
     expect(report).toHaveTextContent('11 clusters:');
-    // Only the top two reasons are named; the third stays in the JSON report.
     expect(
       within(report)
         .getAllByRole('listitem')
         .map((item) => item.textContent),
-    ).toEqual(['6 verse not found', '4 did not match the text']);
+    ).toEqual(['6 verse not found', '4 did not match the text', '1 duplicate data']);
     expect(report).toHaveTextContent('Books with no text: MRK');
   });
 

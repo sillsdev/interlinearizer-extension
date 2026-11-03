@@ -283,7 +283,7 @@ function MetadataRow({
     <div className="tw:flex tw:flex-col tw:gap-0.5">
       <dt className="tw:section-label">{label}</dt>
       <dd
-        className={['tw:text-sm tw:break-all tw:text-foreground', mono ? 'tw:font-mono' : '']
+        className={['tw:text-sm tw:break-words tw:text-foreground', mono ? 'tw:font-mono' : '']
           .filter(Boolean)
           .join(' ')}
       >

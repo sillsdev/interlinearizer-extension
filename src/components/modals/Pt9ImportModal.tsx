@@ -261,14 +261,10 @@ export function Pt9ImportModal({
 
   const totals = foldReport(phase.report);
   const dropTotal = totals.drops.reduce((sum, drop) => sum + drop.count, 0);
-  // Plain-word labels for the dominant reasons; the full per-reason detail stays in the command's
-  // JSON report for logs.
-  const reasonLines = totals.drops
-    .slice(0, 2)
-    .map(
-      (drop) =>
-        `${drop.count.toLocaleString()} ${localizedStrings[`%interlinearizer_pt9ImportModal_reason_${drop.reason}%`]}`,
-    );
+  const reasonLines = totals.drops.map(
+    (drop) =>
+      `${drop.count.toLocaleString()} ${localizedStrings[`%interlinearizer_pt9ImportModal_reason_${drop.reason}%`]}`,
+  );
 
   return (
     <ModalShell

@@ -9,6 +9,7 @@ import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import type { Settles } from '../utils/settles';
 import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
+import useLatestRef from '../hooks/useLatestRef';
 
 /** Localized string keys the row editor renders. */
 export const ROW_EDITOR_STRING_KEYS = [
@@ -74,38 +75,75 @@ type CatalogRowEditorProps = Readonly<{
   breakdownDraft: string | undefined;
   /** Records the breakdown draft, `undefined` closing the breakdown editor. */
   onBreakdownDraftChange: (draft: string | undefined) => void;
-  /** Holds the gloss drafts whose commit failed after their field unmounted. */
+  /** Keeps the gloss drafts no field is showing, and tracks the fields showing a failed one. */
   glossRetry: GlossRetry;
   /** Resolved localizations covering at least {@link ROW_EDITOR_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
 }>;
 
-/** A gloss draft whose commit failed, with the committed value it was typed over. */
+/** A gloss draft no field is showing, with the committed value it was typed over. */
 type RejectedGloss = Readonly<{ draft: string; typedOver: string }>;
 
 /**
- * Keeps the gloss drafts whose commit failed after their field unmounted, for the field to show
- * again when it next mounts. Collapsing a row unmounts its fields, and a field that has unmounted
- * cannot retry a failed commit itself.
+ * Keeps the gloss drafts that no field is showing, for each field to show again when it next
+ * mounts. Also tracks the mounted fields showing a draft whose commit failed.
+ *
+ * A field unmounts when its row collapses or the analysis language changes. An unmounted field
+ * cannot send its draft itself.
  */
 export type GlossRetry = Readonly<{
   /**
-   * The draft to show in the field named by `key`, or `undefined` when none failed. Returns
+   * The draft to show in the field named by `key`, or `undefined` when none is kept. Returns
    * `undefined` for a draft typed over a different committed value, which an edit since replaced.
    */
   draftFor: (key: string, committedValue: string) => string | undefined;
-  /** Keeps a draft whose commit failed after the field named by `key` unmounted. */
+  /**
+   * Keeps a draft for the field named by `key`, which unmounted holding it unsent or whose commit
+   * failed after it unmounted.
+   */
   reject: (key: string, gloss: RejectedGloss) => void;
-  /** Drops the draft for the field named by `key`, once that field holds it again. */
+  /**
+   * Drops the draft kept for the field named by `key`, once that field has mounted: it either shows
+   * the draft again or found it typed over a gloss that has changed since.
+   */
   restored: (key: string) => void;
+  /** Records whether the mounted field named by `key` shows a draft whose commit failed. */
+  holding: (key: string, held: boolean) => void;
+  /** Tracks a commit in flight, until it settles. */
+  track: (commit: Promise<unknown>) => Promise<void>;
+  /**
+   * Calls `then` once no commit is in flight, at once when none is. By then each failed commit's
+   * draft is held.
+   */
+  afterCommits: (then: () => void) => Promise<void>;
+  /** Whether any draft is kept or any mounted field shows one whose commit failed. */
+  isHolding: () => boolean;
 }>;
 
 /**
  * Creates an empty {@link GlossRetry} that tells `onHeldChange` whether any draft is held, each time
- * a draft is kept or dropped.
+ * that changes.
  */
 export function createGlossRetry(onHeldChange: (held: boolean) => void): GlossRetry {
   const rejected = new Map<string, RejectedGloss>();
+  const failedKeys = new Set<string>();
+  const inFlight = new Set<Promise<unknown>>();
+  let held = false;
+  const isHolding = () => rejected.size > 0 || failedKeys.size > 0;
+  const report = () => {
+    if (isHolding() === held) return;
+    held = !held;
+    onHeldChange(held);
+  };
+  const afterCommits = async (then: () => void) => {
+    // Runs `then` without awaiting when nothing is in flight, so an idle close is immediate.
+    if (inFlight.size === 0) {
+      then();
+      return;
+    }
+    await Promise.allSettled([...inFlight]);
+    await afterCommits(then);
+  };
   return {
     draftFor: (key, committedValue) => {
       const gloss = rejected.get(key);
@@ -113,12 +151,26 @@ export function createGlossRetry(onHeldChange: (held: boolean) => void): GlossRe
     },
     reject: (key, gloss) => {
       rejected.set(key, gloss);
-      onHeldChange(true);
+      report();
     },
     restored: (key) => {
       rejected.delete(key);
-      onHeldChange(rejected.size > 0);
+      report();
     },
+    holding: (key, isHeld) => {
+      if (isHeld) failedKeys.add(key);
+      else failedKeys.delete(key);
+      report();
+    },
+    track: (commit) => {
+      inFlight.add(commit);
+      const settle = () => {
+        inFlight.delete(commit);
+      };
+      return commit.then(settle, settle);
+    },
+    afterCommits,
+    isHolding,
   };
 }
 
@@ -187,19 +239,22 @@ function CommitOnBlurInput({
 }>) {
   const [restoredDraft] = useState(() => retry.draftFor(retryKey, committedValue));
   const [draft, setDraft] = useState(restoredDraft ?? committedValue);
+  // Whether the field shows a draft whose commit failed, which leaving the panel must not drop
+  // unasked. Typing alone does not count: whatever moves focus to ask would commit the typing.
+  const [failed, setFailed] = useState(restoredDraft !== undefined);
   const [draftOf, setDraftOf] = useState(committedValue);
   const isMounted = useRef(false);
   useEffect(() => {
     isMounted.current = true;
-    if (restoredDraft !== undefined) retry.restored(retryKey);
+    retry.restored(retryKey);
     return () => {
       isMounted.current = false;
     };
-  }, [restoredDraft, retry, retryKey]);
+  }, [retry, retryKey]);
   // The draft last sent to onCommit, kept until the committed value changes or the commit fails. The
   // host may answer a commit only later, leaving the committed value behind the draft until it does.
-  // An unmount in that window must not send the draft again.
   const [sent, setSent] = useState<string | undefined>(undefined);
+  const latestDraft = useLatestRef(draft);
 
   // Adjusted during render rather than in an effect, so the field never paints one frame holding
   // the previous value.
@@ -207,23 +262,42 @@ function CommitOnBlurInput({
     setDraftOf(committedValue);
     setDraft(committedValue);
     setSent(undefined);
+    setFailed(false);
   }
 
   const unsent = draft !== committedValue && draft !== sent;
+  const holding = unsent && failed;
+  useEffect(() => {
+    retry.holding(retryKey, holding);
+    return () => retry.holding(retryKey, false);
+  }, [retry, retryKey, holding]);
+
   const commit = () => {
     if (!unsent) return;
     setSent(draft);
+    retry.holding(retryKey, false);
     const settled = onCommit(draft);
     if (settled instanceof Promise)
-      settled.catch(() => {
-        if (isMounted.current) setSent((current) => (current === draft ? undefined : current));
-        else retry.reject(retryKey, { draft, typedOver: committedValue });
-      });
+      retry.track(
+        settled.catch(() => {
+          if (!isMounted.current) {
+            retry.reject(retryKey, { draft, typedOver: committedValue });
+            return;
+          }
+          setSent((current) => (current === draft ? undefined : current));
+          setFailed(true);
+          // Marked at once rather than by the effect after the next render, so that a close waiting
+          // on this commit already sees the draft as held.
+          if (latestDraft.current === draft) retry.holding(retryKey, true);
+        }),
+      );
   };
 
-  // Surface uncommitted typing to the unsaved indicator before the edit commits on blur, and flush
-  // the draft if the field unmounts mid-edit.
-  useReportGlossEditing(unsent, commit);
+  // Surface uncommitted typing to the unsaved indicator before the edit commits on blur. A field
+  // that unmounts holding an unsent draft keeps it for its next mounting rather than sending it:
+  // the unmount may come from switching the analysis language, and the host would write the draft
+  // in the new one.
+  useReportGlossEditing(unsent, () => retry.reject(retryKey, { draft, typedOver: committedValue }));
 
   return (
     <Input
@@ -383,7 +457,7 @@ export default function CatalogRowEditor({
           <CommitOnBlurInput
             committedValue={gloss}
             id={glossFieldId}
-            key={`${analysisId}-gloss`}
+            key={`${analysisLanguage}/${analysisId}-gloss`}
             onCommit={onGlossCommit}
             retry={glossRetry}
             retryKey={`${analysisLanguage}/${analysisId}`}
@@ -441,7 +515,7 @@ export default function CatalogRowEditor({
                       ) || undefined
                     }
                     committedValue={morpheme.gloss?.[analysisLanguage] ?? ''}
-                    key={`${analysisId}-${morpheme.id}`}
+                    key={`${analysisLanguage}/${analysisId}-${morpheme.id}`}
                     onCommit={(value) => onMorphemeGlossCommit(morpheme.id, value)}
                     retry={glossRetry}
                     retryKey={`${analysisLanguage}/${analysisId}/${morpheme.id}`}

@@ -31,7 +31,7 @@ type CatalogCloseModalProps = Readonly<{
   localizedStrings: LanguageStrings;
   /**
    * What the unsaved work is being given up for; closing the panel when absent. Leaving the panel,
-   * by closing or switching, gives up failed glosses as well as a breakdown draft; every other
+   * by closing or switching, gives up unsent glosses as well as a breakdown draft; every other
    * action gives up only its row's breakdown draft.
    */
   action?: 'merge' | 'delete' | 'switch' | 'stale' | 'clearGloss';

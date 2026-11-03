@@ -459,13 +459,14 @@ export default function AnalysisCatalogPanel({
   );
 
   /** Whether {@link glossRetry} holds a gloss draft that the panel's closing would discard. */
-  const [holdsRejectedGloss, setHoldsRejectedGloss] = useState(false);
+  const [holdsUnsavedGloss, setHoldsUnsavedGloss] = useState(false);
 
   /**
-   * The gloss drafts whose commit failed after their field unmounted. Kept here rather than in the
-   * row because a row's fields unmount when it is collapsed or no longer listed.
+   * The gloss drafts no field is showing, and the fields showing a draft whose commit failed. Kept
+   * here rather than in the row because a row's fields unmount when it is collapsed or no longer
+   * listed.
    */
-  const [glossRetry] = useState(() => createGlossRetry(setHoldsRejectedGloss));
+  const [glossRetry] = useState(() => createGlossRetry(setHoldsUnsavedGloss));
 
   const handleBreakdownDraftChange = useCallback(
     (analysisId: string, draft: string | undefined, surfaceText: string) => {
@@ -510,10 +511,10 @@ export default function AnalysisCatalogPanel({
     [catalogRows, rowHasUnsavedBreakdown],
   );
 
-  /** Whether leaving the panel would discard a breakdown draft or a gloss whose commit failed. */
-  const hasUnsavedEdits = hasUnsavedBreakdown || holdsRejectedGloss;
+  /** Whether leaving the panel would discard a breakdown draft or a gloss that is not saved. */
+  const hasUnsavedEdits = hasUnsavedBreakdown || holdsUnsavedGloss;
 
-  // No flush on unmount: a breakdown draft is saved or discarded explicitly, and a failed gloss
+  // No flush on unmount: a breakdown draft is saved or discarded explicitly, and an unsent gloss
   // waits for its field to mount again, so neither is sent on the way out.
   useReportGlossEditing(hasUnsavedEdits, () => {});
 
@@ -549,21 +550,28 @@ export default function AnalysisCatalogPanel({
   const [confirmingLeave, setConfirmingLeave] = useState<'close' | 'switch' | undefined>(undefined);
 
   /**
-   * Closes the panel, or asks first when a breakdown draft or a failed gloss would go with it.
+   * Closes the panel, or asks first when a breakdown draft or an unsent gloss would go with it.
    *
    * Neither commits on the way out, so leaving the panel is the one route that can drop typed text
    * the reader never asked to discard.
+   *
+   * Waits first for the gloss commits in flight, including one sent by the click's blur. A commit
+   * that fails leaves its draft for the ask to cover.
    */
   const handleCloseRequest = useCallback(() => {
-    if (hasUnsavedEdits) setConfirmingLeave('close');
-    else onClose();
-  }, [hasUnsavedEdits, onClose]);
+    glossRetry.afterCommits(() => {
+      if (hasUnsavedBreakdown || glossRetry.isHolding()) setConfirmingLeave('close');
+      else onClose();
+    });
+  }, [glossRetry, hasUnsavedBreakdown, onClose]);
 
   /** Switches the side panel to the concordance, or asks first as closing does. */
   const handleSwitchRequest = useCallback(() => {
-    if (hasUnsavedEdits) setConfirmingLeave('switch');
-    else onShowConcordance();
-  }, [hasUnsavedEdits, onShowConcordance]);
+    glossRetry.afterCommits(() => {
+      if (hasUnsavedBreakdown || glossRetry.isHolding()) setConfirmingLeave('switch');
+      else onShowConcordance();
+    });
+  }, [glossRetry, hasUnsavedBreakdown, onShowConcordance]);
 
   // A merge notice describes the latest edit, which an undo or redo has just moved past.
   const revealRow = useCallback((analysisId: string) => {

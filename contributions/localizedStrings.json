@@ -82,7 +82,7 @@
       "%interlinearizer_analysisCatalog_filter_morphemes%": "Broken down or not",
       "%interlinearizer_analysisCatalog_filter_morphemes_has%": "Broken down",
       "%interlinearizer_analysisCatalog_filter_morphemes_lacks%": "Not broken down",
-      "%interlinearizer_analysisCatalog_filter_zeroUsages%": "Used nowhere",
+      "%interlinearizer_analysisCatalog_filter_zeroUsages%": "Unused",
       "%interlinearizer_analysisCatalog_filter_stale%": "Stale (found when a book is opened)",
       "%interlinearizer_analysisCatalog_filter_staleEverywhere%": "Stale",
       "%interlinearizer_analysisCatalog_filter_notInText%": "Word not in the text",

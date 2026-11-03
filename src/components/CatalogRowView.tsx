@@ -108,7 +108,7 @@ type CatalogRowViewProps = Readonly<{
     draft: string | undefined,
     surfaceText: string,
   ) => void;
-  /** Holds the gloss drafts whose commit failed after their field unmounted. */
+  /** Keeps the gloss drafts no field is showing, and tracks the fields showing a failed one. */
   glossRetry: GlossRetry;
 }>;
 

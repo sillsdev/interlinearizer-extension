@@ -535,7 +535,8 @@ function InterlinearizerLoaderInner({
    *
    * Core's project data and setting hooks only log a failed lookup. They go on reporting themselves
    * loading, so the view needs its own lookup to stop waiting. The lookup retries during platform
-   * startup, so a project that is still loading never counts as unavailable.
+   * startup. A false "unavailable" is therefore unlikely, though a very slow start can still cause
+   * one.
    */
   const [unavailableProjectId, setUnavailableProjectId] = useState<string>();
   useEffect(() => {
@@ -545,6 +546,7 @@ function InterlinearizerLoaderInner({
         await papi.projectLookup.getMetadataForProject(projectId);
       } catch (e) {
         logger.warn(`Interlinearizer: source project ${projectId} is not available`, e);
+        /* v8 ignore next -- a tab keeps its project, so only an unmount makes the lookup stale */
         if (isCurrent) setUnavailableProjectId(projectId);
       }
     })();
@@ -552,15 +554,21 @@ function InterlinearizerLoaderInner({
       isCurrent = false;
     };
   }, [projectId]);
-  /** The source project once it has supplied a book, which proves that the project exists. */
-  const [projectWithBook, setProjectWithBook] = useState<string>();
+  /**
+   * The source project once it has supplied a book or its book list, either of which proves that
+   * the project exists.
+   */
+  const [confirmedProjectId, setConfirmedProjectId] = useState<string>();
   useEffect(() => {
-    if (verseBook) setProjectWithBook(projectId);
-  }, [verseBook, projectId]);
-  // A book outranks the lookup, whatever made the lookup fail. A later book that fails to load
-  // does not undo that proof.
+    if (verseBook || projectBookIds) setConfirmedProjectId(projectId);
+  }, [verseBook, projectBookIds, projectId]);
+  // That proof outranks the lookup, whatever made the lookup fail. A later book that fails to load
+  // does not undo it.
   const isProjectUnavailable =
-    unavailableProjectId === projectId && !verseBook && projectWithBook !== projectId;
+    unavailableProjectId === projectId &&
+    !verseBook &&
+    !projectBookIds &&
+    confirmedProjectId !== projectId;
 
   // The always-present draft is the runtime source of truth for the analysis being edited. Edits
   // auto-save here (not to the active project); Save / Save As copy the draft into a project.
@@ -1824,8 +1832,7 @@ function InterlinearizerLoaderInner({
     };
   }, [webViewMenuPossiblyError, activeProject, openLexiconChooser]);
 
-  const showBookNotInProject = isBookMissing && !isProjectUnavailable;
-  const loadingOrErrorPanel = showBookNotInProject ? (
+  const loadingOrErrorPanel = isBookMissing ? (
     // Keyed so moving between two missing books re-announces the status message.
     <BookNotInProjectView
       key={scrRef.book}

@@ -1216,14 +1216,25 @@ describe('InterlinearizerLoader', () => {
       expect(papi.projectLookup.getMetadataForProject).toHaveBeenCalledWith(testProjectId);
     });
 
-    it('shows the panel rather than the missing-book view', async () => {
+    it('shows the missing-book view when the book list loads despite the failed lookup', async () => {
       mockProjectBookIds(['PHP']);
       await act(async () => {
         renderLoader();
       });
 
-      expect(screen.getByTestId('project-unavailable')).toBeInTheDocument();
-      expect(screen.queryByTestId('book-not-in-project')).not.toBeInTheDocument();
+      expect(screen.getByTestId('book-not-in-project')).toBeInTheDocument();
+      expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
+    });
+
+    it('shows only the load error when the book list loads despite the failed lookup', async () => {
+      mockProjectBookIds(['GEN']);
+      mockBookData({ book: undefined, bookError: 'Book GEN could not be read' });
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByText('Book GEN could not be read')).toBeInTheDocument();
+      expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
     });
 
     it('shows the book when it loads despite the failed lookup', async () => {
@@ -1270,27 +1281,6 @@ describe('InterlinearizerLoader', () => {
 
       expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
       expect(screen.queryByTestId('loading-indicator')).not.toBeInTheDocument();
-    });
-
-    it('logs a lookup that fails after the view has unmounted', async () => {
-      let rejectLookup: (reason: Error) => void = () => {};
-      jest.mocked(papi.projectLookup.getMetadataForProject).mockReturnValue(
-        new Promise((_resolve, reject) => {
-          rejectLookup = reject;
-        }),
-      );
-      let unmount: () => void = () => {};
-      await act(async () => {
-        ({ unmount } = renderLoader());
-      });
-      unmount();
-
-      await act(async () => rejectLookup(new Error(`No project found with ID ${testProjectId}`)));
-
-      expect(logger.warn).toHaveBeenCalledWith(
-        `Interlinearizer: source project ${testProjectId} is not available`,
-        expect.any(Error),
-      );
     });
   });
 

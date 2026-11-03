@@ -29,3 +29,9 @@ it('logs a slow Redux invariant check', () => {
     'SerializableStateInvariantMiddleware took 36ms, which is more than the warning threshold of 32ms.',
   );
 });
+
+it('logs an error worded as a slow Redux invariant check', () => {
+  console.error(
+    'SerializableStateInvariantMiddleware took 36ms, which is more than the warning threshold of 32ms.',
+  );
+});

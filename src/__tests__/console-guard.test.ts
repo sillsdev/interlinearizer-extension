@@ -52,6 +52,10 @@ it("passes a test that logs Redux Toolkit's slow invariant check warning", () =>
   expect(statuses['logs a slow Redux invariant check']).toBe('passed');
 });
 
+it('fails a test that logs a console.error worded as the slow invariant check warning', () => {
+  expect(statuses['logs an error worded as a slow Redux invariant check']).toBe('failed');
+});
+
 it('fails the test that is running when a late console.error lands', () => {
   expect(statuses['runs while a late error lands']).toBe('failed');
 });

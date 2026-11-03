@@ -44,7 +44,7 @@ export default class ConsoleGuardEnvironment extends JSDOMEnvironment {
     (['error', 'warn'] as const).forEach((level) => {
       console[level] = (...args: unknown[]) => {
         const message = format(...args);
-        if (SLOW_INVARIANT_CHECK.test(message)) return;
+        if (level === 'warn' && SLOW_INVARIANT_CHECK.test(message)) return;
         const stack = new Error().stack?.split('\n').slice(2).join('\n');
         this.unexpectedLogs.push(`console.${level}: ${message}\n${stack}`);
       };

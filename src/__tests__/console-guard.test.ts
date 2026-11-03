@@ -68,6 +68,15 @@ it('fails the file when its own afterAll logs', () => {
   expect(fileStatuses['console-guard-after-all.fixture.ts']).toBe('failed');
 });
 
+it('fails the file when loading it logs', () => {
+  expect(fileStatuses['console-guard-module-scope.fixture.ts']).toBe('failed');
+});
+
+it('passes the tests of a file whose loading logged', () => {
+  expect(statuses['runs first after a module-scope log']).toBe('passed');
+  expect(statuses['runs second after a module-scope log']).toBe('passed');
+});
+
 it('finishes a file that leaves fake timers on', () => {
   expect(fileStatuses['console-guard-fake-timers.fixture.ts']).toBe('passed');
 });

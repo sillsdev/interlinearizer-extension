@@ -4,8 +4,8 @@ import { format } from 'node:util';
 
 /**
  * Jest's jsdom environment, extended to fail any test that calls `console.error` or `console.warn`.
- * A log from a test's cleanup hook fails that test, and a log from a file's `afterAll` fails the
- * file.
+ * A log from a test's cleanup hook fails that test. A log from loading the test file, or from its
+ * `afterAll`, fails the file.
  */
 export default class ConsoleGuardEnvironment extends JSDOMEnvironment {
   private readonly unexpectedLogs: string[] = [];
@@ -15,6 +15,9 @@ export default class ConsoleGuardEnvironment extends JSDOMEnvironment {
       case 'setup':
         // Jest installs the test file's console after constructing the environment.
         this.guardConsole();
+        break;
+      case 'run_start':
+        this.takeUnexpectedLogs(state.unhandledErrors);
         break;
       case 'test_done':
         this.takeUnexpectedLogs(event.test.errors);

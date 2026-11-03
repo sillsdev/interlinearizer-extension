@@ -7,6 +7,7 @@ import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import { resolvedOrEmpty } from '../utils/localized-strings';
+import type { Settles } from '../utils/settles';
 import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
 
 /** Localized string keys the row editor renders. */
@@ -52,14 +53,20 @@ type CatalogRowEditorProps = Readonly<{
   analysisLanguage: string;
   /** When false, the breakdown is not shown at all, as the view option hides it on the strip. */
   showMorphology: boolean;
-  /** Writes the analysis's gloss for every token linked to it. */
-  onGlossCommit: (value: string) => void;
+  /**
+   * Writes the analysis's gloss for every token linked to it. A result that rejects leaves the edit
+   * unsent, for the field to send again.
+   */
+  onGlossCommit: (value: string) => Settles<unknown>;
   /** Replaces the analysis's morpheme breakdown for every token linked to it. */
   onMorphemesCommit: (forms: readonly string[]) => void;
   /** Keeps the analysis's stale breakdown as it stands, for every token linked to it. */
   onMorphemesConfirm: () => void;
-  /** Writes one morpheme's gloss for every token linked to the analysis. */
-  onMorphemeGlossCommit: (morphemeId: string, value: string) => void;
+  /**
+   * Writes one morpheme's gloss for every token linked to the analysis. A result that rejects
+   * leaves the edit unsent, for the field to send again.
+   */
+  onMorphemeGlossCommit: (morphemeId: string, value: string) => Settles<unknown>;
   /**
    * The breakdown draft, or `undefined` while the breakdown editor is closed. Held by the caller,
    * which outlives this editor's own mounting.
@@ -123,14 +130,14 @@ function CommitOnBlurInput({
   ariaLabel?: string;
   committedValue: string;
   id?: string;
-  onCommit: (value: string) => void;
+  onCommit: (value: string) => Settles<unknown>;
   testId: string;
 }>) {
   const [draft, setDraft] = useState(committedValue);
   const [draftOf, setDraftOf] = useState(committedValue);
-  // The draft last sent to onCommit, kept until the committed value changes. The host may answer a
-  // commit only later, leaving the committed value behind the draft until it does. An unmount in
-  // that window must not send the draft again.
+  // The draft last sent to onCommit, kept until the committed value changes or the commit fails. The
+  // host may answer a commit only later, leaving the committed value behind the draft until it does.
+  // An unmount in that window must not send the draft again.
   const [sent, setSent] = useState<string | undefined>(undefined);
 
   // Adjusted during render rather than in an effect, so the field never paints one frame holding
@@ -145,7 +152,9 @@ function CommitOnBlurInput({
   const commit = () => {
     if (!unsent) return;
     setSent(draft);
-    onCommit(draft);
+    const settled = onCommit(draft);
+    if (settled instanceof Promise)
+      settled.catch(() => setSent((current) => (current === draft ? undefined : current)));
   };
 
   // Surface uncommitted typing to the unsaved indicator before the edit commits on blur, and flush

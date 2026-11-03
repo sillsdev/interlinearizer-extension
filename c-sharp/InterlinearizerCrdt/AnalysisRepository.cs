@@ -72,6 +72,15 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client)
         await dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
     }
 
+    /// <summary>Every stored record.</summary>
+    public async Task<TextAnalysis> ReadAll() => new(
+        await Query<SegmentAnalysis>(q => q),
+        await Query<SegmentAnalysisLink>(q => q),
+        await Query<TokenAnalysis>(q => q),
+        await Query<TokenAnalysisLink>(q => q),
+        await Query<PhraseAnalysis>(q => q),
+        await Query<PhraseAnalysisLink>(q => q));
+
     /// <summary>The token analyses stored under <paramref name="ids"/>.</summary>
     public Task<List<TokenAnalysis>> GetTokenAnalyses(IReadOnlyCollection<Guid> ids) => ByIds<TokenAnalysis>(ids);
 
@@ -158,6 +167,47 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client)
     {
         var forms = normalizedForms.ToList();
         return Query<PhraseAnalysis>(q => q.Where(a => forms.Contains(a.NormalizedForm)));
+    }
+
+    /// <summary>
+    /// How many tokens approve each of <paramref name="analysisIds"/>. A token approves the
+    /// analysis that its approved link names. Where a token has several approved links naming
+    /// stored payloads, <see cref="PrefersLink"/> picks one. An id that no token approves is left
+    /// out.
+    /// </summary>
+    public async Task<Dictionary<Guid, int>> CountApprovals(IReadOnlyCollection<Guid> analysisIds)
+    {
+        var wanted = analysisIds.ToHashSet();
+        var ids = wanted.ToList();
+        var tokenRefs = await Query<TokenAnalysisLink, string>(q => q
+            .Where(l => l.Status == AssignmentStatus.Approved && ids.Contains(l.AnalysisId))
+            .Select(l => l.TokenRef)
+            .Distinct());
+        if (tokenRefs.Count == 0) return [];
+        // Every approved link on those tokens takes part in the tie-break, whichever payload it names.
+        var approved = await Query<TokenAnalysisLink>(q => q
+            .Where(l => l.Status == AssignmentStatus.Approved && tokenRefs.Contains(l.TokenRef)));
+        var named = approved.Select(l => l.AnalysisId).Distinct().ToList();
+        var stored = (await Query<TokenAnalysis, Guid>(q => q.Where(a => named.Contains(a.Id)).Select(a => a.Id))).ToHashSet();
+
+        var counts = new Dictionary<Guid, int>();
+        foreach (var token in approved.Where(l => stored.Contains(l.AnalysisId)).GroupBy(l => l.TokenRef))
+        {
+            var picked = token.Aggregate((best, link) => PrefersLink(link, best) ? link : best);
+            if (wanted.Contains(picked.AnalysisId)) counts[picked.AnalysisId] = counts.GetValueOrDefault(picked.AnalysisId) + 1;
+        }
+        return counts;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="link"/> beats <paramref name="rival"/> where one link must be
+    /// picked from several, as an approval tie picks: the later update, then the smaller id, as
+    /// the TypeScript pick rules compare them.
+    /// </summary>
+    public static bool PrefersLink(AnalysisLink link, AnalysisLink rival)
+    {
+        if (link.UpdatedAt != rival.UpdatedAt) return link.UpdatedAt > rival.UpdatedAt;
+        return string.CompareOrdinal(link.Id.ToString(), rival.Id.ToString()) < 0;
     }
 
     private static IQueryable<T> InBooks<T>(IQueryable<T> links, List<string> books, List<AssignmentStatus>? statuses)

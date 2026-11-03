@@ -118,6 +118,47 @@ function unstamped<T extends Record<Stamps, string>>({ createdAt, updatedAt, ...
 
 const SOURCE = 'source-project';
 
+/** The `n`th fixture id, as a GUID string. */
+function guid(n: number): string {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+}
+
+/**
+ * The fixtures' record ids, as GUID strings and distinct across record kinds, because an
+ * implementation may store ids as GUIDs in one table. Each is named for its record: `sa` a segment
+ * analysis, `sl` a segment link, `ta` a token analysis, `tl` a token link, `pa` a phrase analysis,
+ * `pl` a phrase link, `m` a morpheme. They sort in declaration order.
+ */
+const ID = {
+  saExo: guid(1),
+  slExo: guid(2),
+  taAnd: guid(3),
+  taBeginning: guid(4),
+  m1: guid(5),
+  m2: guid(6),
+  taUnlinked: guid(7),
+  tlGenAnd: guid(8),
+  tlExoAnd: guid(9),
+  tlGenBeginning: guid(10),
+  paInThe: guid(11),
+  saGen: guid(12),
+  slGen: guid(13),
+  taGod: guid(14),
+  tlGenGod: guid(15),
+  paTheBeginning: guid(16),
+  taLater: guid(17),
+  tlAnd: guid(18),
+  tlZzzAnd: guid(19),
+  tlGenMissing: guid(20),
+  /** Ids nothing is stored under. */
+  saMissing: guid(21),
+  taMissing: guid(22),
+  plMissing: guid(23),
+  plInThe: guid(24),
+  plTheBeginning: guid(25),
+  taAndCapitalized: guid(26),
+};
+
 /**
  * Every record kind and every optional field, spread over GEN and EXO. One payload is linked from
  * both books and one from neither. Arrays inside records are out of sorted order, so a repository
@@ -127,7 +168,7 @@ function fullAnalysis(): TextAnalysis {
   return {
     segmentAnalyses: [
       {
-        id: 'sa-exo',
+        id: ID.saExo,
         ...FIXTURE_STAMPS,
         surfaceText: 'And these',
         confidence: 'high',
@@ -139,8 +180,8 @@ function fullAnalysis(): TextAnalysis {
     ],
     segmentAnalysisLinks: [
       {
-        id: 'sl-exo',
-        analysisId: 'sa-exo',
+        id: ID.slExo,
+        analysisId: ID.saExo,
         ...FIXTURE_STAMPS,
         status: 'approved',
         confidence: 'high',
@@ -148,9 +189,9 @@ function fullAnalysis(): TextAnalysis {
       },
     ],
     tokenAnalyses: [
-      { id: 'ta-and', ...FIXTURE_STAMPS, surfaceText: 'and', gloss: { en: 'and', fr: 'et' } },
+      { id: ID.taAnd, ...FIXTURE_STAMPS, surfaceText: 'and', gloss: { en: 'and', fr: 'et' } },
       {
-        id: 'ta-beginning',
+        id: ID.taBeginning,
         ...FIXTURE_STAMPS,
         surfaceText: 'beginning',
         confidence: 'medium',
@@ -158,7 +199,7 @@ function fullAnalysis(): TextAnalysis {
         sourceUser: 'translator',
         morphemes: [
           {
-            id: 'm-2',
+            id: ID.m2,
             form: 'begin',
             writingSystem: 'en',
             entryRef: { authority: 'fwlite', projectId: 'lex', entryId: 'e-begin' },
@@ -167,7 +208,7 @@ function fullAnalysis(): TextAnalysis {
             grammarRef: { authority: 'fwlite', msaId: 'msa-verb' },
             gloss: { en: 'start' },
           },
-          { id: 'm-1', form: '-ning', writingSystem: 'en' },
+          { id: ID.m1, form: '-ning', writingSystem: 'en' },
         ],
         morphemesStale: true,
         pos: 'noun',
@@ -175,14 +216,14 @@ function fullAnalysis(): TextAnalysis {
         gloss: { en: 'start' },
         glossSenseRef: { authority: 'fwlite', senseId: 's-start' },
       },
-      { id: 'ta-unlinked', ...FIXTURE_STAMPS, surfaceText: 'spare', gloss: { en: 'spare' } },
+      { id: ID.taUnlinked, ...FIXTURE_STAMPS, surfaceText: 'spare', gloss: { en: 'spare' } },
     ],
     tokenAnalysisLinks: [
-      makeTokenLink('ta-and', 'GEN 1:1:0', { id: 'tl-gen-and', surfaceText: 'and' }),
-      makeTokenLink('ta-and', 'EXO 1:1:0', { id: 'tl-exo-and', surfaceText: 'and' }),
+      makeTokenLink(ID.taAnd, 'GEN 1:1:0', { id: ID.tlGenAnd, surfaceText: 'and' }),
+      makeTokenLink(ID.taAnd, 'EXO 1:1:0', { id: ID.tlExoAnd, surfaceText: 'and' }),
       {
-        ...makeTokenLink('ta-beginning', 'GEN 1:1:9', {
-          id: 'tl-gen-beginning',
+        ...makeTokenLink(ID.taBeginning, 'GEN 1:1:9', {
+          id: ID.tlGenBeginning,
           surfaceText: 'beginning',
           status: 'suggested',
         }),
@@ -191,7 +232,7 @@ function fullAnalysis(): TextAnalysis {
     ],
     phraseAnalyses: [
       {
-        id: 'pa-in-the',
+        id: ID.paInThe,
         ...FIXTURE_STAMPS,
         surfaceText: 'in the',
         confidence: 'guess',
@@ -203,7 +244,8 @@ function fullAnalysis(): TextAnalysis {
     ],
     phraseAnalysisLinks: [
       {
-        ...makePhraseLink('pa-in-the', ['GEN 1:1:4', 'GEN 1:1:2'], ['the', 'in']),
+        ...makePhraseLink(ID.paInThe, ['GEN 1:1:4', 'GEN 1:1:2'], ['the', 'in']),
+        id: ID.plInThe,
         confidence: 'guess',
       },
     ],
@@ -242,8 +284,8 @@ function exodusOnlyDraft(): DraftProject {
       ...emptyAnalysis(),
       segmentAnalyses: analysis.segmentAnalyses,
       segmentAnalysisLinks: analysis.segmentAnalysisLinks,
-      tokenAnalyses: analysis.tokenAnalyses.filter(({ id }) => id === 'ta-and'),
-      tokenAnalysisLinks: analysis.tokenAnalysisLinks.filter(({ id }) => id === 'tl-exo-and'),
+      tokenAnalyses: analysis.tokenAnalyses.filter(({ id }) => id === ID.taAnd),
+      tokenAnalysisLinks: analysis.tokenAnalysisLinks.filter(({ id }) => id === ID.tlExoAnd),
     },
     dirty: false,
   };
@@ -257,8 +299,8 @@ function fullDraftWithoutGenesis(): DraftProject {
     ...draft,
     analysis: {
       ...analysis,
-      tokenAnalyses: analysis.tokenAnalyses.filter(({ id }) => id !== 'ta-beginning'),
-      tokenAnalysisLinks: analysis.tokenAnalysisLinks.filter(({ id }) => id === 'tl-exo-and'),
+      tokenAnalyses: analysis.tokenAnalyses.filter(({ id }) => id !== ID.taBeginning),
+      tokenAnalysisLinks: analysis.tokenAnalysisLinks.filter(({ id }) => id === ID.tlExoAnd),
       phraseAnalyses: [],
       phraseAnalysisLinks: [],
     },
@@ -270,7 +312,7 @@ function newRecords() {
   return {
     segmentAnalyses: [
       {
-        id: 'sa-gen',
+        id: ID.saGen,
         ...FIXTURE_STAMPS,
         surfaceText: 'In the beginning',
         freeTranslation: { en: 'At first' },
@@ -278,27 +320,30 @@ function newRecords() {
     ],
     segmentAnalysisLinks: [
       {
-        id: 'sl-gen',
-        analysisId: 'sa-gen',
+        id: ID.slGen,
+        analysisId: ID.saGen,
         ...FIXTURE_STAMPS,
         status: 'approved' as const,
         segmentId: 'GEN 1:1',
       },
     ],
-    tokenAnalyses: [{ id: 'ta-god', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'God' } }],
+    tokenAnalyses: [{ id: ID.taGod, ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'God' } }],
     tokenAnalysisLinks: [
-      makeTokenLink('ta-god', 'GEN 1:1:17', { id: 'tl-gen-god', surfaceText: 'God' }),
+      makeTokenLink(ID.taGod, 'GEN 1:1:17', { id: ID.tlGenGod, surfaceText: 'God' }),
     ],
     phraseAnalyses: [
       {
-        id: 'pa-the-beginning',
+        id: ID.paTheBeginning,
         ...FIXTURE_STAMPS,
         surfaceText: 'the beginning',
         gloss: { en: 'start' },
       },
     ],
     phraseAnalysisLinks: [
-      makePhraseLink('pa-the-beginning', ['GEN 1:1:9', 'GEN 1:1:13'], ['the', 'beginning']),
+      {
+        ...makePhraseLink(ID.paTheBeginning, ['GEN 1:1:9', 'GEN 1:1:13'], ['the', 'beginning']),
+        id: ID.plTheBeginning,
+      },
     ],
   };
 }
@@ -340,15 +385,15 @@ function mixedChanges(): ChangeSet {
   const records = newRecords();
   return {
     intent: 'mixedChanges',
-    segmentAnalyses: { puts: records.segmentAnalyses, deletes: ['sa-exo'] },
-    segmentAnalysisLinks: { puts: records.segmentAnalysisLinks, deletes: ['sl-exo'] },
+    segmentAnalyses: { puts: records.segmentAnalyses, deletes: [ID.saExo] },
+    segmentAnalysisLinks: { puts: records.segmentAnalysisLinks, deletes: [ID.slExo] },
     tokenAnalyses: {
       puts: [{ ...analysis.tokenAnalyses[0], gloss: { en: 'and then' } }, ...records.tokenAnalyses],
-      deletes: ['ta-unlinked'],
+      deletes: [ID.taUnlinked],
     },
-    tokenAnalysisLinks: { puts: records.tokenAnalysisLinks, deletes: ['tl-gen-beginning'] },
-    phraseAnalyses: { puts: records.phraseAnalyses, deletes: ['pa-in-the'] },
-    phraseAnalysisLinks: { puts: records.phraseAnalysisLinks, deletes: ['pa-in-the'] },
+    tokenAnalysisLinks: { puts: records.tokenAnalysisLinks, deletes: [ID.tlGenBeginning] },
+    phraseAnalyses: { puts: records.phraseAnalyses, deletes: [ID.paInThe] },
+    phraseAnalysisLinks: { puts: records.phraseAnalysisLinks, deletes: [ID.plInThe] },
   };
 }
 
@@ -384,9 +429,9 @@ function translatingExodus(): ChangeSet {
 function deletingExodus(): ChangeSet {
   return {
     intent: 'deleteExodus',
-    segmentAnalyses: { puts: [], deletes: ['sa-exo'] },
-    segmentAnalysisLinks: { puts: [], deletes: ['sl-exo'] },
-    tokenAnalysisLinks: { puts: [], deletes: ['tl-exo-and'] },
+    segmentAnalyses: { puts: [], deletes: [ID.saExo] },
+    segmentAnalysisLinks: { puts: [], deletes: [ID.slExo] },
+    tokenAnalysisLinks: { puts: [], deletes: [ID.tlExoAnd] },
   };
 }
 
@@ -400,7 +445,7 @@ function fullDraftWithoutExodus(): DraftProject {
       ...analysis,
       segmentAnalyses: [],
       segmentAnalysisLinks: [],
-      tokenAnalysisLinks: analysis.tokenAnalysisLinks.filter(({ id }) => id !== 'tl-exo-and'),
+      tokenAnalysisLinks: analysis.tokenAnalysisLinks.filter(({ id }) => id !== ID.tlExoAnd),
     },
   };
 }
@@ -614,7 +659,7 @@ export function describeAnalysisRepositoryConformance(
         it('replaces a stored record whole, dropping fields the put lacks', async () => {
           await store.seed(SOURCE, fullDraft());
           const repository = await store.open(SOURCE);
-          const bare = { id: 'ta-beginning', ...FIXTURE_STAMPS, surfaceText: 'beginning' };
+          const bare = { id: ID.taBeginning, ...FIXTURE_STAMPS, surfaceText: 'beginning' };
 
           await repository.apply({
             intent: 'replace',
@@ -622,7 +667,7 @@ export function describeAnalysisRepositoryConformance(
           });
 
           const { analysis } = await readStored();
-          expect(analysis.tokenAnalyses.find(({ id }) => id === 'ta-beginning')).toStrictEqual(
+          expect(analysis.tokenAnalyses.find(({ id }) => id === ID.taBeginning)).toStrictEqual(
             unstamped(bare),
           );
         });
@@ -642,7 +687,7 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'deleteMissing',
-            tokenAnalyses: { puts: [], deletes: ['ta-missing'] },
+            tokenAnalyses: { puts: [], deletes: [ID.taMissing] },
           });
 
           await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
@@ -701,11 +746,11 @@ export function describeAnalysisRepositoryConformance(
           });
 
           const { analysis } = await readStored();
-          expect(analysis.tokenAnalyses.filter(({ id }) => id === 'ta-and')).toStrictEqual([
+          expect(analysis.tokenAnalyses.filter(({ id }) => id === ID.taAnd)).toStrictEqual([
             unstamped(edited),
           ]);
           expect(
-            analysis.tokenAnalysisLinks.filter(({ analysisId }) => analysisId === 'ta-and'),
+            analysis.tokenAnalysisLinks.filter(({ analysisId }) => analysisId === ID.taAnd),
           ).toHaveLength(2);
         });
 
@@ -715,7 +760,7 @@ export function describeAnalysisRepositoryConformance(
           await repository.apply(changes);
 
           changes.tokenAnalyses?.puts.push({
-            id: 'ta-later',
+            id: ID.taLater,
             ...FIXTURE_STAMPS,
             surfaceText: 'later',
           });
@@ -723,7 +768,7 @@ export function describeAnalysisRepositoryConformance(
           god.surfaceText = 'changed';
 
           await expect(
-            repository.getTokenAnalyses(['ta-god', 'ta-later']).then(unstampedInIdOrder),
+            repository.getTokenAnalyses([ID.taGod, ID.taLater]).then(unstampedInIdOrder),
           ).resolves.toStrictEqual(unstampedInIdOrder(newRecords().tokenAnalyses));
         });
 
@@ -735,7 +780,7 @@ export function describeAnalysisRepositoryConformance(
           await expect(
             repository.apply({
               intent: 'conflicting',
-              tokenAnalyses: { puts: [{ ...and, gloss: { en: 'also' } }], deletes: ['ta-and'] },
+              tokenAnalyses: { puts: [{ ...and, gloss: { en: 'also' } }], deletes: [ID.taAnd] },
             }),
           ).rejects.toThrow();
 
@@ -763,14 +808,14 @@ export function describeAnalysisRepositoryConformance(
           const repository = await overFullDraft();
 
           await expect(
-            repository.getTokenAnalyses(['ta-and', 'ta-missing', 'ta-and']).then(idsOf),
-          ).resolves.toStrictEqual(['ta-and']);
+            repository.getTokenAnalyses([ID.taAnd, ID.taMissing, ID.taAnd]).then(idsOf),
+          ).resolves.toStrictEqual([ID.taAnd]);
           await expect(
-            repository.getPhraseAnalyses(['pa-in-the']).then((found) => found.map(unstamped)),
+            repository.getPhraseAnalyses([ID.paInThe]).then((found) => found.map(unstamped)),
           ).resolves.toStrictEqual(fullAnalysis().phraseAnalyses.map(unstamped));
           await expect(
             repository
-              .getSegmentAnalyses(['sa-exo', 'sa-missing'])
+              .getSegmentAnalyses([ID.saExo, ID.saMissing])
               .then((found) => found.map(unstamped)),
           ).resolves.toStrictEqual(fullAnalysis().segmentAnalyses.map(unstamped));
         });
@@ -780,7 +825,7 @@ export function describeAnalysisRepositoryConformance(
 
           await expect(
             repository
-              .getPhraseAnalysisLinks(['pa-in-the', 'pl-missing', 'pa-in-the'])
+              .getPhraseAnalysisLinks([ID.plInThe, ID.plMissing, ID.plInThe])
               .then((found) => found.map(unstamped)),
           ).resolves.toStrictEqual(fullAnalysis().phraseAnalysisLinks.map(unstamped));
         });
@@ -791,8 +836,8 @@ export function describeAnalysisRepositoryConformance(
           await expect(
             repository.findLinksByToken(['GEN 1:1:0', 'GEN 1:1:2', 'GEN 1:1:4']).then(linkIdsOf),
           ).resolves.toStrictEqual({
-            tokenAnalysisLinks: ['tl-gen-and'],
-            phraseAnalysisLinks: ['pa-in-the'],
+            tokenAnalysisLinks: [ID.tlGenAnd],
+            phraseAnalysisLinks: [ID.plInThe],
           });
         });
 
@@ -801,18 +846,18 @@ export function describeAnalysisRepositoryConformance(
 
           await expect(
             repository.findLinksBySegment(['EXO 1:1', 'GEN 1:1']).then(idsOf),
-          ).resolves.toStrictEqual(['sl-exo']);
+          ).resolves.toStrictEqual([ID.slExo]);
         });
 
         it('finds the links of every kind to analyses', async () => {
           const repository = await overFullDraft();
 
           await expect(
-            repository.findLinksToAnalyses(['ta-and', 'pa-in-the', 'sa-exo']).then(linkIdsOf),
+            repository.findLinksToAnalyses([ID.taAnd, ID.paInThe, ID.saExo]).then(linkIdsOf),
           ).resolves.toStrictEqual({
-            tokenAnalysisLinks: ['tl-exo-and', 'tl-gen-and'],
-            phraseAnalysisLinks: ['pa-in-the'],
-            segmentAnalysisLinks: ['sl-exo'],
+            tokenAnalysisLinks: [ID.tlGenAnd, ID.tlExoAnd],
+            phraseAnalysisLinks: [ID.plInThe],
+            segmentAnalysisLinks: [ID.slExo],
           });
         });
 
@@ -821,8 +866,8 @@ export function describeAnalysisRepositoryConformance(
 
           await expect(repository.findLinksInBooks(['GEN']).then(linkIdsOf)).resolves.toStrictEqual(
             {
-              tokenAnalysisLinks: ['tl-gen-and', 'tl-gen-beginning'],
-              phraseAnalysisLinks: ['pa-in-the'],
+              tokenAnalysisLinks: [ID.tlGenAnd, ID.tlGenBeginning],
+              phraseAnalysisLinks: [ID.plInThe],
               segmentAnalysisLinks: [],
             },
           );
@@ -834,7 +879,7 @@ export function describeAnalysisRepositoryConformance(
           await expect(
             repository.findLinksInBooks(['GEN', 'EXO'], ['suggested']).then(linkIdsOf),
           ).resolves.toStrictEqual({
-            tokenAnalysisLinks: ['tl-gen-beginning'],
+            tokenAnalysisLinks: [ID.tlGenBeginning],
             phraseAnalysisLinks: [],
             segmentAnalysisLinks: [],
           });
@@ -855,7 +900,7 @@ export function describeAnalysisRepositoryConformance(
             intent: 'unlinkTokens',
             tokenAnalysisLinks: {
               puts: [],
-              deletes: ['tl-gen-and', 'tl-exo-and', 'tl-gen-beginning'],
+              deletes: [ID.tlGenAnd, ID.tlExoAnd, ID.tlGenBeginning],
             },
           });
 
@@ -871,7 +916,7 @@ export function describeAnalysisRepositoryConformance(
             intent: 'linkOutsideCanon',
             tokenAnalysisLinks: {
               puts: [
-                makeTokenLink('ta-and', 'ZZZ front1:0', { id: 'tl-zzz-and', surfaceText: 'and' }),
+                makeTokenLink(ID.taAnd, 'ZZZ front1:0', { id: ID.tlZzzAnd, surfaceText: 'and' }),
               ],
               deletes: [],
             },
@@ -887,8 +932,8 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'unlinkExodus',
-            tokenAnalysisLinks: { puts: [], deletes: ['tl-exo-and'] },
-            segmentAnalysisLinks: { puts: [], deletes: ['sl-exo'] },
+            tokenAnalysisLinks: { puts: [], deletes: [ID.tlExoAnd] },
+            segmentAnalysisLinks: { puts: [], deletes: [ID.slExo] },
           });
 
           await expect(repository.findLinkedBooks()).resolves.toEqual(['GEN']);
@@ -903,25 +948,25 @@ export function describeAnalysisRepositoryConformance(
           await repository.apply({
             intent: 'addCapitalized',
             tokenAnalyses: {
-              puts: [{ id: 'ta-And', ...FIXTURE_STAMPS, surfaceText: 'And' }],
+              puts: [{ id: ID.taAndCapitalized, ...FIXTURE_STAMPS, surfaceText: 'And' }],
               deletes: [],
             },
           });
 
           await expect(
             repository.findTokenAnalysesByForm([normalizeSurfaceForm('AND')]).then(idsOf),
-          ).resolves.toStrictEqual(['ta-And', 'ta-and']);
+          ).resolves.toStrictEqual([ID.taAnd, ID.taAndCapitalized]);
           await expect(
             repository.findPhraseAnalysesByForm([normalizeSurfaceForm('In The')]).then(idsOf),
-          ).resolves.toStrictEqual(['pa-in-the']);
+          ).resolves.toStrictEqual([ID.paInThe]);
         });
 
         it('counts the tokens approving each analysis, leaving out those none approves', async () => {
           const repository = await overFullDraft();
 
           await expect(
-            repository.countApprovals(['ta-and', 'ta-beginning', 'ta-unlinked', 'ta-missing']),
-          ).resolves.toStrictEqual({ 'ta-and': 2 });
+            repository.countApprovals([ID.taAnd, ID.taBeginning, ID.taUnlinked, ID.taMissing]),
+          ).resolves.toStrictEqual({ [ID.taAnd]: 2 });
         });
 
         it('counts a token once, for the approved link an approval tie picks', async () => {
@@ -944,8 +989,8 @@ export function describeAnalysisRepositoryConformance(
           });
 
           await expect(
-            repository.countApprovals(['ta-and', 'ta-beginning']),
-          ).resolves.toStrictEqual({ 'ta-and': 1, 'ta-beginning': 1 });
+            repository.countApprovals([ID.taAnd, ID.taBeginning]),
+          ).resolves.toStrictEqual({ [ID.taAnd]: 1, [ID.taBeginning]: 1 });
         });
 
         it('passes over an approved link naming no stored payload when picking a tie', async () => {
@@ -958,8 +1003,8 @@ export function describeAnalysisRepositoryConformance(
               puts: [
                 {
                   ...genAnd,
-                  id: 'tl-gen-missing',
-                  analysisId: 'ta-missing',
+                  id: ID.tlGenMissing,
+                  analysisId: ID.taMissing,
                   updatedAt: '2026-02-01T00:00:00.000Z',
                 },
               ],
@@ -967,40 +1012,40 @@ export function describeAnalysisRepositoryConformance(
             },
           });
 
-          await expect(repository.countApprovals(['ta-and', 'ta-missing'])).resolves.toStrictEqual({
-            'ta-and': 2,
+          await expect(repository.countApprovals([ID.taAnd, ID.taMissing])).resolves.toStrictEqual({
+            [ID.taAnd]: 2,
           });
         });
 
         it('counts from the records the applied changes leave', async () => {
           const repository = await overFullDraft();
-          await repository.countApprovals(['ta-and']);
+          await repository.countApprovals([ID.taAnd]);
           const [, , beginning] = fullAnalysis().tokenAnalysisLinks;
           const approvedBeginning = { ...beginning, status: 'approved' as const };
 
           await repository.apply({
             intent: 'approveAndDelete',
-            tokenAnalysisLinks: { puts: [approvedBeginning], deletes: ['tl-exo-and'] },
+            tokenAnalysisLinks: { puts: [approvedBeginning], deletes: [ID.tlExoAnd] },
           });
           await expect(
-            repository.countApprovals(['ta-and', 'ta-beginning']),
-          ).resolves.toStrictEqual({ 'ta-and': 1, 'ta-beginning': 1 });
+            repository.countApprovals([ID.taAnd, ID.taBeginning]),
+          ).resolves.toStrictEqual({ [ID.taAnd]: 1, [ID.taBeginning]: 1 });
           await repository.apply({
             intent: 'deleteAnalysis',
-            tokenAnalyses: { puts: [], deletes: ['ta-beginning'] },
-            tokenAnalysisLinks: { puts: [], deletes: ['tl-gen-beginning'] },
+            tokenAnalyses: { puts: [], deletes: [ID.taBeginning] },
+            tokenAnalysisLinks: { puts: [], deletes: [ID.tlGenBeginning] },
           });
           await expect(
-            repository.countApprovals(['ta-and', 'ta-beginning']),
-          ).resolves.toStrictEqual({ 'ta-and': 1 });
+            repository.countApprovals([ID.taAnd, ID.taBeginning]),
+          ).resolves.toStrictEqual({ [ID.taAnd]: 1 });
           await repository.apply({
             intent: 'restoreAnalysis',
             tokenAnalyses: { puts: [fullAnalysis().tokenAnalyses[1]], deletes: [] },
             tokenAnalysisLinks: { puts: [approvedBeginning], deletes: [] },
           });
           await expect(
-            repository.countApprovals(['ta-and', 'ta-beginning']),
-          ).resolves.toStrictEqual({ 'ta-and': 1, 'ta-beginning': 1 });
+            repository.countApprovals([ID.taAnd, ID.taBeginning]),
+          ).resolves.toStrictEqual({ [ID.taAnd]: 1, [ID.taBeginning]: 1 });
         });
 
         it('finds nothing in a draft never saved', async () => {
@@ -1013,7 +1058,7 @@ export function describeAnalysisRepositoryConformance(
               segmentAnalysisLinks: [],
             },
           );
-          await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([]);
+          await expect(repository.getTokenAnalyses([ID.taAnd])).resolves.toStrictEqual([]);
         });
 
         it('answers from the records the applied changes leave', async () => {
@@ -1023,23 +1068,23 @@ export function describeAnalysisRepositoryConformance(
           await repository.apply(mixedChanges());
 
           await expect(
-            repository.findLinksToAnalyses(['ta-beginning', 'ta-god']).then(linkIdsOf),
+            repository.findLinksToAnalyses([ID.taBeginning, ID.taGod]).then(linkIdsOf),
           ).resolves.toStrictEqual({
-            tokenAnalysisLinks: ['tl-gen-god'],
+            tokenAnalysisLinks: [ID.tlGenGod],
             phraseAnalysisLinks: [],
             segmentAnalysisLinks: [],
           });
           await expect(
             repository.findLinksBySegment(['GEN 1:1', 'EXO 1:1']).then(idsOf),
-          ).resolves.toStrictEqual(['sl-gen']);
+          ).resolves.toStrictEqual([ID.slGen]);
           await expect(
             repository.findLinksByToken(['GEN 1:1:2', 'GEN 1:1:13']).then(linkIdsOf),
           ).resolves.toStrictEqual({
             tokenAnalysisLinks: [],
-            phraseAnalysisLinks: ['pa-the-beginning'],
+            phraseAnalysisLinks: [ID.plTheBeginning],
           });
           await expect(
-            repository.getTokenAnalyses(['ta-and']).then((found) => found.map(unstamped)),
+            repository.getTokenAnalyses([ID.taAnd]).then((found) => found.map(unstamped)),
           ).resolves.toStrictEqual([
             unstamped({ ...fullAnalysis().tokenAnalyses[0], gloss: { en: 'and then' } }),
           ]);
@@ -1060,7 +1105,7 @@ export function describeAnalysisRepositoryConformance(
           ).resolves.toMatchObject({ tokenAnalysisLinks: [] });
           await expect(
             repository.findLinksInBooks(['GEN'], ['approved']).then(linkIdsOf),
-          ).resolves.toMatchObject({ tokenAnalysisLinks: ['tl-gen-and', 'tl-gen-beginning'] });
+          ).resolves.toMatchObject({ tokenAnalysisLinks: [ID.tlGenAnd, ID.tlGenBeginning] });
         });
 
         it('keeps the records of different source projects apart', async () => {
@@ -1068,19 +1113,19 @@ export function describeAnalysisRepositoryConformance(
 
           const other = await store.open('other-project');
 
-          await expect(other.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([]);
+          await expect(other.getTokenAnalyses([ID.taAnd])).resolves.toStrictEqual([]);
         });
 
         it('returns records the caller may change without changing what is stored', async () => {
           const repository = await overFullDraft();
 
-          const [and] = await repository.getTokenAnalyses(['ta-and']);
+          const [and] = await repository.getTokenAnalyses([ID.taAnd]);
           and.surfaceText = 'changed';
-          const { tokenAnalysisLinks } = await repository.findLinksToAnalyses(['ta-and']);
+          const { tokenAnalysisLinks } = await repository.findLinksToAnalyses([ID.taAnd]);
           tokenAnalysisLinks[0].status = 'rejected';
 
           await expect(
-            repository.getTokenAnalyses(['ta-and']).then((found) => found.map(unstamped)),
+            repository.getTokenAnalyses([ID.taAnd]).then((found) => found.map(unstamped)),
           ).resolves.toStrictEqual([unstamped(fullAnalysis().tokenAnalyses[0])]);
           await expect(
             repository.findLinksInBooks(['GEN', 'EXO'], ['rejected']).then(linkIdsOf),
@@ -1237,10 +1282,10 @@ export function describeAnalysisRepositoryConformance(
           });
 
           await expect(
-            repository.getTokenAnalyses(['ta-and', 'ta-unlinked']).then(unstampedInIdOrder),
+            repository.getTokenAnalyses([ID.taAnd, ID.taUnlinked]).then(unstampedInIdOrder),
           ).resolves.toStrictEqual(
             unstampedInIdOrder(
-              fullAnalysis().tokenAnalyses.filter(({ id }) => id !== 'ta-beginning'),
+              fullAnalysis().tokenAnalyses.filter(({ id }) => id !== ID.taBeginning),
             ),
           );
         });
@@ -1251,7 +1296,7 @@ export function describeAnalysisRepositoryConformance(
 
           const { inverse } = await repository.apply({
             intent: 'deleteMissing',
-            tokenAnalyses: { puts: [], deletes: ['ta-missing'] },
+            tokenAnalyses: { puts: [], deletes: [ID.taMissing] },
           });
 
           expect(inverse).toStrictEqual({ intent: 'deleteMissing' });
@@ -1403,7 +1448,7 @@ export function describeAnalysisRepositoryConformance(
               const repository = await overFullDraft();
               await repository.apply({
                 intent: 'unlinkExodus',
-                tokenAnalysisLinks: { puts: [], deletes: ['tl-exo-and'] },
+                tokenAnalysisLinks: { puts: [], deletes: [ID.tlExoAnd] },
               });
 
               await repository.markClean();
@@ -1427,9 +1472,9 @@ export function describeAnalysisRepositoryConformance(
               ...emptyDraft(SOURCE),
               analysis: {
                 ...emptyAnalysis(),
-                tokenAnalyses: [{ id: 'ta-and', ...FIXTURE_STAMPS, surfaceText: 'and' }],
+                tokenAnalyses: [{ id: ID.taAnd, ...FIXTURE_STAMPS, surfaceText: 'and' }],
                 tokenAnalysisLinks: [
-                  makeTokenLink('ta-and', 'GEN 1:1:0', { id: 'tl-and', surfaceText: 'and' }),
+                  makeTokenLink(ID.taAnd, 'GEN 1:1:0', { id: ID.tlAnd, surfaceText: 'and' }),
                 ],
               },
             };
@@ -1474,13 +1519,13 @@ export function describeAnalysisRepositoryConformance(
 
             await repository.apply({
               intent: 'unlinkExodus',
-              tokenAnalysisLinks: { puts: [], deletes: ['tl-exo-and'] },
+              tokenAnalysisLinks: { puts: [], deletes: [ID.tlExoAnd] },
             });
 
             const expected = fullDraft();
             expected.analysis.segmentAnalyses = translating.segmentAnalyses?.puts ?? [];
             expected.analysis.tokenAnalysisLinks = expected.analysis.tokenAnalysisLinks.filter(
-              ({ id }) => id !== 'tl-exo-and',
+              ({ id }) => id !== ID.tlExoAnd,
             );
             await expect(readStored()).resolves.toStrictEqual(comparable(expected));
           });
@@ -1495,8 +1540,8 @@ export function describeAnalysisRepositoryConformance(
             await expect(
               repository.findLinksInBooks(['GEN', 'EXO']).then(linkIdsOf),
             ).resolves.toStrictEqual({
-              tokenAnalysisLinks: ['tl-gen-and', 'tl-gen-beginning'],
-              phraseAnalysisLinks: ['pa-in-the'],
+              tokenAnalysisLinks: [ID.tlGenAnd, ID.tlGenBeginning],
+              phraseAnalysisLinks: [ID.plInThe],
               segmentAnalysisLinks: [],
             });
           });
@@ -1506,13 +1551,13 @@ export function describeAnalysisRepositoryConformance(
             changeInPlace((await repository.exportAll()).draft);
 
             await expect(
-              repository.getTokenAnalyses(['ta-and']).then(unstampedInIdOrder),
+              repository.getTokenAnalyses([ID.taAnd]).then(unstampedInIdOrder),
             ).resolves.toStrictEqual([unstamped(fullAnalysis().tokenAnalyses[0])]);
             await repository.apply(puttingNewRecords());
 
             await expect(
               readStored().then(({ analysis }) =>
-                analysis.tokenAnalyses.find(({ id }) => id === 'ta-and'),
+                analysis.tokenAnalyses.find(({ id }) => id === ID.taAnd),
               ),
             ).resolves.toStrictEqual(unstamped(fullAnalysis().tokenAnalyses[0]));
           });
@@ -1524,12 +1569,12 @@ export function describeAnalysisRepositoryConformance(
 
             await repository.apply({
               intent: 'unlinkExodus',
-              tokenAnalysisLinks: { puts: [], deletes: ['tl-exo-and'] },
+              tokenAnalysisLinks: { puts: [], deletes: [ID.tlExoAnd] },
             });
 
             const expected = fullDraft();
             expected.analysis.tokenAnalysisLinks = expected.analysis.tokenAnalysisLinks.filter(
-              (link) => link.id !== 'tl-exo-and',
+              (link) => link.id !== ID.tlExoAnd,
             );
             await expect(repository.getWholeDraft().then(comparable)).resolves.toStrictEqual(
               comparable(expected),
@@ -1647,7 +1692,7 @@ export function describeAnalysisRepositoryConformance(
 
             const { analysis } = await reload();
 
-            expect(analysis.tokenAnalyses.filter(({ id }) => id === 'ta-and')).toHaveLength(1);
+            expect(analysis.tokenAnalyses.filter(({ id }) => id === ID.taAnd)).toHaveLength(1);
           });
 
           it('saves an edit to a payload linked from several books', async () => {
@@ -1655,7 +1700,7 @@ export function describeAnalysisRepositoryConformance(
             await repository.replaceAll(fullDraft());
             const { draft } = await repository.exportAll();
             draft.analysis.tokenAnalyses = draft.analysis.tokenAnalyses.map((payload) =>
-              payload.id === 'ta-and' ? { ...payload, gloss: { en: 'and then' } } : payload,
+              payload.id === ID.taAnd ? { ...payload, gloss: { en: 'and then' } } : payload,
             );
 
             await repository.replaceAll(draft);
@@ -1665,7 +1710,7 @@ export function describeAnalysisRepositoryConformance(
             const {
               draft: { analysis },
             } = await reloadForCopy();
-            expect(analysis.tokenAnalyses.find(({ id }) => id === 'ta-and')?.gloss).toStrictEqual({
+            expect(analysis.tokenAnalyses.find(({ id }) => id === ID.taAnd)?.gloss).toStrictEqual({
               en: 'and then',
             });
           });
@@ -1792,7 +1837,7 @@ export function describeAnalysisRepositoryConformance(
 
             await repository.apply({
               intent: 'deleteUnlinked',
-              tokenAnalyses: { puts: [], deletes: ['ta-unlinked'] },
+              tokenAnalyses: { puts: [], deletes: [ID.taUnlinked] },
             });
 
             await expect(reload()).resolves.toStrictEqual(
@@ -1801,7 +1846,7 @@ export function describeAnalysisRepositoryConformance(
                 analysis: {
                   ...fullAnalysis(),
                   tokenAnalyses: fullAnalysis().tokenAnalyses.filter(
-                    ({ id }) => id !== 'ta-unlinked',
+                    ({ id }) => id !== ID.taUnlinked,
                   ),
                 },
               }),
@@ -1900,7 +1945,7 @@ export function describeAnalysisRepositoryConformance(
 
             await hooks.damageBook(SOURCE, 'GEN', 'corrupt');
             const { draft } = await reloadForCopy();
-            expect(draft.analysis.tokenAnalyses.filter(({ id }) => id === 'ta-and')).toStrictEqual([
+            expect(draft.analysis.tokenAnalyses.filter(({ id }) => id === ID.taAnd)).toStrictEqual([
               unstamped(edited),
             ]);
           });
@@ -2022,9 +2067,9 @@ export function describeReadOnlyRepositoryConformance(
       const repository = await store.openReadOnly(fullDraft());
 
       await expect(
-        repository.findLinksToAnalyses(['ta-and']).then(linkIdsOf),
+        repository.findLinksToAnalyses([ID.taAnd]).then(linkIdsOf),
       ).resolves.toStrictEqual({
-        tokenAnalysisLinks: ['tl-exo-and', 'tl-gen-and'],
+        tokenAnalysisLinks: [ID.tlGenAnd, ID.tlExoAnd],
         phraseAnalysisLinks: [],
         segmentAnalysisLinks: [],
       });
@@ -2036,7 +2081,7 @@ export function describeReadOnlyRepositoryConformance(
 
       changeInPlace((await repository.exportAll()).draft);
 
-      await expect(repository.getTokenAnalyses(['ta-and'])).resolves.toStrictEqual([
+      await expect(repository.getTokenAnalyses([ID.taAnd])).resolves.toStrictEqual([
         fullAnalysis().tokenAnalyses[0],
       ]);
     });

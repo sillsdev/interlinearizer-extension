@@ -41,6 +41,15 @@ public enum PutMode
     Patch,
 }
 
+/// <summary>Every stored record, one list per kind, each in no set order.</summary>
+public record TextAnalysis(
+    List<SegmentAnalysis> SegmentAnalyses,
+    List<SegmentAnalysisLink> SegmentAnalysisLinks,
+    List<TokenAnalysis> TokenAnalyses,
+    List<TokenAnalysisLink> TokenAnalysisLinks,
+    List<PhraseAnalysis> PhraseAnalyses,
+    List<PhraseAnalysisLink> PhraseAnalysisLinks);
+
 /// <summary>Links of every kind, one list per kind, each in no set order.</summary>
 public record AnalysisLinks(
     List<TokenAnalysisLink> TokenAnalysisLinks,

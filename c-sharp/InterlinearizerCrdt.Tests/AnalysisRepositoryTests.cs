@@ -475,6 +475,82 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ReadsEveryStoredRecord()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+
+        var all = await Repository.ReadAll();
+
+        await Assert.That(IdsOf(all.TokenAnalyses)).IsEquivalentTo([TaAnd, TaBeginning]);
+        await Assert.That(IdsOf(all.TokenAnalysisLinks)).IsEquivalentTo([TlGenAnd, TlExoAnd, TlGenBeginning]);
+        await Assert.That(IdsOf(all.PhraseAnalyses)).IsEquivalentTo([PaInThe]);
+        await Assert.That(IdsOf(all.PhraseAnalysisLinks)).IsEquivalentTo([PlInThe]);
+        await Assert.That(IdsOf(all.SegmentAnalyses)).IsEquivalentTo([SaExo]);
+        await Assert.That(IdsOf(all.SegmentAnalysisLinks)).IsEquivalentTo([SlExo]);
+    }
+
+    [Test]
+    public async Task CountsTheTokensApprovingEachAnalysisLeavingOutThoseNoneApproves()
+    {
+        await ApplyNext(FullAnalysis());
+
+        var counts = await Repository.CountApprovals([TaAnd, TaBeginning, TaUnlinked, Guid.NewGuid()]);
+
+        await Assert.That(counts).IsEquivalentTo(new Dictionary<Guid, int> { [TaAnd] = 2 });
+    }
+
+    [Test]
+    public async Task CountsATokenOnceForTheApprovedLinkAnApprovalTiePicks()
+    {
+        await ApplyNext(FullAnalysis());
+        // A later commit, so the moved link's update wins the tie on GEN 1:1:0.
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "approveTwice",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:0", "and")),
+        });
+
+        var counts = await Repository.CountApprovals([TaAnd, TaBeginning]);
+
+        await Assert.That(counts).IsEquivalentTo(new Dictionary<Guid, int> { [TaAnd] = 1, [TaBeginning] = 1 });
+    }
+
+    [Test]
+    public async Task PicksTheSmallerIdAmongApprovedLinksUpdatedTogether()
+    {
+        var smaller = Guid.Parse("00000000-0000-4000-8000-000000000001");
+        var larger = Guid.Parse("00000000-0000-4000-8000-000000000002");
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "approveTwice",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(TaAnd, "and", "and"), Token(TaBeginning, "and", "also")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(
+                TokenLink(larger, TaAnd, "GEN 1:1:0", "and"),
+                TokenLink(smaller, TaBeginning, "GEN 1:1:0", "and")),
+        });
+
+        var counts = await Repository.CountApprovals([TaAnd, TaBeginning]);
+
+        await Assert.That(counts).IsEquivalentTo(new Dictionary<Guid, int> { [TaBeginning] = 1 });
+    }
+
+    [Test]
+    public async Task PassesOverAnApprovedLinkNamingNoStoredPayloadWhenPickingATie()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "approveMissing",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), Guid.NewGuid(), "GEN 1:1:0", "and")),
+        });
+
+        var counts = await Repository.CountApprovals([TaAnd]);
+
+        await Assert.That(counts).IsEquivalentTo(new Dictionary<Guid, int> { [TaAnd] = 2 });
+    }
+
+    [Test]
     public async Task FilesAnEditedRecordUnderItsNewKeysOnly()
     {
         await ApplyNext(FullAnalysis());

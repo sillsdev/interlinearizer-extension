@@ -572,27 +572,29 @@ export default function AnalysisCatalogPanel({
   /**
    * Runs a row edit as one undo step, summarized as given or from its result, then hands the result
    * to `then` once it settles. An edit sent to the session settles later and records its own step.
+   *
+   * @returns The edit's result, which rejects when an edit sent to the session fails.
    */
   const runRowEdit = useCallback(
     <T,>(
       edit: () => Settles<T>,
       summary: StepSummary | ((settled: T) => StepSummary),
       then: (settled: T) => void,
-    ) =>
-      whenSettled(
-        asOneStep(
-          edit,
-          typeof summary === 'function'
-            ? (result) => {
-                /* v8 ignore next 2 -- the host path groups no edits; its session records each */
-                if (result instanceof Promise)
-                  throw new Error('Interlinearizer: an edit sent to the session was grouped');
-                return summary(result);
-              }
-            : summary,
-        ),
-        then,
-      ),
+    ): Settles<T> => {
+      const result = asOneStep(
+        edit,
+        typeof summary === 'function'
+          ? (settled) => {
+              /* v8 ignore next 2 -- the host path groups no edits; its session records each */
+              if (settled instanceof Promise)
+                throw new Error('Interlinearizer: an edit sent to the session was grouped');
+              return summary(settled);
+            }
+          : summary,
+      );
+      whenSettled(result, then);
+      return result;
+    },
     [asOneStep],
   );
 
@@ -630,7 +632,7 @@ export default function AnalysisCatalogPanel({
   const handleGlossCommit = useCallback(
     (analysisId: string, value: string) => {
       const form = surfaceTextOf(analysisId);
-      runRowEdit(
+      return runRowEdit(
         () => rowDispatch.writeGloss(analysisId, value),
         (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
         (outcome) => reportEditOutcome(outcome, form),
@@ -654,7 +656,7 @@ export default function AnalysisCatalogPanel({
   const handleMorphemeGlossCommit = useCallback(
     (analysisId: string, morphemeId: string, value: string) => {
       const form = surfaceTextOf(analysisId);
-      runRowEdit(
+      return runRowEdit(
         () => rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
         (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
         (outcome) => reportEditOutcome(outcome, form),

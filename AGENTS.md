@@ -142,7 +142,7 @@ Each change a session applies, re-anchor passes included, is described by [descr
 
 #### The WebView on the host path
 
-The WebView uses sessions only on the host path, which a window takes when its `interlinearizer.hostPath` local-storage key is `'true'` ([host-path](src/utils/host-path.ts)). The path is off by default. There, [useSessionProject](src/hooks/useSessionProject.ts) keeps the draft in a session, and the analysis hooks read pages through a `PageClient` and send each edit as a session command.
+The WebView uses sessions only on the host path, which a window takes unless its `interlinearizer.hostPath` local-storage key is `'false'` ([host-path](src/utils/host-path.ts)). There, [useSessionProject](src/hooks/useSessionProject.ts) keeps the draft in a session, and the analysis hooks read pages through a `PageClient` and send each edit as a session command.
 
 `getBookOutline`, `getSegments`, and `getTextReadStatus` also take a `{ sessionId }` address. That form segments the text by the draft's boundaries and adds the analysis that `sessionPages` reads. Its pages also span each phrase they touch with every member token, wherever it sits.
 

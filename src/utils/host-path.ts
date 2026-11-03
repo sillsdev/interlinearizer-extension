@@ -1,5 +1,5 @@
 /**
- * Storage key that puts the WebView on the host path when set to `'true'`. On that path, the
+ * Storage key that takes the WebView off the host path when set to `'false'`. On the host path, the
  * WebView reads pages and sends commands through a session.
  */
 export const HOST_PATH_STORAGE_KEY = 'interlinearizer.hostPath';
@@ -10,9 +10,9 @@ let enabled: boolean | undefined;
 export function hostPathEnabled(): boolean {
   if (enabled === undefined) {
     try {
-      enabled = globalThis.localStorage?.getItem(HOST_PATH_STORAGE_KEY) === 'true';
+      enabled = globalThis.localStorage?.getItem(HOST_PATH_STORAGE_KEY) !== 'false';
     } catch {
-      enabled = false;
+      enabled = true;
     }
   }
   return enabled;

@@ -254,7 +254,7 @@ async function saveChapter(
  *
  * Reads the extension host's CPU time over each save's settle period when given `cpuPid`. Waits for
  * each gloss's autosave when `autosaves` is set. Each gloss starts with `glossPrefix`, which must
- * differ between calls on the same draft, since a gloss committed unchanged sends no edit.
+ * differ between calls on the same draft, because a gloss committed unchanged sends no edit.
  */
 async function measureScriptureSaves(
   page: Page,
@@ -327,7 +327,7 @@ async function measureHostPath(
 ): Promise<void> {
   await closeSettledView(page);
   try {
-    await page.evaluate((key) => localStorage.setItem(key, 'true'), HOST_PATH_KEY);
+    await page.evaluate((key) => localStorage.removeItem(key), HOST_PATH_KEY);
     if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', true);
     const open = new Samples();
     for (let run = 0; run < RUNS; run += 1) {
@@ -416,7 +416,7 @@ async function measureHostPath(
     try {
       await closeView(page);
     } finally {
-      await page.evaluate((key) => localStorage.removeItem(key), HOST_PATH_KEY);
+      await page.evaluate((key) => localStorage.setItem(key, 'false'), HOST_PATH_KEY);
       if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', false);
     }
   }
@@ -843,6 +843,7 @@ test('measure the app', async ({ mainPage }) => {
   await deleteLeftoverProjects(mainPage, projectId);
   const originalDraft = await readDraft(STORAGE_DIR, projectId);
   await enableMarks(mainPage);
+  await mainPage.evaluate((key) => localStorage.setItem(key, 'false'), HOST_PATH_KEY);
 
   const createdProjects: string[] = [];
   const results: Record<string, Record<string, unknown>> = {};
@@ -869,6 +870,7 @@ test('measure the app', async ({ mainPage }) => {
   } finally {
     await closeSettledView(app.page);
     await app.page.evaluate((key) => localStorage.removeItem(key), PERF_MARKS_KEY);
+    await app.page.evaluate((key) => localStorage.removeItem(key), HOST_PATH_KEY);
     await setHostPerfMarks(app.page, false);
     await writeDraft(STORAGE_DIR, originalDraft);
   }

@@ -62,6 +62,7 @@ import {
 } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
+jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
 jest.mock('../../hooks/useConcordanceEntries');
 jest.mock('../../hooks/useSourceTextReader');
 jest.mock('../../hooks/useInterlinearizerBookData');

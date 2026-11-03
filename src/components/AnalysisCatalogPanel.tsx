@@ -468,6 +468,9 @@ export default function AnalysisCatalogPanel({
    */
   const [glossRetry] = useState(() => createGlossRetry(setHoldsUnsavedGloss));
 
+  // A draft that no field can show again would otherwise hold the unsaved mark on for good.
+  useEffect(() => glossRetry.prune(catalogRows), [catalogRows, glossRetry]);
+
   const handleBreakdownDraftChange = useCallback(
     (analysisId: string, draft: string | undefined, surfaceText: string) => {
       setBreakdownDrafts((drafts) => {

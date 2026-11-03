@@ -9,7 +9,9 @@ import CatalogRowEditor, {
   type GlossRetry,
   ROW_EDITOR_STRING_KEYS,
 } from '../../components/CatalogRowEditor';
+import type { CatalogRow } from '../../utils/analysis-query';
 import type { Settles } from '../../utils/settles';
+import { FIXTURE_STAMPS } from '../test-helpers';
 
 const STRINGS = Object.fromEntries(ROW_EDITOR_STRING_KEYS.map((key) => [key, key]));
 
@@ -344,5 +346,106 @@ describe('createGlossRetry', () => {
     await settled;
 
     expect(then).toHaveBeenCalled();
+  });
+});
+
+describe('createGlossRetry', () => {
+  /** A listing of one analysis "ta-1", glossed `glosses`, with one morpheme "m-1" glossed `stem`. */
+  function rows(glosses: Record<string, string>, stem: Record<string, string> = {}): CatalogRow[] {
+    return [
+      {
+        analysisId: 'ta-1',
+        surfaceText: 'ἀρχῇ',
+        form: 'ἀρχῇ',
+        gloss: glosses.en ?? '',
+        glosses,
+        morphemes: [
+          { ...FIXTURE_STAMPS, id: 'm-1', form: 'ἀρχ', writingSystem: 'el', gloss: stem },
+        ],
+        usageCount: 1,
+        usageCountInBook: 1,
+        usages: [],
+        staleLocations: [],
+        books: new Set(),
+        searchText: '',
+      },
+    ];
+  }
+
+  const GLOSS = { language: 'en', analysisId: 'ta-1' };
+  const STEM = { language: 'en', analysisId: 'ta-1', morphemeId: 'm-1' };
+
+  it('keeps a draft whose gloss is still the one it was typed over', () => {
+    const onHeldChange = jest.fn();
+    const glossRetry = createGlossRetry(onHeldChange);
+    glossRetry.reject(GLOSS, { draft: 'beginning', typedOver: 'start' });
+
+    glossRetry.prune(rows({ en: 'start' }));
+
+    expect(glossRetry.draftFor(GLOSS, 'start')).toBe('beginning');
+    expect(onHeldChange.mock.calls).toStrictEqual([[true]]);
+  });
+
+  it('drops a draft once its gloss has changed', () => {
+    const onHeldChange = jest.fn();
+    const glossRetry = createGlossRetry(onHeldChange);
+    glossRetry.reject(GLOSS, { draft: 'beginning', typedOver: 'start' });
+
+    glossRetry.prune(rows({ en: 'origin' }));
+
+    expect(glossRetry.draftFor(GLOSS, 'start')).toBeUndefined();
+    expect(onHeldChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('drops a draft once its analysis is gone', () => {
+    const onHeldChange = jest.fn();
+    const glossRetry = createGlossRetry(onHeldChange);
+    glossRetry.reject(GLOSS, { draft: 'beginning', typedOver: 'start' });
+
+    glossRetry.prune([]);
+
+    expect(onHeldChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('checks a draft in another language against that language', () => {
+    const onHeldChange = jest.fn();
+    const glossRetry = createGlossRetry(onHeldChange);
+    const french = { language: 'fr', analysisId: 'ta-1' };
+    glossRetry.reject(french, { draft: 'commencement', typedOver: 'début' });
+
+    glossRetry.prune(rows({ en: 'start', fr: 'début' }));
+
+    expect(glossRetry.draftFor(french, 'début')).toBe('commencement');
+  });
+
+  it('keeps a morpheme draft typed over no gloss while the morpheme still has none', () => {
+    const glossRetry = createGlossRetry(jest.fn());
+    glossRetry.reject(STEM, { draft: 'begin', typedOver: '' });
+
+    glossRetry.prune(rows({ en: 'start' }));
+
+    expect(glossRetry.draftFor(STEM, '')).toBe('begin');
+  });
+
+  it('drops a morpheme draft once its morpheme is gone', () => {
+    const onHeldChange = jest.fn();
+    const glossRetry = createGlossRetry(onHeldChange);
+    glossRetry.reject({ ...STEM, morphemeId: 'm-2' }, { draft: 'begin', typedOver: '' });
+
+    glossRetry.prune(rows({ en: 'start' }));
+
+    expect(onHeldChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports a draft still held when another is dropped', () => {
+    const onHeldChange = jest.fn();
+    const glossRetry = createGlossRetry(onHeldChange);
+    glossRetry.reject(GLOSS, { draft: 'beginning', typedOver: 'start' });
+    glossRetry.reject(STEM, { draft: 'begin', typedOver: 'start' });
+
+    glossRetry.prune(rows({ en: 'start' }, { en: 'stem' }));
+
+    expect(glossRetry.draftFor(GLOSS, 'start')).toBe('beginning');
+    expect(onHeldChange).toHaveBeenLastCalledWith(true);
   });
 });

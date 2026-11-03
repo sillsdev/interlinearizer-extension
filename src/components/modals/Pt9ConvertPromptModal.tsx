@@ -1,5 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button, Spinner } from 'platform-bible-react';
+import { formatReplacementString } from 'platform-bible-utils';
 import { ModalShell } from './ModalShell';
 
 /** Localized string keys requested for this modal's rendered text. */
@@ -14,15 +15,18 @@ const PT9_CONVERT_PROMPT_STRING_KEYS: `%${string}%`[] = [
 
 /**
  * Transient status shown when the first-open data probe stays unanswered long enough to need an
- * indication. Not dismissable: the probe always settles, and this dialog leaves with it.
+ * indication. Not dismissable: the probe always settles, and this dialog leaves with it. The title
+ * names the source project by `sourceShortName`.
  */
-export function Pt9CheckingModal() {
+export function Pt9CheckingModal({ sourceShortName }: Readonly<{ sourceShortName: string }>) {
   const [localizedStrings] = useLocalizedStrings(PT9_CONVERT_PROMPT_STRING_KEYS);
 
   return (
     <ModalShell
       titleTestId="pt9-checking-modal-title"
-      title={localizedStrings['%interlinearizer_pt9ImportModal_title%']}
+      title={formatReplacementString(localizedStrings['%interlinearizer_pt9ImportModal_title%'], {
+        projectName: sourceShortName,
+      })}
       width="tw:w-96"
     >
       <div className="tw:flex tw:items-center tw:gap-2" data-testid="pt9-checking">
@@ -38,18 +42,22 @@ export function Pt9CheckingModal() {
 /**
  * First-open offer to convert the source project's Paratext 9 interlinear data. Yes runs the
  * import, whose result becomes the only project created; No continues into the empty draft exactly
- * as an open does today. Dismissing the dialog (Escape or a click outside) means No.
+ * as an open does today. Dismissing the dialog (Escape or a click outside) means No. The title
+ * names the source project by `sourceShortName`.
  */
 export function Pt9ConvertPromptModal({
+  sourceShortName,
   onYes,
   onNo,
-}: Readonly<{ onYes: () => void; onNo: () => void }>) {
+}: Readonly<{ sourceShortName: string; onYes: () => void; onNo: () => void }>) {
   const [localizedStrings] = useLocalizedStrings(PT9_CONVERT_PROMPT_STRING_KEYS);
 
   return (
     <ModalShell
       titleTestId="pt9-convert-prompt-title"
-      title={localizedStrings['%interlinearizer_pt9ImportModal_title%']}
+      title={formatReplacementString(localizedStrings['%interlinearizer_pt9ImportModal_title%'], {
+        projectName: sourceShortName,
+      })}
       width="tw:w-96"
       onClose={onNo}
     >

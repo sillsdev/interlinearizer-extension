@@ -146,6 +146,7 @@ function mockPdps({
     Promise.resolve(selectFromFixture(readFixtureData(), selector?.paths)),
   usj = MAT_USJ,
   languageTag = 'en',
+  shortName = async () => 'SRC',
 }: {
   /** A manifest, or one from a platform that does not report a usable ceiling. */
   manifest?:
@@ -155,6 +156,8 @@ function mockPdps({
   data?: (selector?: { paths?: string[] }) => Promise<Pt9InterlinearProjectData>;
   usj?: unknown;
   languageTag?: unknown;
+  /** The source project's `platform.name`; reject to simulate an unreadable setting. */
+  shortName?: () => Promise<string>;
 } = {}): void {
   __mockProjectDataProvidersGet.mockImplementation((projectInterface: unknown) => {
     if (projectInterface === 'platformScripture.Pt9Interlinear')
@@ -164,14 +167,18 @@ function mockPdps({
       });
     if (projectInterface === 'platformScripture.USJ_Book')
       return Promise.resolve({ getBookUSJ: jest.fn().mockResolvedValue(usj) });
-    return Promise.resolve({ getSetting: jest.fn().mockResolvedValue(languageTag) });
+    return Promise.resolve({
+      getSetting: jest.fn((key: string) =>
+        key === 'platform.name' ? shortName() : Promise.resolve(languageTag),
+      ),
+    });
   });
 }
 
 /** The localized values the import resolves and stamps. */
 const LOCALIZED: Record<string, string> = {
-  '%interlinearizer_pt9Import_name%': 'Paratext 9 Interlinear',
-  '%interlinearizer_pt9Import_description%': 'Imported from Paratext 9.',
+  '%interlinearizer_pt9Import_name%': 'Paratext 9 Interlinear: {projectName}',
+  '%interlinearizer_pt9Import_description%': 'Imported from Paratext 9 ({projectName}).',
 };
 
 /** The project record JSON written under a `project:` key, parsed; throws when none was written. */
@@ -217,8 +224,8 @@ describe('importPt9Project', () => {
 
     const project = writtenProject();
     expect(project).toMatchObject({
-      name: 'Paratext 9 Interlinear',
-      description: 'Imported from Paratext 9.',
+      name: 'Paratext 9 Interlinear: SRC',
+      description: 'Imported from Paratext 9 (SRC).',
       sourceProjectId: 'src-project',
       analysisLanguages: ['en'],
       pt9Import: {
@@ -231,6 +238,25 @@ describe('importPt9Project', () => {
       },
     });
     expect(project.analysis.tokenAnalyses).toHaveLength(17);
+  });
+
+  it('names the import after the project id when the short name cannot be read', async () => {
+    mockPdps({ shortName: () => Promise.reject(new Error('no setting')) });
+
+    await importPt9Project(token, 'src-project');
+
+    expect(writtenProject()).toMatchObject({
+      name: 'Paratext 9 Interlinear: src-project',
+      description: 'Imported from Paratext 9 (src-project).',
+    });
+  });
+
+  it('names the import after the project id when the short name is blank', async () => {
+    mockPdps({ shortName: async () => '' });
+
+    await importPt9Project(token, 'src-project');
+
+    expect(writtenProject()).toMatchObject({ name: 'Paratext 9 Interlinear: src-project' });
   });
 
   it('replaces the existing import on sync, keeping its id', async () => {

@@ -10,7 +10,7 @@ import {
 } from '../../../components/modals/Pt9ConvertPromptModal';
 
 const LOCALIZED: Record<string, string> = {
-  '%interlinearizer_pt9ImportModal_title%': 'Import from Paratext 9',
+  '%interlinearizer_pt9ImportModal_title%': 'Import from Paratext 9: {projectName}',
   '%interlinearizer_pt9ImportPrompt_message%': 'This project has Paratext 9 interlinear data.',
   '%interlinearizer_pt9ImportPrompt_question%': 'Would you like to view it now?',
   '%interlinearizer_pt9ImportPrompt_yes%': 'Yes',
@@ -23,11 +23,11 @@ describe('Pt9ConvertPromptModal', () => {
     jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
   });
 
-  it('renders the import title, the offer message and question, and both answers', () => {
-    render(<Pt9ConvertPromptModal onYes={jest.fn()} onNo={jest.fn()} />);
+  it('renders the import title naming the source, the offer message and question, and both answers', () => {
+    render(<Pt9ConvertPromptModal sourceShortName="SRC" onYes={jest.fn()} onNo={jest.fn()} />);
 
     expect(screen.getByTestId('pt9-convert-prompt-title')).toHaveTextContent(
-      'Import from Paratext 9',
+      'Import from Paratext 9: SRC',
     );
     expect(screen.getByTestId('pt9-convert-prompt-message')).toHaveTextContent(
       'This project has Paratext 9 interlinear data.',
@@ -41,7 +41,7 @@ describe('Pt9ConvertPromptModal', () => {
 
   it('answers Yes', async () => {
     const onYes = jest.fn();
-    render(<Pt9ConvertPromptModal onYes={onYes} onNo={jest.fn()} />);
+    render(<Pt9ConvertPromptModal sourceShortName="SRC" onYes={onYes} onNo={jest.fn()} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Yes' }));
 
@@ -50,7 +50,7 @@ describe('Pt9ConvertPromptModal', () => {
 
   it('answers No', async () => {
     const onNo = jest.fn();
-    render(<Pt9ConvertPromptModal onYes={jest.fn()} onNo={onNo} />);
+    render(<Pt9ConvertPromptModal sourceShortName="SRC" onYes={jest.fn()} onNo={onNo} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'No' }));
 
@@ -63,8 +63,16 @@ describe('Pt9CheckingModal', () => {
     jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
   });
 
+  it('titles the check with the source short name', () => {
+    render(<Pt9CheckingModal sourceShortName="SRC" />);
+
+    expect(screen.getByTestId('pt9-checking-modal-title')).toHaveTextContent(
+      'Import from Paratext 9: SRC',
+    );
+  });
+
   it('shows the spinner and the checking status with no dismiss affordances', () => {
-    render(<Pt9CheckingModal />);
+    render(<Pt9CheckingModal sourceShortName="SRC" />);
 
     expect(screen.getByTestId('pt9-checking')).toHaveTextContent(
       'Checking for Paratext 9 interlinear data…',

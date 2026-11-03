@@ -89,6 +89,15 @@ export const MOCK_VIEW_PROJECT_INFO_MENU_ITEM: MenuItemContainingCommand = {
   localizeNotes: '',
 };
 
+/** Sentinel menu item passed by the mock toolbar when the delete-project button is clicked. */
+export const MOCK_DELETE_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_openDeleteProjectModal%',
+  command: 'interlinearizer.openDeleteProjectModal',
+  group: 'interlinearizer.draftActions',
+  order: 2,
+  localizeNotes: '',
+};
+
 /** Sentinel menu item passed by the mock toolbar when the save button is clicked. */
 export const MOCK_SAVE_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_save%',
@@ -263,6 +272,15 @@ export function TabToolbar({
           onClick={() => onSelectProjectMenuItem(MOCK_DISCARD_CHANGES_MENU_ITEM)}
         >
           Discard Changes
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-delete-project"
+          onClick={() => onSelectProjectMenuItem(MOCK_DELETE_PROJECT_MENU_ITEM)}
+        >
+          Delete project
         </button>
       )}
       {onSelectProjectMenuItem && (

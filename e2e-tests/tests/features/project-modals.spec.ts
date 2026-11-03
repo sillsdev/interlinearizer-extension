@@ -15,13 +15,13 @@ import {
  */
 const MODAL_TOURS = [
   {
-    name: 'Select Interlinear Project',
-    menuItem: /Select Interlinear Project/i,
+    name: 'Select interlinear',
+    menuItem: /Select interlinear/i,
     titleTestId: 'select-project-modal-title',
   },
   {
-    name: 'New Interlinear Project',
-    menuItem: /New Interlinear Project/i,
+    name: 'New interlinear',
+    menuItem: /New interlinear/i,
     titleTestId: 'create-project-modal-title',
   },
   {

@@ -14,6 +14,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_copyModal_title%': 'Copy to editable project',
   '%interlinearizer_copyModal_defaultName%': 'Copy of Paratext 9 Interlinear',
   '%interlinearizer_copyModal_defaultNameNumbered%': 'Copy ({number}) of Paratext 9 Interlinear',
+  '%interlinearizer_copyModal_defaultDescription%': 'Editable copy of {projectName}.',
   '%interlinearizer_copyModal_create%': 'Create copy',
   '%interlinearizer_copyModal_cancel%': 'Cancel',
   '%interlinearizer_copyModal_info%': 'Later Paratext 9 changes stay out of the copy.',
@@ -44,6 +45,7 @@ describe('CopyToEditableModal', () => {
       render(
         <CopyToEditableModal
           sourceProjectId="src-proj"
+          sourceShortName="SRC"
           isSubmitting={isSubmitting}
           onSubmit={onSubmit}
           onClose={onClose}
@@ -56,6 +58,12 @@ describe('CopyToEditableModal', () => {
     await renderModal();
 
     expect(screen.getByLabelText('Name')).toHaveValue('Copy of Paratext 9 Interlinear');
+  });
+
+  it('prefills the description with the localized default naming the source', async () => {
+    await renderModal();
+
+    expect(screen.getByLabelText('Description')).toHaveValue('Editable copy of SRC.');
   });
 
   it('numbers the default past every name a project of the source already bears', async () => {
@@ -81,6 +89,7 @@ describe('CopyToEditableModal', () => {
     render(
       <CopyToEditableModal
         sourceProjectId="src-proj"
+        sourceShortName="SRC"
         isSubmitting={false}
         onSubmit={jest.fn()}
         onClose={jest.fn()}
@@ -114,6 +123,7 @@ describe('CopyToEditableModal', () => {
 
     await userEvent.clear(screen.getByLabelText('Name'));
     await userEvent.type(screen.getByLabelText('Name'), '  My copy  ');
+    await userEvent.clear(screen.getByLabelText('Description'));
     await userEvent.type(screen.getByLabelText('Description'), ' notes ');
     await userEvent.click(screen.getByRole('button', { name: 'Create copy' }));
 
@@ -125,6 +135,7 @@ describe('CopyToEditableModal', () => {
     await renderModal({ onSubmit });
 
     await userEvent.clear(screen.getByLabelText('Name'));
+    await userEvent.clear(screen.getByLabelText('Description'));
     await userEvent.click(screen.getByRole('button', { name: 'Create copy' }));
 
     expect(onSubmit).toHaveBeenCalledWith('Copy of Paratext 9 Interlinear', undefined);
@@ -138,7 +149,10 @@ describe('CopyToEditableModal', () => {
     await userEvent.clear(screen.getByLabelText('Name'));
     await userEvent.click(screen.getByRole('button', { name: 'Create copy' }));
 
-    expect(onSubmit).toHaveBeenCalledWith('Copy (2) of Paratext 9 Interlinear', undefined);
+    expect(onSubmit).toHaveBeenCalledWith(
+      'Copy (2) of Paratext 9 Interlinear',
+      'Editable copy of SRC.',
+    );
   });
 
   it('cancels without submitting', async () => {

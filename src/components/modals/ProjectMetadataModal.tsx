@@ -1,17 +1,15 @@
 import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Trash2 } from 'lucide-react';
 import { Button, Input, Label, Textarea } from 'platform-bible-react';
+import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { parseLanguageTags } from '../../utils/language-tags';
-import { DeleteProjectConfirm } from './DeleteProjectConfirm';
 import { ModalShell } from './ModalShell';
 
 /** Localized string keys requested for this modal's rendered text. */
 const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_title%',
-  '%interlinearizer_modal_metadata_id_label%',
   '%interlinearizer_modal_metadata_name_label%',
   '%interlinearizer_modal_metadata_name_placeholder%',
   '%interlinearizer_modal_metadata_description_label%',
@@ -20,10 +18,8 @@ const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_language_placeholder%',
   '%interlinearizer_modal_metadata_created_label%',
   '%interlinearizer_modal_metadata_modified_label%',
-  '%interlinearizer_modal_metadata_source_label%',
   '%interlinearizer_modal_metadata_save%',
   '%interlinearizer_modal_metadata_close%',
-  '%interlinearizer_modal_metadata_delete%',
   '%interlinearizer_modal_metadata_lastSynced_label%',
 ];
 
@@ -35,8 +31,8 @@ type ProjectMetadataModalProps = Readonly<{
   name?: string;
   /** Optional user-facing description of the project. */
   description?: string;
-  /** Platform.Bible project ID of the source text. */
-  sourceProjectId: string;
+  /** Short name of the source project, which the title ends with. */
+  sourceShortName: string;
   /** Optional Platform.Bible project ID of the target text for bilateral alignment projects. */
   targetProjectId?: string;
   /** BCP 47 tags for the analysis languages. */
@@ -48,7 +44,7 @@ type ProjectMetadataModalProps = Readonly<{
   /**
    * When the project is a Paratext 9 import, the ISO 8601 timestamp of the import that produced its
    * current content. Its presence switches the modal to the read-only variant: every field renders
-   * as static text, there is no Save, and only Delete remains - the one change an import allows.
+   * as static text and there is no Save.
    */
   pt9ImportedAt?: string;
   /** Callback invoked when the modal should be dismissed without saving. */
@@ -60,20 +56,18 @@ type ProjectMetadataModalProps = Readonly<{
     analysisLanguages: string[];
     updatedAt?: string;
   }) => void;
-  /** Optional callback invoked with the deleted project ID after deletion. */
-  onProjectDeleted?: (deletedProjectId: string) => void;
 }>;
 
 /**
  * Modal that displays and allows editing of the active interlinearizer project's metadata. Editable
- * fields are name, description, and analysis language. Read-only fields are project ID, creation
- * date, and source project. Delete asks for confirmation before it runs.
+ * fields are name, description, and analysis language. Read-only fields are the creation and
+ * modification dates and, for an import, the last sync.
  */
 export function ProjectMetadataModal({
   interlinearProjectId,
   name,
   description,
-  sourceProjectId,
+  sourceShortName,
   targetProjectId,
   analysisLanguages,
   createdAt,
@@ -81,7 +75,6 @@ export function ProjectMetadataModal({
   pt9ImportedAt,
   onClose,
   onProjectSaved,
-  onProjectDeleted,
 }: ProjectMetadataModalProps) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(
     PROJECT_METADATA_MODAL_STRING_KEYS,
@@ -90,7 +83,6 @@ export function ProjectMetadataModal({
   const [editName, setEditName] = useState(name ?? '');
   const [editDescription, setEditDescription] = useState(description ?? '');
   const [editLanguages, setEditLanguages] = useState(analysisLanguages.join(', '));
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   // Guards Save against double-submit; `isSubmitting` disables the controls while it runs.
   const { isSubmitting, runGuarded } = useSubmitGuard();
 
@@ -164,20 +156,14 @@ export function ProjectMetadataModal({
     ],
   );
 
-  const handleDeleted = useCallback(
-    (deletedProjectId: string) => {
-      onProjectDeleted?.(deletedProjectId);
-      onClose();
-    },
-    [onProjectDeleted, onClose],
-  );
-
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
     <ModalShell
       titleTestId="project-metadata-modal-title"
-      title={localizedStrings['%interlinearizer_modal_metadata_title%']}
+      title={formatReplacementString(localizedStrings['%interlinearizer_modal_metadata_title%'], {
+        projectName: sourceShortName,
+      })}
       width="tw:w-lg"
       onClose={isSubmitting ? undefined : onClose}
     >
@@ -249,22 +235,12 @@ export function ProjectMetadataModal({
       {/* Read-only metadata */}
       <dl className="tw:flex tw:flex-col tw:gap-2 tw:mb-5">
         <MetadataRow
-          label={localizedStrings['%interlinearizer_modal_metadata_id_label%']}
-          value={interlinearProjectId}
-          mono
-        />
-        <MetadataRow
           label={localizedStrings['%interlinearizer_modal_metadata_created_label%']}
           value={formattedDate}
         />
         <MetadataRow
           label={localizedStrings['%interlinearizer_modal_metadata_modified_label%']}
           value={formattedModifiedDate}
-        />
-        <MetadataRow
-          label={localizedStrings['%interlinearizer_modal_metadata_source_label%']}
-          value={sourceProjectId}
-          mono
         />
         {formattedLastSynced !== undefined && (
           <MetadataRow
@@ -274,40 +250,19 @@ export function ProjectMetadataModal({
         )}
       </dl>
 
-      {/* Footer */}
-      <div className="tw:flex tw:gap-2 tw:justify-between">
-        <Button
-          variant="destructive"
-          onClick={() => setConfirmingDelete(true)}
-          disabled={isSubmitting}
-        >
-          <Trash2 className="tw:mr-1 tw:size-[13px]" />
-          {localizedStrings['%interlinearizer_modal_metadata_delete%']}
+      <div className="tw:flex tw:gap-2 tw:justify-end">
+        <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
+          {localizedStrings['%interlinearizer_modal_metadata_close%']}
         </Button>
-        <div className="tw:flex tw:gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
-            {localizedStrings['%interlinearizer_modal_metadata_close%']}
+        {!readOnly && (
+          <Button
+            onClick={handleSave}
+            disabled={isSubmitting || editName.trim() === '' || parsedLanguages.length === 0}
+          >
+            {localizedStrings['%interlinearizer_modal_metadata_save%']}
           </Button>
-          {!readOnly && (
-            <Button
-              onClick={handleSave}
-              disabled={isSubmitting || editName.trim() === '' || parsedLanguages.length === 0}
-            >
-              {localizedStrings['%interlinearizer_modal_metadata_save%']}
-            </Button>
-          )}
-        </div>
+        )}
       </div>
-
-      {confirmingDelete && (
-        <DeleteProjectConfirm
-          projectId={interlinearProjectId}
-          projectName={name}
-          isPt9Import={readOnly}
-          onCancel={() => setConfirmingDelete(false)}
-          onDeleted={handleDeleted}
-        />
-      )}
     </ModalShell>
   );
 }
@@ -328,7 +283,7 @@ function MetadataRow({
     <div className="tw:flex tw:flex-col tw:gap-0.5">
       <dt className="tw:section-label">{label}</dt>
       <dd
-        className={['tw:text-sm tw:break-all tw:text-foreground', mono ? 'tw:font-mono' : '']
+        className={['tw:text-sm tw:break-words tw:text-foreground', mono ? 'tw:font-mono' : '']
           .filter(Boolean)
           .join(' ')}
       >

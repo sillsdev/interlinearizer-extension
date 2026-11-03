@@ -10,12 +10,14 @@ import { isInterlinearProjectSummary, isSavedAsProject } from '../../types/type-
 import type { Settles } from '../../utils/settles';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
 import { DiscardDraftConfirm } from './DiscardDraftConfirm';
+import { DeleteProjectConfirm } from './DeleteProjectConfirm';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
 import { SaveAsProjectModal } from './SaveAsProjectModal';
 import { SelectInterlinearProjectModal } from './SelectInterlinearProjectModal';
 
 /** Which project-related modal is currently open; `'none'` means no modal is visible. */
-export type ModalState = 'none' | 'select' | 'create' | 'metadata' | 'saveAs' | 'importPt9';
+export type ModalState =
+  'none' | 'select' | 'create' | 'metadata' | 'delete' | 'saveAs' | 'importPt9';
 
 /**
  * A draft-replacing action deferred behind the unsaved-changes confirmation: either creating and
@@ -27,13 +29,14 @@ type PendingReplace =
 
 /**
  * Single mount point for all project-related dialogs. Renders the active one of
- * {@link SelectInterlinearProjectModal}, {@link CreateProjectModal}, {@link ProjectMetadataModal}, or
- * {@link SaveAsProjectModal}, with the {@link DiscardDraftConfirm} guard overlaid on top when a
- * draft-replacing action is pending (so canceling returns to the underlying modal with its state
- * intact); manages the shared WebView state for the active project; and routes project lifecycle
- * actions through the draft: New creates and persists a project immediately (so it appears in
- * Select right away) and seeds the draft from it; Open loads an existing project into the draft;
- * Save / Save As write the draft's analysis back to the active project or create a new one.
+ * {@link SelectInterlinearProjectModal}, {@link CreateProjectModal}, {@link ProjectMetadataModal},
+ * {@link DeleteProjectConfirm} for the active project, or {@link SaveAsProjectModal}, with the
+ * {@link DiscardDraftConfirm} guard overlaid on top when a draft-replacing action is pending (so
+ * canceling returns to the underlying modal with its state intact); manages the shared WebView
+ * state for the active project; and routes project lifecycle actions through the draft: New creates
+ * and persists a project immediately (so it appears in Select right away) and seeds the draft from
+ * it; Open loads an existing project into the draft; Save / Save As write the draft's analysis back
+ * to the active project or create a new one.
  *
  * @param props.activeProject - The currently active interlinear project (the Save target), read
  *   from WebView state by the parent.
@@ -69,6 +72,7 @@ type PendingReplace =
  *   freshly created editable copy.
  * @param props.projectId - PAPI source project ID passed from the host.
  * @param props.setModal - Setter for which modal is open.
+ * @param props.sourceShortName - Short name of the source project, which dialog titles end with.
  * @param props.useWebViewState - Hook for reading and writing values persisted in the WebView's
  *   saved state (survives tab restores).
  * @returns The currently active modal/confirmation, or an empty container when none is open.
@@ -88,6 +92,7 @@ export default function ProjectModals({
   openRequest,
   projectId,
   setModal,
+  sourceShortName,
   useWebViewState,
 }: Readonly<{
   activeProject: InterlinearProjectSummary | undefined;
@@ -110,6 +115,7 @@ export default function ProjectModals({
   openRequest?: { project: InterlinearProjectSummary; requestId: number };
   projectId: string;
   setModal: (modal: ModalState) => void;
+  sourceShortName: string;
   useWebViewState: UseWebViewStateHook;
 }>) {
   const [, setActiveProject, resetActiveProject] = useWebViewState<
@@ -118,7 +124,7 @@ export default function ProjectModals({
 
   /**
    * The project currently open in the metadata modal. Set when the user chooses Get info in the
-   * select modal or triggers "View Project Info" from the menu.
+   * select modal or triggers "Interlinear info" from the menu.
    */
   const [metadataProject, setMetadataProject] = useState<InterlinearProjectSummary | undefined>(
     undefined,
@@ -134,7 +140,7 @@ export default function ProjectModals({
 
   /**
    * Tracks whether the metadata modal was opened from the select modal (Get info) or from the
-   * top-menu "View Project Info" item. `true` means opened via the select modal, so closing the
+   * top-menu "Interlinear info" item. `true` means opened via the select modal, so closing the
    * metadata modal restores the select modal; `false` means opened from the menu, so closing
    * dismisses to `'none'`.
    */
@@ -575,9 +581,9 @@ export default function ProjectModals({
       {modal === 'metadata' && resolvedMetadataProject && (
         <ProjectMetadataModal
           interlinearProjectId={resolvedMetadataProject.id}
+          sourceShortName={sourceShortName}
           name={resolvedMetadataProject.name}
           description={resolvedMetadataProject.description}
-          sourceProjectId={resolvedMetadataProject.sourceProjectId}
           targetProjectId={resolvedMetadataProject.targetProjectId}
           analysisLanguages={resolvedMetadataProject.analysisLanguages}
           createdAt={resolvedMetadataProject.createdAt}
@@ -585,7 +591,19 @@ export default function ProjectModals({
           pt9ImportedAt={resolvedMetadataProject.pt9Import?.importedAt}
           onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}
-          onProjectDeleted={handleProjectDeleted}
+        />
+      )}
+
+      {modal === 'delete' && activeProject && (
+        <DeleteProjectConfirm
+          projectId={activeProject.id}
+          projectName={activeProject.name}
+          isPt9Import={activeProject.pt9Import !== undefined}
+          onCancel={() => setModal('none')}
+          onDeleted={(deletedId) => {
+            handleProjectDeleted(deletedId);
+            setModal('none');
+          }}
         />
       )}
 

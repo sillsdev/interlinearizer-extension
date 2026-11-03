@@ -76,7 +76,7 @@
           },
           {
             "label": "%interlinearizer_openProjectInfoModal%",
-            "localizeNotes": "Interlinearizer top menu > View and edit metadata for the active interlinearizer project, or delete it",
+            "localizeNotes": "Interlinearizer top menu > View and edit metadata for the active interlinearizer project",
             "group": "interlinearizer.projectActions",
             "order": 3,
             "command": "interlinearizer.openProjectInfoModal"
@@ -101,6 +101,13 @@
             "group": "interlinearizer.draftActions",
             "order": 1,
             "command": "interlinearizer.openDiscardChangesModal"
+          },
+          {
+            "label": "%interlinearizer_openDeleteProjectModal%",
+            "localizeNotes": "Interlinearizer top menu > Ask to delete the active interlinear project. Hidden while no project is active",
+            "group": "interlinearizer.draftActions",
+            "order": 2,
+            "command": "interlinearizer.openDeleteProjectModal"
           },
           {
             "label": "%interlinearizer_openLexiconChooser%",

@@ -667,7 +667,7 @@ async function measureTier(
     // eslint-disable-next-line no-await-in-loop
     await takeHostEntries(page);
     // eslint-disable-next-line no-await-in-loop
-    await openProjectMenuItem(frame, /Select Interlinear Project/i);
+    await openProjectMenuItem(frame, /Select interlinear/i);
     // eslint-disable-next-line no-await-in-loop
     const measures = await waitForMeasure(frame, 'projects-fetch');
     picker.webView.add(measures, ['projects-fetch']);
@@ -687,7 +687,7 @@ async function measureTier(
 
   // Save: writing the draft's analysis to the project it was opened from.
   await clearMeasures(frame);
-  await openProjectMenuItem(frame, /Select Interlinear Project/i);
+  await openProjectMenuItem(frame, /Select interlinear/i);
   await dialog
     .locator('li > button', { hasText: `Perf ${tier.name} 1` })
     .first()

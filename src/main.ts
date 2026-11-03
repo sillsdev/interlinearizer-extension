@@ -4025,7 +4025,20 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary:
-          'Open the project-info modal for the active project in the Interlinearizer WebView',
+          'Open the interlinear-info modal for the active project in the Interlinearizer WebView',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const openDeleteProjectModalCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.openDeleteProjectModal',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    /* v8 ignore next */ async () => {},
+    {
+      method: {
+        summary: 'Ask to delete the active project in the Interlinearizer WebView',
         params: [],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
@@ -4230,6 +4243,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openSelectProjectModalCommandRegistration,
     openNewProjectModalCommandRegistration,
     openProjectInfoModalCommandRegistration,
+    openDeleteProjectModalCommandRegistration,
     openAnalysisCatalogCommandRegistration,
     openConcordanceCommandRegistration,
     undoCommandRegistration,

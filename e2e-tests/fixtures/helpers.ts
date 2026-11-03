@@ -1567,8 +1567,8 @@ async function isDraftDirty(page: Page): Promise<boolean> {
 }
 
 /**
- * Open the "Select Interlinear Project" modal from the Project menu and wait for its project list
- * to finish loading (the modal's buttons are disabled while the fetch is in flight).
+ * Open the "Select interlinear" modal from the Project menu and wait for its project list to finish
+ * loading (the modal's buttons are disabled while the fetch is in flight).
  *
  * @returns The frame locator for the Interlinearizer iframe, for chaining clicks in the modal.
  * @throws If the modal does not open or its list does not finish loading within the timeouts.
@@ -1576,7 +1576,7 @@ async function isDraftDirty(page: Page): Promise<boolean> {
 async function openSelectProjectModal(page: Page): Promise<FrameLocator> {
   const frame = await openInterlinearizerProjectMenu(page);
   await frame
-    .getByRole('menuitem', { name: /Select Interlinear Project/i })
+    .getByRole('menuitem', { name: /Select interlinear/i })
     .first()
     .click();
   await expect(frame.getByTestId('select-project-modal-title')).toBeVisible({ timeout: 10_000 });

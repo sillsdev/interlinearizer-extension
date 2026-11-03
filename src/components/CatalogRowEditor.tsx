@@ -100,16 +100,25 @@ export type GlossRetry = Readonly<{
   restored: (key: string) => void;
 }>;
 
-/** Creates an empty {@link GlossRetry}. */
-export function createGlossRetry(): GlossRetry {
+/**
+ * Creates an empty {@link GlossRetry} that tells `onHeldChange` whether any draft is held, each time
+ * a draft is kept or dropped.
+ */
+export function createGlossRetry(onHeldChange: (held: boolean) => void): GlossRetry {
   const rejected = new Map<string, RejectedGloss>();
   return {
     draftFor: (key, committedValue) => {
       const gloss = rejected.get(key);
       return gloss?.typedOver === committedValue ? gloss.draft : undefined;
     },
-    reject: (key, gloss) => rejected.set(key, gloss),
-    restored: (key) => rejected.delete(key),
+    reject: (key, gloss) => {
+      rejected.set(key, gloss);
+      onHeldChange(true);
+    },
+    restored: (key) => {
+      rejected.delete(key);
+      onHeldChange(rejected.size > 0);
+    },
   };
 }
 
@@ -169,7 +178,10 @@ function CommitOnBlurInput({
   id?: string;
   onCommit: (value: string) => Settles<unknown>;
   retry: GlossRetry;
-  /** The key that `retry` keeps this field's draft under, unique among the panel's gloss fields. */
+  /**
+   * The key that `retry` keeps this field's draft under, unique among the panel's gloss fields in
+   * every analysis language.
+   */
   retryKey: string;
   testId: string;
 }>) {
@@ -374,7 +386,7 @@ export default function CatalogRowEditor({
             key={`${analysisId}-gloss`}
             onCommit={onGlossCommit}
             retry={glossRetry}
-            retryKey={analysisId}
+            retryKey={`${analysisLanguage}/${analysisId}`}
             testId="catalog-row-gloss-input"
           />
         </div>
@@ -432,7 +444,7 @@ export default function CatalogRowEditor({
                     key={`${analysisId}-${morpheme.id}`}
                     onCommit={(value) => onMorphemeGlossCommit(morpheme.id, value)}
                     retry={glossRetry}
-                    retryKey={`${analysisId}/${morpheme.id}`}
+                    retryKey={`${analysisLanguage}/${analysisId}/${morpheme.id}`}
                     testId="catalog-row-morpheme-gloss-input"
                   />
                 )}

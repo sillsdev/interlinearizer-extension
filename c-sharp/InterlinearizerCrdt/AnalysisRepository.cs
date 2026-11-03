@@ -25,48 +25,52 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client)
     /// changes nothing writes no commit.
     /// </summary>
     /// <exception cref="ArgumentException">
-    /// If an id appears more than once in one record kind's changes; nothing is applied.
+    /// If an id appears more than once in the changes, in one record kind or across kinds, or a put's
+    /// id is stored as a record of another kind; nothing is applied. Harmony keeps every entity in
+    /// one table, so two records of different kinds cannot share an id.
     /// </exception>
     public async Task Apply(ChangeSet changes, PutMode putMode = PutMode.Replace)
     {
-        AssertIdsDistinct(changes.SegmentAnalyses, "segment analysis");
-        AssertIdsDistinct(changes.SegmentAnalysisLinks, "segment analysis link");
-        AssertIdsDistinct(changes.TokenAnalyses, "token analysis");
-        AssertIdsDistinct(changes.TokenAnalysisLinks, "token analysis link");
-        AssertIdsDistinct(changes.PhraseAnalyses, "phrase analysis");
-        AssertIdsDistinct(changes.PhraseAnalysisLinks, "phrase analysis link");
+        var kinds = new IKindChanges[]
+        {
+            new KindChanges<SegmentAnalysis>("segment analysis", changes.SegmentAnalyses,
+                a => new CreateSegmentAnalysisChange(a),
+                a => new ReplaceSegmentAnalysisChange(a),
+                PatchSegmentAnalysisChange.Diff,
+                id => new DeleteChange<SegmentAnalysis>(id)),
+            new KindChanges<TokenAnalysis>("token analysis", changes.TokenAnalyses,
+                a => new CreateTokenAnalysisChange(a),
+                a => new ReplaceTokenAnalysisChange(a),
+                PatchTokenAnalysisChange.Diff,
+                id => new DeleteChange<TokenAnalysis>(id)),
+            new KindChanges<PhraseAnalysis>("phrase analysis", changes.PhraseAnalyses,
+                a => new CreatePhraseAnalysisChange(a),
+                a => new ReplacePhraseAnalysisChange(a),
+                PatchPhraseAnalysisChange.Diff,
+                id => new DeleteChange<PhraseAnalysis>(id)),
+            new KindChanges<SegmentAnalysisLink>("segment analysis link", changes.SegmentAnalysisLinks,
+                l => new CreateSegmentAnalysisLinkChange(l),
+                l => new ReplaceSegmentAnalysisLinkChange(l),
+                PatchSegmentAnalysisLinkChange.Diff,
+                id => new DeleteChange<SegmentAnalysisLink>(id)),
+            new KindChanges<TokenAnalysisLink>("token analysis link", changes.TokenAnalysisLinks,
+                l => new CreateTokenAnalysisLinkChange(l),
+                l => new ReplaceTokenAnalysisLinkChange(l),
+                PatchTokenAnalysisLinkChange.Diff,
+                id => new DeleteChange<TokenAnalysisLink>(id)),
+            new KindChanges<PhraseAnalysisLink>("phrase analysis link", changes.PhraseAnalysisLinks,
+                l => new CreatePhraseAnalysisLinkChange(l),
+                l => new ReplacePhraseAnalysisLinkChange(l),
+                PatchPhraseAnalysisLinkChange.Diff,
+                id => new DeleteChange<PhraseAnalysisLink>(id)),
+        };
+        AssertIdsDistinct(kinds);
 
+        var putIds = kinds.SelectMany(k => k.PutIds).ToList();
+        var storedKinds = new Dictionary<Guid, string>();
+        foreach (var kind in kinds) await kind.LoadStored(this, putIds, storedKinds);
         var harmonyChanges = new List<IChange>();
-        await AddChanges(harmonyChanges, changes.SegmentAnalyses, putMode,
-            a => new CreateSegmentAnalysisChange(a),
-            a => new ReplaceSegmentAnalysisChange(a),
-            PatchSegmentAnalysisChange.Diff,
-            id => new DeleteChange<SegmentAnalysis>(id));
-        await AddChanges(harmonyChanges, changes.TokenAnalyses, putMode,
-            a => new CreateTokenAnalysisChange(a),
-            a => new ReplaceTokenAnalysisChange(a),
-            PatchTokenAnalysisChange.Diff,
-            id => new DeleteChange<TokenAnalysis>(id));
-        await AddChanges(harmonyChanges, changes.PhraseAnalyses, putMode,
-            a => new CreatePhraseAnalysisChange(a),
-            a => new ReplacePhraseAnalysisChange(a),
-            PatchPhraseAnalysisChange.Diff,
-            id => new DeleteChange<PhraseAnalysis>(id));
-        await AddChanges(harmonyChanges, changes.SegmentAnalysisLinks, putMode,
-            l => new CreateSegmentAnalysisLinkChange(l),
-            l => new ReplaceSegmentAnalysisLinkChange(l),
-            PatchSegmentAnalysisLinkChange.Diff,
-            id => new DeleteChange<SegmentAnalysisLink>(id));
-        await AddChanges(harmonyChanges, changes.TokenAnalysisLinks, putMode,
-            l => new CreateTokenAnalysisLinkChange(l),
-            l => new ReplaceTokenAnalysisLinkChange(l),
-            PatchTokenAnalysisLinkChange.Diff,
-            id => new DeleteChange<TokenAnalysisLink>(id));
-        await AddChanges(harmonyChanges, changes.PhraseAnalysisLinks, putMode,
-            l => new CreatePhraseAnalysisLinkChange(l),
-            l => new ReplacePhraseAnalysisLinkChange(l),
-            PatchPhraseAnalysisLinkChange.Diff,
-            id => new DeleteChange<PhraseAnalysisLink>(id));
+        foreach (var kind in kinds) kind.AddChanges(harmonyChanges, putMode, storedKinds);
         if (harmonyChanges.Count == 0) return;
 
         await dataModel.AddChanges(client.Id, harmonyChanges, new CommitMetadata { [IntentMetadataKey] = changes.Intent });
@@ -229,42 +233,83 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client)
     private Task<List<TResult>> Query<T, TResult>(Func<IQueryable<T>, IQueryable<TResult>> apply) where T : class, IObjectBase =>
         dataModel.QueryLatest(apply).ToListAsync().AsTask();
 
-    private static void AssertIdsDistinct<T>(RecordChanges<T>? changes, string kind) where T : class, IObjectBase
+    private static void AssertIdsDistinct(IEnumerable<IKindChanges> kinds)
     {
-        if (changes is null) return;
-        var seen = new HashSet<Guid>();
-        foreach (var id in changes.Puts.Select(IdOf).Concat(changes.Deletes))
+        var seen = new Dictionary<Guid, string>();
+        foreach (var kind in kinds)
         {
-            if (!seen.Add(id)) throw new ArgumentException($"The {kind} {id} is named more than once in one change set", nameof(changes));
+            foreach (var id in kind.Ids)
+            {
+                if (seen.TryGetValue(id, out var first))
+                {
+                    throw new ArgumentException(first == kind.Name
+                        ? $"The {kind.Name} {id} is named more than once in one change set"
+                        : $"{id} is named as a {first} and as a {kind.Name} in one change set");
+                }
+                seen[id] = kind.Name;
+            }
         }
     }
 
-    private async Task AddChanges<T>(
-        List<IChange> into,
+    /// <summary>One record kind's part of a change set, turned into Harmony changes.</summary>
+    private interface IKindChanges
+    {
+        string Name { get; }
+
+        /// <summary>Every id the changes name, put or deleted.</summary>
+        IEnumerable<Guid> Ids { get; }
+
+        IEnumerable<Guid> PutIds { get; }
+
+        /// <summary>
+        /// Loads the records of this kind stored under any of <paramref name="allPutIds"/>, whichever
+        /// kind puts them, or deleted here, and files their ids under this kind in
+        /// <paramref name="storedKinds"/>.
+        /// </summary>
+        Task LoadStored(AnalysisRepository repository, IReadOnlyCollection<Guid> allPutIds, Dictionary<Guid, string> storedKinds);
+
+        /// <exception cref="ArgumentException">If a put's id is stored as another kind.</exception>
+        void AddChanges(List<IChange> into, PutMode putMode, IReadOnlyDictionary<Guid, string> storedKinds);
+    }
+
+    private sealed class KindChanges<T>(
+        string name,
         RecordChanges<T>? changes,
-        PutMode putMode,
         Func<T, IChange> create,
         Func<T, IChange> replace,
         Func<T, T, IChange?> diff,
-        Func<Guid, IChange> delete) where T : class, IObjectBase
+        Func<Guid, IChange> delete) : IKindChanges where T : class, IObjectBase
     {
-        if (changes is null) return;
-        var ids = changes.Puts.Select(r => r.Id).Concat(changes.Deletes).ToList();
-        if (ids.Count == 0) return;
-        var stored = (await Query<T>(q => q.Where(e => ids.Contains(e.Id)))).ToDictionary(e => e.Id);
-        foreach (var put in changes.Puts)
-        {
-            if (!stored.TryGetValue(put.Id, out var current)) into.Add(create(put));
-            else if (putMode == PutMode.Replace) into.Add(replace(put));
-            else if (diff(current, put) is { } patch) into.Add(patch);
-        }
-        into.AddRange(changes.Deletes.Where(stored.ContainsKey).Select(delete));
-    }
+        private Dictionary<Guid, T> _stored = [];
 
-    private static Guid IdOf<T>(T record) where T : class => record switch
-    {
-        Analysis analysis => analysis.Id,
-        AnalysisLink link => link.Id,
-        _ => throw new ArgumentException($"{typeof(T).Name} is not an analysis record", nameof(record)),
-    };
+        public string Name => name;
+
+        public IEnumerable<Guid> PutIds => changes?.Puts.Select(r => r.Id) ?? [];
+
+        public IEnumerable<Guid> Ids => PutIds.Concat(changes?.Deletes ?? []);
+
+        public async Task LoadStored(AnalysisRepository repository, IReadOnlyCollection<Guid> allPutIds, Dictionary<Guid, string> storedKinds)
+        {
+            var ids = allPutIds.Concat(changes?.Deletes ?? []).Distinct().ToList();
+            if (ids.Count == 0) return;
+            _stored = (await repository.Query<T>(q => q.Where(e => ids.Contains(e.Id)))).ToDictionary(e => e.Id);
+            foreach (var id in _stored.Keys) storedKinds[id] = name;
+        }
+
+        public void AddChanges(List<IChange> into, PutMode putMode, IReadOnlyDictionary<Guid, string> storedKinds)
+        {
+            if (changes is null) return;
+            foreach (var put in changes.Puts)
+            {
+                if (storedKinds.TryGetValue(put.Id, out var storedAs) && storedAs != name)
+                {
+                    throw new ArgumentException($"The {name} {put.Id} is stored as a {storedAs}", nameof(changes));
+                }
+                if (!_stored.TryGetValue(put.Id, out var current)) into.Add(create(put));
+                else if (putMode == PutMode.Replace) into.Add(replace(put));
+                else if (diff(current, put) is { } patch) into.Add(patch);
+            }
+            into.AddRange(changes.Deletes.Where(_stored.ContainsKey).Select(delete));
+        }
+    }
 }

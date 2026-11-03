@@ -474,6 +474,72 @@ public class AnalysisRepositoryTests : CrdtTestBase
             .IsEquivalentTo([PaInThe]);
     }
 
+    /// <summary>
+    /// Harmony's behavior, which the repository's refusals below guard against: a second create
+    /// under an id already created, of whatever kind, is dropped without error.
+    /// </summary>
+    [Test]
+    public async Task HarmonyKeepsOneEntityPerIdWhateverItsKind()
+    {
+        var shared = Guid.NewGuid();
+        var createAnalysis = new CreatePhraseAnalysisChange(shared) { SurfaceText = "in" };
+        var createLink = new CreatePhraseAnalysisLinkChange(shared)
+        {
+            AnalysisId = shared,
+            Tokens = [new TokenSnapshot("GEN 1:1:2", "in")],
+            Status = AssignmentStatus.Approved,
+        };
+
+        await WriteNextChange([createAnalysis, createLink]);
+
+        await Assert.That(await DbContext.PhraseAnalyses.CountAsync()).IsEqualTo(1);
+        await Assert.That(await DbContext.PhraseAnalysisLinks.CountAsync()).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ApplyRefusesAnIdSharedAcrossKindsApplyingNothing()
+    {
+        var shared = Guid.NewGuid();
+        var link = new PhraseAnalysisLink
+        {
+            Id = shared,
+            AnalysisId = shared,
+            Tokens = [new TokenSnapshot("GEN 1:1:2", "in")],
+            Status = AssignmentStatus.Approved,
+        };
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "shared id",
+            PhraseAnalyses = RecordChanges<PhraseAnalysis>.Put(new PhraseAnalysis { Id = shared, SurfaceText = "in" }),
+            PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Put(link),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ApplyRefusesAPutUnderAnIdStoredAsAnotherKindApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var link = new PhraseAnalysisLink
+        {
+            Id = PaInThe,
+            AnalysisId = PaInThe,
+            Tokens = [new TokenSnapshot("GEN 1:1:2", "in")],
+            Status = AssignmentStatus.Approved,
+        };
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "stored as another kind",
+            PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Put(link),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(1);
+        await Assert.That(IdsOf(await Repository.GetPhraseAnalyses([PaInThe]))).IsEquivalentTo([PaInThe]);
+    }
+
     [Test]
     public async Task ReadsEveryStoredRecord()
     {

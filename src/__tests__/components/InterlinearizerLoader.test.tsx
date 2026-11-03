@@ -1226,6 +1226,16 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('book-not-in-project')).not.toBeInTheDocument();
     });
 
+    it('shows the book when it loads despite the failed lookup', async () => {
+      mockBookData();
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+      expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
+    });
+
     it('waits for localization before showing the panel', async () => {
       jest
         .mocked(useLocalizedStrings)

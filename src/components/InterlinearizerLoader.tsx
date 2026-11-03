@@ -534,7 +534,8 @@ function InterlinearizerLoaderInner({
    * The source project the platform could not find, once its lookup has failed. Core's project data
    * and setting hooks only log that failure and go on reporting themselves loading, so without this
    * the view would wait forever. The lookup retries while the platform starts, so a project still
-   * loading does not land here.
+   * loading does not land here. A loaded book proves the project exists, so it outranks a lookup
+   * that failed for some other reason.
    */
   const [unavailableProjectId, setUnavailableProjectId] = useState<string>();
   useEffect(() => {
@@ -551,7 +552,7 @@ function InterlinearizerLoaderInner({
       isCurrent = false;
     };
   }, [projectId]);
-  const isProjectUnavailable = unavailableProjectId === projectId;
+  const isProjectUnavailable = unavailableProjectId === projectId && !verseBook;
 
   // The always-present draft is the runtime source of truth for the analysis being edited. Edits
   // auto-save here (not to the active project); Save / Save As copy the draft into a project.

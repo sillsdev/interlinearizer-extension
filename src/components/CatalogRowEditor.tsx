@@ -1,7 +1,7 @@
 import type { MorphemeAnalysis, SenseRef } from 'interlinearizer';
 import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useDisplayedGloss } from './LexiconSenses';
 import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
@@ -74,9 +74,44 @@ type CatalogRowEditorProps = Readonly<{
   breakdownDraft: string | undefined;
   /** Records the breakdown draft, `undefined` closing the breakdown editor. */
   onBreakdownDraftChange: (draft: string | undefined) => void;
+  /** Holds the gloss drafts whose commit failed after their field unmounted. */
+  glossRetry: GlossRetry;
   /** Resolved localizations covering at least {@link ROW_EDITOR_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
 }>;
+
+/** A gloss draft whose commit failed, with the committed value it was typed over. */
+type RejectedGloss = Readonly<{ draft: string; typedOver: string }>;
+
+/**
+ * Keeps the gloss drafts whose commit failed after their field unmounted, for the field to show
+ * again when it next mounts. Collapsing a row unmounts its fields, and a field that has unmounted
+ * cannot retry a failed commit itself.
+ */
+export type GlossRetry = Readonly<{
+  /**
+   * The draft to show in the field named by `key`, or `undefined` when none failed. Returns
+   * `undefined` for a draft typed over a different committed value, which an edit since replaced.
+   */
+  draftFor: (key: string, committedValue: string) => string | undefined;
+  /** Keeps a draft whose commit failed after the field named by `key` unmounted. */
+  reject: (key: string, gloss: RejectedGloss) => void;
+  /** Drops the draft for the field named by `key`, once that field holds it again. */
+  restored: (key: string) => void;
+}>;
+
+/** Creates an empty {@link GlossRetry}. */
+export function createGlossRetry(): GlossRetry {
+  const rejected = new Map<string, RejectedGloss>();
+  return {
+    draftFor: (key, committedValue) => {
+      const gloss = rejected.get(key);
+      return gloss?.typedOver === committedValue ? gloss.draft : undefined;
+    },
+    reject: (key, gloss) => rejected.set(key, gloss),
+    restored: (key) => rejected.delete(key),
+  };
+}
 
 /** Collapses leading, trailing, and repeated internal whitespace to single spaces. */
 function normalize(value: string): string {
@@ -125,16 +160,30 @@ function CommitOnBlurInput({
   committedValue,
   id,
   onCommit,
+  retry,
+  retryKey,
   testId,
 }: Readonly<{
   ariaLabel?: string;
   committedValue: string;
   id?: string;
   onCommit: (value: string) => Settles<unknown>;
+  retry: GlossRetry;
+  /** The key that `retry` keeps this field's draft under, unique among the panel's gloss fields. */
+  retryKey: string;
   testId: string;
 }>) {
-  const [draft, setDraft] = useState(committedValue);
+  const [restoredDraft] = useState(() => retry.draftFor(retryKey, committedValue));
+  const [draft, setDraft] = useState(restoredDraft ?? committedValue);
   const [draftOf, setDraftOf] = useState(committedValue);
+  const isMounted = useRef(false);
+  useEffect(() => {
+    isMounted.current = true;
+    if (restoredDraft !== undefined) retry.restored(retryKey);
+    return () => {
+      isMounted.current = false;
+    };
+  }, [restoredDraft, retry, retryKey]);
   // The draft last sent to onCommit, kept until the committed value changes or the commit fails. The
   // host may answer a commit only later, leaving the committed value behind the draft until it does.
   // An unmount in that window must not send the draft again.
@@ -154,7 +203,10 @@ function CommitOnBlurInput({
     setSent(draft);
     const settled = onCommit(draft);
     if (settled instanceof Promise)
-      settled.catch(() => setSent((current) => (current === draft ? undefined : current)));
+      settled.catch(() => {
+        if (isMounted.current) setSent((current) => (current === draft ? undefined : current));
+        else retry.reject(retryKey, { draft, typedOver: committedValue });
+      });
   };
 
   // Surface uncommitted typing to the unsaved indicator before the edit commits on blur, and flush
@@ -220,6 +272,7 @@ export default function CatalogRowEditor({
   onMorphemeGlossCommit,
   breakdownDraft,
   onBreakdownDraftChange,
+  glossRetry,
   localizedStrings,
 }: CatalogRowEditorProps) {
   const glossFieldId = useId();
@@ -320,6 +373,8 @@ export default function CatalogRowEditor({
             id={glossFieldId}
             key={`${analysisId}-gloss`}
             onCommit={onGlossCommit}
+            retry={glossRetry}
+            retryKey={analysisId}
             testId="catalog-row-gloss-input"
           />
         </div>
@@ -376,6 +431,8 @@ export default function CatalogRowEditor({
                     committedValue={morpheme.gloss?.[analysisLanguage] ?? ''}
                     key={`${analysisId}-${morpheme.id}`}
                     onCommit={(value) => onMorphemeGlossCommit(morpheme.id, value)}
+                    retry={glossRetry}
+                    retryKey={`${analysisId}/${morpheme.id}`}
                     testId="catalog-row-morpheme-gloss-input"
                   />
                 )}

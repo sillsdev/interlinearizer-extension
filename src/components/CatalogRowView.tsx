@@ -1,7 +1,11 @@
 import { Button } from 'platform-bible-react';
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useState } from 'react';
-import CatalogRowEditor, { CatalogRowActions, ROW_EDITOR_STRING_KEYS } from './CatalogRowEditor';
+import CatalogRowEditor, {
+  CatalogRowActions,
+  type GlossRetry,
+  ROW_EDITOR_STRING_KEYS,
+} from './CatalogRowEditor';
 import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from './CatalogRowHeader';
 import CatalogSenseLinks, { SENSE_LINKS_STRING_KEYS } from './CatalogSenseLinks';
 import CatalogStaleLocations, { STALE_LOCATION_STRING_KEYS } from './CatalogStaleLocations';
@@ -104,6 +108,8 @@ type CatalogRowViewProps = Readonly<{
     draft: string | undefined,
     surfaceText: string,
   ) => void;
+  /** Holds the gloss drafts whose commit failed after their field unmounted. */
+  glossRetry: GlossRetry;
 }>;
 
 /** Renders a place's verse the way scripture references are written, e.g. `GEN 1:1`. */
@@ -146,6 +152,7 @@ function CatalogRowView({
   revealRequest,
   breakdownDraft,
   onBreakdownDraftChange,
+  glossRetry,
 }: CatalogRowViewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -251,6 +258,7 @@ function CatalogRowView({
             analysisId={row.analysisId}
             analysisLanguage={analysisLanguage}
             breakdownDraft={breakdownDraft}
+            glossRetry={glossRetry}
             gloss={row.gloss}
             glossSenseRef={row.glossSenseRef}
             localizedStrings={localizedStrings}

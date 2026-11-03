@@ -128,21 +128,29 @@ function CommitOnBlurInput({
 }>) {
   const [draft, setDraft] = useState(committedValue);
   const [draftOf, setDraftOf] = useState(committedValue);
+  // The draft last sent to onCommit, kept until the committed value changes. The host may answer a
+  // commit only later, leaving the committed value behind the draft until it does. An unmount in
+  // that window must not send the draft again.
+  const [sent, setSent] = useState<string | undefined>(undefined);
 
   // Adjusted during render rather than in an effect, so the field never paints one frame holding
   // the previous value.
   if (committedValue !== draftOf) {
     setDraftOf(committedValue);
     setDraft(committedValue);
+    setSent(undefined);
   }
 
+  const unsent = draft !== committedValue && draft !== sent;
   const commit = () => {
-    if (draft !== committedValue) onCommit(draft);
+    if (!unsent) return;
+    setSent(draft);
+    onCommit(draft);
   };
 
   // Surface uncommitted typing to the unsaved indicator before the edit commits on blur, and flush
   // the draft if the field unmounts mid-edit.
-  useReportGlossEditing(draft !== committedValue, commit);
+  useReportGlossEditing(unsent, commit);
 
   return (
     <Input

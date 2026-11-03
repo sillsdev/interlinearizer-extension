@@ -17,6 +17,8 @@ import { emptyAnalysis } from '../../types/empty-factories';
 import { FIXTURE_STAMPS, makeWordToken } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings, testSenseRef } from './test-helpers';
 
+jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
+
 beforeEach(() => {
   mockKeyAsValueLocalizedStrings();
   // jsdom does not implement scrollIntoView; the dropdown calls it to keep the active row in view.

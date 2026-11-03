@@ -4,7 +4,7 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useEvent } from 'platform-bible-react';
 import useSessionProject from '../../hooks/useSessionProject';
-import { fakeHost, relayTextRead, STORED_PROJECT } from '../cache/fake-host';
+import { fakeHost, relayChange, relayTextRead, STORED_PROJECT } from '../cache/fake-host';
 import { glossing, ref } from '../cache/session-source';
 import { makeVerseBook, tokenRefOf } from '../test-helpers';
 
@@ -848,8 +848,8 @@ describe('useSessionProject edits sent to the session', () => {
 });
 
 describe('useSessionProject whole-text read', () => {
-  /** Renders the hook over a host whose whole-text read stands at `status`. */
-  async function renderReading(status: object) {
+  /** Renders the hook over a host whose whole-text read stands at `status`, the text unrequested. */
+  async function renderUnrequested(status: object) {
     const host = await fakeHost(async (command) =>
       command === 'interlinearizer.getTextReadStatus' ? JSON.stringify(status) : undefined,
     );
@@ -857,6 +857,63 @@ describe('useSessionProject whole-text read', () => {
     await waitFor(() => expect(rendered.result.current.session).toBeDefined());
     return { host, ...rendered };
   }
+
+  /** As {@link renderUnrequested}, with the text requested once the session has opened. */
+  async function renderReading(status: object) {
+    const rendered = await renderUnrequested(status);
+    act(() => rendered.result.current.session?.requestTextRead());
+    return rendered;
+  }
+
+  /** Whether the view has asked how far the whole-text read has got. */
+  const hasAskedForStatus = () =>
+    jest
+      .mocked(papi.commands.sendCommand)
+      .mock.calls.some(([command]) => command === 'interlinearizer.getTextReadStatus');
+
+  it('asks nothing of the read when the session opens', async () => {
+    const { result } = await renderUnrequested({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+    await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+
+    expect(hasAskedForStatus()).toBe(false);
+    expect(result.current.session?.staleCoversDraft).toBe(false);
+  });
+
+  it('asks nothing of the read on a reported change before the text is requested', async () => {
+    const { result } = await renderUnrequested({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+    await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+
+    relayChange({
+      sessionId: result.current.session?.sessionId,
+      changeId: 'reported',
+      books: [],
+      analysisIds: [],
+      forms: [],
+      queries: [],
+    });
+
+    expect(hasAskedForStatus()).toBe(false);
+  });
+
+  it("asks nothing of the read on the source's finished read before the text is requested", async () => {
+    const { result } = await renderUnrequested({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+    await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+
+    relayTextRead({ sourceProjectId: 'src' });
+
+    expect(hasAskedForStatus()).toBe(false);
+  });
+
+  it('asks how far the read has got once the text is requested', async () => {
+    const { result } = await renderUnrequested({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+
+    act(() => result.current.session?.requestTextRead());
+
+    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.getTextReadStatus', {
+      sessionId: result.current.session?.sessionId,
+    });
+  });
 
   it('covers the whole draft once every book is read', async () => {
     const { result } = await renderReading({ booksRead: 2, bookCount: 2, failedBookIds: [] });
@@ -904,7 +961,7 @@ describe('useSessionProject whole-text read', () => {
   });
 
   it('does not render again for a read status that has not changed', async () => {
-    const status = { booksRead: 1, bookCount: 2, failedBookIds: [] };
+    const status = { booksRead: 2, bookCount: 2, failedBookIds: [] };
     await fakeHost(async (command) =>
       command === 'interlinearizer.getTextReadStatus' ? JSON.stringify(status) : undefined,
     );
@@ -920,12 +977,8 @@ describe('useSessionProject whole-text read', () => {
       });
     });
     await waitFor(() => expect(result.current.session?.client).toBeDefined());
-    await waitFor(() =>
-      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-        'interlinearizer.getTextReadStatus',
-        expect.anything(),
-      ),
-    );
+    act(() => result.current.session?.requestTextRead());
+    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
     const asked = () =>
       jest
         .mocked(papi.commands.sendCommand)
@@ -962,6 +1015,8 @@ describe('useSessionProject whole-text read', () => {
       return JSON.stringify({ booksRead: 2, bookCount: 2, failedBookIds: [] });
     });
     const { result } = renderProject();
+    await waitFor(() => expect(result.current.session).toBeDefined());
+    act(() => result.current.session?.requestTextRead());
     await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
     const { sessionId } = result.current.session ?? {};
 
@@ -969,6 +1024,20 @@ describe('useSessionProject whole-text read', () => {
 
     await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
     expect(result.current.session?.staleCoversDraft).toBe(false);
+  });
+
+  it("asks a fresh session's read about the text requested of an earlier session", async () => {
+    const { result } = await renderReading({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
+    const { sessionId } = result.current.session ?? {};
+
+    await act(async () => result.current.newDraft({ analysisLanguages: ['fr'] }));
+
+    await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
+    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.getTextReadStatus', {
+      sessionId: result.current.session?.sessionId,
+    });
   });
 });
 

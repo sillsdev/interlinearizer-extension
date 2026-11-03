@@ -29,6 +29,11 @@ export interface UseSourceTextReaderArgs {
    * for a reading that any book failed.
    */
   onTextRead?: (bookIds: readonly string[]) => void;
+  /**
+   * Called whenever the text becomes wanted or requested, and again if this callback changes while
+   * it is.
+   */
+  onWanted?: () => void;
 }
 
 /** What {@link useSourceTextReader} hands back. */
@@ -85,6 +90,7 @@ export default function useSourceTextReader({
   enabled,
   onBookRead,
   onTextRead,
+  onWanted,
   readKey,
 }: UseSourceTextReaderArgs): SourceText {
   const [status, setStatus] = useState<SourceTextStatus>('idle');
@@ -98,6 +104,10 @@ export default function useSourceTextReader({
 
   const [requested, setRequested] = useState(false);
   const wanted = enabled || requested;
+
+  useEffect(() => {
+    if (wanted) onWanted?.();
+  }, [wanted, onWanted]);
 
   /** Bumped to read every book again. */
   const [generation, setGeneration] = useState(0);

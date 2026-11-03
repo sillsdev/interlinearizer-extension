@@ -127,6 +127,7 @@ export function createFocusStore(
       };
     },
     write: (nextTokenRef, origin) => {
+      perfMark('focus-write', { moved: nextTokenRef !== focus.tokenRef });
       if (nextTokenRef === focus.tokenRef) return;
       focus = { tokenRef: nextTokenRef, origin };
       listeners.forEach((listener) => listener());

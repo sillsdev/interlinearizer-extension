@@ -352,7 +352,7 @@ declare module 'papi-shared-types' {
 
     /**
      * Reports how far reading the whole text of the source project, or of a session's source, has
-     * got, starting the read when the project has none.
+     * got, starting the read when the project or the session has none.
      *
      * @returns Once the text's books are known, the `TextReadStatus` as a JSON string.
      * @throws If the books or the provider of their text cannot be got; the next call tries again.
@@ -1023,11 +1023,19 @@ declare module 'papi-shared-types' {
     'interlinearizer.setPerfMarks': (enabled: boolean) => Promise<void>;
 
     /**
-     * Turns on or off skipping the whole-text read that opening a session starts, so the harness
-     * can time the host path without it. While on, a session's `getTextReadStatus` reports a read
-     * that never finishes. Off until turned on.
+     * Turns on or off skipping the whole-text read that a session starts once a feature needs the
+     * whole text, so the harness can time the host path without it. While on, a session's
+     * `getTextReadStatus` reports a read that never finishes. Off until turned on.
      */
     'interlinearizer.setSkipSessionReads': (skip: boolean) => Promise<void>;
+
+    /**
+     * Starts the whole-text read of the session open on `sourceProjectId`, as a feature needing the
+     * whole text would, so the performance harness can time edits made while it runs.
+     *
+     * @throws {Error} If the source has no session open.
+     */
+    'interlinearizer.startSessionTextRead': (sourceProjectId: string) => Promise<void>;
 
     /**
      * Takes the timing entries the extension host recorded since the last reading.

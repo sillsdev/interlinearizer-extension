@@ -716,4 +716,22 @@ describe('FocusStoreProvider focus timing', () => {
 
     expect(perfMark).toHaveBeenCalledWith('focus-render');
   });
+
+  it('marks a write that moves the focus as moved', () => {
+    const perfMark = jest.spyOn(perfMarks, 'perfMark').mockImplementation(() => {});
+    const store = createFocusStore('GEN 1:1:0');
+
+    store.write('GEN 1:2:0', 'list');
+
+    expect(perfMark).toHaveBeenCalledWith('focus-write', { moved: true });
+  });
+
+  it('marks a write to the focused token as not moved', () => {
+    const perfMark = jest.spyOn(perfMarks, 'perfMark').mockImplementation(() => {});
+    const store = createFocusStore('GEN 1:1:0');
+
+    store.write('GEN 1:1:0', 'strip');
+
+    expect(perfMark).toHaveBeenCalledWith('focus-write', { moved: false });
+  });
 });

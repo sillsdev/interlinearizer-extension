@@ -48,7 +48,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'app.switchBook':
     "With the view open, the book changes to Jude and back; the times are for the return. Book change to rendered includes fetching the book's text.",
   'app.edit':
-    "One gloss typed and committed with Tab, then the autosave that commit sets off. `gloss-settle` ends once the view shows both the gloss and the Tab's focus move. The host path times it the same way.",
+    'One gloss typed and committed with Tab, then the autosave that commit sets off. `gloss-settle` ends once the view shows the gloss and, when the Tab moves the focus, that move. The host path times it the same way.',
   'app.picker':
     'The Select Interlinear Project dialog opens, listing every saved project for the source.',
   'app.save': 'Save from the Project menu writes the analysis to the project it came from.',
@@ -74,21 +74,40 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'app.scriptureSave':
     "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
   'app.hostOpen':
-    "On the host path, a new view opens on the tier's book while the session's whole-text read starts. The view's first pages wait only for the re-anchor passes queued before them.",
+    "On the host path, a new view opens on the tier's book, with no feature needing the whole text, so the session reads none.",
+  'app.hostEditDuringRead':
+    "On the host path, one gloss committed while the session's whole-text read runs, started as a feature needing the text would start it. Only edits that the read outlasts are counted.",
   'app.hostEdit':
-    "On the host path, one gloss committed once the session's whole-text read has finished. `edit-command` is the command's round trip, and its `:outbound` and `:inbound` rows split the transport at the host's start and end. `reply-apply` takes the reply into the view's pages. `gloss-settle` ends once the view shows both the gloss and the Tab's focus move.",
+    "On the host path, one gloss committed once the session's whole-text read has finished. `edit-command` is the command's round trip, and its `:outbound` and `:inbound` rows split the transport at the host's start and end. `reply-apply` takes the reply into the view's pages. `gloss-settle` ends once the view shows the gloss and, when the Tab moves the focus, that move.",
   'app.hostScriptureSave':
+    'As the Scripture save above, on the host path before any feature needs the whole text, so the session reads none.',
+  'app.hostScriptureSaveAfterRead':
     "As the Scripture save above, on the host path with the session's whole-text read finished, so the host watches every book.",
   'bench.memory': 'Heap held by the parsed draft, and by an undo history filled to its limit.',
 };
 
 /** What the host-path sections measure when their sessions read no text. */
 const SKIPPED_READ_DESCRIPTIONS: Record<string, string> = {
+  'app.hostEdit': 'On the host path, one gloss committed, with the session reading no text.',
+  'app.hostScriptureSaveAfterRead':
+    'As the Scripture save above, on the host path with the session reading no text.',
+};
+
+/**
+ * What the host-path sections measured in results that lack `hostScriptureSaveAfterRead`. Those
+ * were recorded when a session's read still started at open.
+ */
+const READ_AT_OPEN_DESCRIPTIONS: Record<string, string> = {
+  'app.hostOpen':
+    "On the host path, a new view opens on the tier's book while the session's whole-text read starts. The view's first pages wait only for the re-anchor passes queued before them.",
+  'app.hostScriptureSave': SECTION_DESCRIPTIONS['app.hostScriptureSaveAfterRead'],
+};
+
+/** {@link READ_AT_OPEN_DESCRIPTIONS} for results whose sessions read no text. */
+const READ_AT_OPEN_SKIPPED_DESCRIPTIONS: Record<string, string> = {
   'app.hostOpen':
     "On the host path, a new view opens on the tier's book, with the session reading no text.",
-  'app.hostEdit': 'On the host path, one gloss committed, with the session reading no text.',
-  'app.hostScriptureSave':
-    'As the Scripture save above, on the host path with the session reading no text.',
+  'app.hostScriptureSave': SKIPPED_READ_DESCRIPTIONS['app.hostScriptureSaveAfterRead'],
 };
 
 /** The memory reading every other one in its section is taken against. */
@@ -108,8 +127,10 @@ const SECTION_LABELS: Record<string, string> = {
   textRead: 'Read the whole text in the host',
   scriptureSave: 'Save a Scripture chapter',
   hostOpen: 'Host path: open the view in a running app',
+  hostEditDuringRead: 'Host path: edit one gloss during the whole-text read',
   hostEdit: 'Host path: edit one gloss',
   hostScriptureSave: 'Host path: save a Scripture chapter',
+  hostScriptureSaveAfterRead: 'Host path: save a Scripture chapter after the whole-text read',
   formsNotInText: 'Catalog forms not in the text',
   applyBooksReached: 'Books an apply reaches',
   'timings.load': 'Load',
@@ -142,7 +163,7 @@ const METRIC_LABELS: Record<string, string> = {
   'open-to-editable': 'Open to first gloss editable',
   'dispatch-render': 'Commit gloss to re-render',
   'gloss-render': 'Commit gloss to render',
-  'gloss-settle': 'Commit gloss to gloss and focus rendered',
+  'gloss-settle': 'Commit gloss to gloss and any focus move rendered',
   'scripture-save': 'Save the chapter',
   'save-host-cpu': 'Host CPU over the save',
   'autosave-serialize': 'Serialize draft',
@@ -352,11 +373,16 @@ function report(result: Json): string {
     DATASET_NOTE,
     ...tierProblems(tiers),
   ].filter(Boolean);
+  const readAtOpen = !sections.has('hostScriptureSaveAfterRead');
   const tables = [...sections].map(([section, rows]) => {
     const caveat = kind === 'app' && section === 'memory' ? memoryCaveat(tiers) : undefined;
     const key = `${kind}.${section}`;
     const sectionDescription =
-      (result.skipSessionReads && SKIPPED_READ_DESCRIPTIONS[key]) || SECTION_DESCRIPTIONS[key];
+      (result.skipSessionReads &&
+        ((readAtOpen && READ_AT_OPEN_SKIPPED_DESCRIPTIONS[key]) ||
+          SKIPPED_READ_DESCRIPTIONS[key])) ||
+      (readAtOpen && READ_AT_OPEN_DESCRIPTIONS[key]) ||
+      SECTION_DESCRIPTIONS[key];
     const description = [sectionDescription, caveat].filter(Boolean).join(' ');
     return [
       `### ${SECTION_LABELS[section] ?? (section || 'Other')}`,

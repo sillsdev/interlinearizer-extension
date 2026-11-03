@@ -2780,8 +2780,11 @@ describe('main', () => {
             segmentationJson?: string,
           ) => Promise<string | undefined>
         >('interlinearizer.getSegments'),
-        getTextReadStatus: handler<(address: { sessionId: string }) => Promise<string>>(
+        getTextReadStatus: handler<(address: string | { sessionId: string }) => Promise<string>>(
           'interlinearizer.getTextReadStatus',
+        ),
+        startSessionTextRead: handler<(sourceProjectId: string) => Promise<void>>(
+          'interlinearizer.startSessionTextRead',
         ),
       };
     }
@@ -3301,12 +3304,58 @@ describe('main', () => {
         expect(bookService.getTextReadStatus).toHaveBeenCalledWith('src-project');
       });
 
-      it("starts the session source's read on open", async () => {
+      it("starts no read of the session source's text on open", async () => {
         const { openSession } = await activateSessionCommands();
 
         await openSession({ sourceProjectId: 'src-project' });
 
+        expect(bookService.startTextRead).not.toHaveBeenCalled();
+      });
+
+      it("starts the session source's read when its status is first asked for", async () => {
+        const { openSession, getTextReadStatus } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        await getTextReadStatus({ sessionId });
+
         expect(bookService.startTextRead).toHaveBeenCalledWith('src-project');
+      });
+
+      it('starts the read of the session open on a source, for the performance harness', async () => {
+        const { openSession, startSessionTextRead } = await activateSessionCommands();
+        await openSession({ sourceProjectId: 'src-project' });
+
+        await startSessionTextRead('src-project');
+
+        expect(bookService.startTextRead).toHaveBeenCalledWith('src-project');
+      });
+
+      it('refuses to start a read for a source with no session open', async () => {
+        const { startSessionTextRead } = await activateSessionCommands();
+
+        await expect(startSessionTextRead('src-project')).rejects.toThrow(
+          'source project src-project has no session open',
+        );
+        expect(bookService.startTextRead).not.toHaveBeenCalled();
+      });
+
+      it("ends the session source's read when the session closes", async () => {
+        const { openSession, closeSession, getTextReadStatus } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await getTextReadStatus({ sessionId });
+
+        await closeSession({ sessionId });
+
+        expect(bookService.stopTextRead).toHaveBeenCalledWith('src-project');
+      });
+
+      it("starts no session's read when a bare source's status is asked for", async () => {
+        const { openSession, getTextReadStatus } = await activateSessionCommands();
+        await openSession({ sourceProjectId: 'src-project' });
+
+        await getTextReadStatus('src-project');
+
+        expect(bookService.startTextRead).not.toHaveBeenCalled();
       });
 
       describe('while session reads are skipped', () => {
@@ -3314,10 +3363,11 @@ describe('main', () => {
           jest.mocked(hostPerf.sessionReadsAreSkipped).mockReturnValue(true);
         });
 
-        it('opens a session without starting its read', async () => {
-          const { openSession } = await activateSessionCommands();
+        it("starts no read when a session's status is asked for", async () => {
+          const { openSession, getTextReadStatus } = await activateSessionCommands();
+          const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-          await openSession({ sourceProjectId: 'src-project' });
+          await getTextReadStatus({ sessionId });
 
           expect(bookService.startTextRead).not.toHaveBeenCalled();
         });

@@ -282,6 +282,8 @@ type OpenSession = {
   replies: Map<string, Promise<EditReply | undefined>>;
   /** What each pass to a book's edited text changed, by book, until the edit is reported. */
   editPasses: Map<string, UnreportedPass[]>;
+  /** The start of the source's whole-text read, set from the session's first ask for it. */
+  textRead?: Promise<void>;
 };
 
 /**
@@ -310,8 +312,7 @@ export class AnalysisSessions {
    * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
    * Opening closes the source's earlier session, if any. The new session starts on what storage
    * holds, with nothing to undo. Its first command waits while the repository builds its indexes.
-   * Opening also starts a fresh read of the source's whole text, which lasts until the session
-   * closes.
+   * Opening reads none of the source's text; {@link startTextRead} starts that.
    *
    * The session starts on the opened draft's first analysis language. When the draft lists none, it
    * starts on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the
@@ -351,7 +352,6 @@ export class AnalysisSessions {
       this.sessionsBySource.set(sourceProjectId, entry);
       // Builds the indexes ahead of the first command; the next lookup retries a failed build.
       this.run(session.id, () => repository.getScope()).catch(() => {});
-      await this.host.startTextRead(sourceProjectId);
       return {
         sessionId: session.id,
         readOnly: repository.capabilities.readOnly,
@@ -409,6 +409,21 @@ export class AnalysisSessions {
     return this.run(sessionId, async (session) => {
       session.analysisLanguage = analysisLanguage;
     });
+  }
+
+  /**
+   * Starts reading the session source's whole text, unless the session has already started it. The
+   * read lasts until the session closes. Waits on no command sent to the session.
+   *
+   * @throws {Error} If the session is not open.
+   */
+  startTextRead(sessionId: string): Promise<void> {
+    const entry = this.sessions.get(sessionId);
+    if (!entry || entry.closed) {
+      return Promise.reject(new Error(`Interlinearizer: no session ${sessionId} is open`));
+    }
+    entry.textRead ??= this.host.startTextRead(entry.session.scope.sourceProjectId);
+    return entry.textRead;
   }
 
   /**
@@ -787,8 +802,9 @@ export class AnalysisSessions {
 
   /**
    * Makes the session unreachable by id or source, then, once the commands sent to it have settled,
-   * ends the source's whole-text read and, for a draft, releases its repository. A session that an
-   * earlier step already closed is left alone, so its repository is released only once.
+   * ends the source's whole-text read if the session asked for it and, for a draft, releases its
+   * repository. A session that an earlier step already closed is left alone, so its repository is
+   * released only once.
    */
   private async closeNow(entry: OpenSession): Promise<void> {
     const { id, scope } = entry.session;
@@ -796,7 +812,7 @@ export class AnalysisSessions {
     this.sessions.delete(id);
     this.sessionsBySource.delete(scope.sourceProjectId);
     await entry.queue;
-    await this.host.stopTextRead(scope.sourceProjectId);
+    if (entry.textRead) await this.host.stopTextRead(scope.sourceProjectId);
     if (scope.kind === 'draft') await this.host.releaseDraftRepository(scope.sourceProjectId);
   }
 

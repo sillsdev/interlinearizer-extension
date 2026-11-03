@@ -21,11 +21,13 @@ import {
   clearMeasures,
   closeView,
   connect,
+  detailValue,
   HOST_CALLS,
   HOST_PATH_KEY,
   hostHeap,
   hostPid,
   heapUsed,
+  lastFocusWrite,
   MAX_WEBSOCKET_PAYLOAD_BYTES,
   type Measure,
   openView,
@@ -118,14 +120,18 @@ async function editGloss(
 
 /**
  * Milliseconds from the gloss commit timed in `measures` until the view shows both the gloss and
- * the focus move of the Tab that follows the commit.
+ * the focus move of the Tab that follows the commit. When that Tab moves no focus, as within the
+ * focused phrase, the time ends with the gloss.
  *
- * @throws If `measures` holds no `gloss-render`.
+ * @throws If `measures` holds no `gloss-render`, or the view made no focus write.
  */
 async function glossSettle(frame: Frame, measures: Measure[]): Promise<number> {
   const render = measures.find(({ name }) => name === 'gloss-render');
   if (!render) throw new Error('No gloss-render measure to settle');
-  const focusAt = await waitForMark(frame, 'focus-render');
+  const write = await lastFocusWrite(frame);
+  if (!write) throw new Error('No focus write to settle');
+  if (!write.moved) return render.duration;
+  const focusAt = await waitForMark(frame, 'focus-render', write.at);
   return Math.max(render.end, focusAt) - (render.end - render.duration);
 }
 
@@ -151,6 +157,12 @@ async function textReadStatus(page: Page, projectId: string): Promise<TextReadSt
   return typeof json === 'string' ? JSON.parse(json) : undefined;
 }
 
+/** Whether the host's whole-text read of the source has read every book. */
+async function isTextRead(page: Page, projectId: string): Promise<boolean> {
+  const status = await textReadStatus(page, projectId);
+  return status !== undefined && status.booksRead === status.bookCount;
+}
+
 /**
  * Starts the host's read of the source's whole text, and waits until it has read every book.
  *
@@ -158,13 +170,7 @@ async function textReadStatus(page: Page, projectId: string): Promise<TextReadSt
  */
 async function readWholeText(page: Page, projectId: string): Promise<void> {
   await expect
-    .poll(
-      async () => {
-        const status = await textReadStatus(page, projectId);
-        return status !== undefined && status.booksRead === status.bookCount;
-      },
-      { timeout: 300_000, intervals: [250] },
-    )
+    .poll(() => isTextRead(page, projectId), { timeout: 300_000, intervals: [250] })
     .toBe(true);
   expect((await textReadStatus(page, projectId))?.failedBookIds).toEqual([]);
 }
@@ -248,7 +254,8 @@ async function saveChapter(
  * by a gloss commit. Restores the chapter after each run.
  *
  * Reads the extension host's CPU time over each save's settle period when given `cpuPid`. Waits for
- * each gloss's autosave when `autosaves` is set.
+ * each gloss's autosave when `autosaves` is set. Each gloss starts with `glossPrefix`, which must
+ * differ between calls on the same draft, since a gloss committed unchanged sends no edit.
  */
 async function measureScriptureSaves(
   page: Page,
@@ -257,6 +264,7 @@ async function measureScriptureSaves(
   book: string,
   cpuPid: number | undefined,
   autosaves: boolean,
+  glossPrefix: string,
 ): Promise<Record<string, unknown>> {
   const samples = new Samples();
   const original = await chapterUsj(page, projectId, book);
@@ -273,7 +281,7 @@ async function measureScriptureSaves(
         await saveChapter(page, projectId, book, withWord(original, `perfsave${run}`)),
       );
       // eslint-disable-next-line no-await-in-loop
-      await editGloss(frame, run % 10, `save-${run}`, autosaves);
+      await editGloss(frame, run % 10, `${glossPrefix}-${run}`, autosaves);
       // eslint-disable-next-line no-await-in-loop
       samples.add(await waitForMeasure(frame, 'gloss-render'), ['gloss-render']);
       // eslint-disable-next-line no-await-in-loop
@@ -296,15 +304,19 @@ async function measureScriptureSaves(
 
 /** The number that `detail` holds under `key`, if any. */
 function epochIn(detail: unknown, key: string): number | undefined {
-  if (!detail || typeof detail !== 'object' || !(key in detail)) return undefined;
-  const value: unknown = Reflect.get(detail, key);
+  const value = detailValue(detail, key);
   return typeof value === 'number' ? value : undefined;
 }
 
 /**
- * Times the host path: opening a view, edits once the session's whole-text read has finished, and
- * Scripture saves. With {@link SKIP_SESSION_READS}, sessions read no text, so nothing waits for it.
- * Writes its sections into `result`. Leaves no view open and the host-path flag off.
+ * Times the host path. It first times opening a view and Scripture saves before any feature needs
+ * the whole text, so the session reads none. It then starts the session's read, as such a feature
+ * would. It times edits committed while the read runs and once it has finished, then Scripture
+ * saves with every book watched.
+ *
+ * With {@link SKIP_SESSION_READS}, the session never reads the text, so nothing waits for the read
+ * and edits during it go untimed. Writes its sections into `result`. Leaves no view open and the
+ * host-path flag off.
  */
 async function measureHostPath(
   page: Page,
@@ -317,8 +329,6 @@ async function measureHostPath(
   try {
     await page.evaluate((key) => localStorage.setItem(key, 'true'), HOST_PATH_KEY);
     if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', true);
-    // A view's first fetches wait only for the passes already queued. Edits made during the read
-    // go untimed here (#578).
     const open = new Samples();
     for (let run = 0; run < RUNS; run += 1) {
       // eslint-disable-next-line no-await-in-loop
@@ -332,7 +342,35 @@ async function measureHostPath(
 
     await closeView(page);
     const { frame } = await openView(page, projectId, tier.viewBook);
-    if (!SKIP_SESSION_READS) await readWholeText(page, projectId);
+    result.hostScriptureSave = await measureScriptureSaves(
+      page,
+      frame,
+      projectId,
+      tier.viewBook,
+      cpuPid,
+      false,
+      'host-save',
+    );
+
+    await sendCommand(page, 'interlinearizer.startSessionTextRead', projectId);
+    if (!SKIP_SESSION_READS) {
+      // Only edits that the read outlasts are counted, so a quick read yields fewer samples.
+      const editsDuringRead = new Samples();
+      for (let run = 0; run < RUNS; run += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await clearMeasures(frame);
+        // eslint-disable-next-line no-await-in-loop
+        await editGloss(frame, run, `host-read-${run}`, false);
+        // eslint-disable-next-line no-await-in-loop
+        const measures = await waitForMeasure(frame, 'gloss-render');
+        // eslint-disable-next-line no-await-in-loop
+        if (await isTextRead(page, projectId)) break;
+        editsDuringRead.add(measures, ['gloss-render']);
+      }
+      result.hostEditDuringRead = editsDuringRead.summary();
+      await readWholeText(page, projectId);
+    }
+
     const edits = scenarioSamples();
     const origin = await frame.evaluate(() => performance.timeOrigin);
     for (let run = 0; run < RUNS; run += 1) {
@@ -365,13 +403,14 @@ async function measureHostPath(
     }
     result.hostEdit = edits.summary();
 
-    result.hostScriptureSave = await measureScriptureSaves(
+    result.hostScriptureSaveAfterRead = await measureScriptureSaves(
       page,
       frame,
       projectId,
       tier.viewBook,
       cpuPid,
       false,
+      'host-read-save',
     );
   } finally {
     try {
@@ -504,13 +543,8 @@ async function measureOpen(
 
 /** The bytes a measure's detail records, when it records any. */
 function detailBytes(measures: Measure[], name: string): number | undefined {
-  const detail = measures.find((m) => m.name === name)?.detail;
-  return detail &&
-    typeof detail === 'object' &&
-    'bytes' in detail &&
-    typeof detail.bytes === 'number'
-    ? detail.bytes
-    : undefined;
+  const bytes = detailValue(measures.find((m) => m.name === name)?.detail, 'bytes');
+  return typeof bytes === 'number' ? bytes : undefined;
 }
 
 /** Fills `result` scenario by scenario, so a failure keeps whatever was already measured. */
@@ -786,6 +820,7 @@ async function measureTier(
     tier.viewBook,
     cpuPid,
     true,
+    'save',
   );
 
   await measureHostPath(page, projectId, tier, cpuPid, result);

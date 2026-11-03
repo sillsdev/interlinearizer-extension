@@ -1197,7 +1197,7 @@ describe('InterlinearizerLoader', () => {
 
   describe('when the platform cannot find the source project', () => {
     beforeEach(() => {
-      // The book never arrives for a missing project, as core's project hooks never settle.
+      // The book never arrives for a missing project, because core's project hooks never settle.
       mockBookData({ book: undefined, isLoading: true });
       jest
         .mocked(papi.projectLookup.getMetadataForProject)
@@ -1251,7 +1251,7 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('loading-indicator')).not.toBeInTheDocument();
     });
 
-    it('ignores a lookup that fails after the view has unmounted', async () => {
+    it('logs a lookup that fails after the view has unmounted', async () => {
       let rejectLookup: (reason: Error) => void = () => {};
       jest.mocked(papi.projectLookup.getMetadataForProject).mockReturnValue(
         new Promise((_resolve, reject) => {
@@ -1273,7 +1273,7 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
-  it('keeps showing Loading while the source project is found', async () => {
+  it('keeps showing Loading when the source project is found', async () => {
     mockBookData({ book: undefined, isLoading: true });
     jest.mocked(papi.projectLookup.getMetadataForProject).mockResolvedValue({
       id: testProjectId,

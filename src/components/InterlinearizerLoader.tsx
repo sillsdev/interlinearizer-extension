@@ -298,6 +298,7 @@ const STRING_KEYS = [
   '%interlinearizer_error_load_book_heading%',
   '%interlinearizer_error_pt9Import_load_failed%',
   '%interlinearizer_loading%',
+  '%interlinearizer_error_projectUnavailable%',
   '%interlinearizer_sidePanel_resize%',
   '%interlinearizer_banner_pt9Import%',
   '%interlinearizer_banner_sync%',
@@ -528,6 +529,29 @@ function InterlinearizerLoaderInner({
   const { bookIds: projectBookIds, isLoading: isProjectBookIdsLoading } =
     useProjectBookIds(projectId);
   const isBookMissing = !!projectBookIds && !projectBookIds.includes(scrRef.book);
+
+  /**
+   * The source project the platform could not find, once its lookup has failed. Core's project data
+   * and setting hooks only log that failure and go on reporting themselves loading, so without this
+   * the view would wait forever. The lookup retries while the platform starts, so a project still
+   * loading does not land here.
+   */
+  const [unavailableProjectId, setUnavailableProjectId] = useState<string>();
+  useEffect(() => {
+    let isCurrent = true;
+    (async () => {
+      try {
+        await papi.projectLookup.getMetadataForProject(projectId);
+      } catch (e) {
+        logger.warn(`Interlinearizer: source project ${projectId} is not available`, e);
+        if (isCurrent) setUnavailableProjectId(projectId);
+      }
+    })();
+    return () => {
+      isCurrent = false;
+    };
+  }, [projectId]);
+  const isProjectUnavailable = unavailableProjectId === projectId;
 
   // The always-present draft is the runtime source of truth for the analysis being edited. Edits
   // auto-save here (not to the active project); Save / Save As copy the draft into a project.
@@ -963,7 +987,7 @@ function InterlinearizerLoaderInner({
   }, [scrRef, book]);
 
   const loadError = bookError ?? pagesError;
-  const hasError = isBookMissing || !!loadError;
+  const hasError = isProjectUnavailable || isBookMissing || !!loadError;
   const isSettingLoading =
     isContinuousScrollLoading ||
     isInterfaceModeLoading ||
@@ -1791,7 +1815,8 @@ function InterlinearizerLoaderInner({
     };
   }, [webViewMenuPossiblyError, activeProject, openLexiconChooser]);
 
-  const loadingOrErrorPanel = isBookMissing ? (
+  const showBookNotInProject = isBookMissing && !isProjectUnavailable;
+  const loadingOrErrorPanel = showBookNotInProject ? (
     // Keyed so moving between two missing books re-announces the status message.
     <BookNotInProjectView
       key={scrRef.book}
@@ -1801,6 +1826,16 @@ function InterlinearizerLoaderInner({
     />
   ) : (
     <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
+      {isProjectUnavailable && !stringsLoading && (
+        <p
+          className="tw:text-sm tw:text-destructive"
+          data-testid="project-unavailable"
+          role="alert"
+        >
+          {localizedStrings['%interlinearizer_error_projectUnavailable%']}
+        </p>
+      )}
+
       {loadError && (
         <div className="tw:flex tw:flex-col tw:gap-2">
           {/* The error text is not localized, so it shows here and below without waiting. */}

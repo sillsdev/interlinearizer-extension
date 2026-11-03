@@ -1195,6 +1195,89 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByText(/project not found/i)).toBeInTheDocument();
   });
 
+  describe('when the platform cannot find the source project', () => {
+    beforeEach(() => {
+      // The book never arrives for a missing project, as core's project hooks never settle.
+      mockBookData({ book: undefined, isLoading: true });
+      jest
+        .mocked(papi.projectLookup.getMetadataForProject)
+        .mockRejectedValue(new Error(`No project found with ID ${testProjectId}`));
+    });
+
+    it('shows the project-unavailable panel instead of Loading', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('project-unavailable')).toHaveTextContent(
+        '%interlinearizer_error_projectUnavailable%',
+      );
+      expect(screen.queryByTestId('loading-indicator')).not.toBeInTheDocument();
+      expect(papi.projectLookup.getMetadataForProject).toHaveBeenCalledWith(testProjectId);
+    });
+
+    it('shows the panel rather than the missing-book view', async () => {
+      mockProjectBookIds(['PHP']);
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('project-unavailable')).toBeInTheDocument();
+      expect(screen.queryByTestId('book-not-in-project')).not.toBeInTheDocument();
+    });
+
+    it('waits for localization before showing the panel', async () => {
+      jest
+        .mocked(useLocalizedStrings)
+        .mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(keys.map((key) => [key, key])),
+          true,
+        ]);
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('loading-indicator')).not.toBeInTheDocument();
+    });
+
+    it('ignores a lookup that fails after the view has unmounted', async () => {
+      let rejectLookup: (reason: Error) => void = () => {};
+      jest.mocked(papi.projectLookup.getMetadataForProject).mockReturnValue(
+        new Promise((_resolve, reject) => {
+          rejectLookup = reject;
+        }),
+      );
+      let unmount: () => void = () => {};
+      await act(async () => {
+        ({ unmount } = renderLoader());
+      });
+      unmount();
+
+      await act(async () => rejectLookup(new Error(`No project found with ID ${testProjectId}`)));
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        `Interlinearizer: source project ${testProjectId} is not available`,
+        expect.any(Error),
+      );
+    });
+  });
+
+  it('keeps showing Loading while the source project is found', async () => {
+    mockBookData({ book: undefined, isLoading: true });
+    jest.mocked(papi.projectLookup.getMetadataForProject).mockResolvedValue({
+      id: testProjectId,
+      projectInterfaces: [],
+      pdpFactoryInfo: {},
+    });
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
+    expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
+  });
+
   describe('segment pages', () => {
     /** A two-verse Genesis whose second verse can merge into its first. */
     const TWO_VERSE_GENESIS: Book = {

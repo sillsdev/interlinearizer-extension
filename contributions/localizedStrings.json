@@ -246,6 +246,7 @@
       "%interlinearizer_viewOptions_label%": "View options",
       "%interlinearizer_analysisLanguage_label%": "Analysis language",
       "%interlinearizer_loading%": "Loading…",
+      "%interlinearizer_error_projectUnavailable%": "This project is not available. It may have been removed, or Platform.Bible could not load it. Reopen this tab once the project is available.",
       "%interlinearizer_duplicateTab_title%": "This project is open in another tab",
       "%interlinearizer_duplicateTab_description%": "A project can be open in one Interlinearizer tab at a time. Close this tab, or go to the one that has the project open.",
       "%interlinearizer_duplicateTab_goToTab%": "Go to the open tab",

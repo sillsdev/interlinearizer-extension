@@ -802,7 +802,7 @@ export class AnalysisSessions {
 
   /**
    * Makes the session unreachable by id or source, then, once the commands sent to it have settled,
-   * ends the source's whole-text read if the session started it and, for a draft, releases its
+   * ends the source's whole-text read if the session asked for it and, for a draft, releases its
    * repository. A session that an earlier step already closed is left alone, so its repository is
    * released only once.
    */

@@ -255,15 +255,18 @@ export async function waitForMark(frame: Frame, name: string, after = 0): Promis
 export async function lastFocusWrite(
   frame: Frame,
 ): Promise<{ at: number; moved: boolean } | undefined> {
-  return frame.evaluate(() => {
-    const write = performance.getEntriesByName('ilz:focus-write', 'mark').at(-1);
-    if (!write) return undefined;
-    const { detail } = write instanceof PerformanceMark ? write : { detail: undefined };
-    return {
-      at: write.startTime,
-      moved: !!detail && typeof detail === 'object' && 'moved' in detail && detail.moved === true,
-    };
+  const write = await frame.evaluate(() => {
+    const mark = performance.getEntriesByName('ilz:focus-write', 'mark').at(-1);
+    return mark && { at: mark.startTime, detail: 'detail' in mark ? mark.detail : undefined };
   });
+  return write && { at: write.at, moved: detailValue(write.detail, 'moved') === true };
+}
+
+/** What `detail` holds under `key`, if anything. */
+export function detailValue(detail: unknown, key: string): unknown {
+  return detail && typeof detail === 'object' && key in detail
+    ? Reflect.get(detail, key)
+    : undefined;
 }
 
 /** Bytes of JS heap the renderer holds after a full collection. */

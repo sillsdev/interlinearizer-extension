@@ -21,6 +21,7 @@ import {
   clearMeasures,
   closeView,
   connect,
+  detailValue,
   HOST_CALLS,
   HOST_PATH_KEY,
   hostHeap,
@@ -303,8 +304,7 @@ async function measureScriptureSaves(
 
 /** The number that `detail` holds under `key`, if any. */
 function epochIn(detail: unknown, key: string): number | undefined {
-  if (!detail || typeof detail !== 'object' || !(key in detail)) return undefined;
-  const value: unknown = Reflect.get(detail, key);
+  const value = detailValue(detail, key);
   return typeof value === 'number' ? value : undefined;
 }
 
@@ -543,13 +543,8 @@ async function measureOpen(
 
 /** The bytes a measure's detail records, when it records any. */
 function detailBytes(measures: Measure[], name: string): number | undefined {
-  const detail = measures.find((m) => m.name === name)?.detail;
-  return detail &&
-    typeof detail === 'object' &&
-    'bytes' in detail &&
-    typeof detail.bytes === 'number'
-    ? detail.bytes
-    : undefined;
+  const bytes = detailValue(measures.find((m) => m.name === name)?.detail, 'bytes');
+  return typeof bytes === 'number' ? bytes : undefined;
 }
 
 /** Fills `result` scenario by scenario, so a failure keeps whatever was already measured. */

@@ -20,7 +20,7 @@ import {
   useStaleLocationReclaims,
 } from './AnalysisStore';
 import type { AnalysisEditOutcome } from '../utils/edit-outcome';
-import { breakdownDraftForms } from './CatalogRowEditor';
+import { breakdownDraftForms, createGlossRetry } from './CatalogRowEditor';
 import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
 import type { MergedContentDraft } from '../utils/merge-content';
@@ -457,6 +457,12 @@ export default function AnalysisCatalogPanel({
   const [breakdownDrafts, setBreakdownDrafts] = useState<ReadonlyMap<string, BreakdownDraft>>(
     new Map(),
   );
+
+  /**
+   * The gloss drafts whose commit failed after their field unmounted. Kept here rather than in the
+   * row because a row's fields unmount when it is collapsed or no longer listed.
+   */
+  const [glossRetry] = useState(createGlossRetry);
 
   const handleBreakdownDraftChange = useCallback(
     (analysisId: string, draft: string | undefined, surfaceText: string) => {
@@ -1131,6 +1137,7 @@ export default function AnalysisCatalogPanel({
                   analysisLanguage={analysisLanguage}
                   showMorphology={showMorphology}
                   breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
+                  glossRetry={glossRetry}
                   isSelected={row.analysisId === selectedAnalysisId}
                   isChecked={checkedIds.has(row.analysisId)}
                   onCheckedChange={readOnly ? undefined : setChecked}

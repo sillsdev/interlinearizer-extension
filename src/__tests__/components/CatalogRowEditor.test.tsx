@@ -16,8 +16,9 @@ const STRINGS = Object.fromEntries(ROW_EDITOR_STRING_KEYS.map((key) => [key, key
 /** The editor over an analysis glossed `gloss`, reporting each gloss commit to `onGlossCommit`. */
 function editor(
   onGlossCommit: (value: string) => Settles<unknown>,
-  glossRetry: GlossRetry = createGlossRetry(),
+  glossRetry: GlossRetry = createGlossRetry(jest.fn()),
   gloss = 'start',
+  analysisLanguage = 'en',
 ) {
   return (
     <AnalysisStoreProvider analysisLanguage="en">
@@ -28,7 +29,7 @@ function editor(
         glossRetry={glossRetry}
         usageCount={1}
         morphemes={[]}
-        analysisLanguage="en"
+        analysisLanguage={analysisLanguage}
         showMorphology={false}
         onGlossCommit={onGlossCommit}
         onMorphemesCommit={() => {}}
@@ -122,7 +123,7 @@ describe('CatalogRowEditor', () => {
     }
 
     it('shows the draft again when the field mounts', async () => {
-      const glossRetry = createGlossRetry();
+      const glossRetry = createGlossRetry(jest.fn());
       await failAfterUnmount(glossRetry);
 
       render(editor(jest.fn(), glossRetry));
@@ -133,7 +134,7 @@ describe('CatalogRowEditor', () => {
     });
 
     it('sends the shown draft again on Enter', async () => {
-      const glossRetry = createGlossRetry();
+      const glossRetry = createGlossRetry(jest.fn());
       await failAfterUnmount(glossRetry);
       const onGlossCommit = jest.fn();
       render(editor(onGlossCommit, glossRetry));
@@ -144,7 +145,7 @@ describe('CatalogRowEditor', () => {
     });
 
     it('shows the draft only once', async () => {
-      const glossRetry = createGlossRetry();
+      const glossRetry = createGlossRetry(jest.fn());
       await failAfterUnmount(glossRetry);
       const { unmount } = render(editor(jest.fn(), glossRetry));
       await userEvent.type(screen.getByTestId('catalog-row-gloss-input'), '{Escape}');
@@ -156,12 +157,38 @@ describe('CatalogRowEditor', () => {
     });
 
     it('drops the draft once the gloss has changed since it was typed', async () => {
-      const glossRetry = createGlossRetry();
+      const glossRetry = createGlossRetry(jest.fn());
       await failAfterUnmount(glossRetry);
 
       render(editor(jest.fn(), glossRetry, 'origin'));
 
       expect(screen.getByTestId('catalog-row-gloss-input')).toHaveValue('origin');
+    });
+
+    it('keeps the draft out of another analysis language', async () => {
+      const glossRetry = createGlossRetry(jest.fn());
+      await failAfterUnmount(glossRetry);
+
+      render(editor(jest.fn(), glossRetry, 'start', 'fr'));
+
+      expect(screen.getByTestId('catalog-row-gloss-input')).toHaveValue('start');
+    });
+
+    it('reports holding the draft once the commit fails', async () => {
+      const onHeldChange = jest.fn();
+      await failAfterUnmount(createGlossRetry(onHeldChange));
+
+      expect(onHeldChange.mock.calls).toStrictEqual([[true]]);
+    });
+
+    it('reports holding no draft once the field shows it again', async () => {
+      const onHeldChange = jest.fn();
+      const glossRetry = createGlossRetry(onHeldChange);
+      await failAfterUnmount(glossRetry);
+
+      render(editor(jest.fn(), glossRetry));
+
+      expect(onHeldChange).toHaveBeenLastCalledWith(false);
     });
   });
 });

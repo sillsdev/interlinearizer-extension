@@ -458,11 +458,14 @@ export default function AnalysisCatalogPanel({
     new Map(),
   );
 
+  /** Whether {@link glossRetry} holds a gloss draft that the panel's closing would discard. */
+  const [holdsRejectedGloss, setHoldsRejectedGloss] = useState(false);
+
   /**
    * The gloss drafts whose commit failed after their field unmounted. Kept here rather than in the
    * row because a row's fields unmount when it is collapsed or no longer listed.
    */
-  const [glossRetry] = useState(createGlossRetry);
+  const [glossRetry] = useState(() => createGlossRetry(setHoldsRejectedGloss));
 
   const handleBreakdownDraftChange = useCallback(
     (analysisId: string, draft: string | undefined, surfaceText: string) => {
@@ -507,8 +510,12 @@ export default function AnalysisCatalogPanel({
     [catalogRows, rowHasUnsavedBreakdown],
   );
 
-  // No flush on unmount: a breakdown draft is saved or discarded explicitly, never on the way out.
-  useReportGlossEditing(hasUnsavedBreakdown, () => {});
+  /** Whether leaving the panel would discard a breakdown draft or a gloss whose commit failed. */
+  const hasUnsavedEdits = hasUnsavedBreakdown || holdsRejectedGloss;
+
+  // No flush on unmount: a breakdown draft is saved or discarded explicitly, and a failed gloss
+  // waits for its field to mount again, so neither is sent on the way out.
+  useReportGlossEditing(hasUnsavedEdits, () => {});
 
   /**
    * The draft an edit made outside the panel stranded, or `undefined` when none has been. Kept
@@ -536,27 +543,27 @@ export default function AnalysisCatalogPanel({
   }, [breakdownDrafts, catalogRows, discardBreakdownDraft]);
 
   /**
-   * How the reader is leaving the panel while being asked to confirm it over a breakdown they have
-   * not saved, or `undefined` while no such ask is open.
+   * How the reader is leaving the panel while being asked to confirm it over unsaved edits, or
+   * `undefined` while no such ask is open.
    */
   const [confirmingLeave, setConfirmingLeave] = useState<'close' | 'switch' | undefined>(undefined);
 
   /**
-   * Closes the panel, or asks first when a breakdown draft would go with it.
+   * Closes the panel, or asks first when a breakdown draft or a failed gloss would go with it.
    *
-   * A breakdown commits on neither blur nor unmount, so leaving the panel is the one route that can
-   * drop typed text the reader never asked to discard.
+   * Neither commits on the way out, so leaving the panel is the one route that can drop typed text
+   * the reader never asked to discard.
    */
   const handleCloseRequest = useCallback(() => {
-    if (hasUnsavedBreakdown) setConfirmingLeave('close');
+    if (hasUnsavedEdits) setConfirmingLeave('close');
     else onClose();
-  }, [hasUnsavedBreakdown, onClose]);
+  }, [hasUnsavedEdits, onClose]);
 
   /** Switches the side panel to the concordance, or asks first as closing does. */
   const handleSwitchRequest = useCallback(() => {
-    if (hasUnsavedBreakdown) setConfirmingLeave('switch');
+    if (hasUnsavedEdits) setConfirmingLeave('switch');
     else onShowConcordance();
-  }, [hasUnsavedBreakdown, onShowConcordance]);
+  }, [hasUnsavedEdits, onShowConcordance]);
 
   // A merge notice describes the latest edit, which an undo or redo has just moved past.
   const revealRow = useCallback((analysisId: string) => {
@@ -1194,7 +1201,7 @@ export default function AnalysisCatalogPanel({
           or canceling it from the row beneath takes the question away rather than leaving the
           reader answering about work that is no longer unsaved.
         */}
-        {confirmingLeave && hasUnsavedBreakdown && (
+        {confirmingLeave && hasUnsavedEdits && (
           <CatalogCloseModal
             action={confirmingLeave === 'switch' ? 'switch' : undefined}
             localizedStrings={localizedStrings}

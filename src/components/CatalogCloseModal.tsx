@@ -5,6 +5,7 @@ import { ModalShell } from './modals/ModalShell';
 /** Localized string keys the discard confirmation renders. */
 export const CLOSE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_closeConfirmTitle%',
+  '%interlinearizer_analysisCatalog_leaveConfirmTitle%',
   '%interlinearizer_analysisCatalog_closeConfirmPrompt%',
   '%interlinearizer_analysisCatalog_closeConfirmCancel%',
   '%interlinearizer_analysisCatalog_closeConfirmDiscard%',
@@ -22,13 +23,17 @@ export const CLOSE_STRING_KEYS = [
 
 /** Props for {@link CatalogCloseModal}. */
 type CatalogCloseModalProps = Readonly<{
-  /** Goes ahead with the action, discarding the breakdown draft. */
+  /** Goes ahead with the action, discarding the unsaved work. */
   onConfirm: () => void;
   /** Backs out, leaving the draft in hand. */
   onCancel: () => void;
   /** Resolved localizations covering at least {@link CLOSE_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
-  /** What the draft is being given up for; closing the panel when absent. */
+  /**
+   * What the unsaved work is being given up for; closing the panel when absent. Leaving the panel,
+   * by closing or switching, gives up failed glosses as well as a breakdown draft; every other
+   * action gives up only its row's breakdown draft.
+   */
   action?: 'merge' | 'delete' | 'switch' | 'stale' | 'clearGloss';
 }>;
 
@@ -61,12 +66,12 @@ const ACTION_KEYS = {
 } as const;
 
 /**
- * Confirms giving up an unsaved breakdown draft — to close the catalog over it or switch away from
- * it, or for an edit that drops the very analysis it is keyed to.
+ * Confirms giving up unsaved work to close or switch away from the catalog, or for an edit that
+ * drops the analysis a breakdown draft is keyed to.
  *
- * Discarding is the only offer: saving would commit a re-segmentation that drops the old morphemes'
- * glosses for every token the record holds, which carries a confirmation of its own. Consenting
- * here settles only the draft, never the edit it clears the way for.
+ * Discarding is the only offer. Saving a breakdown would commit a re-segmentation that drops the
+ * old morphemes' glosses for every token the record holds, which carries a confirmation of its own.
+ * Consenting here settles only the draft, never the edit it clears the way for.
  */
 export default function CatalogCloseModal({
   onConfirm,
@@ -75,11 +80,15 @@ export default function CatalogCloseModal({
   action,
 }: CatalogCloseModalProps) {
   const [promptKey, confirmKey] = ACTION_KEYS[action ?? 'close'];
+  const titleKey =
+    action === undefined || action === 'switch'
+      ? '%interlinearizer_analysisCatalog_leaveConfirmTitle%'
+      : '%interlinearizer_analysisCatalog_closeConfirmTitle%';
 
   return (
     <ModalShell
       onClose={onCancel}
-      title={localizedStrings['%interlinearizer_analysisCatalog_closeConfirmTitle%']}
+      title={localizedStrings[titleKey]}
       titleTestId="catalog-close-title"
       width="tw:w-96"
     >

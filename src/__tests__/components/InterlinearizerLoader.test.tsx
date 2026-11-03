@@ -1236,6 +1236,27 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
     });
 
+    it('keeps the panel hidden when a later book fails to load', async () => {
+      mockBookData();
+      const view = await act(async () => renderLoader());
+
+      mockBookData({ book: undefined, bookError: 'Book EXO not found' });
+      await act(async () => {
+        view.rerender(
+          <InterlinearizerLoader
+            projectId={testProjectId}
+            webViewId={testWebViewId}
+            useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+            useWebViewState={makeWebViewState()}
+            updateWebViewDefinition={view.updateWebViewDefinition}
+          />,
+        );
+      });
+
+      expect(screen.getByText('Book EXO not found')).toBeInTheDocument();
+      expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
+    });
+
     it('waits for localization before showing the panel', async () => {
       jest
         .mocked(useLocalizedStrings)

@@ -552,8 +552,15 @@ function InterlinearizerLoaderInner({
       isCurrent = false;
     };
   }, [projectId]);
-  // A loaded book proves that the project exists, whatever made the lookup fail.
-  const isProjectUnavailable = unavailableProjectId === projectId && !verseBook;
+  /** The source project once it has supplied a book, which proves that the project exists. */
+  const [projectWithBook, setProjectWithBook] = useState<string>();
+  useEffect(() => {
+    if (verseBook) setProjectWithBook(projectId);
+  }, [verseBook, projectId]);
+  // A book outranks the lookup, whatever made the lookup fail. A later book that fails to load
+  // does not undo that proof.
+  const isProjectUnavailable =
+    unavailableProjectId === projectId && !verseBook && projectWithBook !== projectId;
 
   // The always-present draft is the runtime source of truth for the analysis being edited. Edits
   // auto-save here (not to the active project); Save / Save As copy the draft into a project.

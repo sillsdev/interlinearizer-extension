@@ -48,6 +48,10 @@ it('passes a test that silences console.error with a spy', () => {
   expect(statuses['logs an expected error through a spy']).toBe('passed');
 });
 
+it("passes a test that logs Redux Toolkit's slow invariant check warning", () => {
+  expect(statuses['logs a slow Redux invariant check']).toBe('passed');
+});
+
 it('fails the test that is running when a late console.error lands', () => {
   expect(statuses['runs while a late error lands']).toBe('failed');
 });

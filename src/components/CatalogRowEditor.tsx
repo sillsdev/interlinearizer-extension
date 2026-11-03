@@ -1,11 +1,13 @@
 import type { MorphemeAnalysis, SenseRef } from 'interlinearizer';
 import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useDisplayedGloss } from './LexiconSenses';
 import { MorphemeBox } from './MorphemeBox';
 import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
+import type { CatalogRow } from '../utils/analysis-query';
+import { multiStringText } from '../utils/multi-string';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import type { Settles } from '../utils/settles';
 import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
@@ -81,6 +83,12 @@ type CatalogRowEditorProps = Readonly<{
   localizedStrings: LanguageStrings;
 }>;
 
+/**
+ * A gloss field of the catalog: an analysis's own gloss, or one morpheme's gloss when `morphemeId`
+ * is set, in the analysis language `language`.
+ */
+export type GlossField = Readonly<{ language: string; analysisId: string; morphemeId?: string }>;
+
 /** A gloss draft no field is showing, with the committed value it was typed over. */
 type RejectedGloss = Readonly<{ draft: string; typedOver: string }>;
 
@@ -93,22 +101,27 @@ type RejectedGloss = Readonly<{ draft: string; typedOver: string }>;
  */
 export type GlossRetry = Readonly<{
   /**
-   * The draft to show in the field named by `key`, or `undefined` when none is kept. Returns
-   * `undefined` for a draft typed over a different committed value, which an edit since replaced.
+   * The draft to show in `field`, or `undefined` when none is kept. Returns `undefined` for a draft
+   * typed over a different committed value, which an edit since replaced.
    */
-  draftFor: (key: string, committedValue: string) => string | undefined;
+  draftFor: (field: GlossField, committedValue: string) => string | undefined;
   /**
-   * Keeps a draft for the field named by `key`, which unmounted holding it unsent or whose commit
-   * failed after it unmounted.
+   * Keeps a draft for `field`, which unmounted holding it unsent or whose commit failed after it
+   * unmounted.
    */
-  reject: (key: string, gloss: RejectedGloss) => void;
+  reject: (field: GlossField, gloss: RejectedGloss) => void;
   /**
-   * Drops the draft kept for the field named by `key`, once that field has mounted: it either shows
-   * the draft again or found it typed over a gloss that has changed since.
+   * Drops the draft kept for `field`, once that field has mounted: it either shows the draft again
+   * or found it typed over a gloss that has changed since.
    */
-  restored: (key: string) => void;
-  /** Records whether the mounted field named by `key` shows a draft whose commit failed. */
-  holding: (key: string, held: boolean) => void;
+  restored: (field: GlossField) => void;
+  /**
+   * Drops each kept draft that no field can show again: one whose analysis or morpheme is not among
+   * `rows`, or whose gloss there differs from the value the draft was typed over.
+   */
+  prune: (rows: readonly CatalogRow[]) => void;
+  /** Records whether the mounted `field` shows a draft whose commit failed. */
+  holding: (field: GlossField, held: boolean) => void;
   /** Tracks a commit in flight, until it settles. */
   track: (commit: Promise<unknown>) => Promise<void>;
   /**
@@ -120,15 +133,26 @@ export type GlossRetry = Readonly<{
   isHolding: () => boolean;
 }>;
 
+/** The gloss that `field` holds in `rows`, or `undefined` when its analysis or morpheme is gone. */
+function committedGloss(rows: readonly CatalogRow[], field: GlossField): string | undefined {
+  const row = rows.find((r) => r.analysisId === field.analysisId);
+  if (row === undefined) return undefined;
+  if (field.morphemeId === undefined) return multiStringText(row.glosses, field.language);
+  const morpheme = row.morphemes.find((m) => m.id === field.morphemeId);
+  return morpheme && (morpheme.gloss?.[field.language] ?? '');
+}
+
 /**
  * Creates an empty {@link GlossRetry} that tells `onHeldChange` whether any draft is held, each time
  * that changes.
  */
 export function createGlossRetry(onHeldChange: (held: boolean) => void): GlossRetry {
-  const rejected = new Map<string, RejectedGloss>();
+  const rejected = new Map<string, Readonly<{ field: GlossField; gloss: RejectedGloss }>>();
   const failedKeys = new Set<string>();
   const inFlight = new Set<Promise<unknown>>();
   let held = false;
+  const keyOf = (field: GlossField) =>
+    JSON.stringify([field.language, field.analysisId, field.morphemeId]);
   const isHolding = () => rejected.size > 0 || failedKeys.size > 0;
   const report = () => {
     if (isHolding() === held) return;
@@ -145,21 +169,27 @@ export function createGlossRetry(onHeldChange: (held: boolean) => void): GlossRe
     await afterCommits(then);
   };
   return {
-    draftFor: (key, committedValue) => {
-      const gloss = rejected.get(key);
+    draftFor: (field, committedValue) => {
+      const gloss = rejected.get(keyOf(field))?.gloss;
       return gloss?.typedOver === committedValue ? gloss.draft : undefined;
     },
-    reject: (key, gloss) => {
-      rejected.set(key, gloss);
+    reject: (field, gloss) => {
+      rejected.set(keyOf(field), { field, gloss });
       report();
     },
-    restored: (key) => {
-      rejected.delete(key);
+    restored: (field) => {
+      rejected.delete(keyOf(field));
       report();
     },
-    holding: (key, isHeld) => {
-      if (isHeld) failedKeys.add(key);
-      else failedKeys.delete(key);
+    prune: (rows) => {
+      [...rejected]
+        .filter(([, { field, gloss }]) => committedGloss(rows, field) !== gloss.typedOver)
+        .forEach(([key]) => rejected.delete(key));
+      report();
+    },
+    holding: (field, isHeld) => {
+      if (isHeld) failedKeys.add(keyOf(field));
+      else failedKeys.delete(keyOf(field));
       report();
     },
     track: (commit) => {
@@ -222,7 +252,7 @@ function CommitOnBlurInput({
   id,
   onCommit,
   retry,
-  retryKey,
+  retryField,
   testId,
 }: Readonly<{
   ariaLabel?: string;
@@ -230,14 +260,16 @@ function CommitOnBlurInput({
   id?: string;
   onCommit: (value: string) => Settles<unknown>;
   retry: GlossRetry;
-  /**
-   * The key that `retry` keeps this field's draft under, unique among the panel's gloss fields in
-   * every analysis language.
-   */
-  retryKey: string;
+  /** The gloss this input edits, under which `retry` keeps its draft. */
+  retryField: GlossField;
   testId: string;
 }>) {
-  const [restoredDraft] = useState(() => retry.draftFor(retryKey, committedValue));
+  const { language, analysisId, morphemeId } = retryField;
+  const field = useMemo(
+    () => ({ language, analysisId, morphemeId }),
+    [language, analysisId, morphemeId],
+  );
+  const [restoredDraft] = useState(() => retry.draftFor(field, committedValue));
   const [draft, setDraft] = useState(restoredDraft ?? committedValue);
   // Whether the field shows a draft whose commit failed, which leaving the panel must not drop
   // unasked. Typing alone does not count: whatever moves focus to ask would commit the typing.
@@ -246,11 +278,11 @@ function CommitOnBlurInput({
   const isMounted = useRef(false);
   useEffect(() => {
     isMounted.current = true;
-    retry.restored(retryKey);
+    retry.restored(field);
     return () => {
       isMounted.current = false;
     };
-  }, [retry, retryKey]);
+  }, [retry, field]);
   // The draft last sent to onCommit, kept until the committed value changes or the commit fails. The
   // host may answer a commit only later, leaving the committed value behind the draft until it does.
   const [sent, setSent] = useState<string | undefined>(undefined);
@@ -268,27 +300,27 @@ function CommitOnBlurInput({
   const unsent = draft !== committedValue && draft !== sent;
   const holding = unsent && failed;
   useEffect(() => {
-    retry.holding(retryKey, holding);
-    return () => retry.holding(retryKey, false);
-  }, [retry, retryKey, holding]);
+    retry.holding(field, holding);
+    return () => retry.holding(field, false);
+  }, [retry, field, holding]);
 
   const commit = () => {
     if (!unsent) return;
     setSent(draft);
-    retry.holding(retryKey, false);
+    retry.holding(field, false);
     const settled = onCommit(draft);
     if (settled instanceof Promise)
       retry.track(
         settled.catch(() => {
           if (!isMounted.current) {
-            retry.reject(retryKey, { draft, typedOver: committedValue });
+            retry.reject(field, { draft, typedOver: committedValue });
             return;
           }
           setSent((current) => (current === draft ? undefined : current));
           setFailed(true);
           // Marked at once rather than by the effect after the next render, so that a close waiting
           // on this commit already sees the draft as held.
-          if (latestDraft.current === draft) retry.holding(retryKey, true);
+          if (latestDraft.current === draft) retry.holding(field, true);
         }),
       );
   };
@@ -297,7 +329,7 @@ function CommitOnBlurInput({
   // that unmounts holding an unsent draft keeps it for its next mounting rather than sending it:
   // the unmount may come from switching the analysis language, and the host would write the draft
   // in the new one.
-  useReportGlossEditing(unsent, () => retry.reject(retryKey, { draft, typedOver: committedValue }));
+  useReportGlossEditing(unsent, () => retry.reject(field, { draft, typedOver: committedValue }));
 
   return (
     <Input
@@ -460,7 +492,7 @@ export default function CatalogRowEditor({
             key={`${analysisLanguage}/${analysisId}-gloss`}
             onCommit={onGlossCommit}
             retry={glossRetry}
-            retryKey={`${analysisLanguage}/${analysisId}`}
+            retryField={{ language: analysisLanguage, analysisId }}
             testId="catalog-row-gloss-input"
           />
         </div>
@@ -518,7 +550,7 @@ export default function CatalogRowEditor({
                     key={`${analysisLanguage}/${analysisId}-${morpheme.id}`}
                     onCommit={(value) => onMorphemeGlossCommit(morpheme.id, value)}
                     retry={glossRetry}
-                    retryKey={`${analysisLanguage}/${analysisId}/${morpheme.id}`}
+                    retryField={{ language: analysisLanguage, analysisId, morphemeId: morpheme.id }}
                     testId="catalog-row-morpheme-gloss-input"
                   />
                 )}

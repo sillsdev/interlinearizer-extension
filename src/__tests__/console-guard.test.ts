@@ -1,4 +1,3 @@
-/** @jest-environment node */
 /// <reference types="jest" />
 
 import { spawnSync } from 'node:child_process';

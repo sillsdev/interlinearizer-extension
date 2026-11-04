@@ -27,6 +27,8 @@ const DELETE_PROJECT_CONFIRM_STRING_KEYS: `%${string}%`[] = [
  *   says that the Paratext 9 data stays untouched.
  * @param props.onCancel - Called when the user backs out, leaving the project in place.
  * @param props.onDeleted - Called with the project's UUID once the delete has landed.
+ * @param props.returnFocusTo - Element to focus once the dialog closes; defaults to whatever held
+ *   focus when it opened.
  * @returns The confirmation overlay, or nothing while localized strings are loading.
  */
 export function DeleteProjectConfirm({
@@ -35,12 +37,14 @@ export function DeleteProjectConfirm({
   isPt9Import,
   onCancel,
   onDeleted,
+  returnFocusTo,
 }: Readonly<{
   projectId: string;
   projectName?: string;
   isPt9Import: boolean;
   onCancel: () => void;
   onDeleted: (deletedProjectId: string) => void;
+  returnFocusTo?: HTMLElement;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(
     DELETE_PROJECT_CONFIRM_STRING_KEYS,
@@ -74,6 +78,7 @@ export function DeleteProjectConfirm({
       title={title}
       width="tw:w-md"
       onClose={isSubmitting ? undefined : onCancel}
+      returnFocusTo={returnFocusTo}
     >
       <p className="tw:text-sm tw:mb-4">
         {localizedStrings['%interlinearizer_confirm_deleteProject_body%']}

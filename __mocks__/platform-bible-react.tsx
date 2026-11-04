@@ -27,6 +27,7 @@ import type {
   MouseEventHandler,
   ReactElement,
   ReactNode,
+  Ref,
   RefObject,
 } from 'react';
 
@@ -1569,16 +1570,24 @@ export function DropdownMenu({ children }: Readonly<{ children?: ReactNode }>): 
 
 /**
  * Stub dropdown-menu trigger that behaves as with `asChild`, cloning its single child with the
- * menu-button attributes and a click handler that toggles the menu.
+ * menu-button attributes and a click handler that toggles the menu. The child's own ref still
+ * receives the element, matching the real `Slot`.
  */
 export function DropdownMenuTrigger({
   children,
   disabled,
 }: Readonly<{ children?: ReactNode; asChild?: boolean; disabled?: boolean }>): ReactNode {
   const { open, setOpen, triggerRef } = useContext(DropdownMenuContext);
-  if (!isValidElement(children)) return <>{children}</>;
+  if (!isValidElement<{ ref?: Ref<HTMLElement> }>(children)) return <>{children}</>;
+  const childRef = children.props.ref;
+  // eslint-disable-next-line no-null/no-null -- React passes null when the element detaches
+  const composedRef = (element: HTMLElement | null) => {
+    triggerRef.current = element;
+    if (typeof childRef === 'function') childRef(element);
+    else if (childRef) childRef.current = element;
+  };
   return cloneElement(children, {
-    ref: triggerRef,
+    ref: composedRef,
     'aria-expanded': open,
     'aria-haspopup': 'menu',
     ...(disabled !== undefined && { disabled }),

@@ -19,8 +19,8 @@ jest.mock('../../components/AnalysisStore');
 // several, which only the substituted `{form}` distinguishes.
 const LABELS = {
   ...TOKEN_CHIP_LABEL_KEYS,
-  editMorphemes: 'Edit morpheme breakdown for {token}',
-  editStaleMorphemes: 'Edit stale morpheme breakdown for {token}',
+  editMorphemes: 'Edit parse for {token}',
+  editStaleMorphemes: 'Edit parse for {token}, split from a different spelling',
   morphemeGloss: 'Gloss for morpheme {form}',
 };
 
@@ -77,15 +77,13 @@ describe('MorphemeBox', () => {
 
   it('exposes a single "edit breakdown" control for the whole forms row', () => {
     renderBox();
-    expect(
-      screen.getByRole('button', { name: 'Edit morpheme breakdown for hello' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit parse for hello' })).toBeInTheDocument();
   });
 
   it('names a stale breakdown as such on its edit control', () => {
     renderBox({ stale: true });
     expect(
-      screen.getByRole('button', { name: 'Edit stale morpheme breakdown for hello' }),
+      screen.getByRole('button', { name: 'Edit parse for hello, split from a different spelling' }),
     ).toBeInTheDocument();
   });
 

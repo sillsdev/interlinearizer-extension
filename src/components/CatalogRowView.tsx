@@ -79,7 +79,7 @@ type CatalogRowViewProps = Readonly<{
    * record, which is how the merge control is withheld from a row with nothing to merge with.
    */
   onMergeRequest?: (analysisId: string) => void;
-  /** Asks for this row's analysis to be deleted. */
+  /** Deletes this row's analysis. Called only after the reader confirms the deletion. */
   onDeleteRequest: (analysisId: string) => void;
   /** Asks for the row to be scrolled into view, each new value asking again. */
   revealRequest?: object;

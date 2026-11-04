@@ -128,7 +128,7 @@
       "%interlinearizer_analysisCatalog_mergeTitle%": "Merge an analysis",
       "%interlinearizer_analysisCatalog_mergeForm%": "Form",
       "%interlinearizer_analysisCatalog_mergeUsageCount%": "{count} uses",
-      "%interlinearizer_analysisCatalog_mergePromote%": "Merge the others into {gloss}",
+      "%interlinearizer_analysisCatalog_mergePromote%": "Move to top: {gloss}",
       "%interlinearizer_analysisCatalog_mergeReorder%": "Reorder {gloss}",
       "%interlinearizer_analysisCatalog_mergeMoveToTop%": "Move to top",
       "%interlinearizer_analysisCatalog_mergeRevertField%": "Undo this edit",

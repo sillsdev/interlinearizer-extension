@@ -368,6 +368,22 @@ describe('AnalysisSessions', () => {
       expect(host.releaseDraftRepository).toHaveBeenCalledTimes(1);
     });
 
+    it('rejects every close sent twice when the release fails', async () => {
+      const { host, sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      host.releaseDraftRepository.mockRejectedValue(new Error('release failed'));
+
+      const results = await Promise.allSettled([
+        sessions.close(sessionId),
+        sessions.close(sessionId),
+      ]);
+
+      expect(results).toEqual([
+        { status: 'rejected', reason: new Error('release failed') },
+        { status: 'rejected', reason: new Error('release failed') },
+      ]);
+    });
+
     it('releases once when sent before a replacing open takes its turn', async () => {
       const { host, sessions } = makeSessions();
       const earlier = await sessions.open(SOURCE);

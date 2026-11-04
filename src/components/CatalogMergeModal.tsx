@@ -14,6 +14,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import type { Confidence } from 'interlinearizer';
 import { ArrowUpToLine, GripVertical, X } from 'lucide-react';
 import {
   Button,
@@ -30,13 +31,7 @@ import {
 } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState, type ReactNode } from 'react';
-import type { Confidence } from 'interlinearizer';
-import { breakdownDraftForms } from './CatalogRowEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
-import LocalizedTooltip from './LocalizedTooltip';
-import { BoxAlignedField, MorphemeBox, ROW_LABEL_CLASS } from './MorphemeBox';
-import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
-import { ModalShell } from './modals/ModalShell';
 import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import {
@@ -49,6 +44,11 @@ import {
   type MergeContentEdits,
   type MergeReorder,
 } from '../utils/merge-content';
+import { breakdownDraftForms } from './CatalogRowEditor';
+import LocalizedTooltip from './LocalizedTooltip';
+import { ModalShell } from './modals/ModalShell';
+import { BoxAlignedField, MorphemeBox, ROW_LABEL_CLASS } from './MorphemeBox';
+import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 
 /**
  * The name each confidence level is offered under. Confidence is a closed vocabulary, so it is
@@ -765,7 +765,8 @@ export default function CatalogMergeModal({
                 ))}
               </SelectContent>
             </Select>
-            {/* Beside the select rather than inside it, a select having no room to overlay one. */}
+            {/* Beside the select rather than inside it, because a select has no room to overlay
+                one. */}
             {edits.confidence !== undefined && (
               <Button
                 aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}

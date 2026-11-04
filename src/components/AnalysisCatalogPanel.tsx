@@ -1126,8 +1126,8 @@ export default function AnalysisCatalogPanel({
                   liveSurfaceText={liveSurfaceText}
                   localizedStrings={localizedStrings}
                   onBreakdownDraftChange={handleBreakdownDraftChange}
-                  // Not held at the discard gate: the row has already confirmed the deletion,
-                  // which takes the analysis's unsaved breakdown with it.
+                  // No discard prompt follows: the row's delete confirmation already covers the
+                  // analysis's unsaved breakdown.
                   onDeleteRequest={deleteAnalysis}
                   onGlossCommit={handleGlossCommit}
                   onMergeRequest={

@@ -2,13 +2,13 @@ import type { MorphemeAnalysis, SenseRef } from 'interlinearizer';
 import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
-import { useDisplayedGloss } from './LexiconSenses';
-import { BoxAlignedField, MorphemeBox, ROW_LABEL_CLASS } from './MorphemeBox';
-import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
+import { useDisplayedGloss } from './LexiconSenses';
 import { ModalShell } from './modals/ModalShell';
+import { BoxAlignedField, MorphemeBox, ROW_LABEL_CLASS } from './MorphemeBox';
+import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 
 /** Localized string keys the row editor renders. */
 export const ROW_EDITOR_STRING_KEYS = [
@@ -412,11 +412,11 @@ export function CatalogRowActions({
   onDeleteRequest,
   localizedStrings,
 }: Readonly<{
-  /** Surface form of the analysis, naming it in the delete confirmation. */
+  /** Surface form the delete confirmation names the analysis by. */
   surfaceText: string;
   /** Opens the merge picker. Absent when the analysis shares its form with no other record. */
   onMergeRequest?: () => void;
-  /** Asks for the analysis to be deleted, once the reader has confirmed it. */
+  /** Deletes the analysis. Called only after the reader confirms the deletion. */
   onDeleteRequest: () => void;
   /** Resolved localizations covering at least {@link ROW_EDITOR_STRING_KEYS}. */
   localizedStrings: LanguageStrings;

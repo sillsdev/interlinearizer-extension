@@ -142,8 +142,8 @@ function CatalogRowView({
   /** Whether the usage list is showing every usage rather than the first {@link INLINE_USAGE_LIMIT}. */
   const [showsAllUsages, setShowsAllUsages] = useState(false);
 
-  // Collapsing returns the row to the inline cap: without it a row once expanded to hundreds of
-  // usages has no way back, since the expander it was opened from is gone.
+  // Collapsing returns the row to the inline cap, so a row reopened later does not bury the rows
+  // beneath it.
   const handleToggle = useCallback(() => {
     setIsExpanded((expanded) => !expanded);
     setShowsAllUsages(false);

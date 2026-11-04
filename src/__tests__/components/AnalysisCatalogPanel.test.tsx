@@ -1679,7 +1679,7 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.click(toggle);
         await userEvent.click(toggle);
 
-        // A row left showing everything buries the rows below it for the rest of the session.
+        // A row reopened showing everything buries the rows below it.
         expect(within(rowFor('ta-1')).getAllByTestId('catalog-usage')).toHaveLength(12);
       });
 

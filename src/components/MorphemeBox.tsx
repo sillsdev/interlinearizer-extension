@@ -25,13 +25,12 @@ import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-s
 const MIN_MORPHEME_COLUMN = '4ch';
 
 /**
- * A labeled box's label column, shared with {@link BoxAlignedField} so a field beside the box starts
- * on the line its morpheme cells do. The floor fits the English labels; a longer localized label
- * widens only its own grid.
+ * Width of the row-label column, in a labeled box and in a field aligned with one. The floor fits
+ * the English labels. A longer localized label widens only its own grid, breaking the alignment.
  */
 const ROW_LABEL_TRACK = 'minmax(8rem, max-content)';
 
-/** Styling for a row label, in the box and on a field aligned with it. */
+/** Styling for a row label, in a labeled box and on a field aligned with one. */
 export const ROW_LABEL_CLASS = 'tw:whitespace-nowrap tw:pe-1 tw:text-xs tw:text-muted-foreground';
 
 /**
@@ -326,9 +325,8 @@ function MorphemeBoxInner({
 }
 
 /**
- * A labeled field laid out as a labeled {@link MorphemeBox} is: the same label column behind the
- * same border and padding, the border left transparent, so the field starts on the line the box's
- * morpheme cells do.
+ * A labeled field that lines up with a labeled {@link MorphemeBox}: its label column matches the
+ * box's, and its content starts where the box's morpheme cells do.
  */
 export function BoxAlignedField({
   label,

@@ -3115,6 +3115,19 @@ describe('AnalysisCatalogPanel', () => {
         expect(onShowConcordance).toHaveBeenCalled();
       });
 
+      it('leaves a field outside the panel focused when switching to the concordance', async () => {
+        const outside = document.createElement('input');
+        document.body.append(outside);
+        const ref = createRef<AnalysisCatalogPanelHandle>();
+        renderPanel({ ref, analysis: SHARED });
+        outside.focus();
+
+        act(() => ref.current?.requestShowConcordance());
+
+        expect(outside).toHaveFocus();
+        outside.remove();
+      });
+
       it('reports a breakdown held uncommitted', async () => {
         const onPendingEditsChange = jest.fn();
         renderPanel({ analysis: SEGMENTED, onPendingEditsChange });

@@ -128,8 +128,12 @@ const config: Config = {
     '<rootDir>/jest.setup.ts',
   ],
 
-  /** Use jsdom for React component tests; parser tests run fine in jsdom (no DOM use). */
-  testEnvironment: 'jsdom',
+  /**
+   * Use jsdom for React component tests; parser tests run fine in jsdom (no DOM use). The local
+   * environment extends Jest's jsdom one to fail tests that log through `console.error` or
+   * `console.warn`.
+   */
+  testEnvironment: '<rootDir>/jest.environment.ts',
 
   /**
    * Only treat _.test._ and _.spec._ as test files so that helpers (e.g. test-helpers.ts) in

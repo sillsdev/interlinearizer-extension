@@ -3337,10 +3337,16 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('marks a collapsed linked row without listing its sense', () => {
-      renderPanel({ analysis: LINKED, senses: { 's-word': { gloss: { en: 'word' } } } });
+      const { unmount } = renderPanel({
+        analysis: LINKED,
+        senses: { 's-word': { gloss: { en: 'word' } } },
+      });
 
       expect(within(rowFor('ta-1')).getByTestId('catalog-sense-link')).toBeInTheDocument();
       expect(within(rowFor('ta-1')).queryByTestId('catalog-sense-links')).not.toBeInTheDocument();
+      // Nothing marks the lookup landing, because the sense resolves to the gloss already shown.
+      // Closing the panel keeps the lookup from landing after the test.
+      unmount();
     });
 
     it("lists a linked row's sense once the row is expanded", async () => {

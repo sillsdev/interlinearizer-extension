@@ -736,16 +736,6 @@ export default function AnalysisCatalogPanel({
     ],
   );
 
-  const handleDeleteRequest = useCallback(
-    (analysisId: string) =>
-      requestDiscard(
-        'delete',
-        () => [analysisId],
-        () => deleteAnalysis(analysisId),
-      ),
-    [deleteAnalysis, requestDiscard],
-  );
-
   /** Deletes the analyses `analysisIds` names as one step, announcing how many uses they had. */
   const deleteChecked = useCallback(
     (analysisIds: readonly string[]) => {
@@ -1136,7 +1126,9 @@ export default function AnalysisCatalogPanel({
                   liveSurfaceText={liveSurfaceText}
                   localizedStrings={localizedStrings}
                   onBreakdownDraftChange={handleBreakdownDraftChange}
-                  onDeleteRequest={handleDeleteRequest}
+                  // Not held at the discard gate: the row has already confirmed the deletion,
+                  // which takes the analysis's unsaved breakdown with it.
+                  onDeleteRequest={deleteAnalysis}
                   onGlossCommit={handleGlossCommit}
                   onMergeRequest={
                     idsWithMergePeers.has(row.analysisId) ? handleMergeRequest : undefined

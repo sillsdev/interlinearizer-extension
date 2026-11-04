@@ -2932,9 +2932,8 @@ describe('AnalysisCatalogPanel', () => {
       it('does not report a draft the panel deleted the row for itself', async () => {
         await typeStrandableBreakdown();
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
-        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
-        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
         expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
       });
@@ -4721,42 +4720,30 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.type(input, 'λογ ος');
       }
 
-      it('asks before deleting the analysis a breakdown draft is keyed to', async () => {
+      // The delete confirmation already agreed to lose the analysis, its draft included.
+      it('deletes without asking again about the draft', async () => {
         renderPanel({ announceUndoable, analysis: LONE });
         await typeUnsavedBreakdown('ta-1');
-
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
         await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
-        // The draft is put to the reader before the deletion happens, so declining costs nothing.
-        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
-        expect(listedAnalysisIds()).toEqual(['ta-1']);
+        expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+        expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
       });
 
-      it('keeps the draft and the analysis when the discard is declined', async () => {
+      it('keeps the draft and the analysis when the deletion is canceled', async () => {
         const onSave = jest.fn();
         renderPanel({ announceUndoable, analysis: LONE, onSave });
         await typeUnsavedBreakdown('ta-1');
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
-        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
-        await userEvent.click(screen.getByTestId('catalog-close-cancel'));
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm-cancel'));
 
         expect(onSave).not.toHaveBeenCalled();
         expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue(
           'λογ ος',
         );
-      });
-
-      it('deletes once the draft is given up', async () => {
-        renderPanel({ announceUndoable, analysis: LONE });
-        await typeUnsavedBreakdown('ta-1');
-        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
-        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
-
-        await userEvent.click(screen.getByTestId('catalog-close-discard'));
-
-        expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
       });
 
       it('deletes without asking about a draft that re-states the current breakdown', async () => {
@@ -4777,7 +4764,6 @@ describe('AnalysisCatalogPanel', () => {
         await typeUnsavedBreakdown('ta-1');
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
         await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
-        await userEvent.click(screen.getByTestId('catalog-close-discard'));
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 

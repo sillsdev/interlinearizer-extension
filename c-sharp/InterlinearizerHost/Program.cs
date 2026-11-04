@@ -58,8 +58,8 @@ internal static class Program
 
         Console.WriteLine("Interlinearizer host ready");
         await papi.DisconnectTask;
-        // Projects still open flush before the process ends.
-        await services.GetRequiredService<OpenProjects>().DisposeAsync();
+        // Sources still open flush before the process ends.
+        await services.GetRequiredService<OpenSources>().DisposeAsync();
         return 0;
     }
 }

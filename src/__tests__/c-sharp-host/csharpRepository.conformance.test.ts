@@ -23,40 +23,49 @@ afterAll(async () => {
   rmSync(dataDirectory, { recursive: true, force: true });
 });
 
-/** The projects the current store opened, closed after its test so the next may reopen them. */
+/** The sources the current store opened on the host, closed after its test. */
 let opened: Set<string>;
 
 afterEach(async () => {
   await Promise.all(
-    [...opened].map((projectId) =>
-      papi.invoke(`command:${REPOSITORY_COMMAND_PREFIX}closeProject`, { projectId }),
+    [...opened].map((sourceProjectId) =>
+      papi.invoke(`command:${REPOSITORY_COMMAND_PREFIX}closeSource`, { sourceProjectId }),
     ),
   );
 });
 
+let storeCount = 0;
+
 /**
- * One store of host projects, each over its own database in a folder of its own, under a project id
- * minted for the source, since the host's project ids are GUIDs.
+ * One store of host projects. The host keeps a database per source for the life of the run, so each
+ * store names its sources after itself and no store sees what an earlier one stored; the name only
+ * stamps the draft read whole, which the groups opted into never compare. Each source holds one
+ * project, under an id minted for it, since the host's project ids are GUIDs.
  */
 function createStore(): ConformanceStore {
-  const directory = mkdtempSync(path.join(dataDirectory, 'store-'));
+  storeCount += 1;
+  const sourceOnHost = (sourceProjectId: string) => `store-${storeCount}-${sourceProjectId}`;
   opened = new Set();
   const projectIds = new Map<string, string>();
   const open = async (sourceProjectId: string) => {
-    let projectId = projectIds.get(sourceProjectId);
+    const source = sourceOnHost(sourceProjectId);
+    let projectId = projectIds.get(source);
     if (projectId === undefined) {
       projectId = crypto.randomUUID();
-      projectIds.set(sourceProjectId, projectId);
-      await papi.invoke(`command:${REPOSITORY_COMMAND_PREFIX}openProject`, {
-        projectId,
-        dbPath: path.join(directory, `${sourceProjectId}.sqlite`),
+      projectIds.set(source, projectId);
+      await papi.invoke(`command:${REPOSITORY_COMMAND_PREFIX}openSource`, {
+        sourceProjectId: source,
       });
-      opened.add(projectId);
+      opened.add(source);
+      await papi.invoke(`command:${REPOSITORY_COMMAND_PREFIX}createProject`, {
+        sourceProjectId: source,
+        projectId,
+      });
     }
     return new CSharpRepository(
       (command, args) => papi.invoke(`command:${command}`, args),
+      source,
       projectId,
-      sourceProjectId,
     );
   };
   return {

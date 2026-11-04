@@ -13,18 +13,18 @@ namespace Interlinearizer.Crdt;
 public static class InterlinearizerCrdtKernel
 {
     /// <summary>
-    /// Registers the model over one database per open project: <see cref="OpenProjects"/> opens
-    /// a scope per project and <see cref="CurrentProject"/> names its database. The container
+    /// Registers the model over one database per open source project: <see cref="OpenSources"/>
+    /// opens a scope per source and <see cref="CurrentSource"/> names its database. The container
     /// must also hold a <see cref="ClientIdentity"/>.
     /// </summary>
     public static IServiceCollection AddInterlinearizerCrdt(this IServiceCollection services)
     {
-        services.AddScoped<CurrentProject>();
-        services.AddSingleton<OpenProjects>();
+        services.AddScoped<CurrentSource>();
+        services.AddSingleton<OpenSources>();
         return services.AddInterlinearizerCrdt((provider, builder) =>
             builder.UseSqlite(new SqliteConnectionStringBuilder
             {
-                DataSource = provider.GetRequiredService<CurrentProject>().DbPath,
+                DataSource = provider.GetRequiredService<CurrentSource>().DbPath,
             }.ToString()));
     }
 

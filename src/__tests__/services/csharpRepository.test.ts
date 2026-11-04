@@ -1,5 +1,6 @@
 import type { AnalysisRepository } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
+import { scopeRecordOf } from '../../utils/change-set';
 import { CSharpRepository, REPOSITORY_COMMAND_PREFIX } from '../../services/csharpRepository';
 
 const PROJECT = 'project-1';
@@ -7,7 +8,7 @@ const SOURCE = 'source-project';
 
 function createRepository() {
   const send = jest.fn();
-  return { send, repository: new CSharpRepository(send, PROJECT, SOURCE) };
+  return { send, repository: new CSharpRepository(send, SOURCE, PROJECT) };
 }
 
 describe('CSharpRepository', () => {
@@ -79,6 +80,7 @@ describe('CSharpRepository', () => {
       await expect(c.call(repository)).resolves.toBe(answer);
 
       expect(send).toHaveBeenCalledWith(`${REPOSITORY_COMMAND_PREFIX}${c.command}`, {
+        sourceProjectId: SOURCE,
         projectId: PROJECT,
         ...c.sent,
       });
@@ -96,9 +98,20 @@ describe('CSharpRepository', () => {
     });
 
     expect(send).toHaveBeenCalledWith(`${REPOSITORY_COMMAND_PREFIX}apply`, {
+      sourceProjectId: SOURCE,
       projectId: PROJECT,
       changes,
     });
+  });
+
+  it('refuses a change set carrying the scope record, sending nothing', async () => {
+    const { send, repository } = createRepository();
+
+    await expect(
+      repository.apply({ intent: 'rescope', scope: scopeRecordOf(emptyDraft(SOURCE)) }),
+    ).rejects.toThrow('stores no scope record');
+
+    expect(send).not.toHaveBeenCalled();
   });
 
   it('exports every record the host holds in an otherwise empty draft', async () => {
@@ -115,6 +128,7 @@ describe('CSharpRepository', () => {
       analysis,
     });
     expect(send).toHaveBeenCalledWith(`${REPOSITORY_COMMAND_PREFIX}readAll`, {
+      sourceProjectId: SOURCE,
       projectId: PROJECT,
     });
   });

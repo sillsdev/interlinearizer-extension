@@ -30,22 +30,26 @@ export type CommandSender = <T>(command: string, args: object) => Promise<T>;
 export const REPOSITORY_COMMAND_PREFIX = 'interlinearizer.repository.';
 
 /**
- * The C# host's slice of {@link AnalysisRepository}, reached one command per method. Every record id
- * must be a GUID string, as the host stores ids. The draft's own record and its unsaved mark are
- * not stored yet: an apply reports an inverse that restores nothing and the draft as clean, and the
- * calls that read or write the draft whole throw.
+ * The C# host's slice of {@link AnalysisRepository}, reached one command per method. Every command
+ * names the source project the host has open and the interlinear project in it, which the host must
+ * already store. Every record id must be a GUID string, as the host stores ids. The scope's record
+ * and the unsaved mark are not stored yet: an apply refuses a change set carrying a scope, reports
+ * an inverse that restores nothing and the draft as clean, and the calls that read or write the
+ * draft whole throw.
  */
 export class CSharpRepository implements AnalysisRepository {
   readonly capabilities: RepositoryCapabilities = { readOnly: false };
 
   /**
-   * @param projectId - The project the host has open, which every command names.
-   * @param sourceProjectId - The source project the draft read whole is stamped with.
+   * @param sourceProjectId - The source project the host has open, which every command names and
+   *   the draft read whole is stamped with.
+   * @param projectId - The interlinear project the host stores in that source, which every command
+   *   names.
    */
   constructor(
     private readonly send: CommandSender,
-    private readonly projectId: string,
     private readonly sourceProjectId: string,
+    private readonly projectId: string,
   ) {}
 
   /** Every record stored, in an otherwise empty draft, with no book unreadable. */
@@ -66,7 +70,13 @@ export class CSharpRepository implements AnalysisRepository {
     return this.notStored('markClean');
   }
 
+  /** @throws {Error} If the change set carries the scope's record, which the host stores nowhere. */
   async apply(changes: ChangeSet): Promise<ApplyResult> {
+    if (changes.scope) {
+      throw new Error(
+        `The C# host stores no scope record for ${this.projectId}: the change set must not carry one`,
+      );
+    }
     await this.command('apply', { changes });
     return { inverse: { intent: changes.intent }, wasDirty: false };
   }
@@ -137,6 +147,7 @@ export class CSharpRepository implements AnalysisRepository {
 
   private command<T>(method: string, args: object): Promise<T> {
     return this.send<T>(`${REPOSITORY_COMMAND_PREFIX}${method}`, {
+      sourceProjectId: this.sourceProjectId,
       projectId: this.projectId,
       ...args,
     });
@@ -145,7 +156,7 @@ export class CSharpRepository implements AnalysisRepository {
   private notStored(method: string): Promise<never> {
     return Promise.reject(
       new Error(
-        `${method} is not supported: the C# host for ${this.projectId} stores no draft record yet`,
+        `${method} is not supported: the C# host stores no draft record for ${this.projectId} yet`,
       ),
     );
   }

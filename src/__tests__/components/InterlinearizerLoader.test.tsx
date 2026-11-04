@@ -6298,6 +6298,7 @@ describe('undo and redo', () => {
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
         await userEvent.click(screen.getByTestId('catalog-row-toggle'));
         await userEvent.click(screen.getByTestId('catalog-row-delete'));
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
         act(() => {
           fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
         });
@@ -6346,6 +6347,7 @@ describe('undo and redo', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
       await userEvent.click(screen.getByTestId('catalog-row-toggle'));
       await userEvent.click(screen.getByTestId('catalog-row-delete'));
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
       return view;
     }
 
@@ -6472,6 +6474,7 @@ describe('undo and redo', () => {
       act(() => screen.getByTestId('tab-toolbar-undo').click());
       await userEvent.click(screen.getByTestId('catalog-row-toggle'));
       await userEvent.click(screen.getByTestId('catalog-row-delete'));
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
       await act(async () => deliveries.at(-1)?.('toast-2'));
       await act(async () => deliveries[0]('toast-1'));

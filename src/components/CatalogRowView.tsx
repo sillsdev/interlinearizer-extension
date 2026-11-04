@@ -15,6 +15,7 @@ import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
 export const ROW_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_noUsages%',
   '%interlinearizer_analysisCatalog_showAllUsages%',
+  '%interlinearizer_analysisCatalog_showFewerUsages%',
   ...ROW_HEADER_STRING_KEYS,
   ...ROW_EDITOR_STRING_KEYS,
   ...STALE_LOCATION_STRING_KEYS,
@@ -298,6 +299,16 @@ function CatalogRowView({
                   )}
                 </Button>
               )}
+              {showsAllUsages && row.usages.length > INLINE_USAGE_LIMIT && (
+                <Button
+                  data-testid="catalog-usages-show-fewer"
+                  onClick={() => setShowsAllUsages(false)}
+                  size="sm"
+                  variant="link"
+                >
+                  {localizedStrings['%interlinearizer_analysisCatalog_showFewerUsages%']}
+                </Button>
+              )}
             </div>
           )}
 
@@ -320,6 +331,7 @@ function CatalogRowView({
             localizedStrings={localizedStrings}
             onDeleteRequest={handleDeleteRequest}
             onMergeRequest={onMergeRequest ? handleMergeRequest : undefined}
+            surfaceText={row.surfaceText}
           />
         </div>
       )}

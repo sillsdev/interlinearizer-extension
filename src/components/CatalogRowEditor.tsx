@@ -3,11 +3,12 @@ import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-rea
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState } from 'react';
 import { useDisplayedGloss } from './LexiconSenses';
-import { MorphemeBox } from './MorphemeBox';
+import { BoxAlignedField, MorphemeBox, ROW_LABEL_CLASS } from './MorphemeBox';
 import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
+import { ModalShell } from './modals/ModalShell';
 
 /** Localized string keys the row editor renders. */
 export const ROW_EDITOR_STRING_KEYS = [
@@ -29,6 +30,9 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_appliesToAll%',
   '%interlinearizer_analysisCatalog_merge%',
   '%interlinearizer_analysisCatalog_delete%',
+  '%interlinearizer_analysisCatalog_deleteConfirmTitle%',
+  '%interlinearizer_analysisCatalog_deleteConfirmPrompt%',
+  '%interlinearizer_analysisCatalog_deleteConfirmCancel%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link CatalogRowEditor}. */
@@ -244,16 +248,19 @@ export default function CatalogRowEditor({
   if (readOnly)
     return (
       <div className="tw:flex tw:flex-col tw:gap-3 tw:pt-1" data-testid="catalog-row-editor">
-        <div className="tw:flex tw:items-center tw:gap-2">
-          <span className="tw:text-xs tw:text-muted-foreground">
-            {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
-          </span>
-          <span className="tw:flex-1 tw:min-w-0 tw:text-sm" data-testid="readonly-catalog-gloss">
+        <BoxAlignedField
+          label={
+            <span className={ROW_LABEL_CLASS}>
+              {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
+            </span>
+          }
+        >
+          <span className="tw:min-w-0 tw:text-sm" data-testid="readonly-catalog-gloss">
             {displayedGloss ||
               resolvedOrEmpty(localizedStrings['%interlinearizer_analysisCatalog_noGloss%']) ||
               '—'}
           </span>
-        </div>
+        </BoxAlignedField>
 
         {/* The same labeled box the editable row shows, so switching between a read-only and an
             editable analysis does not rearrange the breakdown. */}
@@ -293,20 +300,21 @@ export default function CatalogRowEditor({
         </p>
       )}
 
-      <div className="tw:flex tw:items-center tw:gap-2">
-        <Label className="tw:text-xs tw:text-muted-foreground" htmlFor={glossFieldId}>
-          {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
-        </Label>
-        <div className="tw:flex-1 tw:min-w-0">
-          <CommitOnBlurInput
-            committedValue={gloss}
-            id={glossFieldId}
-            key={`${analysisId}-gloss`}
-            onCommit={onGlossCommit}
-            testId="catalog-row-gloss-input"
-          />
-        </div>
-      </div>
+      <BoxAlignedField
+        label={
+          <Label className={ROW_LABEL_CLASS} htmlFor={glossFieldId}>
+            {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
+          </Label>
+        }
+      >
+        <CommitOnBlurInput
+          committedValue={gloss}
+          id={glossFieldId}
+          key={`${analysisId}-gloss`}
+          onCommit={onGlossCommit}
+          testId="catalog-row-gloss-input"
+        />
+      </BoxAlignedField>
 
       {/* The forms row is the control that opens the editor. Labeled, there being no surrounding
           interlinear line here to say what the two rows are. */}
@@ -399,19 +407,25 @@ export default function CatalogRowEditor({
  * Renders nothing for a read-only analysis, which neither control applies to.
  */
 export function CatalogRowActions({
+  surfaceText,
   onMergeRequest,
   onDeleteRequest,
   localizedStrings,
 }: Readonly<{
+  /** Surface form of the analysis, naming it in the delete confirmation. */
+  surfaceText: string;
   /** Opens the merge picker. Absent when the analysis shares its form with no other record. */
   onMergeRequest?: () => void;
-  /** Asks for the analysis to be deleted. */
+  /** Asks for the analysis to be deleted, once the reader has confirmed it. */
   onDeleteRequest: () => void;
   /** Resolved localizations covering at least {@link ROW_EDITOR_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
 }>) {
   const readOnly = useAnalysisReadOnly();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   if (readOnly) return undefined;
+
+  const cancelDelete = () => setConfirmingDelete(false);
 
   return (
     <div className="tw:flex tw:gap-1.5">
@@ -433,13 +447,48 @@ export function CatalogRowActions({
       <Button
         className="tw:ms-auto tw:text-destructive"
         data-testid="catalog-row-delete"
-        onClick={onDeleteRequest}
+        onClick={() => setConfirmingDelete(true)}
         size="sm"
         type="button"
         variant="outline"
       >
         {localizedStrings['%interlinearizer_analysisCatalog_delete%']}
       </Button>
+      {confirmingDelete && (
+        <ModalShell
+          onClose={cancelDelete}
+          title={localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmTitle%']}
+          titleTestId="catalog-delete-confirm-title"
+          width="tw:w-96"
+        >
+          <p className="tw:text-sm" data-testid="catalog-delete-confirm-prompt">
+            {formatReplacementString(
+              localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmPrompt%'],
+              { form: surfaceText },
+            )}
+          </p>
+          <div className="tw:mt-4 tw:flex tw:justify-end tw:gap-2">
+            <Button
+              data-testid="catalog-delete-confirm-cancel"
+              onClick={cancelDelete}
+              variant="outline"
+            >
+              {localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmCancel%']}
+            </Button>
+            <Button
+              className="tw:text-destructive"
+              data-testid="catalog-delete-confirm"
+              onClick={() => {
+                setConfirmingDelete(false);
+                onDeleteRequest();
+              }}
+              variant="outline"
+            >
+              {localizedStrings['%interlinearizer_analysisCatalog_delete%']}
+            </Button>
+          </div>
+        </ModalShell>
+      )}
     </div>
   );
 }

@@ -96,8 +96,8 @@ type RejectedGloss = Readonly<{ draft: string; typedOver: string }>;
  * Keeps the gloss drafts that no field is showing, for each field to show again when it next
  * mounts. Also tracks the mounted fields showing a draft whose commit failed.
  *
- * A field unmounts when its row collapses or the analysis language changes. An unmounted field
- * cannot send its draft itself.
+ * A field unmounts when its row is collapsed or no longer listed, or when the analysis language
+ * changes. An unmounted field cannot send its draft itself.
  */
 export type GlossRetry = Readonly<{
   /**

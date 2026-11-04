@@ -78,8 +78,9 @@ export type SplitPhraseRequest = PhraseEditStamp & {
   /** `Token.ref` of the token the first half ends with. */
   splitAfterTokenRef: string;
   /**
-   * Each token's place in document order, by `Token.ref`. A token the map leaves out sorts as if at
-   * place zero.
+   * Each token's place in document order, by `Token.ref`. A token missing from the map sorts right
+   * after the token stored before it. When that token is missing too, the next earlier one counts
+   * instead. When no earlier token is in the map, the missing token sorts first.
    */
   tokenDocOrder: ReadonlyMap<string, number>;
   /** Id the link of the second half takes, spent only when both halves remain phrases. */

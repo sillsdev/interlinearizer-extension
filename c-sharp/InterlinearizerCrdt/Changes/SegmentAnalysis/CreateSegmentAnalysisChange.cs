@@ -12,11 +12,17 @@ namespace Interlinearizer.Crdt.Changes;
 public class CreateSegmentAnalysisChange(Guid entityId)
     : CreateChange<SegmentAnalysis>(entityId), ISelfNamedType<CreateSegmentAnalysisChange>
 {
-    /// <summary>Carries every field of <paramref name="analysis"/> but its timestamps.</summary>
+    /// <summary>
+    /// Carries every field of <paramref name="analysis"/> but its timestamps, filed under
+    /// <paramref name="projectId"/>.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// If <paramref name="projectId"/> is empty, or the analysis names another project.
+    /// </exception>
     [SetsRequiredMembers]
-    public CreateSegmentAnalysisChange(SegmentAnalysis analysis) : this(analysis.Id)
+    public CreateSegmentAnalysisChange(SegmentAnalysis analysis, Guid projectId) : this(analysis.Id)
     {
-        ProjectId = analysis.ProjectId;
+        ProjectId = ProjectReferences.ProjectOf(analysis, projectId);
         SurfaceText = analysis.SurfaceText;
         Confidence = analysis.Confidence;
         Producer = analysis.Producer;
@@ -25,7 +31,7 @@ public class CreateSegmentAnalysisChange(Guid entityId)
         LiteralTranslation = analysis.LiteralTranslation;
     }
 
-    public Guid ProjectId { get; init; }
+    public required Guid ProjectId { get; init; }
     public required string SurfaceText { get; init; }
     public Confidence? Confidence { get; init; }
     public string? Producer { get; init; }
@@ -39,7 +45,7 @@ public class CreateSegmentAnalysisChange(Guid entityId)
         {
             Id = EntityId,
             ProjectId = ProjectId,
-            DeletedAt = await context.IsProjectDeleted(ProjectId) ? commit.DateTime : null,
+            DeletedAt = await context.IsObjectDeleted(ProjectId) ? commit.DateTime : null,
             CreatedAt = commit.DateTime,
             UpdatedAt = commit.DateTime,
             SurfaceText = SurfaceText,

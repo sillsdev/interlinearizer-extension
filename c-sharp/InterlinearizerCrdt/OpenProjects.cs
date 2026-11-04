@@ -1,13 +1,17 @@
 using System.Collections.Concurrent;
+using Interlinearizer.Crdt.Changes;
+using Interlinearizer.Crdt.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using SIL.Harmony;
 
 namespace Interlinearizer.Crdt;
 
 /// <summary>
 /// The projects the host has open, one DI scope each. A scope holds the project's Harmony
 /// services over its own database and lives from <see cref="Open"/> to <see cref="Close"/>;
-/// requests never create scopes.
+/// requests never create scopes. Until a database is addressed by the Paratext project it
+/// represents, each holds the one interlinear project it is opened as, created on first open.
 /// </summary>
 public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposable
 {
@@ -18,12 +22,14 @@ public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposab
     /// when missing and brought up to the current schema when behind. Opening a project already
     /// open returns its services. Two concurrent opens of one project share one scope.
     /// </summary>
+    /// <exception cref="ArgumentException">If the project id is not a GUID.</exception>
     /// <exception cref="InvalidOperationException">
     /// If the project is already open over a different database.
     /// </exception>
     public async Task<IServiceProvider> Open(string projectId, string dbPath)
     {
-        var scope = _scopes.GetOrAdd(projectId, _ => new Lazy<Task<AsyncServiceScope>>(() => OpenScope(projectId, dbPath)));
+        var id = ParseProjectId(projectId);
+        var scope = _scopes.GetOrAdd(projectId, _ => new Lazy<Task<AsyncServiceScope>>(() => OpenScope(id, projectId, dbPath)));
         IServiceProvider services;
         try
         {
@@ -47,10 +53,16 @@ public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposab
         return (await scope.Value).ServiceProvider;
     }
 
-    /// <summary>The repository of an open project.</summary>
+    /// <summary>The repository of an open project, over that project's records.</summary>
     /// <exception cref="InvalidOperationException">If the project is not open.</exception>
-    public async Task<AnalysisRepository> Repository(string projectId) =>
-        (await Get(projectId)).GetRequiredService<AnalysisRepository>();
+    public async Task<AnalysisRepository> Repository(string projectId)
+    {
+        var services = await Get(projectId);
+        return new AnalysisRepository(
+            services.GetRequiredService<DataModel>(),
+            services.GetRequiredService<ClientIdentity>(),
+            ParseProjectId(projectId));
+    }
 
     public bool IsOpen(string projectId) => _scopes.ContainsKey(projectId);
 
@@ -66,7 +78,10 @@ public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposab
         foreach (var projectId in _scopes.Keys) await Close(projectId);
     }
 
-    private async Task<AsyncServiceScope> OpenScope(string projectId, string dbPath)
+    private static Guid ParseProjectId(string projectId) =>
+        Guid.TryParse(projectId, out var id) ? id : throw new ArgumentException($"Project ids are GUIDs, not {projectId}", nameof(projectId));
+
+    private async Task<AsyncServiceScope> OpenScope(Guid id, string projectId, string dbPath)
     {
         var scope = rootServices.CreateAsyncScope();
         try
@@ -74,6 +89,12 @@ public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposab
             scope.ServiceProvider.GetRequiredService<CurrentProject>().Set(projectId, dbPath);
             var db = scope.ServiceProvider.GetRequiredService<InterlinearizerCrdtDbContext>();
             await db.Database.MigrateAsync();
+            var dataModel = scope.ServiceProvider.GetRequiredService<DataModel>();
+            if (await dataModel.GetLatest<InterlinearProject>(id) is null)
+            {
+                var client = scope.ServiceProvider.GetRequiredService<ClientIdentity>();
+                await dataModel.AddChanges(client.Id, [new CreateInterlinearProjectChange(id)]);
+            }
             return scope;
         }
         catch

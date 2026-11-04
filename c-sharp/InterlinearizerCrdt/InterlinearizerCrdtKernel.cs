@@ -45,7 +45,6 @@ public static class InterlinearizerCrdtKernel
             builder.EnableDetailedErrors();
         });
         services.AddCrdtData<InterlinearizerCrdtDbContext>(ConfigureHarmony);
-        services.AddScoped<AnalysisRepository>();
         return services;
     }
 

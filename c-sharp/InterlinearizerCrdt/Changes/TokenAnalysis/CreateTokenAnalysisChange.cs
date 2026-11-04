@@ -12,11 +12,17 @@ namespace Interlinearizer.Crdt.Changes;
 public class CreateTokenAnalysisChange(Guid entityId)
     : CreateChange<TokenAnalysis>(entityId), ISelfNamedType<CreateTokenAnalysisChange>
 {
-    /// <summary>Carries every field of <paramref name="analysis"/> but its timestamps.</summary>
+    /// <summary>
+    /// Carries every field of <paramref name="analysis"/> but its timestamps, filed under
+    /// <paramref name="projectId"/>.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// If <paramref name="projectId"/> is empty, or the analysis names another project.
+    /// </exception>
     [SetsRequiredMembers]
-    public CreateTokenAnalysisChange(TokenAnalysis analysis) : this(analysis.Id)
+    public CreateTokenAnalysisChange(TokenAnalysis analysis, Guid projectId) : this(analysis.Id)
     {
-        ProjectId = analysis.ProjectId;
+        ProjectId = ProjectReferences.ProjectOf(analysis, projectId);
         SurfaceText = analysis.SurfaceText;
         Confidence = analysis.Confidence;
         Producer = analysis.Producer;
@@ -29,7 +35,7 @@ public class CreateTokenAnalysisChange(Guid entityId)
         GlossSenseRef = analysis.GlossSenseRef;
     }
 
-    public Guid ProjectId { get; init; }
+    public required Guid ProjectId { get; init; }
     public required string SurfaceText { get; init; }
     public Confidence? Confidence { get; init; }
     public string? Producer { get; init; }
@@ -47,7 +53,7 @@ public class CreateTokenAnalysisChange(Guid entityId)
         {
             Id = EntityId,
             ProjectId = ProjectId,
-            DeletedAt = await context.IsProjectDeleted(ProjectId) ? commit.DateTime : null,
+            DeletedAt = await context.IsObjectDeleted(ProjectId) ? commit.DateTime : null,
             CreatedAt = commit.DateTime,
             UpdatedAt = commit.DateTime,
             SurfaceText = SurfaceText,

@@ -16,17 +16,24 @@ public class CreateSegmentAnalysisLinkChange(Guid entityId)
     : CreateChange<SegmentAnalysisLink>(entityId), ISelfNamedType<CreateSegmentAnalysisLinkChange>
 {
     /// <summary>Carries every field of <paramref name="link"/> but its timestamps.</summary>
+    /// <summary>
+    /// Carries every field of <paramref name="link"/> but its timestamps, filed under
+    /// <paramref name="projectId"/>.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// If <paramref name="projectId"/> is empty, or the link names another project.
+    /// </exception>
     [SetsRequiredMembers]
-    public CreateSegmentAnalysisLinkChange(SegmentAnalysisLink link) : this(link.Id)
+    public CreateSegmentAnalysisLinkChange(SegmentAnalysisLink link, Guid projectId) : this(link.Id)
     {
-        ProjectId = link.ProjectId;
+        ProjectId = ProjectReferences.ProjectOf(link, projectId);
         AnalysisId = link.AnalysisId;
         SegmentId = link.SegmentId;
         Status = link.Status;
         Confidence = link.Confidence;
     }
 
-    public Guid ProjectId { get; init; }
+    public required Guid ProjectId { get; init; }
     public required Guid AnalysisId { get; init; }
     public required string SegmentId { get; init; }
     public required AssignmentStatus Status { get; init; }
@@ -44,7 +51,7 @@ public class CreateSegmentAnalysisLinkChange(Guid entityId)
             Status = Status,
             Confidence = Confidence,
             SegmentId = SegmentId,
-            DeletedAt = await context.IsObjectDeleted(AnalysisId) || await context.IsProjectDeleted(ProjectId)
+            DeletedAt = await context.IsObjectDeleted(AnalysisId) || await context.IsObjectDeleted(ProjectId)
                 ? commit.DateTime
                 : null,
         };

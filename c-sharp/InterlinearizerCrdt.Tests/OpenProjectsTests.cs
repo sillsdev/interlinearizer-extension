@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Interlinearizer.Crdt.Tests;
@@ -21,15 +22,18 @@ public class OpenProjectsTests : IAsyncDisposable
 
     private string DbPath(string name) => Path.Combine(_directory, name + ".sqlite");
 
+    private static readonly string P1 = Guid.NewGuid().ToString();
+    private static readonly string P2 = Guid.NewGuid().ToString();
+
     private static TokenAnalysis Token(string surfaceText) => new() { Id = Guid.NewGuid(), SurfaceText = surfaceText };
 
     [Test]
     public async Task OpeningAProjectCreatesItsDatabase()
     {
-        await _projects.Open("p1", DbPath("p1"));
+        await _projects.Open(P1, DbPath(P1));
 
-        await Assert.That(File.Exists(DbPath("p1"))).IsTrue();
-        await Assert.That(_projects.IsOpen("p1")).IsTrue();
+        await Assert.That(File.Exists(DbPath(P1))).IsTrue();
+        await Assert.That(_projects.IsOpen(P1)).IsTrue();
     }
 
     [Test]
@@ -38,7 +42,7 @@ public class OpenProjectsTests : IAsyncDisposable
         var dbPath = Path.Combine(_directory, "a;b", "p1.sqlite");
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 
-        await _projects.Open("p1", dbPath);
+        await _projects.Open(P1, dbPath);
 
         await Assert.That(File.Exists(dbPath)).IsTrue();
     }
@@ -46,21 +50,41 @@ public class OpenProjectsTests : IAsyncDisposable
     [Test]
     public async Task EachProjectHasItsOwnRepository()
     {
-        await _projects.Open("p1", DbPath("p1"));
-        await _projects.Open("p2", DbPath("p2"));
+        await _projects.Open(P1, DbPath(P1));
+        await _projects.Open(P2, DbPath(P2));
         var put = Token("and");
 
-        await (await _projects.Repository("p1")).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) });
+        await (await _projects.Repository(P1)).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) });
 
-        await Assert.That(await (await _projects.Repository("p1")).GetTokenAnalyses([put.Id])).HasSingleItem();
-        await Assert.That(await (await _projects.Repository("p2")).GetTokenAnalyses([put.Id])).IsEmpty();
+        await Assert.That(await (await _projects.Repository(P1)).GetTokenAnalyses([put.Id])).HasSingleItem();
+        await Assert.That(await (await _projects.Repository(P2)).GetTokenAnalyses([put.Id])).IsEmpty();
+    }
+
+    [Test]
+    public async Task OpeningAProjectCreatesItInItsDatabaseOnce()
+    {
+        var services = await _projects.Open(P1, DbPath(P1));
+        await _projects.Close(P1);
+        await _projects.Open(P1, DbPath(P1));
+
+        var db = (await _projects.Get(P1)).GetRequiredService<InterlinearizerCrdtDbContext>();
+        await Assert.That(await db.InterlinearProjects.CountAsync()).IsEqualTo(1);
+        await Assert.That((await db.InterlinearProjects.SingleAsync()).Id).IsEqualTo(Guid.Parse(P1));
+        await Assert.That(services).IsNotNull();
+    }
+
+    [Test]
+    public async Task OpeningAProjectWhoseIdIsNotAGuidThrows()
+    {
+        await Assert.That(async () => await _projects.Open("p1", DbPath("p1"))).Throws<ArgumentException>();
+        await Assert.That(_projects.IsOpen("p1")).IsFalse();
     }
 
     [Test]
     public async Task OpeningAnOpenProjectReturnsItsScope()
     {
-        var first = await _projects.Open("p1", DbPath("p1"));
-        var second = await _projects.Open("p1", DbPath("p1"));
+        var first = await _projects.Open(P1, DbPath(P1));
+        var second = await _projects.Open(P1, DbPath(P1));
 
         await Assert.That(second).IsSameReferenceAs(first);
     }
@@ -68,34 +92,34 @@ public class OpenProjectsTests : IAsyncDisposable
     [Test]
     public async Task OpeningAnOpenProjectOverAnotherDatabaseThrows()
     {
-        await _projects.Open("p1", DbPath("p1"));
+        await _projects.Open(P1, DbPath(P1));
 
-        await Assert.That(async () => await _projects.Open("p1", DbPath("other"))).Throws<InvalidOperationException>();
-        await Assert.That(_projects.IsOpen("p1")).IsTrue();
+        await Assert.That(async () => await _projects.Open(P1, DbPath("other"))).Throws<InvalidOperationException>();
+        await Assert.That(_projects.IsOpen(P1)).IsTrue();
     }
 
     [Test]
     public async Task AClosedProjectIsNoLongerOpen()
     {
-        await _projects.Open("p1", DbPath("p1"));
+        await _projects.Open(P1, DbPath(P1));
 
-        await _projects.Close("p1");
+        await _projects.Close(P1);
 
-        await Assert.That(_projects.IsOpen("p1")).IsFalse();
-        await Assert.That(async () => await _projects.Repository("p1")).Throws<InvalidOperationException>();
+        await Assert.That(_projects.IsOpen(P1)).IsFalse();
+        await Assert.That(async () => await _projects.Repository(P1)).Throws<InvalidOperationException>();
     }
 
     [Test]
     public async Task AReopenedProjectStillHoldsItsAnalysis()
     {
-        await _projects.Open("p1", DbPath("p1"));
+        await _projects.Open(P1, DbPath(P1));
         var put = Token("and");
-        await (await _projects.Repository("p1")).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) });
-        await _projects.Close("p1");
+        await (await _projects.Repository(P1)).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) });
+        await _projects.Close(P1);
 
-        await _projects.Open("p1", DbPath("p1"));
+        await _projects.Open(P1, DbPath(P1));
 
-        await Assert.That(await (await _projects.Repository("p1")).GetTokenAnalyses([put.Id])).HasSingleItem();
+        await Assert.That(await (await _projects.Repository(P1)).GetTokenAnalyses([put.Id])).HasSingleItem();
     }
 
     [Test]

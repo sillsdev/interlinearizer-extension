@@ -2,30 +2,36 @@ using System.Text.Json.Serialization;
 
 namespace Interlinearizer.Crdt.Entities;
 
-/// <summary>
-/// Fields shared by every analysis payload record. A payload is shared by every target analyzed
-/// identically, so its timestamps date the record, not any one target's adoption of it.
-/// </summary>
-public abstract class Analysis
+/// <summary>Fields shared by every analysis payload and link.</summary>
+public abstract class AnalysisRecord
 {
-    private string _surfaceText = "";
-
     public Guid Id { get; init; }
 
     /// <summary>
-    /// The <see cref="InterlinearProject"/> this payload belongs to, fixed at creation. Empty while
-    /// nothing assigns one; such a record belongs to no project, so no project's deletion reaches it.
+    /// The <see cref="InterlinearProject"/> this record belongs to, fixed at creation. A record
+    /// cannot outlive its project: deleting the project deletes it.
     /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public Guid ProjectId { get; init; }
 
     public DateTimeOffset? DeletedAt { get; set; }
 
-    /// <summary>When this record was created.</summary>
+    /// <summary>
+    /// When this record was created. For a link, when its target was first given an analysis,
+    /// whichever payload that was.
+    /// </summary>
     public DateTimeOffset CreatedAt { get; set; }
 
-    /// <summary>The most recent write to this record, whether or not it changed the content.</summary>
+    /// <summary>The most recent write aimed at this record, whether or not it changed the content.</summary>
     public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// Fields shared by every analysis payload record. A payload is shared by every target analyzed
+/// identically, so its timestamps date the record, not any one target's adoption of it.
+/// </summary>
+public abstract class Analysis : AnalysisRecord
+{
+    private string _surfaceText = "";
 
     /// <summary>Surface form of the analyzed text span.</summary>
     public required string SurfaceText
@@ -53,9 +59,8 @@ public abstract class Analysis
     /// <summary>User identifier for human-created or human-edited analyses.</summary>
     public string? SourceUser { get; set; }
 
-    public Guid[] GetReferences() => ProjectId == Guid.Empty ? [] : [ProjectId];
+    public Guid[] GetReferences() => [ProjectId];
 
-    /// <summary>A payload cannot outlive its project: deleting the project deletes it.</summary>
     public void RemoveReference(Guid id, CommitBase commit)
     {
         if (ProjectId == id) DeletedAt = commit.DateTime;
@@ -66,27 +71,10 @@ public abstract class Analysis
 /// Fields shared by every link from an analysis payload to a text-layer target. A link's
 /// timestamps track this target's annotation, as distinct from the payload's own history.
 /// </summary>
-public abstract class AnalysisLink
+public abstract class AnalysisLink : AnalysisRecord
 {
-    public Guid Id { get; init; }
-
-    /// <summary>
-    /// The <see cref="InterlinearProject"/> this link belongs to, fixed at creation. Empty while
-    /// nothing assigns one; such a link belongs to no project, so no project's deletion reaches it.
-    /// </summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Guid ProjectId { get; init; }
-
-    public DateTimeOffset? DeletedAt { get; set; }
-
     /// <summary>The linked analysis payload record.</summary>
     public required Guid AnalysisId { get; set; }
-
-    /// <summary>When this target was first given an analysis, whichever payload that was.</summary>
-    public DateTimeOffset CreatedAt { get; set; }
-
-    /// <summary>The most recent write aimed at this target.</summary>
-    public DateTimeOffset UpdatedAt { get; set; }
 
     public AssignmentStatus Status { get; set; }
 
@@ -99,11 +87,9 @@ public abstract class AnalysisLink
     [JsonIgnore]
     public string BookCode { get; protected set; } = "";
 
-    public Guid[] GetReferences() => ProjectId == Guid.Empty ? [AnalysisId] : [AnalysisId, ProjectId];
+    public Guid[] GetReferences() => [AnalysisId, ProjectId];
 
-    /// <summary>
-    /// A link cannot outlive its payload or its project: deleting either deletes the link.
-    /// </summary>
+    /// <summary>A link cannot outlive its payload either: deleting the analysis deletes the link.</summary>
     public void RemoveReference(Guid id, CommitBase commit)
     {
         if (AnalysisId == id || ProjectId == id) DeletedAt = commit.DateTime;

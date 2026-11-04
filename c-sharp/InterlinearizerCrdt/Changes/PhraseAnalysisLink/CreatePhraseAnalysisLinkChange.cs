@@ -16,17 +16,24 @@ public class CreatePhraseAnalysisLinkChange(Guid entityId)
     : CreateChange<PhraseAnalysisLink>(entityId), ISelfNamedType<CreatePhraseAnalysisLinkChange>
 {
     /// <summary>Carries every field of <paramref name="link"/> but its timestamps.</summary>
+    /// <summary>
+    /// Carries every field of <paramref name="link"/> but its timestamps, filed under
+    /// <paramref name="projectId"/>.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// If <paramref name="projectId"/> is empty, or the link names another project.
+    /// </exception>
     [SetsRequiredMembers]
-    public CreatePhraseAnalysisLinkChange(PhraseAnalysisLink link) : this(link.Id)
+    public CreatePhraseAnalysisLinkChange(PhraseAnalysisLink link, Guid projectId) : this(link.Id)
     {
-        ProjectId = link.ProjectId;
+        ProjectId = ProjectReferences.ProjectOf(link, projectId);
         AnalysisId = link.AnalysisId;
         Tokens = link.Tokens;
         Status = link.Status;
         Confidence = link.Confidence;
     }
 
-    public Guid ProjectId { get; init; }
+    public required Guid ProjectId { get; init; }
     public required Guid AnalysisId { get; init; }
     public required List<TokenSnapshot> Tokens { get; init; }
     public required AssignmentStatus Status { get; init; }
@@ -44,7 +51,7 @@ public class CreatePhraseAnalysisLinkChange(Guid entityId)
             Status = Status,
             Confidence = Confidence,
             Tokens = Tokens,
-            DeletedAt = await context.IsObjectDeleted(AnalysisId) || await context.IsProjectDeleted(ProjectId)
+            DeletedAt = await context.IsObjectDeleted(AnalysisId) || await context.IsObjectDeleted(ProjectId)
                 ? commit.DateTime
                 : null,
         };

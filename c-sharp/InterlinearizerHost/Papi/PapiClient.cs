@@ -28,6 +28,7 @@ internal sealed class PapiClient : IDisposable
         // is absent rather than null, as the analysis records promise.
         formatter.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         formatter.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        WireJson.Configure(formatter.JsonSerializerOptions);
         _jsonRpc = new JsonRpc(new WebSocketMessageHandler(_webSocket, formatter))
         {
             // Handlers are registered after the connection starts listening.

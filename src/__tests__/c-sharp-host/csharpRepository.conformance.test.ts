@@ -34,21 +34,28 @@ afterEach(async () => {
   );
 });
 
-/** One store of host projects, each over its own database in a folder of its own. */
+/**
+ * One store of host projects, each over its own database in a folder of its own, under a project id
+ * minted for the source, since the host's project ids are GUIDs.
+ */
 function createStore(): ConformanceStore {
   const directory = mkdtempSync(path.join(dataDirectory, 'store-'));
   opened = new Set();
+  const projectIds = new Map<string, string>();
   const open = async (sourceProjectId: string) => {
-    if (!opened.has(sourceProjectId)) {
+    let projectId = projectIds.get(sourceProjectId);
+    if (projectId === undefined) {
+      projectId = crypto.randomUUID();
+      projectIds.set(sourceProjectId, projectId);
       await papi.invoke(`command:${REPOSITORY_COMMAND_PREFIX}openProject`, {
-        projectId: sourceProjectId,
+        projectId,
         dbPath: path.join(directory, `${sourceProjectId}.sqlite`),
       });
-      opened.add(sourceProjectId);
+      opened.add(projectId);
     }
     return new CSharpRepository(
       (command, args) => papi.invoke(`command:${command}`, args),
-      sourceProjectId,
+      projectId,
       sourceProjectId,
     );
   };

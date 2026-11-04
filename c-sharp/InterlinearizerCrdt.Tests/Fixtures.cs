@@ -7,6 +7,9 @@ public static class Fixtures
     public static readonly EntryRef Entry = new("lexicon", "lex-project", "entry-1");
     public static readonly TokenSnapshot Token1 = new("GEN 1:1 tok 0", "In");
     public static readonly TokenSnapshot Token2 = new("GEN 1:1 tok 1", "the");
+
+    /// <summary>The project the record fixtures belong to.</summary>
+    public static readonly Guid ProjectId = new("33333333-3333-3333-3333-333333333333");
     public static CreateInterlinearProjectChange CreateInterlinearProject(Guid id) => new(id)
     {
         Name = "Genesis draft",
@@ -41,6 +44,7 @@ public static class Fixtures
 
     public static CreateSegmentAnalysisChange CreateSegmentAnalysis(Guid id) => new(id)
     {
+        ProjectId = ProjectId,
         SurfaceText = "In the beginning",
         Confidence = Confidence.High,
         Producer = "human",
@@ -101,6 +105,7 @@ public static class Fixtures
 
     public static CreateSegmentAnalysisLinkChange CreateSegmentAnalysisLink(Guid id, Guid analysisId) => new(id)
     {
+        ProjectId = ProjectId,
         AnalysisId = analysisId,
         SegmentId = "GEN 1:1",
         Status = AssignmentStatus.Approved,
@@ -117,6 +122,7 @@ public static class Fixtures
 
     public static CreateTokenAnalysisChange CreateTokenAnalysis(Guid id) => new(id)
     {
+        ProjectId = ProjectId,
         SurfaceText = "ἀρχῇ",
         Confidence = Confidence.Guess,
         Producer = "parser",
@@ -145,6 +151,7 @@ public static class Fixtures
 
     public static CreateTokenAnalysisLinkChange CreateTokenAnalysisLink(Guid id, Guid analysisId) => new(id)
     {
+        ProjectId = ProjectId,
         AnalysisId = analysisId,
         Token = Token1,
         Status = AssignmentStatus.Suggested,
@@ -161,6 +168,7 @@ public static class Fixtures
 
     public static CreatePhraseAnalysisChange CreatePhraseAnalysis(Guid id) => new(id)
     {
+        ProjectId = ProjectId,
         SurfaceText = "In the",
         Confidence = Confidence.Medium,
         Producer = "phrase-finder",
@@ -181,6 +189,7 @@ public static class Fixtures
 
     public static CreatePhraseAnalysisLinkChange CreatePhraseAnalysisLink(Guid id, Guid analysisId) => new(id)
     {
+        ProjectId = ProjectId,
         AnalysisId = analysisId,
         Tokens = [Token1, Token2],
         Status = AssignmentStatus.Candidate,

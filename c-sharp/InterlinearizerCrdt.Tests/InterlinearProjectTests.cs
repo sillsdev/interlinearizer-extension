@@ -44,7 +44,7 @@ public class InterlinearProjectTests : CrdtTestBase
     {
         await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
 
-        var rows = await DbContext.InterlinearProjects.ToListAsync();
+        var rows = await DbContext.InterlinearProjects.Where(p => p.Id == _projectId).ToListAsync();
         await Assert.That(rows).HasSingleItem();
         await Assert.That(rows[0].AnalysisLanguages).IsEquivalentTo(["fr", "en"]);
     }
@@ -106,7 +106,7 @@ public class InterlinearProjectTests : CrdtTestBase
         var deleted = await WriteNextChange(new DeleteChange<InterlinearProject>(_projectId));
 
         await Assert.That((await Project())!.DeletedAt).IsEqualTo(deleted.DateTime);
-        await Assert.That(await DbContext.InterlinearProjects.CountAsync()).IsEqualTo(0);
+        await Assert.That(await DbContext.InterlinearProjects.CountAsync(p => p.Id == _projectId)).IsEqualTo(0);
     }
 
     [Test]
@@ -116,10 +116,10 @@ public class InterlinearProjectTests : CrdtTestBase
         var mine = Token(_projectId);
         var theirs = Token(_otherProjectId);
         await WriteNextChange([
-            new CreateTokenAnalysisChange(mine),
-            new CreateTokenAnalysisLinkChange(Link(_projectId, mine.Id)),
-            new CreateTokenAnalysisChange(theirs),
-            new CreateTokenAnalysisLinkChange(Link(_otherProjectId, theirs.Id)),
+            new CreateTokenAnalysisChange(mine, _projectId),
+            new CreateTokenAnalysisLinkChange(Link(_projectId, mine.Id), _projectId),
+            new CreateTokenAnalysisChange(theirs, _otherProjectId),
+            new CreateTokenAnalysisLinkChange(Link(_otherProjectId, theirs.Id), _otherProjectId),
         ]);
 
         await WriteNextChange(new DeleteChange<InterlinearProject>(_projectId));
@@ -133,9 +133,25 @@ public class InterlinearProjectTests : CrdtTestBase
     {
         var token = Token(_projectId);
 
-        await WriteNextChange(new CreateTokenAnalysisChange(token));
+        await WriteNextChange(new CreateTokenAnalysisChange(token, _projectId));
 
         await Assert.That(await DbContext.TokenAnalyses.CountAsync()).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ACreateRefusesAnEmptyProjectOrARecordNamingAnotherProject()
+    {
+        await Assert.That(() => new CreateTokenAnalysisChange(Token(Guid.Empty), Guid.Empty)).Throws<ArgumentException>();
+        await Assert.That(() => new CreateTokenAnalysisChange(Token(_otherProjectId), _projectId)).Throws<ArgumentException>();
+        await Assert.That(() => new CreateTokenAnalysisLinkChange(Link(_otherProjectId, Guid.NewGuid()), _projectId)).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task ACreateFilesARecordNamingNoProjectUnderTheGivenOne()
+    {
+        var change = new CreateTokenAnalysisChange(Token(Guid.Empty), ProjectId);
+
+        await Assert.That(change.ProjectId).IsEqualTo(ProjectId);
     }
 
     [Test]
@@ -145,7 +161,10 @@ public class InterlinearProjectTests : CrdtTestBase
         await WriteNextChange(new DeleteChange<InterlinearProject>(_projectId));
         var token = Token(_projectId);
 
-        await WriteNextChange([new CreateTokenAnalysisChange(token), new CreateTokenAnalysisLinkChange(Link(_projectId, token.Id))]);
+        await WriteNextChange([
+            new CreateTokenAnalysisChange(token, _projectId),
+            new CreateTokenAnalysisLinkChange(Link(_projectId, token.Id), _projectId),
+        ]);
 
         await Assert.That(await DbContext.TokenAnalyses.CountAsync()).IsEqualTo(0);
         await Assert.That(await DbContext.TokenAnalysisLinks.CountAsync()).IsEqualTo(0);
@@ -156,7 +175,7 @@ public class InterlinearProjectTests : CrdtTestBase
     {
         await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
         var token = Token(_projectId);
-        await WriteNextChange(new CreateTokenAnalysisChange(token));
+        await WriteNextChange(new CreateTokenAnalysisChange(token, _projectId));
 
         await WriteNextChange(new ReplaceTokenAnalysisChange(new TokenAnalysis { Id = token.Id, SurfaceText = "but" }));
         await WriteNextChange(new PatchTokenAnalysisChange(token.Id) { Pos = "conj" });

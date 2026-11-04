@@ -19,12 +19,14 @@ public class CreateSegmentAnalysisLinkChange(Guid entityId)
     [SetsRequiredMembers]
     public CreateSegmentAnalysisLinkChange(SegmentAnalysisLink link) : this(link.Id)
     {
+        ProjectId = link.ProjectId;
         AnalysisId = link.AnalysisId;
         SegmentId = link.SegmentId;
         Status = link.Status;
         Confidence = link.Confidence;
     }
 
+    public Guid ProjectId { get; init; }
     public required Guid AnalysisId { get; init; }
     public required string SegmentId { get; init; }
     public required AssignmentStatus Status { get; init; }
@@ -35,13 +37,16 @@ public class CreateSegmentAnalysisLinkChange(Guid entityId)
         return new SegmentAnalysisLink
         {
             Id = EntityId,
+            ProjectId = ProjectId,
             AnalysisId = AnalysisId,
             CreatedAt = commit.DateTime,
             UpdatedAt = commit.DateTime,
             Status = Status,
             Confidence = Confidence,
             SegmentId = SegmentId,
-            DeletedAt = await context.IsObjectDeleted(AnalysisId) ? commit.DateTime : null,
+            DeletedAt = await context.IsObjectDeleted(AnalysisId) || await context.IsProjectDeleted(ProjectId)
+                ? commit.DateTime
+                : null,
         };
     }
 }

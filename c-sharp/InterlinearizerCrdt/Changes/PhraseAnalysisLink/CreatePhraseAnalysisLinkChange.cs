@@ -19,12 +19,14 @@ public class CreatePhraseAnalysisLinkChange(Guid entityId)
     [SetsRequiredMembers]
     public CreatePhraseAnalysisLinkChange(PhraseAnalysisLink link) : this(link.Id)
     {
+        ProjectId = link.ProjectId;
         AnalysisId = link.AnalysisId;
         Tokens = link.Tokens;
         Status = link.Status;
         Confidence = link.Confidence;
     }
 
+    public Guid ProjectId { get; init; }
     public required Guid AnalysisId { get; init; }
     public required List<TokenSnapshot> Tokens { get; init; }
     public required AssignmentStatus Status { get; init; }
@@ -35,13 +37,16 @@ public class CreatePhraseAnalysisLinkChange(Guid entityId)
         return new PhraseAnalysisLink
         {
             Id = EntityId,
+            ProjectId = ProjectId,
             AnalysisId = AnalysisId,
             CreatedAt = commit.DateTime,
             UpdatedAt = commit.DateTime,
             Status = Status,
             Confidence = Confidence,
             Tokens = Tokens,
-            DeletedAt = await context.IsObjectDeleted(AnalysisId) ? commit.DateTime : null,
+            DeletedAt = await context.IsObjectDeleted(AnalysisId) || await context.IsProjectDeleted(ProjectId)
+                ? commit.DateTime
+                : null,
         };
     }
 }

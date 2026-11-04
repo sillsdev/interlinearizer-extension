@@ -16,6 +16,7 @@ public class CreatePhraseAnalysisChange(Guid entityId)
     [SetsRequiredMembers]
     public CreatePhraseAnalysisChange(PhraseAnalysis analysis) : this(analysis.Id)
     {
+        ProjectId = analysis.ProjectId;
         SurfaceText = analysis.SurfaceText;
         Confidence = analysis.Confidence;
         Producer = analysis.Producer;
@@ -24,6 +25,7 @@ public class CreatePhraseAnalysisChange(Guid entityId)
         SenseRef = analysis.SenseRef;
     }
 
+    public Guid ProjectId { get; init; }
     public required string SurfaceText { get; init; }
     public Confidence? Confidence { get; init; }
     public string? Producer { get; init; }
@@ -31,11 +33,13 @@ public class CreatePhraseAnalysisChange(Guid entityId)
     public MultiString? Gloss { get; init; }
     public SenseRef? SenseRef { get; init; }
 
-    public override ValueTask<PhraseAnalysis> NewEntity(Commit commit, IChangeContext context)
+    public override async ValueTask<PhraseAnalysis> NewEntity(Commit commit, IChangeContext context)
     {
-        return ValueTask.FromResult(new PhraseAnalysis
+        return new PhraseAnalysis
         {
             Id = EntityId,
+            ProjectId = ProjectId,
+            DeletedAt = await context.IsProjectDeleted(ProjectId) ? commit.DateTime : null,
             CreatedAt = commit.DateTime,
             UpdatedAt = commit.DateTime,
             SurfaceText = SurfaceText,
@@ -44,6 +48,6 @@ public class CreatePhraseAnalysisChange(Guid entityId)
             SourceUser = SourceUser,
             Gloss = MultiString.NullIfEmpty(Gloss),
             SenseRef = SenseRef,
-        });
+        };
     }
 }

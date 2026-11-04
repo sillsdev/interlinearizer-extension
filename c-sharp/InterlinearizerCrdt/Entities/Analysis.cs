@@ -12,6 +12,13 @@ public abstract class Analysis
 
     public Guid Id { get; init; }
 
+    /// <summary>
+    /// The <see cref="InterlinearProject"/> this payload belongs to, fixed at creation. Empty while
+    /// nothing assigns one; such a record belongs to no project, so no project's deletion reaches it.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public Guid ProjectId { get; init; }
+
     public DateTimeOffset? DeletedAt { get; set; }
 
     /// <summary>When this record was created.</summary>
@@ -46,11 +53,12 @@ public abstract class Analysis
     /// <summary>User identifier for human-created or human-edited analyses.</summary>
     public string? SourceUser { get; set; }
 
-    /// <summary>Analysis payloads reference nothing, so a deletion elsewhere never reaches them.</summary>
-    public Guid[] GetReferences() => [];
+    public Guid[] GetReferences() => ProjectId == Guid.Empty ? [] : [ProjectId];
 
+    /// <summary>A payload cannot outlive its project: deleting the project deletes it.</summary>
     public void RemoveReference(Guid id, CommitBase commit)
     {
+        if (ProjectId == id) DeletedAt = commit.DateTime;
     }
 }
 
@@ -61,6 +69,13 @@ public abstract class Analysis
 public abstract class AnalysisLink
 {
     public Guid Id { get; init; }
+
+    /// <summary>
+    /// The <see cref="InterlinearProject"/> this link belongs to, fixed at creation. Empty while
+    /// nothing assigns one; such a link belongs to no project, so no project's deletion reaches it.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public Guid ProjectId { get; init; }
 
     public DateTimeOffset? DeletedAt { get; set; }
 
@@ -84,11 +99,13 @@ public abstract class AnalysisLink
     [JsonIgnore]
     public string BookCode { get; protected set; } = "";
 
-    public Guid[] GetReferences() => [AnalysisId];
+    public Guid[] GetReferences() => ProjectId == Guid.Empty ? [AnalysisId] : [AnalysisId, ProjectId];
 
-    /// <summary>A link cannot outlive its payload: deleting the analysis deletes the link.</summary>
+    /// <summary>
+    /// A link cannot outlive its payload or its project: deleting either deletes the link.
+    /// </summary>
     public void RemoveReference(Guid id, CommitBase commit)
     {
-        if (AnalysisId == id) DeletedAt = commit.DateTime;
+        if (AnalysisId == id || ProjectId == id) DeletedAt = commit.DateTime;
     }
 }

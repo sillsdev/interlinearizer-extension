@@ -22,6 +22,7 @@ public class InterlinearizerCrdtDbContext(
     public DbSet<ChangeEntity<IChange>> ChangeEntities => Set<ChangeEntity<IChange>>();
     public DbSet<ObjectSnapshot> Snapshots => Set<ObjectSnapshot>();
 
+    public IQueryable<InterlinearProject> InterlinearProjects => Set<InterlinearProject>().AsNoTracking();
     public IQueryable<SegmentAnalysis> SegmentAnalyses => Set<SegmentAnalysis>().AsNoTracking();
     public IQueryable<SegmentAnalysisLink> SegmentAnalysisLinks => Set<SegmentAnalysisLink>().AsNoTracking();
     public IQueryable<TokenAnalysis> TokenAnalyses => Set<TokenAnalysis>().AsNoTracking();
@@ -49,6 +50,9 @@ public class InterlinearizerCrdtDbContext(
             .HaveConversion<JsonConverter<List<TokenSnapshot>>>();
         builder.Properties<TokenSnapshot>().HaveColumnType("jsonb").HaveConversion<JsonConverter<TokenSnapshot>>();
         builder.Properties<SenseRef>().HaveColumnType("jsonb").HaveConversion<JsonConverter<SenseRef>>();
+        builder.Properties<List<string>>().HaveColumnType("jsonb").HaveConversion<JsonConverter<List<string>>>();
+        builder.Properties<SegmentationDelta>().HaveColumnType("jsonb")
+            .HaveConversion<JsonConverter<SegmentationDelta>>();
     }
 
     private class JsonConverter<T>() : ValueConverter<T, string>(

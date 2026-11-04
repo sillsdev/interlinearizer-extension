@@ -16,6 +16,7 @@ public class CreateTokenAnalysisChange(Guid entityId)
     [SetsRequiredMembers]
     public CreateTokenAnalysisChange(TokenAnalysis analysis) : this(analysis.Id)
     {
+        ProjectId = analysis.ProjectId;
         SurfaceText = analysis.SurfaceText;
         Confidence = analysis.Confidence;
         Producer = analysis.Producer;
@@ -28,6 +29,7 @@ public class CreateTokenAnalysisChange(Guid entityId)
         GlossSenseRef = analysis.GlossSenseRef;
     }
 
+    public Guid ProjectId { get; init; }
     public required string SurfaceText { get; init; }
     public Confidence? Confidence { get; init; }
     public string? Producer { get; init; }
@@ -39,11 +41,13 @@ public class CreateTokenAnalysisChange(Guid entityId)
     public MultiString? Gloss { get; init; }
     public SenseRef? GlossSenseRef { get; init; }
 
-    public override ValueTask<TokenAnalysis> NewEntity(Commit commit, IChangeContext context)
+    public override async ValueTask<TokenAnalysis> NewEntity(Commit commit, IChangeContext context)
     {
-        return ValueTask.FromResult(new TokenAnalysis
+        return new TokenAnalysis
         {
             Id = EntityId,
+            ProjectId = ProjectId,
+            DeletedAt = await context.IsProjectDeleted(ProjectId) ? commit.DateTime : null,
             CreatedAt = commit.DateTime,
             UpdatedAt = commit.DateTime,
             SurfaceText = SurfaceText,
@@ -56,6 +60,6 @@ public class CreateTokenAnalysisChange(Guid entityId)
             Features = MultiString.NullIfEmpty(Features),
             Gloss = MultiString.NullIfEmpty(Gloss),
             GlossSenseRef = GlossSenseRef,
-        });
+        };
     }
 }

@@ -16,6 +16,7 @@ public class PhraseAnalysis : Analysis, IObjectBase<PhraseAnalysis>
     public IObjectBase Copy() => new PhraseAnalysis
     {
         Id = Id,
+        ProjectId = ProjectId,
         DeletedAt = DeletedAt,
         CreatedAt = CreatedAt,
         UpdatedAt = UpdatedAt,
@@ -51,6 +52,7 @@ public class PhraseAnalysisLink : AnalysisLink, IObjectBase<PhraseAnalysisLink>
     public IObjectBase Copy() => new PhraseAnalysisLink
     {
         Id = Id,
+        ProjectId = ProjectId,
         DeletedAt = DeletedAt,
         AnalysisId = AnalysisId,
         CreatedAt = CreatedAt,

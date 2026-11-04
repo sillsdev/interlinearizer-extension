@@ -7,6 +7,23 @@ public static class Fixtures
     public static readonly EntryRef Entry = new("lexicon", "lex-project", "entry-1");
     public static readonly TokenSnapshot Token1 = new("GEN 1:1 tok 0", "In");
     public static readonly TokenSnapshot Token2 = new("GEN 1:1 tok 1", "the");
+    public static CreateInterlinearProjectChange CreateInterlinearProject(Guid id) => new(id)
+    {
+        Name = "Genesis draft",
+        Description = "A draft of Genesis.",
+        TargetProjectId = "target-project",
+        AnalysisLanguages = ["fr", "en"],
+        Segmentation = new SegmentationDelta(["GEN 1:2"], [Token2]),
+    };
+
+    /// <summary>Sets some fields, clears one, and adds and removes a language.</summary>
+    public static PatchInterlinearProjectChange PatchInterlinearProject(Guid id) => new(id)
+    {
+        Name = "Genesis and Exodus",
+        TargetProjectId = null,
+        AddedAnalysisLanguages = ["de"],
+        RemovedAnalysisLanguages = ["fr"],
+    };
 
     public static MultiString Multi(string en, string fr) => new() { ["en"] = en, ["fr"] = fr };
 

@@ -19,12 +19,14 @@ public class CreateTokenAnalysisLinkChange(Guid entityId)
     [SetsRequiredMembers]
     public CreateTokenAnalysisLinkChange(TokenAnalysisLink link) : this(link.Id)
     {
+        ProjectId = link.ProjectId;
         AnalysisId = link.AnalysisId;
         Token = link.Token;
         Status = link.Status;
         Confidence = link.Confidence;
     }
 
+    public Guid ProjectId { get; init; }
     public required Guid AnalysisId { get; init; }
     public required TokenSnapshot Token { get; init; }
     public required AssignmentStatus Status { get; init; }
@@ -35,13 +37,16 @@ public class CreateTokenAnalysisLinkChange(Guid entityId)
         return new TokenAnalysisLink
         {
             Id = EntityId,
+            ProjectId = ProjectId,
             AnalysisId = AnalysisId,
             CreatedAt = commit.DateTime,
             UpdatedAt = commit.DateTime,
             Status = Status,
             Confidence = Confidence,
             Token = Token,
-            DeletedAt = await context.IsObjectDeleted(AnalysisId) ? commit.DateTime : null,
+            DeletedAt = await context.IsObjectDeleted(AnalysisId) || await context.IsProjectDeleted(ProjectId)
+                ? commit.DateTime
+                : null,
         };
     }
 }

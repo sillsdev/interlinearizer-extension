@@ -16,6 +16,7 @@ public class CreateSegmentAnalysisChange(Guid entityId)
     [SetsRequiredMembers]
     public CreateSegmentAnalysisChange(SegmentAnalysis analysis) : this(analysis.Id)
     {
+        ProjectId = analysis.ProjectId;
         SurfaceText = analysis.SurfaceText;
         Confidence = analysis.Confidence;
         Producer = analysis.Producer;
@@ -24,6 +25,7 @@ public class CreateSegmentAnalysisChange(Guid entityId)
         LiteralTranslation = analysis.LiteralTranslation;
     }
 
+    public Guid ProjectId { get; init; }
     public required string SurfaceText { get; init; }
     public Confidence? Confidence { get; init; }
     public string? Producer { get; init; }
@@ -31,11 +33,13 @@ public class CreateSegmentAnalysisChange(Guid entityId)
     public MultiString? FreeTranslation { get; init; }
     public MultiString? LiteralTranslation { get; init; }
 
-    public override ValueTask<SegmentAnalysis> NewEntity(Commit commit, IChangeContext context)
+    public override async ValueTask<SegmentAnalysis> NewEntity(Commit commit, IChangeContext context)
     {
-        return ValueTask.FromResult(new SegmentAnalysis
+        return new SegmentAnalysis
         {
             Id = EntityId,
+            ProjectId = ProjectId,
+            DeletedAt = await context.IsProjectDeleted(ProjectId) ? commit.DateTime : null,
             CreatedAt = commit.DateTime,
             UpdatedAt = commit.DateTime,
             SurfaceText = SurfaceText,
@@ -44,6 +48,6 @@ public class CreateSegmentAnalysisChange(Guid entityId)
             SourceUser = SourceUser,
             FreeTranslation = MultiString.NullIfEmpty(FreeTranslation),
             LiteralTranslation = MultiString.NullIfEmpty(LiteralTranslation),
-        });
+        };
     }
 }

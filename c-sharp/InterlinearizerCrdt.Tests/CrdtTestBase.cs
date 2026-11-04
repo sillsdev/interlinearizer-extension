@@ -57,6 +57,9 @@ public abstract class CrdtTestBase : IAsyncDisposable
     /// <summary>A repository over the same database serving <paramref name="projectId"/>.</summary>
     protected AnalysisRepository RepositoryFor(Guid projectId) => new(DataModel, new ClientIdentity(ClientId), projectId);
 
+    /// <summary>The projects of the database.</summary>
+    protected InterlinearProjects Projects => new(DataModel, DbContext, new ClientIdentity(ClientId));
+
     /// <summary>Applies through the repository at the next commit time.</summary>
     protected async Task ApplyNext(ChangeSet changes, PutMode putMode = PutMode.Replace)
     {

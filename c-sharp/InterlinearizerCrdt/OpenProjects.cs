@@ -64,6 +64,10 @@ public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposab
             ParseProjectId(projectId));
     }
 
+    /// <summary>The projects of an open project's database.</summary>
+    /// <exception cref="InvalidOperationException">If the project is not open.</exception>
+    public async Task<InterlinearProjects> Projects(string projectId) => Projects(await Get(projectId));
+
     public bool IsOpen(string projectId) => _scopes.ContainsKey(projectId);
 
     /// <summary>Closes a project, disposing its scope. Closing one not open does nothing.</summary>
@@ -78,6 +82,11 @@ public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposab
         foreach (var projectId in _scopes.Keys) await Close(projectId);
     }
 
+    private static InterlinearProjects Projects(IServiceProvider services) => new(
+        services.GetRequiredService<DataModel>(),
+        services.GetRequiredService<InterlinearizerCrdtDbContext>(),
+        services.GetRequiredService<ClientIdentity>());
+
     private static Guid ParseProjectId(string projectId) =>
         Guid.TryParse(projectId, out var id) ? id : throw new ArgumentException($"Project ids are GUIDs, not {projectId}", nameof(projectId));
 
@@ -89,12 +98,8 @@ public sealed class OpenProjects(IServiceProvider rootServices) : IAsyncDisposab
             scope.ServiceProvider.GetRequiredService<CurrentProject>().Set(projectId, dbPath);
             var db = scope.ServiceProvider.GetRequiredService<InterlinearizerCrdtDbContext>();
             await db.Database.MigrateAsync();
-            var dataModel = scope.ServiceProvider.GetRequiredService<DataModel>();
-            if (await dataModel.GetLatest<InterlinearProject>(id) is null)
-            {
-                var client = scope.ServiceProvider.GetRequiredService<ClientIdentity>();
-                await dataModel.AddChanges(client.Id, [new CreateInterlinearProjectChange(id)]);
-            }
+            var projects = Projects(scope.ServiceProvider);
+            if (!await projects.HasBeenStored(id)) await projects.Create(new InterlinearProject { Id = id });
             return scope;
         }
         catch

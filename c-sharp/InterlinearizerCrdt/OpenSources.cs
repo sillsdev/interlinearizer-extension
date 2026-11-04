@@ -5,40 +5,48 @@ using SIL.Harmony;
 
 namespace Interlinearizer.Crdt;
 
+/// <summary>The folder the source projects' databases are kept in, one file per source.</summary>
+public record SourcesDirectory(string Path);
+
 /// <summary>
 /// The source projects the host has open, one DI scope each. A scope holds the Harmony services
 /// over the source's own database, which keeps every interlinear project made over it, and lives
 /// from <see cref="Open"/> to <see cref="Close"/>; requests never create scopes.
 /// </summary>
-public sealed class OpenSources(IServiceProvider rootServices) : IAsyncDisposable
+public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory directory) : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, Lazy<Task<AsyncServiceScope>>> _scopes = new();
 
-    /// <summary>
-    /// Opens <paramref name="sourceProjectId"/> over the database at <paramref name="dbPath"/>,
-    /// created with its folder when missing and brought up to the current schema when behind.
-    /// Opening a source already open returns its services. Two concurrent opens of one source share
-    /// one scope.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// If the source is already open over a different database.
-    /// </exception>
-    public async Task<IServiceProvider> Open(string sourceProjectId, string dbPath)
+    /// <summary>The file the database of <paramref name="sourceProjectId"/> is kept in, named after it.</summary>
+    /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
+    public string DbPath(string sourceProjectId)
     {
+        if (sourceProjectId.Length == 0 || sourceProjectId != Path.GetFileName(sourceProjectId) || sourceProjectId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            throw new ArgumentException($"A source project id names its database file, which '{sourceProjectId}' cannot", nameof(sourceProjectId));
+        }
+        return Path.Combine(directory.Path, sourceProjectId + ".sqlite");
+    }
+
+    /// <summary>
+    /// Opens <paramref name="sourceProjectId"/> over its database, created with its folder when
+    /// missing and brought up to the current schema when behind. Opening a source already open
+    /// returns its services. Two concurrent opens of one source share one scope.
+    /// </summary>
+    /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
+    public async Task<IServiceProvider> Open(string sourceProjectId)
+    {
+        var dbPath = DbPath(sourceProjectId);
         var scope = _scopes.GetOrAdd(sourceProjectId, _ => new Lazy<Task<AsyncServiceScope>>(() => OpenScope(sourceProjectId, dbPath)));
-        IServiceProvider services;
         try
         {
-            services = (await scope.Value).ServiceProvider;
+            return (await scope.Value).ServiceProvider;
         }
         catch
         {
             _scopes.TryRemove(new KeyValuePair<string, Lazy<Task<AsyncServiceScope>>>(sourceProjectId, scope));
             throw;
         }
-        var openPath = services.GetRequiredService<CurrentSource>().DbPath;
-        if (Path.GetFullPath(openPath) != Path.GetFullPath(dbPath)) throw new InvalidOperationException($"Source {sourceProjectId} is already open over {openPath}");
-        return services;
     }
 
     /// <summary>The services of an open source.</summary>
@@ -98,7 +106,7 @@ public sealed class OpenSources(IServiceProvider rootServices) : IAsyncDisposabl
         try
         {
             scope.ServiceProvider.GetRequiredService<CurrentSource>().Set(sourceProjectId, dbPath);
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dbPath))!);
+            Directory.CreateDirectory(directory.Path);
             await scope.ServiceProvider.GetRequiredService<InterlinearizerCrdtDbContext>().Database.MigrateAsync();
             return scope;
         }

@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Interlinearizer.Crdt.Tests;
 
-/// <summary>The model's container over databases in a temporary folder.</summary>
+/// <summary>The model's container over databases in a sources folder under a temporary one, not yet made.</summary>
 public class OpenSourcesTests : IAsyncDisposable
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "i13r-open-sources", Guid.NewGuid().ToString("N"));
@@ -14,12 +14,13 @@ public class OpenSourcesTests : IAsyncDisposable
         Directory.CreateDirectory(_directory);
         _services = new ServiceCollection()
             .AddSingleton(new ClientIdentity(Guid.NewGuid()))
+            .AddSingleton(new SourcesDirectory(Path.Combine(_directory, "sources")))
             .AddInterlinearizerCrdt()
             .BuildServiceProvider();
         _sources = _services.GetRequiredService<OpenSources>();
     }
 
-    private string DbPath(string name) => Path.Combine(_directory, name + ".sqlite");
+    private string DbPath(string name) => Path.Combine(_directory, "sources", name + ".sqlite");
 
     private const string S1 = "source-1";
     private const string S2 = "source-2";
@@ -32,28 +33,29 @@ public class OpenSourcesTests : IAsyncDisposable
     /// <summary>Opens a source over its own database and stores <paramref name="projectIds"/> in it.</summary>
     private async Task OpenWithProjects(string sourceProjectId, params string[] projectIds)
     {
-        await _sources.Open(sourceProjectId, DbPath(sourceProjectId));
+        await _sources.Open(sourceProjectId);
         var projects = await _sources.Projects(sourceProjectId);
         foreach (var projectId in projectIds) await projects.Create(new InterlinearProject { Id = Guid.Parse(projectId) });
     }
 
     [Test]
-    public async Task OpeningASourceCreatesItsDatabase()
+    public async Task OpeningASourceCreatesItsDatabaseNamedAfterItInTheSourcesFolder()
     {
-        await _sources.Open(S1, DbPath(S1));
+        await _sources.Open(S1);
 
         await Assert.That(File.Exists(DbPath(S1))).IsTrue();
+        await Assert.That(_sources.DbPath(S1)).IsEqualTo(DbPath(S1));
         await Assert.That(_sources.IsOpen(S1)).IsTrue();
     }
 
     [Test]
-    public async Task OpeningASourceUnderAFolderNotYetMadeCreatesBoth()
+    [Arguments("")]
+    [Arguments("a/b")]
+    [Arguments("a\b")]
+    public async Task OpeningASourceWhoseIdCannotNameAFileThrows(string sourceProjectId)
     {
-        var dbPath = Path.Combine(_directory, "a;b", "s1.sqlite");
-
-        await _sources.Open(S1, dbPath);
-
-        await Assert.That(File.Exists(dbPath)).IsTrue();
+        await Assert.That(async () => await _sources.Open(sourceProjectId)).Throws<ArgumentException>();
+        await Assert.That(_sources.IsOpen(sourceProjectId)).IsFalse();
     }
 
     [Test]
@@ -93,19 +95,10 @@ public class OpenSourcesTests : IAsyncDisposable
     [Test]
     public async Task OpeningAnOpenSourceReturnsItsScope()
     {
-        var first = await _sources.Open(S1, DbPath(S1));
-        var second = await _sources.Open(S1, DbPath(S1));
+        var first = await _sources.Open(S1);
+        var second = await _sources.Open(S1);
 
         await Assert.That(second).IsSameReferenceAs(first);
-    }
-
-    [Test]
-    public async Task OpeningAnOpenSourceOverAnotherDatabaseThrows()
-    {
-        await _sources.Open(S1, DbPath(S1));
-
-        await Assert.That(async () => await _sources.Open(S1, DbPath("other"))).Throws<InvalidOperationException>();
-        await Assert.That(_sources.IsOpen(S1)).IsTrue();
     }
 
     [Test]
@@ -128,7 +121,7 @@ public class OpenSourcesTests : IAsyncDisposable
         await (await _sources.Repository(S1, P1)).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) });
         await _sources.Close(S1);
 
-        await _sources.Open(S1, DbPath(S1));
+        await _sources.Open(S1);
 
         await Assert.That(await (await _sources.Repository(S1, P1)).GetTokenAnalyses([put.Id])).HasSingleItem();
     }

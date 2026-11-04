@@ -27,6 +27,7 @@ internal static class Program
         await using var services = new ServiceCollection()
             .AddSingleton(options)
             .AddSingleton(ClientIdentity.Load(options.DataDirectory))
+            .AddSingleton(new SourcesDirectory(Path.Combine(options.DataDirectory, "sources")))
             .AddInterlinearizerCrdt()
             .AddSingleton<PapiClient>()
             .AddSingleton<PingService>()

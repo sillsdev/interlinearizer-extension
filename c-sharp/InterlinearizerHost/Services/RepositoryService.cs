@@ -41,11 +41,10 @@ public record LinksInBooksArgs(string SourceProjectId, string ProjectId, List<st
 /// <summary>
 /// Serves the C# <see cref="AnalysisRepository"/> and <see cref="InterlinearProjects"/> over the
 /// Platform.Bible network, one command per method, each taking one object of named fields as the
-/// TypeScript session commands do. The first command on a source project opens it over the
-/// database the host keeps for it in its data directory, and it stays open until
-/// <c>interlinearizer.repository.closeSource</c>.
+/// TypeScript session commands do. The first command on a source project opens it, and it stays
+/// open until <c>interlinearizer.repository.closeSource</c>.
 /// </summary>
-internal sealed class RepositoryService(PapiClient papi, OpenSources sources, HostOptions options)
+internal sealed class RepositoryService(PapiClient papi, OpenSources sources)
 {
     public const string CommandPrefix = "command:interlinearizer.repository.";
 
@@ -129,30 +128,15 @@ internal sealed class RepositoryService(PapiClient papi, OpenSources sources, Ho
     private static Guid ParseProjectId(string projectId) =>
         Guid.TryParse(projectId, out var id) ? id : throw new ArgumentException($"Project ids are GUIDs, not {projectId}", nameof(projectId));
 
-    /// <summary>
-    /// Opens a source, unless it is open, over the database the host keeps for it in its data
-    /// directory.
-    /// </summary>
-    /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
-    private Task Open(string sourceProjectId)
-    {
-        var id = sourceProjectId;
-        if (id.Length == 0 || id != Path.GetFileName(id) || id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-        {
-            throw new ArgumentException($"A source project id names its database file, which '{id}' cannot", nameof(sourceProjectId));
-        }
-        return sources.Open(id, Path.Combine(options.DataDirectory, "sources", id + ".sqlite"));
-    }
-
     private async Task<InterlinearProjects> Projects(string sourceProjectId)
     {
-        await Open(sourceProjectId);
+        await sources.Open(sourceProjectId);
         return await sources.Projects(sourceProjectId);
     }
 
     private async Task<AnalysisRepository> Repository(IProjectArgs args)
     {
-        await Open(args.SourceProjectId);
+        await sources.Open(args.SourceProjectId);
         return await sources.Repository(args.SourceProjectId, args.ProjectId);
     }
 }

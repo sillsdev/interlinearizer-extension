@@ -1195,6 +1195,110 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByText(/project not found/i)).toBeInTheDocument();
   });
 
+  describe('when the platform cannot find the source project', () => {
+    beforeEach(() => {
+      // The book never arrives for a missing project, because core's project hooks never settle.
+      mockBookData({ book: undefined, isLoading: true });
+      jest
+        .mocked(papi.projectLookup.getMetadataForProject)
+        .mockRejectedValue(new Error(`No project found with ID ${testProjectId}`));
+    });
+
+    it('shows the project-unavailable panel instead of Loading', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('project-unavailable')).toHaveTextContent(
+        '%interlinearizer_error_projectUnavailable%',
+      );
+      expect(screen.queryByTestId('loading-indicator')).not.toBeInTheDocument();
+      expect(papi.projectLookup.getMetadataForProject).toHaveBeenCalledWith(testProjectId);
+    });
+
+    it('shows the missing-book view when the book list loads despite the failed lookup', async () => {
+      mockProjectBookIds(['PHP']);
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('book-not-in-project')).toBeInTheDocument();
+      expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
+    });
+
+    it('shows only the load error when the book list loads despite the failed lookup', async () => {
+      mockProjectBookIds(['GEN']);
+      mockBookData({ book: undefined, bookError: 'Book GEN could not be read' });
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByText('Book GEN could not be read')).toBeInTheDocument();
+      expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
+    });
+
+    it('shows the book when it loads despite the failed lookup', async () => {
+      mockBookData();
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+      expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
+    });
+
+    it('keeps the panel hidden when a later book fails to load', async () => {
+      mockBookData();
+      const view = await act(async () => renderLoader());
+
+      mockBookData({ book: undefined, bookError: 'Book EXO not found' });
+      await act(async () => {
+        view.rerender(
+          <InterlinearizerLoader
+            projectId={testProjectId}
+            webViewId={testWebViewId}
+            useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+            useWebViewState={makeWebViewState()}
+            updateWebViewDefinition={view.updateWebViewDefinition}
+          />,
+        );
+      });
+
+      expect(screen.getByText('Book EXO not found')).toBeInTheDocument();
+      expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
+    });
+
+    it('waits for localization before showing the panel', async () => {
+      jest
+        .mocked(useLocalizedStrings)
+        .mockImplementation((keys: readonly string[]) => [
+          Object.fromEntries(keys.map((key) => [key, key])),
+          true,
+        ]);
+      await act(async () => {
+        renderLoader();
+      });
+
+      expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('loading-indicator')).not.toBeInTheDocument();
+    });
+  });
+
+  it('keeps showing Loading when the source project is found', async () => {
+    mockBookData({ book: undefined, isLoading: true });
+    jest.mocked(papi.projectLookup.getMetadataForProject).mockResolvedValue({
+      id: testProjectId,
+      projectInterfaces: [],
+      pdpFactoryInfo: {},
+    });
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
+    expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
+  });
+
   describe('segment pages', () => {
     /** A two-verse Genesis whose second verse can merge into its first. */
     const TWO_VERSE_GENESIS: Book = {

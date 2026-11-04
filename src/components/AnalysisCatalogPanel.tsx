@@ -6,7 +6,15 @@ import {
   isPlatformError,
   type LanguageStrings,
 } from 'platform-bible-utils';
-import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type Ref } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from 'react';
 import {
   useAnalysisDeletionOutcome,
   useAnalysisLanguage,
@@ -124,9 +132,13 @@ export const ANALYSIS_CATALOG_PANEL_STRING_KEYS = [
   ...SIDE_PANEL_TAB_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
-/** Blurs the focused element, which sends a focused gloss field's draft at once. */
-function blurFocusedField(): void {
-  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+/**
+ * Blurs the focused element when it sits within `panel`. Blurring sends a focused gloss field's
+ * draft at once; a field outside the panel keeps its focus and its unsent text.
+ */
+function blurFocusedField(panel: HTMLElement | undefined): void {
+  const focused = document.activeElement;
+  if (focused instanceof HTMLElement && panel?.contains(focused)) focused.blur();
 }
 
 /** A breakdown a row is holding, with the form it was typed against. */
@@ -560,6 +572,7 @@ export default function AnalysisCatalogPanel({
    * `undefined` while no such ask is open.
    */
   const [confirmingLeave, setConfirmingLeave] = useState<'close' | 'switch' | undefined>(undefined);
+  const panelRef = useRef<HTMLDivElement | undefined>(undefined);
 
   /**
    * Closes the panel, or asks first when a breakdown draft or an unsent gloss would go with it.
@@ -571,7 +584,7 @@ export default function AnalysisCatalogPanel({
    * the request. A commit that fails leaves its draft for the ask to cover.
    */
   const handleCloseRequest = useCallback(() => {
-    blurFocusedField();
+    blurFocusedField(panelRef.current);
     glossRetry.afterCommits(() => {
       if (hasUnsavedBreakdown || glossRetry.isHolding()) setConfirmingLeave('close');
       else onClose();
@@ -580,7 +593,7 @@ export default function AnalysisCatalogPanel({
 
   /** Switches the side panel to the concordance, or asks first as closing does. */
   const handleSwitchRequest = useCallback(() => {
-    blurFocusedField();
+    blurFocusedField(panelRef.current);
     glossRetry.afterCommits(() => {
       if (hasUnsavedBreakdown || glossRetry.isHolding()) setConfirmingLeave('switch');
       else onShowConcordance();
@@ -1064,6 +1077,9 @@ export default function AnalysisCatalogPanel({
     // these tooltips open on truncation rather than on hover time.
     <TooltipProvider delayDuration={0}>
       <div
+        ref={(el) => {
+          panelRef.current = el ?? undefined;
+        }}
         className="tw:flex tw:flex-col tw:flex-1 tw:min-w-0 tw:min-h-0 tw:border-s tw:border-border tw:bg-background"
         data-testid="analysis-catalog-panel"
       >

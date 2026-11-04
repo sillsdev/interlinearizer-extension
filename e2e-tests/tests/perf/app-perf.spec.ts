@@ -327,7 +327,7 @@ async function measureHostPath(
 ): Promise<void> {
   await closeSettledView(page);
   try {
-    await page.evaluate((key) => localStorage.removeItem(key), HOST_PATH_KEY);
+    await page.evaluate((key) => localStorage.setItem(key, 'true'), HOST_PATH_KEY);
     if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', true);
     const open = new Samples();
     for (let run = 0; run < RUNS; run += 1) {

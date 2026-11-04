@@ -11,7 +11,10 @@ export const MAX_WEBSOCKET_PAYLOAD_BYTES = 100 * 1024 * 1024;
 /** Storage key that asks the WebView for timing entries. */
 export const PERF_MARKS_KEY = 'interlinearizer.perfMarks';
 
-/** Storage key that, once set to `'false'`, takes each view opened afterward off the host path. */
+/**
+ * Storage key that puts each view opened afterward on the host path when `'true'` and off it when
+ * `'false'`.
+ */
 export const HOST_PATH_KEY = 'interlinearizer.hostPath';
 
 export const VIEW_TAB = /^Interlinearizer: WEB/;

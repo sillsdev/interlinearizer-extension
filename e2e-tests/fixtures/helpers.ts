@@ -1723,7 +1723,10 @@ export async function discardAllChanges(page: Page): Promise<void> {
   await expect(dialogTitle).not.toBeVisible({ timeout: 10_000 });
 }
 
-/** Storage key that takes the Interlinearizer WebView off the host path when set to `'false'`. */
+/**
+ * Storage key that puts the Interlinearizer WebView on the host path when `'true'` and off it when
+ * `'false'`.
+ */
 const HOST_PATH_KEY = 'interlinearizer.hostPath';
 
 /**
@@ -1732,16 +1735,15 @@ const HOST_PATH_KEY = 'interlinearizer.hostPath';
  */
 export async function applyHostPathFlag(page: Page): Promise<void> {
   const wanted = process.env.E2E_HOST_PATH !== 'false';
-  const was = await page.evaluate(
-    ([key, on]) => {
-      const before = localStorage.getItem(key) !== 'false';
-      if (on) localStorage.removeItem(key);
-      else localStorage.setItem(key, 'false');
-      return before;
+  const changed = await page.evaluate(
+    ([key, value]) => {
+      const before = localStorage.getItem(key);
+      localStorage.setItem(key, value);
+      return before !== value;
     },
-    [HOST_PATH_KEY, wanted] as const,
+    [HOST_PATH_KEY, String(wanted)] as const,
   );
-  if (was !== wanted && (await interlinearizerTabLocator(page).count()) > 0) {
+  if (changed && (await interlinearizerTabLocator(page).count()) > 0) {
     await closeInterlinearizerTab(page);
   }
 }

@@ -4,7 +4,7 @@ import { ModalShell } from './modals/ModalShell';
 
 /** Localized string keys the discard confirmation renders. */
 export const CLOSE_STRING_KEYS = [
-  '%interlinearizer_analysisCatalog_closeConfirmTitle%',
+  '%interlinearizer_analysisCatalog_discardBreakdownTitle%',
   '%interlinearizer_analysisCatalog_leaveConfirmTitle%',
   '%interlinearizer_analysisCatalog_closeConfirmPrompt%',
   '%interlinearizer_analysisCatalog_closeConfirmCancel%',
@@ -85,7 +85,7 @@ export default function CatalogCloseModal({
   const titleKey =
     action === undefined || action === 'switch'
       ? '%interlinearizer_analysisCatalog_leaveConfirmTitle%'
-      : '%interlinearizer_analysisCatalog_closeConfirmTitle%';
+      : '%interlinearizer_analysisCatalog_discardBreakdownTitle%';
 
   return (
     <ModalShell

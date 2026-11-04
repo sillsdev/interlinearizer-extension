@@ -62,7 +62,7 @@ describe('CatalogCloseModal', () => {
     );
 
     expect(screen.getByTestId('catalog-close-title')).toHaveTextContent(
-      '%interlinearizer_analysisCatalog_closeConfirmTitle%',
+      '%interlinearizer_analysisCatalog_discardBreakdownTitle%',
     );
   });
 

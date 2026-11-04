@@ -347,9 +347,7 @@ describe('createGlossRetry', () => {
 
     expect(then).toHaveBeenCalled();
   });
-});
 
-describe('createGlossRetry', () => {
   /** A listing of one analysis "ta-1", glossed `glosses`, with one morpheme "m-1" glossed `stem`. */
   function rows(glosses: Record<string, string>, stem: Record<string, string> = {}): CatalogRow[] {
     return [

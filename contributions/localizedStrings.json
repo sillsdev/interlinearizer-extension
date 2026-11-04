@@ -159,7 +159,7 @@
       "%interlinearizer_analysisCatalog_deleteFallbackNoGloss%": "{count} uses fall back to another analysis of the same form.",
       "%interlinearizer_analysisCatalog_deleteFallbackUncertain%": "{count} uses each fall back to another analysis or are left with none, depending on the use.",
       "%interlinearizer_analysisCatalog_deleteUnapplied%": "{count} tokens also recorded this analysis without using it; those records were deleted too.",
-      "%interlinearizer_analysisCatalog_closeConfirmTitle%": "Discard the unsaved breakdown?",
+      "%interlinearizer_analysisCatalog_discardBreakdownTitle%": "Discard the unsaved breakdown?",
       "%interlinearizer_analysisCatalog_leaveConfirmTitle%": "Discard unsaved edits?",
       "%interlinearizer_analysisCatalog_closeConfirmPrompt%": "You have catalog edits that are not saved. Closing the catalog discards them.",
       "%interlinearizer_analysisCatalog_closeConfirmCancel%": "Keep editing",

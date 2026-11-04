@@ -1,11 +1,16 @@
 import { Button } from 'platform-bible-react';
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useState } from 'react';
-import CatalogRowEditor, { CatalogRowActions, ROW_EDITOR_STRING_KEYS } from './CatalogRowEditor';
+import CatalogRowEditor, {
+  CatalogRowActions,
+  type GlossRetry,
+  ROW_EDITOR_STRING_KEYS,
+} from './CatalogRowEditor';
 import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from './CatalogRowHeader';
 import CatalogSenseLinks, { SENSE_LINKS_STRING_KEYS } from './CatalogSenseLinks';
 import CatalogStaleLocations, { STALE_LOCATION_STRING_KEYS } from './CatalogStaleLocations';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
+import type { Settles } from '../utils/settles';
 
 /**
  * Localized string keys a row renders. Every row asks for the same strings, and subscribing per row
@@ -66,14 +71,24 @@ type CatalogRowViewProps = Readonly<{
   analysisLanguage: string;
   /** When false, the row's breakdown is not shown, as the view option hides it on the strip. */
   showMorphology: boolean;
-  /** Writes this row's gloss for every token linked to it. */
-  onGlossCommit: (analysisId: string, value: string) => void;
+  /**
+   * Writes this row's gloss for every token linked to it. A result that rejects leaves the edit
+   * unsent, for the field to send again.
+   */
+  onGlossCommit: (analysisId: string, value: string) => Settles<unknown>;
   /** Replaces this row's morpheme breakdown for every token linked to it. */
   onMorphemesCommit: (analysisId: string, forms: readonly string[]) => void;
   /** Keeps this row's stale breakdown as it stands, for every token linked to it. */
   onMorphemesConfirm: (analysisId: string) => void;
-  /** Writes one of this row's morpheme glosses for every token linked to it. */
-  onMorphemeGlossCommit: (analysisId: string, morphemeId: string, value: string) => void;
+  /**
+   * Writes one of this row's morpheme glosses for every token linked to it. A result that rejects
+   * leaves the edit unsent, for the field to send again.
+   */
+  onMorphemeGlossCommit: (
+    analysisId: string,
+    morphemeId: string,
+    value: string,
+  ) => Settles<unknown>;
   /**
    * Opens the merge picker for this row. Absent when the analysis shares its form with no other
    * record, which is how the merge control is withheld from a row with nothing to merge with.
@@ -94,6 +109,8 @@ type CatalogRowViewProps = Readonly<{
     draft: string | undefined,
     surfaceText: string,
   ) => void;
+  /** Keeps the gloss drafts no field is showing, and tracks the fields showing a failed one. */
+  glossRetry: GlossRetry;
 }>;
 
 /** Renders a place's verse the way scripture references are written, e.g. `GEN 1:1`. */
@@ -136,6 +153,7 @@ function CatalogRowView({
   revealRequest,
   breakdownDraft,
   onBreakdownDraftChange,
+  glossRetry,
 }: CatalogRowViewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -241,6 +259,7 @@ function CatalogRowView({
             analysisId={row.analysisId}
             analysisLanguage={analysisLanguage}
             breakdownDraft={breakdownDraft}
+            glossRetry={glossRetry}
             gloss={row.gloss}
             glossSenseRef={row.glossSenseRef}
             localizedStrings={localizedStrings}

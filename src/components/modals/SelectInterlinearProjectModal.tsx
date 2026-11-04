@@ -88,21 +88,16 @@ export function SelectInterlinearProjectModal({
   const { projects, isLoading, removeProject } = useProjectsForSource(sourceProjectId);
   const showImportPt9 = usePt9ImportAvailability(sourceProjectId, projects, isLoading);
 
-  /** The project whose deletion awaits the user's confirmation. */
-  const [pendingDelete, setPendingDelete] = useState<InterlinearProjectSummary | undefined>(
-    undefined,
-  );
+  /**
+   * The project whose deletion awaits the user's confirmation, and the actions button of its row.
+   * The confirmation refocuses that button when it closes.
+   */
+  const [pendingDelete, setPendingDelete] = useState<
+    { project: InterlinearProjectSummary; actionsButton?: HTMLButtonElement } | undefined
+  >(undefined);
 
-  /** The project whose Delete was chosen from its menu, held until that menu has closed. */
-  const deleteRequest = useRef<InterlinearProjectSummary | undefined>(undefined);
-
-  // Runs as the menu closes, so the confirmation opens after the menu has refocused its button.
-  // The confirmation then returns focus to that button when it closes.
-  const openRequestedDelete = useCallback(() => {
-    if (!deleteRequest.current) return;
-    setPendingDelete(deleteRequest.current);
-    deleteRequest.current = undefined;
-  }, []);
+  /** Each listed project's actions button, by project id. */
+  const actionsButtons = useRef(new Map<string, HTMLButtonElement>());
 
   const handleDeleted = useCallback(
     (deletedProjectId: string) => {
@@ -199,19 +194,26 @@ export function SelectInterlinearProjectModal({
                         localizedStrings['%interlinearizer_modal_select_actions_button_label%']
                       }
                       className="tw:shrink-0 tw:me-1"
+                      ref={(button) => {
+                        if (button) actionsButtons.current.set(project.id, button);
+                        else actionsButtons.current.delete(project.id);
+                      }}
                     >
                       <EllipsisVertical className="tw:size-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" onCloseAutoFocus={openRequestedDelete}>
+                  <DropdownMenuContent align="end">
                     <DropdownMenuItem onSelect={() => onViewInfo(project)}>
                       {localizedStrings['%interlinearizer_modal_select_get_info%']}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       variant="destructive"
-                      onSelect={() => {
-                        deleteRequest.current = project;
-                      }}
+                      onSelect={() =>
+                        setPendingDelete({
+                          project,
+                          actionsButton: actionsButtons.current.get(project.id),
+                        })
+                      }
                     >
                       {localizedStrings['%interlinearizer_modal_select_delete%']}
                     </DropdownMenuItem>
@@ -244,11 +246,12 @@ export function SelectInterlinearProjectModal({
 
       {pendingDelete && (
         <DeleteProjectConfirm
-          projectId={pendingDelete.id}
-          projectName={pendingDelete.name}
-          isPt9Import={pendingDelete.pt9Import !== undefined}
+          projectId={pendingDelete.project.id}
+          projectName={pendingDelete.project.name}
+          isPt9Import={pendingDelete.project.pt9Import !== undefined}
           onCancel={() => setPendingDelete(undefined)}
           onDeleted={handleDeleted}
+          returnFocusTo={pendingDelete.actionsButton}
         />
       )}
     </ModalShell>

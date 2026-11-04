@@ -3,7 +3,7 @@
 
 import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { ResolvedSense } from 'interlinearizer/lexicon';
@@ -3107,6 +3107,48 @@ describe('AnalysisCatalogPanel', () => {
         expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
       });
 
+      it('sends a focused gloss before closing on a request that blurs nothing', async () => {
+        const onSave = jest.fn();
+        const onClose = jest.fn();
+        renderPanel({ analysis: SHARED, onSave, onClose });
+        const row = await expandRow('ta-1');
+        await userEvent.type(within(row).getByTestId('catalog-row-gloss-input'), '!');
+
+        fireEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+        expect(saved.tokenAnalyses[0].gloss).toEqual({ en: 'word!' });
+        expect(onClose).toHaveBeenCalled();
+      });
+
+      it('sends a focused gloss before switching to the concordance from outside', async () => {
+        const onSave = jest.fn();
+        const onShowConcordance = jest.fn();
+        const ref = createRef<AnalysisCatalogPanelHandle>();
+        renderPanel({ ref, analysis: SHARED, onSave, onShowConcordance });
+        const row = await expandRow('ta-1');
+        await userEvent.type(within(row).getByTestId('catalog-row-gloss-input'), '!');
+
+        act(() => ref.current?.requestShowConcordance());
+
+        const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+        expect(saved.tokenAnalyses[0].gloss).toEqual({ en: 'word!' });
+        expect(onShowConcordance).toHaveBeenCalled();
+      });
+
+      it('leaves a field outside the panel focused when switching to the concordance', async () => {
+        const outside = document.createElement('input');
+        document.body.append(outside);
+        const ref = createRef<AnalysisCatalogPanelHandle>();
+        renderPanel({ ref, analysis: SHARED });
+        outside.focus();
+
+        act(() => ref.current?.requestShowConcordance());
+
+        expect(outside).toHaveFocus();
+        outside.remove();
+      });
+
       it('reports a breakdown held uncommitted', async () => {
         const onPendingEditsChange = jest.fn();
         renderPanel({ analysis: SEGMENTED, onPendingEditsChange });
@@ -3358,10 +3400,16 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('marks a collapsed linked row without listing its sense', () => {
-      renderPanel({ analysis: LINKED, senses: { 's-word': { gloss: { en: 'word' } } } });
+      const { unmount } = renderPanel({
+        analysis: LINKED,
+        senses: { 's-word': { gloss: { en: 'word' } } },
+      });
 
       expect(within(rowFor('ta-1')).getByTestId('catalog-sense-link')).toBeInTheDocument();
       expect(within(rowFor('ta-1')).queryByTestId('catalog-sense-links')).not.toBeInTheDocument();
+      // Nothing marks the lookup landing, because the sense resolves to the gloss already shown.
+      // Closing the panel keeps the lookup from landing after the test.
+      unmount();
     });
 
     it("lists a linked row's sense once the row is expanded", async () => {

@@ -104,9 +104,11 @@ describe('SaveAsProjectModal', () => {
     expect(onSaveNew).toHaveBeenCalledWith('My Project', undefined);
   });
 
-  it('disables the save-as-new button while the name is empty', () => {
+  it('disables the save-as-new button while the name is empty', async () => {
     render(<SaveAsProjectModal {...defaultProps} />);
 
+    expect(screen.getByTestId('save-as-new')).toBeDisabled();
+    expect(await screen.findByText('No existing projects for this source.')).toBeInTheDocument();
     expect(screen.getByTestId('save-as-new')).toBeDisabled();
   });
 

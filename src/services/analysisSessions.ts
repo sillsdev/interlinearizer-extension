@@ -273,8 +273,11 @@ type OpenSession = {
   session: Session;
   /** Settles once every command sent to the session so far has settled; never rejects. */
   queue: Promise<unknown>;
-  /** Settles once the session is closed; set from the moment a close is sent. */
-  closed?: Promise<void>;
+  /**
+   * `'closing'` from the moment a close is sent. Once the session is unreachable, the state holds
+   * the close, which settles once the repository is released.
+   */
+  state: 'open' | 'closing' | { closed: Promise<void> };
   /**
    * The latest replies, by change id, oldest first. A reply that rejects before its change applied
    * anything is dropped.
@@ -344,6 +347,7 @@ export class AnalysisSessions {
       };
       const entry: OpenSession = {
         session,
+        state: 'open',
         queue: Promise.resolve(),
         replies: new Map(),
         editPasses: new Map(),
@@ -368,10 +372,8 @@ export class AnalysisSessions {
   close(sessionId: string): Promise<void> {
     const entry = this.sessions.get(sessionId);
     if (!entry) return Promise.resolve();
-    entry.closed ??= this.onLifecycle(entry.session.scope.sourceProjectId, () =>
-      this.closeNow(entry),
-    );
-    return entry.closed;
+    if (entry.state === 'open') entry.state = 'closing';
+    return this.onLifecycle(entry.session.scope.sourceProjectId, () => this.closeNow(entry));
   }
 
   /**
@@ -419,7 +421,7 @@ export class AnalysisSessions {
    */
   startTextRead(sessionId: string): Promise<void> {
     const entry = this.sessions.get(sessionId);
-    if (!entry || entry.closed) {
+    if (entry?.state !== 'open') {
       return Promise.reject(new Error(`Interlinearizer: no session ${sessionId} is open`));
     }
     entry.textRead ??= this.host.startTextRead(entry.session.scope.sourceProjectId);
@@ -434,7 +436,7 @@ export class AnalysisSessions {
    */
   run<T>(sessionId: string, command: (session: Session) => Promise<T>): Promise<T> {
     const entry = this.sessions.get(sessionId);
-    if (!entry || entry.closed) {
+    if (entry?.state !== 'open') {
       return Promise.reject(new Error(`Interlinearizer: no session ${sessionId} is open`));
     }
     const result = entry.queue.then(() => command(entry.session));
@@ -801,14 +803,21 @@ export class AnalysisSessions {
   }
 
   /**
+   * Closes the session, releasing its repository only once. Every later call returns the first
+   * close, so each caller hears whether that close failed.
+   */
+  private closeNow(entry: OpenSession): Promise<void> {
+    if (typeof entry.state !== 'object') entry.state = { closed: this.release(entry) };
+    return entry.state.closed;
+  }
+
+  /**
    * Makes the session unreachable by id or source, then, once the commands sent to it have settled,
    * ends the source's whole-text read if the session asked for it and, for a draft, releases its
-   * repository. A session that an earlier step already closed is left alone, so its repository is
-   * released only once.
+   * repository.
    */
-  private async closeNow(entry: OpenSession): Promise<void> {
+  private async release(entry: OpenSession): Promise<void> {
     const { id, scope } = entry.session;
-    if (this.sessions.get(id) !== entry) return;
     this.sessions.delete(id);
     this.sessionsBySource.delete(scope.sourceProjectId);
     await entry.queue;

@@ -78,6 +78,38 @@ describe('ModalShell', () => {
     expect(screen.getByRole('button', { name: 'Open' })).toHaveFocus();
   });
 
+  it('returns focus on close to the given element instead, when one is given', async () => {
+    function Host() {
+      const [isOpen, setIsOpen] = useState(false);
+      const [returnTarget, setReturnTarget] = useState<HTMLButtonElement>();
+      return (
+        <>
+          <button
+            type="button"
+            ref={(button) => setReturnTarget(button ?? undefined)}
+            aria-label="Return target"
+          />
+          <button type="button" onClick={() => setIsOpen(true)}>
+            Open
+          </button>
+          {isOpen && (
+            <ModalShell
+              {...defaultProps}
+              onClose={() => setIsOpen(false)}
+              returnFocusTo={returnTarget}
+            />
+          )}
+        </>
+      );
+    }
+    render(<Host />);
+    await userEvent.click(screen.getByRole('button', { name: 'Open' }));
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.getByRole('button', { name: 'Return target' })).toHaveFocus();
+  });
+
   it('calls onClose when the user presses Escape', async () => {
     const onClose = jest.fn();
     render(<ModalShell {...defaultProps} onClose={onClose} />);

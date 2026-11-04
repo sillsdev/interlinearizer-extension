@@ -19,6 +19,7 @@ const mockProjectDataProvidersGet = jest.fn();
 const mockNetworkObjectsGet = jest.fn();
 const mockOnDidCreateNetworkObject = jest.fn();
 const mockWaitForNetworkObject = jest.fn();
+const mockGetMetadataForProject = jest.fn();
 
 const papi = {
   commands: {
@@ -36,6 +37,9 @@ const papi = {
   },
   menuData: {
     dataProviderName: 'platform.menuDataServiceDataProvider',
+  },
+  projectLookup: {
+    getMetadataForProject: mockGetMetadataForProject,
   },
   projectDataProviders: {
     get: mockProjectDataProvidersGet,

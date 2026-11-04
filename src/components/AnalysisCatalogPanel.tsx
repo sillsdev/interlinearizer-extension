@@ -124,6 +124,11 @@ export const ANALYSIS_CATALOG_PANEL_STRING_KEYS = [
   ...SIDE_PANEL_TAB_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
+/** Blurs the focused element, which sends a focused gloss field's draft at once. */
+function blurFocusedField(): void {
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+}
+
 /** A breakdown a row is holding, with the form it was typed against. */
 type BreakdownDraft = Readonly<{
   /** The breakdown as a line of space-separated forms. */
@@ -134,7 +139,10 @@ type BreakdownDraft = Readonly<{
 
 /** What {@link AnalysisCatalogPanel} lets its owner do through a ref. */
 export type AnalysisCatalogPanelHandle = Readonly<{
-  /** Switches to the concordance, asking first when a breakdown draft would be lost. */
+  /**
+   * Switches to the concordance once the gloss commits in flight settle, asking first when unsaved
+   * catalog edits would be lost.
+   */
   requestShowConcordance: () => void;
   /** Scrolls to the row for `analysisId` when the listing holds it. */
   revealRow: (analysisId: string) => void;
@@ -463,8 +471,9 @@ export default function AnalysisCatalogPanel({
 
   /**
    * The gloss drafts no field is showing, and the fields showing a draft whose commit failed. Kept
-   * here rather than in the row because a row's fields unmount when it is collapsed or no longer
-   * listed.
+   * here rather than in the row because a row's fields unmount when the row is collapsed or no
+   * longer listed, or when the analysis language changes. Kept drafts go with the panel when it
+   * closes; closing asks first for that reason.
    */
   const [glossRetry] = useState(() => createGlossRetry(setHoldsUnsavedGloss));
 
@@ -558,10 +567,11 @@ export default function AnalysisCatalogPanel({
    * Neither commits on the way out, so leaving the panel is the one route that can drop typed text
    * the reader never asked to discard.
    *
-   * Waits first for the gloss commits in flight, including one sent by the click's blur. A commit
-   * that fails leaves its draft for the ask to cover.
+   * Waits first for the gloss commits in flight, the focused field's included, whatever triggered
+   * the request. A commit that fails leaves its draft for the ask to cover.
    */
   const handleCloseRequest = useCallback(() => {
+    blurFocusedField();
     glossRetry.afterCommits(() => {
       if (hasUnsavedBreakdown || glossRetry.isHolding()) setConfirmingLeave('close');
       else onClose();
@@ -570,6 +580,7 @@ export default function AnalysisCatalogPanel({
 
   /** Switches the side panel to the concordance, or asks first as closing does. */
   const handleSwitchRequest = useCallback(() => {
+    blurFocusedField();
     glossRetry.afterCommits(() => {
       if (hasUnsavedBreakdown || glossRetry.isHolding()) setConfirmingLeave('switch');
       else onShowConcordance();

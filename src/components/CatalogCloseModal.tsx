@@ -71,7 +71,9 @@ const ACTION_KEYS = {
  *
  * Discarding is the only offer. Saving a breakdown would commit a re-segmentation that drops the
  * old morphemes' glosses for every token the record holds, which carries a confirmation of its own.
- * Consenting here settles only the draft, never the edit it clears the way for.
+ * A failed gloss is retried from its own field, which shows the draft again once mounted. Keep
+ * editing is the way back to that field. Consenting here settles only the draft, never the edit it
+ * clears the way for.
  */
 export default function CatalogCloseModal({
   onConfirm,

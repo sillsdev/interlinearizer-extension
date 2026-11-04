@@ -58,26 +58,21 @@ async function tokensHeld(repository: CSharpRepository, ids: string[]): Promise<
 }
 
 describe('the host over one source', () => {
-  it('keeps the source in its data directory, under the sources folder', async () => {
-    await command('openSource', { sourceProjectId: 'source-folder' });
+  it('opens a source on its first command, in its data directory under the sources folder', async () => {
+    await expect(
+      command('listProjects', { sourceProjectId: 'source-folder' }),
+    ).resolves.toStrictEqual([]);
 
     expect(existsSync(path.join(dataDirectory, 'sources', 'source-folder.sqlite'))).toBe(true);
   });
 
   it('refuses a source whose id cannot name a file', async () => {
-    await expect(command('openSource', { sourceProjectId: 'a/b' })).rejects.toThrow('cannot');
-    await expect(command('openSource', { sourceProjectId: '' })).rejects.toThrow('cannot');
-  });
-
-  it('serves no project of a source not open', async () => {
-    await expect(command('listProjects', { sourceProjectId: 'never-opened' })).rejects.toThrow(
-      'not open',
-    );
+    await expect(command('listProjects', { sourceProjectId: 'a/b' })).rejects.toThrow('cannot');
+    await expect(command('listProjects', { sourceProjectId: '' })).rejects.toThrow('cannot');
   });
 
   it('holds several projects, each with its own records', async () => {
     const source = 'source-projects';
-    await command('openSource', { sourceProjectId: source });
     const a = crypto.randomUUID();
     const b = crypto.randomUUID();
     await command('createProject', {
@@ -112,7 +107,6 @@ describe('the host over one source', () => {
 
   it('refuses to create a project under an id in use', async () => {
     const source = 'source-reused-id';
-    await command('openSource', { sourceProjectId: source });
     const a = crypto.randomUUID();
     await command('createProject', { sourceProjectId: source, projectId: a });
 
@@ -123,7 +117,6 @@ describe('the host over one source', () => {
 
   it('updates the fields a patch sets and the languages it adds and removes', async () => {
     const source = 'source-update';
-    await command('openSource', { sourceProjectId: source });
     const a = crypto.randomUUID();
     await command('createProject', {
       sourceProjectId: source,
@@ -156,7 +149,6 @@ describe('the host over one source', () => {
 
   it('deletes a project with its records, serving it no longer', async () => {
     const source = 'source-delete';
-    await command('openSource', { sourceProjectId: source });
     const a = crypto.randomUUID();
     const b = crypto.randomUUID();
     await command('createProject', { sourceProjectId: source, projectId: a });
@@ -172,16 +164,13 @@ describe('the host over one source', () => {
     await expect(tokensHeld(repositoryFor(source, a), [tokenA])).resolves.toStrictEqual([tokenA]);
   });
 
-  it('keeps its projects and their records across a close and reopen', async () => {
+  it('keeps its projects and their records across a close, reopening on the next command', async () => {
     const source = 'source-reopen';
-    await command('openSource', { sourceProjectId: source });
     const a = crypto.randomUUID();
     await command('createProject', { sourceProjectId: source, projectId: a, name: 'A' });
     const tokenA = await seedToken(repositoryFor(source, a));
 
     await command('closeSource', { sourceProjectId: source });
-    await expect(command('listProjects', { sourceProjectId: source })).rejects.toThrow('not open');
-    await command('openSource', { sourceProjectId: source });
 
     const listed = await command<ListedProject[]>('listProjects', { sourceProjectId: source });
     expect(listed.map((p) => p.name)).toStrictEqual(['A']);

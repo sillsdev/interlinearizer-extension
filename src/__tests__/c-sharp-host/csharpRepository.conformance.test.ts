@@ -23,7 +23,7 @@ afterAll(async () => {
   rmSync(dataDirectory, { recursive: true, force: true });
 });
 
-/** The sources the current store opened on the host, closed after its test. */
+/** The sources the current store had the host open, closed after its test. */
 let opened: Set<string>;
 
 afterEach(async () => {
@@ -53,14 +53,11 @@ function createStore(): ConformanceStore {
     if (projectId === undefined) {
       projectId = crypto.randomUUID();
       projectIds.set(source, projectId);
-      await papi.invoke(`command:${REPOSITORY_COMMAND_PREFIX}openSource`, {
-        sourceProjectId: source,
-      });
-      opened.add(source);
       await papi.invoke(`command:${REPOSITORY_COMMAND_PREFIX}createProject`, {
         sourceProjectId: source,
         projectId,
       });
+      opened.add(source);
     }
     return new CSharpRepository(
       (command, args) => papi.invoke(`command:${command}`, args),

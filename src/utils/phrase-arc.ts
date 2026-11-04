@@ -95,18 +95,20 @@ type SplitPhraseDispatch = {
  * token list reflects visual left-to-right order. The single document-order sort, so slicing a
  * phrase orders its tokens identically everywhere.
  *
- * A token the order map cannot place scores zero, so it ties with whatever sits at position zero
- * rather than holding a place of its own. A ref stranded by a re-tokenized baseline can therefore
- * land ahead of tokens that follow it in the stored list.
+ * A token the order map cannot place, such as a ref stranded by a re-tokenized baseline, keeps its
+ * place relative to its stored neighbors. It sorts just after the nearest placeable token before it
+ * in the input, or first when none precedes it.
  */
 export function sortByDocOrder<T extends { tokenRef: string }>(
   tokens: readonly T[],
   tokenDocOrder: ReadonlyMap<string, number>,
 ): T[] {
-  return [...tokens].sort(
-    /* v8 ignore next -- the ?? 0 tie for refs the order map cannot place; no test drives one here */
-    (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
-  );
+  let lastPlaced = -1;
+  const keyed = tokens.map((token) => {
+    lastPlaced = tokenDocOrder.get(token.tokenRef) ?? lastPlaced;
+    return { token, key: lastPlaced };
+  });
+  return keyed.sort((a, b) => a.key - b.key).map(({ token }) => token);
 }
 
 /**

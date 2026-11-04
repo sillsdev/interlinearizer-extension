@@ -849,19 +849,19 @@ describe('splitPhrase parity with the WebView split', () => {
       },
     ],
     [
-      'sorts a token the order does not place as if at place zero',
+      'keeps a token the order does not place after the token stored before it',
       {
         analysis: analysisOf(
           [payload('pa-1', 'In the beginning God')],
           [link('pl-1', 'pa-1', run(1, 0, 1, 2, 3))],
         ),
         input: {
-          splitAfterTokenRef: 'GEN 1:1:3',
+          splitAfterTokenRef: 'GEN 1:1:1',
           tokenDocOrder: new Map(run(1, 0, 1, 2).map(({ tokenRef }, i) => [tokenRef, i])),
         },
         expectStore: (store) => {
-          expect(linkOf(store, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 3));
-          expect(linkOf(store, 'new-link')?.tokens).toStrictEqual(run(1, 1, 2));
+          expect(linkOf(store, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1));
+          expect(linkOf(store, 'new-link')?.tokens).toStrictEqual(run(1, 2, 3));
         },
       },
     ],

@@ -236,8 +236,8 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
         edit: { kind: 'split', tokenRef: GOD.tokenRef },
         expectStore: (store) => {
           expect(tokensOf(store)).toStrictEqual({
-            'pl-1': refs(GONE, THE, BEGINNING),
-            'id-2': refs(GOD, CREATED),
+            'pl-1': refs(THE, BEGINNING),
+            'id-2': refs(GONE, GOD, CREATED),
           });
         },
       },

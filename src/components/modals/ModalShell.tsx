@@ -11,8 +11,7 @@ import { useState, type ReactNode } from 'react';
  * the title heading.
  *
  * The platform dialog supplies a focus trap and scroll lock, so a modal genuinely blocks the view
- * behind it rather than merely covering it. Closing returns focus to whatever held it when the
- * modal opened.
+ * behind it rather than merely covering it.
  *
  * A popover opened inside a modal portals into the dialog rather than to `document.body`, where the
  * focus trap would pull focus straight back out of it and the dismiss layer would read a click in
@@ -33,6 +32,9 @@ import { useState, type ReactNode } from 'react';
  *   exists.
  * @param props.titleAdornment - Rendered inline after the title text, for a control that qualifies
  *   the whole modal rather than any one field in it.
+ * @param props.returnFocusTo - Element to focus once the modal closes, for a modal opened from
+ *   something that is gone by the time it mounts, such as a menu item. Defaults to whatever held
+ *   focus when the modal opened.
  */
 export function ModalShell({
   titleTestId,
@@ -40,6 +42,7 @@ export function ModalShell({
   titleAdornment,
   width,
   onClose,
+  returnFocusTo,
   children,
 }: Readonly<{
   titleTestId: string;
@@ -47,12 +50,13 @@ export function ModalShell({
   titleAdornment?: ReactNode;
   width: string;
   onClose?: () => void;
+  returnFocusTo?: HTMLElement;
   children?: ReactNode;
 }>) {
   // eslint-disable-next-line no-null/no-null -- the platform's container prop takes null until the dialog mounts
   const [dialogEl, setDialogEl] = useState<HTMLDivElement | null>(null);
   // Read before the dialog takes focus; the platform refocuses only a trigger, and there is none.
-  const [returnFocusTo] = useState(() => document.activeElement);
+  const [focusedOnOpen] = useState(() => document.activeElement);
 
   return (
     <Dialog
@@ -79,7 +83,8 @@ export function ModalShell({
         }}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          if (returnFocusTo instanceof HTMLElement) returnFocusTo.focus();
+          const target = returnFocusTo ?? focusedOnOpen;
+          if (target instanceof HTMLElement) target.focus();
         }}
         ref={setDialogEl}
         showCloseButton={false}

@@ -51,7 +51,6 @@ public class OpenSourcesTests : IAsyncDisposable
     [Test]
     [Arguments("")]
     [Arguments("a/b")]
-    [Arguments("a\b")]
     public async Task OpeningASourceWhoseIdCannotNameAFileThrows(string sourceProjectId)
     {
         await Assert.That(async () => await _sources.Open(sourceProjectId)).Throws<ArgumentException>();

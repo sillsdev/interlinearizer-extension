@@ -161,8 +161,10 @@ function CatalogRowView({
   const [showsAllUsages, setShowsAllUsages] = useState(false);
 
   /**
-   * Set by Show fewer, which unmounts itself: focus moves to the Show N more link that replaces it,
-   * so keyboard focus stays in the row and the browser scrolls the row back into view.
+   * Whether the Show N more link takes focus when it next mounts.
+   *
+   * Show fewer sets this flag, because Show fewer unmounts itself when clicked. Focusing the link
+   * keeps keyboard focus in the row. The browser also scrolls the row back into view.
    */
   const focusShowAllOnMountRef = useRef(false);
   const showAllRef = useCallback((el: HTMLButtonElement | null) => {

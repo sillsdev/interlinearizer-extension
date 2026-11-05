@@ -915,7 +915,7 @@ describe('InterlinearizerLoader', () => {
   it("resolves a verse-0 reference to the chapter's earliest verse when it lacks verse 1", async () => {
     mockBookData({
       book: makeVerseBook([
-        { sid: 'GEN 2:25', text: 'And they were both naked.' },
+        { sid: 'GEN 2:25', text: 'And they were not ashamed.' },
         { sid: 'GEN 3:3', text: 'But of the fruit.' },
         { sid: 'GEN 3:2', text: 'And the woman said.' },
       ]),

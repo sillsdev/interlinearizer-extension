@@ -59,13 +59,13 @@ export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResul
   const report = emptyPt9ImportReport();
 
   const loaded = data.books.flatMap((interlinear): IdentifiedBook[] => {
-    if (interlinear.glossLanguage === undefined || interlinear.bookId === undefined) {
-      report.booksMissingIdentity += 1;
-      return [];
-    }
     if (!interlinear.isCanonicalPath) {
       report.filesPt9NeverLoads.push(interlinear.filePath);
       return [];
+    }
+    /* v8 ignore next 3 -- the platform marks a file canonical only when it names its gloss language and book id */
+    if (interlinear.glossLanguage === undefined || interlinear.bookId === undefined) {
+      throw new Error(`Canonical PT9 interlinear file ${interlinear.filePath} lacks its identity`);
     }
     return [{ glossLanguage: interlinear.glossLanguage, bookId: interlinear.bookId, interlinear }];
   });

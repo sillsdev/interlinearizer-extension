@@ -107,7 +107,6 @@ function makeReport(): Pt9ImportReport {
       senseRefsUnresolved: 0,
     },
     barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
-    booksMissingIdentity: 0,
     filesPt9NeverLoads: [],
     filesTooLargeToRead: [],
   };

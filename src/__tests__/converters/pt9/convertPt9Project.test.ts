@@ -333,7 +333,7 @@ describe('convertPt9Project', () => {
     expect(result.analysis.tokenAnalyses).toHaveLength(0);
   });
 
-  it('counts and drops a book of interlinear data missing its language or book id', () => {
+  it('lists and drops a book of interlinear data missing its language or book id', () => {
     const result = convertPt9Project({
       data: dataOf([
         { bookId: 'GEN', verses: [], filePath: 'Interlinear_x.xml', isCanonicalPath: false },
@@ -344,7 +344,10 @@ describe('convertPt9Project', () => {
       importedAt: STAMP,
     });
 
-    expect(result.report.booksMissingIdentity).toBe(2);
+    expect(result.report.filesPt9NeverLoads).toStrictEqual([
+      'Interlinear_x.xml',
+      'Interlinear_y.xml',
+    ]);
     expect(result.report.languages.map((l) => l.rawLanguage)).toStrictEqual(['en']);
     expect(result.analysis.tokenAnalyses).toHaveLength(1);
   });

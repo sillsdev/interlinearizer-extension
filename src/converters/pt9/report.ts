@@ -112,10 +112,10 @@ export interface Pt9ImportReport {
    */
   booksMissingIdentity: number;
   /**
-   * Books dropped because another file supplied the same gloss language and book; the file PT9's
-   * own reader loads wins.
+   * Project-relative paths of interlinear files that sit where PT9's own reader never loads them
+   * from, such as Send/Receive merge residue or a copy left by an older Paratext. None converts.
    */
-  booksDroppedAsDuplicates: number;
+  filesPt9NeverLoads: string[];
   /**
    * Interlinear files the source holds that no read could retrieve, because each is larger on its
    * own than one response may carry. Filled in from the probe before any reading, so a report can
@@ -222,7 +222,7 @@ export function emptyPt9ImportReport(): Pt9ImportReport {
       droppedBlankForm: 0,
     },
     booksMissingIdentity: 0,
-    booksDroppedAsDuplicates: 0,
+    filesPt9NeverLoads: [],
     filesTooLargeToRead: [],
   };
 }
@@ -292,6 +292,9 @@ export function isPt9ImportReport(value: unknown): value is Pt9ImportReport {
     'barePayloads' in value &&
     !!value.barePayloads &&
     typeof value.barePayloads === 'object' &&
+    'filesPt9NeverLoads' in value &&
+    Array.isArray(value.filesPt9NeverLoads) &&
+    value.filesPt9NeverLoads.every((path) => typeof path === 'string') &&
     'filesTooLargeToRead' in value &&
     isPt9UnreadableFileList(value.filesTooLargeToRead) &&
     'languages' in value &&

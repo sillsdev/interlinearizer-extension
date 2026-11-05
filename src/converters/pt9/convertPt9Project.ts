@@ -50,39 +50,29 @@ interface LanguageGroup {
 
 /**
  * Converts a PT9 project's interlinear data into the extension's analysis layer, paired with a
- * report of what converted, what was dropped, and why. When several books carry the same gloss
- * language and book id (a Send/Receive merge can leave a root-level twin beside the canonical
- * file), the one PT9's own reader loads wins and the rest are counted, never converted.
+ * report of what converted, what was dropped, and why. Only files that PT9's own reader loads
+ * convert; the rest are listed in the report, because PT9 never shows them.
  */
 export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResult {
   const { data, books, importedAt } = input;
   const resolver = input.resolver ?? unresolvedPt9LexiconResolver;
   const report = emptyPt9ImportReport();
 
-  const identified = data.books.flatMap((interlinear): IdentifiedBook[] => {
+  const loaded = data.books.flatMap((interlinear): IdentifiedBook[] => {
     if (interlinear.glossLanguage === undefined || interlinear.bookId === undefined) {
       report.booksMissingIdentity += 1;
+      return [];
+    }
+    if (!interlinear.isCanonicalPath) {
+      report.filesPt9NeverLoads.push(interlinear.filePath);
       return [];
     }
     return [{ glossLanguage: interlinear.glossLanguage, bookId: interlinear.bookId, interlinear }];
   });
 
-  const byIdentity = new Map<string, IdentifiedBook[]>();
-  identified.forEach((entry) => {
-    const bookKey = `${entry.glossLanguage}\n${entry.bookId}`;
-    const twins = byIdentity.get(bookKey);
-    if (twins === undefined) byIdentity.set(bookKey, [entry]);
-    else twins.push(entry);
-  });
-  const winners: IdentifiedBook[] = [];
-  byIdentity.forEach((twins) => {
-    winners.push(twins.find((entry) => entry.interlinear.isCanonicalPath) ?? twins[0]);
-    report.booksDroppedAsDuplicates += twins.length - 1;
-  });
-
   const languageGroups: LanguageGroup[] = [];
   const groupByRaw = new Map<string, LanguageGroup>();
-  winners.forEach((entry) => {
+  loaded.forEach((entry) => {
     let group = groupByRaw.get(entry.glossLanguage);
     if (group === undefined) {
       const resolved = resolveGlossLanguageTag(entry.glossLanguage);

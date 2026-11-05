@@ -1830,6 +1830,7 @@ describe('InterlinearizerLoader', () => {
         droppedEmpty: 0,
         droppedBlankForm: 0,
       },
+      filesPt9NeverLoads: [],
       filesTooLargeToRead: [],
     };
 

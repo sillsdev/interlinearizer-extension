@@ -32,6 +32,7 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_pt9ImportModal_reason_blankMorphemeForm%',
   '%interlinearizer_pt9ImportModal_missingBooks%',
   '%interlinearizer_pt9ImportModal_filesTooLarge%',
+  '%interlinearizer_pt9ImportModal_filesNeverLoaded%',
   '%interlinearizer_pt9ImportModal_staleKept%',
   '%interlinearizer_pt9ImportModal_open%',
   '%interlinearizer_pt9ImportModal_close%',
@@ -322,6 +323,14 @@ export function Pt9ImportModal({
             {formatReplacementString(
               localizedStrings['%interlinearizer_pt9ImportModal_missingBooks%'],
               { books: totals.missingBooks.join(', ') },
+            )}
+          </p>
+        )}
+        {phase.report.filesPt9NeverLoads.length > 0 && (
+          <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-never-loaded">
+            {formatReplacementString(
+              localizedStrings['%interlinearizer_pt9ImportModal_filesNeverLoaded%'],
+              { files: phase.report.filesPt9NeverLoads.join(', ') },
             )}
           </p>
         )}

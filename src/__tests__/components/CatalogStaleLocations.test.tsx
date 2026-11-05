@@ -4,13 +4,13 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import CatalogStaleLocations, {
   STALE_LOCATION_STRING_KEYS,
 } from '../../components/CatalogStaleLocations';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import type { CatalogUsage } from '../../utils/analysis-query';
 import { defaultScrRef, makeScrollGroupHook } from '../test-helpers';
+import { EmptyAnalysisProvider } from './test-helpers';
 
 /**
  * Each key resolving to itself, but for the apply label, whose template has to resolve for the
@@ -48,7 +48,7 @@ function renderPlaces(overrides: PlacesOptions = {}) {
   const onReapply = jest.fn();
   render(
     <InterlinearNavProvider useWebViewScrollGroupScrRef={makeScrollGroupHook(defaultScrRef)}>
-      <AnalysisStoreProvider analysisLanguage="en" readOnly={overrides.readOnly}>
+      <EmptyAnalysisProvider analysisLanguage="en" readOnly={overrides.readOnly}>
         <FocusPublishProbe tokenRef={overrides.focusedTokenRef} />
         <CatalogStaleLocations
           inlineLimit={overrides.inlineLimit ?? 12}
@@ -60,7 +60,7 @@ function renderPlaces(overrides: PlacesOptions = {}) {
           onReapply={onReapply}
           onSelect={onSelect}
         />
-      </AnalysisStoreProvider>
+      </EmptyAnalysisProvider>
     </InterlinearNavProvider>,
   );
   return { onSelect, onDiscard, onReapply };

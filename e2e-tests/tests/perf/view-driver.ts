@@ -11,12 +11,6 @@ export const MAX_WEBSOCKET_PAYLOAD_BYTES = 100 * 1024 * 1024;
 /** Storage key that asks the WebView for timing entries. */
 export const PERF_MARKS_KEY = 'interlinearizer.perfMarks';
 
-/**
- * Storage key that puts each view opened afterward on the host path when `'true'` and off it when
- * `'false'`.
- */
-export const HOST_PATH_KEY = 'interlinearizer.hostPath';
-
 export const VIEW_TAB = /^Interlinearizer: WEB/;
 
 export type Measure = { name: string; duration: number; end: number; detail: unknown };
@@ -32,7 +26,6 @@ export type HostCall = { measure: string; command: string; phasePrefixes: string
 
 /** The host commands the scenarios time. */
 export const HOST_CALLS = {
-  getDraft: { measure: 'draft-fetch', command: 'getDraft', phasePrefixes: ['getDraft'] },
   getTokenizedBook: {
     measure: 'book-fetch',
     command: 'getTokenizedBook',
@@ -43,7 +36,6 @@ export const HOST_CALLS = {
     command: 'getBookOutline',
     phasePrefixes: ['getBookOutline'],
   },
-  saveDraft: { measure: 'autosave', command: 'saveDraft', phasePrefixes: ['saveDraft'] },
   writeGloss: {
     measure: 'edit-command',
     command: 'writeGloss',

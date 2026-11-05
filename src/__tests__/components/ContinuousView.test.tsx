@@ -20,7 +20,7 @@ import {
 } from '../../components/SegmentationStore';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { INITIAL_WINDOW_HALF } from '../../hooks/usePhraseWindow';
-import type { SegmentPages } from '../../hooks/useSegmentPages';
+import type { SegmentPages } from '../../types/segment-pages';
 import { STRIP_PREFETCH_SEGMENTS } from '../../hooks/useStripSegments';
 import { isWordToken } from '../../types/type-guards';
 import { STRIP_MARGIN_WORDS } from '../../utils/strip-range';
@@ -38,7 +38,7 @@ import {
   mockKeyAsValueLocalizedStrings,
   resizeObserverInstances,
   TrackingResizeObserver,
-  withAnalysisStore,
+  withEmptyAnalysis,
 } from './test-helpers';
 
 // ---------------------------------------------------------------------------
@@ -81,7 +81,9 @@ const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().m
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useAnalysisReadOnly: () => false,
-  AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
+  SessionAnalysisProvider({
+    children,
+  }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
     return children;
   },
   useGloss: () => '',
@@ -381,7 +383,7 @@ function renderStrip(
     </FocusStoreProvider>
   );
 
-  const view = render(element(), withAnalysisStore);
+  const view = render(element(), withEmptyAnalysis);
 
   return {
     focusToken,
@@ -1393,7 +1395,7 @@ describe('ContinuousView split marker', () => {
           <ContinuousView {...requiredProps(book)} />
         </FocusStoreProvider>
       </SegmentationProvider>,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
     return dispatch;
   }
@@ -2222,16 +2224,16 @@ describe('ContinuousView phrase grouping', () => {
   });
 
   it('splits a known phrase through the dispatch when the arc split button is clicked', async () => {
-    const deletePhrase = jest.fn();
+    const splitPhrase = jest.fn();
     mockUsePhraseDispatch.mockReturnValue(
       withSplitPhrase({
         createPhrase: jest.fn(),
         updatePhrase: jest.fn(),
-        deletePhrase,
+        deletePhrase: jest.fn(),
         mergePhrases: jest.fn(),
+        splitPhrase,
       }),
     );
-    // Two-token phrase split at tok-0 → both halves are 1 token → deletePhrase called
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
       id: 'phrase-1',
@@ -2247,17 +2249,18 @@ describe('ContinuousView phrase grouping', () => {
     const book = makeBook();
     renderStrip(book);
     await userEvent.click(screen.getByTestId('arc-split-btn'));
-    expect(deletePhrase).toHaveBeenCalledWith('phrase-1');
+    expect(splitPhrase).toHaveBeenCalledWith(expect.objectContaining({ id: 'phrase-1' }), 'tok-0');
   });
 
   it('splits only the occurrence whose arc fires when two occurrences share a payload', async () => {
-    const deletePhrase = jest.fn();
+    const splitPhrase = jest.fn();
     mockUsePhraseDispatch.mockReturnValue(
       withSplitPhrase({
         createPhrase: jest.fn(),
         updatePhrase: jest.fn(),
-        deletePhrase,
+        deletePhrase: jest.fn(),
         mergePhrases: jest.fn(),
+        splitPhrase,
       }),
     );
     addPhraseLinkWithNewIdentity({
@@ -2271,23 +2274,26 @@ describe('ContinuousView phrase grouping', () => {
     const book = makeBook();
     renderStrip(book);
     await userEvent.click(screen.getByTestId('arc-split-btn'));
-    expect(deletePhrase.mock.calls).toEqual([['phrase-1']]);
+    expect(splitPhrase.mock.calls).toEqual([
+      [expect.objectContaining({ id: 'phrase-1' }), 'tok-0'],
+    ]);
   });
 
   it('does nothing when the arc split button fires for an unknown phrase id', async () => {
-    const deletePhrase = jest.fn();
+    const splitPhrase = jest.fn();
     mockUsePhraseDispatch.mockReturnValue(
       withSplitPhrase({
         createPhrase: jest.fn(),
         updatePhrase: jest.fn(),
-        deletePhrase,
+        deletePhrase: jest.fn(),
         mergePhrases: jest.fn(),
+        splitPhrase,
       }),
     );
     const book = makeBook();
     renderStrip(book);
     await userEvent.click(screen.getByTestId('arc-split-btn'));
-    expect(deletePhrase).not.toHaveBeenCalled();
+    expect(splitPhrase).not.toHaveBeenCalled();
   });
 
   it('computes candidatePhraseIds from non-empty candidateTokenRefs', () => {

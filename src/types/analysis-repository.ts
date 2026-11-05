@@ -46,16 +46,6 @@ export class UnreadableBooksError extends Error {
   }
 }
 
-/** How a draft save treats stored analysis it could not read. */
-export type ReplaceAllOptions = {
-  /**
-   * Discard it, as starting a draft over (New, Open) does, so the save writes the books it belongs
-   * to like any other. Absent, such a book's stored analysis is kept, whatever the draft carries
-   * for it.
-   */
-  discardUnreadable?: boolean;
-};
-
 /** A stored draft as read, with the books it could not vouch for. */
 export type DraftExport = {
   /** The draft, holding no analysis for the books in `unreadableBooks`. */
@@ -181,23 +171,6 @@ export interface AnalysisRepository {
    * @throws If storage rejects a read.
    */
   exportForCopy(): Promise<DraftExport>;
-
-  /**
-   * Saves the whole draft, replacing the stored one, stamped with this build's model version. Once
-   * the save's cleanup succeeds, nothing the saved draft no longer needs stays stored, apart from
-   * the stored analysis a save keeps for unreadable books. Content that lands counts as saved even
-   * when that cleanup fails; a later save, from any repository, finishes the cleanup. A book whose
-   * stored analysis could not be read is kept as stored unless `options` discards it: a draft that
-   * loaded it empty never wipes it, and analysis the draft carries for it never stands in for what
-   * could not be read.
-   *
-   * @returns The books whose analysis in the draft was left out for that reason; empty when the
-   *   draft was saved whole.
-   * @throws {ReadOnlyAnalysisError} If the repository is read-only; nothing is written.
-   * @throws {Error} If the stored draft was written by a newer build; nothing is written.
-   * @throws If storage rejects a read or a write.
-   */
-  replaceAll(draft: DraftProject, options?: ReplaceAllOptions): Promise<string[]>;
 
   /**
    * Records the stored draft as saved to its project, leaving its content as it stands. A draft

@@ -1,21 +1,10 @@
 /* eslint-disable no-console -- a command-line tool reports to its terminal */
 import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
 import path from 'path';
-import { isDeepStrictEqual } from 'util';
-import type { DraftContent } from '../../src/types/draft-content';
 import { tokenizeBook } from '../../src/parsers/papi/bookTokenizer';
 import { DraftRepository } from '../../src/services/draftRepository';
 import { extractBookFromUsj } from '../../src/parsers/papi/usjBookExtractor';
-import analysisReducer, {
-  type AnalysisState,
-  selectApprovedGloss,
-  selectCatalogRows,
-  selectPhraseLinkByTokenRef,
-  selectPoolIndex,
-  selectStaleTokenLinks,
-  writeGloss,
-} from '../../src/store/analysisSlice';
-import { createAnalysisStore } from '../../src/store';
+import { selectCatalogRows } from '../../src/utils/analysis-selectors';
 import type { ChangeSet, KeyValueStorage } from '../../src/types/analysis-repository';
 import { emptyAnalysis } from '../../src/types/empty-factories';
 import {
@@ -24,7 +13,6 @@ import {
   mergeAnalyses,
   splitAnalysisByBook,
 } from '../../src/utils/analysis-book';
-import { applyChangeSet } from '../../src/utils/change-set';
 import {
   approvedAnalysisByToken,
   buildConcordanceEntries,
@@ -33,11 +21,8 @@ import {
 } from '../../src/utils/concordance';
 import { FormIndex, formsOfBook } from '../../src/utils/form-index';
 import { collatorForTag } from '../../src/utils/language-tags';
-import { reanchorAnalysisToBook } from '../../src/utils/reanchor-analysis';
-import { changesOfReanchor, reanchorDraftToBook } from '../../src/utils/reanchor-changes';
-import { reanchorDraftToMissingBook } from '../../src/utils/reanchor-draft';
-import { MAX_UNDO_STEPS } from '../../src/services/editHistory';
-import type { BookPass } from '../../src/types/book-pass';
+import { missingBook } from '../../src/utils/reanchor-analysis';
+import { reanchorChangesForBook } from '../../src/utils/reanchor-changes';
 import { loadBooks, readUsj } from '../books';
 import { readDraftJson, readManifest } from '../dataset/store';
 import { TIERS, type TierSpec } from '../dataset/tiers';
@@ -75,28 +60,12 @@ function mostLinkedTokenAnalysis(analysis: TextAnalysis) {
   );
 }
 
-/** Reads the store through the indexing selectors a mounted view recomputes after a dispatch. */
-function readViewSelectors(state: AnalysisState, book: Book): void {
-  const tokenRef = book.segments[0].tokens[0].ref;
-  selectPoolIndex(state);
-  selectCatalogRows(state, book.bookRef);
-  selectPhraseLinkByTokenRef(state);
-  selectStaleTokenLinks(state);
-  selectApprovedGloss(state, tokenRef);
-}
-
-/** The word tokens of `book`, in document order. */
-function wordsOf(book: Book) {
-  return book.segments.flatMap((s) => s.tokens.filter((t) => t.type === 'word'));
-}
-
 async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record<string, unknown>> {
   const tierName = tier.name;
   const meta = readCaptureMeta();
   const manifest = readManifest(tierName);
   const viewBookCode = tier.viewBook;
   const usj = readUsj(meta, viewBookCode);
-  const [viewBook] = loadBooks(meta, [viewBookCode]);
   const draftJson = readDraftJson(tierName);
   const draft: DraftProject = JSON.parse(draftJson);
   const { analysis } = draft;
@@ -121,26 +90,6 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
     'load.parseDraft',
     measure(opts, noSetup, () => JSON.parse(draftJson)),
   );
-  const now = new Date(0).toISOString();
-  time(
-    'load.reanchor',
-    measure(opts, noSetup, () => reanchorAnalysisToBook(analysis, viewBook, now)),
-  );
-  // A fresh copy per run: selectors memoize on the analysis object itself.
-  time(
-    'load.storeMount',
-    measure(
-      opts,
-      () => structuredClone(analysis),
-      (copy) => {
-        const store = createAnalysisStore({
-          analysis: { analysis: copy, analysisLanguage: language },
-        });
-        readViewSelectors(store.getState().analysis, viewBook);
-      },
-    ),
-  );
-
   const shards = [...splitAnalysisByBook(analysis).values()].map((shard) => JSON.stringify(shard));
   time(
     'storage.readShards',
@@ -155,35 +104,13 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
     ),
   );
 
-  // Each run glosses a different word, so no selector can answer from its memo.
-  const words = wordsOf(viewBook);
-  const store = createAnalysisStore({ analysis: { analysis, analysisLanguage: language } });
-  readViewSelectors(store.getState().analysis, viewBook);
-  time(
-    'edit.dispatch',
-    measure(
-      opts,
-      (i) => words[(i * 97) % words.length],
-      (token, i) => {
-        store.dispatch(writeGloss(token.ref, token.surfaceText, `bench-${i}`));
-        readViewSelectors(store.getState().analysis, viewBook);
-      },
-    ),
-  );
-  time(
-    'edit.serializeDraft',
-    measure(opts, noSetup, () =>
-      JSON.stringify({ ...draft, analysis: store.getState().analysis.analysis }),
-    ),
-  );
-
   // The host's edit path: the repository has loaded the draft and built its index, so each run
   // times one apply, its writes to storage included. Each run edits a different link, and each
   // gloss differs, so every apply changes what it reaches.
   const repository = new DraftRepository(memoryStorage(), draft.sourceProjectId, {
     warn: () => {},
   });
-  await repository.replaceAll(draft);
+  await repository.startOver(draft);
   await repository.getTokenAnalyses([]);
   const links = analysis.tokenAnalysisLinks;
   time(
@@ -262,9 +189,8 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
     `  forms not in the text: ${byWebViewRead.length} by the WebView's read, ${byHostIndex.length} by the host's index, ${disagreeing} disagreeing`,
   );
 
-  // The host's re-anchor, over one book's links at a time, and the WebView's passes over the whole
-  // draft must agree on every book of the text and every linked book it lacks.
-  const content: DraftContent = { analysis, segmentation: draft.segmentation };
+  // The host's re-anchor, over one book's links at a time, for every book of the text and every
+  // linked book it lacks.
   const byBook = splitAnalysisByBook(analysis);
   // As the host reads a book: its links, and the segment analyses they reference.
   const bookAlone = (bookCode: string): DraftProject => {
@@ -281,62 +207,17 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
     };
   };
   const textBookCodes = books.map((book) => book.bookRef);
-  const passes: [string, BookPass<DraftContent>][] = [
-    ...books.map((book): [string, BookPass<DraftContent>] => [
-      book.bookRef,
-      reanchorDraftToBook(book),
-    ]),
-    ...booksMissingFrom(booksLinkedIn(analysis), textBookCodes).map(
-      (bookCode): [string, BookPass<DraftContent>] => [
-        bookCode,
-        reanchorDraftToMissingBook(bookCode),
-      ],
-    ),
+  const reanchoredBooks = [
+    ...books,
+    ...booksMissingFrom(booksLinkedIn(analysis), textBookCodes).map(missingBook),
   ];
-  const hostChanges = (bookCode: string, pass: BookPass<DraftContent>) => {
-    const alone = bookAlone(bookCode);
-    return changesOfReanchor(alone, pass(alone));
-  };
   time(
     'reanchor.hostText',
-    measure(opts, noSetup, () => passes.forEach(([bookCode, pass]) => hostChanges(bookCode, pass))),
-  );
-  // Each pass stamps what it rewrites with the time it ran, so two passes over a book differ there.
-  const unstamped = (records: TextAnalysis) =>
-    JSON.stringify(records, (key, value) => (key === 'updatedAt' ? undefined : value));
-  let changedByWebView = 0;
-  let changedByHost = 0;
-  let reanchorDisagreeing = 0;
-  passes.forEach(([bookCode, pass]) => {
-    const byWebView = pass(content);
-    const changes = hostChanges(bookCode, pass);
-    const webViewChanged =
-      byWebView.analysis !== analysis || byWebView.segmentation !== draft.segmentation;
-    if (webViewChanged) changedByWebView += 1;
-    if (changes) changedByHost += 1;
-    if (!webViewChanged && !changes) return;
-    const byHost = changes ? applyChangeSet(draft, changes).draft : draft;
-    if (
-      unstamped(byHost.analysis) !== unstamped(byWebView.analysis) ||
-      !isDeepStrictEqual(byHost.segmentation, byWebView.segmentation)
-    )
-      reanchorDisagreeing += 1;
-  });
-  console.log(
-    `  books re-anchored: ${passes.length}, changed by the WebView's passes ${changedByWebView}, by the host's ${changedByHost}, ${reanchorDisagreeing} disagreeing`,
+    measure(opts, noSetup, () =>
+      reanchoredBooks.forEach((book) => reanchorChangesForBook(bookAlone(book.bookRef), book)),
+    ),
   );
 
-  // The undo history holds a snapshot of the analysis before each of its steps.
-  const undoBytes = retainedBytes(() => {
-    let state: AnalysisState = { analysis, analysisLanguage: language };
-    const snapshots: AnalysisState[] = [];
-    for (let i = 0; i < MAX_UNDO_STEPS; i += 1) {
-      snapshots.push(state);
-      const token = words[(i * 89) % words.length];
-      state = analysisReducer(state, writeGloss(token.ref, token.surfaceText, `undo-${i}`));
-    }
-    return snapshots;
-  });
   const analysisBytes = retainedBytes(() => JSON.parse(draftJson));
 
   return {
@@ -349,13 +230,7 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
       disagreeing,
     },
     applyBooksReached,
-    hostReanchor: {
-      books: passes.length,
-      changedByWebView,
-      changedByHost,
-      disagreeing: reanchorDisagreeing,
-    },
-    memory: { parsedDraftBytes: analysisBytes, undoHistoryBytes: undoBytes },
+    memory: { parsedDraftBytes: analysisBytes },
   };
 }
 

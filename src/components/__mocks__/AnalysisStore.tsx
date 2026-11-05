@@ -20,7 +20,7 @@ const MockCtx = createContext<MockCtxValue>({
  * Test-only provider that seeds glosses from `initialAnalysis` and keeps them in local state,
  * forwarding updates to `onGlossChange` without depending on the real AnalysisStore.
  */
-export function AnalysisStoreProvider({
+export function MockAnalysisProvider({
   children,
   initialAnalysis,
   analysisLanguage,

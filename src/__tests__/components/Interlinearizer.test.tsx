@@ -20,7 +20,7 @@ import {
 } from '../../components/SegmentationStore';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
-import type { SegmentPages } from '../../hooks/useSegmentPages';
+import type { SegmentPages } from '../../types/segment-pages';
 import { EXTEND_CHUNK, INITIAL_WINDOW_HALF } from '../../hooks/useSegmentWindow';
 import {
   defaultScrRef,
@@ -146,7 +146,7 @@ jest.mock('../../components/AnalysisStore', () => ({
    * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
    * scope.
    */
-  AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
+  SessionAnalysisProvider({ children }: Readonly<{ children: ReactNode }>) {
     return children;
   },
   useGloss: () => '',
@@ -451,8 +451,6 @@ function renderInterlinearizer({
   segmentationDispatch,
   formerBoundaries,
   unmergeableStarts,
-  asOneStep,
-  dispatchBreaksPhrases,
 }: {
   book?: Book;
   pages?: SegmentPages;
@@ -464,8 +462,6 @@ function renderInterlinearizer({
   segmentationDispatch?: SegmentationDispatch;
   formerBoundaries?: ReadonlyMap<string, string>;
   unmergeableStarts?: ReadonlySet<string>;
-  asOneStep?: (action: () => void) => void;
-  dispatchBreaksPhrases?: boolean;
 } = {}) {
   return render(
     withNav(
@@ -476,8 +472,6 @@ function renderInterlinearizer({
         segmentationDispatch={segmentationDispatch}
         formerBoundaries={formerBoundaries}
         unmergeableStarts={unmergeableStarts}
-        asOneStep={asOneStep}
-        dispatchBreaksPhrases={dispatchBreaksPhrases}
         scrRef={scrRef}
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
@@ -2272,155 +2266,20 @@ describe('Interlinearizer', () => {
 // Segmentation dispatch force-break wrapper + between-rows merge control
 // ---------------------------------------------------------------------------
 
-describe('segmentation dispatch force-break', () => {
-  /**
-   * Builds a raw segmentation-dispatch spy; the wrapped dispatch the views receive must delegate
-   * every call to it.
-   */
-  function makeRawDispatch(): SegmentationDispatch {
-    return { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
-  }
-
-  /**
-   * Renders with continuous scroll on (so the stubbed ContinuousView captures the segmentation
-   * context) and returns the wrapped dispatch.
-   */
-  function renderAndCaptureDispatch(
-    raw: SegmentationDispatch,
-    book: Book,
-    asOneStep?: (action: () => void) => void,
-  ): SegmentationDispatch {
-    renderInterlinearizer({ book, continuousScroll: true, segmentationDispatch: raw, asOneStep });
-    const dispatch = capturedSegmentation?.dispatch;
-    if (!dispatch) throw new Error('expected a captured segmentation dispatch');
-    return dispatch;
-  }
-
-  it('hands a dispatch that breaks phrases itself straight through', () => {
-    const raw = makeRawDispatch();
+describe('segmentation dispatch', () => {
+  it('hands the dispatch straight through, leaving the phrases a boundary cuts to the session', () => {
+    const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
     mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
       continuousScroll: true,
       segmentationDispatch: raw,
-      dispatchBreaksPhrases: true,
     });
 
     capturedSegmentation?.dispatch.split('GEN 1:2:0');
 
     expect(raw.split).toHaveBeenCalledWith('GEN 1:2:0');
     expect(mockDeletePhrase).not.toHaveBeenCalled();
-  });
-
-  it('passes merge straight through without touching phrases', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
-    dispatch.merge('GEN 1:2:0');
-    expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
-    expect(mockUpdatePhrase).not.toHaveBeenCalled();
-    expect(mockCreatePhrase).not.toHaveBeenCalled();
-    expect(mockDeletePhrase).not.toHaveBeenCalled();
-  });
-
-  it('force-breaks a two-token phrase straddling a split boundary (deletes it), then splits', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
-    dispatch.split('GEN 1:2:0');
-    // Both halves of the straddled two-token phrase are single tokens, so the phrase is deleted.
-    expect(mockDeletePhrase).toHaveBeenCalledWith('p1');
-    expect(raw.split).toHaveBeenCalledWith('GEN 1:2:0');
-    // The break lands before the boundary write so no consumer observes a straddling phrase.
-    expect(mockDeletePhrase.mock.invocationCallOrder[0]).toBeLessThan(
-      jest.mocked(raw.split).mock.invocationCallOrder[0],
-    );
-  });
-
-  it('force-breaks a longer straddling phrase into its two sides at the boundary', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set(
-      'p1',
-      makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0', 'GEN 1:3:0', 'GEN 1:4:0']),
-    );
-    const dispatch = renderAndCaptureDispatch(raw, makeLargeBook(4));
-    dispatch.split('GEN 1:3:0');
-    expect(mockUpdatePhrase).toHaveBeenCalledWith('p1', [
-      { tokenRef: 'GEN 1:1:0', surfaceText: 'GEN 1:1:0' },
-      { tokenRef: 'GEN 1:2:0', surfaceText: 'GEN 1:2:0' },
-    ]);
-    expect(mockCreatePhrase).toHaveBeenCalledWith([
-      { tokenRef: 'GEN 1:3:0', surfaceText: 'GEN 1:3:0' },
-      { tokenRef: 'GEN 1:4:0', surfaceText: 'GEN 1:4:0' },
-    ]);
-    expect(raw.split).toHaveBeenCalledWith('GEN 1:3:0');
-  });
-
-  it('leaves phrases alone when the split boundary cuts none of them', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:3:0', 'GEN 1:4:0']));
-    const dispatch = renderAndCaptureDispatch(raw, makeLargeBook(4));
-    dispatch.split('GEN 1:3:0');
-    expect(mockUpdatePhrase).not.toHaveBeenCalled();
-    expect(mockCreatePhrase).not.toHaveBeenCalled();
-    expect(mockDeletePhrase).not.toHaveBeenCalled();
-    expect(raw.split).toHaveBeenCalledWith('GEN 1:3:0');
-  });
-
-  it('force-breaks at the destination boundary of a move', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
-    dispatch.move('GEN 1:1:0', 'GEN 1:2:0');
-    expect(mockDeletePhrase).toHaveBeenCalledWith('p1');
-    expect(raw.move).toHaveBeenCalledWith('GEN 1:1:0', 'GEN 1:2:0');
-  });
-
-  it("makes a split's force-break and boundary write one undo step", () => {
-    const raw = makeRawDispatch();
-    const writesInStep: string[] = [];
-    let stepOpen = false;
-    const asOneStep = (action: () => void) => {
-      stepOpen = true;
-      action();
-      stepOpen = false;
-    };
-    mockDeletePhrase.mockImplementation(() => stepOpen && writesInStep.push('break'));
-    jest.mocked(raw.split).mockImplementation(() => stepOpen && writesInStep.push('split'));
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK, asOneStep);
-
-    dispatch.split('GEN 1:2:0');
-
-    expect(writesInStep).toEqual(['break', 'split']);
-  });
-
-  it("makes a move's force-break and boundary write one undo step", () => {
-    const raw = makeRawDispatch();
-    const writesInStep: string[] = [];
-    let stepOpen = false;
-    const asOneStep = (action: () => void) => {
-      stepOpen = true;
-      action();
-      stepOpen = false;
-    };
-    mockDeletePhrase.mockImplementation(() => stepOpen && writesInStep.push('break'));
-    jest.mocked(raw.move).mockImplementation(() => stepOpen && writesInStep.push('move'));
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK, asOneStep);
-
-    dispatch.move('GEN 1:1:0', 'GEN 1:2:0');
-
-    expect(writesInStep).toEqual(['break', 'move']);
-  });
-
-  it('skips the force-break when the boundary ref is unknown to the book', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
-    dispatch.split('EXO 9:9:9');
-    expect(mockDeletePhrase).not.toHaveBeenCalled();
-    expect(raw.split).toHaveBeenCalledWith('EXO 9:9:9');
   });
 });
 

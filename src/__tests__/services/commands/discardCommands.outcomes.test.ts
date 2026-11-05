@@ -12,11 +12,11 @@ import type { DraftContent } from '../../../types/draft-content';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../../test-helpers';
 import {
-  runDiscardParity,
+  runDiscardCommand,
   type DiscardEdit,
-  type DiscardParityOutcome,
+  type DiscardCommandOutcome,
   type DiscardSeed,
-} from './parity';
+} from './command-runs';
 
 const GEN_TOKEN = 'GEN 1:1:0';
 const EXO_TOKEN = 'EXO 1:1:0';
@@ -83,11 +83,11 @@ type DiscardCase = {
   seed: DiscardSeed;
   saved: DraftContent | undefined;
   edit: DiscardEdit;
-  /** What the WebView's result must show, so the case exercises the path it names. */
-  expectStore: (outcome: DiscardParityOutcome) => void;
+  /** What the command's result must show, so the case exercises the path it names. */
+  expectResult: (outcome: DiscardCommandOutcome) => void;
 };
 
-describe('unsaved-change discard parity with the WebView', () => {
+describe('unsaved-change discard', () => {
   const cases: [string, DiscardCase][] = [
     [
       "restores the saved project's records for the book, leaving other books as they were",
@@ -95,9 +95,9 @@ describe('unsaved-change discard parity with the WebView', () => {
         seed: { analysis: glossedInBothBooks },
         saved: savedInBothBooks,
         edit: GEN,
-        expectStore: ({ store }) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-exo-now', 'ta-gen-saved']);
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-exo-now', 'tl-gen-saved']);
+        expectResult: ({ result }) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-exo-now', 'ta-gen-saved']);
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-exo-now', 'tl-gen-saved']);
         },
       },
     ],
@@ -115,9 +115,9 @@ describe('unsaved-change discard parity with the WebView', () => {
           tokenAnalysisLinks: [link('tl-gen', 'ta-saved', GEN_TOKEN)],
         }),
         edit: GEN,
-        expectStore: ({ store }) => {
-          expect(store.tokenAnalysisLinks).toStrictEqual([link('tl-gen', 'ta-saved', GEN_TOKEN)]);
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-saved']);
+        expectResult: ({ result }) => {
+          expect(result.tokenAnalysisLinks).toStrictEqual([link('tl-gen', 'ta-saved', GEN_TOKEN)]);
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-saved']);
         },
       },
     ],
@@ -135,8 +135,8 @@ describe('unsaved-change discard parity with the WebView', () => {
           tokenAnalysisLinks: [link('tl-gen', 'ta-in', GEN_TOKEN)],
         }),
         edit: GEN,
-        expectStore: ({ store }) => {
-          expect(store.tokenAnalyses).toStrictEqual([payload('ta-in', 'In', 'at')]);
+        expectResult: ({ result }) => {
+          expect(result.tokenAnalyses).toStrictEqual([payload('ta-in', 'In', 'at')]);
         },
       },
     ],
@@ -146,9 +146,9 @@ describe('unsaved-change discard parity with the WebView', () => {
         seed: { analysis: glossedInBothBooks },
         saved: undefined,
         edit: GEN,
-        expectStore: ({ store }) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-exo-now']);
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-exo-now']);
+        expectResult: ({ result }) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-exo-now']);
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-exo-now']);
         },
       },
     ],
@@ -169,8 +169,8 @@ describe('unsaved-change discard parity with the WebView', () => {
           tokenAnalysisLinks: [link('tl-gen', 'ta-shared', GEN_TOKEN)],
         }),
         edit: GEN,
-        expectStore: ({ store }) => {
-          expect(store.tokenAnalyses).toStrictEqual([payload('ta-shared', 'In', 'current')]);
+        expectResult: ({ result }) => {
+          expect(result.tokenAnalyses).toStrictEqual([payload('ta-shared', 'In', 'current')]);
         },
       },
     ],
@@ -185,8 +185,8 @@ describe('unsaved-change discard parity with the WebView', () => {
         },
         saved: savedInBothBooks,
         edit: GEN,
-        expectStore: ({ store }) => {
-          expect(ids(store.tokenAnalyses)).toContain('ta-loose');
+        expectResult: ({ result }) => {
+          expect(ids(result.tokenAnalyses)).toContain('ta-loose');
         },
       },
     ],
@@ -201,8 +201,8 @@ describe('unsaved-change discard parity with the WebView', () => {
         },
         saved: savedInBothBooks,
         edit: ALL,
-        expectStore: ({ store }) => {
-          expect(ids(store.tokenAnalyses)).not.toContain('ta-loose');
+        expectResult: ({ result }) => {
+          expect(ids(result.tokenAnalyses)).not.toContain('ta-loose');
         },
       },
     ],
@@ -218,8 +218,8 @@ describe('unsaved-change discard parity with the WebView', () => {
         },
         saved: savedOf({}, { removedVerseStarts: ['GEN 1:3:0'], addedStarts: [] }),
         edit: GEN,
-        expectStore: ({ storeSegmentation }) => {
-          expect(storeSegmentation).toStrictEqual({
+        expectResult: ({ resultSegmentation }) => {
+          expect(resultSegmentation).toStrictEqual({
             removedVerseStarts: ['EXO 1:2:0', 'GEN 1:3:0'],
             addedStarts: [],
           });
@@ -235,8 +235,8 @@ describe('unsaved-change discard parity with the WebView', () => {
         },
         saved: savedInBothBooks,
         edit: GEN,
-        expectStore: ({ storeSegmentation }) => {
-          expect(storeSegmentation).toBeUndefined();
+        expectResult: ({ resultSegmentation }) => {
+          expect(resultSegmentation).toBeUndefined();
         },
       },
     ],
@@ -252,9 +252,9 @@ describe('unsaved-change discard parity with the WebView', () => {
           segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
         },
         edit: ALL,
-        expectStore: ({ store, storeSegmentation }) => {
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-exo-saved', 'tl-gen-saved']);
-          expect(storeSegmentation).toStrictEqual({
+        expectResult: ({ result, resultSegmentation }) => {
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-exo-saved', 'tl-gen-saved']);
+          expect(resultSegmentation).toStrictEqual({
             removedVerseStarts: ['GEN 1:2:0'],
             addedStarts: [],
           });
@@ -270,9 +270,9 @@ describe('unsaved-change discard parity with the WebView', () => {
         },
         saved: undefined,
         edit: ALL,
-        expectStore: ({ store, storeSegmentation }) => {
-          expect(store).toStrictEqual(emptyAnalysis());
-          expect(storeSegmentation).toBeUndefined();
+        expectResult: ({ result, resultSegmentation }) => {
+          expect(result).toStrictEqual(emptyAnalysis());
+          expect(resultSegmentation).toBeUndefined();
         },
       },
     ],
@@ -282,9 +282,9 @@ describe('unsaved-change discard parity with the WebView', () => {
         seed: { analysis: glossedInBothBooks, unreadableBooks: ['GEN'] },
         saved: savedInBothBooks,
         edit: GEN,
-        expectStore: ({ store, unreadableShards }) => {
-          expect(unreadableShards.store).toStrictEqual(['not json']);
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-exo-now']);
+        expectResult: ({ result, unreadableShards }) => {
+          expect(unreadableShards).toStrictEqual(['not json']);
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-exo-now']);
         },
       },
     ],
@@ -301,10 +301,10 @@ describe('unsaved-change discard parity with the WebView', () => {
           ],
         }),
         edit: ALL,
-        expectStore: ({ store, unreadableShards }) => {
-          expect(unreadableShards.store).toStrictEqual(['not json']);
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-exo-shared']);
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-shared']);
+        expectResult: ({ result, unreadableShards }) => {
+          expect(unreadableShards).toStrictEqual(['not json']);
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-exo-shared']);
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-shared']);
         },
       },
     ],
@@ -317,8 +317,8 @@ describe('unsaved-change discard parity with the WebView', () => {
           segmentAnalysisLinks: [segmentLink('sl-gen', 'sa-gen', 'GEN 1:1')],
         }),
         edit: GEN,
-        expectStore: ({ storeHasFreeTranslations }) => {
-          expect(storeHasFreeTranslations).toBe(true);
+        expectResult: ({ commandOutcome }) => {
+          expect(commandOutcome.hasFreeTranslations).toBe(true);
         },
       },
     ],
@@ -333,13 +333,13 @@ describe('unsaved-change discard parity with the WebView', () => {
         },
         saved: savedInBothBooks,
         edit: GEN,
-        expectStore: ({ storeHasFreeTranslations }) => {
-          expect(storeHasFreeTranslations).toBe(false);
+        expectResult: ({ commandOutcome }) => {
+          expect(commandOutcome.hasFreeTranslations).toBe(false);
         },
       },
     ],
     [
-      'reports a free translation restored into a book that could not be read, as the WebView holds it',
+      'reports a free translation restored into a book that could not be read',
       {
         seed: { analysis: glossedInBothBooks, unreadableBooks: ['GEN'] },
         saved: savedOf({
@@ -347,22 +347,18 @@ describe('unsaved-change discard parity with the WebView', () => {
           segmentAnalysisLinks: [segmentLink('sl-gen', 'sa-gen', 'GEN 1:1')],
         }),
         edit: GEN,
-        expectStore: ({ store, storeHasFreeTranslations }) => {
-          expect(storeHasFreeTranslations).toBe(true);
-          expect(store.segmentAnalyses).toStrictEqual([]);
+        expectResult: ({ result, commandOutcome }) => {
+          expect(commandOutcome.hasFreeTranslations).toBe(true);
+          expect(result.segmentAnalyses).toStrictEqual([]);
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { seed, saved, edit, expectStore }) => {
-    const outcome = await runDiscardParity(seed, saved, edit);
+  it.each(cases)('%s', async (_name, { seed, saved, edit, expectResult }) => {
+    const outcome = await runDiscardCommand(seed, saved, edit);
 
-    expectStore(outcome);
-    expect(outcome.host).toStrictEqual(outcome.store);
-    expect(outcome.hostSegmentation).toStrictEqual(outcome.storeSegmentation);
-    expect(outcome.hostOutcome.hasFreeTranslations).toBe(outcome.storeHasFreeTranslations);
-    expect(outcome.unreadableShards.host).toStrictEqual(outcome.unreadableShards.store);
+    expectResult(outcome);
     expect(outcome.indexDifferences).toStrictEqual([]);
   });
 });

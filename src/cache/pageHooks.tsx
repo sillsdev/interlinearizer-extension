@@ -10,7 +10,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import type { AnalysisState } from '../store/analysisSlice';
+import type { AnalysisState } from '../utils/analysis-selectors';
 import type { CommandReply } from '../types/command-reply';
 import type { PoolIndex } from '../utils/suggestion-engine';
 import type { PageClient } from './pageClient';
@@ -160,20 +160,6 @@ export function useWholeSelector<T>(
 export function useWholeStateGetter(): () => AnalysisState {
   const { whole, analysisLanguage } = usePageContext();
   return useCallback(() => stateOf(whole.current, analysisLanguage), [whole, analysisLanguage]);
-}
-
-/**
- * Returns a getter of the records that the page client holds and the session's language, as they
- * stand when the getter is called.
- *
- * @throws When called outside a {@link PageClientProvider}.
- */
-export function usePageStateGetter(): () => AnalysisState {
-  const { client, analysisLanguage } = usePageContext();
-  return useCallback(
-    () => stateOf(client.heldAnalysis(), analysisLanguage),
-    [client, analysisLanguage],
-  );
 }
 
 /**

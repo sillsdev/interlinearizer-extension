@@ -38,6 +38,8 @@ public class ChangeSerializationTests
 
     private static JsonSerializerOptions Options => Config.Value.JsonSerializerOptions;
 
+    private readonly List<string> _problems = [];
+
     public static IEnumerable<IChange> AllChanges()
     {
         yield return Fixtures.CreateSegmentAnalysis(Id);
@@ -77,51 +79,110 @@ public class ChangeSerializationTests
     public async Task StoredChangesStillDeserialize()
     {
         var directory = SerializedChangesDirectory();
-        var problems = new List<string>();
-        var files = new List<(string Path, string Stored, string Expected, bool Written)>();
+        var samples = AllChanges().ToList();
+        CheckEverySampleAndRegistrationPairUp(samples);
 
+        var files = new List<(string Path, string Stored, string Expected, bool Written)>();
         foreach (var changeType in Config.Value.ChangeTypes)
         {
-            var path = Path.Combine(directory, Slug(changeType) + ".json");
-            var samples = AllChanges().Where(c => c.GetType() == changeType.Type).ToList();
-            if (samples.Count == 0) problems.Add($"{changeType.Type.Name} has no sample in AllChanges().");
-            var latest = samples.Select(c => JsonNode.Parse(JsonSerializer.Serialize(c, Options))).ToList();
-
+            var path = Path.Combine(directory, FileName(changeType));
             var stored = ReadStored(path);
-            var storedFile = stored == "" ? null : JsonNode.Parse(stored)!.AsObject();
-            var storedVersion = storedFile?["modelVersion"]?.GetValue<int>() ?? Config.Value.CurrentModelVersion;
-            var legacy = new JsonArray();
-            foreach (var entry in storedFile?["legacy"]?.AsArray() ?? [])
-                legacy.Add(LegacyRow(path, changeType, entry!["modelVersion"]!.GetValue<int>(), entry["input"]!, entry["output"], problems));
-            foreach (var entry in storedFile?["latest"]?.AsArray() ?? [])
-                if (!latest.Any(node => JsonNode.DeepEquals(node, entry)))
-                    legacy.Add(LegacyRow(path, changeType, storedVersion, entry!, null, problems));
-
-            var expected = Format(new JsonObject
-            {
-                ["modelVersion"] = Config.Value.CurrentModelVersion,
-                ["latest"] = new JsonArray(latest.ToArray()),
-                ["legacy"] = legacy,
-            }) + "\n";
+            var expected = ExpectedFile(changeType, samples.Where(c => c.GetType() == changeType.Type), stored);
             files.Add((path, stored, expected, WriteIfChanged(path, stored, expected)));
         }
 
-        var registered = Config.Value.ChangeTypes.Select(t => t.Type).ToHashSet();
-        foreach (var type in AllChanges().Select(c => c.GetType()).Distinct().Where(t => !registered.Contains(t)))
-            problems.Add($"{type.Name} has a sample in AllChanges() but is not registered.");
-
-        var slugs = Config.Value.ChangeTypes.Select(Slug).ToHashSet();
-        foreach (var file in Directory.Exists(directory) ? Directory.EnumerateFiles(directory) : [])
-        {
-            var name = Path.GetFileName(file);
-            if (name == ModelVersionsFile || slugs.Contains(Path.GetFileNameWithoutExtension(name))) continue;
-            problems.Add($"{name} matches no registered change type. A removed or renamed change type needs a migration path; don't delete its file.");
-        }
+        CheckEveryFileHasARegisteredType(directory);
 
         using var _ = Assert.Multiple();
-        await Assert.That(problems).IsEmpty();
+        await Assert.That(_problems).IsEmpty();
         foreach (var file in files)
             await Assert.That(file.Stored).IsEqualTo(file.Expected).Because(OutOfDateMessage(file.Path, file.Written));
+    }
+
+    private void CheckEverySampleAndRegistrationPairUp(List<IChange> samples)
+    {
+        var sampled = samples.Select(c => c.GetType()).ToHashSet();
+        var registered = Config.Value.ChangeTypes.Select(t => t.Type).ToHashSet();
+        foreach (var type in registered.Except(sampled))
+            _problems.Add($"{type.Name} has no sample in AllChanges().");
+        foreach (var type in sampled.Except(registered))
+            _problems.Add($"{type.Name} has a sample in AllChanges() but is not registered.");
+    }
+
+    private void CheckEveryFileHasARegisteredType(string directory)
+    {
+        var known = Config.Value.ChangeTypes.Select(FileName).Append(ModelVersionsFile).ToHashSet();
+        foreach (var name in Directory.EnumerateFiles(directory).Select(Path.GetFileName))
+        {
+            if (known.Contains(name!)) continue;
+            _problems.Add($"{name} matches no registered change type. A removed or renamed change type needs a migration path; don't delete its file.");
+        }
+    }
+
+    /// <summary>
+    /// The file as today's code writes it: <c>latest</c> from the samples, the stored legacy rows with their output
+    /// regenerated, and a new legacy row for each stored <c>latest</c> entry that today's samples no longer produce.
+    /// </summary>
+    private string ExpectedFile(RegisteredChangeType changeType, IEnumerable<IChange> samples, string storedText)
+    {
+        var latest = samples.Select(Serialize).ToList();
+        var stored = storedText == "" ? null : JsonNode.Parse(storedText)!.AsObject();
+        var storedVersion = stored?["modelVersion"]?.GetValue<int>() ?? Config.Value.CurrentModelVersion;
+
+        var legacy = new JsonArray();
+        foreach (var row in Entries(stored, "legacy"))
+            legacy.Add(LegacyRow(changeType, row["modelVersion"]!.GetValue<int>(), row["input"]!, row["output"]));
+        foreach (var entry in Entries(stored, "latest"))
+        {
+            var stillWritten = latest.Any(node => JsonNode.DeepEquals(node, entry));
+            if (!stillWritten) legacy.Add(LegacyRow(changeType, storedVersion, entry, storedOutput: null));
+        }
+
+        return Format(new JsonObject
+        {
+            ["modelVersion"] = Config.Value.CurrentModelVersion,
+            ["latest"] = new JsonArray(latest.ToArray()),
+            ["legacy"] = legacy,
+        }) + "\n";
+    }
+
+    /// <summary>
+    /// A legacy row keeps its <c>input</c> and the model version that wrote it, and gets its <c>output</c> from
+    /// today's code, or the stored one when today's code can't read the input. Its type must be listed in a
+    /// later model version than the one that wrote it.
+    /// </summary>
+    private JsonObject LegacyRow(RegisteredChangeType changeType, int modelVersion, JsonNode input, JsonNode? storedOutput)
+    {
+        var inputText = Format(input);
+        var output = Reserialize(changeType, inputText) ?? storedOutput?.DeepClone();
+
+        var listedLater = Config.Value.ModelVersions.Any(version =>
+            version.Number > modelVersion && version.Changes.Any(change => change.ChangeType == changeType.Discriminator));
+        if (!listedLater)
+            _problems.Add($"{FileName(changeType)}: {changeType.Discriminator} changed its JSON after model version {modelVersion}. " +
+                "An app on that version reads the new JSON with its old code and drops what it doesn't know, so list the type " +
+                $"in a model version after {modelVersion} in {nameof(InterlinearizerCrdtKernel)} and the upgrade replays it.");
+
+        return new JsonObject { ["modelVersion"] = modelVersion, ["input"] = JsonNode.Parse(inputText), ["output"] = output };
+    }
+
+    /// <summary>Today's JSON for a stored change, which must still read back as the file's type.</summary>
+    private JsonNode? Reserialize(RegisteredChangeType changeType, string json)
+    {
+        IChange? change;
+        try
+        {
+            change = JsonSerializer.Deserialize<IChange>(json, Options);
+        }
+        catch (JsonException e)
+        {
+            _problems.Add($"{FileName(changeType)}: an entry no longer deserializes: {e.Message}");
+            return null;
+        }
+
+        if (change is null || change.GetType() != changeType.Type)
+            _problems.Add($"{FileName(changeType)}: an entry reads back as {change?.GetType().Name ?? "null"}, not {changeType.Type.Name}.");
+        return change is null ? null : Serialize(change);
     }
 
     [Test]
@@ -177,40 +238,12 @@ public class ChangeSerializationTests
         ? $"{Path.GetFileName(path)} was out of date and has been rewritten: review the change and commit it"
         : $"{Path.GetFileName(path)} is out of date: run this test locally to rewrite it, then review and commit it";
 
-    private static string Slug(RegisteredChangeType changeType) => changeType.Discriminator.Replace(':', '-');
+    private static string FileName(RegisteredChangeType changeType) => changeType.Discriminator.Replace(':', '-') + ".json";
 
-    private static JsonObject LegacyRow(string path, RegisteredChangeType changeType, int modelVersion, JsonNode input, JsonNode? storedOutput, List<string> problems)
-    {
-        var json = Format(input);
-        var output = Reserialize(path, json, problems) ?? storedOutput?.DeepClone();
-        if (!Config.Value.ModelVersions.Any(v => v.Number > modelVersion && v.Changes.Any(c => c.ChangeType == changeType.Discriminator)))
-            problems.Add($"{Path.GetFileName(path)}: {changeType.Discriminator} changed its JSON after model version {modelVersion}. " +
-                "An app on that version reads the new JSON with its old code and drops what it doesn't know, so list the type " +
-                $"in a model version after {modelVersion} in {nameof(InterlinearizerCrdtKernel)} and the upgrade replays it.");
-        return new JsonObject { ["modelVersion"] = modelVersion, ["input"] = JsonNode.Parse(json), ["output"] = output };
-    }
+    private static IEnumerable<JsonNode> Entries(JsonObject? file, string key) =>
+        file?[key]?.AsArray().Select(entry => entry!) ?? [];
 
-    /// <summary>Today's JSON for a stored change, which must still read back as its registered type.</summary>
-    private static JsonNode? Reserialize(string path, string json, List<string> problems)
-    {
-        var discriminator = JsonNode.Parse(json)?["$type"]?.GetValue<string>();
-        var registered = Config.Value.ChangeTypes.Where(t => t.Discriminator == discriminator).Select(t => t.Type).FirstOrDefault();
-        IChange? change;
-        try
-        {
-            change = JsonSerializer.Deserialize<IChange>(json, Options);
-        }
-        catch (JsonException e)
-        {
-            problems.Add($"{Path.GetFileName(path)}: an entry with $type {discriminator} no longer deserializes: {e.Message}");
-            return null;
-        }
-
-        if (change is null or OpaqueChange || change.GetType() != registered)
-            problems.Add($"{Path.GetFileName(path)}: an entry with $type {discriminator} reads back as " +
-                $"{change?.GetType().Name ?? "null"}, not {registered?.Name ?? "a registered change type"}.");
-        return JsonNode.Parse(JsonSerializer.Serialize(change, Options));
-    }
+    private static JsonNode Serialize(IChange change) => JsonNode.Parse(JsonSerializer.Serialize(change, Options))!;
 
     /// <summary>Indented, through Harmony's own encoder so that escaping matches what Harmony writes.</summary>
     private static string Format(JsonNode? node)

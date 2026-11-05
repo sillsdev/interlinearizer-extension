@@ -10,8 +10,16 @@ namespace Interlinearizer.Crdt.Tests;
 /// SerializedChanges holds one file per registered change type: its <c>latest</c> JSON as today's
 /// code writes it, and <c>legacy</c> shapes that earlier builds wrote. A legacy <c>input</c> is frozen
 /// history and only its <c>output</c> is regenerated; a <c>latest</c> entry that stops matching moves
-/// to legacy. The test rewrites the files and fails once, so the change is reviewed and committed.
-/// A file that no longer matches a registered discriminator means its change type needs a migration path.
+/// to legacy, unless it only reorders or re-escapes. The test rewrites the files and fails once, so
+/// the change is reviewed and committed. A file that no longer matches a registered discriminator means
+/// its change type needs a migration path.
+/// <para>
+/// Each file is stamped with the model version its <c>latest</c> was written under, and a moved row keeps
+/// that stamp. An app on that version reads the new JSON with its old code and drops what it doesn't know,
+/// so the type must be listed in a later model version for the upgrade to replay it; the test demands one.
+/// Listing a type is cheap. A version that left one out is repaired only by a later version that lists it
+/// with <c>invalidateFrom</c> at the version that left it out.
+/// </para>
 /// </summary>
 public class ChangeSerializationTests
 {
@@ -77,27 +85,22 @@ public class ChangeSerializationTests
             var path = Path.Combine(directory, Slug(changeType) + ".json");
             var samples = AllChanges().Where(c => c.GetType() == changeType.Type).ToList();
             if (samples.Count == 0) problems.Add($"{changeType.Type.Name} has no sample in AllChanges().");
-            var latest = samples.Select(c => Format(JsonNode.Parse(JsonSerializer.Serialize(c, Options)))).ToList();
+            var latest = samples.Select(c => JsonNode.Parse(JsonSerializer.Serialize(c, Options))).ToList();
 
             var stored = ReadStored(path);
             var storedFile = stored == "" ? null : JsonNode.Parse(stored)!.AsObject();
+            var storedVersion = storedFile?["modelVersion"]?.GetValue<int>() ?? Config.Value.CurrentModelVersion;
             var legacy = new JsonArray();
             foreach (var entry in storedFile?["legacy"]?.AsArray() ?? [])
-            {
-                var input = Format(entry!["input"]);
-                var output = Reserialize(path, input, problems) ?? entry["output"]?.DeepClone();
-                legacy.Add(new JsonObject { ["input"] = JsonNode.Parse(input), ["output"] = output });
-            }
+                legacy.Add(LegacyRow(path, changeType, entry!["modelVersion"]!.GetValue<int>(), entry["input"]!, entry["output"], problems));
             foreach (var entry in storedFile?["latest"]?.AsArray() ?? [])
-            {
-                var input = Format(entry);
-                var output = Reserialize(path, input, problems);
-                if (!latest.Contains(input)) legacy.Add(new JsonObject { ["input"] = JsonNode.Parse(input), ["output"] = output });
-            }
+                if (!latest.Any(node => JsonNode.DeepEquals(node, entry)))
+                    legacy.Add(LegacyRow(path, changeType, storedVersion, entry!, null, problems));
 
             var expected = Format(new JsonObject
             {
-                ["latest"] = new JsonArray(latest.Select(json => JsonNode.Parse(json)).ToArray()),
+                ["modelVersion"] = Config.Value.CurrentModelVersion,
+                ["latest"] = new JsonArray(latest.ToArray()),
                 ["legacy"] = legacy,
             }) + "\n";
             files.Add((path, stored, expected, WriteIfChanged(path, stored, expected)));
@@ -175,6 +178,17 @@ public class ChangeSerializationTests
         : $"{Path.GetFileName(path)} is out of date: run this test locally to rewrite it, then review and commit it";
 
     private static string Slug(RegisteredChangeType changeType) => changeType.Discriminator.Replace(':', '-');
+
+    private static JsonObject LegacyRow(string path, RegisteredChangeType changeType, int modelVersion, JsonNode input, JsonNode? storedOutput, List<string> problems)
+    {
+        var json = Format(input);
+        var output = Reserialize(path, json, problems) ?? storedOutput?.DeepClone();
+        if (!Config.Value.ModelVersions.Any(v => v.Number > modelVersion && v.Changes.Any(c => c.ChangeType == changeType.Discriminator)))
+            problems.Add($"{Path.GetFileName(path)}: {changeType.Discriminator} changed its JSON after model version {modelVersion}. " +
+                "An app on that version reads the new JSON with its old code and drops what it doesn't know, so list the type " +
+                $"in a model version after {modelVersion} in {nameof(InterlinearizerCrdtKernel)} and the upgrade replays it.");
+        return new JsonObject { ["modelVersion"] = modelVersion, ["input"] = JsonNode.Parse(json), ["output"] = output };
+    }
 
     /// <summary>Today's JSON for a stored change, which must still read back as its registered type.</summary>
     private static JsonNode? Reserialize(string path, string json, List<string> problems)

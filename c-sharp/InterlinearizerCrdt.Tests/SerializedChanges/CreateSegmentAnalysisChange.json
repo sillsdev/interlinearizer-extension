@@ -1,4 +1,5 @@
 {
+  "modelVersion": 0,
   "latest": [
     {
       "$type": "CreateSegmentAnalysisChange",

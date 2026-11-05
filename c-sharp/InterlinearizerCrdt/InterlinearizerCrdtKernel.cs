@@ -79,6 +79,7 @@ public static class InterlinearizerCrdtKernel
             .Add<PatchPhraseAnalysisLinkChange>()
             .Add<DeleteChange<PhraseAnalysisLink>>();
 
+        // Add a version, never edit one. ChangeSerializationTests says when a type must be listed.
         config.ModelVersionBuilder
             .Add(0, "Analysis entities", v => v
                 .Change<CreateSegmentAnalysisChange>()

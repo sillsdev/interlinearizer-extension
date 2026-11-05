@@ -63,6 +63,7 @@ import {
   perfMeasureFromFirst,
 } from '../../utils/perf-marks';
 
+jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
 jest.mock('../../utils/perf-marks');
 
 /** Builds a minimal `TextAnalysis` with a single approved `TokenAnalysis` for the given token. */

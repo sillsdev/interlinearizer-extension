@@ -30,8 +30,8 @@ export interface UseSourceTextReaderArgs {
    */
   onTextRead?: (bookIds: readonly string[]) => void;
   /**
-   * Called whenever the text becomes wanted or requested, and again if this callback changes while
-   * it is.
+   * Called each time the text becomes wanted or requested. Called again when this callback changes
+   * while the text stays wanted or requested.
    */
   onWanted?: () => void;
 }

@@ -30,6 +30,7 @@ import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-help
 import { mockKeyAsValueLocalizedStrings, testSenseRef, withLexicon } from './test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
+jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
 jest.mock('../../components/TextReadingStatus');
 
 const NO_HEADINGS: ReadonlyMap<string, HeadingPlacement> = new Map();

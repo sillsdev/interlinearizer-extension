@@ -26,6 +26,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_reason_lemmaOrOther%': 'unused legacy data',
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%': 'duplicate data',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%': 'unreadable data',
+  '%interlinearizer_pt9ImportModal_reason_blankMorphemeForm%': 'blank morpheme form',
   '%interlinearizer_pt9ImportModal_missingBooks%': 'Books with no text: {books}',
   '%interlinearizer_pt9ImportModal_filesTooLarge%':
     'Larger than the {limit} one read can carry, so left out: {files}',
@@ -44,6 +45,7 @@ function makeReport(): Pt9ImportReport {
     lemmaOrOther: 0,
     duplicateCluster: 0,
     unparseableLexemeId: 0,
+    blankMorphemeForm: 0,
   };
   return {
     languages: [
@@ -104,7 +106,13 @@ function makeReport(): Pt9ImportReport {
       senseRefsResolved: 0,
       senseRefsUnresolved: 0,
     },
-    barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
+    barePayloads: {
+      added: 0,
+      skippedExistingIdentical: 0,
+      droppedUnparseable: 0,
+      droppedEmpty: 0,
+      droppedBlankForm: 0,
+    },
     booksMissingIdentity: 0,
     booksDroppedAsDuplicates: 0,
     filesTooLargeToRead: [],
@@ -251,6 +259,7 @@ describe('Pt9ImportModal', () => {
       lemmaOrOther: 0,
       duplicateCluster: 0,
       unparseableLexemeId: 0,
+      blankMorphemeForm: 0,
     };
     report.languages[0].books[0].phrasesConverted = 0;
     render(

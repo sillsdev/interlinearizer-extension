@@ -26,6 +26,7 @@ function makeReport() {
               lemmaOrOther: 0,
               duplicateCluster: 0,
               unparseableLexemeId: 0,
+              blankMorphemeForm: 0,
             },
             ambiguousAnchors: 0,
             punctuationEntriesIgnored: 0,
@@ -49,7 +50,13 @@ function makeReport() {
       senseRefsResolved: 0,
       senseRefsUnresolved: 0,
     },
-    barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
+    barePayloads: {
+      added: 0,
+      skippedExistingIdentical: 0,
+      droppedUnparseable: 0,
+      droppedEmpty: 0,
+      droppedBlankForm: 0,
+    },
     filesTooLargeToRead: [],
   };
 }

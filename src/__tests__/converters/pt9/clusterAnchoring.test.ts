@@ -50,6 +50,19 @@ describe('classifyCluster', () => {
     });
   });
 
+  it.each([
+    ['an all-blank parse', mkCluster(0, 4, [['Stem:'], ['Suffix:']])],
+    ['a parse with one blank morpheme', mkCluster(0, 4, [['Stem:'], ['Stem:giving']])],
+    ['a blank-form word', mkCluster(0, 4, [['Word::2']])],
+    ['a whitespace-only form', mkCluster(0, 4, [['Stem: ']])],
+  ])('drops %s as blankMorphemeForm', (_label, cluster) => {
+    expect(classifyCluster(cluster)).toStrictEqual({
+      kind: 'drop',
+      cluster,
+      reason: 'blankMorphemeForm',
+    });
+  });
+
   it('drops a cluster whose lexeme carries no id', () => {
     const cluster = mkCluster(0, 4, [[undefined]]);
     expect(classifyCluster(cluster)).toStrictEqual({
@@ -268,11 +281,11 @@ describe('anchorVerseClusters', () => {
       expect(result.dropCounts.formMismatch).toBe(1);
     });
 
-    it('drops a phrase whose form folds to no words', () => {
+    it('counts a phrase with a blank form as blankMorphemeForm', () => {
       const segment = segmentOf('in the book');
       const result = anchorVerseClusters([segment], [mkCluster(0, 1, [['Phrase: ']])]);
 
-      expect(result.dropCounts.formMismatch).toBe(1);
+      expect(result.dropCounts.blankMorphemeForm).toBe(1);
     });
 
     it('assigns repeated phrase windows monotonically by range order', () => {
@@ -346,6 +359,7 @@ describe('anchorVerseClusters', () => {
         lemmaOrOther: 0,
         duplicateCluster: 0,
         unparseableLexemeId: 0,
+        blankMorphemeForm: 0,
       },
       ambiguousCount: 0,
     });

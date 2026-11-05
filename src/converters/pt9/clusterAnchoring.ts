@@ -14,7 +14,7 @@ export interface ClassifiedLexeme {
  * A cluster sorted into the kind that decides its conversion, mirroring how PT9 derives cluster
  * type from lexeme types: any stem/suffix/prefix makes a word parse; a single Word or Phrase lexeme
  * makes those kinds; everything else (Lemma clusters, empty clusters, unknown types) is dropped, as
- * is any cluster carrying an unparseable lexeme id.
+ * is any cluster carrying an unparseable lexeme id or a lexeme with a blank form.
  */
 export type ClassifiedCluster =
   | { kind: 'word'; cluster: Pt9InterlinearCluster; lexeme: ClassifiedLexeme }
@@ -23,8 +23,16 @@ export type ClassifiedCluster =
   | {
       kind: 'drop';
       cluster: Pt9InterlinearCluster;
-      reason: 'lemmaOrOther' | 'unparseableLexemeId';
+      reason: 'lemmaOrOther' | 'unparseableLexemeId' | 'blankMorphemeForm';
     };
+
+/**
+ * Whether a lexeme's form is blank. PT9's id grammar admits one, as in `Stem::2`; the analysis
+ * model does not.
+ */
+export function isBlankForm(form: string): boolean {
+  return form.trim() === '';
+}
 
 /** Lexeme types whose presence makes a cluster a word parse in PT9's derivation. */
 const PARSE_TYPES = new Set(['Stem', 'Suffix', 'Prefix']);
@@ -41,6 +49,8 @@ export function classifyCluster(cluster: Pt9InterlinearCluster): ClassifiedClust
   });
   if (lexemes.length !== cluster.lexemes.length)
     return { kind: 'drop', cluster, reason: 'unparseableLexemeId' };
+  if (lexemes.some((l) => isBlankForm(l.key.Form)))
+    return { kind: 'drop', cluster, reason: 'blankMorphemeForm' };
 
   if (lexemes.some((l) => PARSE_TYPES.has(l.key.Type)))
     return { kind: 'wordParse', cluster, lexemes };
@@ -393,6 +403,7 @@ export function anchorVerseClusters(
   );
   const phraseCandidates = phraseWords.map((words) => {
     const starts = new Set<number>();
+    /* v8 ignore next -- classifyCluster drops a blank phrase form before it reaches anchoring */
     if (words.length === 0) return starts;
     for (let s = 0; s + words.length <= wordTokens.length; s += 1) {
       const { block } = layout.words[s];

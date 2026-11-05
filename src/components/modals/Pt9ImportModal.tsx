@@ -29,6 +29,7 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_pt9ImportModal_reason_lemmaOrOther%',
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%',
+  '%interlinearizer_pt9ImportModal_reason_blankMorphemeForm%',
   '%interlinearizer_pt9ImportModal_missingBooks%',
   '%interlinearizer_pt9ImportModal_filesTooLarge%',
   '%interlinearizer_pt9ImportModal_staleKept%',
@@ -56,6 +57,7 @@ const DROP_REASONS: readonly Pt9ClusterDropReason[] = [
   'lemmaOrOther',
   'duplicateCluster',
   'unparseableLexemeId',
+  'blankMorphemeForm',
 ];
 
 /**

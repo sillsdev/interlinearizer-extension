@@ -2,6 +2,7 @@ import type {
   AnalysisChange,
   Book,
   ChangeId,
+  DraftProject,
   SegmentationDelta,
   SessionAnalysisChange,
 } from 'interlinearizer';
@@ -147,6 +148,13 @@ async function describeApplied(
   const { sourceProjectId } = session.scope;
   return describeChange(session.repository, applied, (bookId) =>
     host.heldBook(sourceProjectId, bookId, segmentationForBook(segmentation, bookId)),
+  );
+}
+
+/** Whether `draft` holds no analysis and no boundary edits. */
+function isEmptyDraft({ analysis, segmentation }: DraftProject): boolean {
+  return (
+    Object.values(analysis).every((records) => records.length === 0) && isEmptyDelta(segmentation)
   );
 }
 
@@ -352,6 +360,7 @@ export class AnalysisSessions {
         replies: new Map(),
         editPasses: new Map(),
       };
+      if (isEmptyDraft(opened)) session.history.noteEmpty();
       this.sessions.set(session.id, entry);
       this.sessionsBySource.set(sourceProjectId, entry);
       // Builds the indexes ahead of the first command; the next lookup retries a failed build.
@@ -627,8 +636,11 @@ export class AnalysisSessions {
   /**
    * In the session's turn, leaves the session's draft with no project to save to, now that its
    * project is deleted. No state that the history holds counts as saved any more, and the draft is
-   * marked unsaved. The exception is an empty, saved draft, which has nothing to lose and stays
-   * saved.
+   * marked unsaved.
+   *
+   * An empty draft has nothing to lose, so its saved states are the exception. The current state
+   * stays saved when the draft is empty, as does the state the session opened on when that was
+   * empty.
    *
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
@@ -637,12 +649,10 @@ export class AnalysisSessions {
   detachFromProject(sessionId: string): Promise<void> {
     return this.runEdit(sessionId, async (session) => {
       session.scope = { kind: 'draft', sourceProjectId: session.scope.sourceProjectId };
-      const { analysis, segmentation, dirty } = await session.repository.getWholeDraft();
-      const empty =
-        Object.values(analysis).every((records) => records.length === 0) &&
-        isEmptyDelta(segmentation);
-      session.history.forgetSaves(empty && !dirty);
-      if (!empty && !dirty) await session.repository.apply({ intent: 'detachFromProject' });
+      const draft = await session.repository.getWholeDraft();
+      const empty = isEmptyDraft(draft);
+      session.history.forgetSaves(empty && !draft.dirty);
+      if (!empty && !draft.dirty) await session.repository.apply({ intent: 'detachFromProject' });
     });
   }
 

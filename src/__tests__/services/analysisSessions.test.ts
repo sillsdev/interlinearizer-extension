@@ -1947,6 +1947,17 @@ describe('AnalysisSessions save targets', () => {
     await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: true });
   });
 
+  it('marks the draft saved when an undo leads back to the empty draft it opened on, once its project is deleted', async () => {
+    const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+    await sessions.edit(sessionId, 'add', adding('a'));
+
+    await sessions.detachFromProject(sessionId);
+    await sessions.undo(sessionId);
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: false });
+  });
+
   it('leaves an empty, saved draft saved once its project is deleted', async () => {
     const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
     const { sessionId } = await sessions.open(SOURCE, 'proj-1');

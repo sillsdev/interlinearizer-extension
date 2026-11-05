@@ -653,28 +653,27 @@ export function CatalogRowActions({
           titleTestId="catalog-delete-confirm-title"
           width="tw:w-96"
         >
-          <p className="tw:text-sm" data-testid="catalog-delete-confirm-prompt">
+          <p className="tw:mb-4 tw:text-sm" data-testid="catalog-delete-confirm-prompt">
             {formatReplacementString(
               localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmPrompt%'],
               { form: surfaceText },
             )}
           </p>
-          <div className="tw:mt-4 tw:flex tw:justify-end tw:gap-2">
+          <div className="tw:modal-actions">
             <Button
               data-testid="catalog-delete-confirm-cancel"
               onClick={cancelDelete}
-              variant="outline"
+              variant="secondary"
             >
               {localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmCancel%']}
             </Button>
             <Button
-              className="tw:text-destructive"
               data-testid="catalog-delete-confirm"
               onClick={() => {
                 setConfirmingDelete(false);
                 onDeleteRequest();
               }}
-              variant="outline"
+              variant="destructive"
             >
               {localizedStrings['%interlinearizer_analysisCatalog_delete%']}
             </Button>

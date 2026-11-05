@@ -1,6 +1,6 @@
 import { Button } from 'platform-bible-react';
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useRef, useState } from 'react';
 import CatalogRowEditor, {
   CatalogRowActions,
   type GlossRetry,
@@ -160,6 +160,21 @@ function CatalogRowView({
   /** Whether the usage list is showing every usage rather than the first {@link INLINE_USAGE_LIMIT}. */
   const [showsAllUsages, setShowsAllUsages] = useState(false);
 
+  /**
+   * Set by Show fewer, which unmounts itself: focus moves to the Show N more link that replaces it,
+   * so keyboard focus stays in the row and the browser scrolls the row back into view.
+   */
+  const focusShowAllOnMountRef = useRef(false);
+  const showAllRef = useCallback((el: HTMLButtonElement | null) => {
+    if (!el || !focusShowAllOnMountRef.current) return;
+    focusShowAllOnMountRef.current = false;
+    el.focus();
+  }, []);
+  const handleShowFewer = useCallback(() => {
+    focusShowAllOnMountRef.current = true;
+    setShowsAllUsages(false);
+  }, []);
+
   // Collapsing returns the row to the inline cap, so a row reopened later does not bury the rows
   // beneath it.
   const handleToggle = useCallback(() => {
@@ -309,6 +324,7 @@ function CatalogRowView({
                 <Button
                   data-testid="catalog-usages-show-all"
                   onClick={() => setShowsAllUsages(true)}
+                  ref={showAllRef}
                   size="sm"
                   variant="link"
                 >
@@ -321,7 +337,7 @@ function CatalogRowView({
               {showsAllUsages && row.usages.length > INLINE_USAGE_LIMIT && (
                 <Button
                   data-testid="catalog-usages-show-fewer"
-                  onClick={() => setShowsAllUsages(false)}
+                  onClick={handleShowFewer}
                   size="sm"
                   variant="link"
                 >

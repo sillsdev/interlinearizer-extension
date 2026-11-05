@@ -1703,6 +1703,25 @@ describe('AnalysisCatalogPanel', () => {
         expect(within(rowFor('ta-1')).getAllByTestId('catalog-usage')).toHaveLength(12);
         expect(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all')).toBeInTheDocument();
       });
+
+      it('moves focus to the show-all link once show-fewer unmounts', async () => {
+        renderPanel({ analysis: MANY_USAGES });
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-fewer'));
+
+        expect(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all')).toHaveFocus();
+      });
+
+      it('leaves focus alone when the list first opens capped', async () => {
+        renderPanel({ analysis: MANY_USAGES });
+        const toggle = within(rowFor('ta-1')).getByTestId('catalog-row-toggle');
+
+        await userEvent.click(toggle);
+
+        expect(toggle).toHaveFocus();
+      });
     });
   });
 

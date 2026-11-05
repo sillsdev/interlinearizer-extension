@@ -473,7 +473,7 @@ describe('importPt9Project', () => {
     const result = await importPt9Project(token, 'src-project');
 
     expect(result.outcome).toBe('imported');
-    expect(result.report?.booksMissingIdentity).toBe(1);
+    expect(result.report?.filesPt9NeverLoads).toContain('Interlinear_en/Interlinear_en.xml');
   });
 
   it('skips a book the project has no USJ for and reports it missing', async () => {

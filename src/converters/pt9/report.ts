@@ -107,13 +107,9 @@ export interface Pt9ImportReport {
   senses: Pt9SenseReport;
   barePayloads: Pt9BarePayloadReport;
   /**
-   * Books of interlinear data dropped whole because they carry no gloss language or no book id;
-   * nothing in them converts.
-   */
-  booksMissingIdentity: number;
-  /**
-   * Project-relative paths of interlinear files that sit where PT9's own reader never loads them
-   * from, such as Send/Receive merge residue or a copy left by an older Paratext. None converts.
+   * Project-relative paths of interlinear files that PT9's own reader never loads, such as
+   * Send/Receive merge residue, a copy left by an older Paratext, or a file naming no gloss
+   * language or book id. None converts.
    */
   filesPt9NeverLoads: string[];
   /**
@@ -221,7 +217,6 @@ export function emptyPt9ImportReport(): Pt9ImportReport {
       droppedEmpty: 0,
       droppedBlankForm: 0,
     },
-    booksMissingIdentity: 0,
     filesPt9NeverLoads: [],
     filesTooLargeToRead: [],
   };

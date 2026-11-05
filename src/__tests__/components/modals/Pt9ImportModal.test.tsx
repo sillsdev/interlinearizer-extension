@@ -115,7 +115,6 @@ function makeReport(): Pt9ImportReport {
       droppedEmpty: 0,
       droppedBlankForm: 0,
     },
-    booksMissingIdentity: 0,
     filesPt9NeverLoads: [],
     filesTooLargeToRead: [],
   };

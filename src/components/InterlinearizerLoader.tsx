@@ -361,7 +361,7 @@ function parseImportedSummary(reply: unknown): InterlinearProjectSummary | undef
   return isInterlinearProjectSummary(summary) ? toProjectSummary(summary) : undefined;
 }
 
-/** The files that an import reply names as left out, with `[]` for a list it lacks or malforms. */
+/** The files that an import reply names as left out; a missing or malformed list reads as `[]`. */
 function parseLeftOutFiles(reply: unknown): LeftOutFiles {
   /* v8 ignore next -- the host's import reply is always an object */
   if (!reply || typeof reply !== 'object') return { filesTooLarge: [], filesNeverLoaded: [] };
@@ -1297,10 +1297,10 @@ function InterlinearizerLoaderInner({
   /**
    * Runs the import command behind the import modal for the button-driven runs: a first import from
    * the select modal, a Yes on the first-open offer, or a manual sync from the view banner. Success
-   * shows the report (a sync also refreshes the open view first). A kept import shows the files
-   * that it left out, or closes the modal when there are none, because the backend already warned.
-   * A first import that converted nothing and any failure both show the in-modal error, because the
-   * backend already sent the error notification.
+   * shows the report (a sync also refreshes the open view first). A kept import names the files
+   * that the run left out. With none to name, the modal closes, because the backend's warning says
+   * why. A first import that converted nothing and any failure both show the in-modal error. The
+   * backend has already sent the error notification for both.
    */
   const runPt9Import = useCallback(
     async (mode: 'import' | 'offer' | 'sync') => {
@@ -1327,7 +1327,6 @@ function InterlinearizerLoaderInner({
           setPt9Phase({ kind: 'report', report });
         } else if (outcome === 'staleKept' || outcome === 'notConverted') {
           const leftOut = parseLeftOutFiles(parsed);
-          // A kept import with no files to name closes, because the command's notification says why.
           if (outcome === 'notConverted') setPt9Phase({ kind: 'notConverted', ...leftOut });
           else if (leftOut.filesTooLarge.length > 0 || leftOut.filesNeverLoaded.length > 0)
             setPt9Phase({ kind: 'staleKept', ...leftOut });

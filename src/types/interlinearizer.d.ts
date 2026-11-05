@@ -1071,18 +1071,25 @@ declare module 'papi-shared-types' {
     /**
      * Imports the source project's Paratext 9 interlinear data, serving both first import and sync:
      * creates the source's single frozen import project, or replaces its content wholesale when one
-     * exists. When the source's interlinear files have disappeared but an earlier import exists,
-     * the stored import is kept unchanged instead.
+     * exists. When nothing converts and an earlier import exists, the stored import is kept
+     * unchanged. A first import that converts nothing creates no project; it sends an error
+     * notification but still returns, so the caller can name the files that it left out.
      *
      * @param sourceProjectId - Platform.Bible project ID whose Paratext 9 interlinear files to
      *   import.
-     * @returns A JSON string of `{ outcome, projectId, report?, summary? }`: `outcome` is
-     *   `'imported'` or `'staleKept'`, `projectId` the import project's id, `report` the conversion
-     *   report, and `summary` the import's summary as written. `report` and `summary` are present
-     *   only when `outcome` is `'imported'`.
-     * @throws If the source has no Paratext 9 interlinear data and no earlier import exists, if a
-     *   file fails to parse, or if persistence fails. The error is logged and an error notification
-     *   is sent before rethrowing so callers do not need to send a second notification.
+     * @returns A JSON string of `{ outcome, projectId?, staleReason?, filesTooLargeToRead?,
+     *   filesPt9NeverLoads?, report?, summary? }`:
+     *
+     *   - `imported`: the conversion was persisted; `projectId`, `report`, and `summary` are present.
+     *   - `staleKept`: the earlier import was kept; `projectId` and `staleReason` are present, plus
+     *       whichever file lists name what was left out.
+     *   - `notConverted`: a first import converted no gloss language and created nothing; only the file
+     *       lists are present.
+     *
+     * @throws If no earlier import exists and the source has no Paratext 9 interlinear data or none
+     *   small enough to read, if a file fails to parse, or if persistence fails. The error is
+     *   logged and an error notification is sent before rethrowing so callers do not need to send a
+     *   second notification.
      */
     'interlinearizer.importPt9Project': (sourceProjectId: string) => Promise<string>;
 

@@ -2306,7 +2306,6 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('names the oversized files when a sync could read none of them', async () => {
-      // This reason has books to name, so the modal stays open.
       mockImportCommands({
         importResult: {
           outcome: 'staleKept',

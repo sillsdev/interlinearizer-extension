@@ -52,7 +52,7 @@ export type Pt9ImportModalPhase =
   | ({ kind: 'notConverted' } & LeftOutFiles)
   | { kind: 'error'; reason?: 'tooLarge' };
 
-/** The files that a run left out when it persisted nothing. */
+/** The files that a run left out. */
 export interface LeftOutFiles {
   /** Files too large for any read to take on. */
   filesTooLarge: Pt9UnreadableFile[];

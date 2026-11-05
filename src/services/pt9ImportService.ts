@@ -199,8 +199,8 @@ export async function importPt9Project(
 
   // A project record must carry at least one analysis language, and a conversion that produced no
   // language converted no book. Persisting it would replace a good import with one the metadata
-  // editor cannot even save, so the stored import is kept instead. No language converts only when
-  // every book file is too large or one that Paratext 9 never loads. Both lists go back to name them.
+  // editor cannot even save, so a stored import is kept and a first import creates nothing. Either
+  // outcome returns the left-out file lists for the caller to name.
   if (analysisLanguages.length === 0) {
     const leftOut = {
       filesTooLargeToRead,

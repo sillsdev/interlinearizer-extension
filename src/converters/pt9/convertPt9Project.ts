@@ -50,8 +50,8 @@ interface LanguageGroup {
 
 /**
  * Converts a PT9 project's interlinear data into the extension's analysis layer, paired with a
- * report of what converted, what was dropped, and why. Only files that PT9's own reader loads
- * convert; the rest are listed in the report, because PT9 never shows them.
+ * report of what converted, what was dropped, and why. Only the files that PT9's own reader loads
+ * are converted, because PT9 never shows the rest. The report lists the rest by path.
  */
 export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResult {
   const { data, books, importedAt } = input;

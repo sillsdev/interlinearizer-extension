@@ -150,20 +150,20 @@ jest.mock('../../../components/modals/SaveAsProjectModal', () => ({
   __esModule: true,
   SaveAsProjectModal: ({
     activeProjectId,
-    defaultName,
+    activeProjectName,
     onSaveNew,
     onOverwrite,
     onClose,
   }: {
     activeProjectId?: string;
-    defaultName?: string;
+    activeProjectName?: string;
     onSaveNew: (name?: string, description?: string) => void;
     onOverwrite: (p: InterlinearProjectSummary) => void;
     onClose: () => void;
   }) => (
     <div
       data-active-project-id={activeProjectId}
-      data-default-name={defaultName}
+      data-active-project-name={activeProjectName}
       data-testid="saveas-modal"
     >
       <button
@@ -406,11 +406,12 @@ describe('ProjectModals', () => {
       expect(screen.getByTestId('create-modal')).toBeInTheDocument();
     });
 
-    it('renders the save-as modal (prefilled from the draft) when modal is saveAs', () => {
-      render(<ProjectModals {...buildProps({ modal: 'saveAs' })} />);
-      const modal = screen.getByTestId('saveas-modal');
-      expect(modal).toBeInTheDocument();
-      expect(modal).toHaveAttribute('data-default-name', 'Suggested Name');
+    it('renders the save-as modal with the active project name when modal is saveAs', () => {
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', activeProject: MOCK_PROJECT })} />);
+      expect(screen.getByTestId('saveas-modal')).toHaveAttribute(
+        'data-active-project-name',
+        MOCK_PROJECT.name,
+      );
     });
 
     it('forwards the active project id to the save-as modal so it can badge that overwrite target', () => {

@@ -100,6 +100,7 @@ describe('buildLanguageBookAnalyses', () => {
         lemmaOrOther: 0,
         duplicateCluster: 0,
         unparseableLexemeId: 0,
+        blankMorphemeForm: 0,
       },
       ambiguousAnchors: 0,
       punctuationEntriesIgnored: 1,

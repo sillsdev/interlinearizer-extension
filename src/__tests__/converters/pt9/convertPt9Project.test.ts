@@ -422,6 +422,7 @@ describe('convertPt9Project', () => {
         lemmaOrOther: 0,
         duplicateCluster: 0,
         unparseableLexemeId: 0,
+        blankMorphemeForm: 0,
       });
       expect(book.ambiguousAnchors).toBe(1);
       expect(book.punctuationEntriesIgnored).toBe(1);

@@ -392,6 +392,7 @@
       "%interlinearizer_pt9ImportModal_reason_lemmaOrOther%": "unused legacy data",
       "%interlinearizer_pt9ImportModal_reason_duplicateCluster%": "duplicate data",
       "%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%": "unreadable data",
+      "%interlinearizer_pt9ImportModal_reason_blankMorphemeForm%": "blank morpheme form",
       "%interlinearizer_pt9ImportModal_missingBooks%": "Books with no text in this project: {books}",
       "%interlinearizer_pt9ImportModal_filesTooLarge%": "Larger than the {limit} one read can carry, so left out: {files}",
       "%interlinearizer_pt9ImportModal_staleKept%": "Nothing could be read this time, so the data imported earlier was left as it was.",

@@ -257,6 +257,39 @@ describe('validateTextAnalysis', () => {
     );
   });
 
+  it('reports a token payload holding a morpheme with a blank form', () => {
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          tokenAnalyses: [
+            {
+              ...tokenAnalysis('ta-1'),
+              morphemes: [
+                { id: 'm0', form: ' ', writingSystem: 'und' },
+                { id: 'm1', form: 'word', writingSystem: 'und' },
+              ],
+            },
+          ],
+        }),
+      ),
+    ).toEqual([{ kind: 'blankMorphemeForm', layer: 'token', count: 1, sample: ['ta-1'] }]);
+  });
+
+  it('does not report a token payload whose morphemes all carry a form', () => {
+    expect(
+      validateTextAnalysis(
+        tokenLayer({
+          tokenAnalyses: [
+            {
+              ...tokenAnalysis('ta-1'),
+              morphemes: [{ id: 'm0', form: 'word', writingSystem: 'und' }],
+            },
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
   it('reports a phrase payload no link references', () => {
     expect(validateTextAnalysis(tokenLayer({ phraseAnalyses: [tokenAnalysis('pa-1')] }))).toEqual([
       { kind: 'unreferencedAnalysis', layer: 'phrase', count: 1, sample: ['pa-1'] },

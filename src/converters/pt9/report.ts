@@ -12,6 +12,7 @@
  * - `duplicateCluster`: a second cluster of the same kind at the same range; only the first converts.
  * - `unparseableLexemeId`: a lexeme carries no id, or one that does not match PT9's
  *   `Type:Form[:Homograph]` grammar.
+ * - `blankMorphemeForm`: a lexeme's id parses but names a blank form, such as `Stem::2`.
  */
 export type Pt9ClusterDropReason =
   | 'verseNotFound'
@@ -19,7 +20,8 @@ export type Pt9ClusterDropReason =
   | 'frontMatter'
   | 'lemmaOrOther'
   | 'duplicateCluster'
-  | 'unparseableLexemeId';
+  | 'unparseableLexemeId'
+  | 'blankMorphemeForm';
 
 /** Conversion outcome counts for one book of one gloss language. */
 export interface Pt9BookReport {
@@ -94,6 +96,8 @@ export interface Pt9BarePayloadReport {
   droppedUnparseable: number;
   /** Analyses dropped because they carried no lexemes at all. */
   droppedEmpty: number;
+  /** Analyses dropped because a lexeme's form was blank. */
+  droppedBlankForm: number;
 }
 
 /** The import report returned to the caller: the quality signal for the whole conversion. */
@@ -147,6 +151,7 @@ const PT9_CLUSTER_DROP_REASONS: readonly Pt9ClusterDropReason[] = [
   'lemmaOrOther',
   'duplicateCluster',
   'unparseableLexemeId',
+  'blankMorphemeForm',
 ];
 
 /** Adds every count in `source` onto `target` in place. */
@@ -168,6 +173,7 @@ export function emptyClusterDrops(): Record<Pt9ClusterDropReason, number> {
     lemmaOrOther: 0,
     duplicateCluster: 0,
     unparseableLexemeId: 0,
+    blankMorphemeForm: 0,
   };
 }
 
@@ -208,7 +214,13 @@ export function emptyPt9ImportReport(): Pt9ImportReport {
       senseRefsResolved: 0,
       senseRefsUnresolved: 0,
     },
-    barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
+    barePayloads: {
+      added: 0,
+      skippedExistingIdentical: 0,
+      droppedUnparseable: 0,
+      droppedEmpty: 0,
+      droppedBlankForm: 0,
+    },
     booksMissingIdentity: 0,
     booksDroppedAsDuplicates: 0,
     filesTooLargeToRead: [],

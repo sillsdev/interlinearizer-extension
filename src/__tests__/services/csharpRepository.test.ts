@@ -1,7 +1,7 @@
+import { CSharpRepository, REPOSITORY_COMMAND_PREFIX } from '../../services/csharpRepository';
 import type { AnalysisRepository } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { scopeRecordOf } from '../../utils/change-set';
-import { CSharpRepository, REPOSITORY_COMMAND_PREFIX } from '../../services/csharpRepository';
 
 const PROJECT = 'project-1';
 const SOURCE = 'source-project';

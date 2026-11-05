@@ -44,8 +44,10 @@ let storeCount = 0;
  */
 function createStore(): ConformanceStore {
   storeCount += 1;
-  const sourceOnHost = (sourceProjectId: string) => `store-${storeCount}-${sourceProjectId}`;
-  opened = new Set();
+  const store = storeCount;
+  const sourceOnHost = (sourceProjectId: string) => `store-${store}-${sourceProjectId}`;
+  const storeOpened = new Set<string>();
+  opened = storeOpened;
   const projectIds = new Map<string, string>();
   const open = async (sourceProjectId: string) => {
     const source = sourceOnHost(sourceProjectId);
@@ -57,7 +59,7 @@ function createStore(): ConformanceStore {
         sourceProjectId: source,
         projectId,
       });
-      opened.add(source);
+      storeOpened.add(source);
     }
     return new CSharpRepository(
       (command, args) => papi.invoke(`command:${command}`, args),

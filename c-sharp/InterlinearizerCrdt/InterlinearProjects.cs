@@ -40,12 +40,13 @@ public class InterlinearProjects(DataModel dataModel, InterlinearizerCrdtDbConte
 
     /// <summary>
     /// Stores <paramref name="project"/> in one commit, stamped with the commit's time. Its id must
-    /// be one no record of any kind has ever been stored under, since Harmony keeps every entity in
-    /// one table and would drop a second create without error.
+    /// be one that no record of any kind has ever been stored under.
     /// </summary>
     /// <exception cref="ArgumentException">If the id has been used; nothing is written.</exception>
     public async Task Create(InterlinearProject project)
     {
+        // Harmony keeps every entity in one table. A create under a live record's id is dropped
+        // without error. A create under a deleted record's id brings that record back as a project.
         if (await HasBeenStored(project.Id)) throw new ArgumentException($"Project {project.Id} has already been stored", nameof(project));
         await Commit("createProject", new CreateInterlinearProjectChange(project));
     }

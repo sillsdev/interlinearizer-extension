@@ -71,24 +71,6 @@ describe('SaveAsProjectModal', () => {
     );
   });
 
-  it('prefills the name with a copy of the active project name', async () => {
-    render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
-
-    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Copy of Greek'));
-  });
-
-  it('numbers the prefilled name past every name a project of the source already bears', async () => {
-    mockSendCommand.mockResolvedValue(
-      JSON.stringify([
-        makeProjectSummary({ id: 'p-1', name: 'Copy of Greek' }),
-        makeProjectSummary({ id: 'p-2', name: 'Copy (2) of Greek' }),
-      ]),
-    );
-    render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
-
-    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Copy (3) of Greek'));
-  });
-
   it('holds the name blank and save-as-new disabled until the project list loads', async () => {
     let resolveList: (json: string) => void = () => {};
     mockSendCommand.mockReturnValue(

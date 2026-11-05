@@ -531,8 +531,8 @@ export default function AnalysisCatalogPanel({
 
   /** Whether any row is holding a breakdown the reader has changed but not saved. */
   const hasUnsavedBreakdown = useMemo(
-    () => catalogRows.some((r) => rowHasUnsavedBreakdown(r.analysisId)),
-    [catalogRows, rowHasUnsavedBreakdown],
+    () => [...breakdownDrafts.keys()].some(rowHasUnsavedBreakdown),
+    [breakdownDrafts, rowHasUnsavedBreakdown],
   );
 
   /** Whether leaving the panel would discard a breakdown draft or a gloss that is not saved. */

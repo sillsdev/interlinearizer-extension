@@ -1,6 +1,6 @@
 /**
- * Jest configuration for the tests that run the published C# host: they need `dotnet` and `npm run
- * build:c-sharp` to have run, so the default configuration leaves them out.
+ * Jest configuration for the tests that run the published C# host. They need the host that `npm run
+ * build:c-sharp` publishes, so the default configuration leaves them out.
  */
 
 import type { Config } from 'jest';

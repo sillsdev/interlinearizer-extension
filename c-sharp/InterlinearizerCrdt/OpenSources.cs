@@ -11,7 +11,7 @@ public record SourcesDirectory(string Path);
 /// <summary>
 /// The source projects the host has open, one DI scope each. A scope holds the Harmony services
 /// over the source's own database, which keeps every interlinear project made over it, and lives
-/// from <see cref="Open"/> to <see cref="Close"/>; requests never create scopes.
+/// from <see cref="Open"/> to <see cref="Close"/>, rather than one scope per request.
 /// </summary>
 public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory directory) : IAsyncDisposable
 {

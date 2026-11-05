@@ -7,7 +7,10 @@ using SIL.Harmony.Entities;
 
 namespace Interlinearizer.Crdt.Changes;
 
-/// <summary>Creates a <see cref="PhraseAnalysis"/>, stamped with the commit's time.</summary>
+/// <summary>
+/// Creates a <see cref="PhraseAnalysis"/>, stamped with the commit's time. An analysis in a project
+/// already deleted is created deleted.
+/// </summary>
 [method: JsonConstructor]
 public class CreatePhraseAnalysisChange(Guid entityId)
     : CreateChange<PhraseAnalysis>(entityId), ISelfNamedType<CreatePhraseAnalysisChange>

@@ -8,14 +8,13 @@ using SIL.Harmony.Entities;
 namespace Interlinearizer.Crdt.Changes;
 
 /// <summary>
-/// Creates a <see cref="PhraseAnalysisLink"/>. A link to an analysis already deleted is created
-/// deleted.
+/// Creates a <see cref="PhraseAnalysisLink"/>. A link to an analysis already deleted,
+/// or in a project already deleted, is created deleted.
 /// </summary>
 [method: JsonConstructor]
 public class CreatePhraseAnalysisLinkChange(Guid entityId)
     : CreateChange<PhraseAnalysisLink>(entityId), ISelfNamedType<CreatePhraseAnalysisLinkChange>
 {
-    /// <summary>Carries every field of <paramref name="link"/> but its timestamps.</summary>
     /// <summary>
     /// Carries every field of <paramref name="link"/> but its timestamps, filed under
     /// <paramref name="projectId"/>.

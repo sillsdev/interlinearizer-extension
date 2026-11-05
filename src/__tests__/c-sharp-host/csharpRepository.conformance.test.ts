@@ -37,10 +37,10 @@ afterEach(async () => {
 let storeCount = 0;
 
 /**
- * One store of host projects. The host keeps a database per source for the life of the run, so each
- * store names its sources after itself and no store sees what an earlier one stored; the name only
+ * One store of host projects. The host keeps a database per source for the life of the run. Each
+ * store names its sources after itself, so no store sees what an earlier one stored. The name only
  * stamps the draft read whole, which the groups opted into never compare. Each source holds one
- * project, under an id minted for it, since the host's project ids are GUIDs.
+ * project, under an id minted for it, because the host's project ids are GUIDs.
  */
 function createStore(): ConformanceStore {
   storeCount += 1;

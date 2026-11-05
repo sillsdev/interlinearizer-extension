@@ -32,10 +32,11 @@ export const REPOSITORY_COMMAND_PREFIX = 'interlinearizer.repository.';
 /**
  * The C# host's slice of {@link AnalysisRepository}, reached one command per method. Every command
  * names the source project the host has open and the interlinear project in it, which the host must
- * already store. Every record id must be a GUID string, as the host stores ids. The scope's record
- * and the unsaved mark are not stored yet: an apply refuses a change set carrying a scope, reports
- * an inverse that restores nothing and the draft as clean, and the calls that read or write the
- * draft whole throw.
+ * already store. Every record id must be a GUID string, as the host stores ids.
+ *
+ * The scope's record and the unsaved mark are not stored yet. An apply refuses a change set
+ * carrying a scope. It reports an inverse that restores nothing, and the draft as clean. The calls
+ * that read the scope or clear the mark throw, as do those that copy or replace the draft whole.
  */
 export class CSharpRepository implements AnalysisRepository {
   readonly capabilities: RepositoryCapabilities = { readOnly: false };

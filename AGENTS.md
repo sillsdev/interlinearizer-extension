@@ -63,10 +63,11 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 - **Runtime**: it targets .NET 10, which Harmony needs, and is published self-contained for each platform Platform.Bible ships for, since Platform.Bible's own runtime is private to its process.
 - **Network client**: it talks to the network through its own small client, since core's is not packaged for extensions to use. That client offers the methods core's does, so services can move into core later.
 - **Build**: the build copies whatever `npm run build:c-sharp` has published; without it the extension logs that the host could not start and carries on.
-- **Services**: they come from one DI container built in `Program`. There is no scope per request: the JSON-RPC layer offers none, and nothing in a request needs isolating from the next.
+- **Services**: they come from one DI container built in `Program`. There is no scope per request, because the JSON-RPC layer offers none.
   - `OpenSources` opens one DI scope per source project and keeps it until the source is closed, as FieldWorks Lite does. The first command on a source opens it.
   - Each scope sits over the source's own SQLite database, named after the source in the container's `SourcesDirectory`. Nothing else names the file, so a source always opens the same database.
   - A handler takes the source and interlinear project ids and resolves the project's `AnalysisRepository` from the source's scope. A project the database does not store has no repository.
+  - Commands on one source share its scope's `InterlinearizerCrdtDbContext`, and EF Core does not allow overlapping operations on one context. Callers must not overlap commands on a source, `closeSource` included.
 - **Client id**: the host keeps a per-installation client id, which Harmony tells devices apart by, in its data directory: `--data-dir` names it, defaulting to a per-user folder.
 - **Port**: `--papi-port` names the network's port, defaulting to Platform.Bible's.
 - **Repository commands**: [RepositoryService.cs](c-sharp/InterlinearizerHost/Services/RepositoryService.cs) serves the C# `AnalysisRepository` as `interlinearizer.repository.<method>`, one command per method.

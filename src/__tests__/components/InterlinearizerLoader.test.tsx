@@ -1779,6 +1779,7 @@ describe('InterlinearizerLoader', () => {
         droppedUnparseable: 0,
         droppedEmpty: 0,
       },
+      filesPt9NeverLoads: [],
       filesTooLargeToRead: [],
     };
 

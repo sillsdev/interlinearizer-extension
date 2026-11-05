@@ -91,8 +91,8 @@ fields that file's own documentation describes. What that documentation cannot t
 
 - The verse dictionary becomes the `verses` array keyed by `reference`, and `Hash` becomes
   `approvedHash` on each entry.
-- Where the same language and book arrive more than once, `convertPt9Project.ts` picks the
-  canonical twin by `isCanonicalPath`.
+- `convertPt9Project.ts` converts only the files whose `isCanonicalPath` is true, the ones PT9
+  itself loads.
 - PT9's `LexemesId` and cluster `Id` are internal to its reader and are not served.
 
 ### Example

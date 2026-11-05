@@ -29,6 +29,8 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_missingBooks%': 'Books with no text: {books}',
   '%interlinearizer_pt9ImportModal_filesTooLarge%':
     'Larger than the {limit} one read can carry, so left out: {files}',
+  '%interlinearizer_pt9ImportModal_filesNeverLoaded%':
+    'Left out because Paratext 9 never loads them from where they are: {files}',
   '%interlinearizer_pt9ImportModal_staleKept%':
     'Nothing could be read, so the earlier import was kept.',
   '%interlinearizer_pt9ImportModal_open%': 'Open',
@@ -106,7 +108,7 @@ function makeReport(): Pt9ImportReport {
     },
     barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
     booksMissingIdentity: 0,
-    booksDroppedAsDuplicates: 0,
+    filesPt9NeverLoads: [],
     filesTooLargeToRead: [],
   };
 }
@@ -337,6 +339,38 @@ describe('Pt9ImportModal', () => {
     expect(screen.getByTestId('pt9-files-too-large')).toHaveTextContent(
       'Larger than the 80 MiB one read can carry, so left out: PSA (en) 85.8 MiB',
     );
+  });
+
+  it('names the files Paratext 9 never loads', () => {
+    const report = makeReport();
+    report.filesPt9NeverLoads = ['Interlinear_en/Interlinear_en_opy.xml', 'Interlinear_en_GEN.xml'];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pt9-files-never-loaded')).toHaveTextContent(
+      'Left out because Paratext 9 never loads them from where they are: Interlinear_en/Interlinear_en_opy.xml, Interlinear_en_GEN.xml',
+    );
+  });
+
+  it('omits the never-loaded row when Paratext 9 loads every file', () => {
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report: makeReport() }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('pt9-files-never-loaded')).not.toBeInTheDocument();
   });
 
   it('omits the too-large row when every file was retrieved', () => {

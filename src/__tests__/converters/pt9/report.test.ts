@@ -50,6 +50,7 @@ function makeReport() {
       senseRefsUnresolved: 0,
     },
     barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
+    filesPt9NeverLoads: [],
     filesTooLargeToRead: [],
   };
 }
@@ -77,6 +78,14 @@ describe('isPt9ImportReport', () => {
         filesTooLargeToRead: [{ path: 'a.xml', sizeBytes: 1, maxResponseBytes: 2 }],
       }),
     ).toBe(true);
+  });
+
+  it('rejects a report whose never-loaded file list is missing', () => {
+    expect(isPt9ImportReport({ ...makeReport(), filesPt9NeverLoads: undefined })).toBe(false);
+  });
+
+  it('rejects a never-loaded file list holding a non-path', () => {
+    expect(isPt9ImportReport({ ...makeReport(), filesPt9NeverLoads: [1] })).toBe(false);
   });
 
   it('rejects a language without a tag', () => {

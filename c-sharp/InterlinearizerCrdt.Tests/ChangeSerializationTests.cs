@@ -103,6 +103,10 @@ public class ChangeSerializationTests
             files.Add((path, stored, expected, WriteIfChanged(path, stored, expected)));
         }
 
+        var registered = Config.Value.ChangeTypes.Select(t => t.Type).ToHashSet();
+        foreach (var type in AllChanges().Select(c => c.GetType()).Distinct().Where(t => !registered.Contains(t)))
+            problems.Add($"{type.Name} has a sample in AllChanges() but is not registered.");
+
         var slugs = Config.Value.ChangeTypes.Select(Slug).ToHashSet();
         foreach (var file in Directory.Exists(directory) ? Directory.EnumerateFiles(directory) : [])
         {

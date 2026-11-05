@@ -2165,8 +2165,8 @@ function discardAll({
 }
 
 /**
- * Stages {@link clearAnalysisGlosses}'s changes; the returned function resolves to the token
- * analyses that the clear empties.
+ * Stages clearing the session's analysis-language gloss of each analysis in `analysisIds`. The
+ * returned function resolves to the ids of the token analyses that the clear empties.
  */
 function stageClearAnalysisGlosses({ analysisIds }: { analysisIds: string[] }) {
   return (buffer: ChangeBuffer, session: Session) =>
@@ -2181,7 +2181,10 @@ function stageDiscardStaleAnalysis(args: { analysisId: string; tokenRef: string 
   return (buffer: ChangeBuffer) => staleCommands.discardStaleAnalysis(buffer, args);
 }
 
-/** Stages {@link reapplyStaleAnalysis}'s changes, minting the copy's ids when called. */
+/**
+ * Stages approving the stale analysis `analysisId` at `tokenRef`. The ids and timestamp of any copy
+ * that the approval makes are minted when this is called, not when the returned function runs.
+ */
 function stageReapplyStaleAnalysis(args: {
   analysisId: string;
   staleTokenRef: string;
@@ -2194,7 +2197,7 @@ function stageReapplyStaleAnalysis(args: {
 }
 
 /**
- * Stages the command a removal preview names, as that command's handler does.
+ * Stages the command that a removal preview names.
  *
  * @throws {Error} If the request names an intent that can't be previewed.
  */

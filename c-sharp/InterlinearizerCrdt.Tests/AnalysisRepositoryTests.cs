@@ -635,6 +635,28 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    [Arguments(PutMode.Replace)]
+    [Arguments(PutMode.Patch)]
+    public async Task ApplyRefusesAPutOfAStoredRecordNamingAnotherProject(PutMode putMode)
+    {
+        await ApplyNext(FullAnalysis());
+        var commits = await DbContext.Commits.CountAsync();
+        var put = new TokenAnalysis
+        {
+            Id = TaAnd,
+            ProjectId = OtherProjectId,
+            SurfaceText = "and",
+            Gloss = new MultiString { ["en"] = "misfiled" },
+        };
+
+        await Assert.That(() => ApplyNext(new ChangeSet { Intent = "misfiled", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }, putMode))
+            .Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+        await Assert.That((await Repository.GetTokenAnalyses([TaAnd])).Single().Gloss!["en"]).IsEqualTo("and");
+    }
+
+    [Test]
     public async Task ReadsEveryStoredRecord()
     {
         await ApplyNext(FullAnalysis());

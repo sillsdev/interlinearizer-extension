@@ -276,7 +276,7 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client, Guid
         Task LoadStored(AnalysisRepository repository, IReadOnlyCollection<Guid> allPutIds, Dictionary<Guid, string> storedKinds);
 
         /// <exception cref="ArgumentException">
-        /// If a put's id is stored as another kind or in another project.
+        /// If a put names another project, or its id is stored as another kind or in another project.
         /// </exception>
         void AddChanges(List<IChange> into, PutMode putMode, Guid projectId, IReadOnlyDictionary<Guid, string> storedKinds);
     }
@@ -310,6 +310,10 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client, Guid
             if (changes is null) return;
             foreach (var put in changes.Puts)
             {
+                if (put.ProjectId != Guid.Empty && put.ProjectId != projectId)
+                {
+                    throw new ArgumentException($"The {name} {put.Id} names project {put.ProjectId}, not {projectId}", nameof(changes));
+                }
                 if (storedKinds.TryGetValue(put.Id, out var storedAs) && storedAs != name)
                 {
                     throw new ArgumentException($"The {name} {put.Id} is stored as a {storedAs}", nameof(changes));

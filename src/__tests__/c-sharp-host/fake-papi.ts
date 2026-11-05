@@ -60,7 +60,7 @@ export class FakePapi {
    * Starts a host that keeps its data in `dataDirectory`.
    *
    * @returns Resolves once the host has registered its commands.
-   * @throws If the host exits before it is ready.
+   * @throws If the host fails to spawn or exits before it is ready.
    */
   static async start(dataDirectory: string): Promise<FakePapi> {
     const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
@@ -101,8 +101,15 @@ export class FakePapi {
       host.on('exit', (code) => reject(new Error(`The host exited with ${code}:\n${output}`)));
       host.on('error', reject);
     });
-    const socket = await connected;
-    await ready;
+    // A host that fails to spawn or exits early never connects, so only `ready` reports it.
+    let socket: WebSocket;
+    try {
+      [socket] = await Promise.all([connected, ready]);
+    } catch (error) {
+      host.kill();
+      server.close();
+      throw error;
+    }
     await Promise.all(registrations);
     papi = new FakePapi(server, host, socket);
     return papi;

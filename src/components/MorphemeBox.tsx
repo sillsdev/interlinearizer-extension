@@ -25,6 +25,15 @@ import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-s
 const MIN_MORPHEME_COLUMN = '4ch';
 
 /**
+ * Width of the row-label column, in a labeled box and in a field aligned with one. The floor fits
+ * the English labels. A longer localized label widens only its own grid, breaking the alignment.
+ */
+const ROW_LABEL_TRACK = 'minmax(8rem, max-content)';
+
+/** Styling for a row label, in a labeled box and on a field aligned with one. */
+export const ROW_LABEL_CLASS = 'tw:whitespace-nowrap tw:pe-1 tw:text-xs tw:text-muted-foreground';
+
+/**
  * Inline _display_ of an analyzed token's morpheme breakdown. The popover where forms are actually
  * entered lives separately.
  *
@@ -156,7 +165,7 @@ function MorphemeBoxInner({
 
   // Labels are the grid's first column, each sharing a row track with the cells it names so the two
   // line up by construction. The token strip passes none and gets the bare box.
-  const labelTrack = rowLabels ? 'auto ' : '';
+  const labelTrack = rowLabels ? `${ROW_LABEL_TRACK} ` : '';
   const firstCell = rowLabels ? 2 : 1;
 
   /** One morpheme's form cell, which read-only renders as static text. */
@@ -280,14 +289,14 @@ function MorphemeBoxInner({
         {rowLabels && (
           <>
             <span
-              className="tw:whitespace-nowrap tw:pe-1 tw:text-xs tw:text-muted-foreground"
+              className={ROW_LABEL_CLASS}
               data-testid={`${formTestId}-row-label`}
               style={{ gridColumn: 1, gridRow: 1 }}
             >
               {rowLabels.forms}
             </span>
             <span
-              className="tw:whitespace-nowrap tw:pe-1 tw:text-xs tw:text-muted-foreground"
+              className={ROW_LABEL_CLASS}
               data-testid={`${cellGlossTestId}-row-label`}
               style={{ gridColumn: 1, gridRow: 2 }}
             >
@@ -312,6 +321,29 @@ function MorphemeBoxInner({
           ))}
       </div>
     </PopoverAnchor>
+  );
+}
+
+/**
+ * A labeled field that lines up with a labeled {@link MorphemeBox}: its label column matches the
+ * box's, and its content starts where the box's morpheme cells do.
+ */
+export function BoxAlignedField({
+  label,
+  children,
+}: Readonly<{
+  /** The field's label, styled with {@link ROW_LABEL_CLASS}. */
+  label: ReactNode;
+  children: ReactNode;
+}>) {
+  return (
+    <div
+      className="tw:grid tw:items-center tw:gap-x-0.5 tw:border tw:border-transparent tw:px-0.5"
+      style={{ gridTemplateColumns: `${ROW_LABEL_TRACK} minmax(0, 1fr)` }}
+    >
+      {label}
+      {children}
+    </div>
   );
 }
 

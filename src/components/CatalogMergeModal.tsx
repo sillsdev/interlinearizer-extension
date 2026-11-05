@@ -14,6 +14,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import type { Confidence } from 'interlinearizer';
 import { ArrowUpToLine, GripVertical, X } from 'lucide-react';
 import {
   Button,
@@ -30,12 +31,7 @@ import {
 } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useState, type ReactNode } from 'react';
-import type { Confidence } from 'interlinearizer';
-import { breakdownDraftForms } from './CatalogRowEditor';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
-import { MorphemeBox } from './MorphemeBox';
-import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
-import { ModalShell } from './modals/ModalShell';
 import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import {
@@ -48,6 +44,11 @@ import {
   type MergeContentEdits,
   type MergeReorder,
 } from '../utils/merge-content';
+import { breakdownDraftForms } from './CatalogRowEditor';
+import LocalizedTooltip from './LocalizedTooltip';
+import { ModalShell } from './modals/ModalShell';
+import { BoxAlignedField, MorphemeBox, ROW_LABEL_CLASS } from './MorphemeBox';
+import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 
 /**
  * The name each confidence level is offered under. Confidence is a closed vocabulary, so it is
@@ -62,12 +63,6 @@ const CONFIDENCE_LABEL_KEYS = {
 
 /** The levels the select offers, ordered as confidence descends. */
 const CONFIDENCE_LEVELS: readonly Confidence[] = ['high', 'medium', 'low', 'guess'];
-
-/**
- * One width for every field's label, so the fields themselves start on a line down the panel rather
- * than each one wherever its own label happens to end.
- */
-const FIELD_LABEL_CLASS = 'tw:w-24 tw:shrink-0 tw:text-xs tw:text-muted-foreground';
 
 /**
  * The choice of recording no confidence, which the platform select needs a string for. A leading
@@ -107,6 +102,7 @@ export const MERGE_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_mergeUsageCount%',
   '%interlinearizer_analysisCatalog_mergePromote%',
   '%interlinearizer_analysisCatalog_mergeReorder%',
+  '%interlinearizer_analysisCatalog_mergeMoveToTop%',
   '%interlinearizer_analysisCatalog_mergeRevertField%',
   '%interlinearizer_analysisCatalog_mergeReset%',
   '%interlinearizer_analysisCatalog_mergeWillCollapse%',
@@ -280,20 +276,24 @@ function SortableCandidate({
         </div>
       </div>
 
-      <Button
-        aria-label={formatReplacementString(
-          localizedStrings['%interlinearizer_analysisCatalog_mergePromote%'],
-          { gloss: candidate.gloss || surfaceText },
-        )}
-        data-testid="catalog-merge-promote"
-        disabled={isSurvivor}
-        onClick={onPromote}
-        size="icon"
-        type="button"
-        variant="ghost"
+      <LocalizedTooltip
+        label={localizedStrings['%interlinearizer_analysisCatalog_mergeMoveToTop%']}
       >
-        <ArrowUpToLine aria-hidden className="tw:size-5" />
-      </Button>
+        <Button
+          aria-label={formatReplacementString(
+            localizedStrings['%interlinearizer_analysisCatalog_mergePromote%'],
+            { gloss: candidate.gloss || surfaceText },
+          )}
+          data-testid="catalog-merge-promote"
+          disabled={isSurvivor}
+          onClick={onPromote}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <ArrowUpToLine aria-hidden className="tw:size-5" />
+        </Button>
+      </LocalizedTooltip>
     </li>
   );
 }
@@ -557,28 +557,29 @@ export default function CatalogMergeModal({
 
       {/* Bordered as an analysis in the listing is, the merged content being what they all merge into. */}
       <div className="tw:mt-4 tw:flex tw:flex-col tw:gap-3 tw:rounded tw:border tw:border-border tw:p-3">
-        <div className="tw:flex tw:items-center tw:gap-3">
-          <Label className={FIELD_LABEL_CLASS} htmlFor={glossFieldId}>
-            {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
-          </Label>
-          <div className="tw:min-w-0 tw:flex-1">
-            <RevertableField
-              edited={edits.gloss !== undefined}
-              field="gloss"
-              label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
-              onRevert={() => editField('gloss', undefined)}
-            >
-              <Input
-                className="tw:h-7 tw:w-full tw:min-w-0 tw:pe-7 tw:text-sm"
-                data-testid="catalog-merge-content-gloss"
-                id={glossFieldId}
-                onChange={(e) => editField('gloss', e.target.value)}
-                type="text"
-                value={content.gloss}
-              />
-            </RevertableField>
-          </div>
-        </div>
+        <BoxAlignedField
+          label={
+            <Label className={ROW_LABEL_CLASS} htmlFor={glossFieldId}>
+              {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
+            </Label>
+          }
+        >
+          <RevertableField
+            edited={edits.gloss !== undefined}
+            field="gloss"
+            label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
+            onRevert={() => editField('gloss', undefined)}
+          >
+            <Input
+              className="tw:h-7 tw:w-full tw:min-w-0 tw:pe-7 tw:text-sm"
+              data-testid="catalog-merge-content-gloss"
+              id={glossFieldId}
+              onChange={(e) => editField('gloss', e.target.value)}
+              type="text"
+              value={content.gloss}
+            />
+          </RevertableField>
+        </BoxAlignedField>
 
         {/* Boxed as the row editor's breakdown is, so the forms and their glosses read as one unit
             wherever a breakdown is edited. */}
@@ -729,52 +730,58 @@ export default function CatalogMergeModal({
 
         {/* The field a reader settles after the gloss and its breakdown, set smaller so it does not
             read as the decision the panel is about. */}
-        <div className="tw:flex tw:items-center tw:gap-3">
-          <span className={FIELD_LABEL_CLASS}>
-            {localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
-          </span>
-          <Select
-            onValueChange={(value) => editField('confidence', confidenceChoice(value) ?? CLEARED)}
-            value={content.confidence ?? NO_CONFIDENCE}
-          >
-            <SelectTrigger
-              aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
-              className="tw:h-6 tw:text-xs"
-              data-testid="catalog-merge-content-confidence"
-              size="sm"
+        <BoxAlignedField
+          label={
+            <span className={ROW_LABEL_CLASS}>
+              {localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
+            </span>
+          }
+        >
+          <div className="tw:flex tw:items-center tw:gap-3">
+            <Select
+              onValueChange={(value) => editField('confidence', confidenceChoice(value) ?? CLEARED)}
+              value={content.confidence ?? NO_CONFIDENCE}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem data-testid="catalog-merge-confidence-none" value={NO_CONFIDENCE}>
-                {localizedStrings['%interlinearizer_analysisCatalog_mergeConfidenceNone%']}
-              </SelectItem>
-              {CONFIDENCE_LEVELS.map((level) => (
-                <SelectItem
-                  data-testid={`catalog-merge-confidence-${level}`}
-                  key={level}
-                  value={level}
-                >
-                  {localizedStrings[CONFIDENCE_LABEL_KEYS[level]]}
+              <SelectTrigger
+                aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeConfidence%']}
+                className="tw:h-6 tw:text-xs"
+                data-testid="catalog-merge-content-confidence"
+                size="sm"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem data-testid="catalog-merge-confidence-none" value={NO_CONFIDENCE}>
+                  {localizedStrings['%interlinearizer_analysisCatalog_mergeConfidenceNone%']}
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {/* Beside the select rather than inside it, a select having no room to overlay one. */}
-          {edits.confidence !== undefined && (
-            <Button
-              aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
-              className="tw:size-7 tw:shrink-0 tw:text-muted-foreground"
-              data-testid="catalog-merge-revert-confidence"
-              onClick={() => editField('confidence', undefined)}
-              size="icon"
-              type="button"
-              variant="ghost"
-            >
-              <X aria-hidden className="tw:size-3.5" />
-            </Button>
-          )}
-        </div>
+                {CONFIDENCE_LEVELS.map((level) => (
+                  <SelectItem
+                    data-testid={`catalog-merge-confidence-${level}`}
+                    key={level}
+                    value={level}
+                  >
+                    {localizedStrings[CONFIDENCE_LABEL_KEYS[level]]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* Beside the select rather than inside it, because a select has no room to overlay
+                one. */}
+            {edits.confidence !== undefined && (
+              <Button
+                aria-label={localizedStrings['%interlinearizer_analysisCatalog_mergeRevertField%']}
+                className="tw:size-7 tw:shrink-0 tw:text-muted-foreground"
+                data-testid="catalog-merge-revert-confidence"
+                onClick={() => editField('confidence', undefined)}
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <X aria-hidden className="tw:size-3.5" />
+              </Button>
+            )}
+          </div>
+        </BoxAlignedField>
       </div>
 
       {verdict.reason === 'will-collapse' && (

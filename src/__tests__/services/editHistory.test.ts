@@ -382,6 +382,19 @@ describe("EditHistory's forgetting saves", () => {
     await expect(storedDirty()).resolves.toBe(false);
   });
 
+  it('marks the draft saved when an undo leads back to saved content noted as empty, though a later save superseded it', async () => {
+    const { history, repository, storedDirty } = makeHistory();
+    history.noteEmpty();
+    await history.apply(putting('a'));
+    await history.markClean();
+
+    history.forgetSaves(false);
+    await repository.apply({ intent: 'unsave' });
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
   it('marks the draft unsaved when an undo leads back to unsaved content noted as empty', async () => {
     const { history, repository, storedDirty } = makeHistory();
     await seedRepository(repository, { ...emptyDraft('src'), dirty: true });

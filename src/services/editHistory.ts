@@ -91,6 +91,9 @@ export class EditHistory {
   /** The states whose content is empty, as far as the history has been told. */
   private readonly emptyStates = new Set<number>();
 
+  /** The empty states the history has seen saved, later saves notwithstanding. */
+  private readonly savedEmptyStates = new Set<number>();
+
   private appliedCount = 0;
 
   /**
@@ -124,13 +127,13 @@ export class EditHistory {
   }
 
   /**
-   * Forgets every save of content that isn't empty. A state still counts as saved only when it was
-   * saved and {@link noteEmpty} recorded it as empty. With `keepCurrent` set, the current state
-   * counts as saved too.
+   * Forgets every save of content that isn't empty. A state still counts as saved only when
+   * {@link noteEmpty} recorded it as empty before it was saved. A later save of other content
+   * doesn't change that. With `keepCurrent` set, the current state counts as saved too.
    */
   forgetSaves(keepCurrent: boolean): void {
-    const kept = [...this.cleanStates].filter((state) => this.emptyStates.has(state));
-    this.cleanStates = new Set(keepCurrent ? [...kept, this.state] : kept);
+    this.cleanStates = new Set(this.savedEmptyStates);
+    if (keepCurrent) this.addCleanState();
   }
 
   /**
@@ -159,7 +162,7 @@ export class EditHistory {
     this.forgetUnneededPasses();
     this.lastState += 1;
     this.state = this.lastState;
-    if (keep && !wasDirty) this.cleanStates.add(this.state);
+    if (keep && !wasDirty) this.addCleanState();
     if (options?.unsavedMark === 'clear') await this.markRestoredClean();
     return inverse;
   }
@@ -184,7 +187,7 @@ export class EditHistory {
    */
   async markRestoredClean(): Promise<void> {
     await this.repository.markClean();
-    this.cleanStates.add(this.state);
+    this.addCleanState();
   }
 
   /**
@@ -264,7 +267,15 @@ export class EditHistory {
 
   /** Unless `wasDirty`, makes the current state the only clean one, if it isn't clean already. */
   private noteMark(wasDirty: boolean): void {
-    if (!wasDirty && !this.cleanStates.has(this.state)) this.cleanStates = new Set([this.state]);
+    if (wasDirty || this.cleanStates.has(this.state)) return;
+    this.cleanStates = new Set();
+    this.addCleanState();
+  }
+
+  /** Counts the current state as saved. */
+  private addCleanState(): void {
+    this.cleanStates.add(this.state);
+    if (this.emptyStates.has(this.state)) this.savedEmptyStates.add(this.state);
   }
 
   /** Forgets each pass that every step left in the history already reflects. */

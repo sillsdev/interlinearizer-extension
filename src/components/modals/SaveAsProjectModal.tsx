@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import useProjectsForSource from '../../hooks/useProjectsForSource';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
+import { uniqueDefaultName } from '../../utils/unique-name';
 import { ModalShell } from './ModalShell';
 import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
@@ -11,6 +12,8 @@ import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_saveAs_title%',
   '%interlinearizer_modal_saveAs_new_section%',
+  '%interlinearizer_modal_saveAs_defaultName%',
+  '%interlinearizer_modal_saveAs_defaultNameNumbered%',
   '%interlinearizer_modal_create_name_label%',
   '%interlinearizer_modal_create_name_placeholder%',
   '%interlinearizer_modal_create_description_label%',
@@ -49,8 +52,9 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
  *   currently working against.
  * @param props.hasUnsavedWork - Whether the draft holds work not yet written to the active project;
  *   only meaningful when {@link activeProjectId} names a project in the list.
- * @param props.defaultName - Name prefilled into the new-project field (the draft's suggested
- *   name).
+ * @param props.activeProjectName - Name of the project open as the active Save target, if any. The
+ *   new-project field is prefilled with a copy of this name, numbered past any name that a loaded
+ *   project of the source bears. With no active project, the field starts blank.
  * @param props.defaultDescription - Description prefilled into the new-project field.
  * @param props.onSaveNew - Called with the trimmed name/description to save the draft as a new
  *   project.
@@ -63,7 +67,7 @@ export function SaveAsProjectModal({
   sourceProjectId,
   activeProjectId,
   hasUnsavedWork,
-  defaultName,
+  activeProjectName,
   defaultDescription,
   onSaveNew,
   onOverwrite,
@@ -72,7 +76,7 @@ export function SaveAsProjectModal({
   sourceProjectId: string;
   activeProjectId?: string;
   hasUnsavedWork: boolean;
-  defaultName?: string;
+  activeProjectName?: string;
   defaultDescription?: string;
   onSaveNew: (name: string, description?: string) => void | Promise<void>;
   onOverwrite: (project: InterlinearProjectSummary) => void | Promise<void>;
@@ -80,9 +84,21 @@ export function SaveAsProjectModal({
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(SAVE_AS_MODAL_STRING_KEYS);
 
-  const [name, setName] = useState(defaultName ?? '');
+  const [name, setName] = useState<string | undefined>(undefined);
   const [description, setDescription] = useState(defaultDescription ?? '');
   const { projects, isLoading } = useProjectsForSource(sourceProjectId);
+  // The prefill resolves with the strings and the project list, after the first render, so the
+  // typed name starts undefined and falls back to the prefill until edited.
+  const nameValue =
+    name ??
+    (stringsLoading || isLoading || activeProjectName === undefined
+      ? ''
+      : uniqueDefaultName(
+          projects.map((project) => project.name),
+          localizedStrings['%interlinearizer_modal_saveAs_defaultName%'],
+          localizedStrings['%interlinearizer_modal_saveAs_defaultNameNumbered%'],
+          { name: activeProjectName },
+        ));
   const overwriteTargets = projects.filter((project) => project.pt9Import === undefined);
 
   // Guards the save controls against double-submit; `isSubmitting` disables them while a save runs.
@@ -107,9 +123,9 @@ export function SaveAsProjectModal({
   const handleSaveNew = useCallback(
     () =>
       runGuarded(async () => {
-        await onSaveNew(name.trim(), description.trim() || undefined);
+        await onSaveNew(nameValue.trim(), description.trim() || undefined);
       }),
-    [name, description, onSaveNew, runGuarded],
+    [nameValue, description, onSaveNew, runGuarded],
   );
 
   /**
@@ -154,7 +170,7 @@ export function SaveAsProjectModal({
       <Input
         id="save-as-name"
         className="tw:mb-3 tw:w-full"
-        value={name}
+        value={nameValue}
         onChange={(e) => setName(e.target.value)}
         placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
       />
@@ -173,7 +189,7 @@ export function SaveAsProjectModal({
         <Button
           onClick={handleSaveNew}
           data-testid="save-as-new"
-          disabled={isSubmitting || name.trim() === ''}
+          disabled={isSubmitting || nameValue.trim() === ''}
         >
           {localizedStrings['%interlinearizer_modal_saveAs_save_new%']}
         </Button>

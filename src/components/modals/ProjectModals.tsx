@@ -570,7 +570,7 @@ export default function ProjectModals({
           sourceProjectId={projectId}
           activeProjectId={activeProject?.id}
           hasUnsavedWork={hasUnsavedWork}
-          defaultName={draftSnapshot?.suggestedName}
+          activeProjectName={activeProject?.name}
           defaultDescription={draftSnapshot?.suggestedDescription}
           onSaveNew={handleSaveAsNew}
           onOverwrite={handleOverwrite}

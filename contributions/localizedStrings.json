@@ -305,6 +305,8 @@
 
       "%interlinearizer_modal_saveAs_title%": "Save As",
       "%interlinearizer_modal_saveAs_new_section%": "Save as a new project",
+      "%interlinearizer_modal_saveAs_defaultName%": "Copy of {name}",
+      "%interlinearizer_modal_saveAs_defaultNameNumbered%": "Copy ({number}) of {name}",
       "%interlinearizer_modal_saveAs_save_new%": "Save as New Project",
       "%interlinearizer_modal_saveAs_existing_section%": "Or overwrite an existing project",
       "%interlinearizer_modal_saveAs_none%": "No existing projects for this source yet.",

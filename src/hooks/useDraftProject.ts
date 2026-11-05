@@ -107,7 +107,7 @@ export type OpenableProject = Pick<
 export type NewDraftConfig = {
   /** BCP 47 tags for the gloss / annotation languages the new draft should use. */
   analysisLanguages: string[];
-  /** Name typed in the New dialog, retained to prefill Save As; omitted when left blank. */
+  /** Name typed in the New dialog. */
   suggestedName?: string;
   /** Description typed in the New dialog, retained to prefill Save As; omitted when left blank. */
   suggestedDescription?: string;

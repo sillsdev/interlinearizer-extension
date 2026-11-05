@@ -6,6 +6,7 @@ import { useState } from 'react';
 import useProjectsForSource from '../../hooks/useProjectsForSource';
 import LocalizedTooltip from '../LocalizedTooltip';
 import { TOOLTIP_DELAY_MS } from '../tooltip-delay';
+import { uniqueDefaultName } from '../../utils/unique-name';
 import { ModalShell } from './ModalShell';
 
 /** Localized string keys requested for this modal's rendered text. */
@@ -20,21 +21,6 @@ const COPY_TO_EDITABLE_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_name_label%',
   '%interlinearizer_modal_metadata_description_label%',
 ];
-
-/**
- * Returns `defaultName` when none of `takenNames` matches it, else the first fill of
- * `numberedTemplate`'s `{number}` placeholder, counting from 2, that none matches.
- */
-function uniqueDefaultName(
-  takenNames: ReadonlySet<string | undefined>,
-  defaultName: string,
-  numberedTemplate: string,
-): string {
-  let candidate = defaultName;
-  for (let number = 2; takenNames.has(candidate); number += 1)
-    candidate = formatReplacementString(numberedTemplate, { number });
-  return candidate;
-}
 
 /**
  * Dialog for copying a Paratext 9 import into an editable project: a name and an optional
@@ -73,7 +59,7 @@ export function CopyToEditableModal({
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   const defaultName = uniqueDefaultName(
-    new Set(projects.map((project) => project.name)),
+    projects.map((project) => project.name),
     localizedStrings['%interlinearizer_copyModal_defaultName%'],
     localizedStrings['%interlinearizer_copyModal_defaultNameNumbered%'],
   );

@@ -14,6 +14,8 @@ const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_saveAs_title%': 'Save As',
   '%interlinearizer_modal_saveAs_new_section%': 'Save as new project',
+  '%interlinearizer_modal_saveAs_defaultName%': 'Copy of {name}',
+  '%interlinearizer_modal_saveAs_defaultNameNumbered%': 'Copy ({number}) of {name}',
   '%interlinearizer_modal_create_name_label%': 'Name',
   '%interlinearizer_modal_create_name_placeholder%': 'e.g. Greek NT glossing',
   '%interlinearizer_modal_create_description_label%': 'Description',
@@ -69,17 +71,62 @@ describe('SaveAsProjectModal', () => {
     );
   });
 
-  it('prefills the name and description fields from the defaults', async () => {
-    render(
-      <SaveAsProjectModal
-        {...defaultProps}
-        defaultName="Draft name"
-        defaultDescription="Draft description"
-      />,
+  it('holds the name blank and save-as-new disabled until the project list loads', async () => {
+    let resolveList: (json: string) => void = () => {};
+    mockSendCommand.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveList = resolve;
+      }),
     );
+    render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
 
-    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Draft name'));
-    expect(screen.getByLabelText('Description')).toHaveValue('Draft description');
+    expect(screen.getByLabelText('Name')).toHaveValue('');
+    expect(screen.getByTestId('save-as-new')).toBeDisabled();
+
+    resolveList(JSON.stringify([makeProjectSummary({ name: 'Copy of Greek' })]));
+
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Copy (2) of Greek'));
+  });
+
+  it('follows a rename of the active project until the name is edited', async () => {
+    const { rerender } = render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Copy of Greek'));
+
+    rerender(<SaveAsProjectModal {...defaultProps} activeProjectName="Koine" />);
+
+    expect(screen.getByLabelText('Name')).toHaveValue('Copy of Koine');
+  });
+
+  it('leaves the name blank when no project is active', async () => {
+    render(<SaveAsProjectModal {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled());
+    expect(screen.getByLabelText('Name')).toHaveValue('');
+  });
+
+  it('prefills the description from the default', async () => {
+    render(<SaveAsProjectModal {...defaultProps} defaultDescription="Draft description" />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Description')).toHaveValue('Draft description'),
+    );
+  });
+
+  it('keeps an edited name when the project list loads after the edit', async () => {
+    let resolveList: (json: string) => void = () => {};
+    mockSendCommand.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveList = resolve;
+      }),
+    );
+    render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
+
+    await userEvent.clear(screen.getByLabelText('Name'));
+    await userEvent.type(screen.getByLabelText('Name'), 'Mine');
+    resolveList(JSON.stringify([makeProjectSummary({ name: 'Copy of Greek' })]));
+
+    await screen.findByText('Copy of Greek');
+    expect(screen.getByLabelText('Name')).toHaveValue('Mine');
   });
 
   it('calls onSaveNew with the trimmed name and description', async () => {
@@ -572,7 +619,9 @@ describe('SaveAsProjectModal', () => {
           resolveSave = resolve;
         }),
     );
-    render(<SaveAsProjectModal {...defaultProps} defaultName="Draft name" onSaveNew={onSaveNew} />);
+    render(
+      <SaveAsProjectModal {...defaultProps} activeProjectName="Draft" onSaveNew={onSaveNew} />,
+    );
 
     // Let the mount's project-list load settle before interacting, so its state update is flushed.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled());

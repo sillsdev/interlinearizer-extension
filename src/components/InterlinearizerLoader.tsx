@@ -976,31 +976,36 @@ function InterlinearizerLoaderInner({
 
   // The active reference handed to the interlinearizer. The host emits `verseNum: 0` both for a
   // chapter's verse-0 superscription (which has its own segment) and for a plain whole-chapter
-  // selection (which does not): keep verse 0 when the loaded book has a verse-0 segment or opening
-  // heading for that chapter, otherwise fall back to the chapter's first numbered verse. A reference
-  // contained in any segment's verse range passes through unchanged. A reference no segment contains
-  // (the host's next-verse over-shooting the chapter's end) resolves to the nearest preceding segment
-  // start in the same chapter, falling through unchanged when the chapter has none.
+  // selection (which does not). Verse 0 is kept when the loaded book has a verse-0 segment or opening
+  // heading for that chapter. Otherwise it falls forward to the chapter's earliest verse start. A
+  // reference contained in any segment's verse range passes through unchanged. Any other reference
+  // that no segment contains (the host's next-verse over-shooting the chapter's end) resolves to the
+  // nearest preceding verse start in the same chapter. Both fall-backs leave the reference unchanged
+  // when the chapter has no verse starts.
   const activeScrRef = useMemo(() => {
     if (!book) return scrRef;
     if (book.segments.some((segment) => segmentContainsVerse(segment, scrRef))) return scrRef;
-    if (scrRef.verseNum === 0) return { ...scrRef, verseNum: 1 };
+    const isVerseZero = scrRef.verseNum === 0;
     // Search the verse starts themselves rather than each segment's `startRef`: a cross-chapter
     // segment (e.g. one starting at 4:20 but covering through 5:3) has `startRef.chapter === 4`, so
     // filtering by `startRef` would miss it when resolving an over-shoot within chapter 5. Each verse
     // start carries its own chapter, so `vs.chapter` finds the nearest preceding verse regardless of
     // where the segment's boundary falls.
-    let precedingVerse: number | undefined;
+    let resolvedVerse: number | undefined;
     book.segments.forEach((segment) => {
       if (segment.startRef.book !== scrRef.book) return;
       segment.verseStarts.forEach((vs) => {
         if (vs.chapter !== scrRef.chapterNum) return;
         const verse = firstVerseNumber(vs.number);
-        if (verse === undefined || verse > scrRef.verseNum) return;
-        if (precedingVerse === undefined || verse > precedingVerse) precedingVerse = verse;
+        if (verse === undefined || (!isVerseZero && verse > scrRef.verseNum)) return;
+        if (
+          resolvedVerse === undefined ||
+          (isVerseZero ? verse < resolvedVerse : verse > resolvedVerse)
+        )
+          resolvedVerse = verse;
       });
     });
-    return precedingVerse !== undefined ? { ...scrRef, verseNum: precedingVerse } : scrRef;
+    return resolvedVerse !== undefined ? { ...scrRef, verseNum: resolvedVerse } : scrRef;
   }, [scrRef, book]);
 
   const loadError = bookError ?? pagesError;

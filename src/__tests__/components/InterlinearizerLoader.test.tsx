@@ -888,8 +888,13 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('resolves a verse-0 reference to verse 1 when the book has no verse-0 segment', async () => {
-    // GEN_1_1_BOOK has only a GEN 1:1 segment, so a whole-chapter (verse 0) selection falls back to
-    // the chapter's first numbered verse rather than leaving nothing highlighted.
+    mockBookData({
+      book: makeVerseBook([
+        { sid: 'GEN 3:1', text: 'Now the serpent.' },
+        { sid: 'GEN 3:2', text: 'And the woman said.' },
+      ]),
+    });
+
     await act(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
@@ -904,6 +909,50 @@ describe('InterlinearizerLoader', () => {
       book: 'GEN',
       chapterNum: 3,
       verseNum: 1,
+    });
+  });
+
+  it("resolves a verse-0 reference to the chapter's earliest verse when it lacks verse 1", async () => {
+    mockBookData({
+      book: makeVerseBook([
+        { sid: 'GEN 2:25', text: 'And they were not ashamed.' },
+        { sid: 'GEN 3:3', text: 'But of the fruit.' },
+        { sid: 'GEN 3:2', text: 'And the woman said.' },
+      ]),
+    });
+
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
+          book: 'GEN',
+          chapterNum: 3,
+          verseNum: 0,
+        }),
+      });
+    });
+
+    expect(capturedInterlinearizerProps?.scrRef).toEqual({
+      book: 'GEN',
+      chapterNum: 3,
+      verseNum: 2,
+    });
+  });
+
+  it('keeps a verse-0 reference to a chapter with no verse starts', async () => {
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
+          book: 'GEN',
+          chapterNum: 3,
+          verseNum: 0,
+        }),
+      });
+    });
+
+    expect(capturedInterlinearizerProps?.scrRef).toEqual({
+      book: 'GEN',
+      chapterNum: 3,
+      verseNum: 0,
     });
   });
 

@@ -8,8 +8,7 @@ namespace Interlinearizer.Crdt;
 
 /// <summary>
 /// Some of a project's fields to change. A field left unset is left alone and one set to null is
-/// cleared. Languages are added and removed by name; a language already present or already
-/// absent is left as it is, and one named in both lists ends present.
+/// cleared; the language list is replaced whole.
 /// </summary>
 public record ProjectPatch
 {
@@ -17,8 +16,7 @@ public record ProjectPatch
     public PatchField<string?> Description { get; init; }
     public PatchField<string?> TargetProjectId { get; init; }
     public PatchField<SegmentationDelta?> Segmentation { get; init; }
-    public List<string>? AddedAnalysisLanguages { get; init; }
-    public List<string>? RemovedAnalysisLanguages { get; init; }
+    public PatchField<List<string>?> AnalysisLanguages { get; init; }
 }
 
 /// <summary>
@@ -52,7 +50,7 @@ public class InterlinearProjects(DataModel dataModel, InterlinearizerCrdtDbConte
         await Commit("createProject", new CreateInterlinearProjectChange(project));
     }
 
-    /// <summary>Applies <paramref name="patch"/> to the project stored under <paramref name="id"/> in one commit. A patch that changes nothing writes no commit.</summary>
+    /// <summary>Applies <paramref name="patch"/> to the project stored under <paramref name="id"/> in one commit. A patch that sets nothing writes no commit.</summary>
     /// <exception cref="ArgumentException">If no project is stored under the id; nothing is written.</exception>
     public async Task Patch(Guid id, ProjectPatch patch)
     {
@@ -63,8 +61,7 @@ public class InterlinearProjects(DataModel dataModel, InterlinearizerCrdtDbConte
             Description = patch.Description,
             TargetProjectId = patch.TargetProjectId,
             Segmentation = patch.Segmentation,
-            AddedAnalysisLanguages = patch.AddedAnalysisLanguages,
-            RemovedAnalysisLanguages = patch.RemovedAnalysisLanguages,
+            AnalysisLanguages = patch.AnalysisLanguages,
         };
         if (change.IsEmpty) return;
         await Commit("updateProject", change);

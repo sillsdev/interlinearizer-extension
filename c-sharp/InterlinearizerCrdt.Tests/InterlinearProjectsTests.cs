@@ -82,8 +82,7 @@ public class InterlinearProjectsTests : CrdtTestBase
         {
             Name = "Genesis and Exodus",
             TargetProjectId = new(null),
-            AddedAnalysisLanguages = ["de"],
-            RemovedAnalysisLanguages = ["fr"],
+            AnalysisLanguages = new List<string> { "en", "de" },
         });
 
         var stored = (await Projects.Get(_id))!;
@@ -96,12 +95,12 @@ public class InterlinearProjectsTests : CrdtTestBase
     }
 
     [Test]
-    public async Task PatchThatChangesNothingWritesNoCommit()
+    public async Task PatchThatSetsNothingWritesNoCommit()
     {
         await Projects.Create(Project(_id));
         var commits = await Commits();
 
-        await Projects.Patch(_id, new ProjectPatch { AddedAnalysisLanguages = [] });
+        await Projects.Patch(_id, new ProjectPatch());
 
         await Assert.That(await Commits()).IsEqualTo(commits);
     }

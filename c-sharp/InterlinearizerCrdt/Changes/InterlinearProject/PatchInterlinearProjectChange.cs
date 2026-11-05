@@ -6,9 +6,8 @@ using SIL.Harmony.Entities;
 namespace Interlinearizer.Crdt.Changes;
 
 /// <summary>
-/// Changes some of an <see cref="InterlinearProject"/>'s fields. Languages are added and removed
-/// rather than replaced, so two devices adding languages at once both keep theirs; a language
-/// already present or already absent is left as it is, and one named in both lists ends present.
+/// Changes some of an <see cref="InterlinearProject"/>'s fields. The language list is replaced
+/// whole, duplicates dropped; a null list leaves none.
 /// </summary>
 public class PatchInterlinearProjectChange(Guid entityId)
     : EditChange<InterlinearProject>(entityId), ISelfNamedType<PatchInterlinearProjectChange>
@@ -19,15 +18,13 @@ public class PatchInterlinearProjectChange(Guid entityId)
         !Description.HasValue &&
         !TargetProjectId.HasValue &&
         !Segmentation.HasValue &&
-        AddedAnalysisLanguages is not { Count: > 0 } &&
-        RemovedAnalysisLanguages is not { Count: > 0 };
+        !AnalysisLanguages.HasValue;
 
     public PatchField<string?> Name { get; init; }
     public PatchField<string?> Description { get; init; }
     public PatchField<string?> TargetProjectId { get; init; }
     public PatchField<SegmentationDelta?> Segmentation { get; init; }
-    public List<string>? AddedAnalysisLanguages { get; init; }
-    public List<string>? RemovedAnalysisLanguages { get; init; }
+    public PatchField<List<string>?> AnalysisLanguages { get; init; }
 
     public override ValueTask ApplyChange(InterlinearProject entity, IChangeContext context)
     {
@@ -36,11 +33,7 @@ public class PatchInterlinearProjectChange(Guid entityId)
         if (Description.HasValue) entity.Description = Description.Value;
         if (TargetProjectId.HasValue) entity.TargetProjectId = TargetProjectId.Value;
         if (Segmentation.HasValue) entity.Segmentation = Segmentation.Value;
-        foreach (var language in RemovedAnalysisLanguages ?? []) entity.AnalysisLanguages.Remove(language);
-        foreach (var language in AddedAnalysisLanguages ?? [])
-        {
-            if (!entity.AnalysisLanguages.Contains(language)) entity.AnalysisLanguages.Add(language);
-        }
+        if (AnalysisLanguages.HasValue) entity.AnalysisLanguages = (AnalysisLanguages.Value ?? []).Distinct().ToList();
         return ValueTask.CompletedTask;
     }
 }

@@ -19,13 +19,12 @@ public static class Fixtures
         Segmentation = new SegmentationDelta(["GEN 1:2"], [Token2]),
     };
 
-    /// <summary>Sets some fields, clears one, and adds and removes a language.</summary>
+    /// <summary>Sets some fields, clears one, and replaces the languages.</summary>
     public static PatchInterlinearProjectChange PatchInterlinearProject(Guid id) => new(id)
     {
         Name = "Genesis and Exodus",
         TargetProjectId = null,
-        AddedAnalysisLanguages = ["de"],
-        RemovedAnalysisLanguages = ["fr"],
+        AnalysisLanguages = new List<string> { "en", "de" },
     };
 
     public static MultiString Multi(string en, string fr) => new() { ["en"] = en, ["fr"] = fr };

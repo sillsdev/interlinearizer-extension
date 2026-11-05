@@ -27,7 +27,7 @@ public record CreateProjectArgs(
     List<string>? AnalysisLanguages,
     SegmentationDelta? Segmentation);
 
-/// <summary>A project to patch, with the fields to set or clear and the languages to add and remove.</summary>
+/// <summary>A project to patch, with the fields to set or clear, the language list among them.</summary>
 public record UpdateProjectArgs(string SourceProjectId, string ProjectId) : ProjectPatch, IProjectArgs;
 
 public record ApplyArgs(string SourceProjectId, string ProjectId, ChangeSet Changes) : IProjectArgs;

@@ -65,28 +65,37 @@ public class InterlinearProjectTests : CrdtTestBase
     }
 
     [Test]
-    public async Task PatchAddsAndRemovesLanguagesLeavingOnesAlreadyThereOrAbsentAlone()
+    public async Task PatchReplacesTheLanguagesWholeDroppingDuplicates()
     {
         await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
 
         await WriteNextChange(new PatchInterlinearProjectChange(_projectId)
         {
-            AddedAnalysisLanguages = ["de", "en"],
-            RemovedAnalysisLanguages = ["fr", "es"],
+            AnalysisLanguages = new List<string> { "de", "en", "de" },
         });
 
-        await Assert.That((await Project())!.AnalysisLanguages).IsEquivalentTo(["en", "de"]);
+        await Assert.That((await Project())!.AnalysisLanguages).IsEquivalentTo(["de", "en"]);
     }
 
     [Test]
-    public async Task PatchesAddingDifferentLanguagesBothKeepTheirsInEitherCommitOrder()
+    public async Task PatchWithANullLanguageListLeavesNone()
     {
         await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
-        var later = await WriteNextChange(new PatchInterlinearProjectChange(_projectId) { AddedAnalysisLanguages = ["de"] });
 
-        await WriteChangeBefore(later, new PatchInterlinearProjectChange(_projectId) { AddedAnalysisLanguages = ["es"] });
+        await WriteNextChange(new PatchInterlinearProjectChange(_projectId) { AnalysisLanguages = new PatchField<List<string>?>(null) });
 
-        await Assert.That((await Project())!.AnalysisLanguages).IsEquivalentTo(["fr", "en", "es", "de"]);
+        await Assert.That((await Project())!.AnalysisLanguages).IsEmpty();
+    }
+
+    [Test]
+    public async Task TheLaterLanguagePatchStandsWhicheverCommitArrivesFirst()
+    {
+        await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
+        var later = await WriteNextChange(new PatchInterlinearProjectChange(_projectId) { AnalysisLanguages = new List<string> { "de" } });
+
+        await WriteChangeBefore(later, new PatchInterlinearProjectChange(_projectId) { AnalysisLanguages = new List<string> { "es" } });
+
+        await Assert.That((await Project())!.AnalysisLanguages).IsEquivalentTo(["de"]);
     }
 
     [Test]

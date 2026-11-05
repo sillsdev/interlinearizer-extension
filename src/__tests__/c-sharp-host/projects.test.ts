@@ -115,7 +115,7 @@ describe('the host over one source', () => {
     ).rejects.toThrow('already been stored');
   });
 
-  it('updates the fields a patch sets and the languages it adds and removes', async () => {
+  it('updates the fields a patch sets, the language list whole', async () => {
     const source = 'source-update';
     const a = crypto.randomUUID();
     await command('createProject', {
@@ -134,8 +134,7 @@ describe('the host over one source', () => {
       // A null on the wire clears the field; leaving it out would leave the field alone.
       // eslint-disable-next-line no-null/no-null
       targetProjectId: null,
-      addedAnalysisLanguages: ['de'],
-      removedAnalysisLanguages: ['fr'],
+      analysisLanguages: ['en', 'de'],
     });
 
     const [listed] = await command<ListedProject[]>('listProjects', { sourceProjectId: source });

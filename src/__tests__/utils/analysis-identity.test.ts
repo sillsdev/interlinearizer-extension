@@ -8,9 +8,15 @@ import {
   phraseAnalysesAreIdentical,
 } from '../../utils/analysis-identity';
 import { foldForSearch } from '../../utils/search-fold';
+import surfaceFormFolds from '../fixtures/surface-form-folds.json';
 
 describe('normalizeSurfaceForm', () => {
-  it('lowercases so a sentence-initial form matches a mid-sentence form', () => {
+  // The C# host's tests run the same fixture, so the two folds cannot drift apart
+  it.each(surfaceFormFolds)('folds as the C# host does: $case', ({ input, expected }) => {
+    expect(normalizeSurfaceForm(input)).toBe(expected);
+  });
+
+  it('folds case so a sentence-initial form matches a mid-sentence form', () => {
     expect(normalizeSurfaceForm('The')).toBe(normalizeSurfaceForm('the'));
   });
 

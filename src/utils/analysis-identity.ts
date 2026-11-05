@@ -1,4 +1,10 @@
 import type { MorphemeAnalysis, PhraseAnalysis, TokenAnalysis } from 'interlinearizer';
+import caseFolding from './case-folding.json';
+
+/** Unicode simple case folding, for every code point that folding changes. */
+const SIMPLE_CASE_FOLDS = new Map(
+  caseFolding.folds.map(([from, to]) => [String.fromCodePoint(from), String.fromCodePoint(to)]),
+);
 
 /**
  * Soft cap on the normalized-form cache. One project's vocabulary is far smaller than this, so the
@@ -18,21 +24,23 @@ const normalizedFormCache = new Map<string, string>();
 
 /**
  * Normalizes a token surface form for matching and dedupe, so trivial Unicode and case differences
- * never split one analysis into two.
+ * never split one analysis into two. It matches the C# host's fold, so a form normalized here finds
+ * the analyses the host stores.
  *
  * Normalization is applied on both sides of the case fold: the leading pass makes a composed `é`
  * match a decomposed `e` + combining acute, and the trailing pass re-canonicalizes the rare code
- * point whose lowercase mapping emits a decomposed sequence. The result therefore never depends on
+ * point whose fold leaves a sequence that NFC would compose. The result therefore never depends on
  * which Unicode form an equivalent input arrived in.
  *
- * The fold is deliberately locale-independent so the result does not vary with the host's locale.
- * The trade-off is that locale-specific folds are skipped — a Turkish dotted `İ` is not folded to
- * an ASCII `i` — an accepted miss, since it can only cost a suggestion, never produce a wrong one.
+ * The fold is Unicode simple case folding. It maps each code point alone, so the result varies with
+ * neither the host's locale nor the letter's place in the word: a final `ς` folds as `σ` does.
+ * Locale-specific folds are skipped — a Turkish dotted `İ` is not folded to an ASCII `i` — an
+ * accepted miss, because it can only cost a suggestion, never produce a wrong one.
  */
 export function normalizeSurfaceForm(text: string): string {
   const cached = normalizedFormCache.get(text);
   if (cached !== undefined) return cached;
-  const normalized = text.normalize('NFC').toLowerCase().normalize('NFC');
+  const normalized = simpleCaseFold(text.normalize('NFC')).normalize('NFC');
   /* v8 ignore start -- eviction is an internal memory bound with no caller-observable effect (the
      result is identical whether cached, recomputed, or evicted); the 50k-entry cap makes it
      impractical to drive from a unit test and there is nothing behavioral to assert if we did */
@@ -45,6 +53,10 @@ export function normalizeSurfaceForm(text: string): string {
   /* v8 ignore stop */
   normalizedFormCache.set(text, normalized);
   return normalized;
+}
+
+function simpleCaseFold(text: string): string {
+  return Array.from(text, (char) => SIMPLE_CASE_FOLDS.get(char) ?? char).join('');
 }
 
 /**

@@ -26,6 +26,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The WebView folds surface forms by the same table. -->
+    <EmbeddedResource Include="..\..\src\utils\case-folding.json" LogicalName="case-folding.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="SIL.Harmony.Core" />
   </ItemGroup>
 

@@ -1,0 +1,52 @@
+[
+  {
+    "case": "ASCII capitals fold to lowercase",
+    "input": "AND",
+    "expected": "and"
+  },
+  {
+    "case": "a final sigma folds as a medial sigma does",
+    "input": "ΟΔΟΣ",
+    "expected": "οδοσ"
+  },
+  {
+    "case": "a lowercase final sigma folds to a medial sigma",
+    "input": "οδος",
+    "expected": "οδοσ"
+  },
+  {
+    "case": "a dotted capital I is left alone",
+    "input": "İ",
+    "expected": "İ"
+  },
+  {
+    "case": "a long s folds to s, which lowercasing leaves alone",
+    "input": "ſun",
+    "expected": "sun"
+  },
+  {
+    "case": "a capital sharp s folds to one sharp s, not to ss",
+    "input": "STRAẞE",
+    "expected": "straße"
+  },
+  {
+    "case": "a micro sign folds to a Greek mu",
+    "input": "µ",
+    "expected": "μ"
+  },
+  {
+    "case": "Cherokee small letters fold to their capitals",
+    "input": "ꮣꮃꭹ",
+    "expected": "ᏓᎳᎩ"
+  },
+  {
+    "case": "a letter outside the Basic Multilingual Plane folds",
+    "input": "𐐀",
+    "expected": "𐐨"
+  },
+  {
+    "case": "a decomposed accent composes around the fold",
+    "input": "CAFÉ",
+    "expected": "café"
+  }
+]

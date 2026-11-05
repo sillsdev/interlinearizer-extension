@@ -20,6 +20,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "format:dotnet": "dotnet format c-sharp/Interlinearizer.slnx",
+    "generate:case-folding": "node scripts/generate-case-folding.cjs",
     "zip": "zip-build dist release --template '%NAME%_%VERSION%.%EXT%' --override",
     "zip:platforms": "node scripts/zip-platforms.cjs",
     "package": "npm run build:production && npm run zip",

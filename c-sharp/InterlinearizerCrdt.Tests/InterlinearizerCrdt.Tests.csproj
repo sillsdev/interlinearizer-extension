@@ -18,6 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\..\src\__tests__\fixtures\surface-form-folds.json" Link="surface-form-folds.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Interlinearizer.Crdt" />
     <Using Include="Interlinearizer.Crdt.Changes" />
     <Using Include="Interlinearizer.Crdt.Entities" />

@@ -1,0 +1,22 @@
+{
+  "latest": [
+    {
+      "$type": "CreatePhraseAnalysisChange",
+      "SurfaceText": "In the",
+      "Confidence": "medium",
+      "Producer": "phrase-finder",
+      "SourceUser": "kevin",
+      "Gloss": {
+        "en": "in the",
+        "fr": "dans le"
+      },
+      "SenseRef": {
+        "SenseId": "sense-1",
+        "Authority": "lexicon",
+        "ProjectId": "lex-project"
+      },
+      "EntityId": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "legacy": []
+}

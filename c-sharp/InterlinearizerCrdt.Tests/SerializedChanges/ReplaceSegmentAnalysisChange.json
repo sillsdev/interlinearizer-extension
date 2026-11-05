@@ -1,0 +1,18 @@
+{
+  "latest": [
+    {
+      "$type": "ReplaceSegmentAnalysisChange",
+      "SurfaceText": "In the beginning,",
+      "Confidence": "medium",
+      "Producer": "translator-tool",
+      "SourceUser": null,
+      "FreeTranslation": {
+        "en": "At the start",
+        "fr": "Au d\u00E9but"
+      },
+      "LiteralTranslation": null,
+      "EntityId": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "legacy": []
+}

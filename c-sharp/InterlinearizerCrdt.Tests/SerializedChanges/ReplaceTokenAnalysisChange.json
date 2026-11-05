@@ -1,0 +1,52 @@
+{
+  "latest": [
+    {
+      "$type": "ReplaceTokenAnalysisChange",
+      "SurfaceText": "\u1F00\u03C1\u03C7\u03AE",
+      "Confidence": "high",
+      "Producer": "human",
+      "SourceUser": "kevin",
+      "Morphemes": [
+        {
+          "Id": "dfed988d-7a18-9bff-9436-d23bcdc42633",
+          "Form": "\u1F00\u03C1\u03C7\u03AE",
+          "WritingSystem": "grc",
+          "EntryRef": {
+            "EntryId": "entry-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "SenseRef": {
+            "SenseId": "sense-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "AllomorphRef": {
+            "AllomorphId": "allo-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "GrammarRef": {
+            "MsaId": "msa-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "Gloss": {
+            "en": "\u1F00\u03C1\u03C7\u03AE-gloss",
+            "fr": "\u1F00\u03C1\u03C7\u03AE-glose"
+          }
+        }
+      ],
+      "MorphemesStale": true,
+      "Pos": "N",
+      "Features": null,
+      "Gloss": {
+        "en": "start",
+        "fr": "d\u00E9but"
+      },
+      "GlossSenseRef": null,
+      "EntityId": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "legacy": []
+}

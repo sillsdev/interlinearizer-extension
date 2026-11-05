@@ -360,6 +360,53 @@ describe("EditHistory's unsaved mark", () => {
   });
 });
 
+describe("EditHistory's forgetting saves", () => {
+  it('marks the draft unsaved when an undo leads back to content saved before the saves were forgotten', async () => {
+    const { history, storedDirty } = makeHistory();
+    await history.apply(putting('a'));
+
+    history.forgetSaves(false);
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(true);
+  });
+
+  it('marks the draft saved when an undo leads back to saved content noted as empty', async () => {
+    const { history, storedDirty } = makeHistory();
+    history.noteEmpty();
+    await history.apply(putting('a'));
+
+    history.forgetSaves(false);
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
+  it('marks the draft unsaved when an undo leads back to unsaved content noted as empty', async () => {
+    const { history, repository, storedDirty } = makeHistory();
+    await seedRepository(repository, { ...emptyDraft('src'), dirty: true });
+    history.noteEmpty();
+    await history.apply(putting('a'));
+
+    history.forgetSaves(false);
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(true);
+  });
+
+  it('marks the draft saved when an undo and redo lead back to the content current when the saves were forgotten', async () => {
+    const { history, storedDirty } = makeHistory();
+    await history.apply(putting('a'), { unsavedMark: 'clear' });
+
+    history.forgetSaves(true);
+    await history.undo();
+    await expect(storedDirty()).resolves.toBe(true);
+    await history.redo();
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+});
+
 describe('EditHistory re-anchoring', () => {
   /** A book of one verse reading `text`, versioned by its text as a book's content hash would. */
   function verseBook(sid: string, text: string): Book {

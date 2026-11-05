@@ -1,6 +1,5 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button, Input, Label, Textarea } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useEffect, useState } from 'react';
 import useProjectsForSource from '../../hooks/useProjectsForSource';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
@@ -95,15 +94,10 @@ export function SaveAsProjectModal({
     (stringsLoading || isLoading || activeProjectName === undefined
       ? ''
       : uniqueDefaultName(
-          new Set(projects.map((project) => project.name)),
-          formatReplacementString(localizedStrings['%interlinearizer_modal_saveAs_defaultName%'], {
-            name: activeProjectName,
-          }),
-          (number) =>
-            formatReplacementString(
-              localizedStrings['%interlinearizer_modal_saveAs_defaultNameNumbered%'],
-              { name: activeProjectName, number },
-            ),
+          projects.map((project) => project.name),
+          localizedStrings['%interlinearizer_modal_saveAs_defaultName%'],
+          localizedStrings['%interlinearizer_modal_saveAs_defaultNameNumbered%'],
+          { name: activeProjectName },
         ));
   const overwriteTargets = projects.filter((project) => project.pt9Import === undefined);
 

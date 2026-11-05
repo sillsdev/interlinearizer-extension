@@ -59,12 +59,9 @@ export function CopyToEditableModal({
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   const defaultName = uniqueDefaultName(
-    new Set(projects.map((project) => project.name)),
+    projects.map((project) => project.name),
     localizedStrings['%interlinearizer_copyModal_defaultName%'],
-    (number) =>
-      formatReplacementString(localizedStrings['%interlinearizer_copyModal_defaultNameNumbered%'], {
-        number,
-      }),
+    localizedStrings['%interlinearizer_copyModal_defaultNameNumbered%'],
   );
   // The prefills resolve with the strings and the project list, after the first render, so the
   // draft name and description start undefined and fall back to their defaults until edited.

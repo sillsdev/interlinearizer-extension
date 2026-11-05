@@ -1,13 +1,19 @@
+import { formatReplacementString } from 'platform-bible-utils';
+
 /**
- * Returns `defaultName` when none of `takenNames` matches it. Otherwise returns the first of
- * `numbered(2)`, `numbered(3)`, and so on that none matches.
+ * Returns `defaultTemplate` filled with `replacements` when no name in `takenNames` matches it.
+ * Otherwise returns the first fill of `numberedTemplate` that no name matches, counting `{number}`
+ * up from 2.
  */
 export function uniqueDefaultName(
-  takenNames: ReadonlySet<string | undefined>,
-  defaultName: string,
-  numbered: (number: number) => string,
+  takenNames: Iterable<string | undefined>,
+  defaultTemplate: string,
+  numberedTemplate: string,
+  replacements: Record<string, string> = {},
 ): string {
-  let candidate = defaultName;
-  for (let number = 2; takenNames.has(candidate); number += 1) candidate = numbered(number);
+  const taken = new Set(takenNames);
+  let candidate = formatReplacementString(defaultTemplate, replacements);
+  for (let number = 2; taken.has(candidate); number += 1)
+    candidate = formatReplacementString(numberedTemplate, { ...replacements, number });
   return candidate;
 }

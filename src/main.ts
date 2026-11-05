@@ -14,6 +14,7 @@ import type {
   DraftProject,
   DraftStart,
   ProjectConfig,
+  RemovalPreviewRequest,
   TokenSnapshot,
 } from 'interlinearizer';
 import type { CommandHandlers, NetworkEvents } from 'papi-shared-types';
@@ -1446,8 +1447,10 @@ function discardStaleAnalysis({
   tokenRef,
   changeId,
 }: ArgsOf<'interlinearizer.discardStaleAnalysis'>): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'discardStaleAnalysis', (buffer) =>
-    staleCommands.discardStaleAnalysis(buffer, { analysisId, tokenRef }),
+  return runSessionEdit(
+    { sessionId, changeId },
+    'discardStaleAnalysis',
+    stageDiscardStaleAnalysis({ analysisId, tokenRef }),
   );
 }
 
@@ -1467,17 +1470,10 @@ function reapplyStaleAnalysis({
   surfaceText,
   changeId,
 }: ArgsOf<'interlinearizer.reapplyStaleAnalysis'>): Promise<string> {
-  const { analysisId: copyId, linkId, now } = editStamp();
-  return runSessionEdit({ sessionId, changeId }, 'reapplyStaleAnalysis', (buffer) =>
-    staleCommands.reapplyStaleAnalysis(buffer, {
-      analysisId,
-      staleTokenRef,
-      tokenRef,
-      surfaceText,
-      copyId,
-      linkId,
-      now,
-    }),
+  return runSessionEdit(
+    { sessionId, changeId },
+    'reapplyStaleAnalysis',
+    stageReapplyStaleAnalysis({ analysisId, staleTokenRef, tokenRef, surfaceText }),
   );
 }
 
@@ -1565,16 +1561,11 @@ function clearAnalysisGlosses({
   const step = {
     summary: { kind: 'catalogClearGlossChecked', count: analysisIds.length },
   } as const;
+  const stage = stageClearAnalysisGlosses({ analysisIds });
   return runSessionEdit(
     { sessionId, changeId, step },
     'clearAnalysisGlosses',
-    async (buffer, session) => ({
-      emptiedAnalysisIds: await catalogCommands.clearAnalysisGlosses(buffer, {
-        analysisIds,
-        analysisLanguage: session.analysisLanguage,
-        now: editStamp().now,
-      }),
-    }),
+    async (buffer, session) => ({ emptiedAnalysisIds: await stage(buffer, session) }),
   );
 }
 
@@ -2174,6 +2165,55 @@ function discardAll({
 }
 
 /**
+ * Stages {@link clearAnalysisGlosses}'s changes; the returned function resolves to the token
+ * analyses that the clear empties.
+ */
+function stageClearAnalysisGlosses({ analysisIds }: { analysisIds: string[] }) {
+  return (buffer: ChangeBuffer, session: Session) =>
+    catalogCommands.clearAnalysisGlosses(buffer, {
+      analysisIds,
+      analysisLanguage: session.analysisLanguage,
+      now: editStamp().now,
+    });
+}
+
+function stageDiscardStaleAnalysis(args: { analysisId: string; tokenRef: string }) {
+  return (buffer: ChangeBuffer) => staleCommands.discardStaleAnalysis(buffer, args);
+}
+
+/** Stages {@link reapplyStaleAnalysis}'s changes, minting the copy's ids when called. */
+function stageReapplyStaleAnalysis(args: {
+  analysisId: string;
+  staleTokenRef: string;
+  tokenRef: string;
+  surfaceText: string;
+}) {
+  const { analysisId: copyId, linkId, now } = editStamp();
+  return (buffer: ChangeBuffer) =>
+    staleCommands.reapplyStaleAnalysis(buffer, { ...args, copyId, linkId, now });
+}
+
+/**
+ * Stages the command a removal preview names, as that command's handler does.
+ *
+ * @throws {Error} If the request names an intent that can't be previewed.
+ */
+function stageRemovals(
+  request: RemovalPreviewRequest,
+): (buffer: ChangeBuffer, session: Session) => Promise<unknown> {
+  switch (request.intent) {
+    case 'clearAnalysisGlosses':
+      return stageClearAnalysisGlosses(request);
+    case 'discardStaleAnalysis':
+      return stageDiscardStaleAnalysis(request);
+    case 'reapplyStaleAnalysis':
+      return stageReapplyStaleAnalysis(request);
+    default:
+      throw new Error(`Interlinearizer: cannot preview the removals of ${JSON.stringify(request)}`);
+  }
+}
+
+/**
  * Names the token analyses a command would remove from a session's draft, applying nothing.
  *
  * @returns A JSON string of the ids; `"[]"` when it would remove none.
@@ -2185,25 +2225,7 @@ async function previewRemovals({
   request,
 }: ArgsOf<'interlinearizer.previewRemovals'>): Promise<string> {
   try {
-    const changes = await sessions.preview(sessionId, request.intent, (buffer, session) => {
-      const { now, linkId, analysisId: copyId } = editStamp();
-      switch (request.intent) {
-        case 'clearAnalysisGlosses':
-          return catalogCommands.clearAnalysisGlosses(buffer, {
-            analysisIds: request.analysisIds,
-            analysisLanguage: session.analysisLanguage,
-            now,
-          });
-        case 'discardStaleAnalysis':
-          return staleCommands.discardStaleAnalysis(buffer, request);
-        case 'reapplyStaleAnalysis':
-          return staleCommands.reapplyStaleAnalysis(buffer, { ...request, copyId, linkId, now });
-        default:
-          throw new Error(
-            `Interlinearizer: cannot preview the removals of ${JSON.stringify(request)}`,
-          );
-      }
-    });
+    const changes = await sessions.preview(sessionId, request.intent, stageRemovals(request));
     return JSON.stringify(changes.tokenAnalyses?.deletes ?? []);
   } catch (e) {
     logger.error(`Interlinearizer: failed to preview removals in session ${sessionId}`, e);

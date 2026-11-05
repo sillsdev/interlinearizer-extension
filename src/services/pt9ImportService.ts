@@ -14,33 +14,37 @@ import { summarizeProject } from './projectSummaries';
 /** The outcome of one import run, returned to the caller as the command's JSON payload. */
 export interface Pt9ImportResult {
   /**
-   * `imported` when a conversion ran and its outcome was persisted. `staleKept` when the source's
-   * interlinear files have disappeared while an earlier import exists: the stored import is left
-   * untouched rather than replaced with nothing, and only an explicit delete removes it.
+   * `imported` when a conversion ran and its outcome was persisted. `staleKept` when nothing could
+   * be converted while an earlier import exists: the stored import is left untouched rather than
+   * replaced with nothing, and only an explicit delete removes it. `notConverted` when a first
+   * import converted no gloss language, so nothing was created.
    */
-  outcome: 'imported' | 'staleKept';
+  outcome: 'imported' | 'staleKept' | 'notConverted';
 
   /**
    * Why the stored import was kept, so the caller can name the cause instead of reporting every
-   * case as missing files. Absent when `outcome` is `imported`.
+   * case as missing files. Absent unless `outcome` is `staleKept`.
    */
   staleReason?: 'sourceEmpty' | 'allFilesTooLarge' | 'noGlossLanguage';
 
   /**
-   * The files no read could take on, present only with `allFilesTooLarge`. Carried on its own
-   * rather than inside a report: no conversion ran, so every count a report holds would be zero.
+   * The files no read could take on, present with `allFilesTooLarge`, `noGlossLanguage`, and
+   * `notConverted`. Carried outside a report, because these outcomes return none.
    */
   filesTooLargeToRead?: Pt9UnreadableFile[];
 
-  /** The id of the created, replaced, or kept import project. */
-  projectId: string;
+  /** The files Paratext 9 never loads, present with `noGlossLanguage` and `notConverted`. */
+  filesPt9NeverLoads?: string[];
 
-  /** The conversion's report; absent when no conversion ran (`staleKept`). */
+  /** The id of the created, replaced, or kept import project; absent with `notConverted`. */
+  projectId?: string;
+
+  /** The conversion's report; absent unless `outcome` is `imported`. */
   report?: Pt9ImportReport;
 
   /**
-   * The summary of the import as written; absent when no conversion ran (`staleKept`). The reply
-   * carries it even when the listing's copy could not be refreshed.
+   * The summary of the import as written; absent unless `outcome` is `imported`. The reply carries
+   * it even when the listing's copy could not be refreshed.
    */
   summary?: InterlinearProjectSummary;
 }
@@ -76,8 +80,8 @@ export async function hasNoInterlinearizerState(
  * A book the source project has no USJ for is skipped and counted in the report rather than failing
  * the import. A book that repeats a verse marker imports without that marker's text.
  *
- * @throws {Error} If the source project has no Paratext 9 interlinear data and no earlier import
- *   exists - nothing is created for an empty source.
+ * @throws {Error} If no earlier import exists and the source project has no Paratext 9 interlinear
+ *   data, or none small enough to read - nothing is created for an empty source.
  * @throws If the platform cannot read or parse the project's interlinear files, the conversion
  *   rejects the input, or persistence fails. Nothing has been written unless persistence itself
  *   failed.
@@ -195,18 +199,29 @@ export async function importPt9Project(
 
   // A project record must carry at least one analysis language, and a conversion that produced no
   // language converted no book. Persisting it would replace a good import with one the metadata
-  // editor cannot even save, so the stored import is kept instead.
+  // editor cannot even save, so a stored import is kept and a first import creates nothing. Either
+  // outcome returns the left-out file lists for the caller to name.
   if (analysisLanguages.length === 0) {
+    const leftOut = {
+      filesTooLargeToRead,
+      filesPt9NeverLoads: report.filesPt9NeverLoads,
+    };
     const existing = await projectStorage.getPt9ImportForSource(token, sourceProjectId);
     if (existing) {
       logger.warn(
         `Interlinearizer: project ${sourceProjectId} converted no gloss language; keeping the stored import ${existing.id} unchanged`,
       );
-      return { outcome: 'staleKept', staleReason: 'noGlossLanguage', projectId: existing.id };
+      return {
+        outcome: 'staleKept',
+        staleReason: 'noGlossLanguage',
+        ...leftOut,
+        projectId: existing.id,
+      };
     }
-    throw new Error(
-      `Project ${sourceProjectId} has no Paratext 9 interlinear book that could be converted`,
+    logger.warn(
+      `Interlinearizer: project ${sourceProjectId} has no Paratext 9 interlinear book that could be converted; nothing was imported`,
     );
+    return { outcome: 'notConverted', ...leftOut };
   }
 
   const [nameFormat, descriptionFormat, projectName] = await Promise.all([

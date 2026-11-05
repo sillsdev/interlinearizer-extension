@@ -128,29 +128,26 @@ describe('convertPt9Project', () => {
       importedAt: STAMP,
     });
 
-    expect(result.report.booksDroppedAsDuplicates).toBe(1);
+    expect(result.report.filesPt9NeverLoads).toEqual(['Interlinear_en_GEN.xml']);
     expect(result.analysis.tokenAnalyses).toHaveLength(1);
     expect(result.analysis.tokenAnalyses[0].surfaceText).toBe('hello');
   });
 
-  it('keeps the first book when duplicates share an identity and none is canonical', () => {
-    const first = {
-      ...bookWith('en', 'GEN', 'hello', 'S1', 'AA'),
-      isCanonicalPath: false,
-    };
-    const second = {
-      ...bookWith('en', 'GEN', 'ghost', 'S9', 'AA'),
-      filePath: 'Interlinear_en_GEN.xml',
+  it('converts nothing from a file PT9 never loads, even with no canonical twin', () => {
+    const stray = {
+      ...bookWith('English', 'GEN', 'hello', 'S1', 'AA'),
+      filePath: 'Interlinear_en/Interlinear_en_opy.xml',
       isCanonicalPath: false,
     };
     const result = convertPt9Project({
-      data: dataOf([first, second]),
+      data: dataOf([stray, bookWith('en', 'GEN', 'hello', 'S1', 'AA')], { lexicon: LEXICON }),
       books: [makeVerseBook([{ sid: 'GEN 1:1', text: 'hello' }])],
       importedAt: STAMP,
     });
 
-    expect(result.report.booksDroppedAsDuplicates).toBe(1);
-    expect(result.analysis.tokenAnalyses[0].surfaceText).toBe('hello');
+    expect(result.report.filesPt9NeverLoads).toEqual(['Interlinear_en/Interlinear_en_opy.xml']);
+    expect(result.analysisLanguages).toEqual(['en']);
+    expect(result.report.languages.map((language) => language.rawLanguage)).toEqual(['en']);
   });
 
   it('merges languages across books and reports a same-tag collision', () => {
@@ -336,7 +333,7 @@ describe('convertPt9Project', () => {
     expect(result.analysis.tokenAnalyses).toHaveLength(0);
   });
 
-  it('counts and drops a book of interlinear data missing its language or book id', () => {
+  it('lists and drops a book of interlinear data missing its language or book id', () => {
     const result = convertPt9Project({
       data: dataOf([
         { bookId: 'GEN', verses: [], filePath: 'Interlinear_x.xml', isCanonicalPath: false },
@@ -347,7 +344,10 @@ describe('convertPt9Project', () => {
       importedAt: STAMP,
     });
 
-    expect(result.report.booksMissingIdentity).toBe(2);
+    expect(result.report.filesPt9NeverLoads).toStrictEqual([
+      'Interlinear_x.xml',
+      'Interlinear_y.xml',
+    ]);
     expect(result.report.languages.map((l) => l.rawLanguage)).toStrictEqual(['en']);
     expect(result.analysis.tokenAnalyses).toHaveLength(1);
   });

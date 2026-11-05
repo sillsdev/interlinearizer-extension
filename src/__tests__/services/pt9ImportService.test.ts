@@ -378,18 +378,30 @@ describe('importPt9Project', () => {
       outcome: 'staleKept',
       staleReason: 'noGlossLanguage',
       projectId: 'import-id',
+      filesTooLargeToRead: [
+        expect.objectContaining({ path: 'Interlinear_en/Interlinear_en_MAT.xml' }),
+      ],
+      filesPt9NeverLoads: [],
     });
     expect(__mockWriteUserData).not.toHaveBeenCalled();
   });
 
-  it('fails rather than creating an import that converted no gloss language', async () => {
+  it('creates nothing when a first import converts no gloss language, naming what it left out', async () => {
     mockPdps({
       manifest: manifestOf(FIXTURE_HASHES, {
         'Interlinear_en/Interlinear_en_MAT.xml': { sizeBytes: 90 * 1024 * 1024, bookId: 'MAT' },
       }),
     });
 
-    await expect(importPt9Project(token, 'src-project')).rejects.toThrow('could be converted');
+    const result = await importPt9Project(token, 'src-project');
+
+    expect(result).toEqual({
+      outcome: 'notConverted',
+      filesTooLargeToRead: [
+        expect.objectContaining({ path: 'Interlinear_en/Interlinear_en_MAT.xml' }),
+      ],
+      filesPt9NeverLoads: [],
+    });
     expect(__mockWriteUserData).not.toHaveBeenCalled();
   });
 
@@ -473,7 +485,21 @@ describe('importPt9Project', () => {
     const result = await importPt9Project(token, 'src-project');
 
     expect(result.outcome).toBe('imported');
-    expect(result.report?.booksMissingIdentity).toBe(1);
+    expect(result.report?.filesPt9NeverLoads).toContain('Interlinear_en/Interlinear_en.xml');
+  });
+
+  it('names the files Paratext 9 never loads when they are the only book files', async () => {
+    const data = readFixtureData();
+    data.books = data.books.map((book) => ({ ...book, isCanonicalPath: false }));
+    mockPdps({ data: (selector) => Promise.resolve(selectFromFixture(data, selector?.paths)) });
+
+    const result = await importPt9Project(token, 'src-project');
+
+    expect(result).toEqual({
+      outcome: 'notConverted',
+      filesTooLargeToRead: [],
+      filesPt9NeverLoads: ['Interlinear_en/Interlinear_en_MAT.xml'],
+    });
   });
 
   it('skips a book the project has no USJ for and reports it missing', async () => {

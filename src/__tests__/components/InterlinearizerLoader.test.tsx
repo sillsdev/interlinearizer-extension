@@ -1830,6 +1830,7 @@ describe('InterlinearizerLoader', () => {
         droppedEmpty: 0,
         droppedBlankForm: 0,
       },
+      filesPt9NeverLoads: [],
       filesTooLargeToRead: [],
     };
 
@@ -2233,6 +2234,24 @@ describe('InterlinearizerLoader', () => {
       expect(error).toHaveTextContent('%interlinearizer_pt9ImportModal_failed%');
     });
 
+    it('names the never-loaded files when a first import converts nothing', async () => {
+      mockImportCommands({
+        importResult: {
+          outcome: 'notConverted',
+          filesTooLargeToRead: [],
+          filesPt9NeverLoads: ['Interlinear_en/Interlinear_en_opy.xml'],
+        },
+      });
+      await act(async () => {
+        renderLoader();
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
+
+      expect(await screen.findByTestId('pt9-import-error')).toBeInTheDocument();
+      expect(screen.getByTestId('pt9-files-never-loaded')).toBeInTheDocument();
+    });
+
     it('shows the friendly too-large message when the platform refuses the oversized payload', async () => {
       mockImportCommands({
         importError: new Error(
@@ -2287,8 +2306,6 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('names the oversized files when a sync could read none of them', async () => {
-      // The other two reasons have nothing to add beyond the notification; this one has books to
-      // name, so the modal stays open.
       mockImportCommands({
         importResult: {
           outcome: 'staleKept',
@@ -2311,6 +2328,24 @@ describe('InterlinearizerLoader', () => {
 
       expect(screen.getByTestId('pt9-import-stale-kept')).toBeInTheDocument();
       expect(screen.getByTestId('pt9-files-too-large')).toBeInTheDocument();
+    });
+
+    it('names the never-loaded files when a sync converts no gloss language', async () => {
+      mockImportCommands({
+        importResult: {
+          outcome: 'staleKept',
+          staleReason: 'noGlossLanguage',
+          projectId: 'import-1',
+          filesTooLargeToRead: [],
+          filesPt9NeverLoads: ['Interlinear_en/Interlinear_en_opy.xml'],
+        },
+      });
+      await renderImportView();
+
+      await userEvent.click(screen.getByTestId('pt9-sync-button'));
+
+      expect(screen.getByTestId('pt9-import-stale-kept')).toBeInTheDocument();
+      expect(screen.getByTestId('pt9-files-never-loaded')).toBeInTheDocument();
     });
 
     it('opens an unchanged import directly from the select modal', async () => {

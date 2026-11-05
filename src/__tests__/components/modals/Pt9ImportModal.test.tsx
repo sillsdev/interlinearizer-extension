@@ -30,6 +30,8 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_missingBooks%': 'Books with no text: {books}',
   '%interlinearizer_pt9ImportModal_filesTooLarge%':
     'Larger than the {limit} one read can carry, so left out: {files}',
+  '%interlinearizer_pt9ImportModal_filesNeverLoaded%':
+    'Left out because Paratext 9 never loads them from where they are: {files}',
   '%interlinearizer_pt9ImportModal_staleKept%':
     'Nothing could be read, so the earlier import was kept.',
   '%interlinearizer_pt9ImportModal_open%': 'Open',
@@ -113,8 +115,7 @@ function makeReport(): Pt9ImportReport {
       droppedEmpty: 0,
       droppedBlankForm: 0,
     },
-    booksMissingIdentity: 0,
-    booksDroppedAsDuplicates: 0,
+    filesPt9NeverLoads: [],
     filesTooLargeToRead: [],
   };
 }
@@ -323,7 +324,8 @@ describe('Pt9ImportModal', () => {
       <Pt9ImportModal
         phase={{
           kind: 'staleKept',
-          files: [
+          filesNeverLoaded: [],
+          filesTooLarge: [
             {
               path: 'Interlinear_en/Interlinear_en_PSA.xml',
               bookId: 'PSA',
@@ -346,6 +348,80 @@ describe('Pt9ImportModal', () => {
     expect(screen.getByTestId('pt9-files-too-large')).toHaveTextContent(
       'Larger than the 80 MiB one read can carry, so left out: PSA (en) 85.8 MiB',
     );
+  });
+
+  it('names the never-loaded files when the stored import was kept', () => {
+    render(
+      <Pt9ImportModal
+        phase={{
+          kind: 'staleKept',
+          filesTooLarge: [],
+          filesNeverLoaded: ['Interlinear_en/Interlinear_en_opy.xml'],
+        }}
+        mode="sync"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pt9-files-never-loaded')).toHaveTextContent(
+      'Left out because Paratext 9 never loads them from where they are: Interlinear_en/Interlinear_en_opy.xml',
+    );
+    expect(screen.queryByTestId('pt9-files-too-large')).not.toBeInTheDocument();
+  });
+
+  it('names the left-out files when a first import converted nothing', () => {
+    render(
+      <Pt9ImportModal
+        phase={{
+          kind: 'notConverted',
+          filesTooLarge: [],
+          filesNeverLoaded: ['Interlinear_en/Interlinear_en_opy.xml'],
+        }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pt9-import-error')).toHaveTextContent('The import failed.');
+    expect(screen.getByTestId('pt9-files-never-loaded')).toHaveTextContent(
+      'Interlinear_en/Interlinear_en_opy.xml',
+    );
+  });
+
+  it('names the files Paratext 9 never loads', () => {
+    const report = makeReport();
+    report.filesPt9NeverLoads = ['Interlinear_en/Interlinear_en_opy.xml', 'Interlinear_en_GEN.xml'];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pt9-files-never-loaded')).toHaveTextContent(
+      'Left out because Paratext 9 never loads them from where they are: Interlinear_en/Interlinear_en_opy.xml, Interlinear_en_GEN.xml',
+    );
+  });
+
+  it('omits the never-loaded row when Paratext 9 loads every file', () => {
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report: makeReport() }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('pt9-files-never-loaded')).not.toBeInTheDocument();
   });
 
   it('omits the too-large row when every file was retrieved', () => {

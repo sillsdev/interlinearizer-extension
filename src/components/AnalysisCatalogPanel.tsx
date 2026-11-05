@@ -529,10 +529,15 @@ export default function AnalysisCatalogPanel({
     [catalogRows, breakdownDrafts],
   );
 
-  /** Whether any row is holding a breakdown the reader has changed but not saved. */
+  /**
+   * Whether any row is holding a breakdown the reader has changed but not saved. Walks the drafts
+   * rather than the rows: a row without a draft cannot be unsaved, and each draft's own check scans
+   * the rows, so walking every row would cost the square of the catalog's size on each draft
+   * change.
+   */
   const hasUnsavedBreakdown = useMemo(
-    () => catalogRows.some((r) => rowHasUnsavedBreakdown(r.analysisId)),
-    [catalogRows, rowHasUnsavedBreakdown],
+    () => [...breakdownDrafts.keys()].some(rowHasUnsavedBreakdown),
+    [breakdownDrafts, rowHasUnsavedBreakdown],
   );
 
   /** Whether leaving the panel would discard a breakdown draft or a gloss that is not saved. */

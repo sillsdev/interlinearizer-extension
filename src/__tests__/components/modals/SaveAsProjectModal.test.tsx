@@ -89,6 +89,23 @@ describe('SaveAsProjectModal', () => {
     await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Copy (3) of Greek'));
   });
 
+  it('holds the name blank and save-as-new disabled until the project list loads', async () => {
+    let resolveList: (json: string) => void = () => {};
+    mockSendCommand.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveList = resolve;
+      }),
+    );
+    render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
+
+    expect(screen.getByLabelText('Name')).toHaveValue('');
+    expect(screen.getByTestId('save-as-new')).toBeDisabled();
+
+    resolveList(JSON.stringify([makeProjectSummary({ name: 'Copy of Greek' })]));
+
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Copy (2) of Greek'));
+  });
+
   it('follows a rename of the active project until the name is edited', async () => {
     const { rerender } = render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
     await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Copy of Greek'));

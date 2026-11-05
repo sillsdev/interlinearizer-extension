@@ -2373,7 +2373,7 @@ declare module 'interlinearizer' {
     | {
         /** BCP 47 tags of the languages that the draft is analyzed in. */
         analysisLanguages: string[];
-        /** Name typed in New; omitted when left blank. Nothing reads it. */
+        /** Name typed in New. */
         suggestedName?: string;
         /** Retained to prefill Save As; omitted when left blank. */
         suggestedDescription?: string;
@@ -2485,7 +2485,7 @@ declare module 'interlinearizer' {
      */
     targetProjectId?: string;
 
-    /** Name typed in the "New" dialog; nothing reads it. */
+    /** Name typed in the "New" dialog. */
     suggestedName?: string;
 
     /** Description typed in the "New" dialog, retained only to prefill the Save As dialog. */

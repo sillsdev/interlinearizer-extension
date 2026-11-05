@@ -92,7 +92,7 @@ export function SaveAsProjectModal({
   // typed name starts undefined and falls back to the prefill until edited.
   const nameValue =
     name ??
-    (stringsLoading || activeProjectName === undefined
+    (stringsLoading || isLoading || activeProjectName === undefined
       ? ''
       : uniqueDefaultName(
           new Set(projects.map((project) => project.name)),

@@ -1,5 +1,6 @@
 using System.Net.WebSockets;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using StreamJsonRpc;
 
 namespace Interlinearizer.Host.Papi;
@@ -12,18 +13,22 @@ namespace Interlinearizer.Host.Papi;
 /// </summary>
 internal sealed class PapiClient : IDisposable
 {
-    private static readonly Uri s_connectionUri = new("ws://localhost:8876");
     private static readonly TimeSpan s_registrationTimeout = TimeSpan.FromSeconds(10);
 
+    private readonly Uri _connectionUri;
     private readonly ClientWebSocket _webSocket = new();
     private readonly JsonRpc _jsonRpc;
     private readonly TaskCompletionSource _disconnected = new();
 
-    public PapiClient()
+    public PapiClient(HostOptions options)
     {
+        _connectionUri = new Uri($"ws://localhost:{options.PapiPort}");
         var formatter = new SystemTextJsonFormatter();
-        // TypeScript on the other end expects camelCase property names.
+        // TypeScript on the other end expects camelCase property names, and an optional field that
+        // is absent rather than null, as the analysis records promise.
         formatter.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        formatter.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        WireJson.Configure(formatter.JsonSerializerOptions);
         _jsonRpc = new JsonRpc(new WebSocketMessageHandler(_webSocket, formatter))
         {
             // Handlers are registered after the connection starts listening.
@@ -47,7 +52,7 @@ internal sealed class PapiClient : IDisposable
     /// <exception cref="WebSocketException">Platform.Bible is not listening.</exception>
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
-        await _webSocket.ConnectAsync(s_connectionUri, cancellationToken);
+        await _webSocket.ConnectAsync(_connectionUri, cancellationToken);
         _jsonRpc.StartListening();
     }
 

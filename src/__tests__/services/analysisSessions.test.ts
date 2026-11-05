@@ -249,6 +249,20 @@ describe('AnalysisSessions', () => {
       );
     });
 
+    it("refuses to edit or start the text read of the source's earlier session", async () => {
+      const { sessions } = makeSessions();
+      const earlier = await sessions.open(SOURCE);
+
+      await sessions.open(SOURCE);
+
+      await expect(sessions.runEdit(earlier.sessionId, async () => {})).rejects.toThrow(
+        `no session ${earlier.sessionId} is open`,
+      );
+      await expect(sessions.startTextRead(earlier.sessionId)).rejects.toThrow(
+        `no session ${earlier.sessionId} is open`,
+      );
+    });
+
     it('reopens a source on what storage holds', async () => {
       const { sessions, seedDraft } = makeSessions();
       await sessions.open(SOURCE);
@@ -354,6 +368,22 @@ describe('AnalysisSessions', () => {
       expect(host.releaseDraftRepository).toHaveBeenCalledTimes(1);
     });
 
+    it('rejects every close sent twice when the release fails', async () => {
+      const { host, sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      host.releaseDraftRepository.mockRejectedValue(new Error('release failed'));
+
+      const results = await Promise.allSettled([
+        sessions.close(sessionId),
+        sessions.close(sessionId),
+      ]);
+
+      expect(results).toEqual([
+        { status: 'rejected', reason: new Error('release failed') },
+        { status: 'rejected', reason: new Error('release failed') },
+      ]);
+    });
+
     it('releases once when sent before a replacing open takes its turn', async () => {
       const { host, sessions } = makeSessions();
       const earlier = await sessions.open(SOURCE);
@@ -387,6 +417,17 @@ describe('AnalysisSessions', () => {
 
       await expect(sessions.closeAndRun(SOURCE, async () => 'ran')).resolves.toBe('ran');
       expect(host.releaseDraftRepository).not.toHaveBeenCalled();
+    });
+
+    it('releases once when a close is sent before it takes its turn', async () => {
+      const { host, sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const running = sessions.closeAndRun(SOURCE, async () => {});
+      const closing = sessions.close(sessionId);
+      await Promise.all([running, closing]);
+
+      expect(host.releaseDraftRepository).toHaveBeenCalledTimes(1);
     });
 
     it('opens a session sent meanwhile on what the step leaves stored', async () => {

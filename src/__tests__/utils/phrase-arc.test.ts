@@ -16,6 +16,7 @@ import {
   roundedPolyline,
   splitPhraseAtBoundary,
   SPLIT_BUTTON_WIDTH_PX,
+  sortByDocOrder,
   straddledRefs,
   type ArcPath,
 } from '../../utils/phrase-arc';
@@ -844,6 +845,50 @@ describe('getArcStrokeProps', () => {
     expect(getArcStrokeProps({ kind: 'confirm-unlink', phraseId: 'p1' }, 'p2', 'p2', 'p2')).toEqual(
       dimmed,
     );
+  });
+});
+
+describe('sortByDocOrder', () => {
+  const refsOf = (tokens: { tokenRef: string }[]) => tokens.map((t) => t.tokenRef);
+  const tokensOf = (...refs: string[]) => refs.map((tokenRef) => ({ tokenRef }));
+
+  it('orders placeable tokens by document index', () => {
+    const order = new Map([
+      ['tok-a', 0],
+      ['tok-b', 1],
+      ['tok-c', 2],
+    ]);
+    expect(refsOf(sortByDocOrder(tokensOf('tok-c', 'tok-a', 'tok-b'), order))).toEqual([
+      'tok-a',
+      'tok-b',
+      'tok-c',
+    ]);
+  });
+
+  it('keeps an unplaceable token just after the placeable token stored before it', () => {
+    const order = new Map([
+      ['tok-a', 0],
+      ['tok-b', 1],
+      ['tok-c', 2],
+    ]);
+    expect(refsOf(sortByDocOrder(tokensOf('tok-c', 'tok-b', 'tok-z', 'tok-a'), order))).toEqual([
+      'tok-a',
+      'tok-b',
+      'tok-z',
+      'tok-c',
+    ]);
+  });
+
+  it('puts an unplaceable token first when no placeable token is stored before it', () => {
+    const order = new Map([
+      ['tok-a', 0],
+      ['tok-b', 1],
+    ]);
+    expect(refsOf(sortByDocOrder(tokensOf('tok-z', 'tok-b', 'tok-a'), order))).toEqual([
+      'tok-z',
+      'tok-a',
+      'tok-b',
+    ]);
   });
 });
 

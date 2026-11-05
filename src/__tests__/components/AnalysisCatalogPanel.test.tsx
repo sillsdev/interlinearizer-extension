@@ -3,7 +3,7 @@
 
 import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { ResolvedSense } from 'interlinearizer/lexicon';
@@ -30,6 +30,7 @@ import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-help
 import { mockKeyAsValueLocalizedStrings, testSenseRef, withLexicon } from './test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
+jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
 jest.mock('../../components/TextReadingStatus');
 
 const NO_HEADINGS: ReadonlyMap<string, HeadingPlacement> = new Map();
@@ -1679,8 +1680,48 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.click(toggle);
         await userEvent.click(toggle);
 
-        // A row left showing everything buries the rows below it for the rest of the session.
+        // A row reopened showing everything buries the rows below it.
         expect(within(rowFor('ta-1')).getAllByTestId('catalog-usage')).toHaveLength(12);
+      });
+
+      it('offers no way to show fewer while the list is capped', async () => {
+        renderPanel({ analysis: MANY_USAGES });
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+        expect(
+          within(rowFor('ta-1')).queryByTestId('catalog-usages-show-fewer'),
+        ).not.toBeInTheDocument();
+      });
+
+      it('returns to the inline cap from the show-fewer link', async () => {
+        renderPanel({ analysis: MANY_USAGES });
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-fewer'));
+
+        expect(within(rowFor('ta-1')).getAllByTestId('catalog-usage')).toHaveLength(12);
+        expect(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all')).toBeInTheDocument();
+      });
+
+      it('moves focus to the show-all link once show-fewer unmounts', async () => {
+        renderPanel({ analysis: MANY_USAGES });
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
+
+        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-fewer'));
+
+        expect(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all')).toHaveFocus();
+      });
+
+      it('leaves focus alone when the list first opens capped', async () => {
+        renderPanel({ analysis: MANY_USAGES });
+        const toggle = within(rowFor('ta-1')).getByTestId('catalog-row-toggle');
+
+        await userEvent.click(toggle);
+
+        expect(toggle).toHaveFocus();
       });
     });
   });
@@ -2912,7 +2953,7 @@ describe('AnalysisCatalogPanel', () => {
         await typeStrandableBreakdown();
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
 
-        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
         expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
       });
@@ -3084,6 +3125,48 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.tab();
 
         expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
+      });
+
+      it('sends a focused gloss before closing on a request that blurs nothing', async () => {
+        const onSave = jest.fn();
+        const onClose = jest.fn();
+        renderPanel({ analysis: SHARED, onSave, onClose });
+        const row = await expandRow('ta-1');
+        await userEvent.type(within(row).getByTestId('catalog-row-gloss-input'), '!');
+
+        fireEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+        expect(saved.tokenAnalyses[0].gloss).toEqual({ en: 'word!' });
+        expect(onClose).toHaveBeenCalled();
+      });
+
+      it('sends a focused gloss before switching to the concordance from outside', async () => {
+        const onSave = jest.fn();
+        const onShowConcordance = jest.fn();
+        const ref = createRef<AnalysisCatalogPanelHandle>();
+        renderPanel({ ref, analysis: SHARED, onSave, onShowConcordance });
+        const row = await expandRow('ta-1');
+        await userEvent.type(within(row).getByTestId('catalog-row-gloss-input'), '!');
+
+        act(() => ref.current?.requestShowConcordance());
+
+        const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+        expect(saved.tokenAnalyses[0].gloss).toEqual({ en: 'word!' });
+        expect(onShowConcordance).toHaveBeenCalled();
+      });
+
+      it('leaves a field outside the panel focused when switching to the concordance', async () => {
+        const outside = document.createElement('input');
+        document.body.append(outside);
+        const ref = createRef<AnalysisCatalogPanelHandle>();
+        renderPanel({ ref, analysis: SHARED });
+        outside.focus();
+
+        act(() => ref.current?.requestShowConcordance());
+
+        expect(outside).toHaveFocus();
+        outside.remove();
       });
 
       it('reports a breakdown held uncommitted', async () => {
@@ -3337,10 +3420,16 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('marks a collapsed linked row without listing its sense', () => {
-      renderPanel({ analysis: LINKED, senses: { 's-word': { gloss: { en: 'word' } } } });
+      const { unmount } = renderPanel({
+        analysis: LINKED,
+        senses: { 's-word': { gloss: { en: 'word' } } },
+      });
 
       expect(within(rowFor('ta-1')).getByTestId('catalog-sense-link')).toBeInTheDocument();
       expect(within(rowFor('ta-1')).queryByTestId('catalog-sense-links')).not.toBeInTheDocument();
+      // Nothing marks the lookup landing, because the sense resolves to the gloss already shown.
+      // Closing the panel keeps the lookup from landing after the test.
+      unmount();
     });
 
     it("lists a linked row's sense once the row is expanded", async () => {
@@ -4395,6 +4484,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
       expect(summaries).toContainEqual({
         kind: 'catalogDelete',
@@ -4416,12 +4506,49 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
       expect(summaries).toContainEqual({
         kind: 'catalogDeleteUnused',
         form: 'λόγος',
         analysisId: 'ta-1',
       });
+    });
+
+    it('asks before deleting, naming the analysis', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_deleteConfirmPrompt%': 'Delete {form}?',
+      });
+      renderPanel({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+      expect(screen.getByTestId('catalog-delete-confirm-prompt')).toHaveTextContent(
+        'Delete λόγος?',
+      );
+      expect(listedAnalysisIds()).toEqual(['ta-1']);
+    });
+
+    it('deletes nothing when the confirmation is canceled', async () => {
+      renderPanel({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm-cancel'));
+
+      expect(screen.queryByTestId('catalog-delete-confirm-title')).not.toBeInTheDocument();
+      expect(listedAnalysisIds()).toEqual(['ta-1']);
     });
   });
 
@@ -4489,6 +4616,7 @@ describe('AnalysisCatalogPanel', () => {
     async function deleteRow(analysisId: string): Promise<void> {
       await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-delete'));
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
     }
 
     it('states that the uses are left blank when no homograph survives', async () => {
@@ -4660,39 +4788,30 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.type(input, 'λογ ος');
       }
 
-      it('asks before deleting the analysis a breakdown draft is keyed to', async () => {
+      // The delete confirmation already agreed to lose the analysis, its draft included.
+      it('deletes without asking again about the draft', async () => {
         renderPanel({ announceUndoable, analysis: LONE });
         await typeUnsavedBreakdown('ta-1');
-
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
 
-        // The draft is put to the reader before the deletion happens, so declining costs nothing.
-        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
-        expect(listedAnalysisIds()).toEqual(['ta-1']);
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+        expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+        expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
       });
 
-      it('keeps the draft and the analysis when the discard is declined', async () => {
+      it('keeps the draft and the analysis when the deletion is canceled', async () => {
         const onSave = jest.fn();
         renderPanel({ announceUndoable, analysis: LONE, onSave });
         await typeUnsavedBreakdown('ta-1');
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
 
-        await userEvent.click(screen.getByTestId('catalog-close-cancel'));
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm-cancel'));
 
         expect(onSave).not.toHaveBeenCalled();
         expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue(
           'λογ ος',
         );
-      });
-
-      it('deletes once the draft is given up', async () => {
-        renderPanel({ announceUndoable, analysis: LONE });
-        await typeUnsavedBreakdown('ta-1');
-        await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
-
-        await userEvent.click(screen.getByTestId('catalog-close-discard'));
-
-        expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
       });
 
       it('deletes without asking about a draft that re-states the current breakdown', async () => {
@@ -4701,6 +4820,7 @@ describe('AnalysisCatalogPanel', () => {
         await openBreakdown(rowFor('ta-1'));
 
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
         expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
         expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
@@ -4711,7 +4831,7 @@ describe('AnalysisCatalogPanel', () => {
         renderPanel({ announceUndoable, analysis: LONE, onClose });
         await typeUnsavedBreakdown('ta-1');
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
-        await userEvent.click(screen.getByTestId('catalog-close-discard'));
+        await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 

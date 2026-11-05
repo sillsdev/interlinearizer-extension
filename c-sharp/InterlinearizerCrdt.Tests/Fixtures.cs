@@ -11,6 +11,34 @@ public static class Fixtures
     public static readonly TokenSnapshot Token1 = new("GEN 1:1 tok 0", "In");
     public static readonly TokenSnapshot Token2 = new("GEN 1:1 tok 1", "the");
 
+    /// <summary>The project the record fixtures belong to.</summary>
+    public static readonly Guid ProjectId = new("33333333-3333-3333-3333-333333333333");
+    public static CreateInterlinearProjectChange CreateInterlinearProject(Guid id) => new(id)
+    {
+        Name = "Genesis draft",
+        Description = "A draft of Genesis.",
+        TargetProjectId = "target-project",
+        AnalysisLanguages = ["fr", "en"],
+        Segmentation = new SegmentationDelta(["GEN 1:2"], [Token2]),
+    };
+
+    /// <summary>Sets some fields, clears one, and replaces the languages.</summary>
+    public static PatchInterlinearProjectChange PatchInterlinearProject(Guid id) => new(id)
+    {
+        Name = "Genesis and Exodus",
+        TargetProjectId = null,
+        AnalysisLanguages = new List<string> { "en", "de" },
+    };
+
+    public static PatchInterlinearProjectChange PatchInterlinearProjectAllFields(Guid id) => new(id)
+    {
+        Name = "Genesis and Exodus",
+        Description = "A draft of both.",
+        TargetProjectId = "other-target",
+        Segmentation = new SegmentationDelta(["GEN 1:3"], [Token2]),
+        AnalysisLanguages = new List<string> { "en", "de" },
+    };
+
     public static MultiString Multi(string en, string fr) => new() { ["en"] = en, ["fr"] = fr };
 
     public static MorphemeAnalysis Morpheme(string form) => new()
@@ -28,6 +56,7 @@ public static class Fixtures
 
     public static CreateSegmentAnalysisChange CreateSegmentAnalysis(Guid id) => new(id)
     {
+        ProjectId = ProjectId,
         SurfaceText = "In the beginning",
         Confidence = Confidence.High,
         Producer = "human",
@@ -146,6 +175,7 @@ public static class Fixtures
 
     public static CreateSegmentAnalysisLinkChange CreateSegmentAnalysisLink(Guid id, Guid analysisId) => new(id)
     {
+        ProjectId = ProjectId,
         AnalysisId = analysisId,
         SegmentId = "GEN 1:1",
         Status = AssignmentStatus.Approved,
@@ -162,6 +192,7 @@ public static class Fixtures
 
     public static CreateTokenAnalysisChange CreateTokenAnalysis(Guid id) => new(id)
     {
+        ProjectId = ProjectId,
         SurfaceText = "ἀρχῇ",
         Confidence = Confidence.Guess,
         Producer = "parser",
@@ -190,6 +221,7 @@ public static class Fixtures
 
     public static CreateTokenAnalysisLinkChange CreateTokenAnalysisLink(Guid id, Guid analysisId) => new(id)
     {
+        ProjectId = ProjectId,
         AnalysisId = analysisId,
         Token = Token1,
         Status = AssignmentStatus.Suggested,
@@ -206,6 +238,7 @@ public static class Fixtures
 
     public static CreatePhraseAnalysisChange CreatePhraseAnalysis(Guid id) => new(id)
     {
+        ProjectId = ProjectId,
         SurfaceText = "In the",
         Confidence = Confidence.Medium,
         Producer = "phrase-finder",
@@ -226,6 +259,7 @@ public static class Fixtures
 
     public static CreatePhraseAnalysisLinkChange CreatePhraseAnalysisLink(Guid id, Guid analysisId) => new(id)
     {
+        ProjectId = ProjectId,
         AnalysisId = analysisId,
         Tokens = [Token1, Token2],
         Status = AssignmentStatus.Candidate,

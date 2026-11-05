@@ -1,8 +1,9 @@
 {
-  "modelVersion": 0,
+  "modelVersion": 1,
   "latest": [
     {
       "$type": "CreatePhraseAnalysisLinkChange",
+      "ProjectId": "33333333-3333-3333-3333-333333333333",
       "AnalysisId": "22222222-2222-2222-2222-222222222222",
       "Tokens": [
         {

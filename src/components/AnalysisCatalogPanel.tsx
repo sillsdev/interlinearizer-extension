@@ -6,7 +6,15 @@ import {
   isPlatformError,
   type LanguageStrings,
 } from 'platform-bible-utils';
-import { useCallback, useEffect, useImperativeHandle, useMemo, useState, type Ref } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from 'react';
 import {
   useAnalysisDeletionOutcome,
   useAnalysisLanguage,
@@ -20,7 +28,7 @@ import {
   useStaleLocationReclaims,
 } from './AnalysisStore';
 import type { AnalysisEditOutcome } from '../utils/edit-outcome';
-import { breakdownDraftForms } from './CatalogRowEditor';
+import { breakdownDraftForms, createGlossRetry } from './CatalogRowEditor';
 import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
 import type { MergedContentDraft } from '../utils/merge-content';
@@ -124,6 +132,15 @@ export const ANALYSIS_CATALOG_PANEL_STRING_KEYS = [
   ...SIDE_PANEL_TAB_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
+/**
+ * Blurs the focused element when it sits within `panel`. Blurring sends a focused gloss field's
+ * draft at once; a field outside the panel keeps its focus and its unsent text.
+ */
+function blurFocusedField(panel: HTMLElement | undefined): void {
+  const focused = document.activeElement;
+  if (focused instanceof HTMLElement && panel?.contains(focused)) focused.blur();
+}
+
 /** A breakdown a row is holding, with the form it was typed against. */
 type BreakdownDraft = Readonly<{
   /** The breakdown as a line of space-separated forms. */
@@ -134,7 +151,10 @@ type BreakdownDraft = Readonly<{
 
 /** What {@link AnalysisCatalogPanel} lets its owner do through a ref. */
 export type AnalysisCatalogPanelHandle = Readonly<{
-  /** Switches to the concordance, asking first when a breakdown draft would be lost. */
+  /**
+   * Switches to the concordance once the gloss commits in flight settle, asking first when unsaved
+   * catalog edits would be lost.
+   */
   requestShowConcordance: () => void;
   /** Scrolls to the row for `analysisId` when the listing holds it. */
   revealRow: (analysisId: string) => void;
@@ -458,6 +478,20 @@ export default function AnalysisCatalogPanel({
     new Map(),
   );
 
+  /** Whether {@link glossRetry} holds a gloss draft that the panel's closing would discard. */
+  const [holdsUnsavedGloss, setHoldsUnsavedGloss] = useState(false);
+
+  /**
+   * The gloss drafts no field is showing, and the fields showing a draft whose commit failed. Kept
+   * here rather than in the row because a row's fields unmount when the row is collapsed or no
+   * longer listed, or when the analysis language changes. Kept drafts go with the panel when it
+   * closes; closing asks first for that reason.
+   */
+  const [glossRetry] = useState(() => createGlossRetry(setHoldsUnsavedGloss));
+
+  // A draft that no field can show again would otherwise hold the unsaved mark on for good.
+  useEffect(() => glossRetry.prune(catalogRows), [catalogRows, glossRetry]);
+
   const handleBreakdownDraftChange = useCallback(
     (analysisId: string, draft: string | undefined, surfaceText: string) => {
       setBreakdownDrafts((drafts) => {
@@ -497,12 +531,16 @@ export default function AnalysisCatalogPanel({
 
   /** Whether any row is holding a breakdown the reader has changed but not saved. */
   const hasUnsavedBreakdown = useMemo(
-    () => catalogRows.some((r) => rowHasUnsavedBreakdown(r.analysisId)),
-    [catalogRows, rowHasUnsavedBreakdown],
+    () => [...breakdownDrafts.keys()].some(rowHasUnsavedBreakdown),
+    [breakdownDrafts, rowHasUnsavedBreakdown],
   );
 
-  // No flush on unmount: a breakdown draft is saved or discarded explicitly, never on the way out.
-  useReportGlossEditing(hasUnsavedBreakdown, () => {});
+  /** Whether leaving the panel would discard a breakdown draft or a gloss that is not saved. */
+  const hasUnsavedEdits = hasUnsavedBreakdown || holdsUnsavedGloss;
+
+  // No flush on unmount: a breakdown draft is saved or discarded explicitly, and an unsent gloss
+  // waits for its field to mount again, so neither is sent on the way out.
+  useReportGlossEditing(hasUnsavedEdits, () => {});
 
   /**
    * The draft an edit made outside the panel stranded, or `undefined` when none has been. Kept
@@ -530,27 +568,37 @@ export default function AnalysisCatalogPanel({
   }, [breakdownDrafts, catalogRows, discardBreakdownDraft]);
 
   /**
-   * How the reader is leaving the panel while being asked to confirm it over a breakdown they have
-   * not saved, or `undefined` while no such ask is open.
+   * How the reader is leaving the panel while being asked to confirm it over unsaved edits, or
+   * `undefined` while no such ask is open.
    */
   const [confirmingLeave, setConfirmingLeave] = useState<'close' | 'switch' | undefined>(undefined);
+  const panelRef = useRef<HTMLDivElement | undefined>(undefined);
 
   /**
-   * Closes the panel, or asks first when a breakdown draft would go with it.
+   * Closes the panel, or asks first when a breakdown draft or an unsent gloss would go with it.
    *
-   * A breakdown commits on neither blur nor unmount, so leaving the panel is the one route that can
-   * drop typed text the reader never asked to discard.
+   * Neither commits on the way out, so leaving the panel is the one route that can drop typed text
+   * the reader never asked to discard.
+   *
+   * Waits first for the gloss commits in flight, the focused field's included, whatever triggered
+   * the request. A commit that fails leaves its draft for the ask to cover.
    */
   const handleCloseRequest = useCallback(() => {
-    if (hasUnsavedBreakdown) setConfirmingLeave('close');
-    else onClose();
-  }, [hasUnsavedBreakdown, onClose]);
+    blurFocusedField(panelRef.current);
+    glossRetry.afterCommits(() => {
+      if (hasUnsavedBreakdown || glossRetry.isHolding()) setConfirmingLeave('close');
+      else onClose();
+    });
+  }, [glossRetry, hasUnsavedBreakdown, onClose]);
 
   /** Switches the side panel to the concordance, or asks first as closing does. */
   const handleSwitchRequest = useCallback(() => {
-    if (hasUnsavedBreakdown) setConfirmingLeave('switch');
-    else onShowConcordance();
-  }, [hasUnsavedBreakdown, onShowConcordance]);
+    blurFocusedField(panelRef.current);
+    glossRetry.afterCommits(() => {
+      if (hasUnsavedBreakdown || glossRetry.isHolding()) setConfirmingLeave('switch');
+      else onShowConcordance();
+    });
+  }, [glossRetry, hasUnsavedBreakdown, onShowConcordance]);
 
   // A merge notice describes the latest edit, which an undo or redo has just moved past.
   const revealRow = useCallback((analysisId: string) => {
@@ -572,27 +620,29 @@ export default function AnalysisCatalogPanel({
   /**
    * Runs a row edit as one undo step, summarized as given or from its result, then hands the result
    * to `then` once it settles. An edit sent to the session settles later and records its own step.
+   *
+   * @returns The edit's result, which rejects when an edit sent to the session fails.
    */
   const runRowEdit = useCallback(
     <T,>(
       edit: () => Settles<T>,
       summary: StepSummary | ((settled: T) => StepSummary),
       then: (settled: T) => void,
-    ) =>
-      whenSettled(
-        asOneStep(
-          edit,
-          typeof summary === 'function'
-            ? (result) => {
-                /* v8 ignore next 2 -- the host path groups no edits; its session records each */
-                if (result instanceof Promise)
-                  throw new Error('Interlinearizer: an edit sent to the session was grouped');
-                return summary(result);
-              }
-            : summary,
-        ),
-        then,
-      ),
+    ): Settles<T> => {
+      const result = asOneStep(
+        edit,
+        typeof summary === 'function'
+          ? (settled) => {
+              /* v8 ignore next 2 -- the host path groups no edits; its session records each */
+              if (settled instanceof Promise)
+                throw new Error('Interlinearizer: an edit sent to the session was grouped');
+              return summary(settled);
+            }
+          : summary,
+      );
+      whenSettled(result, then);
+      return result;
+    },
     [asOneStep],
   );
 
@@ -630,7 +680,7 @@ export default function AnalysisCatalogPanel({
   const handleGlossCommit = useCallback(
     (analysisId: string, value: string) => {
       const form = surfaceTextOf(analysisId);
-      runRowEdit(
+      return runRowEdit(
         () => rowDispatch.writeGloss(analysisId, value),
         (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
         (outcome) => reportEditOutcome(outcome, form),
@@ -654,7 +704,7 @@ export default function AnalysisCatalogPanel({
   const handleMorphemeGlossCommit = useCallback(
     (analysisId: string, morphemeId: string, value: string) => {
       const form = surfaceTextOf(analysisId);
-      runRowEdit(
+      return runRowEdit(
         () => rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
         (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
         (outcome) => reportEditOutcome(outcome, form),
@@ -734,16 +784,6 @@ export default function AnalysisCatalogPanel({
       runRowEdit,
       surfaceTextOf,
     ],
-  );
-
-  const handleDeleteRequest = useCallback(
-    (analysisId: string) =>
-      requestDiscard(
-        'delete',
-        () => [analysisId],
-        () => deleteAnalysis(analysisId),
-      ),
-    [deleteAnalysis, requestDiscard],
   );
 
   /** Deletes the analyses `analysisIds` names as one step, announcing how many uses they had. */
@@ -1027,6 +1067,9 @@ export default function AnalysisCatalogPanel({
     // these tooltips open on truncation rather than on hover time.
     <TooltipProvider delayDuration={0}>
       <div
+        ref={(el) => {
+          panelRef.current = el ?? undefined;
+        }}
         className="tw:flex tw:flex-col tw:flex-1 tw:min-w-0 tw:min-h-0 tw:border-s tw:border-border tw:bg-background"
         data-testid="analysis-catalog-panel"
       >
@@ -1129,6 +1172,7 @@ export default function AnalysisCatalogPanel({
                   analysisLanguage={analysisLanguage}
                   showMorphology={showMorphology}
                   breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
+                  glossRetry={glossRetry}
                   isSelected={row.analysisId === selectedAnalysisId}
                   isChecked={checkedIds.has(row.analysisId)}
                   onCheckedChange={readOnly ? undefined : setChecked}
@@ -1136,7 +1180,9 @@ export default function AnalysisCatalogPanel({
                   liveSurfaceText={liveSurfaceText}
                   localizedStrings={localizedStrings}
                   onBreakdownDraftChange={handleBreakdownDraftChange}
-                  onDeleteRequest={handleDeleteRequest}
+                  // No discard prompt follows: the row's delete confirmation already covers the
+                  // analysis's unsaved breakdown.
+                  onDeleteRequest={deleteAnalysis}
                   onGlossCommit={handleGlossCommit}
                   onMergeRequest={
                     idsWithMergePeers.has(row.analysisId) ? handleMergeRequest : undefined
@@ -1185,7 +1231,7 @@ export default function AnalysisCatalogPanel({
           or canceling it from the row beneath takes the question away rather than leaving the
           reader answering about work that is no longer unsaved.
         */}
-        {confirmingLeave && hasUnsavedBreakdown && (
+        {confirmingLeave && hasUnsavedEdits && (
           <CatalogCloseModal
             action={confirmingLeave === 'switch' ? 'switch' : undefined}
             localizedStrings={localizedStrings}

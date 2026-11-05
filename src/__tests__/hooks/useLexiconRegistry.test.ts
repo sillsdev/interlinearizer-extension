@@ -113,10 +113,12 @@ function mockedOpenChooser() {
 
 describe('useLexiconRegistry', () => {
   it('holds no lexicon on the first render, so a consumer never waits on one', () => {
-    const { result } = renderHook(() => useLexiconRegistry('project-1'));
+    const { result, unmount } = renderHook(() => useLexiconRegistry('project-1'));
 
     expect(result.current.resolverWith('search')).toBeUndefined();
     expect(result.current.isForeign({ authority: FW_LITE_AUTHORITY })).toBe(true);
+    // Closes the watch before the software answers, so the answer cannot land after the test.
+    unmount();
   });
 
   it('connects the linked lexicon once the software has answered', async () => {

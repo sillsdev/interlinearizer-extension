@@ -1,0 +1,28 @@
+{
+  "modelVersion": 1,
+  "latest": [
+    {
+      "$type": "CreateInterlinearProjectChange",
+      "Name": "Genesis draft",
+      "Description": "A draft of Genesis.",
+      "TargetProjectId": "target-project",
+      "AnalysisLanguages": [
+        "fr",
+        "en"
+      ],
+      "Segmentation": {
+        "RemovedVerseStarts": [
+          "GEN 1:2"
+        ],
+        "AddedStarts": [
+          {
+            "TokenRef": "GEN 1:1 tok 1",
+            "SurfaceText": "the"
+          }
+        ]
+      },
+      "EntityId": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "legacy": []
+}

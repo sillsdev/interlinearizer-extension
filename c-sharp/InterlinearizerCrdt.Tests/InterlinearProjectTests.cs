@@ -1,0 +1,196 @@
+using Microsoft.EntityFrameworkCore;
+
+namespace Interlinearizer.Crdt.Tests;
+
+public class InterlinearProjectTests : CrdtTestBase
+{
+    private readonly Guid _projectId = Guid.NewGuid();
+    private readonly Guid _otherProjectId = Guid.NewGuid();
+
+    private static TokenAnalysis Token(Guid projectId) => new() { Id = Guid.NewGuid(), ProjectId = projectId, SurfaceText = "and" };
+
+    private static TokenAnalysisLink Link(Guid projectId, Guid analysisId) => new()
+    {
+        Id = Guid.NewGuid(),
+        ProjectId = projectId,
+        AnalysisId = analysisId,
+        Token = Fixtures.Token1,
+        Status = AssignmentStatus.Approved,
+    };
+
+    private Task<InterlinearProject?> Project() => DataModel.GetLatest<InterlinearProject>(_projectId);
+
+    [Test]
+    public async Task CreateProjectsEveryField()
+    {
+        var change = Fixtures.CreateInterlinearProject(_projectId);
+        var commit = await WriteNextChange(change);
+
+        var project = await Project();
+        await Assert.That(project).IsNotNull();
+        await Assert.That(project!.DeletedAt).IsNull();
+        await Assert.That(project.CreatedAt).IsEqualTo(commit.DateTime);
+        await Assert.That(project.UpdatedAt).IsEqualTo(commit.DateTime);
+        await Assert.That(project.Name).IsEqualTo(change.Name);
+        await Assert.That(project.Description).IsEqualTo(change.Description);
+        await Assert.That(project.TargetProjectId).IsEqualTo(change.TargetProjectId);
+        await Assert.That(project.AnalysisLanguages).IsEquivalentTo(["fr", "en"]);
+        await Assert.That(project.Segmentation!.RemovedVerseStarts).IsEquivalentTo(["GEN 1:2"]);
+        await Assert.That(project.Segmentation.AddedStarts).IsEquivalentTo([Fixtures.Token2]);
+    }
+
+    [Test]
+    public async Task CreateFillsTheProjectedTable()
+    {
+        await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
+
+        var rows = await DbContext.InterlinearProjects.Where(p => p.Id == _projectId).ToListAsync();
+        await Assert.That(rows).HasSingleItem();
+        await Assert.That(rows[0].AnalysisLanguages).IsEquivalentTo(["fr", "en"]);
+    }
+
+    [Test]
+    public async Task PatchSetsAndClearsFieldsLeavingUnsetOnesAlone()
+    {
+        var created = await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
+        var patched = await WriteNextChange(Fixtures.PatchInterlinearProject(_projectId));
+
+        var project = await Project();
+        await Assert.That(project!.CreatedAt).IsEqualTo(created.DateTime);
+        await Assert.That(project.UpdatedAt).IsEqualTo(patched.DateTime);
+        await Assert.That(project.Name).IsEqualTo("Genesis and Exodus");
+        await Assert.That(project.TargetProjectId).IsNull();
+        await Assert.That(project.Description).IsEqualTo("A draft of Genesis.");
+        await Assert.That(project.Segmentation).IsNotNull();
+    }
+
+    [Test]
+    public async Task PatchReplacesTheLanguagesWholeDroppingDuplicates()
+    {
+        await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
+
+        await WriteNextChange(new PatchInterlinearProjectChange(_projectId)
+        {
+            AnalysisLanguages = new List<string> { "de", "en", "de" },
+        });
+
+        await Assert.That((await Project())!.AnalysisLanguages).IsEquivalentTo(["de", "en"]);
+    }
+
+    [Test]
+    public async Task PatchWithANullLanguageListLeavesNone()
+    {
+        await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
+
+        await WriteNextChange(new PatchInterlinearProjectChange(_projectId) { AnalysisLanguages = new PatchField<List<string>?>(null) });
+
+        await Assert.That((await Project())!.AnalysisLanguages).IsEmpty();
+    }
+
+    [Test]
+    public async Task TheLaterLanguagePatchStandsWhicheverCommitArrivesFirst()
+    {
+        await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
+        var later = await WriteNextChange(new PatchInterlinearProjectChange(_projectId) { AnalysisLanguages = new List<string> { "de" } });
+
+        await WriteChangeBefore(later, new PatchInterlinearProjectChange(_projectId) { AnalysisLanguages = new List<string> { "es" } });
+
+        await Assert.That((await Project())!.AnalysisLanguages).IsEquivalentTo(["de"]);
+    }
+
+    [Test]
+    public async Task PatchClearsTheSegmentation()
+    {
+        await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
+
+        await WriteNextChange(new PatchInterlinearProjectChange(_projectId) { Segmentation = new(null) });
+
+        await Assert.That((await Project())!.Segmentation).IsNull();
+    }
+
+    [Test]
+    public async Task DeleteMarksTheProjectDeleted()
+    {
+        await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
+        var deleted = await WriteNextChange(new DeleteChange<InterlinearProject>(_projectId));
+
+        await Assert.That((await Project())!.DeletedAt).IsEqualTo(deleted.DateTime);
+        await Assert.That(await DbContext.InterlinearProjects.CountAsync(p => p.Id == _projectId)).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task DeletingAProjectDeletesItsRecordsAndNotAnotherProjects()
+    {
+        await WriteNextChange([Fixtures.CreateInterlinearProject(_projectId), Fixtures.CreateInterlinearProject(_otherProjectId)]);
+        var mine = Token(_projectId);
+        var theirs = Token(_otherProjectId);
+        await WriteNextChange([
+            new CreateTokenAnalysisChange(mine, _projectId),
+            new CreateTokenAnalysisLinkChange(Link(_projectId, mine.Id), _projectId),
+            new CreateTokenAnalysisChange(theirs, _otherProjectId),
+            new CreateTokenAnalysisLinkChange(Link(_otherProjectId, theirs.Id), _otherProjectId),
+        ]);
+
+        await WriteNextChange(new DeleteChange<InterlinearProject>(_projectId));
+
+        await Assert.That((await DbContext.TokenAnalyses.ToListAsync()).Select(a => a.Id)).IsEquivalentTo([theirs.Id]);
+        await Assert.That((await DbContext.TokenAnalysisLinks.ToListAsync()).Select(l => l.ProjectId)).IsEquivalentTo([_otherProjectId]);
+    }
+
+    [Test]
+    public async Task ARecordCreatedInAProjectNeverCreatedLandsDeleted()
+    {
+        var token = Token(_projectId);
+
+        await WriteNextChange(new CreateTokenAnalysisChange(token, _projectId));
+
+        await Assert.That(await DbContext.TokenAnalyses.CountAsync()).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ACreateRefusesAnEmptyProjectOrARecordNamingAnotherProject()
+    {
+        await Assert.That(() => new CreateTokenAnalysisChange(Token(Guid.Empty), Guid.Empty)).Throws<ArgumentException>();
+        await Assert.That(() => new CreateTokenAnalysisChange(Token(_otherProjectId), _projectId)).Throws<ArgumentException>();
+        await Assert.That(() => new CreateTokenAnalysisLinkChange(Link(_otherProjectId, Guid.NewGuid()), _projectId)).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task ACreateFilesARecordNamingNoProjectUnderTheGivenOne()
+    {
+        var change = new CreateTokenAnalysisChange(Token(Guid.Empty), ProjectId);
+
+        await Assert.That(change.ProjectId).IsEqualTo(ProjectId);
+    }
+
+    [Test]
+    public async Task ARecordCreatedInADeletedProjectLandsDeleted()
+    {
+        await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
+        await WriteNextChange(new DeleteChange<InterlinearProject>(_projectId));
+        var token = Token(_projectId);
+
+        await WriteNextChange([
+            new CreateTokenAnalysisChange(token, _projectId),
+            new CreateTokenAnalysisLinkChange(Link(_projectId, token.Id), _projectId),
+        ]);
+
+        await Assert.That(await DbContext.TokenAnalyses.CountAsync()).IsEqualTo(0);
+        await Assert.That(await DbContext.TokenAnalysisLinks.CountAsync()).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ARecordsProjectIsKeptThroughReplaceAndPatch()
+    {
+        await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
+        var token = Token(_projectId);
+        await WriteNextChange(new CreateTokenAnalysisChange(token, _projectId));
+
+        await WriteNextChange(new ReplaceTokenAnalysisChange(new TokenAnalysis { Id = token.Id, SurfaceText = "but" }));
+        await WriteNextChange(new PatchTokenAnalysisChange(token.Id) { Pos = "conj" });
+
+        var stored = await DataModel.GetLatest<TokenAnalysis>(token.Id);
+        await Assert.That(stored!.ProjectId).IsEqualTo(_projectId);
+        await Assert.That(stored.SurfaceText).IsEqualTo("but");
+    }
+}

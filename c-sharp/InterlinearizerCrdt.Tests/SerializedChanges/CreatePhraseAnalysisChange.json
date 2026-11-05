@@ -1,8 +1,9 @@
 {
-  "modelVersion": 0,
+  "modelVersion": 1,
   "latest": [
     {
       "$type": "CreatePhraseAnalysisChange",
+      "ProjectId": "33333333-3333-3333-3333-333333333333",
       "SurfaceText": "In the",
       "Confidence": "medium",
       "Producer": "phrase-finder",

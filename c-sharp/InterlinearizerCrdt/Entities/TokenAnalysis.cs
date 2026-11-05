@@ -33,6 +33,7 @@ public class TokenAnalysis : Analysis, IObjectBase<TokenAnalysis>
     public IObjectBase Copy() => new TokenAnalysis
     {
         Id = Id,
+        ProjectId = ProjectId,
         DeletedAt = DeletedAt,
         CreatedAt = CreatedAt,
         UpdatedAt = UpdatedAt,
@@ -72,6 +73,7 @@ public class TokenAnalysisLink : AnalysisLink, IObjectBase<TokenAnalysisLink>
     public IObjectBase Copy() => new TokenAnalysisLink
     {
         Id = Id,
+        ProjectId = ProjectId,
         DeletedAt = DeletedAt,
         AnalysisId = AnalysisId,
         CreatedAt = CreatedAt,

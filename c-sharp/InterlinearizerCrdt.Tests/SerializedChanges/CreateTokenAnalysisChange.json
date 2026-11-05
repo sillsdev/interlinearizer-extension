@@ -1,8 +1,9 @@
 {
-  "modelVersion": 0,
+  "modelVersion": 1,
   "latest": [
     {
       "$type": "CreateTokenAnalysisChange",
+      "ProjectId": "33333333-3333-3333-3333-333333333333",
       "SurfaceText": "\u1F00\u03C1\u03C7\u1FC7",
       "Confidence": "guess",
       "Producer": "parser",

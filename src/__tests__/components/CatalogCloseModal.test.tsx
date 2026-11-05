@@ -23,7 +23,7 @@ describe('CatalogCloseModal', () => {
     renderModal();
 
     expect(screen.getByTestId('catalog-close-title')).toHaveTextContent(
-      '%interlinearizer_analysisCatalog_closeConfirmTitle%',
+      '%interlinearizer_analysisCatalog_leaveConfirmTitle%',
     );
     expect(screen.getByTestId('catalog-close-prompt')).toHaveTextContent(
       '%interlinearizer_analysisCatalog_closeConfirmPrompt%',
@@ -40,11 +40,29 @@ describe('CatalogCloseModal', () => {
       />,
     );
 
+    expect(screen.getByTestId('catalog-close-title')).toHaveTextContent(
+      '%interlinearizer_analysisCatalog_leaveConfirmTitle%',
+    );
     expect(screen.getByTestId('catalog-close-prompt')).toHaveTextContent(
       '%interlinearizer_analysisCatalog_discardForSwitchPrompt%',
     );
     expect(screen.getByTestId('catalog-close-discard')).toHaveTextContent(
       '%interlinearizer_analysisCatalog_discardForSwitchConfirm%',
+    );
+  });
+
+  it('names the breakdown as what an edit to its row would discard', () => {
+    render(
+      <CatalogCloseModal
+        action="delete"
+        localizedStrings={STRINGS}
+        onCancel={() => {}}
+        onConfirm={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId('catalog-close-title')).toHaveTextContent(
+      '%interlinearizer_analysisCatalog_discardBreakdownTitle%',
     );
   });
 

@@ -17,6 +17,7 @@ import { buildConcordanceEntries, indexBook, type ConcordanceEntry } from '../..
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
+jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
 jest.mock('../../components/TextReadingStatus');
 
 /**

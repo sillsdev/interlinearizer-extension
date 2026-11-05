@@ -1,13 +1,18 @@
 import type { MorphemeAnalysis, SenseRef } from 'interlinearizer';
 import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useId, useState } from 'react';
-import { useDisplayedGloss } from './LexiconSenses';
-import { MorphemeBox } from './MorphemeBox';
-import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
+import type { CatalogRow } from '../utils/analysis-query';
+import { multiStringText } from '../utils/multi-string';
 import { resolvedOrEmpty } from '../utils/localized-strings';
+import type { Settles } from '../utils/settles';
 import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
+import useLatestRef from '../hooks/useLatestRef';
+import { useDisplayedGloss } from './LexiconSenses';
+import { ModalShell } from './modals/ModalShell';
+import { BoxAlignedField, MorphemeBox, ROW_LABEL_CLASS } from './MorphemeBox';
+import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
 
 /** Localized string keys the row editor renders. */
 export const ROW_EDITOR_STRING_KEYS = [
@@ -29,6 +34,9 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_appliesToAll%',
   '%interlinearizer_analysisCatalog_merge%',
   '%interlinearizer_analysisCatalog_delete%',
+  '%interlinearizer_analysisCatalog_deleteConfirmTitle%',
+  '%interlinearizer_analysisCatalog_deleteConfirmPrompt%',
+  '%interlinearizer_analysisCatalog_deleteConfirmCancel%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link CatalogRowEditor}. */
@@ -52,14 +60,20 @@ type CatalogRowEditorProps = Readonly<{
   analysisLanguage: string;
   /** When false, the breakdown is not shown at all, as the view option hides it on the strip. */
   showMorphology: boolean;
-  /** Writes the analysis's gloss for every token linked to it. */
-  onGlossCommit: (value: string) => void;
+  /**
+   * Writes the analysis's gloss for every token linked to it. A result that rejects leaves the edit
+   * unsent, for the field to send again.
+   */
+  onGlossCommit: (value: string) => Settles<unknown>;
   /** Replaces the analysis's morpheme breakdown for every token linked to it. */
   onMorphemesCommit: (forms: readonly string[]) => void;
   /** Keeps the analysis's stale breakdown as it stands, for every token linked to it. */
   onMorphemesConfirm: () => void;
-  /** Writes one morpheme's gloss for every token linked to the analysis. */
-  onMorphemeGlossCommit: (morphemeId: string, value: string) => void;
+  /**
+   * Writes one morpheme's gloss for every token linked to the analysis. A result that rejects
+   * leaves the edit unsent, for the field to send again.
+   */
+  onMorphemeGlossCommit: (morphemeId: string, value: string) => Settles<unknown>;
   /**
    * The breakdown draft, or `undefined` while the breakdown editor is closed. Held by the caller,
    * which outlives this editor's own mounting.
@@ -67,9 +81,132 @@ type CatalogRowEditorProps = Readonly<{
   breakdownDraft: string | undefined;
   /** Records the breakdown draft, `undefined` closing the breakdown editor. */
   onBreakdownDraftChange: (draft: string | undefined) => void;
+  /** Keeps the gloss drafts no field is showing, and tracks the fields showing a failed one. */
+  glossRetry: GlossRetry;
   /** Resolved localizations covering at least {@link ROW_EDITOR_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
 }>;
+
+/**
+ * A gloss field of the catalog: an analysis's own gloss, or one morpheme's gloss when `morphemeId`
+ * is set, in the analysis language `language`.
+ */
+export type GlossField = Readonly<{ language: string; analysisId: string; morphemeId?: string }>;
+
+/** A gloss draft no field is showing, with the committed value it was typed over. */
+type RejectedGloss = Readonly<{ draft: string; typedOver: string }>;
+
+/**
+ * Keeps the gloss drafts that no field is showing, for each field to show again when it next
+ * mounts. Also tracks the mounted fields showing a draft whose commit failed.
+ *
+ * A field unmounts when its row is collapsed or no longer listed, or when the analysis language
+ * changes. An unmounted field cannot send its draft itself.
+ */
+export type GlossRetry = Readonly<{
+  /**
+   * The draft to show in `field`, or `undefined` when none is kept. Returns `undefined` for a draft
+   * typed over a different committed value, which an edit since replaced.
+   */
+  draftFor: (field: GlossField, committedValue: string) => string | undefined;
+  /**
+   * Keeps a draft for `field`, which unmounted holding it unsent or whose commit failed after it
+   * unmounted.
+   */
+  reject: (field: GlossField, gloss: RejectedGloss) => void;
+  /**
+   * Drops the draft kept for `field`, once that field has mounted: it either shows the draft again
+   * or found it typed over a gloss that has changed since.
+   */
+  restored: (field: GlossField) => void;
+  /**
+   * Drops each kept draft that no field can show again: one whose analysis or morpheme is not among
+   * `rows`, or whose gloss there differs from the value the draft was typed over.
+   */
+  prune: (rows: readonly CatalogRow[]) => void;
+  /** Records whether the mounted `field` shows a draft whose commit failed. */
+  holding: (field: GlossField, held: boolean) => void;
+  /** Tracks a commit in flight, until it settles. */
+  track: (commit: Promise<unknown>) => Promise<void>;
+  /**
+   * Calls `then` once no commit is in flight, at once when none is. By then each failed commit's
+   * draft is held.
+   */
+  afterCommits: (then: () => void) => Promise<void>;
+  /** Whether any draft is kept or any mounted field shows one whose commit failed. */
+  isHolding: () => boolean;
+}>;
+
+/** The gloss that `field` holds in `rows`, or `undefined` when its analysis or morpheme is gone. */
+function committedGloss(rows: readonly CatalogRow[], field: GlossField): string | undefined {
+  const row = rows.find((r) => r.analysisId === field.analysisId);
+  if (row === undefined) return undefined;
+  if (field.morphemeId === undefined) return multiStringText(row.glosses, field.language);
+  const morpheme = row.morphemes.find((m) => m.id === field.morphemeId);
+  return morpheme && (morpheme.gloss?.[field.language] ?? '');
+}
+
+/**
+ * Creates an empty {@link GlossRetry} that tells `onHeldChange` whether any draft is held, each time
+ * that changes.
+ */
+export function createGlossRetry(onHeldChange: (held: boolean) => void): GlossRetry {
+  const rejected = new Map<string, Readonly<{ field: GlossField; gloss: RejectedGloss }>>();
+  const failedKeys = new Set<string>();
+  const inFlight = new Set<Promise<unknown>>();
+  let held = false;
+  const keyOf = (field: GlossField) =>
+    JSON.stringify([field.language, field.analysisId, field.morphemeId]);
+  const isHolding = () => rejected.size > 0 || failedKeys.size > 0;
+  const report = () => {
+    if (isHolding() === held) return;
+    held = !held;
+    onHeldChange(held);
+  };
+  const afterCommits = async (then: () => void) => {
+    // Runs `then` without awaiting when nothing is in flight, so an idle close is immediate.
+    if (inFlight.size === 0) {
+      then();
+      return;
+    }
+    await Promise.allSettled([...inFlight]);
+    await afterCommits(then);
+  };
+  return {
+    draftFor: (field, committedValue) => {
+      const gloss = rejected.get(keyOf(field))?.gloss;
+      return gloss?.typedOver === committedValue ? gloss.draft : undefined;
+    },
+    reject: (field, gloss) => {
+      rejected.set(keyOf(field), { field, gloss });
+      report();
+    },
+    restored: (field) => {
+      rejected.delete(keyOf(field));
+      report();
+    },
+    prune: (rows) => {
+      [...rejected]
+        .filter(([, { field, gloss }]) => committedGloss(rows, field) !== gloss.typedOver)
+        .forEach(([key]) => rejected.delete(key));
+      report();
+    },
+    holding: (field, isHeld) => {
+      if (isHeld) failedKeys.add(keyOf(field));
+      else failedKeys.delete(keyOf(field));
+      report();
+    },
+    track: (commit) => {
+      inFlight.add(commit);
+      const settle = () => {
+        inFlight.delete(commit);
+      };
+      return commit.then(settle, settle);
+    },
+    afterCommits,
+    isHolding,
+  };
+}
 
 /** Collapses leading, trailing, and repeated internal whitespace to single spaces. */
 function normalize(value: string): string {
@@ -118,31 +255,85 @@ function CommitOnBlurInput({
   committedValue,
   id,
   onCommit,
+  retry,
+  retryField,
   testId,
 }: Readonly<{
   ariaLabel?: string;
   committedValue: string;
   id?: string;
-  onCommit: (value: string) => void;
+  onCommit: (value: string) => Settles<unknown>;
+  retry: GlossRetry;
+  /** The gloss this input edits, under which `retry` keeps its draft. */
+  retryField: GlossField;
   testId: string;
 }>) {
-  const [draft, setDraft] = useState(committedValue);
+  const { language, analysisId, morphemeId } = retryField;
+  const field = useMemo(
+    () => ({ language, analysisId, morphemeId }),
+    [language, analysisId, morphemeId],
+  );
+  const [restoredDraft] = useState(() => retry.draftFor(field, committedValue));
+  const [draft, setDraft] = useState(restoredDraft ?? committedValue);
+  // Whether the field shows a draft whose commit failed, which leaving the panel must not drop
+  // unasked. Typing alone does not count: whatever moves focus to ask would commit the typing.
+  const [failed, setFailed] = useState(restoredDraft !== undefined);
   const [draftOf, setDraftOf] = useState(committedValue);
+  const isMounted = useRef(false);
+  useEffect(() => {
+    isMounted.current = true;
+    retry.restored(field);
+    return () => {
+      isMounted.current = false;
+    };
+  }, [retry, field]);
+  // The draft last sent to onCommit, kept until the committed value changes or the commit fails. The
+  // host may answer a commit only later, leaving the committed value behind the draft until it does.
+  const [sent, setSent] = useState<string | undefined>(undefined);
+  const latestDraft = useLatestRef(draft);
 
   // Adjusted during render rather than in an effect, so the field never paints one frame holding
   // the previous value.
   if (committedValue !== draftOf) {
     setDraftOf(committedValue);
     setDraft(committedValue);
+    setSent(undefined);
+    setFailed(false);
   }
 
+  const unsent = draft !== committedValue && draft !== sent;
+  const holding = unsent && failed;
+  useEffect(() => {
+    retry.holding(field, holding);
+    return () => retry.holding(field, false);
+  }, [retry, field, holding]);
+
   const commit = () => {
-    if (draft !== committedValue) onCommit(draft);
+    if (!unsent) return;
+    setSent(draft);
+    retry.holding(field, false);
+    const settled = onCommit(draft);
+    if (settled instanceof Promise)
+      retry.track(
+        settled.catch(() => {
+          if (!isMounted.current) {
+            retry.reject(field, { draft, typedOver: committedValue });
+            return;
+          }
+          setSent((current) => (current === draft ? undefined : current));
+          setFailed(true);
+          // Marked at once rather than by the effect after the next render, so that a close waiting
+          // on this commit already sees the draft as held.
+          if (latestDraft.current === draft) retry.holding(field, true);
+        }),
+      );
   };
 
-  // Surface uncommitted typing to the unsaved indicator before the edit commits on blur, and flush
-  // the draft if the field unmounts mid-edit.
-  useReportGlossEditing(draft !== committedValue, commit);
+  // Surface uncommitted typing to the unsaved indicator before the edit commits on blur. A field
+  // that unmounts holding an unsent draft keeps it for its next mounting rather than sending it:
+  // the unmount may come from switching the analysis language, and the host would write the draft
+  // in the new one.
+  useReportGlossEditing(unsent, () => retry.reject(field, { draft, typedOver: committedValue }));
 
   return (
     <Input
@@ -203,6 +394,7 @@ export default function CatalogRowEditor({
   onMorphemeGlossCommit,
   breakdownDraft,
   onBreakdownDraftChange,
+  glossRetry,
   localizedStrings,
 }: CatalogRowEditorProps) {
   const glossFieldId = useId();
@@ -244,16 +436,19 @@ export default function CatalogRowEditor({
   if (readOnly)
     return (
       <div className="tw:flex tw:flex-col tw:gap-3 tw:pt-1" data-testid="catalog-row-editor">
-        <div className="tw:flex tw:items-center tw:gap-2">
-          <span className="tw:text-xs tw:text-muted-foreground">
-            {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
-          </span>
-          <span className="tw:flex-1 tw:min-w-0 tw:text-sm" data-testid="readonly-catalog-gloss">
+        <BoxAlignedField
+          label={
+            <span className={ROW_LABEL_CLASS}>
+              {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
+            </span>
+          }
+        >
+          <span className="tw:min-w-0 tw:text-sm" data-testid="readonly-catalog-gloss">
             {displayedGloss ||
               resolvedOrEmpty(localizedStrings['%interlinearizer_analysisCatalog_noGloss%']) ||
               '—'}
           </span>
-        </div>
+        </BoxAlignedField>
 
         {/* The same labeled box the editable row shows, so switching between a read-only and an
             editable analysis does not rearrange the breakdown. */}
@@ -293,20 +488,23 @@ export default function CatalogRowEditor({
         </p>
       )}
 
-      <div className="tw:flex tw:items-center tw:gap-2">
-        <Label className="tw:text-xs tw:text-muted-foreground" htmlFor={glossFieldId}>
-          {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
-        </Label>
-        <div className="tw:flex-1 tw:min-w-0">
-          <CommitOnBlurInput
-            committedValue={gloss}
-            id={glossFieldId}
-            key={`${analysisId}-gloss`}
-            onCommit={onGlossCommit}
-            testId="catalog-row-gloss-input"
-          />
-        </div>
-      </div>
+      <BoxAlignedField
+        label={
+          <Label className={ROW_LABEL_CLASS} htmlFor={glossFieldId}>
+            {localizedStrings['%interlinearizer_analysisCatalog_editGloss%']}
+          </Label>
+        }
+      >
+        <CommitOnBlurInput
+          committedValue={gloss}
+          id={glossFieldId}
+          key={`${analysisLanguage}/${analysisId}-gloss`}
+          onCommit={onGlossCommit}
+          retry={glossRetry}
+          retryField={{ language: analysisLanguage, analysisId }}
+          testId="catalog-row-gloss-input"
+        />
+      </BoxAlignedField>
 
       {/* The forms row is the control that opens the editor. Labeled, there being no surrounding
           interlinear line here to say what the two rows are. */}
@@ -357,8 +555,10 @@ export default function CatalogRowEditor({
                       ) || undefined
                     }
                     committedValue={morpheme.gloss?.[analysisLanguage] ?? ''}
-                    key={`${analysisId}-${morpheme.id}`}
+                    key={`${analysisLanguage}/${analysisId}-${morpheme.id}`}
                     onCommit={(value) => onMorphemeGlossCommit(morpheme.id, value)}
+                    retry={glossRetry}
+                    retryField={{ language: analysisLanguage, analysisId, morphemeId: morpheme.id }}
                     testId="catalog-row-morpheme-gloss-input"
                   />
                 )}
@@ -399,19 +599,25 @@ export default function CatalogRowEditor({
  * Renders nothing for a read-only analysis, which neither control applies to.
  */
 export function CatalogRowActions({
+  surfaceText,
   onMergeRequest,
   onDeleteRequest,
   localizedStrings,
 }: Readonly<{
+  /** Surface form the delete confirmation names the analysis by. */
+  surfaceText: string;
   /** Opens the merge picker. Absent when the analysis shares its form with no other record. */
   onMergeRequest?: () => void;
-  /** Asks for the analysis to be deleted. */
+  /** Deletes the analysis. Called only after the reader confirms the deletion. */
   onDeleteRequest: () => void;
   /** Resolved localizations covering at least {@link ROW_EDITOR_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
 }>) {
   const readOnly = useAnalysisReadOnly();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   if (readOnly) return undefined;
+
+  const cancelDelete = () => setConfirmingDelete(false);
 
   return (
     <div className="tw:flex tw:gap-1.5">
@@ -433,13 +639,47 @@ export function CatalogRowActions({
       <Button
         className="tw:ms-auto tw:text-destructive"
         data-testid="catalog-row-delete"
-        onClick={onDeleteRequest}
+        onClick={() => setConfirmingDelete(true)}
         size="sm"
         type="button"
         variant="outline"
       >
         {localizedStrings['%interlinearizer_analysisCatalog_delete%']}
       </Button>
+      {confirmingDelete && (
+        <ModalShell
+          onClose={cancelDelete}
+          title={localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmTitle%']}
+          titleTestId="catalog-delete-confirm-title"
+          width="tw:w-96"
+        >
+          <p className="tw:mb-4 tw:text-sm" data-testid="catalog-delete-confirm-prompt">
+            {formatReplacementString(
+              localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmPrompt%'],
+              { form: surfaceText },
+            )}
+          </p>
+          <div className="tw:modal-actions">
+            <Button
+              data-testid="catalog-delete-confirm-cancel"
+              onClick={cancelDelete}
+              variant="secondary"
+            >
+              {localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmCancel%']}
+            </Button>
+            <Button
+              data-testid="catalog-delete-confirm"
+              onClick={() => {
+                setConfirmingDelete(false);
+                onDeleteRequest();
+              }}
+              variant="destructive"
+            >
+              {localizedStrings['%interlinearizer_analysisCatalog_delete%']}
+            </Button>
+          </div>
+        </ModalShell>
+      )}
     </div>
   );
 }

@@ -26,8 +26,9 @@ npm run test:coverage    # Run with coverage (100% threshold enforced)
 npm test -- path/to/file.test.ts                 # Run a single test file
 npm test -- --testNamePattern="pattern"          # Run tests matching name
 npm run test:c-sharp                             # Check the C# host published for this machine starts
+npm run test:c-sharp:conformance                 # Run the AnalysisRepository conformance suite against the published host
 npm run test:dotnet                              # Run the Harmony entity tests (TUnit; filters go after --)
-cd c-sharp && dotnet ef migrations add <Name> --project InterlinearizerCrdt   # After changing an entity's columns
+cd c-sharp && dotnet ef migrations add <Name> --project InterlinearizerCrdt   # After changing an entity's columns; see Migrations below
 
 # Performance (results land in perf/results/)
 npm run perf:capture     # Capture the WEB sample's USJ from a launched app into perf/.cache
@@ -62,11 +63,31 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 - **Runtime**: it targets .NET 10, which Harmony needs, and is published self-contained for each platform Platform.Bible ships for, since Platform.Bible's own runtime is private to its process.
 - **Network client**: it talks to the network through its own small client, since core's is not packaged for extensions to use. That client offers the methods core's does, so services can move into core later.
 - **Build**: the build copies whatever `npm run build:c-sharp` has published; without it the extension logs that the host could not start and carries on.
-- **Services**: they come from one DI container built in `Program`. There is no scope per request: the JSON-RPC layer offers none, and nothing in a request needs isolating from the next. Instead `OpenProjects` opens one DI scope per interlinear project, over that project's own SQLite database, and keeps it until the project is closed, as FieldWorks Lite does. A handler that serves a project takes its id as an argument and resolves the project's `AnalysisRepository` from that scope.
+- **Services**: they come from one DI container built in `Program`. There is no scope per request, because the JSON-RPC layer offers none.
+  - `OpenSources` opens one DI scope per source project and keeps it until the source is closed, as FieldWorks Lite does. The first command on a source opens it.
+  - Each scope sits over the source's own SQLite database, named after the source in the container's `SourcesDirectory`. Nothing else names the file, so a source always opens the same database.
+  - A handler takes the source and interlinear project ids and resolves the project's `AnalysisRepository` from the source's scope. A project the database does not store has no repository.
+  - Commands on one source share its scope's `InterlinearizerCrdtDbContext`, and EF Core does not allow overlapping operations on one context. Callers must not overlap commands on a source, `closeSource` included.
 - **Client id**: the host keeps a per-installation client id, which Harmony tells devices apart by, in its data directory: `--data-dir` names it, defaulting to a per-user folder.
+- **Port**: `--papi-port` names the network's port, defaulting to Platform.Bible's.
+- **Repository commands**: [RepositoryService.cs](c-sharp/InterlinearizerHost/Services/RepositoryService.cs) serves the C# `AnalysisRepository` as `interlinearizer.repository.<method>`, one command per method.
+  - Each command takes one object naming the source project, the interlinear project, and the method's arguments.
+  - Beside them sit `closeSource`, which takes the source alone, and project commands mirroring [InterlinearProjects.cs](c-sharp/InterlinearizerCrdt/InterlinearProjects.cs). An update names the fields to set or clear, as `ProjectPatch` does.
+  - The host leaves `projectId` off the wire, because the TypeScript records never carry it.
+  - [CSharpRepository](src/services/csharpRepository.ts) is the TypeScript side: an `AnalysisRepository` over one project that sends each call as a command. It refuses a change set carrying a `ScopeRecord`, which the host stores nowhere.
+  - Record ids must be GUID strings that are distinct across record kinds, for the reason under **Repository** below.
+- **Conformance**: `npm run test:c-sharp:conformance` runs the required tests of the [conformance suite](src/__tests__/analysis-repository-conformance.ts) against the published host.
+  - [fake-papi.ts](src/__tests__/c-sharp-host/fake-papi.ts) stands in for the Platform.Bible network: it starts the host on a free port, accepts its registrations, and sends it the suite's commands. The run needs no Platform.Bible.
+  - Each test's store prefixes its source ids with its own number, so every test gets fresh databases on the one host.
+  - [projects.test.ts](src/__tests__/c-sharp-host/projects.test.ts) covers the source and project commands.
 
-[c-sharp/InterlinearizerCrdt](c-sharp/InterlinearizerCrdt) holds the Harmony (CRDT) model of `TextAnalysis`: one entity per record type the analysis layer lists, with a create, replace, patch, and delete change for each, registered in [InterlinearizerCrdtKernel.cs](c-sharp/InterlinearizerCrdt/InterlinearizerCrdtKernel.cs). Nothing exposes the model over PAPI yet. [c-sharp/Interlinearizer.slnx](c-sharp/Interlinearizer.slnx) groups the three C# projects.
+[c-sharp/InterlinearizerCrdt](c-sharp/InterlinearizerCrdt) holds the Harmony (CRDT) model of `TextAnalysis`: one entity per record type the analysis layer lists, with a create, replace, patch, and delete change for each, registered in [InterlinearizerCrdtKernel.cs](c-sharp/InterlinearizerCrdt/InterlinearizerCrdtKernel.cs). [c-sharp/Interlinearizer.slnx](c-sharp/Interlinearizer.slnx) groups the three C# projects.
 
+- **Projects**: a database represents one source project and holds every interlinear project made over it.
+  - Each interlinear project is an `InterlinearProject` entity with a create, patch, and delete change. The patch replaces the analysis language list whole, so the later of two devices' edits stands.
+  - Every analysis and link carries the `ProjectId` it was created in, and no later change moves it. A record's create change refuses an empty `ProjectId`.
+  - The project is one of the record's references, so deleting the project deletes its records. A record created in a deleted or never-created project lands deleted.
+  - [InterlinearProjects.cs](c-sharp/InterlinearizerCrdt/InterlinearProjects.cs) manages a database's projects, one commit per call. A create refuses an id any record has ever been stored under, because Harmony would drop a second create without error.
 - **Owned values**: values an entity owns, such as a token analysis's morphemes or a link's token snapshots, are stored inside it as JSON, not as entities.
 - **Lookup columns**: each link keeps the book it points into, and each analysis its normalized surface form, as plain columns derived in their setters, so lookups need not read the JSON.
 - **Patch changes**:
@@ -75,8 +96,13 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
   - A JSON type-info modifier leaves unset fields out of the change's JSON, which is what keeps them unset when the change is read back.
 - **Empty maps**: an analysis's multistring or feature map field with no keys is stored as null, so every change that writes one whole passes it through `MultiString.NullIfEmpty`, as the per-key merge does. Maps nested in owned values, such as a morpheme's gloss, are stored as given.
 - **Deletes**: a link references its analysis, so deleting the analysis deletes the link.
-- **Migrations**: a project's database is created and upgraded through the EF migrations in [c-sharp/InterlinearizerCrdt/Migrations](c-sharp/InterlinearizerCrdt/Migrations), which `dotnet ef` scaffolds through the design-time factory. A model change without a migration fails the test that checks for pending model changes.
-- **Repository**: [AnalysisRepository.cs](c-sharp/InterlinearizerCrdt/AnalysisRepository.cs) is the C# slice of the TypeScript `AnalysisRepository` seam. It applies a `ChangeSet` of whole-record puts and deletes as one commit. A put of a record not stored creates it; otherwise the caller's `PutMode` says whether to replace the record whole or write a patch of only the fields that differ. It answers the seam's lookups from the projected tables.
+- **Migrations**: a database is created and upgraded through the EF migrations in [c-sharp/InterlinearizerCrdt/Migrations](c-sharp/InterlinearizerCrdt/Migrations), which `dotnet ef` scaffolds through the design-time factory. A model change without a migration fails the test that checks for pending model changes.
+  - Until a release ships the database, no stored database needs upgrading, so a model change regenerates `InitialCreate` instead of adding a migration. Run `dotnet ef migrations remove --project InterlinearizerCrdt` (or delete every file in Migrations, snapshot included), then the scaffold command with `InitialCreate` as the name. Delete the `sources` folder in the host's data directory too, because opening a database the old `InitialCreate` built fails.
+- **Repository**: [AnalysisRepository.cs](c-sharp/InterlinearizerCrdt/AnalysisRepository.cs) is the C# slice of the TypeScript `AnalysisRepository` seam, serving one project of its database.
+  - It applies a `ChangeSet` of whole-record puts and deletes as one commit. A put of a record not stored creates it in that project. Otherwise the caller's `PutMode` says whether to replace the record whole or patch only the fields that differ.
+  - It answers the seam's lookups from the projected tables, filtered to its project.
+  - Harmony keeps every entity in one table. To avoid losing or moving a record, an apply refuses a change set that names one id under more than one record kind. It also refuses a put whose id is stored as another kind or in another project, or whose record names another project.
+  - A delete of another project's record is skipped.
 - **Serialization**: [ChangeSerializationTests.cs](c-sharp/InterlinearizerCrdt.Tests/ChangeSerializationTests.cs) keeps one file per registered change type in [SerializedChanges](c-sharp/InterlinearizerCrdt.Tests/SerializedChanges), named by its discriminator: the JSON today's code writes, plus legacy JSON earlier builds wrote, which must still deserialize. When the JSON changes, the test moves the old shape to legacy, rewrites the file and fails once, so the change is reviewed and committed; a renamed or removed change type needs a migration path. Each file is stamped with the model version its `latest` was written under, and a moved row keeps that stamp: an app on that version drops what it doesn't know from the new JSON, so the test demands the type be listed in a later model version, which replays it on upgrade. `ModelVersions.txt` pins the model versions the same way: a new change type is appended to them, and released versions never change. Both tests rewrite their files, so a committed rewrite passes: review must catch an edit to legacy JSON or to a released version.
 
 ### WebView UI
@@ -142,7 +168,7 @@ Each change a session applies, re-anchor passes included, is described by [descr
 
 #### The WebView on the host path
 
-The WebView uses sessions only on the host path, which a window takes when its `interlinearizer.hostPath` local-storage key is `'true'` ([host-path](src/utils/host-path.ts)). The path is off by default. There, [useSessionProject](src/hooks/useSessionProject.ts) keeps the draft in a session, and the analysis hooks read pages through a `PageClient` and send each edit as a session command.
+The WebView uses sessions only on the host path, which a window takes unless its `interlinearizer.hostPath` local-storage key is `'false'` ([host-path](src/utils/host-path.ts)). There, [useSessionProject](src/hooks/useSessionProject.ts) keeps the draft in a session, and the analysis hooks read pages through a `PageClient` and send each edit as a session command.
 
 `getBookOutline`, `getSegments`, and `getTextReadStatus` also take a `{ sessionId }` address. That form segments the text by the draft's boundaries and adds the analysis that `sessionPages` reads. Its pages also span each phrase they touch with every member token, wherever it sits.
 
@@ -228,6 +254,8 @@ When it isn't worth handling, throw a clear error naming the unsupported case. A
 Jest with ts-jest, jsdom environment. PAPI is fully mocked in `__mocks__/`. Coverage is enforced at 100% on all `src/**` files (branches, functions, lines, statements), aside for select explicit exclusions.
 
 `resetMocks: true` is set globally — mock implementations are cleared before every test, so each test must set up its own mocks (typically in `beforeEach`). Never rely on implementation state leaking from a prior test.
+
+Any `console.error` or `console.warn` call fails the test that is running when it lands, or the file when it lands after the last test ([jest.environment.ts](jest.environment.ts)). A log from a cleanup hook fails the test that the hook ran after. A log from loading a test file, or from its `afterAll`, fails the file. Redux Toolkit's warning that an invariant check ran slowly is silenced, because load alone can cause it. A test that expects a log silences it with `jest.spyOn(console, 'error').mockImplementation(...)`. A test that leaves async work running, such as a lookup that sets state once it resolves, waits for that work with `findBy*` or `waitFor`, or unmounts to abandon it.
 
 `@papi/backend` and `@papi/frontend` mocks are mutually exclusive: backend tests use `papi-backend.ts`, WebView tests use `papi-frontend.ts` + `papi-frontend-react.ts`. Each mock file ends with `export {}` so TypeScript treats it as a module.
 

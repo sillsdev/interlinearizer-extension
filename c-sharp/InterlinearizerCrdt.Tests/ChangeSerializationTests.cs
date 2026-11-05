@@ -42,6 +42,10 @@ public class ChangeSerializationTests
 
     public static IEnumerable<IChange> AllChanges()
     {
+        yield return Fixtures.CreateInterlinearProject(Id);
+        yield return Fixtures.PatchInterlinearProject(Id);
+        yield return Fixtures.PatchInterlinearProjectAllFields(Id);
+        yield return new DeleteChange<InterlinearProject>(Id);
         yield return Fixtures.CreateSegmentAnalysis(Id);
         yield return Fixtures.ReplaceSegmentAnalysis(Id);
         yield return new DeleteChange<SegmentAnalysis>(Id);

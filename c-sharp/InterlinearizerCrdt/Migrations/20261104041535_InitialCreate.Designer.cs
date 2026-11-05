@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Interlinearizer.Crdt.Migrations
 {
     [DbContext(typeof(InterlinearizerCrdtDbContext))]
-    [Migration("20261102091318_InitialCreate")]
+    [Migration("20261104041535_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -20,6 +20,48 @@ namespace Interlinearizer.Crdt.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.14");
+
+            modelBuilder.Entity("Interlinearizer.Crdt.Entities.InterlinearProject", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AnalysisLanguages")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Segmentation")
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid?>("SnapshotId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TargetProjectId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SnapshotId")
+                        .IsUnique();
+
+                    b.ToTable("InterlinearProject");
+                });
 
             modelBuilder.Entity("Interlinearizer.Crdt.Entities.PhraseAnalysis", b =>
                 {
@@ -46,6 +88,9 @@ namespace Interlinearizer.Crdt.Migrations
                     b.Property<string>("Producer")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SenseRef")
                         .HasColumnType("jsonb");
 
@@ -64,10 +109,10 @@ namespace Interlinearizer.Crdt.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("NormalizedForm");
-
                     b.HasIndex("SnapshotId")
                         .IsUnique();
+
+                    b.HasIndex("ProjectId", "NormalizedForm");
 
                     b.ToTable("PhraseAnalysis");
                 });
@@ -94,6 +139,9 @@ namespace Interlinearizer.Crdt.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("SnapshotId")
                         .HasColumnType("TEXT");
 
@@ -109,12 +157,12 @@ namespace Interlinearizer.Crdt.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AnalysisId");
-
                     b.HasIndex("SnapshotId")
                         .IsUnique();
 
-                    b.HasIndex("BookCode", "Status");
+                    b.HasIndex("ProjectId", "AnalysisId");
+
+                    b.HasIndex("ProjectId", "BookCode", "Status");
 
                     b.ToTable("PhraseAnalysisLink");
                 });
@@ -145,6 +193,9 @@ namespace Interlinearizer.Crdt.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Producer")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ProjectId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid?>("SnapshotId")
@@ -190,6 +241,9 @@ namespace Interlinearizer.Crdt.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("SegmentId")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -205,14 +259,14 @@ namespace Interlinearizer.Crdt.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AnalysisId");
-
-                    b.HasIndex("SegmentId");
-
                     b.HasIndex("SnapshotId")
                         .IsUnique();
 
-                    b.HasIndex("BookCode", "Status");
+                    b.HasIndex("ProjectId", "AnalysisId");
+
+                    b.HasIndex("ProjectId", "SegmentId");
+
+                    b.HasIndex("ProjectId", "BookCode", "Status");
 
                     b.ToTable("SegmentAnalysisLink");
                 });
@@ -257,6 +311,9 @@ namespace Interlinearizer.Crdt.Migrations
                     b.Property<string>("Producer")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("SnapshotId")
                         .HasColumnType("TEXT");
 
@@ -272,10 +329,10 @@ namespace Interlinearizer.Crdt.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("NormalizedForm");
-
                     b.HasIndex("SnapshotId")
                         .IsUnique();
+
+                    b.HasIndex("ProjectId", "NormalizedForm");
 
                     b.ToTable("TokenAnalysis");
                 });
@@ -302,6 +359,9 @@ namespace Interlinearizer.Crdt.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid?>("SnapshotId")
                         .HasColumnType("TEXT");
 
@@ -321,14 +381,14 @@ namespace Interlinearizer.Crdt.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AnalysisId");
-
                     b.HasIndex("SnapshotId")
                         .IsUnique();
 
-                    b.HasIndex("TokenRef");
+                    b.HasIndex("ProjectId", "AnalysisId");
 
-                    b.HasIndex("BookCode", "Status");
+                    b.HasIndex("ProjectId", "TokenRef");
+
+                    b.HasIndex("ProjectId", "BookCode", "Status");
 
                     b.ToTable("TokenAnalysisLink");
                 });
@@ -453,6 +513,14 @@ namespace Interlinearizer.Crdt.Migrations
                         .IsUnique();
 
                     b.ToTable("Snapshots", (string)null);
+                });
+
+            modelBuilder.Entity("Interlinearizer.Crdt.Entities.InterlinearProject", b =>
+                {
+                    b.HasOne("SIL.Harmony.Db.ObjectSnapshot", null)
+                        .WithOne()
+                        .HasForeignKey("Interlinearizer.Crdt.Entities.InterlinearProject", "SnapshotId")
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Interlinearizer.Crdt.Entities.PhraseAnalysis", b =>

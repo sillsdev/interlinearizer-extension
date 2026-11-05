@@ -217,6 +217,10 @@ jobs:
         working-directory: extension-repo
         run: npm run build:c-sharp -- ${{ matrix.os == 'windows-latest' && 'win-x64' || 'linux-x64' }}
 
+      - name: Run the AnalysisRepository conformance suite against the C# host
+        working-directory: extension-repo
+        run: npm run test:c-sharp:conformance
+
       - name: Build extension
         working-directory: extension-repo
         run: npm run build

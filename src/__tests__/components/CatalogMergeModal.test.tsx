@@ -5,6 +5,7 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MorphemeAnalysis } from 'interlinearizer';
+import { TooltipProvider } from 'platform-bible-react';
 import CatalogMergeModal, {
   MERGE_STRING_KEYS,
   dropIndex,
@@ -70,18 +71,21 @@ function renderModal(
   const onConfirm = overrides.onConfirm ?? jest.fn();
   const onCancel = overrides.onCancel ?? jest.fn();
   const initialSurvivorId = overrides.initialSurvivorId ?? candidates[0].analysisId;
+  // The catalog panel the modal opens from supplies the provider its tooltips need.
   const modal = (over: readonly CatalogRow[]) => (
-    <CatalogMergeModal
-      analysisLanguage={analysisLanguage}
-      candidates={over}
-      initialSurvivorId={initialSurvivorId}
-      localizedStrings={overrides.strings ?? STRINGS}
-      showMorphology={overrides.showMorphology ?? true}
-      onCancel={onCancel}
-      onConfirm={onConfirm}
-      sourceLanguageTag="grc"
-      surfaceText="λόγος"
-    />
+    <TooltipProvider>
+      <CatalogMergeModal
+        analysisLanguage={analysisLanguage}
+        candidates={over}
+        initialSurvivorId={initialSurvivorId}
+        localizedStrings={overrides.strings ?? STRINGS}
+        showMorphology={overrides.showMorphology ?? true}
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+        sourceLanguageTag="grc"
+        surfaceText="λόγος"
+      />
+    </TooltipProvider>
   );
   const { rerender } = render(modal(candidates));
   /** Re-renders the mounted modal over a changed listing, as an edit beside the panel leaves it. */

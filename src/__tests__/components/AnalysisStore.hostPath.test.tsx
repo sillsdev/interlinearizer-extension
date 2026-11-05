@@ -1,15 +1,34 @@
 /// <reference types="jest" />
 
 import papi from '@papi/frontend';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, render, renderHook, waitFor } from '@testing-library/react';
 import type { TextAnalysis } from 'interlinearizer';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { PageClient } from '../../cache/pageClient';
 import { WholeAnalysis } from '../../cache/wholeAnalysis';
 import * as perfMarks from '../../utils/perf-marks';
 import {
   SessionAnalysisProvider,
+  useAnalysis,
   useAnalysisDeletionOutcome,
+  useAnalysisLanguage,
+  useAnalysisReadOnly,
+  useCatalogRows,
+  useFreeTranslationsBySegment,
+  useMorphemes,
+  usePhraseGloss,
+  usePhraseLinkByIdMap,
+  usePhraseLinkForToken,
+  usePhraseLinkMap,
+  usePhraseSenseRef,
+  usePlacedStaleFreeTranslations,
+  useReportGlossEditing,
+  useSegmentFreeTranslation,
+  useSegmentHasApprovedTranslation,
+  useSegmentsWithApprovedTranslation,
+  useStaleMorphemesAnalysisId,
+  useStaleTokenLinks,
+  useUnapprovedTokenAnalysis,
   useGlossClearReclaims,
   usePhraseLinkByIdGetter,
   useStaleLocationReclaims,
@@ -39,6 +58,8 @@ jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => true }));
 
 const SENSE = { authority: 'fwlite', senseId: 's-god' };
 
+const GLOSSED_NOTHING: Partial<TextAnalysis> = {};
+
 const GOD_WITH_SENSE: Partial<TextAnalysis> = {
   tokenAnalyses: [
     {
@@ -61,6 +82,14 @@ function isGlossArgs(
     (key) => typeof Reflect.get(args, key) === 'string',
   );
 }
+
+/** The provider props that a test may set; the session's own are filled in. */
+type ProviderProps = Partial<
+  Pick<
+    ComponentProps<typeof SessionAnalysisProvider>,
+    'analysisLanguage' | 'onPendingEditsChange' | 'readOnly'
+  >
+>;
 
 /**
  * A session over `analysis` and a provider over it, with the segments in `held` loaded, every one
@@ -103,17 +132,25 @@ async function sessionProviderOver(
       ),
     );
   });
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <SessionAnalysisProvider
-      client={client}
-      whole={whole}
-      sessionId={made.sessionId}
-      analysisLanguage="en"
-    >
-      {children}
-    </SessionAnalysisProvider>
-  );
-  return { ...made, client, whole, wrapper };
+  function Provider({
+    children,
+    analysisLanguage = 'en',
+    ...props
+  }: ProviderProps & { children: ReactNode }) {
+    return (
+      <SessionAnalysisProvider
+        client={client}
+        whole={whole}
+        sessionId={made.sessionId}
+        analysisLanguage={analysisLanguage}
+        {...props}
+      >
+        {children}
+      </SessionAnalysisProvider>
+    );
+  }
+  const wrapper = ({ children }: { children: ReactNode }) => <Provider>{children}</Provider>;
+  return { ...made, client, whole, Provider, wrapper };
 }
 
 describe('AnalysisStore on the host path', () => {
@@ -268,6 +305,46 @@ const DISPATCHES: [string, () => () => void, string][] = [
     },
     'interlinearizer.discardStaleAnalysis',
   ],
+  [
+    'usePhraseDispatch creating',
+    () => {
+      const { createPhrase } = usePhraseDispatch();
+      return () => createPhrase([{ tokenRef: ref('In'), surfaceText: 'In' }]);
+    },
+    'interlinearizer.createPhrase',
+  ],
+  [
+    'usePhraseDispatch updating',
+    () => {
+      const { updatePhrase } = usePhraseDispatch();
+      return () => updatePhrase('pl-1', [{ tokenRef: ref('In'), surfaceText: 'In' }]);
+    },
+    'interlinearizer.updatePhrase',
+  ],
+  [
+    'usePhraseDispatch merging',
+    () => {
+      const { mergePhrases } = usePhraseDispatch();
+      return () => mergePhrases('pl-1', [{ tokenRef: ref('In'), surfaceText: 'In' }], undefined);
+    },
+    'interlinearizer.mergePhrases',
+  ],
+  [
+    'useStaleFreeTranslationDispatch keeping',
+    () => {
+      const { keep } = useStaleFreeTranslationDispatch();
+      return () => keep('sa-old', 'GEN 1:1', 'In the beginning God');
+    },
+    'interlinearizer.keepStaleFreeTranslation',
+  ],
+  [
+    'useStaleLocationDispatch reapplying',
+    () => {
+      const { reapply } = useStaleLocationDispatch();
+      return () => reapply('ta-god', ref('God'), ref('earth'), 'earth');
+    },
+    'interlinearizer.reapplyStaleAnalysis',
+  ],
 ];
 
 /** The ref of the second "God", in GEN 1:3. */
@@ -417,5 +494,278 @@ describe('AnalysisStore removal previews on the host path', () => {
     await expect(
       result.current.reapply('ta-god', ref('God'), ref('earth'), 'earth'),
     ).resolves.toStrictEqual(['ta-god']);
+  });
+});
+
+const PHRASE_SENSE = { authority: 'fwlite', senseId: 's-in-the' };
+
+/**
+ * A draft holding one record of each kind that the read hooks answer from: a breakdown on "God", an
+ * unreviewed record on "earth", a stale breakdown on "said", a stale place of "God" at "earth", a
+ * phrase over "In the", and a free translation on the first verse beside a stale one on the
+ * second.
+ */
+const READ_FIXTURE: Partial<TextAnalysis> = {
+  tokenAnalyses: [
+    {
+      id: 'ta-god',
+      ...FIXTURE_STAMPS,
+      surfaceText: 'God',
+      gloss: { en: 'God' },
+      morphemes: [{ id: 'm-1', form: 'God', writingSystem: 'en' }],
+    },
+    { id: 'ta-earth', ...FIXTURE_STAMPS, surfaceText: 'earth', gloss: { en: 'land' } },
+    {
+      id: 'ta-said',
+      ...FIXTURE_STAMPS,
+      surfaceText: 'said',
+      morphemes: [{ id: 'm-2', form: 'sed', writingSystem: 'en' }],
+      morphemesStale: true,
+    },
+  ],
+  tokenAnalysisLinks: [
+    makeTokenLink('ta-god', ref('God'), { surfaceText: 'God', id: 'tl-god' }),
+    makeTokenLink('ta-earth', ref('earth'), {
+      surfaceText: 'earth',
+      status: 'suggested',
+      id: 'tl-earth',
+    }),
+    makeTokenLink('ta-said', ref('said'), { surfaceText: 'said', id: 'tl-said' }),
+    makeTokenLink('ta-god', ref('earth'), { surfaceText: 'God', status: 'stale', id: 'tl-stale' }),
+  ],
+  phraseAnalyses: [
+    {
+      id: 'pa-1',
+      ...FIXTURE_STAMPS,
+      surfaceText: 'In the',
+      gloss: { en: 'in the' },
+      senseRef: PHRASE_SENSE,
+    },
+  ],
+  phraseAnalysisLinks: [{ ...makePhraseLink('pl-1', [ref('In'), ref('the')]), analysisId: 'pa-1' }],
+  segmentAnalyses: [
+    {
+      id: 'sa-1',
+      ...FIXTURE_STAMPS,
+      surfaceText: 'In the beginning God',
+      freeTranslation: { en: 'At first' },
+    },
+    {
+      id: 'sa-old',
+      ...FIXTURE_STAMPS,
+      surfaceText: 'And the land',
+      freeTranslation: { en: 'old' },
+    },
+  ],
+  segmentAnalysisLinks: [
+    { id: 'sl-1', ...FIXTURE_STAMPS, analysisId: 'sa-1', status: 'approved', segmentId: 'GEN 1:1' },
+    {
+      id: 'sl-old',
+      ...FIXTURE_STAMPS,
+      analysisId: 'sa-old',
+      status: 'stale',
+      segmentId: 'GEN 1:2',
+    },
+  ],
+};
+
+/** Each read hook, a read of {@link READ_FIXTURE} through it, and what that read answers. */
+const READS: [string, () => unknown, unknown][] = [
+  ['useMorphemes', () => useMorphemes(ref('God')).map((m) => m.form), ['God']],
+  [
+    'useUnapprovedTokenAnalysis',
+    () => useUnapprovedTokenAnalysis(ref('earth'), true)?.id,
+    'ta-earth',
+  ],
+  ['useStaleMorphemesAnalysisId', () => useStaleMorphemesAnalysisId(ref('said')), 'ta-said'],
+  ['usePhraseLinkMap', () => [...usePhraseLinkMap().keys()], [ref('In'), ref('the')]],
+  ['usePhraseLinkByIdMap', () => [...usePhraseLinkByIdMap().keys()], ['pl-1']],
+  ['usePhraseLinkForToken', () => usePhraseLinkForToken(ref('the'))?.id, 'pl-1'],
+  ['usePhraseGloss', () => usePhraseGloss('pl-1'), 'in the'],
+  ['usePhraseSenseRef', () => usePhraseSenseRef('pl-1'), PHRASE_SENSE],
+  ['useSegmentFreeTranslation', () => useSegmentFreeTranslation('GEN 1:1'), 'At first'],
+  [
+    'useFreeTranslationsBySegment',
+    () => useFreeTranslationsBySegment(),
+    new Map([['GEN 1:1', 'At first']]),
+  ],
+  ['useSegmentHasApprovedTranslation', () => useSegmentHasApprovedTranslation('GEN 1:1'), true],
+  [
+    'useSegmentsWithApprovedTranslation',
+    () => useSegmentsWithApprovedTranslation(),
+    new Set(['GEN 1:1']),
+  ],
+  [
+    'usePlacedStaleFreeTranslations',
+    () => usePlacedStaleFreeTranslations(BOOK).bySegment,
+    new Map([['GEN 1:2', [{ analysisId: 'sa-old', segmentId: 'GEN 1:2', text: 'old' }]]]),
+  ],
+  ['useStaleTokenLinks', () => useStaleTokenLinks().map((link) => link.id), ['tl-stale']],
+  [
+    'useCatalogRows',
+    () => useCatalogRows('GEN', new Map()).map((row) => row.analysisId),
+    ['ta-god', 'ta-earth', 'ta-said'],
+  ],
+  ['useAnalysis', () => useAnalysis().phraseAnalyses.map((pa) => pa.id), ['pa-1']],
+  ['useAnalysisLanguage', () => useAnalysisLanguage(), 'en'],
+  ['useAnalysisReadOnly', () => useAnalysisReadOnly(), false],
+];
+
+describe('AnalysisStore reads on the host path', () => {
+  it.each(READS)('%s answers from the session', async (_name, useRead, expected) => {
+    const { wrapper } = await sessionProviderOver(READ_FIXTURE);
+
+    const { result } = renderHook(useRead, { wrapper });
+
+    expect(result.current).toStrictEqual(expected);
+  });
+
+  it('reads the analysis as read-only when the provider is', async () => {
+    const { Provider } = await sessionProviderOver(READ_FIXTURE);
+
+    const { result } = renderHook(() => useAnalysisReadOnly(), {
+      wrapper: ({ children }) => <Provider readOnly>{children}</Provider>,
+    });
+
+    expect(result.current).toBe(true);
+  });
+
+  it('reads glosses in the language the provider switches to', async () => {
+    const { Provider } = await sessionProviderOver({
+      tokenAnalyses: [
+        { id: 'ta-god', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'God', de: 'Gott' } },
+      ],
+      tokenAnalysisLinks: [makeTokenLink('ta-god', ref('God'), { surfaceText: 'God' })],
+    });
+    let language = 'en';
+    const { result, rerender } = renderHook(
+      () => ({ language: useAnalysisLanguage(), gloss: useGloss(ref('God')) }),
+      {
+        wrapper: ({ children }) => <Provider analysisLanguage={language}>{children}</Provider>,
+      },
+    );
+
+    language = 'de';
+    rerender();
+
+    expect(result.current).toStrictEqual({ language: 'de', gloss: 'Gott' });
+  });
+});
+
+/** Every hook that must run inside a provider, and a call of it. */
+const PROVIDER_HOOKS: [string, () => unknown][] = [
+  ['useGloss', () => useGloss('t')],
+  ['useGlossDispatch', () => useGlossDispatch()],
+  ['useMorphemes', () => useMorphemes('t')],
+  ['useAnalysis', () => useAnalysis()],
+  ['useAnalysisReadOnly', () => useAnalysisReadOnly()],
+  ['useReportGlossEditing', () => useReportGlossEditing(false, () => {})],
+];
+
+describe('AnalysisStore hooks outside a provider', () => {
+  it.each(PROVIDER_HOOKS)('%s throws', (name, useHook) => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => renderHook(useHook)).toThrow(`${name} must be used inside`);
+  });
+});
+
+/** Reports `isEditing` through {@link useReportGlossEditing}, rendering nothing. */
+function EditingReporter({
+  isEditing,
+  commit = () => {},
+}: Readonly<{ isEditing: boolean; commit?: () => void }>) {
+  useReportGlossEditing(isEditing, commit);
+  return undefined;
+}
+
+describe('useReportGlossEditing on the host path', () => {
+  it('reports true when the first input starts editing and false when it stops', async () => {
+    const { Provider } = await sessionProviderOver(GLOSSED_NOTHING);
+    const onPendingEditsChange = jest.fn();
+    const renderWith = (isEditing: boolean) => (
+      <Provider onPendingEditsChange={onPendingEditsChange}>
+        <EditingReporter isEditing={isEditing} />
+      </Provider>
+    );
+    const { rerender } = render(renderWith(false));
+    expect(onPendingEditsChange).not.toHaveBeenCalled();
+
+    rerender(renderWith(true));
+    expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
+
+    rerender(renderWith(false));
+    expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports only the crossings to and from no input editing', async () => {
+    const { Provider } = await sessionProviderOver(GLOSSED_NOTHING);
+    const onPendingEditsChange = jest.fn();
+    const renderWith = (a: boolean, b: boolean) => (
+      <Provider onPendingEditsChange={onPendingEditsChange}>
+        <EditingReporter isEditing={a} />
+        <EditingReporter isEditing={b} />
+      </Provider>
+    );
+    const { rerender } = render(renderWith(true, false));
+    rerender(renderWith(true, true));
+    rerender(renderWith(false, true));
+    rerender(renderWith(false, false));
+
+    expect(onPendingEditsChange.mock.calls).toStrictEqual([[true], [false]]);
+  });
+
+  it('reports false when an editing input unmounts', async () => {
+    const { Provider } = await sessionProviderOver(GLOSSED_NOTHING);
+    const onPendingEditsChange = jest.fn();
+    const { rerender } = render(
+      <Provider onPendingEditsChange={onPendingEditsChange}>
+        <EditingReporter isEditing />
+      </Provider>,
+    );
+
+    rerender(
+      <Provider onPendingEditsChange={onPendingEditsChange}>
+        <span />
+      </Provider>,
+    );
+
+    expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('commits the draft when an editing input unmounts', async () => {
+    const { Provider } = await sessionProviderOver(GLOSSED_NOTHING);
+    const commit = jest.fn();
+    const { rerender } = render(
+      <Provider>
+        <EditingReporter isEditing commit={commit} />
+      </Provider>,
+    );
+
+    rerender(
+      <Provider>
+        <span />
+      </Provider>,
+    );
+
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('commits nothing when the input stops editing without unmounting', async () => {
+    const { Provider } = await sessionProviderOver(GLOSSED_NOTHING);
+    const commit = jest.fn();
+    const { rerender } = render(
+      <Provider>
+        <EditingReporter isEditing commit={commit} />
+      </Provider>,
+    );
+
+    rerender(
+      <Provider>
+        <EditingReporter isEditing={false} commit={commit} />
+      </Provider>,
+    );
+
+    expect(commit).not.toHaveBeenCalled();
   });
 });

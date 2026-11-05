@@ -13,7 +13,8 @@ public record RecordChanges<T>(IReadOnlyList<T> Puts, IReadOnlyList<Guid> Delete
 
 /// <summary>
 /// One command's changes, applied all-or-nothing. A record kind it leaves alone is absent, and an
-/// id appears at most once in a kind's puts and deletes together.
+/// id appears at most once in every kind's puts and deletes together, since Harmony keeps every
+/// entity in one table.
 /// </summary>
 public record ChangeSet
 {
@@ -40,6 +41,15 @@ public enum PutMode
     /// </summary>
     Patch,
 }
+
+/// <summary>Every stored record, one list per kind, each in no set order.</summary>
+public record TextAnalysis(
+    List<SegmentAnalysis> SegmentAnalyses,
+    List<SegmentAnalysisLink> SegmentAnalysisLinks,
+    List<TokenAnalysis> TokenAnalyses,
+    List<TokenAnalysisLink> TokenAnalysisLinks,
+    List<PhraseAnalysis> PhraseAnalyses,
+    List<PhraseAnalysisLink> PhraseAnalysisLinks);
 
 /// <summary>Links of every kind, one list per kind, each in no set order.</summary>
 public record AnalysisLinks(

@@ -75,6 +75,9 @@ public class AnalysisRepositoryTests : CrdtTestBase
         }),
     };
 
+    /// <summary>The commit made last; the commit's time is not a mapped column, so it is picked in memory.</summary>
+    private async Task<Commit> LatestCommit() => (await DbContext.Commits.ToListAsync()).MaxBy(c => c.DateTime)!;
+
     private static IEnumerable<Guid> IdsOf(IEnumerable<Analysis> records) => records.Select(r => r.Id);
     private static IEnumerable<Guid> IdsOf(IEnumerable<AnalysisLink> records) => records.Select(r => r.Id);
 
@@ -122,7 +125,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
     {
         await ApplyNext(FullAnalysis());
 
-        var commit = await DbContext.Commits.SingleAsync();
+        var commit = await LatestCommit();
         var analysis = (await Repository.GetTokenAnalyses([TaAnd])).Single();
         await Assert.That(analysis.CreatedAt).IsEqualTo(commit.DateTime);
         await Assert.That(analysis.UpdatedAt).IsEqualTo(commit.DateTime);
@@ -139,7 +142,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
         var stored = (await Repository.GetTokenAnalyses([TaBeginning])).Single();
         await Assert.That(stored.Gloss).IsNull();
         await Assert.That(stored.SurfaceText).IsEqualTo("beginning");
-        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(2);
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(3);
     }
 
     [Test]
@@ -209,7 +212,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
 
         await ApplyNext(new ChangeSet { Intent = "noop", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(same) }, PutMode.Patch);
 
-        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(1);
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(2);
     }
 
     [Test]
@@ -258,7 +261,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
     public async Task ApplyKeepsTheCreationTimeOfAReplacedRecord()
     {
         await ApplyNext(FullAnalysis());
-        var created = await DbContext.Commits.SingleAsync();
+        var created = await LatestCommit();
 
         await ApplyNext(new ChangeSet
         {
@@ -309,7 +312,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
 
         await ApplyNext(new ChangeSet { Intent = "deleteMissing", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(Guid.NewGuid()) });
 
-        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(1);
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(2);
         await Assert.That(await DbContext.TokenAnalyses.CountAsync()).IsEqualTo(3);
     }
 
@@ -318,7 +321,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
     {
         await ApplyNext(FullAnalysis());
 
-        var commit = await DbContext.Commits.SingleAsync();
+        var commit = await LatestCommit();
         await Assert.That(commit.Metadata[AnalysisRepository.IntentMetadataKey]).IsEqualTo("seed");
     }
 
@@ -333,7 +336,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
             TokenAnalyses = new RecordChanges<TokenAnalysis>([Token(TaAnd, "and", "also")], [TaAnd]),
         })).Throws<ArgumentException>();
 
-        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(1);
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(2);
         var stored = (await Repository.GetTokenAnalyses([TaAnd])).Single();
         await Assert.That(stored.Gloss!["en"]).IsEqualTo("and");
     }
@@ -472,6 +475,261 @@ public class AnalysisRepositoryTests : CrdtTestBase
             .IsEquivalentTo([TaAnd, capitalized]);
         await Assert.That(IdsOf(await Repository.FindPhraseAnalysesByForm([Refs.NormalizeSurfaceForm("In The")])))
             .IsEquivalentTo([PaInThe]);
+    }
+
+    /// <summary>
+    /// Harmony's behavior, which the repository's refusals below guard against: a second create
+    /// under an id already created, of whatever kind, is dropped without error.
+    /// </summary>
+    [Test]
+    public async Task HarmonyKeepsOneEntityPerIdWhateverItsKind()
+    {
+        var shared = Guid.NewGuid();
+        var createAnalysis = new CreatePhraseAnalysisChange(shared) { ProjectId = ProjectId, SurfaceText = "in" };
+        var createLink = new CreatePhraseAnalysisLinkChange(shared)
+        {
+            ProjectId = ProjectId,
+            AnalysisId = shared,
+            Tokens = [new TokenSnapshot("GEN 1:1:2", "in")],
+            Status = AssignmentStatus.Approved,
+        };
+
+        await WriteNextChange([createAnalysis, createLink]);
+
+        await Assert.That(await DbContext.PhraseAnalyses.CountAsync()).IsEqualTo(1);
+        await Assert.That(await DbContext.PhraseAnalysisLinks.CountAsync()).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ApplyRefusesAnIdSharedAcrossKindsApplyingNothing()
+    {
+        var shared = Guid.NewGuid();
+        var link = new PhraseAnalysisLink
+        {
+            Id = shared,
+            AnalysisId = shared,
+            Tokens = [new TokenSnapshot("GEN 1:1:2", "in")],
+            Status = AssignmentStatus.Approved,
+        };
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "shared id",
+            PhraseAnalyses = RecordChanges<PhraseAnalysis>.Put(new PhraseAnalysis { Id = shared, SurfaceText = "in" }),
+            PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Put(link),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task ApplyRefusesAPutUnderAnIdStoredAsAnotherKindApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var link = new PhraseAnalysisLink
+        {
+            Id = PaInThe,
+            AnalysisId = PaInThe,
+            Tokens = [new TokenSnapshot("GEN 1:1:2", "in")],
+            Status = AssignmentStatus.Approved,
+        };
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "stored as another kind",
+            PhraseAnalysisLinks = RecordChanges<PhraseAnalysisLink>.Put(link),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(2);
+        await Assert.That(IdsOf(await Repository.GetPhraseAnalyses([PaInThe]))).IsEquivalentTo([PaInThe]);
+    }
+
+    private static readonly Guid OtherProjectId = Guid.NewGuid();
+
+    /// <summary>
+    /// A repository over a second project in the same database, holding "and" on GEN 1:1:0 too,
+    /// under ids of its own.
+    /// </summary>
+    private async Task<(AnalysisRepository Repository, Guid TaAnd, Guid TlGenAnd)> OtherProject()
+    {
+        await CreateProject(OtherProjectId);
+        var other = RepositoryFor(OtherProjectId);
+        var taAnd = Guid.NewGuid();
+        var tlGenAnd = Guid.NewGuid();
+        await other.Apply(new ChangeSet
+        {
+            Intent = "seed other",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(taAnd, "and", "also")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(tlGenAnd, taAnd, "GEN 1:1:0", "and")),
+        });
+        return (other, taAnd, tlGenAnd);
+    }
+
+    [Test]
+    public async Task ApplyStampsCreatedRecordsWithTheProject()
+    {
+        await ApplyNext(FullAnalysis());
+
+        await Assert.That((await Repository.GetTokenAnalyses([TaAnd])).Single().ProjectId).IsEqualTo(ProjectId);
+        await Assert.That((await Repository.FindLinksToAnalyses([TaAnd])).TokenAnalysisLinks.Select(l => l.ProjectId).Distinct())
+            .IsEquivalentTo([ProjectId]);
+    }
+
+    [Test]
+    public async Task KeepsTheRecordsOfTwoProjectsInOneDatabaseApart()
+    {
+        await ApplyNext(FullAnalysis());
+        var (other, otherTaAnd, otherTlGenAnd) = await OtherProject();
+
+        await Assert.That(IdsOf(await other.GetTokenAnalyses([TaAnd, otherTaAnd]))).IsEquivalentTo([otherTaAnd]);
+        await Assert.That(IdsOf(await Repository.GetTokenAnalyses([TaAnd, otherTaAnd]))).IsEquivalentTo([TaAnd]);
+        await Assert.That(IdsOf((await other.FindLinksByToken(["GEN 1:1:0"])).TokenAnalysisLinks)).IsEquivalentTo([otherTlGenAnd]);
+        await Assert.That(IdsOf((await Repository.FindLinksByToken(["GEN 1:1:0"])).TokenAnalysisLinks)).IsEquivalentTo([TlGenAnd]);
+        await Assert.That(IdsOf(await other.FindTokenAnalysesByForm(["and"]))).IsEquivalentTo([otherTaAnd]);
+        await Assert.That(IdsOf((await other.FindLinksInBooks(["GEN", "EXO"])).TokenAnalysisLinks)).IsEquivalentTo([otherTlGenAnd]);
+        await Assert.That(await other.FindLinkedBooks()).IsEquivalentTo(["GEN"]);
+        await Assert.That(await other.CountApprovals([TaAnd, otherTaAnd])).IsEquivalentTo(new Dictionary<Guid, int> { [otherTaAnd] = 1 });
+        await Assert.That(await Repository.CountApprovals([TaAnd])).IsEquivalentTo(new Dictionary<Guid, int> { [TaAnd] = 2 });
+        await Assert.That(IdsOf((await other.ReadAll()).TokenAnalyses)).IsEquivalentTo([otherTaAnd]);
+    }
+
+    [Test]
+    public async Task ApplyRefusesAPutUnderAnIdStoredInAnotherProjectApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var (other, _, _) = await OtherProject();
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => other.Apply(new ChangeSet
+        {
+            Intent = "steal",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(TaAnd, "and", "stolen")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+        await Assert.That((await Repository.GetTokenAnalyses([TaAnd])).Single().Gloss!["en"]).IsEqualTo("and");
+    }
+
+    [Test]
+    public async Task ApplySkipsADeleteOfAnotherProjectsRecord()
+    {
+        await ApplyNext(FullAnalysis());
+        var (other, _, _) = await OtherProject();
+        var commits = await DbContext.Commits.CountAsync();
+
+        await other.Apply(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaAnd) });
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+        await Assert.That(IdsOf(await Repository.GetTokenAnalyses([TaAnd]))).IsEquivalentTo([TaAnd]);
+    }
+
+    [Test]
+    public async Task ApplyRefusesAPutNamingAnotherProject()
+    {
+        var put = new TokenAnalysis { Id = Guid.NewGuid(), ProjectId = OtherProjectId, SurfaceText = "and" };
+
+        await Assert.That(() => ApplyNext(new ChangeSet { Intent = "misfiled", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }))
+            .Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.TokenAnalyses.CountAsync()).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments(PutMode.Replace)]
+    [Arguments(PutMode.Patch)]
+    public async Task ApplyRefusesAPutOfAStoredRecordNamingAnotherProject(PutMode putMode)
+    {
+        await ApplyNext(FullAnalysis());
+        var commits = await DbContext.Commits.CountAsync();
+        var put = new TokenAnalysis
+        {
+            Id = TaAnd,
+            ProjectId = OtherProjectId,
+            SurfaceText = "and",
+            Gloss = new MultiString { ["en"] = "misfiled" },
+        };
+
+        await Assert.That(() => ApplyNext(new ChangeSet { Intent = "misfiled", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) }, putMode))
+            .Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+        await Assert.That((await Repository.GetTokenAnalyses([TaAnd])).Single().Gloss!["en"]).IsEqualTo("and");
+    }
+
+    [Test]
+    public async Task ReadsEveryStoredRecord()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+
+        var all = await Repository.ReadAll();
+
+        await Assert.That(IdsOf(all.TokenAnalyses)).IsEquivalentTo([TaAnd, TaBeginning]);
+        await Assert.That(IdsOf(all.TokenAnalysisLinks)).IsEquivalentTo([TlGenAnd, TlExoAnd, TlGenBeginning]);
+        await Assert.That(IdsOf(all.PhraseAnalyses)).IsEquivalentTo([PaInThe]);
+        await Assert.That(IdsOf(all.PhraseAnalysisLinks)).IsEquivalentTo([PlInThe]);
+        await Assert.That(IdsOf(all.SegmentAnalyses)).IsEquivalentTo([SaExo]);
+        await Assert.That(IdsOf(all.SegmentAnalysisLinks)).IsEquivalentTo([SlExo]);
+    }
+
+    [Test]
+    public async Task CountsTheTokensApprovingEachAnalysisLeavingOutThoseNoneApproves()
+    {
+        await ApplyNext(FullAnalysis());
+
+        var counts = await Repository.CountApprovals([TaAnd, TaBeginning, TaUnlinked, Guid.NewGuid()]);
+
+        await Assert.That(counts).IsEquivalentTo(new Dictionary<Guid, int> { [TaAnd] = 2 });
+    }
+
+    [Test]
+    public async Task CountsATokenOnceForTheApprovedLinkAnApprovalTiePicks()
+    {
+        await ApplyNext(FullAnalysis());
+        // A later commit, so the moved link's update wins the tie on GEN 1:1:0.
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "approveTwice",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:0", "and")),
+        });
+
+        var counts = await Repository.CountApprovals([TaAnd, TaBeginning]);
+
+        await Assert.That(counts).IsEquivalentTo(new Dictionary<Guid, int> { [TaAnd] = 1, [TaBeginning] = 1 });
+    }
+
+    [Test]
+    public async Task PicksTheSmallerIdAmongApprovedLinksUpdatedTogether()
+    {
+        var smaller = Guid.Parse("00000000-0000-4000-8000-000000000001");
+        var larger = Guid.Parse("00000000-0000-4000-8000-000000000002");
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "approveTwice",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(TaAnd, "and", "and"), Token(TaBeginning, "and", "also")),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(
+                TokenLink(larger, TaAnd, "GEN 1:1:0", "and"),
+                TokenLink(smaller, TaBeginning, "GEN 1:1:0", "and")),
+        });
+
+        var counts = await Repository.CountApprovals([TaAnd, TaBeginning]);
+
+        await Assert.That(counts).IsEquivalentTo(new Dictionary<Guid, int> { [TaBeginning] = 1 });
+    }
+
+    [Test]
+    public async Task PassesOverAnApprovedLinkNamingNoStoredPayloadWhenPickingATie()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "approveMissing",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), Guid.NewGuid(), "GEN 1:1:0", "and")),
+        });
+
+        var counts = await Repository.CountApprovals([TaAnd]);
+
+        await Assert.That(counts).IsEquivalentTo(new Dictionary<Guid, int> { [TaAnd] = 2 });
     }
 
     [Test]

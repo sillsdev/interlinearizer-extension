@@ -51,3 +51,6 @@ perf/.cache
 
 # Written by `dotnet tool install`, in its own layout
 c-sharp/.config/dotnet-tools.json
+
+# Written by ChangeSerializationTests with .NET's JSON writer, which lays out arrays differently
+c-sharp/InterlinearizerCrdt.Tests/SerializedChanges

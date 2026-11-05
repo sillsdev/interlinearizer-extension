@@ -2181,19 +2181,17 @@ function stageDiscardStaleAnalysis(args: { analysisId: string; tokenRef: string 
   return (buffer: ChangeBuffer) => staleCommands.discardStaleAnalysis(buffer, args);
 }
 
-/**
- * Stages approving the stale analysis `analysisId` at `tokenRef`. The ids and timestamp of any copy
- * that the approval makes are minted when this is called, not when the returned function runs.
- */
+/** Stages approving the stale analysis `analysisId` at `tokenRef`. */
 function stageReapplyStaleAnalysis(args: {
   analysisId: string;
   staleTokenRef: string;
   tokenRef: string;
   surfaceText: string;
 }) {
-  const { analysisId: copyId, linkId, now } = editStamp();
-  return (buffer: ChangeBuffer) =>
-    staleCommands.reapplyStaleAnalysis(buffer, { ...args, copyId, linkId, now });
+  return (buffer: ChangeBuffer) => {
+    const { analysisId: copyId, linkId, now } = editStamp();
+    return staleCommands.reapplyStaleAnalysis(buffer, { ...args, copyId, linkId, now });
+  };
 }
 
 /**

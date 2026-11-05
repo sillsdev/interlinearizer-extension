@@ -16,7 +16,7 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Interlinea
             .AddInterlinearizerCrdt()
             .BuildServiceProvider();
         var scope = services.CreateScope();
-        scope.ServiceProvider.GetRequiredService<CurrentProject>().Set("design", "design.sqlite");
+        scope.ServiceProvider.GetRequiredService<CurrentSource>().Set("design", "design.sqlite");
         return scope.ServiceProvider.GetRequiredService<InterlinearizerCrdtDbContext>();
     }
 }

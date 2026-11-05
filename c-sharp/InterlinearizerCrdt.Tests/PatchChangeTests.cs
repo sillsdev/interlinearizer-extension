@@ -54,7 +54,7 @@ public class PatchChangeTests : CrdtTestBase
     [Test]
     public async Task AMultiStringPatchOverAnAbsentValueCreatesIt()
     {
-        await WriteNextChange(new CreateTokenAnalysisChange(_analysisId) { SurfaceText = "bare" });
+        await WriteNextChange(new CreateTokenAnalysisChange(_analysisId) { ProjectId = ProjectId, SurfaceText = "bare" });
         await WriteNextChange(new PatchTokenAnalysisChange(_analysisId) { Gloss = new MultiStringPatch { ["en"] = "bare", ["fr"] = null } });
 
         var analysis = await DataModel.GetLatest<TokenAnalysis>(_analysisId);

@@ -11,6 +11,7 @@
     "build:main": "webpack --config ./webpack/webpack.config.main.ts",
     "build:c-sharp": "node scripts/publish-c-sharp.cjs",
     "test:c-sharp": "node scripts/smoke-test-c-sharp-host.cjs",
+    "test:c-sharp:conformance": "jest --config jest.c-sharp-host.config.ts",
     "test:dotnet": "dotnet test c-sharp/InterlinearizerCrdt.Tests",
     "build": "webpack",
     "watch": "npm run build -- --watch",

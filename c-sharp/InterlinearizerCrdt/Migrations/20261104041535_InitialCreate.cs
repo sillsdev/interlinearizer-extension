@@ -87,6 +87,32 @@ namespace Interlinearizer.Crdt.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "InterlinearProject",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
+                    DeletedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    Name = table.Column<string>(type: "TEXT", nullable: true),
+                    Description = table.Column<string>(type: "TEXT", nullable: true),
+                    TargetProjectId = table.Column<string>(type: "TEXT", nullable: true),
+                    AnalysisLanguages = table.Column<string>(type: "jsonb", nullable: false),
+                    Segmentation = table.Column<string>(type: "jsonb", nullable: true),
+                    SnapshotId = table.Column<Guid>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_InterlinearProject", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_InterlinearProject_Snapshots_SnapshotId",
+                        column: x => x.SnapshotId,
+                        principalTable: "Snapshots",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "PhraseAnalysis",
                 columns: table => new
                 {
@@ -94,6 +120,7 @@ namespace Interlinearizer.Crdt.Migrations
                     Gloss = table.Column<string>(type: "jsonb", nullable: true),
                     SenseRef = table.Column<string>(type: "jsonb", nullable: true),
                     SnapshotId = table.Column<Guid>(type: "TEXT", nullable: true),
+                    ProjectId = table.Column<Guid>(type: "TEXT", nullable: false),
                     DeletedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
                     CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
@@ -121,6 +148,7 @@ namespace Interlinearizer.Crdt.Migrations
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
                     Tokens = table.Column<string>(type: "jsonb", nullable: false),
                     SnapshotId = table.Column<Guid>(type: "TEXT", nullable: true),
+                    ProjectId = table.Column<Guid>(type: "TEXT", nullable: false),
                     DeletedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
                     AnalysisId = table.Column<Guid>(type: "TEXT", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
@@ -148,6 +176,7 @@ namespace Interlinearizer.Crdt.Migrations
                     FreeTranslation = table.Column<string>(type: "jsonb", nullable: true),
                     LiteralTranslation = table.Column<string>(type: "jsonb", nullable: true),
                     SnapshotId = table.Column<Guid>(type: "TEXT", nullable: true),
+                    ProjectId = table.Column<Guid>(type: "TEXT", nullable: false),
                     DeletedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
                     CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
@@ -175,6 +204,7 @@ namespace Interlinearizer.Crdt.Migrations
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
                     SegmentId = table.Column<string>(type: "TEXT", nullable: false),
                     SnapshotId = table.Column<Guid>(type: "TEXT", nullable: true),
+                    ProjectId = table.Column<Guid>(type: "TEXT", nullable: false),
                     DeletedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
                     AnalysisId = table.Column<Guid>(type: "TEXT", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
@@ -206,6 +236,7 @@ namespace Interlinearizer.Crdt.Migrations
                     Gloss = table.Column<string>(type: "jsonb", nullable: true),
                     GlossSenseRef = table.Column<string>(type: "jsonb", nullable: true),
                     SnapshotId = table.Column<Guid>(type: "TEXT", nullable: true),
+                    ProjectId = table.Column<Guid>(type: "TEXT", nullable: false),
                     DeletedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
                     CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
@@ -234,6 +265,7 @@ namespace Interlinearizer.Crdt.Migrations
                     Token = table.Column<string>(type: "jsonb", nullable: false),
                     TokenRef = table.Column<string>(type: "TEXT", nullable: false),
                     SnapshotId = table.Column<Guid>(type: "TEXT", nullable: true),
+                    ProjectId = table.Column<Guid>(type: "TEXT", nullable: false),
                     DeletedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
                     AnalysisId = table.Column<Guid>(type: "TEXT", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
@@ -254,9 +286,15 @@ namespace Interlinearizer.Crdt.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_PhraseAnalysis_NormalizedForm",
+                name: "IX_InterlinearProject_SnapshotId",
+                table: "InterlinearProject",
+                column: "SnapshotId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PhraseAnalysis_ProjectId_NormalizedForm",
                 table: "PhraseAnalysis",
-                column: "NormalizedForm");
+                columns: new[] { "ProjectId", "NormalizedForm" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_PhraseAnalysis_SnapshotId",
@@ -265,14 +303,14 @@ namespace Interlinearizer.Crdt.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_PhraseAnalysisLink_AnalysisId",
+                name: "IX_PhraseAnalysisLink_ProjectId_AnalysisId",
                 table: "PhraseAnalysisLink",
-                column: "AnalysisId");
+                columns: new[] { "ProjectId", "AnalysisId" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_PhraseAnalysisLink_BookCode_Status",
+                name: "IX_PhraseAnalysisLink_ProjectId_BookCode_Status",
                 table: "PhraseAnalysisLink",
-                columns: new[] { "BookCode", "Status" });
+                columns: new[] { "ProjectId", "BookCode", "Status" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_PhraseAnalysisLink_SnapshotId",
@@ -287,19 +325,19 @@ namespace Interlinearizer.Crdt.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_SegmentAnalysisLink_AnalysisId",
+                name: "IX_SegmentAnalysisLink_ProjectId_AnalysisId",
                 table: "SegmentAnalysisLink",
-                column: "AnalysisId");
+                columns: new[] { "ProjectId", "AnalysisId" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_SegmentAnalysisLink_BookCode_Status",
+                name: "IX_SegmentAnalysisLink_ProjectId_BookCode_Status",
                 table: "SegmentAnalysisLink",
-                columns: new[] { "BookCode", "Status" });
+                columns: new[] { "ProjectId", "BookCode", "Status" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_SegmentAnalysisLink_SegmentId",
+                name: "IX_SegmentAnalysisLink_ProjectId_SegmentId",
                 table: "SegmentAnalysisLink",
-                column: "SegmentId");
+                columns: new[] { "ProjectId", "SegmentId" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_SegmentAnalysisLink_SnapshotId",
@@ -319,9 +357,9 @@ namespace Interlinearizer.Crdt.Migrations
                 column: "EntityId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_TokenAnalysis_NormalizedForm",
+                name: "IX_TokenAnalysis_ProjectId_NormalizedForm",
                 table: "TokenAnalysis",
-                column: "NormalizedForm");
+                columns: new[] { "ProjectId", "NormalizedForm" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_TokenAnalysis_SnapshotId",
@@ -330,25 +368,25 @@ namespace Interlinearizer.Crdt.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_TokenAnalysisLink_AnalysisId",
+                name: "IX_TokenAnalysisLink_ProjectId_AnalysisId",
                 table: "TokenAnalysisLink",
-                column: "AnalysisId");
+                columns: new[] { "ProjectId", "AnalysisId" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_TokenAnalysisLink_BookCode_Status",
+                name: "IX_TokenAnalysisLink_ProjectId_BookCode_Status",
                 table: "TokenAnalysisLink",
-                columns: new[] { "BookCode", "Status" });
+                columns: new[] { "ProjectId", "BookCode", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TokenAnalysisLink_ProjectId_TokenRef",
+                table: "TokenAnalysisLink",
+                columns: new[] { "ProjectId", "TokenRef" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_TokenAnalysisLink_SnapshotId",
                 table: "TokenAnalysisLink",
                 column: "SnapshotId",
                 unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_TokenAnalysisLink_TokenRef",
-                table: "TokenAnalysisLink",
-                column: "TokenRef");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Commits_DateTime_Counter_Id",
@@ -367,6 +405,9 @@ namespace Interlinearizer.Crdt.Migrations
         {
             migrationBuilder.DropTable(
                 name: "ChangeEntities");
+
+            migrationBuilder.DropTable(
+                name: "InterlinearProject");
 
             migrationBuilder.DropTable(
                 name: "LocalState");

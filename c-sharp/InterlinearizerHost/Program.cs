@@ -12,17 +12,26 @@ namespace Interlinearizer.Host;
 /// </summary>
 internal static class Program
 {
-    /// <summary>The argument naming where the host keeps its data; absent, a per-user folder.</summary>
-    private const string DataDirectoryOption = "--data-dir";
-
     public static async Task<int> Main(string[] args)
     {
-        var dataDirectory = DataDirectory(args);
+        HostOptions options;
+        try
+        {
+            options = HostOptions.Parse(args);
+        }
+        catch (ArgumentException e)
+        {
+            Console.Error.WriteLine(e.Message);
+            return 3;
+        }
         await using var services = new ServiceCollection()
-            .AddSingleton(ClientIdentity.Load(dataDirectory))
+            .AddSingleton(options)
+            .AddSingleton(ClientIdentity.Load(options.DataDirectory))
+            .AddSingleton(new SourcesDirectory(Path.Combine(options.DataDirectory, "sources")))
             .AddInterlinearizerCrdt()
             .AddSingleton<PapiClient>()
             .AddSingleton<PingService>()
+            .AddSingleton<RepositoryService>()
             .BuildServiceProvider();
 
         var papi = services.GetRequiredService<PapiClient>();
@@ -42,18 +51,16 @@ internal static class Program
             Console.Error.WriteLine($"Could not register {PingService.CommandName}");
             return 2;
         }
+        if (!await services.GetRequiredService<RepositoryService>().RegisterAsync())
+        {
+            Console.Error.WriteLine("Could not register the repository commands");
+            return 2;
+        }
 
         Console.WriteLine("Interlinearizer host ready");
         await papi.DisconnectTask;
-        // Projects still open flush before the process ends.
-        await services.GetRequiredService<OpenProjects>().DisposeAsync();
+        // Sources still open flush before the process ends.
+        await services.GetRequiredService<OpenSources>().DisposeAsync();
         return 0;
-    }
-
-    private static string DataDirectory(string[] args)
-    {
-        var index = Array.IndexOf(args, DataDirectoryOption);
-        if (index >= 0 && index + 1 < args.Length) return args[index + 1];
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "interlinearizer");
     }
 }

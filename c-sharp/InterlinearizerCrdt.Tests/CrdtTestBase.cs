@@ -8,11 +8,15 @@ namespace Interlinearizer.Crdt.Tests;
 
 /// <summary>
 /// An interlinearizer Harmony model over an in-memory database, with commit times the test
-/// controls. Each test gets its own instance.
+/// controls, holding the project <see cref="ProjectId"/> that <see cref="Repository"/> serves
+/// and the fixtures belong to. Each test gets its own instance.
 /// </summary>
 public abstract class CrdtTestBase : IAsyncDisposable
 {
     private static int _instanceCount;
+
+    /// <summary>The project every test starts with, created in its first commit.</summary>
+    protected static readonly Guid ProjectId = Fixtures.ProjectId;
 
     private readonly ServiceProvider _services;
     private readonly MockTimeProvider _timeProvider = new();
@@ -40,8 +44,21 @@ public abstract class CrdtTestBase : IAsyncDisposable
         // Through the migrations, as a real database is, so a test fails where they lag the model.
         DbContext.Database.Migrate();
         DataModel = _services.GetRequiredService<DataModel>();
-        Repository = new AnalysisRepository(DataModel, new ClientIdentity(ClientId));
+        Repository = RepositoryFor(ProjectId);
     }
+
+    [Before(Test)]
+    public async Task CreateTheProject() => await CreateProject(ProjectId);
+
+    /// <summary>Creates a project in the next commit, for records to belong to.</summary>
+    protected Task<Commit> CreateProject(Guid projectId) =>
+        WriteNextChange(new CreateInterlinearProjectChange(projectId) { Name = "test project" });
+
+    /// <summary>A repository over the same database serving <paramref name="projectId"/>.</summary>
+    protected AnalysisRepository RepositoryFor(Guid projectId) => new(DataModel, new ClientIdentity(ClientId), projectId);
+
+    /// <summary>The projects of the database.</summary>
+    protected InterlinearProjects Projects => new(DataModel, DbContext, new ClientIdentity(ClientId));
 
     /// <summary>Applies through the repository at the next commit time.</summary>
     protected async Task ApplyNext(ChangeSet changes, PutMode putMode = PutMode.Replace)

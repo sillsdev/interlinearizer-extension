@@ -143,9 +143,16 @@ const config: Config = {
 
   /**
    * Do not run tests from build output, e2e tests, dependencies, or `.cache` folders (such as
-   * `perf/.cache`, which can hold copies of the source tree).
+   * `perf/.cache`, which can hold copies of the source tree). The C# host tests run under their own
+   * configuration, since they need the host published.
    */
-  testPathIgnorePatterns: ['/dist/', '/e2e-tests/', '/node_modules/', '/\\.cache/'],
+  testPathIgnorePatterns: [
+    '/dist/',
+    '/e2e-tests/',
+    '/node_modules/',
+    '/\\.cache/',
+    '/c-sharp-host/',
+  ],
 
   /**
    * Transform TS/TSX with ts-jest (webpack uses SWC; Jest does not run webpack). Explicitly list

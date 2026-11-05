@@ -14,6 +14,7 @@ public class SegmentAnalysis : Analysis, IObjectBase<SegmentAnalysis>
     public IObjectBase Copy() => new SegmentAnalysis
     {
         Id = Id,
+        ProjectId = ProjectId,
         DeletedAt = DeletedAt,
         CreatedAt = CreatedAt,
         UpdatedAt = UpdatedAt,
@@ -45,6 +46,7 @@ public class SegmentAnalysisLink : AnalysisLink, IObjectBase<SegmentAnalysisLink
     public IObjectBase Copy() => new SegmentAnalysisLink
     {
         Id = Id,
+        ProjectId = ProjectId,
         DeletedAt = DeletedAt,
         AnalysisId = AnalysisId,
         CreatedAt = CreatedAt,

@@ -13,18 +13,19 @@ namespace Interlinearizer.Crdt;
 public static class InterlinearizerCrdtKernel
 {
     /// <summary>
-    /// Registers the model over one database per open project: <see cref="OpenProjects"/> opens
-    /// a scope per project and <see cref="CurrentProject"/> names its database. The container
-    /// must also hold a <see cref="ClientIdentity"/>.
+    /// Registers the model over one database per open source project: <see cref="OpenSources"/>
+    /// opens a scope per source, over a file in the container's <see cref="SourcesDirectory"/>,
+    /// and <see cref="CurrentSource"/> names it. The container must also hold a
+    /// <see cref="ClientIdentity"/>.
     /// </summary>
     public static IServiceCollection AddInterlinearizerCrdt(this IServiceCollection services)
     {
-        services.AddScoped<CurrentProject>();
-        services.AddSingleton<OpenProjects>();
+        services.AddScoped<CurrentSource>();
+        services.AddSingleton<OpenSources>();
         return services.AddInterlinearizerCrdt((provider, builder) =>
             builder.UseSqlite(new SqliteConnectionStringBuilder
             {
-                DataSource = provider.GetRequiredService<CurrentProject>().DbPath,
+                DataSource = provider.GetRequiredService<CurrentSource>().DbPath,
             }.ToString()));
     }
 
@@ -45,7 +46,6 @@ public static class InterlinearizerCrdtKernel
             builder.EnableDetailedErrors();
         });
         services.AddCrdtData<InterlinearizerCrdtDbContext>(ConfigureHarmony);
-        services.AddScoped<AnalysisRepository>();
         return services;
     }
 
@@ -54,6 +54,9 @@ public static class InterlinearizerCrdtKernel
     {
         config.ConfigureJsonOptions(PatchFieldJson.Configure);
         config.ChangeTypeListBuilder
+            .Add<CreateInterlinearProjectChange>()
+            .Add<PatchInterlinearProjectChange>()
+            .Add<DeleteChange<InterlinearProject>>()
             .Add<CreateSegmentAnalysisChange>()
             .Add<ReplaceSegmentAnalysisChange>()
             .Add<PatchSegmentAnalysisChange>()
@@ -104,28 +107,34 @@ public static class InterlinearizerCrdtKernel
                 .Change<CreatePhraseAnalysisLinkChange>()
                 .Change<ReplacePhraseAnalysisLinkChange>()
                 .Change<PatchPhraseAnalysisLinkChange>()
-                .Change<DeleteChange<PhraseAnalysisLink>>());
+                .Change<DeleteChange<PhraseAnalysisLink>>())
+            .Add(1, "Interlinear projects", v => v
+                .Change<CreateInterlinearProjectChange>()
+                .Change<PatchInterlinearProjectChange>()
+                .Change<DeleteChange<InterlinearProject>>());
 
+        // Every lookup starts from the project, so each index leads with it.
         config.ObjectTypeListBuilder.DefaultAdapter()
+            .Add<InterlinearProject>()
             .Add<SegmentAnalysis>()
             .Add<SegmentAnalysisLink>(builder =>
             {
-                builder.HasIndex(l => l.AnalysisId);
-                builder.HasIndex(l => l.SegmentId);
-                builder.HasIndex(l => new { l.BookCode, l.Status });
+                builder.HasIndex(l => new { l.ProjectId, l.AnalysisId });
+                builder.HasIndex(l => new { l.ProjectId, l.SegmentId });
+                builder.HasIndex(l => new { l.ProjectId, l.BookCode, l.Status });
             })
-            .Add<TokenAnalysis>(builder => builder.HasIndex(a => a.NormalizedForm))
+            .Add<TokenAnalysis>(builder => builder.HasIndex(a => new { a.ProjectId, a.NormalizedForm }))
             .Add<TokenAnalysisLink>(builder =>
             {
-                builder.HasIndex(l => l.AnalysisId);
-                builder.HasIndex(l => l.TokenRef);
-                builder.HasIndex(l => new { l.BookCode, l.Status });
+                builder.HasIndex(l => new { l.ProjectId, l.AnalysisId });
+                builder.HasIndex(l => new { l.ProjectId, l.TokenRef });
+                builder.HasIndex(l => new { l.ProjectId, l.BookCode, l.Status });
             })
-            .Add<PhraseAnalysis>(builder => builder.HasIndex(a => a.NormalizedForm))
+            .Add<PhraseAnalysis>(builder => builder.HasIndex(a => new { a.ProjectId, a.NormalizedForm }))
             .Add<PhraseAnalysisLink>(builder =>
             {
-                builder.HasIndex(l => l.AnalysisId);
-                builder.HasIndex(l => new { l.BookCode, l.Status });
+                builder.HasIndex(l => new { l.ProjectId, l.AnalysisId });
+                builder.HasIndex(l => new { l.ProjectId, l.BookCode, l.Status });
             });
     }
 }

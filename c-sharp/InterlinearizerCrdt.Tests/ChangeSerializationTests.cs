@@ -21,6 +21,9 @@ public class ChangeSerializationTests
 
     public static IEnumerable<Func<(string Discriminator, IChange Change)>> AllChanges()
     {
+        yield return () => ("CreateInterlinearProjectChange", Fixtures.CreateInterlinearProject(Id));
+        yield return () => ("PatchInterlinearProjectChange", Fixtures.PatchInterlinearProject(Id));
+        yield return () => ("delete:InterlinearProject", new DeleteChange<InterlinearProject>(Id));
         yield return () => ("CreateSegmentAnalysisChange", Fixtures.CreateSegmentAnalysis(Id));
         yield return () => ("ReplaceSegmentAnalysisChange", Fixtures.ReplaceSegmentAnalysis(Id));
         yield return () => ("delete:SegmentAnalysis", new DeleteChange<SegmentAnalysis>(Id));

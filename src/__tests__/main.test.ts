@@ -5003,6 +5003,22 @@ describe('main', () => {
       });
     });
 
+    it('sends an error notification and returns the outcome when a first import converts nothing', async () => {
+      mockImport.mockResolvedValue({ outcome: 'notConverted', filesPt9NeverLoads: ['a.xml'] });
+      const handler = await getImportPt9ProjectHandler();
+
+      const result = await handler('src-project');
+
+      expect(JSON.parse(result)).toStrictEqual({
+        outcome: 'notConverted',
+        filesPt9NeverLoads: ['a.xml'],
+      });
+      expect(__mockNotificationsSend).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_pt9Import_failed%',
+        severity: 'error',
+      });
+    });
+
     it('logs the error, sends an error notification, and rethrows when the import fails', async () => {
       mockImport.mockRejectedValue(new Error('nothing to import'));
       const handler = await getImportPt9ProjectHandler();

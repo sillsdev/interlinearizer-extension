@@ -1,6 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
+import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import type {
   Pt9ClusterDropReason,
   Pt9ImportReport,
@@ -46,9 +46,19 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
 export type Pt9ImportModalPhase =
   | { kind: 'running' }
   | { kind: 'report'; report: Pt9ImportReport }
-  /** No conversion ran and the stored import was kept; `files` names what could not be read. */
-  | { kind: 'staleKept'; files: Pt9UnreadableFile[] }
+  /** Nothing was persisted and the stored import was kept. */
+  | ({ kind: 'staleKept' } & LeftOutFiles)
+  /** A first import converted nothing, so no import was created. */
+  | ({ kind: 'notConverted' } & LeftOutFiles)
   | { kind: 'error'; reason?: 'tooLarge' };
+
+/** The files that a run left out when it persisted nothing. */
+export interface LeftOutFiles {
+  /** Files too large for any read to take on. */
+  filesTooLarge: Pt9UnreadableFile[];
+  /** Files Paratext 9 never loads from where they are. */
+  filesNeverLoaded: string[];
+}
 
 /** Every drop reason, for typed iteration over a book report's `clusterDrops`. */
 const DROP_REASONS: readonly Pt9ClusterDropReason[] = [
@@ -99,6 +109,39 @@ function describeUnreadableFile(file: Pt9UnreadableFile): string {
         ? file.bookId
         : `${file.bookId} (${file.glossLanguage})`;
   return `${name} ${describeMebibytes(file.sizeBytes)}`;
+}
+
+/** One line for each nonempty list of files that a run left out. */
+function LeftOutFileLines({
+  filesTooLarge,
+  filesNeverLoaded,
+  localizedStrings,
+}: Readonly<LeftOutFiles & { localizedStrings: LanguageStrings }>) {
+  return (
+    <>
+      {filesNeverLoaded.length > 0 && (
+        <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-never-loaded">
+          {formatReplacementString(
+            localizedStrings['%interlinearizer_pt9ImportModal_filesNeverLoaded%'],
+            { files: filesNeverLoaded.join(', ') },
+          )}
+        </p>
+      )}
+      {filesTooLarge.length > 0 && (
+        <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-too-large">
+          {formatReplacementString(
+            localizedStrings['%interlinearizer_pt9ImportModal_filesTooLarge%'],
+            {
+              limit: describeMebibytes(
+                Math.max(...filesTooLarge.map((file) => file.maxResponseBytes)),
+              ),
+              files: filesTooLarge.map(describeUnreadableFile).join(', '),
+            },
+          )}
+        </p>
+      )}
+    </>
+  );
 }
 
 /** Folds the per-language, per-book report into the totals the summary shows. */
@@ -209,7 +252,7 @@ export function Pt9ImportModal({
     );
   }
 
-  if (phase.kind === 'error') {
+  if (phase.kind === 'error' || phase.kind === 'notConverted') {
     return (
       <ModalShell
         titleTestId="pt9-import-modal-title"
@@ -218,10 +261,17 @@ export function Pt9ImportModal({
         onClose={onClose}
       >
         <p className="tw:text-sm tw:text-destructive" data-testid="pt9-import-error">
-          {phase.reason === 'tooLarge'
+          {phase.kind === 'error' && phase.reason === 'tooLarge'
             ? localizedStrings['%interlinearizer_pt9ImportModal_tooLarge%']
             : localizedStrings['%interlinearizer_pt9ImportModal_failed%']}
         </p>
+        {phase.kind === 'notConverted' && (
+          <LeftOutFileLines
+            filesTooLarge={phase.filesTooLarge}
+            filesNeverLoaded={phase.filesNeverLoaded}
+            localizedStrings={localizedStrings}
+          />
+        )}
         <div className="tw:modal-actions tw:mt-4">
           <Button onClick={onClose}>
             {localizedStrings['%interlinearizer_pt9ImportModal_close%']}
@@ -242,17 +292,11 @@ export function Pt9ImportModal({
         <p className="tw:text-sm" data-testid="pt9-import-stale-kept">
           {localizedStrings['%interlinearizer_pt9ImportModal_staleKept%']}
         </p>
-        <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-too-large">
-          {formatReplacementString(
-            localizedStrings['%interlinearizer_pt9ImportModal_filesTooLarge%'],
-            {
-              limit: describeMebibytes(
-                Math.max(...phase.files.map((file) => file.maxResponseBytes)),
-              ),
-              files: phase.files.map(describeUnreadableFile).join(', '),
-            },
-          )}
-        </p>
+        <LeftOutFileLines
+          filesTooLarge={phase.filesTooLarge}
+          filesNeverLoaded={phase.filesNeverLoaded}
+          localizedStrings={localizedStrings}
+        />
         <div className="tw:modal-actions tw:mt-4">
           <Button onClick={onClose}>
             {localizedStrings['%interlinearizer_pt9ImportModal_close%']}
@@ -326,29 +370,11 @@ export function Pt9ImportModal({
             )}
           </p>
         )}
-        {phase.report.filesPt9NeverLoads.length > 0 && (
-          <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-never-loaded">
-            {formatReplacementString(
-              localizedStrings['%interlinearizer_pt9ImportModal_filesNeverLoaded%'],
-              { files: phase.report.filesPt9NeverLoads.join(', ') },
-            )}
-          </p>
-        )}
-        {phase.report.filesTooLargeToRead.length > 0 && (
-          <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-too-large">
-            {formatReplacementString(
-              localizedStrings['%interlinearizer_pt9ImportModal_filesTooLarge%'],
-              {
-                limit: describeMebibytes(
-                  Math.max(
-                    ...phase.report.filesTooLargeToRead.map((file) => file.maxResponseBytes),
-                  ),
-                ),
-                files: phase.report.filesTooLargeToRead.map(describeUnreadableFile).join(', '),
-              },
-            )}
-          </p>
-        )}
+        <LeftOutFileLines
+          filesTooLarge={phase.report.filesTooLargeToRead}
+          filesNeverLoaded={phase.report.filesPt9NeverLoads}
+          localizedStrings={localizedStrings}
+        />
       </div>
       <div className="tw:modal-actions tw:mt-4">
         {mode === 'import' && (

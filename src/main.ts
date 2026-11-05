@@ -461,7 +461,8 @@ async function updateProjectMetadata(
 /**
  * Imports or syncs the source project's Paratext 9 interlinear data. Returns the run's outcome as a
  * JSON string; when the source's files have disappeared but an earlier import exists, the stored
- * import is kept and a warning notification is sent.
+ * import is kept and a warning notification is sent. A first import that converts nothing sends an
+ * error notification but returns, so the caller can name the files that the import left out.
  *
  * @param sourceProjectId - Platform.Bible project ID whose Paratext 9 interlinear files to import.
  * @throws If the import fails or the source has nothing to import. The error is logged and an error
@@ -487,6 +488,10 @@ async function importPt9Project(sourceProjectId: string): Promise<string> {
           message: STALE_KEPT_MESSAGES[result.staleReason ?? 'sourceEmpty'],
           severity: 'warning',
         })
+        .catch(() => {});
+    } else if (result.outcome === 'notConverted') {
+      await papi.notifications
+        .send({ message: '%interlinearizer_error_pt9Import_failed%', severity: 'error' })
         .catch(() => {});
     }
     return JSON.stringify(result);

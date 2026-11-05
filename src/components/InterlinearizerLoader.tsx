@@ -86,7 +86,11 @@ import AnalysisLanguageSelect from './controls/AnalysisLanguageSelect';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
 import { CopyToEditableModal } from './modals/CopyToEditableModal';
-import { Pt9ImportModal, type Pt9ImportModalPhase } from './modals/Pt9ImportModal';
+import {
+  Pt9ImportModal,
+  type LeftOutFiles,
+  type Pt9ImportModalPhase,
+} from './modals/Pt9ImportModal';
 import { Pt9CheckingModal, Pt9ConvertPromptModal } from './modals/Pt9ConvertPromptModal';
 import { Pt9ReadOnlyIntroModal } from './modals/Pt9ReadOnlyIntroModal';
 import { usePt9ImportProbe } from '../hooks/usePt9ImportAvailability';
@@ -355,6 +359,21 @@ function parseImportedSummary(reply: unknown): InterlinearProjectSummary | undef
     reply && typeof reply === 'object' && 'summary' in reply ? reply.summary : undefined;
   /* v8 ignore next -- the host only sends well-formed summaries */
   return isInterlinearProjectSummary(summary) ? toProjectSummary(summary) : undefined;
+}
+
+/** The files that an import reply names as left out, with `[]` for a list it lacks or malforms. */
+function parseLeftOutFiles(reply: unknown): LeftOutFiles {
+  /* v8 ignore next -- the host's import reply is always an object */
+  if (!reply || typeof reply !== 'object') return { filesTooLarge: [], filesNeverLoaded: [] };
+  const tooLarge = 'filesTooLargeToRead' in reply ? reply.filesTooLargeToRead : undefined;
+  const neverLoaded = 'filesPt9NeverLoads' in reply ? reply.filesPt9NeverLoads : undefined;
+  return {
+    filesTooLarge: isPt9UnreadableFileList(tooLarge) ? tooLarge : [],
+    filesNeverLoaded:
+      Array.isArray(neverLoaded) && neverLoaded.every((path) => typeof path === 'string')
+        ? neverLoaded
+        : [],
+  };
 }
 
 /** Whether two path-to-hash maps are identical: the same keys, with the same hash under each. */
@@ -1278,9 +1297,10 @@ function InterlinearizerLoaderInner({
   /**
    * Runs the import command behind the import modal for the button-driven runs: a first import from
    * the select modal, a Yes on the first-open offer, or a manual sync from the view banner. Success
-   * shows the report (a sync also refreshes the open view first); the keep-stale outcome closes the
-   * modal, since the backend already warned; failure shows the in-modal error (the backend already
-   * sent the error notification).
+   * shows the report (a sync also refreshes the open view first). A kept import shows the files
+   * that it left out, or closes the modal when there are none, because the backend already warned.
+   * A first import that converted nothing and any failure both show the in-modal error, because the
+   * backend already sent the error notification.
    */
   const runPt9Import = useCallback(
     async (mode: 'import' | 'offer' | 'sync') => {
@@ -1305,15 +1325,12 @@ function InterlinearizerLoaderInner({
           }
           setPt9ImportedId(importedId);
           setPt9Phase({ kind: 'report', report });
-        } else if (outcome === 'staleKept') {
-          // Only the oversized case has books to name; the notification the command already
-          // sent covers the other two.
-          const tooLarge =
-            parsed && typeof parsed === 'object' && 'filesTooLargeToRead' in parsed
-              ? parsed.filesTooLargeToRead
-              : undefined;
-          if (isPt9UnreadableFileList(tooLarge) && tooLarge.length > 0)
-            setPt9Phase({ kind: 'staleKept', files: tooLarge });
+        } else if (outcome === 'staleKept' || outcome === 'notConverted') {
+          const leftOut = parseLeftOutFiles(parsed);
+          // A kept import with no files to name closes, because the command's notification says why.
+          if (outcome === 'notConverted') setPt9Phase({ kind: 'notConverted', ...leftOut });
+          else if (leftOut.filesTooLarge.length > 0 || leftOut.filesNeverLoaded.length > 0)
+            setPt9Phase({ kind: 'staleKept', ...leftOut });
           else setModal('none');
         } else {
           setPt9Phase({ kind: 'error' });

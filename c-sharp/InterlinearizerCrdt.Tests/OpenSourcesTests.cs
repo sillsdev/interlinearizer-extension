@@ -126,6 +126,86 @@ public class OpenSourcesTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task ExclusiveWorkOnASourceWaitsForTheWorkBeforeIt()
+    {
+        await OpenWithProjects(S1, P1, P2);
+        var release = new TaskCompletionSource();
+        var put = Token("and");
+        var first = _sources.Exclusive(S1, async () =>
+        {
+            await release.Task;
+            await (await _sources.Repository(S1, P1)).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) });
+        });
+        var secondStarted = false;
+        var second = _sources.Exclusive(S1, async () =>
+        {
+            secondStarted = true;
+            return await (await _sources.Repository(S1, P2)).GetTokenAnalyses([put.Id]);
+        });
+        var close = _sources.Exclusive(S1, () => _sources.Close(S1));
+
+        await Assert.That(secondStarted).IsFalse();
+        release.SetResult();
+        await first;
+        await Assert.That(await second).IsEmpty();
+        await close;
+
+        await Assert.That(_sources.IsOpen(S1)).IsFalse();
+    }
+
+    [Test]
+    public async Task ExclusiveWorkOnAnotherSourceDoesNotWait()
+    {
+        var release = new TaskCompletionSource();
+        var blocked = _sources.Exclusive(S1, () => release.Task);
+        try
+        {
+            await _sources.Exclusive(S2, () => _sources.Open(S2)).WaitAsync(TimeSpan.FromSeconds(10));
+
+            await Assert.That(blocked.IsCompleted).IsFalse();
+        }
+        finally
+        {
+            release.SetResult();
+            await blocked;
+        }
+    }
+
+    [Test]
+    public async Task DisposingRefusesWorkStillWaitingOnASource()
+    {
+        var release = new TaskCompletionSource();
+        var running = _sources.Exclusive(S1, () => release.Task);
+        var waiting = _sources.Exclusive(S1, () => _sources.Open(S1));
+        var dispose = _sources.DisposeAsync().AsTask();
+
+        release.SetResult();
+        await running;
+        await dispose;
+
+        await Assert.That(async () => await waiting).Throws<ObjectDisposedException>();
+        await Assert.That(_sources.IsOpen(S1)).IsFalse();
+    }
+
+    [Test]
+    public async Task DisposingClosesASourceThatWorkRunningOnItOpens()
+    {
+        var release = new TaskCompletionSource();
+        var running = _sources.Exclusive(S1, async () =>
+        {
+            await release.Task;
+            await _sources.Open(S1);
+        });
+        var dispose = _sources.DisposeAsync().AsTask();
+
+        release.SetResult();
+        await running;
+        await dispose;
+
+        await Assert.That(_sources.IsOpen(S1)).IsFalse();
+    }
+
+    [Test]
     public async Task ClosingASourceNotOpenDoesNothing()
     {
         await _sources.Close("never");

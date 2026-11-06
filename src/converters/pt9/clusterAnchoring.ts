@@ -286,12 +286,18 @@ function parseMatcher(lexemes: readonly ClassifiedLexeme[]): (surface: string) =
   // Decomposed, because a form starting with a combining mark composes with the form before it in
   // the surface, but not when each form is folded alone.
   const cores = lexemes.map((l) =>
-    normalizeSurfaceForm(l.key.Form.replace(EDGE_INDICATORS, ''))
-      .normalize('NFD')
-      .replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'),
+    normalizeSurfaceForm(l.key.Form.replace(EDGE_INDICATORS, '')).normalize('NFD'),
   );
-  const pattern = new RegExp(`^${cores.join('[-=~]*')}$`);
-  return (surface) => pattern.test(surface.normalize('NFD'));
+  // NFD reorders combining marks across a join only when it decomposes the forms together. An
+  // indicator at a join blocks that reordering, because it is a starter character.
+  const joined = cores.join('').normalize('NFD');
+  const pattern = new RegExp(
+    `^${cores.map((core) => core.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('[-=~]*')}$`,
+  );
+  return (surface) => {
+    const decomposed = surface.normalize('NFD');
+    return decomposed === joined || pattern.test(decomposed);
+  };
 }
 
 function countFrom(candidates: ReadonlySet<number>, cursor: number): number {

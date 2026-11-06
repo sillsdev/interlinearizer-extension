@@ -168,6 +168,17 @@ describe('anchorVerseClusters', () => {
       expect(result.groups[0].token.surfaceText).toBe('caf\u00e9');
     });
 
+    it('anchors a parse whose combining-mark suffix sorts before the mark its stem ends with', () => {
+      const segment = segmentOf('a\u0301\u0327 noir'.normalize('NFC'));
+      const result = anchorVerseClusters(
+        [segment],
+        [mkCluster(0, 2, [['Stem:\u00e1'], ['Suffix:\u0327']])],
+      );
+
+      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('a\u0301\u0327'.normalize('NFC'));
+    });
+
     it('keeps a paired parse whose suffix starts with a combining mark', () => {
       const segment = segmentOf('cafe\u0301 noir'.normalize('NFC'));
       const result = anchorVerseClusters(

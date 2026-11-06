@@ -9,6 +9,7 @@ import {
   LangTokenRecord,
 } from './languageAnalysisBuilder';
 import { Pt9LexiconResolver, unresolvedPt9LexiconResolver } from './lexiconResolver';
+import { dedupePhraseAnalyses } from './phraseAnalysisDedupe';
 import { createPt9GlossSource } from './pt9GlossSource';
 import { emptyPt9ImportReport, Pt9ImportReport, Pt9LanguageReport } from './report';
 import { dedupeTokenAnalyses } from './tokenAnalysisDedupe';
@@ -156,8 +157,13 @@ export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResul
       },
       report,
     ),
-    phraseAnalyses: merged.phraseAnalyses,
-    phraseAnalysisLinks: merged.phraseAnalysisLinks,
+    ...dedupePhraseAnalyses(
+      {
+        phraseAnalyses: merged.phraseAnalyses,
+        phraseAnalysisLinks: merged.phraseAnalysisLinks,
+      },
+      report,
+    ),
   };
 
   // Read-only views show approved glosses only, so those rank first.

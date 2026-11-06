@@ -71,6 +71,8 @@ export interface Pt9MergeReport {
   sameTagCollisions: string[][];
   /** Token analyses folded onto an earlier content-identical one, their links moved with them. */
   identicalPayloadsMerged: number;
+  /** Phrase analyses folded onto an earlier content-identical one, their links moved with them. */
+  identicalPhrasePayloadsMerged: number;
 }
 
 /** Gloss and lexicon-reference resolution outcomes. */
@@ -200,6 +202,7 @@ export function emptyPt9ImportReport(): Pt9ImportReport {
       approvedDemotedToCandidate: 0,
       sameTagCollisions: [],
       identicalPayloadsMerged: 0,
+      identicalPhrasePayloadsMerged: 0,
     },
     senses: {
       specificResolved: 0,

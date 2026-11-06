@@ -98,6 +98,7 @@ function makeReport(): Pt9ImportReport {
       approvedDemotedToCandidate: 0,
       sameTagCollisions: [],
       identicalPayloadsMerged: 0,
+      identicalPhrasePayloadsMerged: 0,
     },
     senses: {
       specificResolved: 0,

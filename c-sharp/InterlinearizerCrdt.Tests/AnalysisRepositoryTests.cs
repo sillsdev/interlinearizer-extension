@@ -582,6 +582,53 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyRefusesALinkNamingAnAnalysisNeverStoredApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "link to nothing",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), Guid.NewGuid(), "GEN 1:1:9", "beginning")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyRefusesALinkNamingADeletedAnalysisApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "link to deleted",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), TaUnlinked, "GEN 1:1:9", "beginning")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyRefusesALinkNamingAnAnalysisTheSameChangesDeleteApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "link and delete",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), TaUnlinked, "GEN 1:1:9", "beginning")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
     public async Task ApplyRefusesAPutUnderAnIdDeletedAsAnotherKindApplyingNothing()
     {
         await ApplyNext(FullAnalysis());

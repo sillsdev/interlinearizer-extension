@@ -102,7 +102,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
   - It applies a `ChangeSet` of whole-record puts and deletes as one commit. A put of a record not stored creates it in that project. Otherwise the caller's `PutMode` says whether to replace the record whole or patch only the fields that differ.
   - It answers the seam's lookups from the projected tables, filtered to its project.
   - Harmony keeps every entity in one table. To avoid losing or moving a record, an apply refuses a change set that names one id under more than one record kind. It also refuses a put whose id is stored as another kind or in another project, or whose record names another project. Harmony brings a deleted record back on a put under its id, so a put whose id was deleted as another kind or in another project is refused too.
-  - An apply also refuses a link that names an analysis stored in another project.
+  - An apply also refuses a link that names an analysis stored in another project, or one that the change set neither puts nor leaves stored.
   - A delete of another project's record is skipped.
 - **Serialization**: every change type's JSON discriminator is pinned by [ChangeSerializationTests.cs](c-sharp/InterlinearizerCrdt.Tests/ChangeSerializationTests.cs). A commit written today must still deserialize later, so a renamed or removed change type needs a migration path, and a new change type is appended to the model versions.
 

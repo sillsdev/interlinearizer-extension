@@ -18,18 +18,22 @@ public record SourcesDirectory(string Path);
 public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory directory) : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, Lazy<Task<AsyncServiceScope>>> _scopes = new();
+    // Never removed: a command still waiting on a removed lock would run beside one holding its replacement.
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+    private volatile bool _disposed;
 
     /// <summary>
     /// Runs <paramref name="work"/> once no other work run through this on the same source is
     /// running. Work on one source is not reentrant: it must not call this for that source.
     /// </summary>
+    /// <exception cref="ObjectDisposedException">If this is disposed before the work starts.</exception>
     public async Task<T> Exclusive<T>(string sourceProjectId, Func<Task<T>> work)
     {
         var sourceLock = _locks.GetOrAdd(sourceProjectId, _ => new SemaphoreSlim(1, 1));
         await sourceLock.WaitAsync();
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             return await work();
         }
         finally
@@ -120,9 +124,28 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
         await (await scope.Value).DisposeAsync();
     }
 
+    /// <summary>
+    /// Closes every source once the work running on it ends. Any work yet to start is refused, so
+    /// it cannot reopen a source.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
-        foreach (var sourceProjectId in _scopes.Keys) await Exclusive(sourceProjectId, () => Close(sourceProjectId));
+        _disposed = true;
+        // Work already running may still open its source, so wait for it before closing.
+        foreach (var (sourceProjectId, sourceLock) in _locks)
+        {
+            await sourceLock.WaitAsync();
+            try
+            {
+                await Close(sourceProjectId);
+            }
+            finally
+            {
+                sourceLock.Release();
+            }
+        }
+        // A source opened outside Exclusive has no lock.
+        foreach (var sourceProjectId in _scopes.Keys) await Close(sourceProjectId);
     }
 
     private static InterlinearProjects Projects(IServiceProvider services) => new(

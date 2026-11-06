@@ -172,6 +172,40 @@ public class OpenSourcesTests : IAsyncDisposable
     }
 
     [Test]
+    public async Task DisposingRefusesWorkStillWaitingOnASource()
+    {
+        var release = new TaskCompletionSource();
+        var running = _sources.Exclusive(S1, () => release.Task);
+        var waiting = _sources.Exclusive(S1, () => _sources.Open(S1));
+        var dispose = _sources.DisposeAsync().AsTask();
+
+        release.SetResult();
+        await running;
+        await dispose;
+
+        await Assert.That(async () => await waiting).Throws<ObjectDisposedException>();
+        await Assert.That(_sources.IsOpen(S1)).IsFalse();
+    }
+
+    [Test]
+    public async Task DisposingClosesASourceThatWorkRunningOnItOpens()
+    {
+        var release = new TaskCompletionSource();
+        var running = _sources.Exclusive(S1, async () =>
+        {
+            await release.Task;
+            await _sources.Open(S1);
+        });
+        var dispose = _sources.DisposeAsync().AsTask();
+
+        release.SetResult();
+        await running;
+        await dispose;
+
+        await Assert.That(_sources.IsOpen(S1)).IsFalse();
+    }
+
+    [Test]
     public async Task ClosingASourceNotOpenDoesNothing()
     {
         await _sources.Close("never");

@@ -220,6 +220,8 @@ export interface AnalysisRepository {
    *   record names another source project; nothing is applied.
    * @throws {Error} If the changes reach a book whose stored analysis could not be read; nothing is
    *   applied.
+   * @throws {Error} If a link names an analysis that won't be stored once the changes apply, in an
+   *   implementation that refuses such a link rather than storing it; nothing is applied.
    * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
    * @throws {Error} If the stored draft was written by a newer build; nothing is applied.
    * @throws If storage rejects a read or a write. The draft as this repository holds it is

@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import type { DraftProject, TextAnalysis } from 'interlinearizer';
+import type { DraftProject, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { AnalysisLinks, AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
@@ -21,11 +21,14 @@ import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from './test-helpers';
  *   `apply` may report `wasDirty: false`, which no other group reads.
  * - `wholeRead`: {@link AnalysisRepository.exportAll} and {@link AnalysisRepository.getWholeDraft}
  *   themselves, and loading a draft again through `exportAll` after another repository changes it.
+ * - `danglingLinks`: storing a link that names an analysis that the changes leave unstored, and
+ *   passing over it in lookups. Without it, `apply` must refuse such a link, applying nothing.
  * - `storage`: how today's storage keeps a draft: unreadable books, the refusal of a newer build's
  *   draft, cleanup and leftovers, and the whole-draft save. It runs only alongside `scope`,
  *   `draftState`, and `wholeRead`, and needs {@link ConformanceStore.storage}.
  */
-export type ConformanceGroup = 'scope' | 'undo' | 'draftState' | 'wholeRead' | 'storage';
+export type ConformanceGroup =
+  'scope' | 'undo' | 'draftState' | 'wholeRead' | 'danglingLinks' | 'storage';
 
 /** One empty store an {@link AnalysisRepository} implementation keeps drafts in. */
 export interface ConformanceStore {
@@ -425,6 +428,28 @@ function translatingExodus(): ChangeSet {
   };
 }
 
+/**
+ * An approved link on GEN 1:1's "and" naming an analysis not stored, updated after the stored link
+ * that it ties with.
+ */
+function missingAnalysisLink(): TokenAnalysisLink {
+  const [genAnd] = fullAnalysis().tokenAnalysisLinks;
+  return {
+    ...genAnd,
+    id: ID.tlGenMissing,
+    analysisId: ID.taMissing,
+    updatedAt: '2026-02-01T00:00:00.000Z',
+  };
+}
+
+/** Puts {@link missingAnalysisLink}. */
+function linkingMissingAnalysis(): ChangeSet {
+  return {
+    intent: 'linkMissing',
+    tokenAnalysisLinks: { puts: [missingAnalysisLink()], deletes: [] },
+  };
+}
+
 /** Deletes every record that only EXO holds, leaving EXO no stored analysis. */
 function deletingExodus(): ChangeSet {
   return {
@@ -787,6 +812,33 @@ export function describeAnalysisRepositoryConformance(
           await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
         });
 
+        if (!supports.has('danglingLinks')) {
+          it('refuses a link naming an analysis not stored, applying nothing', async () => {
+            const repository = await overFullDraft();
+
+            await expect(repository.apply(linkingMissingAnalysis())).rejects.toThrow();
+
+            await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
+          });
+
+          it('refuses a link naming an analysis the same changes delete, applying nothing', async () => {
+            const repository = await overFullDraft();
+
+            await expect(
+              repository.apply({
+                intent: 'linkAndDelete',
+                tokenAnalyses: { puts: [], deletes: [ID.taUnlinked] },
+                tokenAnalysisLinks: {
+                  puts: [{ ...missingAnalysisLink(), analysisId: ID.taUnlinked }],
+                  deletes: [],
+                },
+              }),
+            ).rejects.toThrow();
+
+            await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
+          });
+        }
+
         it('keeps the drafts of different source projects apart', async () => {
           await store.seed(SOURCE, fullDraft());
 
@@ -993,30 +1045,6 @@ export function describeAnalysisRepositoryConformance(
           ).resolves.toStrictEqual({ [ID.taAnd]: 1, [ID.taBeginning]: 1 });
         });
 
-        it('passes over an approved link naming no stored payload when picking a tie', async () => {
-          const repository = await overFullDraft();
-          const [genAnd] = fullAnalysis().tokenAnalysisLinks;
-
-          await repository.apply({
-            intent: 'approveMissing',
-            tokenAnalysisLinks: {
-              puts: [
-                {
-                  ...genAnd,
-                  id: ID.tlGenMissing,
-                  analysisId: ID.taMissing,
-                  updatedAt: '2026-02-01T00:00:00.000Z',
-                },
-              ],
-              deletes: [],
-            },
-          });
-
-          await expect(repository.countApprovals([ID.taAnd, ID.taMissing])).resolves.toStrictEqual({
-            [ID.taAnd]: 2,
-          });
-        });
-
         it('counts from the records the applied changes leave', async () => {
           const repository = await overFullDraft();
           await repository.countApprovals([ID.taAnd]);
@@ -1150,6 +1178,32 @@ export function describeAnalysisRepositoryConformance(
         });
       });
     });
+
+    if (supports.has('danglingLinks')) {
+      describe('danglingLinks', () => {
+        it('stores a link naming an analysis not stored', async () => {
+          const repository = await overFullDraft();
+
+          await repository.apply(linkingMissingAnalysis());
+
+          await expect(
+            repository
+              .findLinksToAnalyses([ID.taMissing])
+              .then(({ tokenAnalysisLinks }) => idsOf(tokenAnalysisLinks)),
+          ).resolves.toStrictEqual([ID.tlGenMissing]);
+        });
+
+        it('passes over an approved link naming no stored payload when picking a tie', async () => {
+          const repository = await overFullDraft();
+
+          await repository.apply(linkingMissingAnalysis());
+
+          await expect(repository.countApprovals([ID.taAnd, ID.taMissing])).resolves.toStrictEqual({
+            [ID.taAnd]: 2,
+          });
+        });
+      });
+    }
 
     if (supports.has('scope')) {
       describe('scope', () => {

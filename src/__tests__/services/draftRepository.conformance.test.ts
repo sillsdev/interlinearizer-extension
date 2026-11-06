@@ -128,7 +128,7 @@ function createStore(): ReadOnlyConformanceStore {
 
 describeAnalysisRepositoryConformance(
   'DraftRepository',
-  ['scope', 'undo', 'draftState', 'wholeRead', 'storage'],
+  ['scope', 'undo', 'draftState', 'wholeRead', 'danglingLinks', 'storage'],
   createStore,
 );
 describeReadOnlyRepositoryConformance('Pt9ImportRepository', createStore);

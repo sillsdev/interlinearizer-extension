@@ -19,6 +19,7 @@ npm run lint             # Run ESLint + stylelint + tsc --noEmit + dependency sc
 npm run lint-fix         # Auto-fix linting issues, C# formatting included
 npm run format           # Format with Prettier
 npm run format:dotnet    # Format the C# projects with dotnet format
+npm run generate:case-folding   # Regenerate the surface-form fold table, which TS and C# share, from Unicode's CaseFolding.txt
 
 # Test
 npm test                 # Run full Jest suite
@@ -89,7 +90,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
   - The project is one of the record's references, so deleting the project deletes its records. A record created in a deleted or never-created project lands deleted.
   - [InterlinearProjects.cs](c-sharp/InterlinearizerCrdt/InterlinearProjects.cs) manages a database's projects, one commit per call. A create refuses an id any record has ever been stored under, because Harmony would drop a second create without error.
 - **Owned values**: values an entity owns, such as a token analysis's morphemes or a link's token snapshots, are stored inside it as JSON, not as entities.
-- **Lookup columns**: each link keeps the book it points into, and each analysis its normalized surface form, as plain columns derived in their setters, so lookups need not read the JSON.
+- **Lookup columns**: each link keeps the book it points into, and each analysis its normalized surface form, as plain columns derived in their setters, so lookups need not read the JSON. The form is folded by the Unicode table the WebView folds by, [case-folding.json](src/utils/case-folding.json), and a fixture both test suites run keeps the two folds alike.
 - **Patch changes**:
   - A patch change carries each field as a `PatchField<T>`: a field left unset leaves the stored value alone and one set to null clears it.
   - A multistring or feature map is a plain nullable `MultiStringPatch` instead, because a null patch already means unset. Each key it names is set to its value, or removed when that value is null.

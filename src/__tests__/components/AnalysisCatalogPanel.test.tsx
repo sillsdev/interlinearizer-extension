@@ -25,6 +25,7 @@ import { InterlinearNavProvider, useInterlinearNav } from '../../components/Inte
 import type { SourceText } from '../../hooks/useSourceTextReader';
 import type { StepSummary } from '../../types/edit-step';
 import { emptyAnalysis } from '../../types/empty-factories';
+import { normalizeSurfaceForm } from '../../utils/analysis-identity';
 import type { HeadingPlacement } from '../../utils/analysis-query';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings, testSenseRef, withLexicon } from './test-helpers';
@@ -2295,7 +2296,10 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('keeps only the analyses whose form the text lacks once it is read', async () => {
-      const text = makeText({ status: 'ready', textForms: new Set(['λόγος']) });
+      const text = makeText({
+        status: 'ready',
+        textForms: new Set([normalizeSurfaceForm('λόγος')]),
+      });
       renderPanel({ analysis, text });
       await openFilters();
 
@@ -2327,7 +2331,7 @@ describe('AnalysisCatalogPanel', () => {
     it('marks an analysis whose form the text lacks once it is read', () => {
       renderPanel({
         analysis,
-        text: makeText({ status: 'ready', textForms: new Set(['λόγος']) }),
+        text: makeText({ status: 'ready', textForms: new Set([normalizeSurfaceForm('λόγος')]) }),
       });
 
       expect(within(rowFor('gone')).getByTestId('catalog-row-not-in-text')).toBeInTheDocument();
@@ -2336,7 +2340,7 @@ describe('AnalysisCatalogPanel', () => {
     it('does not mark an analysis whose form the text holds', () => {
       renderPanel({
         analysis,
-        text: makeText({ status: 'ready', textForms: new Set(['λόγος']) }),
+        text: makeText({ status: 'ready', textForms: new Set([normalizeSurfaceForm('λόγος')]) }),
       });
 
       expect(

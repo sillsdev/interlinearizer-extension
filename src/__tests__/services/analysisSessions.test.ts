@@ -1633,13 +1633,13 @@ describe('AnalysisSessions', () => {
 
     it('records the pass over a book the draft only splits', async () => {
       const { sessions, sessionId } = await sessionSplittingBeta();
-      const recordPass = await sessions.run(sessionId, async (session) =>
-        jest.spyOn(session.history, 'recordPass'),
+      const applyPass = await sessions.run(sessionId, async (session) =>
+        jest.spyOn(session.history, 'applyPass'),
       );
 
       await sessions.reanchorBook(SOURCE, AFTER);
 
-      expect(recordPass).toHaveBeenCalledTimes(1);
+      expect(applyPass).toHaveBeenCalledTimes(1);
     });
 
     it.each([
@@ -1647,13 +1647,13 @@ describe('AnalysisSessions', () => {
       ['records no', 'it holds no analysis in', makeVerseBook([{ sid: 'EXO 1:1', text: 'x' }]), 0],
     ])('%s the pass over a book %s', async (_records, _holds, book, recorded) => {
       const { sessions, sessionId } = await sessionGlossingBeta();
-      const recordPass = await sessions.run(sessionId, async (session) =>
-        jest.spyOn(session.history, 'recordPass'),
+      const applyPass = await sessions.run(sessionId, async (session) =>
+        jest.spyOn(session.history, 'applyPass'),
       );
 
       await sessions.reanchorBook(SOURCE, book);
 
-      expect(recordPass).toHaveBeenCalledTimes(recorded);
+      expect(applyPass).toHaveBeenCalledTimes(recorded);
     });
 
     it('undoes and redoes edits re-anchored to the current text', async () => {

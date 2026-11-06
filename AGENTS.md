@@ -150,7 +150,7 @@ Opening a session starts building its repository's indexes ahead of the session'
 
 Each session runs its commands one at a time through `run`. A command that changes stored analysis goes through `runEdit` instead, which a read-only session refuses. An edit reaches the repository as a `ChangeSet` of whole-record puts and deletes, applied through the session's [EditHistory](src/services/editHistory.ts) so that undo can revert it. Boundary changes ride in the change set's scope record.
 
-Re-anchor passes are the exception. As the read delivers each book, `reanchorBook` re-anchors the draft to it through `run`; `reanchorMissingBooks` does the same for each linked book the text lacks. Both skip a read-only session. A pass is no undo step and leaves the unsaved mark as it was. The history still records it, so that an undo or redo re-anchors what it restores. A pass to a book's edited text reports nothing itself; `reportScriptureEdit` reports the edit, with what its passes changed, as one change that names the book whole.
+Re-anchor passes are the exception. As the read delivers each book, `reanchorBook` re-anchors the draft to it through `run`; `reanchorMissingBooks` does the same for each linked book the text lacks. Both skip a read-only session. A pass is no undo step and leaves the unsaved mark as it was. The history still applies and records it, so that an undo or redo re-anchors what it restores. A pass to a book's edited text reports nothing itself; `reportScriptureEdit` reports the edit, with what its passes changed, as one change that names the book whole.
 
 #### Replies and change reports
 

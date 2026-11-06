@@ -2,6 +2,7 @@
 
 import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
+import { EditHistory } from '../../services/editHistory';
 import { reanchorRestored, reanchorStoredBook } from '../../services/reanchorPasses';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { missingBook } from '../../utils/reanchor-analysis';
@@ -33,7 +34,10 @@ function glossing(book: Book, word: string, linkId: string): TextAnalysis {
   };
 }
 
-/** Genesis glossed on "beta" and Exodus on "delta", stored in memory. */
+/**
+ * Genesis glossed on "beta" and Exodus on "delta", stored in memory, with a history over the draft
+ * that re-anchors what it restores.
+ */
 async function storedDraft(extra: Partial<DraftProject> = {}) {
   const { storage } = memoryStorage();
   const genesis = glossing(verseBook('GEN 1:1', 'alpha beta'), 'beta', 'tl-gen');
@@ -49,9 +53,10 @@ async function storedDraft(extra: Partial<DraftProject> = {}) {
   };
   await seedRepository(new DraftRepository(storage, SOURCE, silentLogger()), draft);
   const repository = new DraftRepository(storage, SOURCE, silentLogger());
+  const history = new EditHistory(repository, reanchorRestored(repository));
   const stored = async () =>
     (await new DraftRepository(storage, SOURCE, silentLogger()).exportAll()).draft;
-  return { repository, stored };
+  return { repository, history, stored };
 }
 
 function linkNamed(draft: DraftProject, id: string) {
@@ -62,10 +67,10 @@ function linkNamed(draft: DraftProject, id: string) {
 
 describe('reanchorStoredBook', () => {
   it("re-anchors the stored draft to the book's current text, leaving other books alone", async () => {
-    const { repository, stored } = await storedDraft();
+    const { repository, history, stored } = await storedDraft();
     const edited = verseBook('GEN 1:1', 'alpha and beta');
 
-    const { applied } = await reanchorStoredBook(repository, edited);
+    const applied = await reanchorStoredBook(repository, history, edited);
 
     const draft = await stored();
     expect(linkNamed(draft, 'tl-gen').token.tokenRef).toBe(tokenRefOf(edited, 'beta'));
@@ -74,11 +79,12 @@ describe('reanchorStoredBook', () => {
   });
 
   it('returns what restores what the pass replaced', async () => {
-    const { repository } = await storedDraft();
+    const { repository, history } = await storedDraft();
     const before = linkNamed((await repository.exportAll()).draft, 'tl-gen');
 
-    const { applied } = await reanchorStoredBook(
+    const applied = await reanchorStoredBook(
       repository,
+      history,
       verseBook('GEN 1:1', 'alpha and beta'),
     );
 
@@ -88,28 +94,28 @@ describe('reanchorStoredBook', () => {
   it.each([false, true])(
     'leaves a draft whose unsaved mark is %s as it was, a pass being no edit',
     async (dirty) => {
-      const { repository, stored } = await storedDraft({ dirty });
+      const { repository, history, stored } = await storedDraft({ dirty });
 
-      await reanchorStoredBook(repository, verseBook('GEN 1:1', 'alpha and beta'));
+      await reanchorStoredBook(repository, history, verseBook('GEN 1:1', 'alpha and beta'));
 
       await expect(stored()).resolves.toMatchObject({ dirty });
     },
   );
 
   it('applies nothing when the draft already reads as the book does', async () => {
-    const { repository } = await storedDraft();
+    const { repository, history } = await storedDraft();
     const apply = jest.spyOn(repository, 'apply');
 
     await expect(
-      reanchorStoredBook(repository, verseBook('GEN 1:1', 'alpha beta')),
-    ).resolves.toStrictEqual({ heldAnalysis: true });
+      reanchorStoredBook(repository, history, verseBook('GEN 1:1', 'alpha beta')),
+    ).resolves.toBeUndefined();
 
     expect(apply).not.toHaveBeenCalled();
   });
 
   it("moves the draft's splits in the book, keeping its record", async () => {
     const before = verseBook('GEN 1:1', 'alpha beta');
-    const { repository, stored } = await storedDraft({
+    const { repository, history, stored } = await storedDraft({
       suggestedName: 'Named',
       segmentation: {
         removedVerseStarts: [],
@@ -118,7 +124,7 @@ describe('reanchorStoredBook', () => {
     });
     const edited = verseBook('GEN 1:1', 'alpha and beta');
 
-    await reanchorStoredBook(repository, edited);
+    await reanchorStoredBook(repository, history, edited);
 
     const draft = await stored();
     expect(draft.segmentation?.addedStarts).toEqual([
@@ -128,35 +134,67 @@ describe('reanchorStoredBook', () => {
   });
 
   it('stales the links into a book the text lacks', async () => {
-    const { repository, stored } = await storedDraft();
+    const { repository, history, stored } = await storedDraft();
 
-    await reanchorStoredBook(repository, missingBook('GEN'));
+    await reanchorStoredBook(repository, history, missingBook('GEN'));
 
     const draft = await stored();
     expect(linkNamed(draft, 'tl-gen').status).toBe('stale');
     expect(linkNamed(draft, 'tl-exo').status).toBe('approved');
   });
 
-  it('tells that the draft held no analysis in a book it neither links into nor splits', async () => {
-    const { repository } = await storedDraft();
+  it('records the pass it applies, so that an undo re-anchors what it restores', async () => {
+    const { repository, history, stored } = await storedDraft();
+    const link = linkNamed(await stored(), 'tl-gen');
+    await history.apply({
+      intent: 'suggest',
+      tokenAnalysisLinks: { puts: [{ ...link, status: 'suggested' }], deletes: [] },
+    });
+    const edited = verseBook('GEN 1:1', 'alpha and beta');
 
-    await expect(
-      reanchorStoredBook(repository, verseBook('LEV 1:1', 'epsilon zeta')),
-    ).resolves.toStrictEqual({ heldAnalysis: false });
+    await reanchorStoredBook(repository, history, edited);
+    await history.undo();
+
+    expect(linkNamed(await stored(), 'tl-gen')).toMatchObject({
+      status: 'approved',
+      token: { tokenRef: tokenRefOf(edited, 'beta') },
+    });
   });
 
-  it('tells that the draft held analysis in a book it only splits', async () => {
+  it('records the pass over a book the draft links into, though it changes nothing', async () => {
+    const { repository, history } = await storedDraft();
+    const genesis = verseBook('GEN 1:1', 'alpha beta');
+    const applyPass = jest.spyOn(history, 'applyPass');
+
+    await reanchorStoredBook(repository, history, genesis);
+
+    expect(applyPass).toHaveBeenCalledWith(genesis, undefined);
+  });
+
+  it('records no pass over a book the draft neither links into nor splits', async () => {
+    const { repository, history } = await storedDraft();
+    const applyPass = jest.spyOn(history, 'applyPass');
+
+    await expect(
+      reanchorStoredBook(repository, history, verseBook('LEV 1:1', 'epsilon zeta')),
+    ).resolves.toBeUndefined();
+
+    expect(applyPass).not.toHaveBeenCalled();
+  });
+
+  it('records the pass over a book the draft only splits', async () => {
     const leviticus = verseBook('LEV 1:1', 'epsilon zeta');
-    const { repository } = await storedDraft({
+    const { repository, history } = await storedDraft({
       segmentation: {
         removedVerseStarts: [],
         addedStarts: [{ tokenRef: tokenRefOf(leviticus, 'zeta'), surfaceText: 'zeta' }],
       },
     });
+    const applyPass = jest.spyOn(history, 'applyPass');
 
-    await expect(reanchorStoredBook(repository, leviticus)).resolves.toMatchObject({
-      heldAnalysis: true,
-    });
+    await reanchorStoredBook(repository, history, leviticus);
+
+    expect(applyPass).toHaveBeenCalledWith(leviticus, undefined);
   });
 });
 

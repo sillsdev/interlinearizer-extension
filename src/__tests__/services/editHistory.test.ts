@@ -444,7 +444,7 @@ describe('EditHistory re-anchoring', () => {
 
   /**
    * A history over a draft in memory whose re-anchoring applies each book's pass in turn, with a
-   * way to run a pass the history records, as the session does, and to read back the stored link.
+   * way to run a pass through the history, as the session does, and to read back the stored link.
    */
   function makeReanchoringHistory() {
     const { storage } = memoryStorage();
@@ -463,16 +463,72 @@ describe('EditHistory re-anchoring', () => {
       },
     );
     const history = new EditHistory(repository, reanchorBooks);
-    const pass = async (book: Book) => {
-      const changes = reanchorChangesForBook((await repository.exportAll()).draft, book);
-      if (changes) await repository.apply(changes);
-      history.recordPass(book);
-    };
+    const pass = async (book: Book) =>
+      history.applyPass(book, reanchorChangesForBook((await repository.exportAll()).draft, book));
     const storedLink = async () =>
       (await new DraftRepository(storage, 'src', silentLogger()).exportAll()).draft.analysis
         .tokenAnalysisLinks[0];
     return { history, repository, reanchorBooks, pass, storedLink };
   }
+
+  it('applies a pass as no undo step, returning its inverse', async () => {
+    const { history, pass, storedLink } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+
+    const applied = await pass(after);
+    await history.undo();
+
+    expect(applied?.changes.tokenAnalysisLinks?.puts.map(({ token }) => token)).toStrictEqual([
+      betaLink(after, 'ta-1').token,
+    ]);
+    expect(applied?.inverse.tokenAnalysisLinks?.puts).toStrictEqual([betaLink(before, 'ta-1')]);
+    expect(history.canUndo).toBe(false);
+    expect(await storedLink()).toBeUndefined();
+  });
+
+  it.each([false, true])(
+    'leaves a draft whose unsaved mark is %s as it was, a pass being no edit',
+    async (dirty) => {
+      const { history, repository, pass } = makeReanchoringHistory();
+      await history.apply(linking(betaLink(genesis('alpha beta'), 'ta-1')));
+      if (!dirty) await history.markClean();
+
+      await pass(genesis('new alpha beta'));
+
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty } });
+    },
+  );
+
+  it('records a pass that changes nothing, so that an undo re-anchors what it restores', async () => {
+    const { history, storedLink } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await history.apply(linking(betaLink(after, 'ta-2')));
+
+    await expect(history.applyPass(after, undefined)).resolves.toBeUndefined();
+    await history.undo();
+
+    expect(await storedLink()).toEqual(
+      expect.objectContaining({ analysisId: 'ta-1', token: betaLink(after, 'ta-1').token }),
+    );
+  });
+
+  it('records no pass that fails to apply', async () => {
+    const { history, repository, reanchorBooks } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    const changes = reanchorChangesForBook((await repository.exportAll()).draft, after);
+    jest.spyOn(repository, 'apply').mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(history.applyPass(after, changes)).rejects.toThrow('disk full');
+    await history.undo();
+
+    expect(reanchorBooks).not.toHaveBeenCalled();
+  });
 
   it('undoes an edit to the text a pass re-anchored to since', async () => {
     const { history, pass, storedLink } = makeReanchoringHistory();
@@ -643,7 +699,7 @@ describe('EditHistory re-anchoring', () => {
     const { storage } = memoryStorage();
     const history = new EditHistory(new DraftRepository(storage, 'src', silentLogger()));
     await history.apply(linking(betaLink(genesis('alpha beta'), 'ta-1')));
-    history.recordPass(genesis('new alpha beta'));
+    await history.applyPass(genesis('new alpha beta'), undefined);
 
     await expect(history.undo()).resolves.toMatchObject({
       changes: { intent: 'link ta-1', tokenAnalysisLinks: { puts: [], deletes: ['tl-beta'] } },

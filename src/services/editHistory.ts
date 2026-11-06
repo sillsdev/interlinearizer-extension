@@ -191,17 +191,28 @@ export class EditHistory {
   }
 
   /**
-   * Records that a pass has just re-anchored the stored draft to `book`'s current text, superseding
-   * any earlier pass over the book, so that what an undo or redo restores is re-anchored to it too.
-   * A missing book is passed as a book with no segments. Nothing is recorded when the book's text
-   * is the same text its last pass re-anchored to.
+   * Applies `changes`, a pass that re-anchors the stored draft to `book`'s current text. Records
+   * the pass, so that what an undo or redo restores is re-anchored to that text too. A pass that
+   * changes nothing is still recorded, because an undo or redo may restore analysis anchored to
+   * older text.
+   *
+   * The pass goes unrecorded when the history holds no steps to undo or redo. It also goes
+   * unrecorded when the book's text is unchanged since its last recorded pass.
+   *
+   * The pass is no undo step and leaves the draft as saved or unsaved as it was. A missing book is
+   * passed as a book with no segments.
+   *
+   * @returns The changes applied, with their inverse: the changes that undo them. `undefined` when
+   *   there are no changes to apply.
+   * @throws Whatever applying the changes throws; nothing is applied or recorded.
    */
-  recordPass(book: Book): void {
-    if (this.undoable.length === 0 && this.redoable.length === 0) return;
-    if (this.passes.get(book.bookRef)?.book.textVersion === book.textVersion) return;
-    this.passCount += 1;
-    this.passes.delete(book.bookRef);
-    this.passes.set(book.bookRef, { book, ordinal: this.passCount });
+  async applyPass(book: Book, changes: ChangeSet | undefined): Promise<AppliedChange | undefined> {
+    const applied = changes && {
+      changes,
+      inverse: (await this.repository.apply(changes, { keepDirty: true })).inverse,
+    };
+    this.recordPass(book);
+    return applied;
   }
 
   /**
@@ -263,6 +274,19 @@ export class EditHistory {
     const clean = this.cleanStates.has(this.state);
     if (clean) await this.repository.markClean();
     return { changes, inverse, ...(step.step && { step: step.step }), dirty: !clean };
+  }
+
+  /**
+   * Records that a pass has just re-anchored the stored draft to `book`'s current text, superseding
+   * any earlier pass over the book, so that what an undo or redo restores is re-anchored to it too.
+   * Nothing is recorded when the book's text is the same text its last pass re-anchored to.
+   */
+  private recordPass(book: Book): void {
+    if (this.undoable.length === 0 && this.redoable.length === 0) return;
+    if (this.passes.get(book.bookRef)?.book.textVersion === book.textVersion) return;
+    this.passCount += 1;
+    this.passes.delete(book.bookRef);
+    this.passes.set(book.bookRef, { book, ordinal: this.passCount });
   }
 
   /** Unless `wasDirty`, makes the current state the only clean one, if it isn't clean already. */

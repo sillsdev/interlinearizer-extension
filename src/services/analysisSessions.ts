@@ -217,9 +217,11 @@ async function replyTo(
 }
 
 /**
- * Re-anchors the session's draft to `book`, reporting what the pass changed, or adding it to
- * `unreported` when given. The pass is recorded in the session's history only when the draft linked
- * into the book or held boundary edits in it, so an undo or redo re-anchors only those books.
+ * Re-anchors the session's draft to `book` and reports what the pass changed. When `unreported` is
+ * given, the pass is added to it instead of reported.
+ *
+ * The pass is recorded in the session's history only when the draft links into the book or holds
+ * boundary edits in it. An undo or redo re-anchors only the books whose passes are recorded.
  */
 async function reanchorNow(
   host: SessionHost,
@@ -227,8 +229,7 @@ async function reanchorNow(
   book: Book,
   unreported?: UnreportedPass[],
 ): Promise<void> {
-  const { heldAnalysis, applied } = await reanchorStoredBook(session.repository, book);
-  if (heldAnalysis) session.history.recordPass(book);
+  const applied = await reanchorStoredBook(session.repository, session.history, book);
   if (!applied) return;
   const change = await describeApplied(host, session, applied);
   if (unreported) unreported.push({ change, changes: applied.changes });

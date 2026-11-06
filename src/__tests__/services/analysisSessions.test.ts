@@ -745,6 +745,7 @@ describe('AnalysisSessions', () => {
 
       await expect(
         sessions.edit(sessionId, 'approveTwice', async (buffer) => {
+          buffer.create('tokenAnalyses', payload('a'));
           buffer.create('tokenAnalysisLinks', approvedLink('l-1'));
           buffer.create('tokenAnalysisLinks', approvedLink('l-2'));
         }),
@@ -1169,6 +1170,7 @@ describe('AnalysisSessions', () => {
           sessionId,
           'link',
           async (buffer) => {
+            buffer.create('tokenAnalyses', payload('ta'));
             buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma));
           },
           { changeId: 'change-1' },
@@ -1189,6 +1191,7 @@ describe('AnalysisSessions', () => {
 
       await sessions.edit(sessionId, 'split', async (buffer) => {
         buffer.putScope({ ...(await buffer.getScope()), segmentation });
+        buffer.create('tokenAnalyses', payload('ta'));
         buffer.create('tokenAnalysisLinks', makeTokenLink('ta', 'EXO 1:1:0'));
       });
 
@@ -1209,6 +1212,7 @@ describe('AnalysisSessions', () => {
       const reopened = await sessions.open(SOURCE);
 
       await sessions.edit(reopened.sessionId, 'link', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('ta'));
         buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma));
       });
 
@@ -1236,6 +1240,7 @@ describe('AnalysisSessions', () => {
     it('reports what an undo touched under its change id', async () => {
       const { host, sessions, sessionId } = await sessionHolding();
       await sessions.edit(sessionId, 'link', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('ta'));
         buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma));
       });
 
@@ -1309,6 +1314,7 @@ describe('AnalysisSessions', () => {
       const { host, sessions, sessionId } = await sessionHolding();
 
       await sessions.edit(sessionId, 'link', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('ta'));
         buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma));
       });
 
@@ -1699,6 +1705,7 @@ describe('AnalysisSessions', () => {
       const { sessions, sessionId, storage } = await sessionGlossingBeta();
 
       const { changes } = await sessions.edit(sessionId, 'relink', async (buffer) => {
+        buffer.create('tokenAnalyses', { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'beta' });
         buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
         return { reanchorTo: [AFTER] };
       });
@@ -1720,6 +1727,7 @@ describe('AnalysisSessions', () => {
       const { sessions, sessionId, storage } = await sessionGlossingBeta();
 
       await sessions.edit(sessionId, 'relink', async (buffer) => {
+        buffer.create('tokenAnalyses', { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'beta' });
         buffer.put('tokenAnalysisLinks', betaLink(BEFORE, 'ta-2'));
         return { reanchorTo: books };
       });

@@ -214,9 +214,9 @@ export type DiscardStaleFreeTranslationRequest = {
 };
 
 /**
- * Stages dropping the stale free translation `analysisId` with its link. A translation of a verse
- * the book no longer holds is dropped like any other. Nothing is staged when the translation isn't
- * stale.
+ * Stages dropping the stale link of the free translation `analysisId`, and the translation too once
+ * no other link names it. A translation of a verse the book no longer holds is dropped like any
+ * other. Nothing is staged when the translation isn't stale.
  */
 export async function discardStaleFreeTranslation(
   buffer: ChangeBuffer,
@@ -225,5 +225,6 @@ export async function discardStaleFreeTranslation(
   const stale = await findStaleTranslation(buffer, analysisId);
   if (!stale) return;
   buffer.delete('segmentAnalysisLinks', stale.link);
-  buffer.delete('segmentAnalyses', stale.analysis);
+  const { segmentAnalysisLinks } = await buffer.findLinksToAnalyses([analysisId]);
+  if (segmentAnalysisLinks.length === 0) buffer.delete('segmentAnalyses', stale.analysis);
 }

@@ -2012,6 +2012,20 @@ describe('discardStaleFreeTranslation', () => {
     expect(segmentAnalysisLinks).toEqual([]);
   });
 
+  it('keeps the record while another link names it', () => {
+    const stale = segmentTranslation('sa-1', 'seg-1', 'stale');
+    const other = segmentTranslation('sa-1', 'seg-2', 'approved');
+    const state = segmentState(stale);
+    state.analysis.analysis.segmentAnalysisLinks.push(other.link);
+    const store = createAnalysisStore(state);
+
+    store.dispatch(discardStaleFreeTranslation({ analysisId: 'sa-1' }));
+
+    const { segmentAnalyses, segmentAnalysisLinks } = store.getState().analysis.analysis;
+    expect(segmentAnalyses).toEqual([stale.analysis]);
+    expect(segmentAnalysisLinks).toEqual([other.link]);
+  });
+
   it('leaves an approved translation alone', () => {
     const store = createAnalysisStore(
       segmentState(segmentTranslation('sa-1', 'seg-1', 'approved')),

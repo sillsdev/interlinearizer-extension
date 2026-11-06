@@ -214,26 +214,40 @@ export class ChangeBuffer {
   }
 
   /**
-   * Refuses the staged changes if any analysis they remove is still named by a link they keep.
+   * Refuses the staged changes if a link they keep would name an analysis that isn't stored once
+   * they apply.
    *
-   * @throws {LinkedAnalysisDeleteError} If a kept link names a removed analysis.
+   * @throws {LinkedAnalysisDeleteError} If a kept link names an analysis that won't be stored.
    */
-  async assertNoLinksToRemoved(): Promise<void> {
+  async assertLinkedAnalysesStored(): Promise<void> {
     const removed = [
       ...this.staged.tokenAnalyses.deletes.keys(),
       ...this.staged.phraseAnalyses.deletes.keys(),
       ...this.staged.segmentAnalyses.deletes.keys(),
     ];
-    if (removed.length === 0) return;
-    const links = await this.findLinksToAnalyses(removed);
-    const named = new Set(
-      [
-        ...links.tokenAnalysisLinks,
-        ...links.phraseAnalysisLinks,
-        ...links.segmentAnalysisLinks,
-      ].map(({ analysisId }) => analysisId),
+    const kept: AnalysisLinks =
+      removed.length > 0
+        ? await this.findLinksToAnalyses(removed)
+        : { tokenAnalysisLinks: [], phraseAnalysisLinks: [], segmentAnalysisLinks: [] };
+    const named = (links: { analysisId: string }[], staged: Staged<{ analysisId: string }>) => [
+      ...new Set([...links, ...staged.puts.values()].map(({ analysisId }) => analysisId)),
+    ];
+    const tokenIds = named(kept.tokenAnalysisLinks, this.staged.tokenAnalysisLinks);
+    const phraseIds = named(kept.phraseAnalysisLinks, this.staged.phraseAnalysisLinks);
+    const segmentIds = named(kept.segmentAnalysisLinks, this.staged.segmentAnalysisLinks);
+    const stored = new Set(
+      (
+        await Promise.all([
+          tokenIds.length > 0 ? this.getTokenAnalyses(tokenIds) : [],
+          phraseIds.length > 0 ? this.getPhraseAnalyses(phraseIds) : [],
+          segmentIds.length > 0 ? this.getSegmentAnalyses(segmentIds) : [],
+        ])
+      )
+        .flat()
+        .map(({ id }) => id),
     );
-    if (named.size > 0) throw new LinkedAnalysisDeleteError([...named].sort());
+    const missing = [...tokenIds, ...phraseIds, ...segmentIds].filter((id) => !stored.has(id));
+    if (missing.length > 0) throw new LinkedAnalysisDeleteError([...new Set(missing)].sort());
   }
 
   /**

@@ -13,7 +13,7 @@ import type { ChangeBuffer } from '../../services/commands/changeBuffer';
 import type { CommandReply } from '../../types/command-reply';
 import type { BookOutline, SegmentPage } from '../../types/segment-pages';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { makePhraseLink } from '../test-helpers';
+import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
 import { BOOK, comparable, glossing, ref, sessionOver } from './session-source';
 
 /**
@@ -201,6 +201,7 @@ describe('PageClient', () => {
       edit(
         'createPhrase',
         async (buffer) => {
+          buffer.create('phraseAnalyses', { id: 'pl', ...FIXTURE_STAMPS, surfaceText: 'In said' });
           buffer.create('phraseAnalysisLinks', makePhraseLink('pl', [ref('In'), ref('said')]));
         },
         changeId,

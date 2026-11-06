@@ -374,18 +374,20 @@ function isEmptySegmentAnalysis(analysis: SegmentAnalysis): boolean {
 }
 
 /**
- * Removes a `SegmentAnalysis` record and its `SegmentAnalysisLink` from the draft in a single step,
- * keeping the two collections in sync.
+ * Removes `link` from the draft, and `analysis` with it unless another link still names the
+ * analysis.
  */
 function removeSegmentAnalysis(
   state: AnalysisState,
   analysis: SegmentAnalysis,
   link: SegmentAnalysisLink,
 ): void {
-  state.analysis.segmentAnalyses = state.analysis.segmentAnalyses.filter((sa) => sa !== analysis);
   state.analysis.segmentAnalysisLinks = state.analysis.segmentAnalysisLinks.filter(
     (l) => l !== link,
   );
+  if (state.analysis.segmentAnalysisLinks.some(({ analysisId }) => analysisId === analysis.id))
+    return;
+  state.analysis.segmentAnalyses = state.analysis.segmentAnalyses.filter((sa) => sa !== analysis);
 }
 
 /**

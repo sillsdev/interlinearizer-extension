@@ -3,7 +3,7 @@
 import { LinkedAnalysisDeleteError } from '../../types/linked-analysis-delete-error';
 
 describe('LinkedAnalysisDeleteError', () => {
-  it('names the analyses it refuses to remove', () => {
+  it('names the analyses that the kept links name', () => {
     const error = new LinkedAnalysisDeleteError(['ta-1', 'pa-2']);
 
     expect(error).toBeInstanceOf(Error);

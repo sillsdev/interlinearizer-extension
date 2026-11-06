@@ -247,7 +247,7 @@ async function applyStaged(
   reanchorTo: void | readonly Book[],
   options: Pick<EditOptions, 'unsavedMark'> & Pick<SessionEditOptions, 'step'>,
 ): Promise<AppliedChange & { step?: EditStep }> {
-  await buffer.assertNoLinksToRemoved();
+  await buffer.assertLinkedAnalysesStored();
   await assertApprovalRule(buffer, session.repository);
   const scope = staged.scope ?? (await session.repository.getScope());
   if (scope.analysisLanguages.length === 0) {
@@ -487,8 +487,8 @@ export class AnalysisSessions {
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {ApprovalRuleError} If the changes would give a token or segment a second approved
    *   link, or put a token in a second approved phrase; nothing is applied.
-   * @throws {LinkedAnalysisDeleteError} If the changes would remove an analysis that a kept link
-   *   still names; nothing is applied.
+   * @throws {LinkedAnalysisDeleteError} If a link that the changes keep would name an analysis that
+   *   isn't stored once they apply; nothing is applied.
    * @throws {Error} If the session is not open.
    * @throws Whatever the command, reading the draft, or applying its changes throws; nothing is
    *   applied.

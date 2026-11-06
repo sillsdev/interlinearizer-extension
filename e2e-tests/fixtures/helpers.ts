@@ -7,6 +7,7 @@ import {
   Locator,
   Page,
 } from '@playwright/test';
+import { Canon } from '@sillsdev/scripture';
 import escapeStringRegexp from 'escape-string-regexp';
 import fs from 'fs';
 import { createRequire } from 'module';
@@ -1471,11 +1472,14 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  *
  * @param page - The renderer page whose toolbar reference control is driven.
  * @param reference - Fully-qualified scripture reference to navigate to (e.g. `"GEN 1:1"`).
- * @throws If the toolbar root that scopes the lookup never appears, if the control never becomes
- *   enabled within the wait (no navigation target resolved), or if it is enabled but its popover
- *   does not open or close within the timeouts.
+ * @throws If `reference` is not fully qualified, if the toolbar root that scopes the lookup never
+ *   appears, if the control never becomes enabled within the wait (no navigation target resolved),
+ *   if it is enabled but its popover does not open or close within the timeouts, or if the control
+ *   never shows `reference` afterward.
  */
 export async function navigateToScriptureRef(page: Page, reference: string): Promise<void> {
+  const expectedLabel = scriptureRefTriggerPattern(reference);
+
   // Scope to the top toolbar's own root: in Power mode each open WebView tab renders its own
   // identically-labeled (and always-enabled) BookChapterControl, so a page-wide lookup would be
   // ambiguous. `.first()` stays as a strict-mode guard within that single scope.
@@ -1525,6 +1529,33 @@ export async function navigateToScriptureRef(page: Page, reference: string): Pro
   await input.press('Enter');
   // The popover closes when the reference is accepted.
   await expect(input).not.toBeVisible({ timeout: 5_000 });
+
+  // A closed popover does not prove the scroll group moved, and a test that goes on to wait for
+  // verse text would otherwise fail much later on a vague missing-element timeout.
+  await expect(
+    trigger,
+    `navigateToScriptureRef: the top toolbar never showed "${reference}" after it was submitted`,
+  ).toHaveText(expectedLabel, { timeout: 10_000 });
+}
+
+/**
+ * Matches the top toolbar trigger's label for `reference` at any of its widths. The trigger shows
+ * the English book name when there is room and the book id when it shrinks, and drops the
+ * chapter:verse entirely at its narrowest, so that part is optional.
+ *
+ * @param reference - Fully-qualified reference such as `"GEN 1:1"`.
+ * @throws If `reference` is not of the form `BOOK chapter:verse`.
+ */
+function scriptureRefTriggerPattern(reference: string): RegExp {
+  const match = /^([1-4A-Z]{3}) (\d+):(\d+)$/.exec(reference.trim());
+  if (!match) {
+    throw new Error(
+      `navigateToScriptureRef: "${reference}" is not a fully-qualified reference like "GEN 1:1".`,
+    );
+  }
+  const [, bookId, chapter, verse] = match;
+  const book = [Canon.bookIdToEnglishName(bookId), bookId].map(escapeStringRegexp).join('|');
+  return new RegExp(`^\\s*(?:${book})(?:\\s*${chapter}:${verse})?\\s*$`);
 }
 
 /**

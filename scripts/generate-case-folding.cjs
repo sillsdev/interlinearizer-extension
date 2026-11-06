@@ -10,7 +10,7 @@ const path = require('path');
  * table, so both sides always fold alike.
  */
 
-const UNICODE_VERSION = '17.0.0';
+const UNICODE_VERSION = '18.0.0';
 const SOURCE_URL = `https://www.unicode.org/Public/${UNICODE_VERSION}/ucd/CaseFolding.txt`;
 const OUTPUT_PATH = path.resolve(__dirname, '..', 'src', 'utils', 'case-folding.json');
 

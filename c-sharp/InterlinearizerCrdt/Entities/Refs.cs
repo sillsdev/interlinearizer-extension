@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Text;
 using System.Text.Json;
 
@@ -24,22 +25,35 @@ public static class Refs
     public static string NormalizeSurfaceForm(string text)
     {
         var composed = text.Normalize(NormalizationForm.FormC);
-        var folded = new StringBuilder(composed.Length);
+        StringBuilder? folded = null;
+        var copiedTo = 0;
+        var index = 0;
+        Span<char> encoded = stackalloc char[2];
         foreach (var rune in composed.EnumerateRunes())
         {
-            folded.Append(SimpleCaseFolds.Value.TryGetValue(rune.Value, out var fold) ? new Rune(fold) : rune);
+            if (SimpleCaseFolds.TryGetValue(rune.Value, out var fold))
+            {
+                folded ??= new StringBuilder(composed.Length);
+                folded.Append(composed, copiedTo, index - copiedTo);
+                folded.Append(encoded[..new Rune(fold).EncodeToUtf16(encoded)]);
+                copiedTo = index + rune.Utf16SequenceLength;
+            }
+            index += rune.Utf16SequenceLength;
         }
+        if (folded is null) return composed;
+        folded.Append(composed, copiedTo, composed.Length - copiedTo);
         return folded.ToString().Normalize(NormalizationForm.FormC);
     }
 
-    private static readonly Lazy<Dictionary<int, int>> SimpleCaseFolds = new(LoadSimpleCaseFolds);
+    private static readonly FrozenDictionary<int, int> SimpleCaseFolds = LoadSimpleCaseFolds();
 
-    private static Dictionary<int, int> LoadSimpleCaseFolds()
+    private static FrozenDictionary<int, int> LoadSimpleCaseFolds()
     {
         using var stream = typeof(Refs).Assembly.GetManifestResourceStream("case-folding.json")
             ?? throw new InvalidOperationException("The case folding table is not embedded in the assembly.");
-        using var document = JsonDocument.Parse(stream);
-        return document.RootElement.GetProperty("folds").EnumerateArray()
-            .ToDictionary(pair => pair[0].GetInt32(), pair => pair[1].GetInt32());
+        var table = JsonSerializer.Deserialize<CaseFoldingTable>(stream, JsonSerializerOptions.Web)!;
+        return table.Folds.ToFrozenDictionary(pair => pair[0], pair => pair[1]);
     }
+
+    private sealed record CaseFoldingTable(int[][] Folds);
 }

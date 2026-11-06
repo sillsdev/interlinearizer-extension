@@ -5,7 +5,7 @@
     "expected": "and"
   },
   {
-    "case": "a final sigma folds as a medial sigma does",
+    "case": "a capital sigma folds to a medial sigma",
     "input": "ΟΔΟΣ",
     "expected": "οδοσ"
   },
@@ -16,23 +16,23 @@
   },
   {
     "case": "a dotted capital I is left alone",
-    "input": "İ",
-    "expected": "İ"
+    "input": "\u0130",
+    "expected": "\u0130"
   },
   {
     "case": "a long s folds to s, which lowercasing leaves alone",
-    "input": "ſun",
+    "input": "\u017Fun",
     "expected": "sun"
   },
   {
     "case": "a capital sharp s folds to one sharp s, not to ss",
-    "input": "STRAẞE",
-    "expected": "straße"
+    "input": "STRA\u1E9EE",
+    "expected": "stra\u00DFe"
   },
   {
     "case": "a micro sign folds to a Greek mu",
-    "input": "µ",
-    "expected": "μ"
+    "input": "\u00B5",
+    "expected": "\u03BC"
   },
   {
     "case": "Cherokee small letters fold to their capitals",
@@ -46,7 +46,7 @@
   },
   {
     "case": "a decomposed accent composes around the fold",
-    "input": "CAFÉ",
-    "expected": "café"
+    "input": "CAFE\u0301",
+    "expected": "caf\u00E9"
   }
 ]

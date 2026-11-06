@@ -322,6 +322,31 @@ describe('convertPt9Project', () => {
     expect(result.report.merge.identicalPayloadsMerged).toBe(1);
   });
 
+  it('shares one payload between phrases analyzed identically', () => {
+    const verse = verseOf('en', [mkCluster(0, 6, [['Phrase:in the', 'S5']])]).verses[0];
+    const result = convertPt9Project({
+      data: dataOf(
+        [{ ...bookWith('en', 'GEN', 'in'), verses: [verse, { ...verse, reference: 'GEN 1:2' }] }],
+        { lexicon: LEXICON },
+      ),
+      books: [
+        makeVerseBook([
+          { sid: 'GEN 1:1', text: 'in the' },
+          { sid: 'GEN 1:2', text: 'in the' },
+        ]),
+      ],
+      importedAt: STAMP,
+    });
+
+    const [analysis] = result.analysis.phraseAnalyses;
+    expect(result.analysis.phraseAnalyses).toHaveLength(1);
+    expect(result.analysis.phraseAnalysisLinks.map((l) => l.analysisId)).toStrictEqual([
+      analysis.id,
+      analysis.id,
+    ]);
+    expect(result.report.merge.identicalPhrasePayloadsMerged).toBe(1);
+  });
+
   it('reports a missing book without records', () => {
     const result = convertPt9Project({
       data: dataOf([bookWith('en', 'EXO', 'hello', 'S1')]),

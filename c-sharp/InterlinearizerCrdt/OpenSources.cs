@@ -64,7 +64,8 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
     /// <summary>
     /// Opens <paramref name="sourceProjectId"/> over its database, created with its folder when
     /// missing and brought up to the current schema when behind. Opening a source already open
-    /// returns its services. Two concurrent opens of one source share one scope.
+    /// returns its services. Two concurrent opens of one source share one scope. Call only from
+    /// work that <see cref="Exclusive"/> runs for <paramref name="sourceProjectId"/>.
     /// </summary>
     /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
     public async Task<IServiceProvider> Open(string sourceProjectId)
@@ -82,7 +83,10 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
         }
     }
 
-    /// <summary>The services of an open source.</summary>
+    /// <summary>
+    /// The services of an open source. Call only from work that <see cref="Exclusive"/> runs for
+    /// <paramref name="sourceProjectId"/>.
+    /// </summary>
     /// <exception cref="InvalidOperationException">If the source is not open.</exception>
     public async Task<IServiceProvider> Get(string sourceProjectId)
     {
@@ -93,7 +97,8 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
     /// <summary>
     /// The repository over the records of <paramref name="projectId"/>, an interlinear project
     /// stored in an open source. A project not stored gets none, since its records would land
-    /// deleted.
+    /// deleted. Call only from work that <see cref="Exclusive"/> runs for
+    /// <paramref name="sourceProjectId"/>, and use the repository only within that work.
     /// </summary>
     /// <exception cref="InvalidOperationException">If the source is not open.</exception>
     /// <exception cref="ArgumentException">
@@ -111,13 +116,20 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
             id);
     }
 
-    /// <summary>The interlinear projects of an open source.</summary>
+    /// <summary>
+    /// The interlinear projects of an open source. Call only from work that
+    /// <see cref="Exclusive"/> runs for <paramref name="sourceProjectId"/>, and use what it returns
+    /// only within that work.
+    /// </summary>
     /// <exception cref="InvalidOperationException">If the source is not open.</exception>
     public async Task<InterlinearProjects> Projects(string sourceProjectId) => Projects(await Get(sourceProjectId));
 
     public bool IsOpen(string sourceProjectId) => _scopes.ContainsKey(sourceProjectId);
 
-    /// <summary>Closes a source, disposing its scope. Closing one not open does nothing.</summary>
+    /// <summary>
+    /// Closes a source, disposing its scope. Closing one not open does nothing. Call only from work
+    /// that <see cref="Exclusive"/> runs for <paramref name="sourceProjectId"/>.
+    /// </summary>
     public async Task Close(string sourceProjectId)
     {
         if (!_scopes.TryRemove(sourceProjectId, out var scope)) return;

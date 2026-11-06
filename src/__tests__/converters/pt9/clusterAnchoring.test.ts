@@ -157,6 +157,34 @@ describe('anchorVerseClusters', () => {
       expect(result.groups[0].token.surfaceText).toBe('re-cover');
     });
 
+    it('anchors a parse-only cluster whose suffix starts with a combining mark', () => {
+      const segment = segmentOf('cafe\u0301 noir'.normalize('NFC'));
+      const result = anchorVerseClusters(
+        [segment],
+        [mkCluster(0, 4, [['Stem:cafe'], ['Suffix:\u0301']])],
+      );
+
+      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('caf\u00e9');
+    });
+
+    it('keeps a paired parse whose suffix starts with a combining mark', () => {
+      const segment = segmentOf('cafe\u0301 noir'.normalize('NFC'));
+      const result = anchorVerseClusters(
+        [segment],
+        [
+          mkCluster(0, 4, [['Word:caf\u00e9']]),
+          mkCluster(0, 4, [['Stem:cafe'], ['Suffix:\u0301']]),
+        ],
+      );
+
+      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual([
+        'cafe',
+        '\u0301',
+      ]);
+    });
+
     it('anchors a parse-only cluster by its concatenated forms', () => {
       const segment = segmentOf('exaucera demain');
       const result = anchorVerseClusters(

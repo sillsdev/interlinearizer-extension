@@ -276,20 +276,22 @@ function priorDistance(
 const EDGE_INDICATORS = /^[-=~]+|[-=~]+$/g;
 
 /**
- * A pattern matching the folded surfaces that a parse's forms spell out together. It ignores each
+ * A test of whether a folded surface is what a parse's forms spell out together. It ignores each
  * form's edge indicators.
  *
  * The surface may carry indicator characters where two forms meet, as `twenty-one` does between
  * `twenty` and `one`.
  */
-function parseMatcher(lexemes: readonly ClassifiedLexeme[]): RegExp {
+function parseMatcher(lexemes: readonly ClassifiedLexeme[]): (surface: string) => boolean {
+  // Decomposed, because a form starting with a combining mark composes with the form before it in
+  // the surface, but not when each form is folded alone.
   const cores = lexemes.map((l) =>
-    normalizeSurfaceForm(l.key.Form.replace(EDGE_INDICATORS, '')).replace(
-      /[.*+?^${}()|[\]\\/]/g,
-      '\\$&',
-    ),
+    normalizeSurfaceForm(l.key.Form.replace(EDGE_INDICATORS, ''))
+      .normalize('NFD')
+      .replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'),
   );
-  return new RegExp(`^${cores.join('[-=~]*')}$`);
+  const pattern = new RegExp(`^${cores.join('[-=~]*')}$`);
+  return (surface) => pattern.test(surface.normalize('NFD'));
 }
 
 function countFrom(candidates: ReadonlySet<number>, cursor: number): number {
@@ -390,7 +392,7 @@ export function anchorVerseClusters(
       wordForm !== undefined
         ? form === wordForm
         : /* v8 ignore next -- a range group is only ever created with at least one facet */
-          (parseMatchers[item]?.test(form) ?? false);
+          (parseMatchers[item]?.(form) ?? false);
     return new Set(foldedWords.flatMap((form, j) => (matches(form) ? [j] : [])));
   });
   const groupPlacements = alignInOrder(groupCandidates, wordTokens.length, (item, position) =>
@@ -416,7 +418,7 @@ export function anchorVerseClusters(
     }
     if (ambiguous) ambiguousCount += 1;
     // A word cluster may have chosen the token by its own form, so the parse is checked against it.
-    const parseFits = parseMatchers[item]?.test(foldedWords[chosen]) ?? true;
+    const parseFits = parseMatchers[item]?.(foldedWords[chosen]) ?? true;
     if (!parseFits) dropCounts.formMismatch += 1;
     groups.push({
       token: wordTokens[chosen],

@@ -414,10 +414,10 @@ describe('convertPt9Project', () => {
       expect(book.versesHashed).toBe(6);
       expect(book.versesNotFound).toBe(33);
       expect(book.clustersTotal).toBe(61);
-      expect(book.clustersConverted).toBe(24);
+      expect(book.clustersConverted).toBe(20);
       expect(book.clusterDrops).toStrictEqual({
         verseNotFound: 37,
-        formMismatch: 0,
+        formMismatch: 4,
         frontMatter: 0,
         lemmaOrOther: 0,
         duplicateCluster: 0,
@@ -429,16 +429,13 @@ describe('convertPt9Project', () => {
       expect(book.phrasesConverted).toBe(0);
     });
 
-    it('merges the hello word and parse pair with lexicon glosses, approved', () => {
+    it('keeps the hello word gloss but drops the parse that spells helloing', () => {
       const link = result.analysis.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'MAT 1:1:0');
       expect(link?.status).toBe('approved');
       const analysis = result.analysis.tokenAnalyses.find((a) => a.id === link?.analysisId);
       expect(analysis?.surfaceText).toBe('hello');
       expect(analysis?.gloss).toStrictEqual({ en: 'greeting' });
-      expect(analysis?.morphemes).toStrictEqual([
-        { id: 'm0', form: 'hello', writingSystem: 'en', gloss: { en: 'greet' } },
-        { id: 'm1', form: 'ing', writingSystem: 'en', gloss: { en: 'PROG' } },
-      ]);
+      expect(analysis?.morphemes).toBeUndefined();
     });
 
     it('imports a dangling sense selection without gloss text', () => {

@@ -94,18 +94,51 @@ describe('anchorVerseClusters', () => {
       const segment = segmentOf('hello world');
       const result = anchorVerseClusters(
         [segment],
+        [mkCluster(0, 5, [['Word:hello', 'S1']]), mkCluster(0, 5, [['Stem:hel'], ['Suffix:lo']])],
+      );
+
+      expect(result.groups).toHaveLength(1);
+      expect(result.groups[0].word).toBeDefined();
+      expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual(['hel', 'lo']);
+    });
+
+    it('drops a parse that does not spell out the token its word cluster anchored', () => {
+      const segment = segmentOf('hello world');
+      const result = anchorVerseClusters(
+        [segment],
         [
           mkCluster(0, 5, [['Word:hello', 'S1']]),
           mkCluster(0, 5, [['Stem:hello'], ['Suffix:ing']]),
         ],
       );
 
+      expect(result.dropCounts.formMismatch).toBe(1);
       expect(result.groups).toHaveLength(1);
-      expect(result.groups[0].word).toBeDefined();
-      expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual([
-        'hello',
-        'ing',
-      ]);
+      expect(result.groups[0].word?.lexeme.senseId).toBe('S1');
+      expect(result.groups[0].parse).toBeUndefined();
+    });
+
+    it('matches a parse whose forms carry typed morph-type indicators', () => {
+      const segment = segmentOf('from here');
+      const result = anchorVerseClusters([segment], [mkCluster(0, 4, [['Stem:fr'], ['Stem:-om']])]);
+
+      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('from');
+      expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual(['fr', '-om']);
+    });
+
+    it('matches a parse against a word whose own surface carries an indicator character', () => {
+      const segment = segmentOf('twenty-one days');
+      const result = anchorVerseClusters(
+        [segment],
+        [
+          mkCluster(0, 10, [['Word:twenty-one']]),
+          mkCluster(0, 10, [['Stem:twenty'], ['Stem:one']]),
+        ],
+      );
+
+      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(result.groups[0].parse).toBeDefined();
     });
 
     it('anchors a parse-only cluster by its concatenated forms', () => {

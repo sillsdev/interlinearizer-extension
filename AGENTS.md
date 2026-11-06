@@ -188,7 +188,7 @@ A page fetched before a reply never overwrites what the reply wrote. A page that
 
 Host commands live in [src/services/commands/](src/services/commands/), one module per family. Session commands take one object of named fields, such as `sessionId` and an edit's optional `changeId`. The exceptions are `getBookOutline`, `getSegments`, and `getTextReadStatus`, which take a `{ sessionId }` address among positional arguments.
 
-A command stages its changes in a [ChangeBuffer](src/services/commands/changeBuffer.ts), whose reads answer as the repository will once those changes apply. `AnalysisSessions.edit` applies what it staged as one undo step after the approval rule passes.
+A command stages its changes in a [ChangeBuffer](src/services/commands/changeBuffer.ts), whose reads answer as the repository will once those changes apply. `AnalysisSessions.edit` applies what it staged as one undo step. It first refuses changes that break the approval rule or that leave a kept link naming an analysis that won't be stored.
 
 Each command copies the WebView code it replaces, and its parity tests run one input through both:
 

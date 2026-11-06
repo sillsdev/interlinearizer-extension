@@ -480,6 +480,23 @@ describe('discardStaleFreeTranslation parity with the reducer', () => {
       },
     ],
     [
+      'keeps the translation while another link names it',
+      {
+        analysis: translationsOf(
+          [translation('sa-1', 'In the beginning', 'At first')],
+          [
+            segmentLink('sl-stale', 'sa-1', SEGMENT, 'stale'),
+            segmentLink('sl-other', 'sa-1', 'GEN 1:2', 'approved'),
+          ],
+        ),
+        input: undefined,
+        expectStore: (store) => {
+          expect(ids(store.segmentAnalyses)).toStrictEqual(['sa-1']);
+          expect(ids(store.segmentAnalysisLinks)).toStrictEqual(['sl-other']);
+        },
+      },
+    ],
+    [
       'changes nothing when the translation is not stale',
       {
         analysis: translationsOf(

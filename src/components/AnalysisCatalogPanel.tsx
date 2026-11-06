@@ -50,7 +50,6 @@ import { useInterlinearNav } from './InterlinearNavContext';
 import useDraftDiscardGate from '../hooks/useDraftDiscardGate';
 import useRowSelection from '../hooks/useRowSelection';
 import useRowWindow from '../hooks/useRowWindow';
-import type { StepSummary } from '../types/edit-step';
 import { whenSettled, type Settles } from '../utils/settles';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import {
@@ -70,9 +69,6 @@ import {
 } from '../utils/analysis-query';
 import { collatorForTag, languageNameForTag } from '../utils/language-tags';
 
-/** Runs an action with no undo history to group its edits in. */
-const RUN_UNGROUPED = <T,>(action: () => T): T => action();
-
 /** Tells no one about an edit, having no history to undo it from. */
 const ANNOUNCE_NOTHING = () => {};
 
@@ -83,18 +79,6 @@ function distinctUsageCount(rows: readonly CatalogRow[], analysisIds: ReadonlySe
       .filter((r) => analysisIds.has(r.analysisId))
       .flatMap((r) => r.usages.map((u) => u.tokenRef)),
   ).size;
-}
-
-/** Summarizes a catalog step on the row `analysisId` names, given where the step left that row. */
-function catalogStepSummary(
-  kind: 'catalogEdit' | 'catalogMerge',
-  form: string,
-  analysisId: string,
-  outcome: AnalysisEditOutcome,
-): StepSummary {
-  if (outcome.kind === 'removed') return { kind, form, analysisId };
-  const survivingAnalysisId = outcome.kind === 'merged' ? outcome.survivingAnalysisId : analysisId;
-  return { kind, form, analysisId, survivingAnalysisId };
 }
 
 /**
@@ -178,11 +162,6 @@ type AnalysisCatalogPanelProps = Readonly<{
   onClose: () => void;
   /** Switches the side panel to the concordance. */
   onShowConcordance: () => void;
-  /**
-   * Runs an action so every edit it makes undoes as one step, summarized for the reader as given or
-   * as derived from the action's result. Without this prop, each edit is a step of its own.
-   */
-  asOneStep?: <T>(action: () => T, summary: StepSummary | ((result: T) => StepSummary)) => T;
   /** Tells the reader what an edit just did, offering to undo it; silent when omitted. */
   announceUndoable?: (message: string) => void;
   /** Book code each row's per-book usage count is taken against. */
@@ -195,8 +174,6 @@ type AnalysisCatalogPanelProps = Readonly<{
   showMorphology: boolean;
   /** BCP 47 tag of the source text, so surface forms collate by their own language. */
   sourceLanguageTag: string;
-  /** Whether every book has been checked for stale places, rather than only the books opened. */
-  staleCoversDraft: boolean;
   /** Resolved localizations covering at least {@link ANALYSIS_CATALOG_PANEL_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
   /** What the current book is called wherever the panel names it in prose. */
@@ -219,14 +196,12 @@ export default function AnalysisCatalogPanel({
   ref,
   onClose,
   onShowConcordance,
-  asOneStep = RUN_UNGROUPED,
   announceUndoable = ANNOUNCE_NOTHING,
   currentBook,
   headingPlacements,
   liveSurfaceText,
   showMorphology,
   sourceLanguageTag,
-  staleCoversDraft,
   localizedStrings,
   currentBookName,
 }: AnalysisCatalogPanelProps) {
@@ -618,32 +593,17 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
-   * Runs a row edit as one undo step, summarized as given or from its result, then hands the result
-   * to `then` once it settles. An edit sent to the session settles later and records its own step.
+   * Runs a row edit, then hands its result to `then` once it settles.
    *
-   * @returns The edit's result, which rejects when an edit sent to the session fails.
+   * @returns The edit's result, which rejects when the edit fails.
    */
   const runRowEdit = useCallback(
-    <T,>(
-      edit: () => Settles<T>,
-      summary: StepSummary | ((settled: T) => StepSummary),
-      then: (settled: T) => void,
-    ): Settles<T> => {
-      const result = asOneStep(
-        edit,
-        typeof summary === 'function'
-          ? (settled) => {
-              /* v8 ignore next 2 -- the host path groups no edits; its session records each */
-              if (settled instanceof Promise)
-                throw new Error('Interlinearizer: an edit sent to the session was grouped');
-              return summary(settled);
-            }
-          : summary,
-      );
+    <T,>(edit: () => Settles<T>, then: (settled: T) => void): Settles<T> => {
+      const result = edit();
       whenSettled(result, then);
       return result;
     },
-    [asOneStep],
+    [],
   );
 
   /**
@@ -682,7 +642,6 @@ export default function AnalysisCatalogPanel({
       const form = surfaceTextOf(analysisId);
       return runRowEdit(
         () => rowDispatch.writeGloss(analysisId, value),
-        (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
         (outcome) => reportEditOutcome(outcome, form),
       );
     },
@@ -694,7 +653,6 @@ export default function AnalysisCatalogPanel({
       const form = surfaceTextOf(analysisId);
       runRowEdit(
         () => rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag),
-        (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
         (outcome) => reportEditOutcome(outcome, form),
       );
     },
@@ -706,7 +664,6 @@ export default function AnalysisCatalogPanel({
       const form = surfaceTextOf(analysisId);
       return runRowEdit(
         () => rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
-        (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
         (outcome) => reportEditOutcome(outcome, form),
       );
     },
@@ -714,14 +671,8 @@ export default function AnalysisCatalogPanel({
   );
 
   const handleMorphemesConfirm = useCallback(
-    (analysisId: string) =>
-      asOneStep(() => confirmMorphemes(analysisId), {
-        kind: 'catalogEdit',
-        form: surfaceTextOf(analysisId),
-        analysisId,
-        survivingAnalysisId: analysisId,
-      }),
-    [asOneStep, confirmMorphemes, surfaceTextOf],
+    (analysisId: string) => confirmMorphemes(analysisId),
+    [confirmMorphemes],
   );
 
   /**
@@ -763,9 +714,6 @@ export default function AnalysisCatalogPanel({
       discardBreakdownDraft(analysisId);
       runRowEdit(
         () => rowDispatch.deleteAnalyses([analysisId]),
-        outcome.usageCount === 0
-          ? { kind: 'catalogDeleteUnused', form, analysisId }
-          : { kind: 'catalogDelete', form, analysisId, count: outcome.usageCount },
         () => {
           // A deleted row cannot be the one a merge notice points at, and leaving the notice up
           // would send the reader to a row that is no longer there.
@@ -795,7 +743,6 @@ export default function AnalysisCatalogPanel({
       analysisIds.forEach(discardBreakdownDraft);
       runRowEdit(
         () => rowDispatch.deleteAnalyses(analysisIds),
-        { kind: 'catalogDeleteChecked', count, usageCount },
         () => {
           setMergeNotice(undefined);
           announceUndoable(
@@ -838,7 +785,6 @@ export default function AnalysisCatalogPanel({
       setMergeNotice(undefined);
       runRowEdit(
         () => rowDispatch.clearGlosses(analysisIds),
-        { kind: 'catalogClearGlossChecked', count },
         (deletedIds) => {
           const deletedCount = deletedIds.length;
           const mergedCount = reclaimedIds.filter((id) => !deletedIds.includes(id)).length;
@@ -917,7 +863,6 @@ export default function AnalysisCatalogPanel({
             features: content.features,
             confidence: content.confidence,
           }),
-        (merge) => catalogStepSummary('catalogMerge', surfaceText, survivorAnalysisId, merge),
         // Reported against the record that the merge left standing, not the one it was aimed at.
         // The reader was warned that content matching an unmerged homograph moves the survivor.
         (outcome) => {
@@ -1109,7 +1054,6 @@ export default function AnalysisCatalogPanel({
             search={search}
             showMorphology={showMorphology}
             sort={sort}
-            staleCoversDraft={staleCoversDraft}
           />
         )}
 

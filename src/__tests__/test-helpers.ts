@@ -19,8 +19,7 @@ import {
   type PhraseStripContextValue,
 } from '../components/PhraseStripContext';
 import type { PhraseDispatch } from '../components/AnalysisStore';
-import type { SegmentPages } from '../hooks/useSegmentPages';
-import { splitPhraseAtBoundary } from '../utils/phrase-arc';
+import type { SegmentPages, OutlineSegment } from '../types/segment-pages';
 import { summarizeProject } from '../services/projectSummaries';
 import type {
   AnalysisRepository,
@@ -30,7 +29,6 @@ import type {
 import { emptyAnalysis } from '../types/empty-factories';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
-import type { OutlineSegment } from '../types/segment-pages';
 import { scopeRecordOf } from '../utils/change-set';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
@@ -657,20 +655,15 @@ export function silentLogger(): WarningLogger & { warn: jest.Mock } {
 }
 
 /**
- * Completes `dispatch` into a {@link PhraseDispatch} whose `splitPhrase` splits through `dispatch`'s
- * create, update and delete. Its `mergePhrases` is a fresh mock unless `dispatch` has one.
+ * Completes `dispatch` into a {@link PhraseDispatch} with a fresh mock for each edit it lacks:
+ * `splitPhrase`, which the session carries out, and `mergePhrases`.
  */
 export function withSplitPhrase(
   dispatch: Pick<
     jest.MockedObject<PhraseDispatch>,
     'createPhrase' | 'updatePhrase' | 'deletePhrase'
   > &
-    Partial<Pick<jest.MockedObject<PhraseDispatch>, 'mergePhrases'>>,
+    Partial<Pick<jest.MockedObject<PhraseDispatch>, 'mergePhrases' | 'splitPhrase'>>,
 ): jest.MockedObject<PhraseDispatch> {
-  const splitPhrase = jest.fn();
-  splitPhrase.mockImplementation(
-    (link: PhraseAnalysisLink, splitAfterTokenRef: string, order: ReadonlyMap<string, number>) =>
-      splitPhraseAtBoundary(link, splitAfterTokenRef, dispatch, order),
-  );
-  return { mergePhrases: jest.fn(), ...dispatch, splitPhrase };
+  return { mergePhrases: jest.fn(), splitPhrase: jest.fn(), ...dispatch };
 }

@@ -29,7 +29,7 @@ import {
 } from '../hooks/usePhraseStripSetup';
 import useLatestRef from '../hooks/useLatestRef';
 import usePhraseWindow from '../hooks/usePhraseWindow';
-import type { SegmentPages } from '../hooks/useSegmentPages';
+import type { SegmentPages } from '../types/segment-pages';
 import useStripGroups from '../hooks/useStripGroups';
 import useStripSegments from '../hooks/useStripSegments';
 import useStripWheel from '../hooks/useStripWheel';
@@ -818,7 +818,7 @@ export default function ContinuousView({
   );
 
   /** Splits a phrase arc at a token boundary and dispatches the resulting phrase-store writes. */
-  const handleArcSplit = useArcSplitHandler(tokenDocOrder);
+  const handleArcSplit = useArcSplitHandler();
 
   /**
    * Handle of the fade a jump is waiting out, or `undefined` when none is pending. A ref rather

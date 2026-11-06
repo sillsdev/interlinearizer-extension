@@ -32,7 +32,6 @@ updates:
       - dependency-name: '@dnd-kit/sortable'
       - dependency-name: '@dnd-kit/utilities'
       - dependency-name: '@reduxjs/toolkit'
-      - dependency-name: react-redux
       # devDependencies
       - dependency-name: '@playwright/test'
       - dependency-name: '@testing-library/jest-dom'
@@ -57,7 +56,6 @@ updates:
         patterns:
           - '@dnd-kit/*'
           - '@reduxjs/toolkit'
-          - react-redux
       dev-tooling:
         applies-to: version-updates
         update-types: ['minor', 'patch']

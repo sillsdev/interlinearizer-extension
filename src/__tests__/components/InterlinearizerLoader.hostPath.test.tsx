@@ -13,7 +13,6 @@ import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../../hooks/useProjectBookIds';
-import useSegmentPages from '../../hooks/useSegmentPages';
 import useSourceTextReader from '../../hooks/useSourceTextReader';
 import useStaleAnalysisDismissal from '../../hooks/useStaleAnalysisDismissal';
 import { fakeHost, STORED_PROJECT } from '../cache/fake-host';
@@ -21,7 +20,6 @@ import { BOOK, ref } from '../cache/session-source';
 import { makeScrollGroupHook, makeWebViewState } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
-jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => true }));
 jest.mock('../../hooks/useConcordanceEntries');
 jest.mock('../../hooks/useSourceTextReader');
 jest.mock('../../hooks/useInterlinearizerBookData');
@@ -29,21 +27,15 @@ jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
 jest.mock('../../hooks/useProjectBookIds');
-jest.mock('../../hooks/useSegmentPages');
 jest.mock('../../hooks/useStaleAnalysisDismissal');
 jest.mock('../../components/StaleAnalysesReporter', () => ({
   __esModule: true,
   default: () => undefined,
 }));
-let capturedStaleCoversDraft: boolean | undefined;
-
 jest.mock('../../components/AnalysisCatalogPanel', () => ({
   __esModule: true,
   ANALYSIS_CATALOG_PANEL_STRING_KEYS: [],
-  default: ({ staleCoversDraft }: { staleCoversDraft: boolean }) => {
-    capturedStaleCoversDraft = staleCoversDraft;
-    return <div data-testid="analysis-catalog-panel" />;
-  },
+  default: () => <div data-testid="analysis-catalog-panel" />,
 }));
 jest.mock('../../components/ContinuousView', () => ({
   __esModule: true,
@@ -123,11 +115,6 @@ function mockLoaderHooks(): void {
     bookError: undefined,
     writingSystem: 'und',
     reload: jest.fn(),
-  });
-  jest.mocked(useSegmentPages).mockReturnValue({
-    pages: undefined,
-    isLoading: false,
-    error: undefined,
   });
   jest.mocked(useProjectBookIds).mockReturnValue({ bookIds: ['GEN'], isLoading: false });
   jest
@@ -220,7 +207,7 @@ beforeEach(() => {
   mockLoaderHooks();
 });
 
-describe('InterlinearizerLoader on the host path', () => {
+describe('InterlinearizerLoader', () => {
   it("shows the session's analysis of the loaded book", async () => {
     await renderLoaded();
 
@@ -228,7 +215,6 @@ describe('InterlinearizerLoader on the host path', () => {
     expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.openSession', {
       sourceProjectId: 'src',
     });
-    expect(useSegmentPages).not.toHaveBeenCalledWith(expect.objectContaining({ verseBook: BOOK }));
   });
 
   it('writes a gloss through the session and shows it from the reply', async () => {
@@ -258,13 +244,18 @@ describe('InterlinearizerLoader on the host path', () => {
   it('hands the view boundary edits that the session makes', async () => {
     await renderLoaded();
 
-    await act(async () => capturedBoundaries?.merge(ref('And')));
+    // The reply lands inside the same act, many microtasks after the command is sent.
+    await act(async () => {
+      capturedBoundaries?.merge(ref('And'));
+      for (let turn = 0; turn < 200; turn += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await Promise.resolve();
+      }
+    });
 
-    await waitFor(() =>
-      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-        'interlinearizer.mergeSegments',
-        expect.objectContaining({ secondSegmentStartRef: ref('And') }),
-      ),
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+      'interlinearizer.mergeSegments',
+      expect.objectContaining({ secondSegmentStartRef: ref('And') }),
     );
   });
 
@@ -278,7 +269,7 @@ describe('InterlinearizerLoader on the host path', () => {
   });
 });
 
-describe('InterlinearizerLoader saving on the host path', () => {
+describe('InterlinearizerLoader saving', () => {
   it('saves the draft to the active project through its session', async () => {
     await renderLoaded({ activeProject: ACTIVE_PROJECT });
 
@@ -296,7 +287,7 @@ describe('InterlinearizerLoader saving on the host path', () => {
   });
 });
 
-describe('InterlinearizerLoader starting over on the host path', () => {
+describe('InterlinearizerLoader starting over', () => {
   it('opens a project by sending the host its id, reading no project', async () => {
     await renderLoaded();
 
@@ -329,7 +320,7 @@ describe('InterlinearizerLoader starting over on the host path', () => {
   });
 });
 
-describe('InterlinearizerLoader discarding on the host path', () => {
+describe('InterlinearizerLoader discarding', () => {
   it("discards the draft through its session, leaving the saved project's content to the host", async () => {
     await renderLoaded({ activeProject: ACTIVE_PROJECT });
 
@@ -349,7 +340,7 @@ describe('InterlinearizerLoader discarding on the host path', () => {
   });
 });
 
-describe('InterlinearizerLoader opening a Paratext 9 import on the host path', () => {
+describe('InterlinearizerLoader opening a Paratext 9 import', () => {
   const IMPORT_SUMMARY = {
     ...ACTIVE_PROJECT,
     id: 'import-1',
@@ -385,7 +376,7 @@ describe('InterlinearizerLoader opening a Paratext 9 import on the host path', (
   });
 });
 
-describe('InterlinearizerLoader stale filter on the host path', () => {
+describe('InterlinearizerLoader stale filter', () => {
   /** The latest wanted-text listener that the loader handed the source-text reader. */
   const latestOnWanted = () => jest.mocked(useSourceTextReader).mock.lastCall?.[0].onWanted;
 
@@ -408,7 +399,7 @@ describe('InterlinearizerLoader stale filter on the host path', () => {
     );
   });
 
-  it("covers the whole draft once the session's whole-text read has read every book", async () => {
+  it("starts the session's whole-text read once the text is wanted", async () => {
     jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
     await fakeHost(async (command) =>
       command === 'interlinearizer.getTextReadStatus'
@@ -428,11 +419,16 @@ describe('InterlinearizerLoader stale filter on the host path', () => {
     await waitFor(() => expect(latestOnWanted()).toBeDefined());
     act(() => latestOnWanted()?.());
 
-    await waitFor(() => expect(capturedStaleCoversDraft).toBe(true));
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.objectContaining({ sessionId: expect.any(String) }),
+      ),
+    );
   });
 });
 
-describe('InterlinearizerLoader on the host path with no book', () => {
+describe('InterlinearizerLoader with no book loaded', () => {
   it("asks the session for no outline of a book whose text didn't load", async () => {
     await fakeHost();
     jest.mocked(useInterlinearizerBookData).mockReturnValue({

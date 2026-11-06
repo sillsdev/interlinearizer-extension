@@ -1,0 +1,127 @@
+import { act, render } from '@testing-library/react';
+import type { Book, TextAnalysis } from 'interlinearizer';
+import type { ReactElement, ReactNode } from 'react';
+import { PageClient } from '../../cache/pageClient';
+import { WholeAnalysis } from '../../cache/wholeAnalysis';
+import { SessionAnalysisProvider } from '../../components/AnalysisStore';
+import { emptyAnalysis } from '../../types/empty-factories';
+import { fakeHost } from '../cache/fake-host';
+
+/** What the last provider made saves its edits to. */
+type Saved = Readonly<{
+  settle: () => Promise<void>;
+  savedAnalysis: () => Promise<TextAnalysis>;
+  editsSaved: () => number;
+}>;
+
+/** A rendered subject, with the analysis that its edits have saved. */
+export type AnalysisRendered = ReturnType<typeof render> & Saved;
+
+let last: Saved | undefined;
+
+/** The last provider that {@link prepareAnalysis} made. */
+function lastRendered(): Saved {
+  if (!last) throw new Error('nothing rendered with an analysis yet');
+  return last;
+}
+
+/** Waits until every edit that the last subject sent has been applied and its reply rendered. */
+export function settle(): Promise<void> {
+  return lastRendered().settle();
+}
+
+/** The analysis as the last subject's edits have saved it. */
+export function savedAnalysis(): Promise<TextAnalysis> {
+  return lastRendered().savedAnalysis();
+}
+
+/** How many edits the last subject has saved. */
+export function editsSaved(): number {
+  return lastRendered().editsSaved();
+}
+
+/** Props that a test may give the provider that {@link prepareAnalysis} makes. */
+export type AnalysisProviderProps = Readonly<{
+  children: ReactNode;
+  analysisLanguage?: string;
+  readOnly?: boolean;
+  onPendingEditsChange?: (pending: boolean) => void;
+}>;
+
+/**
+ * Makes a {@link SessionAnalysisProvider} over a session on `analysis` that a fake host serves, with
+ * every segment of `book` loaded. {@link settle}, {@link savedAnalysis} and {@link editsSaved} then
+ * answer for it.
+ */
+export async function prepareAnalysis(
+  analysis: Partial<TextAnalysis>,
+  book: Book,
+): Promise<(props: AnalysisProviderProps) => ReactElement> {
+  const seeded = { ...emptyAnalysis(), ...analysis };
+  const host = await fakeHost(undefined, undefined, { analysis: seeded, book });
+  const readDraft = () =>
+    host.sessions.run(host.sessionId, (session) => session.repository.getWholeDraft());
+  const client = new PageClient(
+    { getOutline: () => host.fetchOutline(), getSegments: host.fetchPage },
+    { retryDelaysMs: [0], wait: async () => {} },
+  );
+  const whole = new WholeAnalysis(readDraft);
+  let saves = 0;
+  // Fed as the session hook feeds them in the app.
+  host.onChange((change) => {
+    saves += 1;
+    client.hear(change);
+  });
+  client.subscribeReplies((reply) => whole.take(reply.changes, reply.dirty));
+  client.subscribeHeard(({ passChanges }) => {
+    if (!passChanges) whole.refresh();
+    else passChanges.forEach((changes) => whole.take(changes, 'kept'));
+  });
+  await client.open();
+  client.load(0, host.outline.segments.length, 'list');
+  await client.settled();
+  await whole.refresh();
+  last = {
+    settle: () =>
+      act(async () => {
+        await client.settled();
+        await whole.refresh();
+      }),
+    savedAnalysis: async () => (await readDraft()).analysis,
+    editsSaved: () => saves,
+  };
+  return function SessionProvider({
+    children,
+    analysisLanguage = 'en',
+    ...props
+  }: AnalysisProviderProps) {
+    return (
+      <SessionAnalysisProvider
+        client={client}
+        whole={whole}
+        sessionId={host.sessionId}
+        analysisLanguage={analysisLanguage}
+        {...props}
+      >
+        {children}
+      </SessionAnalysisProvider>
+    );
+  };
+}
+
+/** Renders `ui` inside the provider that {@link prepareAnalysis} makes over `analysis` and `book`. */
+export async function renderWithAnalysis(
+  ui: ReactElement,
+  {
+    analysis,
+    book,
+    ...props
+  }: Readonly<{ analysis: Partial<TextAnalysis>; book: Book }> &
+    Omit<AnalysisProviderProps, 'children'>,
+): Promise<AnalysisRendered> {
+  const Provider = await prepareAnalysis(analysis, book);
+  const rendered = render(ui, {
+    wrapper: ({ children }) => <Provider {...props}>{children}</Provider>,
+  });
+  return { ...rendered, ...lastRendered() };
+}

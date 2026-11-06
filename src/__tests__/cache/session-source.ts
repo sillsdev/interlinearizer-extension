@@ -39,13 +39,14 @@ export const GLOSSED: Partial<TextAnalysis> = {
 export type ReportedChange = AnalysisChange & { changeId: ChangeId };
 
 /**
- * A session over a draft holding `analysis` and `segmentation`, with a way to read its outline and
- * pages as the host serves them. Each listener passed to `onChange` hears every change that the
- * session reports, at the moment it is reported.
+ * A session over a draft holding `analysis` and `segmentation`, on a source whose text is `book`,
+ * with a way to read its outline and pages as the host serves them. Each listener passed to
+ * `onChange` hears every change that the session reports, at the moment it is reported.
  */
 export async function sessionOver(
   analysis: Partial<TextAnalysis> = GLOSSED,
   segmentation: SegmentationDelta | undefined = undefined,
+  book: Book = BOOK,
 ) {
   const { storage } = memoryStorage();
   const listeners = new Set<(change: ReportedChange) => void>();
@@ -68,21 +69,21 @@ export async function sessionOver(
     getInterfaceLanguages: async () => ['en'],
     startTextRead: async () => {},
     stopTextRead: async () => {},
-    heldBook: () => BOOK,
+    heldBook: () => book,
     reportChange: (change) => listeners.forEach((listener) => listener(change)),
   });
   const { sessionId } = await sessions.open('src');
-  const fetchPage = (start: number, end: number, book: Book = BOOK): Promise<SegmentPage> =>
-    sessions.run(sessionId, (session) => readSegmentPage(session.repository, book, start, end));
-  const fetchOutline = (book: Book = BOOK) =>
-    sessions.run(sessionId, (session) => readBookOutline(session.repository, book));
+  const fetchPage = (start: number, end: number, read: Book = book): Promise<SegmentPage> =>
+    sessions.run(sessionId, (session) => readSegmentPage(session.repository, read, start, end));
+  const fetchOutline = (read: Book = book) =>
+    sessions.run(sessionId, (session) => readBookOutline(session.repository, read));
   const outline = await fetchOutline();
   const edit = (
     intent: string,
     command: (buffer: ChangeBuffer, session: Session) => Promise<void | EditOutcome>,
     changeId?: ChangeId,
   ) => sessions.edit(sessionId, intent, command, { changeId });
-  return { sessions, sessionId, fetchPage, fetchOutline, outline, edit, onChange, storage };
+  return { sessions, sessionId, fetchPage, fetchOutline, outline, edit, onChange, storage, book };
 }
 
 /** A page's analysis with each list in id order, so two pages compare without regard to order. */

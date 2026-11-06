@@ -64,8 +64,8 @@ const SUGGESTED_PLACEHOLDER_PAD = '\u2009';
 /**
  * Renders a single word token as an inline chip with an editable gloss input below the surface
  * text. The gloss value and the dispatch that writes it both come from context, so the chip must be
- * rendered under an {@link AnalysisStoreProvider}. The gloss is written to the store only on blur,
- * and only when the draft differs from the committed value, to avoid creating empty analysis
+ * rendered under a {@link SessionAnalysisProvider}. The gloss is written to the session only on
+ * blur, and only when the draft differs from the committed value, to avoid creating empty analysis
  * entries on focus/blur cycles with no edits.
  *
  * When `showMorphology` is true, the morpheme breakdown is shown below the surface text. For

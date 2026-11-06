@@ -1,8 +1,8 @@
-// Suggestion-combobox tests run against the real analysis store rather than mocks.
+// Suggestion-combobox cases, run against a real analysis provider rather than mocks.
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type {
   SenseRef,
@@ -11,19 +11,66 @@ import type {
   TokenAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { TokenChip } from '../../components/TokenChip';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { FIXTURE_STAMPS, makeWordToken } from '../test-helpers';
+import { FIXTURE_STAMPS, makeVerseBook, makeWordToken } from '../test-helpers';
+import { renderWithAnalysis } from './analysis-provider';
 import { mockKeyAsValueLocalizedStrings, testSenseRef } from './test-helpers';
-
-jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
 
 beforeEach(() => {
   mockKeyAsValueLocalizedStrings();
   // jsdom does not implement scrollIntoView; the dropdown calls it to keep the active row in view.
   Element.prototype.scrollIntoView = jest.fn();
 });
+
+/**
+ * The text every case's tokens are taken from. Each form is read often enough to give each fixture
+ * alias its own token.
+ */
+const BOOK = makeVerseBook([
+  { sid: 'GEN 1:1', text: 'logos logos unseen' },
+  { sid: 'GEN 1:2', text: 'bank bank bank bank bank' },
+  { sid: 'GEN 1:3', text: 'ran ran ran ran ran' },
+]);
+
+/** Which reading of its form each fixture alias names. */
+const SLOTS: Record<string, number> = {
+  'tok-approved': 0,
+  'tok-2': 1,
+  'tok-x': 0,
+  r1: 0,
+  b1: 0,
+  p1: 0,
+  r2: 1,
+  b2: 1,
+  p2: 1,
+  r3: 2,
+  v1: 2,
+  f1: 3,
+  'tok-new': 4,
+};
+
+/** The ref of the token that `alias` names among the readings of `form`. */
+function at(alias: string, form: string): string {
+  const token = BOOK.segments.flatMap((s) => s.tokens).filter((t) => t.surfaceText === form)[
+    SLOTS[alias]
+  ];
+  if (!token) throw new Error(`fixture has no token ${alias} reading ${form}`);
+  return token.ref;
+}
+
+/**
+ * The chip token that `alias` names, reading `surfaceText`. `form` is what the token read when its
+ * analysis was made, which a drifted token no longer reads.
+ */
+function chipToken(alias: string, surfaceText: string, form = surfaceText) {
+  return makeWordToken(at(alias, form), surfaceText);
+}
+
+/** The link that `saved` holds at the token `alias` names among the readings of `form`. */
+function linkAt(saved: TextAnalysis, alias: string, form: string) {
+  return saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === at(alias, form));
+}
 
 /**
  * Builds an analysis seeding one approved payload, so a different token with the same surface form
@@ -46,7 +93,7 @@ function poolWithOneApproved(gloss: string | undefined, surfaceText = 'logos'): 
     ...FIXTURE_STAMPS,
     analysisId: 'ta-1',
     status: 'approved',
-    token: { tokenRef: 'tok-approved', surfaceText },
+    token: { tokenRef: at('tok-approved', surfaceText), surfaceText },
   };
   return { ...emptyAnalysis(), tokenAnalyses: [ta], tokenAnalysisLinks: [link] };
 }
@@ -77,21 +124,21 @@ function homographBankPool(financeGloss: string | undefined): TextAnalysis {
       ...FIXTURE_STAMPS,
       analysisId: 'ta-river',
       status: 'approved',
-      token: { tokenRef: 'r1', surfaceText: 'bank' },
+      token: { tokenRef: at('r1', 'bank'), surfaceText: 'bank' },
     },
     {
       id: 'tl-3',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-river',
       status: 'approved',
-      token: { tokenRef: 'r2', surfaceText: 'bank' },
+      token: { tokenRef: at('r2', 'bank'), surfaceText: 'bank' },
     },
     {
       id: 'tl-4',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-fin',
       status: 'approved',
-      token: { tokenRef: 'f1', surfaceText: 'bank' },
+      token: { tokenRef: at('f1', 'bank'), surfaceText: 'bank' },
     },
   ];
   return { ...emptyAnalysis(), tokenAnalyses: [river, fin], tokenAnalysisLinks: links };
@@ -129,21 +176,21 @@ function sameGlossParsePool(rivalForms: readonly string[]): TextAnalysis {
       ...FIXTURE_STAMPS,
       analysisId: 'ta-past',
       status: 'approved',
-      token: { tokenRef: 'p1', surfaceText: 'ran' },
+      token: { tokenRef: at('p1', 'ran'), surfaceText: 'ran' },
     },
     {
       id: 'tl-6',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-past',
       status: 'approved',
-      token: { tokenRef: 'p2', surfaceText: 'ran' },
+      token: { tokenRef: at('p2', 'ran'), surfaceText: 'ran' },
     },
     {
       id: 'tl-7',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-rival',
       status: 'approved',
-      token: { tokenRef: 'v1', surfaceText: 'ran' },
+      token: { tokenRef: at('v1', 'ran'), surfaceText: 'ran' },
     },
   ];
   return { ...emptyAnalysis(), tokenAnalyses: [pastTense, rival], tokenAnalysisLinks: links };
@@ -173,21 +220,21 @@ function homographTopBlankPool(): TextAnalysis {
       ...FIXTURE_STAMPS,
       analysisId: 'ta-blank',
       status: 'approved',
-      token: { tokenRef: 'b1', surfaceText: 'bank' },
+      token: { tokenRef: at('b1', 'bank'), surfaceText: 'bank' },
     },
     {
       id: 'tl-9',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-blank',
       status: 'approved',
-      token: { tokenRef: 'b2', surfaceText: 'bank' },
+      token: { tokenRef: at('b2', 'bank'), surfaceText: 'bank' },
     },
     {
       id: 'tl-10',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-fin',
       status: 'approved',
-      token: { tokenRef: 'f1', surfaceText: 'bank' },
+      token: { tokenRef: at('f1', 'bank'), surfaceText: 'bank' },
     },
   ];
   return { ...emptyAnalysis(), tokenAnalyses: [blank, fin], tokenAnalysisLinks: links };
@@ -196,25 +243,11 @@ function homographTopBlankPool(): TextAnalysis {
 /** Renders a {@link TokenChip} inside a real provider seeded with the given analysis pool. */
 function renderChip(
   token: Token & { type: 'word' },
-  {
-    initialAnalysis,
-    onSave,
-    onGlossChange,
-  }: Readonly<{
-    initialAnalysis: TextAnalysis;
-    onSave?: (analysis: TextAnalysis) => void;
-    onGlossChange?: (tokenRef: string, value: string) => void;
-  }>,
+  { initialAnalysis, disabled }: Readonly<{ initialAnalysis: TextAnalysis; disabled?: boolean }>,
 ) {
-  return render(
-    <AnalysisStoreProvider
-      analysisLanguage="en"
-      initialAnalysis={initialAnalysis}
-      onSave={onSave}
-      onGlossChange={onGlossChange}
-    >
-      <TokenChip glossPlaceholder="gloss" token={token} onFocus={() => {}} />
-    </AnalysisStoreProvider>,
+  return renderWithAnalysis(
+    <TokenChip glossPlaceholder="gloss" token={token} onFocus={() => {}} disabled={disabled} />,
+    { analysis: initialAnalysis, book: BOOK },
   );
 }
 
@@ -237,8 +270,10 @@ async function focusGloss(): Promise<HTMLElement> {
 }
 
 describe('TokenChip suggested placeholder', () => {
-  it('shows the suggested gloss as the placeholder of an empty, unfocused input', () => {
-    renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+  it('shows the suggested gloss as the placeholder of an empty, unfocused input', async () => {
+    await renderChip(chipToken('tok-2', 'logos'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
 
     const input = screen.getByLabelText(GLOSS_INPUT_LABEL);
     // Visible at a glance — no focus or hover — so the row reveals which tokens have a suggestion.
@@ -246,8 +281,10 @@ describe('TokenChip suggested placeholder', () => {
     expect(input.className).toContain('tw:placeholder:gloss-suggested');
   });
 
-  it('pads the suggested placeholder with one thin space, on the trailing edge only', () => {
-    renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+  it('pads the suggested placeholder with one thin space, on the trailing edge only', async () => {
+    await renderChip(chipToken('tok-2', 'logos'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
 
     // Spelled out rather than built from `ghost`, so changing the pad character has to be a
     // deliberate edit here instead of riding along with the helper every other assertion goes
@@ -255,8 +292,10 @@ describe('TokenChip suggested placeholder', () => {
     expect(screen.getByLabelText(GLOSS_INPUT_LABEL)).toHaveAttribute('placeholder', 'word\u2009');
   });
 
-  it('falls back to the generic placeholder when the token has no suggestion', () => {
-    renderChip(makeWordToken('tok-x', 'unseen'), { initialAnalysis: poolWithOneApproved('word') });
+  it('falls back to the generic placeholder when the token has no suggestion', async () => {
+    await renderChip(chipToken('tok-x', 'unseen'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
 
     const input = screen.getByLabelText(GLOSS_INPUT_LABEL);
     expect(input).toHaveAttribute('placeholder', 'gloss');
@@ -264,7 +303,9 @@ describe('TokenChip suggested placeholder', () => {
   });
 
   it('reverts to the generic placeholder once the user types a gloss', async () => {
-    renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+    await renderChip(chipToken('tok-2', 'logos'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
     const input = screen.getByLabelText(GLOSS_INPUT_LABEL);
     expect(input).toHaveAttribute('placeholder', ghost('word'));
 
@@ -278,7 +319,9 @@ describe('TokenChip suggested placeholder', () => {
 
 describe('TokenChip suggestion dropdown', () => {
   it('opens on focus of an empty input and shows the suggested gloss in blue', async () => {
-    renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+    await renderChip(chipToken('tok-2', 'logos'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
 
     // Closed until focused: no row is in the document yet.
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
@@ -293,7 +336,9 @@ describe('TokenChip suggestion dropdown', () => {
   it('shows no + button when the token has only one suggestion', async () => {
     // A single suggestion needs no chooser: the ghost placeholder advertises it and focusing opens
     // the dropdown to accept it, so the "+" button is reserved for tokens with a choice.
-    renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+    await renderChip(chipToken('tok-2', 'logos'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
 
     const input = await focusGloss();
 
@@ -307,7 +352,7 @@ describe('TokenChip suggestion dropdown', () => {
   it('shows no suggestion affordances on an approved token whose only pool entry is its own decision', async () => {
     // The lone pool entry IS this token's approved analysis, so there is no alternative to promote:
     // re-approving the same payload would be a no-op, so the dropdown and + button stay hidden.
-    renderChip(makeWordToken('tok-approved', 'logos'), {
+    await renderChip(chipToken('tok-approved', 'logos'), {
       initialAnalysis: poolWithOneApproved('word'),
     });
 
@@ -322,7 +367,9 @@ describe('TokenChip suggestion dropdown', () => {
     // r1 is approved to ta-river; the pool also holds ta-fin ('finance') for 'bank'. The approved
     // payload is filtered out, leaving the alternative, and focusing opens the dropdown over the
     // committed gloss; with one alternative there is no "+" button.
-    renderChip(makeWordToken('r1', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    await renderChip(chipToken('r1', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
 
     await focusGloss();
 
@@ -340,7 +387,7 @@ describe('TokenChip suggestion dropdown', () => {
   it('shows no suggestion affordances on an approved token whose surface form has drifted out of the pool', async () => {
     // tok-approved keeps its approved decision (keyed by token ref), but its surface text has
     // drifted to a form with no pool entry, so there is no pool alternative and nothing to summon.
-    renderChip(makeWordToken('tok-approved', 'drifted'), {
+    await renderChip(chipToken('tok-approved', 'drifted', 'logos'), {
       initialAnalysis: poolWithOneApproved('word'),
     });
 
@@ -351,7 +398,9 @@ describe('TokenChip suggestion dropdown', () => {
   });
 
   it('does not open for a surface form that is not in the pool', async () => {
-    renderChip(makeWordToken('tok-x', 'unseen'), { initialAnalysis: poolWithOneApproved('word') });
+    await renderChip(chipToken('tok-x', 'unseen'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
 
     await focusGloss();
 
@@ -359,19 +408,20 @@ describe('TokenChip suggestion dropdown', () => {
     expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
   });
 
-  it('shows no suggestion affordances on a disabled chip', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={poolWithOneApproved('word')}>
-        <TokenChip token={makeWordToken('tok-2', 'logos')} onFocus={() => {}} disabled />
-      </AnalysisStoreProvider>,
-    );
+  it('shows no suggestion affordances on a disabled chip', async () => {
+    await renderChip(chipToken('tok-2', 'logos'), {
+      initialAnalysis: poolWithOneApproved('word'),
+      disabled: true,
+    });
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
   });
 
   it('closes once the user starts typing their own gloss', async () => {
-    renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+    await renderChip(chipToken('tok-2', 'logos'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
     await focusGloss();
     expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
 
@@ -381,7 +431,9 @@ describe('TokenChip suggestion dropdown', () => {
   });
 
   it('re-opens when the input is cleared back to empty', async () => {
-    renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+    await renderChip(chipToken('tok-2', 'logos'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
     const input = await focusGloss();
     await userEvent.type(input, 'mine');
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
@@ -393,7 +445,7 @@ describe('TokenChip suggestion dropdown', () => {
 
   it('does not open when the top pick has no gloss in the active language', async () => {
     // The approved payload has only a French gloss; matched for 'logos' but blank in English.
-    renderChip(makeWordToken('tok-2', 'logos'), {
+    await renderChip(chipToken('tok-2', 'logos'), {
       initialAnalysis: poolWithOneApproved(undefined),
     });
 
@@ -404,10 +456,8 @@ describe('TokenChip suggestion dropdown', () => {
   });
 
   it('approves the suggestion when its row is clicked: it disappears and the gloss commits', async () => {
-    const onSave = jest.fn();
-    renderChip(makeWordToken('tok-2', 'logos'), {
+    const { settle, savedAnalysis } = await renderChip(chipToken('tok-2', 'logos'), {
       initialAnalysis: poolWithOneApproved('word'),
-      onSave,
     });
 
     await focusGloss();
@@ -415,19 +465,18 @@ describe('TokenChip suggestion dropdown', () => {
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(screen.getByLabelText(GLOSS_INPUT_LABEL)).toHaveValue('word');
-    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    await settle();
+    const saved = await savedAnalysis();
     // No new payload — tok-2 links to the existing shared analysis (frequency now 2).
     expect(saved.tokenAnalyses).toHaveLength(1);
-    const link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    const link = linkAt(saved, 'tok-2', 'logos');
     expect(link?.analysisId).toBe('ta-1');
     expect(link?.status).toBe('approved');
   });
 
   it('surfaces homograph candidates and promotes the chosen one in grey', async () => {
-    const onSave = jest.fn();
-    renderChip(makeWordToken('tok-new', 'bank'), {
+    const { settle, savedAnalysis } = await renderChip(chipToken('tok-new', 'bank'), {
       initialAnalysis: homographBankPool('finance'),
-      onSave,
     });
 
     await focusGloss();
@@ -440,14 +489,15 @@ describe('TokenChip suggestion dropdown', () => {
 
     await userEvent.click(candidate);
 
-    const saved: TextAnalysis = onSave.mock.calls[0][0];
-    const link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-new');
+    await settle();
+    const saved = await savedAnalysis();
+    const link = linkAt(saved, 'tok-new', 'bank');
     expect(link?.analysisId).toBe('ta-fin');
     expect(link?.status).toBe('approved');
   });
 
   it('shows each breakdown when two suggestions share one gloss', async () => {
-    renderChip(makeWordToken('tok-new', 'ran'), {
+    await renderChip(chipToken('tok-new', 'ran'), {
       initialAnalysis: sameGlossParsePool(['ran']),
     });
 
@@ -463,7 +513,7 @@ describe('TokenChip suggestion dropdown', () => {
 
   it('shows a breakdown split from a different spelling in stale styling', async () => {
     const pool = sameGlossParsePool(['ran']);
-    renderChip(makeWordToken('tok-new', 'ran'), {
+    await renderChip(chipToken('tok-new', 'ran'), {
       initialAnalysis: {
         ...pool,
         tokenAnalyses: pool.tokenAnalyses.map((ta) =>
@@ -481,7 +531,7 @@ describe('TokenChip suggestion dropdown', () => {
 
   it('names a stale breakdown as such on its suggestion', async () => {
     const pool = sameGlossParsePool(['ran']);
-    renderChip(makeWordToken('tok-new', 'ran'), {
+    await renderChip(chipToken('tok-new', 'ran'), {
       initialAnalysis: {
         ...pool,
         tokenAnalyses: pool.tokenAnalyses.map((ta) =>
@@ -499,7 +549,7 @@ describe('TokenChip suggestion dropdown', () => {
 
   it('omits the breakdown on a suggestion with no morphological breakdown', async () => {
     // The 'bank' pool analyses carry no morphemes, so there is no breakdown for either row to show.
-    renderChip(makeWordToken('tok-new', 'bank'), {
+    await renderChip(chipToken('tok-new', 'bank'), {
       initialAnalysis: homographBankPool('finance'),
     });
 
@@ -509,7 +559,9 @@ describe('TokenChip suggestion dropdown', () => {
   });
 
   it('omits a candidate that has no gloss in the active language', async () => {
-    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool(undefined) });
+    await renderChip(chipToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool(undefined),
+    });
 
     await focusGloss();
 
@@ -519,10 +571,8 @@ describe('TokenChip suggestion dropdown', () => {
   });
 
   it('falls through a blank-in-active-language top pick to the highest-ranked glossed analysis', async () => {
-    const onSave = jest.fn();
-    renderChip(makeWordToken('tok-new', 'bank'), {
+    const { settle, savedAnalysis } = await renderChip(chipToken('tok-new', 'bank'), {
       initialAnalysis: homographTopBlankPool(),
-      onSave,
     });
 
     await focusGloss();
@@ -536,8 +586,9 @@ describe('TokenChip suggestion dropdown', () => {
 
     await userEvent.click(accept);
 
-    const saved: TextAnalysis = onSave.mock.calls[0][0];
-    const link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-new');
+    await settle();
+    const saved = await savedAnalysis();
+    const link = linkAt(saved, 'tok-new', 'bank');
     expect(link?.analysisId).toBe('ta-fin');
     expect(link?.status).toBe('approved');
   });
@@ -570,28 +621,28 @@ function homographMajorityPool(riverSenseRef?: SenseRef): TextAnalysis {
       ...FIXTURE_STAMPS,
       analysisId: 'ta-river',
       status: 'approved',
-      token: { tokenRef: 'r1', surfaceText: 'bank' },
+      token: { tokenRef: at('r1', 'bank'), surfaceText: 'bank' },
     },
     {
       id: 'tl-12',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-river',
       status: 'approved',
-      token: { tokenRef: 'r2', surfaceText: 'bank' },
+      token: { tokenRef: at('r2', 'bank'), surfaceText: 'bank' },
     },
     {
       id: 'tl-13',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-river',
       status: 'approved',
-      token: { tokenRef: 'r3', surfaceText: 'bank' },
+      token: { tokenRef: at('r3', 'bank'), surfaceText: 'bank' },
     },
     {
       id: 'tl-14',
       ...FIXTURE_STAMPS,
       analysisId: 'ta-fin',
       status: 'approved',
-      token: { tokenRef: 'f1', surfaceText: 'bank' },
+      token: { tokenRef: at('f1', 'bank'), surfaceText: 'bank' },
     },
   ];
   return { ...emptyAnalysis(), tokenAnalyses: [river, fin], tokenAnalysisLinks: links };
@@ -603,7 +654,9 @@ describe('TokenChip suggestion after clearing an approved gloss', () => {
     // alternative. On clearing, discounting r1's own approval (3 → 2) keeps 'riverbank' on top, so
     // the accept row and ghost placeholder both surface 'riverbank' — matching what re-derives once
     // the empty value commits on blur, rather than flipping to 'finance'.
-    renderChip(makeWordToken('r1', 'bank'), { initialAnalysis: homographMajorityPool() });
+    await renderChip(chipToken('r1', 'bank'), {
+      initialAnalysis: homographMajorityPool(),
+    });
 
     const input = await focusGloss();
     // Before clearing: the approved token shows only the alternative as a promote row.
@@ -621,7 +674,7 @@ describe('TokenChip suggestion after clearing an approved gloss', () => {
   it('shows no suggestion when the cleared gloss was the surface form only approval', async () => {
     // 'logos' is approved exactly once; clearing it empties the pool match, so nothing is suggested,
     // consistent with the empty pool the committed deletion produces.
-    renderChip(makeWordToken('tok-approved', 'logos'), {
+    await renderChip(chipToken('tok-approved', 'logos'), {
       initialAnalysis: poolWithOneApproved('word'),
     });
 
@@ -636,7 +689,7 @@ describe('TokenChip suggestion after clearing an approved gloss', () => {
   it('previews no suggestion when the cleared gloss carries a sense ref', async () => {
     // The sense ref survives the clear, so r1 stays approved. Its dropdown keeps offering only the
     // alternative, where an r1 without a sense ref would preview 'riverbank'.
-    renderChip(makeWordToken('r1', 'bank'), {
+    await renderChip(chipToken('r1', 'bank'), {
       initialAnalysis: homographMajorityPool(testSenseRef('s-river')),
     });
 
@@ -651,10 +704,8 @@ describe('TokenChip suggestion after clearing an approved gloss', () => {
 
 describe('TokenChip suggestion keyboard navigation', () => {
   it('arrow-down highlights the top row and Enter approves it', async () => {
-    const onSave = jest.fn();
-    renderChip(makeWordToken('tok-new', 'bank'), {
+    const { settle, savedAnalysis } = await renderChip(chipToken('tok-new', 'bank'), {
       initialAnalysis: homographBankPool('finance'),
-      onSave,
     });
 
     await focusGloss();
@@ -664,33 +715,31 @@ describe('TokenChip suggestion keyboard navigation', () => {
 
     await userEvent.keyboard('{Enter}');
 
-    const saved: TextAnalysis = onSave.mock.calls[0][0];
-    const link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-new');
+    await settle();
+    const saved = await savedAnalysis();
+    const link = linkAt(saved, 'tok-new', 'bank');
     expect(link?.analysisId).toBe('ta-river');
   });
 
   it('Enter with nothing highlighted approves the top suggestion', async () => {
-    const onSave = jest.fn();
-    renderChip(makeWordToken('tok-2', 'logos'), {
+    const { settle, savedAnalysis } = await renderChip(chipToken('tok-2', 'logos'), {
       initialAnalysis: poolWithOneApproved('word'),
-      onSave,
     });
 
     await focusGloss();
     // No arrow press: nothing is highlighted, so Enter falls back to the top row.
     await userEvent.keyboard('{Enter}');
 
-    const saved: TextAnalysis = onSave.mock.calls[0][0];
-    const link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    await settle();
+    const saved = await savedAnalysis();
+    const link = linkAt(saved, 'tok-2', 'logos');
     expect(link?.analysisId).toBe('ta-1');
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
   });
 
   it('arrow-down stops at the last row and arrow-up returns to the no-highlight state', async () => {
-    const onSave = jest.fn();
-    renderChip(makeWordToken('tok-new', 'bank'), {
+    const { settle, savedAnalysis } = await renderChip(chipToken('tok-new', 'bank'), {
       initialAnalysis: homographBankPool('finance'),
-      onSave,
     });
 
     await focusGloss();
@@ -706,16 +755,15 @@ describe('TokenChip suggestion keyboard navigation', () => {
 
     // With nothing highlighted, Enter approves the top row.
     await userEvent.keyboard('{Enter}');
-    const saved: TextAnalysis = onSave.mock.calls[0][0];
-    const link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-new');
+    await settle();
+    const saved = await savedAnalysis();
+    const link = linkAt(saved, 'tok-new', 'bank');
     expect(link?.analysisId).toBe('ta-river');
   });
 
   it('hovering a row highlights it, and Enter then approves that row', async () => {
-    const onSave = jest.fn();
-    renderChip(makeWordToken('tok-new', 'bank'), {
+    const { settle, savedAnalysis } = await renderChip(chipToken('tok-new', 'bank'), {
       initialAnalysis: homographBankPool('finance'),
-      onSave,
     });
 
     await focusGloss();
@@ -726,16 +774,15 @@ describe('TokenChip suggestion keyboard navigation', () => {
 
     await userEvent.keyboard('{Enter}');
 
-    const saved: TextAnalysis = onSave.mock.calls[0][0];
-    const link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-new');
+    await settle();
+    const saved = await savedAnalysis();
+    const link = linkAt(saved, 'tok-new', 'bank');
     expect(link?.analysisId).toBe('ta-fin');
   });
 
   it('Escape closes the dropdown without committing and keeps focus in the input', async () => {
-    const onGlossChange = jest.fn();
-    renderChip(makeWordToken('tok-2', 'logos'), {
+    const { settle, savedAnalysis } = await renderChip(chipToken('tok-2', 'logos'), {
       initialAnalysis: poolWithOneApproved('word'),
-      onGlossChange,
     });
 
     const input = await focusGloss();
@@ -746,14 +793,13 @@ describe('TokenChip suggestion keyboard navigation', () => {
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(input).toHaveAttribute('aria-expanded', 'false');
     expect(input).toHaveFocus();
-    expect(onGlossChange).not.toHaveBeenCalled();
+    await settle();
+    expect(linkAt(await savedAnalysis(), 'tok-2', 'logos')).toBeUndefined();
   });
 
   it('Enter while the dropdown is closed commits the typed draft', async () => {
-    const onGlossChange = jest.fn();
-    renderChip(makeWordToken('tok-2', 'logos'), {
+    const { settle, savedAnalysis } = await renderChip(chipToken('tok-2', 'logos'), {
       initialAnalysis: poolWithOneApproved('word'),
-      onGlossChange,
     });
 
     const input = await focusGloss();
@@ -762,12 +808,18 @@ describe('TokenChip suggestion keyboard navigation', () => {
 
     await userEvent.keyboard('{Enter}');
 
-    expect(onGlossChange).toHaveBeenCalledWith('tok-2', 'mine');
+    await settle();
+    const glossed = linkAt(await savedAnalysis(), 'tok-2', 'logos');
+    expect(
+      (await savedAnalysis()).tokenAnalyses.find((ta) => ta.id === glossed?.analysisId)?.gloss,
+    ).toStrictEqual({ en: 'mine' });
     expect(input).toHaveValue('mine');
   });
 
   it('arrow-down re-opens the dropdown after typing closed it', async () => {
-    renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+    await renderChip(chipToken('tok-2', 'logos'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
 
     const input = await focusGloss();
     await userEvent.type(input, 'mine'); // typing closes the dropdown
@@ -780,7 +832,9 @@ describe('TokenChip suggestion keyboard navigation', () => {
   });
 
   it('arrow-down does nothing when the token has no suggestions', async () => {
-    renderChip(makeWordToken('tok-x', 'unseen'), { initialAnalysis: poolWithOneApproved('word') });
+    await renderChip(chipToken('tok-x', 'unseen'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
 
     const input = await focusGloss();
     await userEvent.keyboard('{ArrowDown}');
@@ -795,7 +849,9 @@ describe('TokenChip suggestion + button', () => {
   it('fades in on hover even when the input is not focused, and fades out again on unhover', async () => {
     // 'bank' has two suggestions, so the "+" button renders; at rest it is present but invisible and
     // non-interactive (its slot is reserved so the chip never reflows).
-    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    await renderChip(chipToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
 
     const addButton = screen.getByTestId('suggestion-add');
     expect(addButton).toHaveClass('tw:opacity-0');
@@ -812,18 +868,18 @@ describe('TokenChip suggestion + button', () => {
     expect(addButton).toHaveAttribute('aria-hidden', 'true');
   });
 
-  it('centers itself in the gloss field by margin', () => {
-    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+  it('centers itself in the gloss field by margin', async () => {
+    await renderChip(chipToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
 
     const addButton = screen.getByTestId('suggestion-add');
     expect(addButton).toHaveClass('tw:inset-y-0', 'tw:my-auto');
   });
 
   it('force-opens the dropdown over already-typed text and selecting replaces the draft', async () => {
-    const onSave = jest.fn();
-    renderChip(makeWordToken('tok-new', 'bank'), {
+    const { settle, savedAnalysis } = await renderChip(chipToken('tok-new', 'bank'), {
       initialAnalysis: homographBankPool('finance'),
-      onSave,
     });
 
     const input = await focusGloss();
@@ -837,14 +893,15 @@ describe('TokenChip suggestion + button', () => {
 
     // The selection wins over the abandoned 'mine' draft: the committed gloss flows back in.
     expect(input).toHaveValue('riverbank');
-    const saved: TextAnalysis = onSave.mock.calls[0][0];
-    expect(saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-new')?.analysisId).toBe(
-      'ta-river',
-    );
+    await settle();
+    const saved = await savedAnalysis();
+    expect(linkAt(saved, 'tok-new', 'bank')?.analysisId).toBe('ta-river');
   });
 
   it('toggles the dropdown closed when clicked while open', async () => {
-    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    await renderChip(chipToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
 
     await focusGloss();
     expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
@@ -857,7 +914,9 @@ describe('TokenChip suggestion + button', () => {
 
 describe('TokenChip suggestion combobox wiring', () => {
   it('points the input at the open panel as its listbox', async () => {
-    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    await renderChip(chipToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
 
     const input = await focusGloss();
 
@@ -867,7 +926,9 @@ describe('TokenChip suggestion combobox wiring', () => {
   });
 
   it('collapses the input to the closed combobox state when the panel closes', async () => {
-    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    await renderChip(chipToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
 
     const input = await focusGloss();
     await userEvent.type(input, 'mine');
@@ -878,7 +939,9 @@ describe('TokenChip suggestion combobox wiring', () => {
   });
 
   it('names no active descendant while no row is highlighted', async () => {
-    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    await renderChip(chipToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
 
     const input = await focusGloss();
 
@@ -886,7 +949,9 @@ describe('TokenChip suggestion combobox wiring', () => {
   });
 
   it('names the keyboard-highlighted row as the active descendant', async () => {
-    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    await renderChip(chipToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
 
     const input = await focusGloss();
     await userEvent.keyboard('{ArrowDown}');
@@ -897,7 +962,9 @@ describe('TokenChip suggestion combobox wiring', () => {
   });
 
   it('keeps focus in the gloss input while the panel is open', async () => {
-    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    await renderChip(chipToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
 
     const input = await focusGloss();
 
@@ -906,7 +973,9 @@ describe('TokenChip suggestion combobox wiring', () => {
   });
 
   it('keeps focus in the gloss input when the panel restores focus as it closes', async () => {
-    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    await renderChip(chipToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
     const input = await focusGloss();
 
     // fireEvent so the sentinel itself never takes focus, leaving the panel's own focus-restoration
@@ -921,7 +990,9 @@ describe('TokenChip suggestion dropdown scrolling', () => {
   // The other half of scrolling — the panel hiding itself once the anchor is clipped away — is the
   // popover's own doing, off measurements jsdom does not produce, so it stays beyond reach here.
   it('keeps the panel open when the surrounding view scrolls', async () => {
-    renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    await renderChip(chipToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
+    });
     const input = await focusGloss();
 
     fireEvent.scroll(window);

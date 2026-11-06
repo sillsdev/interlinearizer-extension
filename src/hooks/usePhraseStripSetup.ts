@@ -39,13 +39,10 @@ export function useEditPhraseTokens(phraseMode: PhraseMode): TokenSnapshot[] | u
 }
 
 /**
- * Returns a stable handler that splits a phrase arc at a token boundary, given the document order
- * that a WebView-path split keeps its fragments in. Splitting a phrase that is not held is a
- * no-op.
+ * Returns a stable handler that splits a phrase arc at a token boundary. Splitting a phrase that is
+ * not held is a no-op.
  */
-export function useArcSplitHandler(
-  tokenDocOrder: ReadonlyMap<string, number>,
-): (phraseId: string, splitAfterTokenRef: string) => void {
+export function useArcSplitHandler(): (phraseId: string, splitAfterTokenRef: string) => void {
   const phraseLinkById = usePhraseLinkByIdMap();
   const { splitPhrase } = usePhraseDispatch();
 
@@ -53,9 +50,9 @@ export function useArcSplitHandler(
     (phraseId: string, splitAfterTokenRef: string) => {
       const phraseLink = phraseLinkById.get(phraseId);
       if (!phraseLink) return;
-      splitPhrase(phraseLink, splitAfterTokenRef, tokenDocOrder);
+      splitPhrase(phraseLink, splitAfterTokenRef);
     },
-    [phraseLinkById, tokenDocOrder, splitPhrase],
+    [phraseLinkById, splitPhrase],
   );
 }
 

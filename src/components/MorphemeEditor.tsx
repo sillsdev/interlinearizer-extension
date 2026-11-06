@@ -4,7 +4,7 @@ import { Button, Input, Label, PopoverContent } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useId, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
-import { morphemeFormsLostByResplit } from '../store/analysisSlice';
+import { morphemeFormsLostByResplit } from '../utils/analysis-selectors';
 
 const POPOVER_STRING_KEYS = [
   '%interlinearizer_morphemeEditor_splitLabel%',

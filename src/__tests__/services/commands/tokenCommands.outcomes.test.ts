@@ -4,35 +4,34 @@ import {
   approveAnalysisForToken as approveCommand,
   writeGloss as writeGlossCommand,
 } from '../../../services/commands/tokenCommands';
-import { approveAnalysisForToken, writeGloss } from '../../../store/analysisSlice';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import {
   analysisOf,
   EARLIER,
-  expectParity,
+  expectOutcome,
   ids,
   LATER,
   link,
   NOW,
   OTHER_TOKEN,
-  type ParityCase,
+  type CommandCase,
   payload,
-  runParity,
+  runCommand,
   TOKEN,
-} from './parity';
+} from './command-runs';
 
 type GlossInput = { surfaceText?: string; value: string };
 
-describe('writeGloss parity with the reducer', () => {
-  const cases: [string, ParityCase<GlossInput>][] = [
+describe('writeGloss', () => {
+  const cases: [string, CommandCase<GlossInput>][] = [
     [
       'creates a payload and an approved link for an unglossed token',
       {
         analysis: emptyAnalysis(),
         input: { value: 'at' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['new-analysis']);
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['new-link']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['new-analysis']);
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['new-link']);
         },
       },
     ],
@@ -44,9 +43,9 @@ describe('writeGloss parity with the reducer', () => {
           [link('tl-other', 'ta-in', OTHER_TOKEN, 'in')],
         ),
         input: { value: 'at' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-in']);
-          expect(store.tokenAnalysisLinks.find(({ id }) => id === 'new-link')?.analysisId).toBe(
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
+          expect(result.tokenAnalysisLinks.find(({ id }) => id === 'new-link')?.analysisId).toBe(
             'ta-in',
           );
         },
@@ -60,9 +59,9 @@ describe('writeGloss parity with the reducer', () => {
           [link('tl-held', 'ta-in', TOKEN, 'in', { status: 'suggested', confidence: 'low' })],
         ),
         input: { value: 'at' },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toHaveLength(1);
-          expect(store.tokenAnalysisLinks[0].status).toBe('approved');
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toHaveLength(1);
+          expect(result.tokenAnalysisLinks[0].status).toBe('approved');
         },
       },
     ],
@@ -79,8 +78,8 @@ describe('writeGloss parity with the reducer', () => {
           [link('tl-in', 'ta-in', TOKEN, 'in')],
         ),
         input: { surfaceText: 'In,', value: 'at first' },
-        expectStore: (store) => {
-          expect(store.tokenAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toStrictEqual([
             payload('ta-in', 'In,', {
               gloss: { en: 'at first', fr: 'à' },
               glossSenseRef: { authority: 'fwlite', senseId: 's-at' },
@@ -98,8 +97,8 @@ describe('writeGloss parity with the reducer', () => {
           [link('tl-in', 'ta-in', TOKEN, 'in'), link('tl-other', 'ta-in', OTHER_TOKEN, 'in')],
         ),
         input: { value: 'start' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['new-analysis', 'ta-in']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['new-analysis', 'ta-in']);
         },
       },
     ],
@@ -118,9 +117,9 @@ describe('writeGloss parity with the reducer', () => {
           [link('tl-in', 'ta-at', TOKEN, 'in'), link('tl-other', 'ta-within', OTHER_TOKEN, 'in')],
         ),
         input: { value: 'within' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-within']);
-          expect(store.tokenAnalyses[0].morphemesStale).toBeUndefined();
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-within']);
+          expect(result.tokenAnalyses[0].morphemesStale).toBeUndefined();
         },
       },
     ],
@@ -138,9 +137,9 @@ describe('writeGloss parity with the reducer', () => {
           ],
         ),
         input: { value: 'within' },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toHaveLength(1);
-          expect(store.tokenAnalysisLinks[0]).toMatchObject({
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toHaveLength(1);
+          expect(result.tokenAnalysisLinks[0]).toMatchObject({
             id: 'tl-in',
             status: 'approved',
             createdAt: EARLIER.createdAt,
@@ -162,13 +161,13 @@ describe('writeGloss parity with the reducer', () => {
           ],
         ),
         input: { value: 'within' },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toStrictEqual(
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toStrictEqual(
             expect.arrayContaining([
               expect.objectContaining({ id: 'tl-offered', status: 'suggested' }),
             ]),
           );
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-within']);
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-within']);
         },
       },
     ],
@@ -180,8 +179,8 @@ describe('writeGloss parity with the reducer', () => {
           [link('tl-in', 'ta-in', TOKEN, 'in')],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(emptyAnalysis());
+        expectResult: (result) => {
+          expect(result).toStrictEqual(emptyAnalysis());
         },
       },
     ],
@@ -198,9 +197,9 @@ describe('writeGloss parity with the reducer', () => {
           [link('tl-in', 'ta-in', TOKEN, 'in')],
         ),
         input: { value: '  ' },
-        expectStore: (store) => {
-          expect(store.tokenAnalyses[0].gloss).toStrictEqual({ fr: 'à' });
-          expect(store.tokenAnalyses[0].glossSenseRef).toBeDefined();
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].gloss).toStrictEqual({ fr: 'à' });
+          expect(result.tokenAnalyses[0].glossSenseRef).toBeDefined();
         },
       },
     ],
@@ -217,14 +216,14 @@ describe('writeGloss parity with the reducer', () => {
           [link('tl-in', 'ta-in', TOKEN, 'in')],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(store.tokenAnalyses).toHaveLength(1);
-          expect(store.tokenAnalyses[0].gloss).toBeUndefined();
-          expect(store.tokenAnalyses[0].glossSenseRef).toStrictEqual({
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toHaveLength(1);
+          expect(result.tokenAnalyses[0].gloss).toBeUndefined();
+          expect(result.tokenAnalyses[0].glossSenseRef).toStrictEqual({
             authority: 'fwlite',
             senseId: 's-at',
           });
-          expect(store.tokenAnalysisLinks[0].status).toBe('approved');
+          expect(result.tokenAnalysisLinks[0].status).toBe('approved');
         },
       },
     ],
@@ -236,9 +235,9 @@ describe('writeGloss parity with the reducer', () => {
           [link('tl-in', 'ta-in', TOKEN, 'in'), link('tl-other', 'ta-in', OTHER_TOKEN, 'in')],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-in']);
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-other']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-other']);
         },
       },
     ],
@@ -253,9 +252,9 @@ describe('writeGloss parity with the reducer', () => {
           ],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(store.tokenAnalyses).toStrictEqual([payload('ta-in', 'In', { updatedAt: NOW })]);
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-rejected']);
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toStrictEqual([payload('ta-in', 'In', { updatedAt: NOW })]);
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-rejected']);
         },
       },
     ],
@@ -270,9 +269,9 @@ describe('writeGloss parity with the reducer', () => {
           [link('tl-in', 'ta-in', TOKEN, 'in')],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-bare']);
-          expect(store.tokenAnalysisLinks[0].analysisId).toBe('ta-bare');
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-bare']);
+          expect(result.tokenAnalysisLinks[0].analysisId).toBe('ta-bare');
         },
       },
     ],
@@ -284,9 +283,9 @@ describe('writeGloss parity with the reducer', () => {
           [link('tl-in', 'ta-in', TOKEN, 'in'), link('tl-other', 'ta-in', OTHER_TOKEN, 'in')],
         ),
         input: { value: 'at' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-in']);
-          expect(store.tokenAnalysisLinks.every(({ analysisId }) => analysisId === 'ta-in')).toBe(
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
+          expect(result.tokenAnalysisLinks.every(({ analysisId }) => analysisId === 'ta-in')).toBe(
             true,
           );
         },
@@ -306,8 +305,8 @@ describe('writeGloss parity with the reducer', () => {
           ],
         ),
         input: { value: 'newer' },
-        expectStore: (store) => {
-          expect(store.tokenAnalyses.find(({ id }) => id === 'ta-new')?.gloss).toStrictEqual({
+        expectResult: (result) => {
+          expect(result.tokenAnalyses.find(({ id }) => id === 'ta-new')?.gloss).toStrictEqual({
             en: 'newer',
           });
         },
@@ -318,8 +317,8 @@ describe('writeGloss parity with the reducer', () => {
       {
         analysis: analysisOf([payload('ta-in', 'In', { gloss: { en: 'at' } })], []),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-in']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
         },
       },
     ],
@@ -328,8 +327,8 @@ describe('writeGloss parity with the reducer', () => {
       {
         analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'in')]),
         input: { value: 'at' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['new-link']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['new-link']);
         },
       },
     ],
@@ -338,56 +337,42 @@ describe('writeGloss parity with the reducer', () => {
       {
         analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'in')]),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(emptyAnalysis());
+        expectResult: (result) => {
+          expect(result).toStrictEqual(emptyAnalysis());
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { analysis, input, expectStore }) => {
+  it.each(cases)('%s', async (_name, { analysis, input, expectResult }) => {
     const surfaceText = input.surfaceText ?? 'In';
-    const outcome = await runParity(
-      analysis,
-      'en',
-      {
-        type: writeGloss.type,
-        payload: {
-          tokenRef: TOKEN,
-          surfaceText,
-          value: input.value,
-          id: 'new-analysis',
-          linkId: 'new-link',
-          now: NOW,
-        },
-      },
-      (buffer) =>
-        writeGlossCommand(buffer, {
-          tokenRef: TOKEN,
-          surfaceText,
-          value: input.value,
-          analysisLanguage: 'en',
-          analysisId: 'new-analysis',
-          linkId: 'new-link',
-          now: NOW,
-        }),
+    const outcome = await runCommand(analysis, 'en', (buffer) =>
+      writeGlossCommand(buffer, {
+        tokenRef: TOKEN,
+        surfaceText,
+        value: input.value,
+        analysisLanguage: 'en',
+        analysisId: 'new-analysis',
+        linkId: 'new-link',
+        now: NOW,
+      }),
     );
 
-    expectParity(outcome, expectStore);
+    expectOutcome(outcome, expectResult);
   });
 });
 
 type ApproveInput = { analysisId: string };
 
-describe('approveAnalysisForToken parity with the reducer', () => {
-  const cases: [string, ParityCase<ApproveInput>][] = [
+describe('approveAnalysisForToken', () => {
+  const cases: [string, CommandCase<ApproveInput>][] = [
     [
       'gives a token with no approval a new approved link',
       {
         analysis: analysisOf([payload('ta-in', 'In', { gloss: { en: 'at' } })], []),
         input: { analysisId: 'ta-in' },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toStrictEqual([
             {
               id: 'new-link',
               analysisId: 'ta-in',
@@ -408,9 +393,9 @@ describe('approveAnalysisForToken parity with the reducer', () => {
           [link('tl-held', 'ta-in', TOKEN, 'in', { status: 'candidate', confidence: 'guess' })],
         ),
         input: { analysisId: 'ta-in' },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toHaveLength(1);
-          expect(store.tokenAnalysisLinks[0]).toMatchObject({
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toHaveLength(1);
+          expect(result.tokenAnalysisLinks[0]).toMatchObject({
             status: 'approved',
             confidence: 'guess',
           });
@@ -428,9 +413,9 @@ describe('approveAnalysisForToken parity with the reducer', () => {
           [link('tl-in', 'ta-at', TOKEN, 'in')],
         ),
         input: { analysisId: 'ta-on' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-on']);
-          expect(store.tokenAnalysisLinks[0].analysisId).toBe('ta-on');
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-on']);
+          expect(result.tokenAnalysisLinks[0].analysisId).toBe('ta-on');
         },
       },
     ],
@@ -445,8 +430,8 @@ describe('approveAnalysisForToken parity with the reducer', () => {
           [link('tl-in', 'ta-at', TOKEN, 'in'), link('tl-other', 'ta-at', OTHER_TOKEN, 'in')],
         ),
         input: { analysisId: 'ta-on' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-at', 'ta-on']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-at', 'ta-on']);
         },
       },
     ],
@@ -464,15 +449,15 @@ describe('approveAnalysisForToken parity with the reducer', () => {
           ],
         ),
         input: { analysisId: 'ta-on' },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toStrictEqual([
             expect.objectContaining({
               id: 'tl-held',
               status: 'approved',
               createdAt: EARLIER.createdAt,
             }),
           ]);
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-on']);
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-on']);
         },
       },
     ],
@@ -481,8 +466,8 @@ describe('approveAnalysisForToken parity with the reducer', () => {
       {
         analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'in')]),
         input: { analysisId: 'ta-unknown' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-orphan']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-orphan']);
         },
       },
     ],
@@ -497,8 +482,8 @@ describe('approveAnalysisForToken parity with the reducer', () => {
           ],
         ),
         input: { analysisId: 'ta-in' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-in']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-in']);
         },
       },
     ],
@@ -510,37 +495,24 @@ describe('approveAnalysisForToken parity with the reducer', () => {
           [link('tl-orphan', 'ta-missing', TOKEN, 'in')],
         ),
         input: { analysisId: 'ta-in' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['new-link']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['new-link']);
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { analysis, input, expectStore }) => {
-    const outcome = await runParity(
-      analysis,
-      'en',
-      {
-        type: approveAnalysisForToken.type,
-        payload: {
-          tokenRef: TOKEN,
-          surfaceText: 'In',
-          analysisId: input.analysisId,
-          linkId: 'new-link',
-          now: NOW,
-        },
-      },
-      (buffer) =>
-        approveCommand(buffer, {
-          tokenRef: TOKEN,
-          surfaceText: 'In',
-          analysisId: input.analysisId,
-          linkId: 'new-link',
-          now: NOW,
-        }),
+  it.each(cases)('%s', async (_name, { analysis, input, expectResult }) => {
+    const outcome = await runCommand(analysis, 'en', (buffer) =>
+      approveCommand(buffer, {
+        tokenRef: TOKEN,
+        surfaceText: 'In',
+        analysisId: input.analysisId,
+        linkId: 'new-link',
+        now: NOW,
+      }),
     );
 
-    expectParity(outcome, expectStore);
+    expectOutcome(outcome, expectResult);
   });
 });

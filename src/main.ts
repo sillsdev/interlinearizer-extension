@@ -8,15 +8,7 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type {
-  Book,
-  ChangeId,
-  DraftProject,
-  DraftStart,
-  ProjectConfig,
-  RemovalPreviewRequest,
-  TokenSnapshot,
-} from 'interlinearizer';
+import type { DraftProject, DraftStart, ProjectConfig } from 'interlinearizer';
 import type { CommandHandlers, NetworkEvents } from 'papi-shared-types';
 import {
   formatReplacementString,
@@ -25,26 +17,9 @@ import {
 } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-import {
-  AnalysisSessions,
-  type EditOutcome,
-  type OpenedSession,
-  type Session,
-} from './services/analysisSessions';
-import type { DraftContent } from './types/draft-content';
+import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
 import * as bookService from './services/bookService';
-import * as boundaryCommands from './services/commands/boundaryCommands';
-import * as catalogCommands from './services/commands/catalogCommands';
-import type { ChangeBuffer } from './services/commands/changeBuffer';
-import * as discardCommands from './services/commands/discardCommands';
-import * as morphemeCommands from './services/commands/morphemeCommands';
-import * as staleCommands from './services/commands/staleCommands';
-import * as freeTranslationCommands from './services/commands/freeTranslationCommands';
-import * as phraseCommands from './services/commands/phraseCommands';
-import * as tokenCommands from './services/commands/tokenCommands';
 import { startCSharpHost } from './services/csharpHost';
-import type { EditOptions } from './services/editHistory';
-import { catalogStepOf, deletionStepOf, phraseStartOf } from './services/editSteps';
 import {
   readHostPerf,
   sessionReadsAreSkipped,
@@ -55,23 +30,21 @@ import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
 import { readBookOutline, readSegmentPage } from './services/sessionPages';
+import { sessionEditHandlers } from './services/sessionEditHandlers';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
-import type { EditStep } from './types/edit-step';
 import type { TextReadStatus } from './types/text-read-status';
 import {
   toProjectSummary,
   type InterlinearProjectSummary,
   type SavedAsProject,
 } from './types/interlinear-project-summary';
-import { UnreadableBooksError, type DraftExport } from './types/analysis-repository';
+import { UnreadableBooksError } from './types/analysis-repository';
 import { emptyAnalysis } from './types/empty-factories';
 import { CURRENT_MODEL_VERSION } from './types/model-version';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
-import { BOOKLESS_PARTITION, bookOfRef } from './utils/analysis-book';
-import { bookIndexesOf } from './utils/book-indexes';
+import { BOOKLESS_PARTITION } from './utils/analysis-book';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
-import { missingBook } from './utils/reanchor-analysis';
 import { bookSegmentationJson } from './utils/segmentation';
 
 // #region WebView provider
@@ -206,12 +179,6 @@ let executionToken: ExecutionToken;
  * WebView update that reports this id writes nothing to storage.
  */
 const rememberedActiveProjects = new Map<string, string | undefined>();
-
-/**
- * The unreadable books each source's last draft write left out, so the user is told once, not on
- * every write.
- */
-const leftOutDraftBooks = new Map<string, string>();
 
 /** The open analysis sessions, over the extension's storage; set on activation. */
 let sessions: AnalysisSessions;
@@ -635,10 +602,9 @@ async function savingInSession<T>(
 
 /**
  * Copies the source project's stored draft into an existing interlinearizer project: Save, and Save
- * As onto an existing project. The stored draft is the one that the WebView means to save: the
- * WebView writes its pending autosave first, or the copy runs after the session's earlier edits. A
- * draft that cannot be read for some book is not copied, and the user is told which books and how
- * to recover.
+ * As onto an existing project. Given the session editing the draft, the copy runs after the
+ * session's earlier edits. A draft that cannot be read for some book is not copied, and the user is
+ * told which books and how to recover.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param interlinearProjectId - UUID of the interlinearizer project to save into.
@@ -689,9 +655,8 @@ async function saveDraftToProject(
 
 /**
  * Creates an interlinearizer project holding a copy of the source project's stored draft: Save As
- * to a new project. The stored draft is the one that the WebView means to save: the WebView writes
- * its pending autosave first, or the copy runs after the session's earlier edits. A book of the
- * draft that cannot be read is left out, and the user is told which.
+ * to a new project. Given the session editing the draft, the copy runs after the session's earlier
+ * edits. A book of the draft that cannot be read is left out, and the user is told which.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param analysisLanguages - BCP 47 tags for the new project's analysis languages.
@@ -750,39 +715,6 @@ async function saveDraftAsProject(
 }
 
 /**
- * Returns the draft working buffer for a source project as a JSON string, creating a fresh empty
- * draft when none has been written. The WebView loads this on mount to seed the editor. The user is
- * warned of any book whose stored analysis could not be read, and the next draft write that leaves
- * books out tells them again.
- *
- * @param sourceProjectId - Platform.Bible source project ID whose draft to fetch.
- * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
- * @throws {Error} If the stored draft was written by a newer build.
- * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. The error is logged
- *   before rethrowing.
- */
-async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
-  leftOutDraftBooks.delete(sourceProjectId);
-  try {
-    return await perfTimeAsync('getDraft', async () => {
-      const { draft, unreadableBooks } = await projectStorage.getDraft(
-        executionToken,
-        sourceProjectId,
-      );
-      await reportUnreadableBooks(
-        unreadableBooks,
-        '%interlinearizer_warning_loadDraft_unreadableBooks%',
-        'warning',
-      );
-      return perfTime('getDraft:serialize', () => JSON.stringify(draft));
-    });
-  } catch (e) {
-    logger.error('Interlinearizer: failed to get draft', e);
-    throw e;
-  }
-}
-
-/**
  * Returns a book of the source project tokenized under the project's language tag.
  *
  * @returns The tokenized `Book` as JSON, or `undefined` when the project has no text for the book.
@@ -805,24 +737,8 @@ async function getTokenizedBook(
   }
 }
 
-/** A source project by id, or a session by id; a session's form answers with its analysis too. */
-type TextAddress = string | { sessionId: string };
-
-/** Names `address` in a logged message. */
-function addressed(address: TextAddress): string {
-  return typeof address === 'string' ? `project ${address}` : `session ${address.sessionId}`;
-}
-
-/**
- * Refuses boundaries sent with a session's address, because a session's book is segmented by its
- * draft's boundaries.
- *
- * @throws If `segmentationJson` names any.
- */
-function refuseBoundaries(segmentationJson: string | undefined): void {
-  if (segmentationJson)
-    throw new Error("Interlinearizer: a session's book is segmented by its draft's boundaries");
-}
+/** The session that a page or text-read command reads. */
+type SessionAddress = Readonly<{ sessionId: string }>;
 
 /** The boundaries the session's draft sets in the book, as JSON; `undefined` when it sets none. */
 async function sessionBoundaries(session: Session, bookId: string): Promise<string | undefined> {
@@ -830,26 +746,20 @@ async function sessionBoundaries(session: Session, bookId: string): Promise<stri
 }
 
 /**
- * Outlines a book of a source project, or of a session's source. A project's book is segmented by
- * the boundaries that `segmentationJson` names. A session's book is segmented by its draft's
- * boundaries, and its outline also counts each segment's orphaned free-translation cards.
+ * Outlines a book of a session's source, segmented by the draft's boundaries, counting each
+ * segment's orphaned free-translation cards.
  *
  * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
- *   `SegmentationDelta`. Also if `segmentationJson` names boundaries for a session, the session is
- *   not open, or its analysis cannot be read. The error is logged before rethrowing.
+ * @throws If the book cannot be read or segmented, the session is not open, or its analysis cannot
+ *   be read. The error is logged before rethrowing.
  */
 async function getBookOutline(
-  address: TextAddress,
+  { sessionId }: SessionAddress,
   bookId: string,
-  segmentationJson?: string,
 ): Promise<string | undefined> {
   try {
-    return await perfTimeAsync('getBookOutline', async () => {
-      if (typeof address === 'string')
-        return bookService.getBookOutline(address, bookId, segmentationJson);
-      refuseBoundaries(segmentationJson);
-      return sessions.run(address.sessionId, async (session) => {
+    return await perfTimeAsync('getBookOutline', () =>
+      sessions.run(sessionId, async (session) => {
         const book = await bookService.getOpenBook(
           session.scope.sourceProjectId,
           bookId,
@@ -858,38 +768,31 @@ async function getBookOutline(
         if (!book) return undefined;
         const outline = await readBookOutline(session.repository, book);
         return perfTime('getBookOutline:serialize', () => JSON.stringify(outline));
-      });
-    });
+      }),
+    );
   } catch (e) {
-    logger.error(`Interlinearizer: failed to outline book ${bookId} of ${addressed(address)}`, e);
+    logger.error(`Interlinearizer: failed to outline book ${bookId} of session ${sessionId}`, e);
     throw e;
   }
 }
 
 /**
- * Serves the segments at outline indexes `[start, end)` of a book of a source project, or of a
- * session's source. A project's book is segmented by the boundaries that `segmentationJson` names.
- * A session's book is segmented by its draft's boundaries, and its segments come with the analysis
- * that its draft holds for them.
+ * Serves the segments at outline indexes `[start, end)` of a book of a session's source, segmented
+ * by the draft's boundaries, with the analysis that the draft holds for them.
  *
  * @returns The `SegmentPage` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
- *   `SegmentationDelta`. Also if `segmentationJson` names boundaries for a session, the session is
- *   not open, or its analysis cannot be read. The error is logged before rethrowing.
+ * @throws If the book cannot be read or segmented, the session is not open, or its analysis cannot
+ *   be read. The error is logged before rethrowing.
  */
 async function getSegments(
-  address: TextAddress,
+  { sessionId }: SessionAddress,
   bookId: string,
   start: number,
   end: number,
-  segmentationJson?: string,
 ): Promise<string | undefined> {
   try {
-    return await perfTimeAsync('getSegments', async () => {
-      if (typeof address === 'string')
-        return bookService.getSegments(address, bookId, start, end, segmentationJson);
-      refuseBoundaries(segmentationJson);
-      return sessions.run(address.sessionId, async (session) => {
+    return await perfTimeAsync('getSegments', () =>
+      sessions.run(sessionId, async (session) => {
         const book = await bookService.getSegmentedBook(
           session.scope.sourceProjectId,
           bookId,
@@ -898,11 +801,11 @@ async function getSegments(
         if (!book) return undefined;
         const page = await readSegmentPage(session.repository, book, start, end);
         return perfTime('getSegments:serialize', () => JSON.stringify(page));
-      });
-    });
+      }),
+    );
   } catch (e) {
     logger.error(
-      `Interlinearizer: failed to serve segments ${start}-${end} of book ${bookId} of ${addressed(address)}`,
+      `Interlinearizer: failed to serve segments ${start}-${end} of book ${bookId} of session ${sessionId}`,
       e,
     );
     throw e;
@@ -910,104 +813,30 @@ async function getSegments(
 }
 
 /**
- * Reports how far reading the whole text of the source project, or of a session's, has got,
- * starting the read when the project or the session has none. While session reads are skipped, a
- * session's read never finishes.
+ * Reports how far reading the whole text of a session's source has got, starting the session's read
+ * when it has none. While session reads are skipped, the read never finishes.
  *
  * @returns Once the text's books are known, the `TextReadStatus` as JSON.
  * @throws If the books or the provider of their text cannot be got, or the session is not open. The
  *   error is logged before rethrowing.
  */
-async function getTextReadStatus(address: TextAddress): Promise<string> {
+async function getTextReadStatus({ sessionId }: SessionAddress): Promise<string> {
   try {
-    if (typeof address !== 'string') await sessions.startTextRead(address.sessionId);
-    const sourceProjectId =
-      typeof address === 'string'
-        ? address
-        : await sessions.run(address.sessionId, async ({ scope }) => scope.sourceProjectId);
-    if (typeof address !== 'string' && sessionReadsAreSkipped()) {
+    await sessions.startTextRead(sessionId);
+    const sourceProjectId = await sessions.run(
+      sessionId,
+      async ({ scope }) => scope.sourceProjectId,
+    );
+    if (sessionReadsAreSkipped()) {
       // Never finishes, so the session's view waits as for a read under way.
       const unread: TextReadStatus = { booksRead: 0, bookCount: 1, failedBookIds: [] };
       return JSON.stringify(unread);
     }
     return await bookService.getTextReadStatus(sourceProjectId);
   } catch (e) {
-    logger.error(`Interlinearizer: failed to read the text of ${addressed(address)}`, e);
+    logger.error(`Interlinearizer: failed to read the text of session ${sessionId}`, e);
     throw e;
   }
-}
-
-/**
- * Persists the draft working buffer for a source project. Called from the WebView after every edit
- * (auto-save) and whenever the draft is reset (New), opened from a project, or has its changes
- * discarded. Analysis for a book whose stored analysis could not be read is left out of the write.
- * The user is told which books once, and again only after the draft is reloaded or a write has left
- * none out.
- *
- * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
- * @param draftJson - JSON-stringified {@link DraftProject} to persist.
- * @param discardUnreadable - Whether the draft was started over (New, Open), so stored analysis
- *   that could not be read is discarded rather than kept.
- * @throws If JSON parsing, validation, or storage fails, or if the stored draft was written by a
- *   newer build and so must not be overwritten. The error is logged and an error notification is
- *   sent before rethrowing so the frontend `catch` block can suppress it without a second
- *   notification.
- */
-async function saveInterlinearDraft(
-  sourceProjectId: string,
-  draftJson: string,
-  discardUnreadable?: boolean,
-): Promise<void> {
-  await writeDraft(sourceProjectId, () =>
-    perfTimeAsync('saveDraft', async () => {
-      const draft = perfTime('saveDraft:parse', () => JSON.parse(draftJson));
-      if (!isDraftProject(draft)) {
-        throw new TypeError('saveInterlinearDraft: draftJson does not conform to DraftProject');
-      }
-      return projectStorage.saveDraft(executionToken, sourceProjectId, draft, {
-        discardUnreadable: discardUnreadable === true,
-      });
-    }),
-  );
-}
-
-/**
- * Runs `write`, which writes the source project's draft and resolves with the books it left out.
- * The user is told which books once, and again only after the draft is reloaded or a write has left
- * none out.
- *
- * @throws Whatever `write` throws. The error is logged and an error notification is sent before
- *   rethrowing.
- */
-async function writeDraft(sourceProjectId: string, write: () => Promise<string[]>): Promise<void> {
-  let leftOut: string[];
-  try {
-    leftOut = await write();
-  } catch (e) {
-    logger.error('Interlinearizer: failed to save draft', e);
-    await papi.notifications
-      .send({
-        message: '%interlinearizer_error_save_draft_failed%',
-        severity: 'error',
-      })
-      .catch(() => {});
-    throw e;
-  }
-  if (leftOut.length === 0) {
-    leftOutDraftBooks.delete(sourceProjectId);
-    return;
-  }
-  const books = leftOut.join(', ');
-  if (leftOutDraftBooks.get(sourceProjectId) === books) return;
-  leftOutDraftBooks.set(sourceProjectId, books);
-  logger.warn(
-    `Interlinearizer: saved the draft of ${sourceProjectId} without its analysis for ${books}, whose stored analysis could not be read`,
-  );
-  await reportUnreadableBooks(
-    leftOut,
-    '%interlinearizer_error_saveDraft_unreadableBooks%',
-    'error',
-  );
 }
 
 /**
@@ -1061,13 +890,18 @@ async function startDraftOver({
   sourceProjectId,
   from,
 }: ArgsOf<'interlinearizer.startDraftOver'>): Promise<void> {
-  await writeDraft(sourceProjectId, async () => {
+  try {
     const draft = await startedDraft(sourceProjectId, from);
     await sessions.closeAndRun(sourceProjectId, () =>
       projectStorage.startDraftOver(executionToken, sourceProjectId, draft),
     );
-    return [];
-  });
+  } catch (e) {
+    logger.error('Interlinearizer: failed to save draft', e);
+    await papi.notifications
+      .send({ message: '%interlinearizer_error_save_draft_failed%', severity: 'error' })
+      .catch(() => {});
+    throw e;
+  }
 }
 
 /**
@@ -1256,989 +1090,6 @@ async function getFullAnalysis({
 }
 
 /**
- * The session an edit is sent to, the change id it is sent under, and the step to record it as. A
- * command may set the step while it stages, once it has read what the step names.
- */
-type EditTarget = {
-  sessionId: string;
-  changeId?: ChangeId;
-  step?: EditStep;
-};
-
-/**
- * Runs `command` as one edit of a session's analysis.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-async function runSessionEdit(
-  target: EditTarget,
-  intent: string,
-  command: (buffer: ChangeBuffer, session: Session) => Promise<void | EditOutcome>,
-): Promise<string> {
-  const { sessionId, changeId } = target;
-  try {
-    return await perfTimeAsync(
-      intent,
-      async () => {
-        const reply = await sessions.edit(sessionId, intent, command, {
-          changeId,
-          step: () => target.step,
-        });
-        return perfTime(`${intent}:serialize`, () => JSON.stringify(reply));
-      },
-      { startedAt: performance.timeOrigin + performance.now() },
-    );
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
-    throw e;
-  }
-}
-
-/** Fresh ids for the records an edit may make, and the time the edit lands. */
-function editStamp() {
-  return {
-    analysisId: crypto.randomUUID(),
-    linkId: crypto.randomUUID(),
-    forkId: crypto.randomUUID(),
-    now: new Date().toISOString(),
-  };
-}
-
-/**
- * Writes a token's gloss in the session's analysis language; a blank value clears it.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function writeGloss({
-  sessionId,
-  tokenRef,
-  surfaceText,
-  value,
-  changeId,
-}: ArgsOf<'interlinearizer.writeGloss'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId, step: { location: tokenRef } },
-    'writeGloss',
-    (buffer, session) =>
-      tokenCommands.writeGloss(buffer, {
-        ...editStamp(),
-        tokenRef,
-        surfaceText,
-        value,
-        analysisLanguage: session.analysisLanguage,
-      }),
-  );
-}
-
-/**
- * Approves a stored token analysis for a token, in place of any approval the token held.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function approveAnalysisForToken({
-  sessionId,
-  tokenRef,
-  surfaceText,
-  analysisId,
-  changeId,
-}: ArgsOf<'interlinearizer.approveAnalysisForToken'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId, step: { location: tokenRef } },
-    'approveAnalysisForToken',
-    (buffer) =>
-      tokenCommands.approveAnalysisForToken(buffer, {
-        ...editStamp(),
-        tokenRef,
-        surfaceText,
-        analysisId,
-      }),
-  );
-}
-
-/**
- * Writes a token's morpheme breakdown, each form in `writingSystem`.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function writeMorphemes({
-  sessionId,
-  tokenRef,
-  surfaceText,
-  forms,
-  writingSystem,
-  changeId,
-}: ArgsOf<'interlinearizer.writeMorphemes'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId, step: { location: tokenRef } },
-    'writeMorphemes',
-    (buffer) =>
-      morphemeCommands.writeMorphemes(buffer, {
-        ...editStamp(),
-        tokenRef,
-        surfaceText,
-        writingSystem,
-        morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
-      }),
-  );
-}
-
-/**
- * Removes a token's morpheme breakdown.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function deleteMorphemes({
-  sessionId,
-  tokenRef,
-  changeId,
-}: ArgsOf<'interlinearizer.deleteMorphemes'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId, step: { location: tokenRef } },
-    'deleteMorphemes',
-    (buffer) => morphemeCommands.deleteMorphemes(buffer, { ...editStamp(), tokenRef }),
-  );
-}
-
-/**
- * Glosses one morpheme of a token's breakdown in the session's analysis language; a blank value
- * clears the morpheme's gloss.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function writeMorphemeGloss({
-  sessionId,
-  tokenRef,
-  morphemeId,
-  value,
-  changeId,
-}: ArgsOf<'interlinearizer.writeMorphemeGloss'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId, step: { location: tokenRef } },
-    'writeMorphemeGloss',
-    (buffer, session) =>
-      morphemeCommands.writeMorphemeGloss(buffer, {
-        ...editStamp(),
-        tokenRef,
-        morphemeId,
-        value,
-        analysisLanguage: session.analysisLanguage,
-      }),
-  );
-}
-
-/**
- * Gives up the place an analysis went stale at, leaving its other places alone.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function discardStaleAnalysis({
-  sessionId,
-  analysisId,
-  tokenRef,
-  changeId,
-}: ArgsOf<'interlinearizer.discardStaleAnalysis'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId },
-    'discardStaleAnalysis',
-    stageDiscardStaleAnalysis({ analysisId, tokenRef }),
-  );
-}
-
-/**
- * Moves an analysis from a place it went stale at onto a token, approving it there in place of
- * whatever that token held.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function reapplyStaleAnalysis({
-  sessionId,
-  analysisId,
-  staleTokenRef,
-  tokenRef,
-  surfaceText,
-  changeId,
-}: ArgsOf<'interlinearizer.reapplyStaleAnalysis'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId },
-    'reapplyStaleAnalysis',
-    stageReapplyStaleAnalysis({ analysisId, staleTokenRef, tokenRef, surfaceText }),
-  );
-}
-
-/**
- * Keeps a stale free translation as a claim about a segment's current text, approving it for that
- * segment.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function keepStaleFreeTranslation({
-  sessionId,
-  analysisId,
-  segmentId,
-  surfaceText,
-  changeId,
-}: ArgsOf<'interlinearizer.keepStaleFreeTranslation'>): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'keepStaleFreeTranslation', (buffer) =>
-    staleCommands.keepStaleFreeTranslation(buffer, {
-      analysisId,
-      segmentId,
-      surfaceText,
-      now: editStamp().now,
-    }),
-  );
-}
-
-/**
- * Drops a stale free translation, even one whose verse the book no longer holds.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function discardStaleFreeTranslation({
-  sessionId,
-  analysisId,
-  changeId,
-}: ArgsOf<'interlinearizer.discardStaleFreeTranslation'>): Promise<string> {
-  return runSessionEdit({ sessionId, changeId }, 'discardStaleFreeTranslation', (buffer) =>
-    staleCommands.discardStaleFreeTranslation(buffer, { analysisId }),
-  );
-}
-
-/**
- * Writes a token analysis's gloss in the session's analysis language, for every token linked to it;
- * a blank value clears it.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws As {@link runSessionEdit} does.
- */
-function writeAnalysisGloss({
-  sessionId,
-  analysisId,
-  value,
-  changeId,
-}: ArgsOf<'interlinearizer.writeAnalysisGloss'>): Promise<string> {
-  const target: EditTarget = { sessionId, changeId };
-  return runSessionEdit(target, 'writeAnalysisGloss', async (buffer, session) => {
-    const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-    target.step = stepOf(
-      await catalogCommands.writeAnalysisGloss(buffer, {
-        analysisId,
-        value,
-        analysisLanguage: session.analysisLanguage,
-        now: editStamp().now,
-      }),
-    );
-  });
-}
-
-/**
- * Clears the glosses of several token analyses in the session's analysis language.
- *
- * @returns A JSON string of the {@link CommandReply}, with `emptiedAnalysisIds`: the token analyses
- *   that the clear left empty, and so removed.
- * @throws As {@link runSessionEdit} does.
- */
-function clearAnalysisGlosses({
-  sessionId,
-  analysisIds,
-  changeId,
-}: ArgsOf<'interlinearizer.clearAnalysisGlosses'>): Promise<string> {
-  const step = {
-    summary: { kind: 'catalogClearGlossChecked', count: analysisIds.length },
-  } as const;
-  const stage = stageClearAnalysisGlosses({ analysisIds });
-  return runSessionEdit(
-    { sessionId, changeId, step },
-    'clearAnalysisGlosses',
-    async (buffer, session) => ({ emptiedAnalysisIds: await stage(buffer, session) }),
-  );
-}
-
-/**
- * Re-splits a token analysis's breakdown into `forms`, for every token linked to it; no forms
- * removes the breakdown.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws As {@link runSessionEdit} does.
- */
-function writeAnalysisMorphemes({
-  sessionId,
-  analysisId,
-  forms,
-  writingSystem,
-  changeId,
-}: ArgsOf<'interlinearizer.writeAnalysisMorphemes'>): Promise<string> {
-  const target: EditTarget = { sessionId, changeId };
-  return runSessionEdit(target, 'writeAnalysisMorphemes', async (buffer) => {
-    const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-    target.step = stepOf(
-      await catalogCommands.writeAnalysisMorphemes(buffer, {
-        analysisId,
-        morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
-        writingSystem,
-        now: editStamp().now,
-      }),
-    );
-  });
-}
-
-/**
- * Keeps a token analysis's stale breakdown as it stands, for every token linked to it. The undo
- * step is placed at `tokenRef` when given, and otherwise names the analysis's catalog row.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws As {@link runSessionEdit} does.
- */
-function confirmAnalysisMorphemes({
-  sessionId,
-  analysisId,
-  tokenRef,
-  changeId,
-}: ArgsOf<'interlinearizer.confirmAnalysisMorphemes'>): Promise<string> {
-  const target: EditTarget = { sessionId, changeId };
-  return runSessionEdit(target, 'confirmAnalysisMorphemes', async (buffer) => {
-    target.step = tokenRef
-      ? { location: tokenRef }
-      : (await catalogStepOf(buffer, 'catalogEdit', analysisId))(analysisId);
-    await catalogCommands.confirmAnalysisMorphemes(buffer, { analysisId, now: editStamp().now });
-  });
-}
-
-/**
- * Writes the gloss of one morpheme of a token analysis in the session's analysis language, for
- * every token linked to it; a blank value clears it.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws As {@link runSessionEdit} does.
- */
-function writeAnalysisMorphemeGloss({
-  sessionId,
-  analysisId,
-  morphemeId,
-  value,
-  changeId,
-}: ArgsOf<'interlinearizer.writeAnalysisMorphemeGloss'>): Promise<string> {
-  const target: EditTarget = { sessionId, changeId };
-  return runSessionEdit(target, 'writeAnalysisMorphemeGloss', async (buffer, session) => {
-    const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-    target.step = stepOf(
-      await catalogCommands.writeAnalysisMorphemeGloss(buffer, {
-        analysisId,
-        morphemeId,
-        value,
-        analysisLanguage: session.analysisLanguage,
-        now: editStamp().now,
-      }),
-    );
-  });
-}
-
-/**
- * Removes token analyses with every token link to them.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws As {@link runSessionEdit} does.
- */
-function deleteAnalyses({
-  sessionId,
-  analysisIds,
-  changeId,
-}: ArgsOf<'interlinearizer.deleteAnalyses'>): Promise<string> {
-  const target: EditTarget = { sessionId, changeId };
-  return runSessionEdit(target, 'deleteAnalyses', async (buffer, session) => {
-    target.step = await deletionStepOf(buffer, session.repository, analysisIds);
-    await catalogCommands.deleteAnalyses(buffer, { analysisIds });
-  });
-}
-
-/**
- * Folds token analyses into a survivor and writes the settled content onto it, in the session's
- * analysis language.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws As {@link runSessionEdit} does.
- */
-function mergeAnalysesInto({
-  sessionId,
-  survivorAnalysisId,
-  mergedAnalysisIds,
-  content,
-  changeId,
-}: ArgsOf<'interlinearizer.mergeAnalysesInto'>): Promise<string> {
-  const target: EditTarget = { sessionId, changeId };
-  return runSessionEdit(target, 'mergeAnalysesInto', async (buffer, session) => {
-    const stepOf = await catalogStepOf(buffer, 'catalogMerge', survivorAnalysisId);
-    target.step = stepOf(
-      await catalogCommands.mergeAnalysesInto(buffer, {
-        survivorAnalysisId,
-        mergedAnalysisIds,
-        content,
-        analysisLanguage: session.analysisLanguage,
-        now: editStamp().now,
-      }),
-    );
-  });
-}
-
-/**
- * Refuses a phrase occurrence with no tokens; the analysis index files a phrase by the book of its
- * first token.
- *
- * @throws If `tokens` is empty.
- */
-function assertTokenRun(tokens: readonly TokenSnapshot[]): void {
-  if (tokens.length === 0) throw new Error('Interlinearizer: a phrase needs at least one token');
-}
-
-/**
- * What `read` serves for the session's source project and the book that `tokenRef` falls in.
- *
- * @throws If the project has no text for that book, or `read` throws.
- */
-async function readBookOf<T>(
-  session: Session,
-  tokenRef: string,
-  read: (sourceProjectId: string, bookId: string) => Promise<T | undefined>,
-): Promise<T> {
-  const bookId = bookOfRef(tokenRef);
-  const { sourceProjectId } = session.scope;
-  const found = await read(sourceProjectId, bookId);
-  if (found === undefined) {
-    throw new Error(`Interlinearizer: project ${sourceProjectId} has no text for book ${bookId}`);
-  }
-  return found;
-}
-
-/**
- * Refuses a phrase occurrence over `tokens` unless they lie within one segment of the text, as the
- * staged boundaries segment it.
- *
- * @throws If the tokens span segments or name a token the text lacks, the project has no text for
- *   the first token's book, or the book cannot be read or tokenized.
- */
-async function assertOneSegment(
-  buffer: ChangeBuffer,
-  session: Session,
-  tokens: readonly TokenSnapshot[],
-): Promise<void> {
-  const { segmentation } = await buffer.getScope();
-  const { segments } = await readBookOf(session, tokens[0].tokenRef, (sourceProjectId, bookId) => {
-    // Keyed as page reads key it, so that the two share the book's segmentation.
-    return bookService.getSegmentedBook(
-      sourceProjectId,
-      bookId,
-      bookSegmentationJson(segmentation, bookId),
-    );
-  });
-  const { tokenSegmentMap } = bookIndexesOf(segments);
-  const segmentIds = new Set(tokens.map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)));
-  if (segmentIds.size > 1 || segmentIds.has(undefined)) {
-    throw new Error("Interlinearizer: a phrase's tokens must lie within one segment of the text");
-  }
-}
-
-/**
- * Adds an approved phrase occurrence over `tokens`, sharing a content-identical stored payload
- * where one exists.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
- *   the first token's book, the session is read-only or not open, or the edit is refused or fails.
- *   The error is logged before rethrowing.
- */
-function createPhrase({
-  sessionId,
-  tokens,
-  changeId,
-}: ArgsOf<'interlinearizer.createPhrase'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId, step: { location: tokens[0]?.tokenRef } },
-    'createPhrase',
-    async (buffer, session) => {
-      assertTokenRun(tokens);
-      await assertOneSegment(buffer, session, tokens);
-      await phraseCommands.createPhrase(buffer, { ...editStamp(), tokens });
-    },
-  );
-}
-
-/**
- * Gives a phrase occurrence a new token run, keeping its gloss. An empty run removes the
- * occurrence.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If `tokens` is not within one segment of the text, the project has no text for the first
- *   token's book, the session is read-only or not open, or the edit is refused or fails. The error
- *   is logged before rethrowing.
- */
-function updatePhrase({
-  sessionId,
-  phraseId,
-  tokens,
-  changeId,
-}: ArgsOf<'interlinearizer.updatePhrase'>): Promise<string> {
-  const target: EditTarget = { sessionId, changeId };
-  return runSessionEdit(target, 'updatePhrase', async (buffer, session) => {
-    target.step =
-      tokens.length > 0 ? { location: tokens[0].tokenRef } : await phraseStartOf(buffer, phraseId);
-    if (tokens.length > 0) await assertOneSegment(buffer, session, tokens);
-    await phraseCommands.updatePhrase(buffer, { ...editStamp(), phraseId, tokens });
-  });
-}
-
-/**
- * Removes a phrase occurrence, with its payload unless another occurrence shares that payload.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function deletePhrase({
-  sessionId,
-  phraseId,
-  changeId,
-}: ArgsOf<'interlinearizer.deletePhrase'>): Promise<string> {
-  const target: EditTarget = { sessionId, changeId };
-  return runSessionEdit(target, 'deletePhrase', async (buffer) => {
-    target.step = await phraseStartOf(buffer, phraseId);
-    await phraseCommands.deletePhrase(buffer, { phraseId });
-  });
-}
-
-/**
- * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token run.
- * The absorbed occurrence, when named, is removed.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
- *   the first token's book, the session is read-only or not open, or the edit is refused or fails.
- *   The error is logged before rethrowing.
- */
-function mergePhrases({
-  sessionId,
-  targetPhraseId,
-  tokens,
-  absorbedPhraseId,
-  changeId,
-}: ArgsOf<'interlinearizer.mergePhrases'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId, step: { location: tokens[0]?.tokenRef } },
-    'mergePhrases',
-    async (buffer, session) => {
-      assertTokenRun(tokens);
-      await assertOneSegment(buffer, session, tokens);
-      await phraseCommands.mergePhrases(buffer, {
-        ...editStamp(),
-        targetPhraseId,
-        tokens,
-        absorbedPhraseId,
-      });
-    },
-  );
-}
-
-/**
- * Writes a phrase occurrence's gloss in the session's analysis language; a blank value clears it.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function writePhraseGloss({
-  sessionId,
-  phraseId,
-  value,
-  changeId,
-}: ArgsOf<'interlinearizer.writePhraseGloss'>): Promise<string> {
-  const target: EditTarget = { sessionId, changeId };
-  return runSessionEdit(target, 'writePhraseGloss', async (buffer, session) => {
-    target.step = await phraseStartOf(buffer, phraseId);
-    await phraseCommands.writePhraseGloss(buffer, {
-      ...editStamp(),
-      phraseId,
-      value,
-      analysisLanguage: session.analysisLanguage,
-    });
-  });
-}
-
-/**
- * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the occurrence would be approved over tokens not within one segment of the text, the
- *   project has no text for their book, the session is read-only or not open, or the edit is
- *   refused or fails. The error is logged before rethrowing.
- */
-function approvePhrase({
-  sessionId,
-  phraseId,
-  changeId,
-}: ArgsOf<'interlinearizer.approvePhrase'>): Promise<string> {
-  const target: EditTarget = { sessionId, changeId };
-  return runSessionEdit(target, 'approvePhrase', async (buffer, session) => {
-    target.step = await phraseStartOf(buffer, phraseId);
-    const [link] = await buffer.getPhraseAnalysisLinks([phraseId]);
-    if (link && link.status !== 'approved') await assertOneSegment(buffer, session, link.tokens);
-    await phraseCommands.approvePhrase(buffer, { ...editStamp(), phraseId });
-  });
-}
-
-/**
- * The book `tokenRef` falls in, read from the session's source project and tokenized one segment
- * per verse.
- *
- * @throws If the project has no text for that book, or the book cannot be read or tokenized.
- */
-function verseBookOf(session: Session, tokenRef: string): Promise<Book> {
-  return readBookOf(session, tokenRef, bookService.getVerseBook);
-}
-
-/**
- * Splits a phrase occurrence just after a token, in the document order of the token's book. A half
- * left with a single token leaves that token in no phrase.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the project has no text for the token's book, the session is read-only or not open, or
- *   the edit is refused or fails. The error is logged before rethrowing.
- */
-function splitPhrase({
-  sessionId,
-  phraseId,
-  splitAfterTokenRef,
-  changeId,
-}: ArgsOf<'interlinearizer.splitPhrase'>): Promise<string> {
-  const target: EditTarget = { sessionId, changeId };
-  return runSessionEdit(target, 'splitPhrase', async (buffer, session) => {
-    target.step = await phraseStartOf(buffer, phraseId);
-    const verseBook = await verseBookOf(session, splitAfterTokenRef);
-    await phraseCommands.splitPhrase(buffer, {
-      ...editStamp(),
-      phraseId,
-      splitAfterTokenRef,
-      tokenDocOrder: bookIndexesOf(verseBook.segments).tokenDocOrder,
-    });
-  });
-}
-
-/**
- * Writes a segment's free translation in the session's analysis language. A blank value clears the
- * translation. A non-blank write to a segment with no approved translation adopts the stale
- * translation that `adoptStaleAnalysisId` names.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
- *   logged before rethrowing.
- */
-function writeSegmentFreeTranslation({
-  sessionId,
-  segmentId,
-  surfaceText,
-  value,
-  adoptStaleAnalysisId,
-  changeId,
-}: ArgsOf<'interlinearizer.writeSegmentFreeTranslation'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId, step: { location: segmentId } },
-    'writeSegmentFreeTranslation',
-    (buffer, session) =>
-      freeTranslationCommands.writeSegmentFreeTranslation(buffer, {
-        ...editStamp(),
-        segmentId,
-        surfaceText,
-        value,
-        analysisLanguage: session.analysisLanguage,
-        adoptStaleAnalysisId,
-      }),
-  );
-}
-
-/** The time a boundary edit lands, and a maker of fresh ids for the records it may make. */
-function boundaryEditStamp() {
-  return { now: new Date().toISOString(), newId: () => crypto.randomUUID() };
-}
-
-/**
- * Merges the segment beginning at a token into the one before it.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the project has no text for the token's book, the session is read-only or not open, or
- *   the edit fails. The error is logged before rethrowing.
- */
-function mergeSegments({
-  sessionId,
-  secondSegmentStartRef,
-  changeId,
-}: ArgsOf<'interlinearizer.mergeSegments'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId, step: { location: secondSegmentStartRef } },
-    'mergeSegments',
-    async (buffer, session) => {
-      const verseBook = await verseBookOf(session, secondSegmentStartRef);
-      await boundaryCommands.mergeSegments(buffer, { verseBook, secondSegmentStartRef });
-      return { reanchorTo: [verseBook] };
-    },
-  );
-}
-
-/**
- * Splits a segment so a new one begins at a token, first splitting every approved phrase the new
- * boundary would cut.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the project has no text for the token's book, the session is read-only or not open, or
- *   the edit is refused or fails. The error is logged before rethrowing.
- */
-function splitSegment({
-  sessionId,
-  tokenRef,
-  changeId,
-}: ArgsOf<'interlinearizer.splitSegment'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId, step: { location: tokenRef } },
-    'splitSegment',
-    async (buffer, session) => {
-      const verseBook = await verseBookOf(session, tokenRef);
-      await boundaryCommands.splitSegment(buffer, { ...boundaryEditStamp(), verseBook, tokenRef });
-      return { reanchorTo: [verseBook] };
-    },
-  );
-}
-
-/**
- * Moves a segment boundary from one token to another, first splitting every approved phrase the
- * moved boundary would cut.
- *
- * @returns A JSON string of the {@link CommandReply}.
- * @throws If the project has no text for the book of the token the boundary moves to, the session
- *   is read-only or not open, or the edit is refused or fails. The error is logged before
- *   rethrowing.
- */
-function moveBoundary({
-  sessionId,
-  fromRef,
-  toRef,
-  changeId,
-}: ArgsOf<'interlinearizer.moveBoundary'>): Promise<string> {
-  return runSessionEdit(
-    { sessionId, changeId, step: { location: toRef } },
-    'moveBoundary',
-    async (buffer, session) => {
-      const verseBook = await verseBookOf(session, toRef);
-      await boundaryCommands.moveBoundary(buffer, {
-        ...boundaryEditStamp(),
-        verseBook,
-        fromRef,
-        toRef,
-      });
-      return { reanchorTo: [verseBook] };
-    },
-  );
-}
-
-/**
- * The content of the project that the session's draft saves to, or `undefined` when it has none.
- *
- * @throws If the project is not stored, or reading it fails.
- */
-async function savedContentOf(session: Session): Promise<DraftContent | undefined> {
-  const { interlinearProjectId } = session.scope;
-  if (interlinearProjectId === undefined) return undefined;
-  const project = await projectStorage.getProject(executionToken, interlinearProjectId);
-  if (!project) {
-    throw new Error(`Interlinearizer: interlinear project ${interlinearProjectId} is not stored`);
-  }
-  return { analysis: project.analysis, segmentation: project.segmentation };
-}
-
-/**
- * Runs an unsaved-change discard as one edit of a session's analysis, re-anchoring each book it
- * rewrites to the book's current text. A book the text lacks has its links go stale.
- *
- * @param target - The session whose draft the discard edits, and the change id it is sent under.
- * @param intent - Names the discard.
- * @param stage - Stages the discard over the stored draft, given the saved project's content.
- * @param unsavedMark - How the discard leaves the draft's unsaved mark, given whether the draft
- *   saves to a project.
- * @returns A JSON string of the {@link CommandReply}, with `hasFreeTranslations`: whether any
- *   segment of the draft the discard leaves has a free translation.
- * @throws If the saved project cannot be read, the session is read-only or not open, or the edit is
- *   refused or fails. The error is logged before rethrowing.
- */
-async function runDiscard(
-  { sessionId, changeId, step }: EditTarget,
-  intent: string,
-  stage: (
-    buffer: ChangeBuffer,
-    stored: DraftExport,
-    saved: DraftContent | undefined,
-  ) => discardCommands.DiscardOutcome,
-  unsavedMark: (savesToProject: boolean) => EditOptions['unsavedMark'],
-): Promise<string> {
-  try {
-    const reply = await sessions.edit(
-      sessionId,
-      intent,
-      async (buffer, session) => {
-        const saved = await savedContentOf(session);
-        const outcome = stage(buffer, await session.repository.exportAll(), saved);
-        const { sourceProjectId } = session.scope;
-        const reanchorTo = await Promise.all(
-          outcome.changedBooks.map(
-            async (bookCode) =>
-              (await bookService.getVerseBook(sourceProjectId, bookCode)) ?? missingBook(bookCode),
-          ),
-        );
-        return { reanchorTo, hasFreeTranslations: outcome.hasFreeTranslations };
-      },
-      {
-        unsavedMark: ({ scope }) => unsavedMark(scope.interlinearProjectId !== undefined),
-        changeId,
-        step,
-      },
-    );
-    /* v8 ignore next 2 -- defensive: only a discard reusing another command's change id gets no flag */
-    if (reply.hasFreeTranslations === undefined)
-      throw new Error(`Interlinearizer: change ${changeId} was not a discard`);
-    return JSON.stringify(reply);
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
-    throw e;
-  }
-}
-
-/**
- * Discards the unsaved changes to one book of a session's draft, restoring the book as the draft's
- * project holds it, or emptying the book when the draft has no project. A book whose stored
- * analysis could not be read keeps it. A draft saving to a project stays as saved or unsaved as it
- * was; one saving to none is marked unsaved when the discard changes anything.
- *
- * @returns As {@link runDiscard} does.
- * @throws As {@link runDiscard} does.
- */
-function discardBook({
-  sessionId,
-  bookCode,
-  changeId,
-}: ArgsOf<'interlinearizer.discardBook'>): Promise<string> {
-  return runDiscard(
-    { sessionId, changeId, step: { summary: { kind: 'discardBook', book: bookCode } } },
-    'discardBook',
-    (buffer, stored, saved) => discardCommands.discardBook(buffer, stored, bookCode, saved),
-    (savesToProject) => (savesToProject ? 'keep' : undefined),
-  );
-}
-
-/**
- * Discards every unsaved change to a session's draft, restoring what the draft's project holds, or
- * emptying the draft when it has no project. A book whose stored analysis could not be read keeps
- * it. The draft is marked saved.
- *
- * @returns As {@link runDiscard} does.
- * @throws As {@link runDiscard} does.
- */
-function discardAll({
-  sessionId,
-  changeId,
-}: ArgsOf<'interlinearizer.discardAll'>): Promise<string> {
-  return runDiscard(
-    { sessionId, changeId, step: { summary: { kind: 'discardAll' } } },
-    'discardAll',
-    discardCommands.discardAll,
-    () => 'clear',
-  );
-}
-
-/**
- * Stages clearing the session's analysis-language gloss of each analysis in `analysisIds`. The
- * returned function resolves to the ids of the token analyses that the clear empties.
- */
-function stageClearAnalysisGlosses({ analysisIds }: { analysisIds: string[] }) {
-  return (buffer: ChangeBuffer, session: Session) =>
-    catalogCommands.clearAnalysisGlosses(buffer, {
-      analysisIds,
-      analysisLanguage: session.analysisLanguage,
-      now: editStamp().now,
-    });
-}
-
-function stageDiscardStaleAnalysis(args: { analysisId: string; tokenRef: string }) {
-  return (buffer: ChangeBuffer) => staleCommands.discardStaleAnalysis(buffer, args);
-}
-
-/** Stages approving the stale analysis `analysisId` at `tokenRef`. */
-function stageReapplyStaleAnalysis(args: {
-  analysisId: string;
-  staleTokenRef: string;
-  tokenRef: string;
-  surfaceText: string;
-}) {
-  return (buffer: ChangeBuffer) => {
-    const { analysisId: copyId, linkId, now } = editStamp();
-    return staleCommands.reapplyStaleAnalysis(buffer, { ...args, copyId, linkId, now });
-  };
-}
-
-/**
- * Stages the command that a removal preview names.
- *
- * @throws {Error} If the request names an intent that can't be previewed.
- */
-function stageRemovals(
-  request: RemovalPreviewRequest,
-): (buffer: ChangeBuffer, session: Session) => Promise<unknown> {
-  switch (request.intent) {
-    case 'clearAnalysisGlosses':
-      return stageClearAnalysisGlosses(request);
-    case 'discardStaleAnalysis':
-      return stageDiscardStaleAnalysis(request);
-    case 'reapplyStaleAnalysis':
-      return stageReapplyStaleAnalysis(request);
-    default:
-      throw new Error(`Interlinearizer: cannot preview the removals of ${JSON.stringify(request)}`);
-  }
-}
-
-/**
- * Names the token analyses a command would remove from a session's draft, applying nothing.
- *
- * @returns A JSON string of the ids; `"[]"` when it would remove none.
- * @throws If the session is not open, the request names an intent it can't preview, or staging the
- *   command fails. The error is logged before rethrowing.
- */
-async function previewRemovals({
-  sessionId,
-  request,
-}: ArgsOf<'interlinearizer.previewRemovals'>): Promise<string> {
-  try {
-    const changes = await sessions.preview(sessionId, request.intent, stageRemovals(request));
-    return JSON.stringify(changes.tokenAnalyses?.deletes ?? []);
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to preview removals in session ${sessionId}`, e);
-    throw e;
-  }
-}
-
-/**
  * Returns a summary of every interlinearizer project for the given source project as a JSON string.
  * The WebView deserializes this to populate its project picker and to decide whether to prompt
  * "create new" or "select existing" when the user opens the project menu.
@@ -2280,7 +1131,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   logger.debug('Interlinearizer extension is activating!');
 
   executionToken = context.executionToken;
-  leftOutDraftBooks.clear();
   rememberedActiveProjects.clear();
   context.registrations.add(
     startCSharpHost(executionToken, context.elevatedPrivileges.createProcess),
@@ -2336,6 +1186,14 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   );
   const activeSessions = createSessions(emitter);
   sessions = activeSessions;
+  const edits = sessionEditHandlers({
+    sessions: activeSessions,
+    logger,
+    getSegmentedBook: bookService.getSegmentedBook,
+    getVerseBook: bookService.getVerseBook,
+    getProject: (interlinearProjectId) =>
+      projectStorage.getProject(executionToken, interlinearProjectId),
+  });
   const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book, edited) =>
     activeSessions
       .reanchorBook(sourceProjectId, book, edited)
@@ -2346,11 +1204,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         ),
       ),
   );
-  const textReadEmitter = await papi.network.createNetworkEventEmitterAsync(
-    'interlinearizer.onTextRead',
-  );
-  const textReadUnsubscriber = bookService.onTextRead((sourceProjectId, textBookIds) => {
-    textReadEmitter.emit({ sourceProjectId });
+  const textReadUnsubscriber = bookService.onTextRead((sourceProjectId, textBookIds) =>
     activeSessions
       .reanchorMissingBooks(sourceProjectId, textBookIds)
       .catch((e) =>
@@ -2358,8 +1212,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           `Interlinearizer: could not re-anchor the books project ${sourceProjectId} lacks`,
           e,
         ),
-      );
-  });
+      ),
+  );
   const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
     activeSessions
       .reportScriptureEdit(sourceProjectId, bookId)
@@ -2393,7 +1247,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
     bookReadUnsubscriber,
     textReadUnsubscriber,
-    textReadEmitter,
     bookTextUnsubscriber,
   );
 
@@ -2685,29 +1538,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const getDraftCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getDraft',
-    getInterlinearDraft,
-    {
-      method: {
-        summary: 'Return the draft working buffer for a source project as a JSON string',
-        params: [
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Platform.Bible source project ID whose draft to fetch',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified DraftProject; a fresh empty draft when none exists',
-          schema: { type: 'string' },
-        },
-      },
-    },
-  );
-
   const getTokenizedBookCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.getTokenizedBook',
     getTokenizedBook,
@@ -2737,27 +1567,21 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  /** The parameter naming the source project, or the session, whose text a query reads. */
-  const textAddressParam = {
+  /** The parameter naming the session whose source a query reads. */
+  const sessionAddressParam = {
     name: 'address',
     required: true as const,
-    summary:
-      'Platform.Bible source project ID, or { sessionId } to read the source of a session and its analysis too',
+    summary: '{ sessionId } of the session whose source to read',
     schema: {
-      anyOf: [
-        { type: 'string' as const },
-        {
-          type: 'object' as const,
-          properties: { sessionId: { type: 'string' as const } },
-          required: ['sessionId'],
-        },
-      ],
+      type: 'object' as const,
+      properties: { sessionId: { type: 'string' as const } },
+      required: ['sessionId'],
     },
   };
 
   /** Parameters naming the book a segment query reads. */
   const bookParams = [
-    textAddressParam,
+    sessionAddressParam,
     {
       name: 'bookId',
       required: true,
@@ -2765,21 +1589,15 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       schema: { type: 'string' },
     },
   ] as const;
-  const segmentationParam = {
-    name: 'segmentationJson',
-    required: false,
-    summary:
-      "JSON-stringified SegmentationDelta of the book's custom boundaries; omit for one segment per verse, and for a session, which segments by its draft's",
-    schema: { type: 'string' },
-  } as const;
 
   const getBookOutlineCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.getBookOutline',
     getBookOutline,
     {
       method: {
-        summary: "Return the outline of a source project's book, as a JSON string",
-        params: [...bookParams, segmentationParam],
+        summary:
+          "Return the outline of a book of a session's source, segmented by the draft's boundaries, as a JSON string",
+        params: [...bookParams],
         result: {
           name: 'return value',
           summary:
@@ -2795,7 +1613,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getSegments,
     {
       method: {
-        summary: "Return a run of a source project's book's segments, as a JSON string",
+        summary:
+          "Return a run of the segments of a book of a session's source, with the draft's analysis of them, as a JSON string",
         params: [
           ...bookParams,
           {
@@ -2810,7 +1629,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'Outline index after the last segment to return',
             schema: { type: 'integer' },
           },
-          segmentationParam,
         ],
         result: {
           name: 'return value',
@@ -2828,45 +1646,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary:
-          "Return how far reading a source project's whole text has got, starting the read when the project or the session has none, as a JSON string",
-        params: [textAddressParam],
+          "Return how far reading a session's whole source text has got, starting the session's read when it has none, as a JSON string",
+        params: [sessionAddressParam],
         result: {
           name: 'return value',
           summary: 'JSON-stringified TextReadStatus',
           schema: { type: 'string' },
         },
-      },
-    },
-  );
-
-  const saveDraftCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.saveDraft',
-    saveInterlinearDraft,
-    {
-      method: {
-        summary: 'Persist the draft working buffer for a source project',
-        params: [
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Platform.Bible source project ID whose draft to write',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'draftJson',
-            required: true,
-            summary: 'JSON-stringified DraftProject to persist',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'discardUnreadable',
-            required: false,
-            summary:
-              'Whether the draft was started over (New, Open), so stored analysis that could not be read is discarded rather than kept',
-            schema: { type: 'boolean' },
-          },
-        ],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
     },
   );
@@ -3091,7 +1877,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const writeGlossCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.writeGloss',
-    writeGloss,
+    edits['interlinearizer.writeGloss'],
     {
       method: {
         summary: "Write a token's gloss in a session's analysis language; a blank value clears it",
@@ -3112,7 +1898,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const approveAnalysisForTokenCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.approveAnalysisForToken',
-    approveAnalysisForToken,
+    edits['interlinearizer.approveAnalysisForToken'],
     {
       method: {
         summary:
@@ -3134,7 +1920,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const writeMorphemesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.writeMorphemes',
-    writeMorphemes,
+    edits['interlinearizer.writeMorphemes'],
     {
       method: {
         summary: "Write a token's morpheme breakdown",
@@ -3161,7 +1947,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const deleteMorphemesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.deleteMorphemes',
-    deleteMorphemes,
+    edits['interlinearizer.deleteMorphemes'],
     {
       method: {
         summary: "Remove a token's morpheme breakdown",
@@ -3173,7 +1959,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const writeMorphemeGlossCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.writeMorphemeGloss',
-    writeMorphemeGloss,
+    edits['interlinearizer.writeMorphemeGloss'],
     {
       method: {
         summary:
@@ -3208,7 +1994,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const discardStaleAnalysisCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.discardStaleAnalysis',
-    discardStaleAnalysis,
+    edits['interlinearizer.discardStaleAnalysis'],
     {
       method: {
         summary: 'Give up the place an analysis went stale at, leaving its other places alone',
@@ -3229,7 +2015,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const reapplyStaleAnalysisCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.reapplyStaleAnalysis',
-    reapplyStaleAnalysis,
+    edits['interlinearizer.reapplyStaleAnalysis'],
     {
       method: {
         summary:
@@ -3259,7 +2045,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const keepStaleFreeTranslationCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.keepStaleFreeTranslation',
-    keepStaleFreeTranslation,
+    edits['interlinearizer.keepStaleFreeTranslation'],
     {
       method: {
         summary:
@@ -3287,7 +2073,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const discardStaleFreeTranslationCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.discardStaleFreeTranslation',
-    discardStaleFreeTranslation,
+    edits['interlinearizer.discardStaleFreeTranslation'],
     {
       method: {
         summary: 'Drop a stale free translation, one whose verse the book no longer holds included',
@@ -3314,7 +2100,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const writeAnalysisGlossCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.writeAnalysisGloss',
-    writeAnalysisGloss,
+    edits['interlinearizer.writeAnalysisGloss'],
     {
       method: {
         summary:
@@ -3331,7 +2117,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const clearAnalysisGlossesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.clearAnalysisGlosses',
-    clearAnalysisGlosses,
+    edits['interlinearizer.clearAnalysisGlosses'],
     {
       method: {
         summary: "Clear the glosses of several token analyses in a session's analysis language",
@@ -3343,7 +2129,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const writeAnalysisMorphemesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.writeAnalysisMorphemes',
-    writeAnalysisMorphemes,
+    edits['interlinearizer.writeAnalysisMorphemes'],
     {
       method: {
         summary:
@@ -3371,7 +2157,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const confirmAnalysisMorphemesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.confirmAnalysisMorphemes',
-    confirmAnalysisMorphemes,
+    edits['interlinearizer.confirmAnalysisMorphemes'],
     {
       method: {
         summary:
@@ -3394,7 +2180,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const writeAnalysisMorphemeGlossCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.writeAnalysisMorphemeGloss',
-    writeAnalysisMorphemeGloss,
+    edits['interlinearizer.writeAnalysisMorphemeGloss'],
     {
       method: {
         summary:
@@ -3417,7 +2203,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const deleteAnalysesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.deleteAnalyses',
-    deleteAnalyses,
+    edits['interlinearizer.deleteAnalyses'],
     {
       method: {
         summary: 'Remove token analyses with every token link to them',
@@ -3429,7 +2215,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const mergeAnalysesIntoCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.mergeAnalysesInto',
-    mergeAnalysesInto,
+    edits['interlinearizer.mergeAnalysesInto'],
     {
       method: {
         summary:
@@ -3482,7 +2268,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const createPhraseCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.createPhrase',
-    createPhrase,
+    edits['interlinearizer.createPhrase'],
     {
       method: {
         summary:
@@ -3503,7 +2289,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const updatePhraseCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.updatePhrase',
-    updatePhrase,
+    edits['interlinearizer.updatePhrase'],
     {
       method: {
         summary:
@@ -3525,7 +2311,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const deletePhraseCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.deletePhrase',
-    deletePhrase,
+    edits['interlinearizer.deletePhrase'],
     {
       method: {
         summary: 'Remove a phrase occurrence, with its payload unless another occurrence shares it',
@@ -3537,7 +2323,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const mergePhrasesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.mergePhrases',
-    mergePhrases,
+    edits['interlinearizer.mergePhrases'],
     {
       method: {
         summary:
@@ -3571,7 +2357,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const writePhraseGlossCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.writePhraseGloss',
-    writePhraseGloss,
+    edits['interlinearizer.writePhraseGloss'],
     {
       method: {
         summary:
@@ -3593,7 +2379,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const approvePhraseCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.approvePhrase',
-    approvePhrase,
+    edits['interlinearizer.approvePhrase'],
     {
       method: {
         summary: 'Approve a phrase occurrence, unless any of its tokens is in an approved phrase',
@@ -3605,7 +2391,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const splitPhraseCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.splitPhrase',
-    splitPhrase,
+    edits['interlinearizer.splitPhrase'],
     {
       method: {
         summary:
@@ -3627,7 +2413,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const writeSegmentFreeTranslationCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.writeSegmentFreeTranslation',
-    writeSegmentFreeTranslation,
+    edits['interlinearizer.writeSegmentFreeTranslation'],
     {
       method: {
         summary:
@@ -3667,7 +2453,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const mergeSegmentsCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.mergeSegments',
-    mergeSegments,
+    edits['interlinearizer.mergeSegments'],
     {
       method: {
         summary: 'Merge the segment beginning at a token into the one before it',
@@ -3687,7 +2473,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const splitSegmentCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.splitSegment',
-    splitSegment,
+    edits['interlinearizer.splitSegment'],
     {
       method: {
         summary:
@@ -3708,7 +2494,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const moveBoundaryCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.moveBoundary',
-    moveBoundary,
+    edits['interlinearizer.moveBoundary'],
     {
       method: {
         summary:
@@ -3742,7 +2528,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const discardBookCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.discardBook',
-    discardBook,
+    edits['interlinearizer.discardBook'],
     {
       method: {
         summary:
@@ -3763,7 +2549,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const discardAllCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.discardAll',
-    discardAll,
+    edits['interlinearizer.discardAll'],
     {
       method: {
         summary:
@@ -3776,7 +2562,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const previewRemovalsCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.previewRemovals',
-    previewRemovals,
+    edits['interlinearizer.previewRemovals'],
     {
       method: {
         summary: "Name the token analyses a command would remove from a session's draft",
@@ -3867,28 +2653,26 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const startSessionTextReadCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.startSessionTextRead',
-    async (sourceProjectId: string) => {
-      const sessionId = sessions.sessionIdFor(sourceProjectId);
-      if (sessionId === undefined) {
-        throw new Error(`Interlinearizer: source project ${sourceProjectId} has no session open`);
-      }
-      await sessions.startTextRead(sessionId);
-    },
+  const sessionIdForCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.sessionIdFor',
+    async (sourceProjectId: string) => sessions.sessionIdFor(sourceProjectId),
     {
       method: {
         summary:
-          "Start the whole-text read of the source's open session, as a feature needing the text would, for the performance harness",
+          "Return the id of the session open on a source project, for the performance harness to address the view's session",
         params: [
           {
             name: 'sourceProjectId',
             required: true,
-            summary: 'Source project whose open session reads its text',
+            summary: 'Source project whose open session to name',
             schema: { type: 'string' },
           },
         ],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        result: {
+          name: 'return value',
+          summary: 'The session id, or undefined when the source has no session open',
+          schema: { type: 'string' },
+        },
       },
     },
   );
@@ -4241,12 +3025,10 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     saveDraftAsProjectCommandRegistration,
     getProjectsForSourceCommandRegistration,
     getProjectSummaryCommandRegistration,
-    getDraftCommandRegistration,
     getTokenizedBookCommandRegistration,
     getBookOutlineCommandRegistration,
     getSegmentsCommandRegistration,
     getTextReadStatusCommandRegistration,
-    saveDraftCommandRegistration,
     startDraftOverCommandRegistration,
     openSessionCommandRegistration,
     closeSessionCommandRegistration,
@@ -4289,7 +3071,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     previewRemovalsCommandRegistration,
     setPerfMarksCommandRegistration,
     setSkipSessionReadsCommandRegistration,
-    startSessionTextReadCommandRegistration,
+    sessionIdForCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,
     importPt9ProjectCommandRegistration,

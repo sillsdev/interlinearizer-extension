@@ -85,9 +85,10 @@ function changesOfPass(draft: DraftProject, pass: BookPass<DraftContent>): Chang
 }
 
 /**
- * The changes that re-anchor `draft` to `book`'s current text, matching the WebView's pass over
- * `book`. A book the text lacks is passed as a book with no segments. The draft may hold only the
- * links in `book`, with the segment analyses they reference, and the changes are the same.
+ * The changes that re-anchor `draft` to `book`'s current text, as {@link reanchorDraftToBook}'s pass
+ * over `book` makes them. A book the text lacks is passed as a book with no segments. The draft may
+ * hold only the links in `book`, with the segment analyses they reference, and the changes are the
+ * same.
  *
  * @returns The changes, or `undefined` when the draft already reads as re-anchored.
  */

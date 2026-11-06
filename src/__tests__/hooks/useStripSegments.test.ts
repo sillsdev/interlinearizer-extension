@@ -2,7 +2,7 @@
 
 import { act, renderHook } from '@testing-library/react';
 import type { Book } from 'interlinearizer';
-import type { SegmentPages } from '../../hooks/useSegmentPages';
+import type { SegmentPages } from '../../types/segment-pages';
 import useStripSegments, {
   STRIP_PREFETCH_SEGMENTS,
   type UseStripSegmentsArgs,

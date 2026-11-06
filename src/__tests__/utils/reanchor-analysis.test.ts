@@ -13,7 +13,7 @@ import type { BookPass } from '../../types/book-pass';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import { mergeSegments, reanchorSegmentation } from '../../utils/segmentation';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { expectHostReanchorParity } from '../host-reanchor-parity';
+import { expectHostReanchor } from '../host-reanchor';
 import { makeVerseBook, makePhraseLink, makeTokenLink, FIXTURE_STAMPS } from '../test-helpers';
 
 /**
@@ -22,7 +22,7 @@ import { makeVerseBook, makePhraseLink, makeTokenLink, FIXTURE_STAMPS } from '..
  */
 const REANCHOR_STAMP = '2026-02-01T00:00:00.000Z';
 
-/** Re-anchors `analysis` to `book`, checking that the host's re-anchor gives the same. */
+/** Re-anchors `analysis` to `book`, checking that the changes the host stages give the same. */
 function reanchor(
   analysis: TextAnalysis,
   book: Book,
@@ -33,7 +33,7 @@ function reanchor(
     segmentation: content.segmentation,
   });
   const reanchored = pass({ analysis, segmentation: undefined });
-  expectHostReanchorParity({ analysis, segmentation: undefined }, book.bookRef, pass, reanchored);
+  expectHostReanchor({ analysis, segmentation: undefined }, book.bookRef, pass, reanchored);
   return reanchored.analysis;
 }
 

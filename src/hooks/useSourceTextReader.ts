@@ -18,18 +18,6 @@ export interface UseSourceTextReaderArgs {
   /** Whether the text is wanted; nothing is read until it first is, or is requested. */
   enabled: boolean;
   /**
-   * Reads every book again, as a refresh does, whenever this changes; results from a read started
-   * under an earlier key are dropped.
-   */
-  readKey?: unknown;
-  /** Receives each book as it is read, before only its index is kept. */
-  onBookRead?: (book: Book) => void;
-  /**
-   * Receives, in canonical order, the books found to have text once every book is read; not called
-   * for a reading that any book failed.
-   */
-  onTextRead?: (bookIds: readonly string[]) => void;
-  /**
    * Called each time the text becomes wanted or requested. Called again when this callback changes
    * while the text stays wanted or requested.
    */
@@ -88,10 +76,7 @@ export default function useSourceTextReader({
   projectId,
   liveBook,
   enabled,
-  onBookRead,
-  onTextRead,
   onWanted,
-  readKey,
 }: UseSourceTextReaderArgs): SourceText {
   const [status, setStatus] = useState<SourceTextStatus>('idle');
   const [progress, setProgress] = useState({ booksRead: 0, bookCount: 0 });
@@ -112,19 +97,12 @@ export default function useSourceTextReader({
   /** Bumped to read every book again. */
   const [generation, setGeneration] = useState(0);
 
-  // Read through refs so a read in flight calls whichever callbacks are current when it lands.
-  const onBookReadRef = useLatestRef(onBookRead);
-  const onTextReadRef = useLatestRef(onTextRead);
-  const readKeyRef = useLatestRef(readKey);
-
   const readingsRef = useLatestRef(readings);
 
   useEffect(() => {
     if (!wanted) return undefined;
     let isAbandoned = false;
-    const key = readKeyRef.current;
-    // `readKeyRef` updates during render, before this cleanup runs, so check the key too.
-    const isCurrent = () => !isAbandoned && readKeyRef.current === key;
+    const isCurrent = () => !isAbandoned;
     setStatus('loading');
     setIsPartial(false);
     setProgress({ booksRead: 0, bookCount: 0 });
@@ -153,7 +131,6 @@ export default function useSourceTextReader({
             logger.warn(`Source text: skipping ${bookId} in project ${projectId}`, e);
           }
           if (!isCurrent()) return;
-          if (book) onBookReadRef.current?.(book);
           booksRead += 1;
           setProgress({ booksRead, bookCount: bookIds.length });
           await readNext();
@@ -170,7 +147,6 @@ export default function useSourceTextReader({
         setReadings(read);
         setIsPartial(booksFailed > 0);
         setStatus('ready');
-        if (booksFailed === 0) onTextReadRef.current?.(bookIds.filter((id) => read.has(id)));
       } catch (e) {
         if (!isCurrent()) return;
         logger.error(`Source text: could not list the books of project ${projectId}`, e);
@@ -180,7 +156,7 @@ export default function useSourceTextReader({
     return () => {
       isAbandoned = true;
     };
-  }, [wanted, projectId, generation, readKeyRef, onBookReadRef, onTextReadRef]);
+  }, [wanted, projectId, generation]);
 
   /** The live book, indexed only once the text is wanted. */
   const liveIndex = useMemo(
@@ -205,12 +181,6 @@ export default function useSourceTextReader({
     setLiveVersions(live ? new Map([[live.book, live]]) : new Map());
     setGeneration((g) => g + 1);
   }, [liveIndexRef]);
-
-  const [readKeyRead, setReadKeyRead] = useState(readKey);
-  if (readKey !== readKeyRead) {
-    setReadKeyRead(readKey);
-    refresh();
-  }
 
   const request = useCallback(() => setRequested(true), []);
 

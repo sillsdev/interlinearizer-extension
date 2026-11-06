@@ -1440,11 +1440,10 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
 /**
  * Navigate the platform's book-chapter-verse control to the given scripture reference so tests can
  * assert against known text. Opens the toolbar's reference combobox, types the reference, and
- * submits it. Requires a fully-qualified reference (book, chapter, and verse — e.g. `"GEN 1:1"`);
- * partial references are ambiguous and are not auto-submitted by the control.
+ * submits it.
  *
- * Resolves once the toolbar shows that reference. At the toolbar's narrowest width the label shows
- * only the book, so there the check confirms the book alone.
+ * Resolves once the toolbar shows that reference. The toolbar must be wide enough for its label to
+ * include the chapter and verse; at its narrowest width the label shows only the book.
  *
  * Drives the TOP TOOLBAR's book-chapter control specifically. In Power mode — which
  * {@link E2E_SETTINGS_OVERRIDES} forces for every launch — it is not the only one on the page:
@@ -1474,8 +1473,9 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  * silently navigating against the wrong verse.
  *
  * @param page - The renderer page whose toolbar reference control is driven.
- * @param reference - Fully-qualified scripture reference to navigate to (e.g. `"GEN 1:1"`).
- * @throws If `reference` is not fully qualified.
+ * @param reference - Fully-qualified reference with an uppercase book id, such as `"GEN 1:1"`. The
+ *   control does not auto-submit a partial reference.
+ * @throws If `reference` is not in that form.
  * @throws If the toolbar root that scopes the lookup never appears.
  * @throws If the control never becomes enabled within the wait (no navigation target resolved).
  * @throws If the control is enabled but its popover does not open or close within the timeouts.
@@ -1538,31 +1538,29 @@ export async function navigateToScriptureRef(page: Page, reference: string): Pro
   // navigation surfaces later as a vague missing-element timeout.
   await expect(
     trigger,
-    `navigateToScriptureRef: the top toolbar never showed "${reference}" after it was submitted`,
+    `navigateToScriptureRef: the top toolbar never showed "${reference}" after it was submitted. ` +
+      'Either the navigation failed, or the toolbar is so narrow that its label shows only the book.',
   ).toHaveText(expectedLabel, { timeout: 10_000 });
 }
 
 /**
- * Builds a pattern that matches the top toolbar trigger's label for `reference` at every toolbar
- * width.
+ * Builds a pattern that matches the top toolbar trigger's label for `reference`. The label shows
+ * the English book name when the toolbar has room and the book id when the toolbar is tight.
  *
- * The label shows the English book name when the toolbar has room and the book id when the toolbar
- * is tight. At the narrowest width the label omits the chapter and verse, so the pattern accepts
- * the book alone.
- *
- * @param reference - Fully-qualified reference such as `"GEN 1:1"`.
- * @throws If `reference` is not fully qualified.
+ * @param reference - Fully-qualified reference with an uppercase book id, such as `"GEN 1:1"`.
+ * @throws If `reference` is not in that form.
  */
 function scriptureRefTriggerPattern(reference: string): RegExp {
   const match = /^([1-4A-Z]{3}) (\d+):(\d+)$/.exec(reference.trim());
   if (!match) {
     throw new Error(
-      `navigateToScriptureRef: "${reference}" is not a fully-qualified reference like "GEN 1:1".`,
+      `navigateToScriptureRef: "${reference}" is not a fully-qualified reference ` +
+        'with an uppercase book id, like "GEN 1:1".',
     );
   }
   const [, bookId, chapter, verse] = match;
   const book = [Canon.bookIdToEnglishName(bookId), bookId].map(escapeStringRegexp).join('|');
-  return new RegExp(`^\\s*(?:${book})(?:\\s*${chapter}:${verse})?\\s*$`);
+  return new RegExp(`^\\s*(?:${book})\\s*${chapter}:${verse}\\s*$`);
 }
 
 /**

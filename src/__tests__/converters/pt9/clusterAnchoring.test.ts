@@ -141,6 +141,22 @@ describe('anchorVerseClusters', () => {
       expect(result.groups[0].parse).toBeDefined();
     });
 
+    it('drops a parse whose form spells a hyphen its word lacks', () => {
+      const segment = segmentOf('recover now');
+      const result = anchorVerseClusters([segment], [mkCluster(0, 7, [['Stem:re-cover']])]);
+
+      expect(result.dropCounts.formMismatch).toBe(1);
+      expect(result.groups).toHaveLength(0);
+    });
+
+    it('matches a parse whose form spells a hyphen its word carries', () => {
+      const segment = segmentOf('re-cover now');
+      const result = anchorVerseClusters([segment], [mkCluster(0, 8, [['Stem:re-cover']])]);
+
+      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('re-cover');
+    });
+
     it('anchors a parse-only cluster by its concatenated forms', () => {
       const segment = segmentOf('exaucera demain');
       const result = anchorVerseClusters(

@@ -269,19 +269,27 @@ function priorDistance(
 }
 
 /**
- * Morph-type indicators that PT9 users type into parse forms, such as the `-` of `fr` + `-om`. PT9
- * stores them as part of the form, so a parse matches its word only once they are folded out.
+ * Morph-type indicators that PT9 users type at the edges of parse forms, such as the `-` of `fr` +
+ * `-om`. PT9 stores them as part of the form, so a parse matches its word only once they are folded
+ * out. Within a form they are spelling, as in `re-cover`, and must match the word.
  */
-const INDICATOR_PATTERN = /[-=~]/gu;
+const EDGE_INDICATORS = /^[-=~]+|[-=~]+$/g;
 
-/** Folds a surface for comparison with a parse's forms, indicators removed. */
-function foldForParse(surface: string): string {
-  return normalizeSurfaceForm(surface).replace(INDICATOR_PATTERN, '');
-}
-
-/** The folded surface that a parse's forms spell out together, indicators removed. */
-function parseForm(lexemes: readonly ClassifiedLexeme[]): string {
-  return foldForParse(lexemes.map((l) => l.key.Form).join(''));
+/**
+ * A pattern matching the folded surfaces that a parse's forms spell out together. It ignores each
+ * form's edge indicators.
+ *
+ * The surface may carry indicator characters where two forms meet, as `twenty-one` does between
+ * `twenty` and `one`.
+ */
+function parseMatcher(lexemes: readonly ClassifiedLexeme[]): RegExp {
+  const cores = lexemes.map((l) =>
+    normalizeSurfaceForm(l.key.Form.replace(EDGE_INDICATORS, '')).replace(
+      /[.*+?^${}()|[\]\\/]/g,
+      '\\$&',
+    ),
+  );
+  return new RegExp(`^${cores.join('[-=~]*')}$`);
 }
 
 function countFrom(candidates: ReadonlySet<number>, cursor: number): number {
@@ -310,10 +318,10 @@ interface RangeGroup {
  * clusters before that token. Word and parse clusters covering the identical range anchor together
  * onto one token, while phrases anchor to consecutive runs of word tokens within one segment.
  *
- * A parse's forms must spell out its token once morph-type indicators are folded out of both, even
- * when a word cluster at the same range chose the token. A parse that fails is dropped as a
- * mismatch, and its word converts alone. Clusters that match nothing are counted by reason rather
- * than silently lost.
+ * A parse's forms must spell out its token even when a word cluster at the same range chose the
+ * token. Indicators typed at a form's edges are ignored, as are indicator characters where the
+ * token joins two forms. A parse that fails is dropped as a mismatch, and its word converts alone.
+ * Clusters that match nothing are counted by reason rather than silently lost.
  *
  * @param segments - The verse's own text, when it has any, and the headings within it, in document
  *   order.
@@ -373,15 +381,17 @@ export function anchorVerseClusters(
   const sortedGroups = [...rangeGroups.values()].sort(
     (a, b) => a.index - b.index || a.length - b.length,
   );
-  const parseFoldedWords = wordTokens.map((token) => foldForParse(token.surfaceText));
-  const groupCandidates = sortedGroups.map(({ word, parse }) => {
-    const forms = word !== undefined ? foldedWords : parseFoldedWords;
-    const expected =
-      word !== undefined
-        ? normalizeSurfaceForm(word.classified.lexeme.key.Form)
+  const parseMatchers = sortedGroups.map(
+    ({ parse }) => parse && parseMatcher(parse.classified.lexemes),
+  );
+  const groupCandidates = sortedGroups.map(({ word }, item) => {
+    const wordForm = word && normalizeSurfaceForm(word.classified.lexeme.key.Form);
+    const matches = (form: string) =>
+      wordForm !== undefined
+        ? form === wordForm
         : /* v8 ignore next -- a range group is only ever created with at least one facet */
-          parseForm(parse?.classified.lexemes ?? []);
-    return new Set(forms.flatMap((form, j) => (form === expected ? [j] : [])));
+          (parseMatchers[item]?.test(form) ?? false);
+    return new Set(foldedWords.flatMap((form, j) => (matches(form) ? [j] : [])));
   });
   const groupPlacements = alignInOrder(groupCandidates, wordTokens.length, (item, position) =>
     priorDistance(layout, position, sortedGroups[item].index, verseExtents),
@@ -406,8 +416,7 @@ export function anchorVerseClusters(
     }
     if (ambiguous) ambiguousCount += 1;
     // A word cluster may have chosen the token by its own form, so the parse is checked against it.
-    const parseFits =
-      parse === undefined || parseForm(parse.classified.lexemes) === parseFoldedWords[chosen];
+    const parseFits = parseMatchers[item]?.test(foldedWords[chosen]) ?? true;
     if (!parseFits) dropCounts.formMismatch += 1;
     groups.push({
       token: wordTokens[chosen],

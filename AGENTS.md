@@ -67,7 +67,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
   - `OpenSources` opens one DI scope per source project and keeps it until the source is closed, as FieldWorks Lite does. The first command on a source opens it.
   - Each scope sits over the source's own SQLite database, named after the source in the container's `SourcesDirectory`. Nothing else names the file, so a source always opens the same database.
   - A handler takes the source and interlinear project ids and resolves the project's `AnalysisRepository` from the source's scope. A project the database does not store has no repository.
-  - Commands on one source share its scope's `InterlinearizerCrdtDbContext`, and EF Core does not allow overlapping operations on one context. Callers must not overlap commands on a source, `closeSource` included.
+  - Commands on one source share its scope's `InterlinearizerCrdtDbContext`, and EF Core does not allow overlapping operations on one context. So the host runs each command on a source, `closeSource` included, under that source's lock in `OpenSources.Exclusive`, and callers may overlap them.
 - **Client id**: the host keeps a per-installation client id, which Harmony tells devices apart by, in its data directory: `--data-dir` names it, defaulting to a per-user folder.
 - **Port**: `--papi-port` names the network's port, defaulting to Platform.Bible's.
 - **Repository commands**: [RepositoryService.cs](c-sharp/InterlinearizerHost/Services/RepositoryService.cs) serves the C# `AnalysisRepository` as `interlinearizer.repository.<method>`, one command per method.
@@ -101,7 +101,8 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 - **Repository**: [AnalysisRepository.cs](c-sharp/InterlinearizerCrdt/AnalysisRepository.cs) is the C# slice of the TypeScript `AnalysisRepository` seam, serving one project of its database.
   - It applies a `ChangeSet` of whole-record puts and deletes as one commit. A put of a record not stored creates it in that project. Otherwise the caller's `PutMode` says whether to replace the record whole or patch only the fields that differ.
   - It answers the seam's lookups from the projected tables, filtered to its project.
-  - Harmony keeps every entity in one table. To avoid losing or moving a record, an apply refuses a change set that names one id under more than one record kind. It also refuses a put whose id is stored as another kind or in another project, or whose record names another project.
+  - Harmony keeps every entity in one table. To avoid losing or moving a record, an apply refuses a change set that names one id under more than one record kind. It also refuses a put whose id is stored as another kind or in another project, or whose record names another project. Harmony brings a deleted record back on a put under its id, so a put whose id was deleted as another kind or in another project is refused too.
+  - An apply also refuses a link that names an analysis stored in another project.
   - A delete of another project's record is skipped.
 - **Serialization**: every change type's JSON discriminator is pinned by [ChangeSerializationTests.cs](c-sharp/InterlinearizerCrdt.Tests/ChangeSerializationTests.cs). A commit written today must still deserialize later, so a renamed or removed change type needs a migration path, and a new change type is appended to the model versions.
 

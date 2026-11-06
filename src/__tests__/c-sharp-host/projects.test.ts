@@ -175,4 +175,24 @@ describe('the host over one source', () => {
     expect(listed.map((p) => p.name)).toStrictEqual(['A']);
     await expect(tokensHeld(repositoryFor(source, a), [tokenA])).resolves.toStrictEqual([tokenA]);
   });
+
+  it('runs overlapping commands on one source, across its projects and alongside a close', async () => {
+    const source = 'source-overlap';
+    const a = crypto.randomUUID();
+    const b = crypto.randomUUID();
+    await command('createProject', { sourceProjectId: source, projectId: a });
+    await command('createProject', { sourceProjectId: source, projectId: b });
+
+    const [tokenA1, tokenB1, , tokenA2, , tokenB2] = await Promise.all([
+      seedToken(repositoryFor(source, a)),
+      seedToken(repositoryFor(source, b)),
+      command('closeSource', { sourceProjectId: source }),
+      seedToken(repositoryFor(source, a)),
+      repositoryFor(source, b).findLinkedBooks(),
+      seedToken(repositoryFor(source, b)),
+    ]);
+
+    await expect(tokensHeld(repositoryFor(source, a), [tokenA1, tokenA2])).resolves.toHaveLength(2);
+    await expect(tokensHeld(repositoryFor(source, b), [tokenB1, tokenB2])).resolves.toHaveLength(2);
+  });
 });

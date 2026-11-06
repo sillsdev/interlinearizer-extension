@@ -55,7 +55,7 @@ public abstract class CrdtTestBase : IAsyncDisposable
         WriteNextChange(new CreateInterlinearProjectChange(projectId) { Name = "test project" });
 
     /// <summary>A repository over the same database serving <paramref name="projectId"/>.</summary>
-    protected AnalysisRepository RepositoryFor(Guid projectId) => new(DataModel, new ClientIdentity(ClientId), projectId);
+    protected AnalysisRepository RepositoryFor(Guid projectId) => new(DataModel, DbContext, new ClientIdentity(ClientId), projectId);
 
     /// <summary>The projects of the database.</summary>
     protected InterlinearProjects Projects => new(DataModel, DbContext, new ClientIdentity(ClientId));

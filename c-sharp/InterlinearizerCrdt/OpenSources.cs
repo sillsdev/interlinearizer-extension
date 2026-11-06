@@ -11,11 +11,40 @@ public record SourcesDirectory(string Path);
 /// <summary>
 /// The source projects the host has open, one DI scope each. A scope holds the Harmony services
 /// over the source's own database, which keeps every interlinear project made over it, and lives
-/// from <see cref="Open"/> to <see cref="Close"/>, rather than one scope per request.
+/// from <see cref="Open"/> to <see cref="Close"/>, rather than one scope per request. Work on a
+/// source must run through <see cref="Exclusive"/>, because the scope's EF context allows no
+/// overlapping operations.
 /// </summary>
 public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory directory) : IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, Lazy<Task<AsyncServiceScope>>> _scopes = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+
+    /// <summary>
+    /// Runs <paramref name="work"/> once no other work run through this on the same source is
+    /// running. Work on one source is not reentrant: it must not call this for that source.
+    /// </summary>
+    public async Task<T> Exclusive<T>(string sourceProjectId, Func<Task<T>> work)
+    {
+        var sourceLock = _locks.GetOrAdd(sourceProjectId, _ => new SemaphoreSlim(1, 1));
+        await sourceLock.WaitAsync();
+        try
+        {
+            return await work();
+        }
+        finally
+        {
+            sourceLock.Release();
+        }
+    }
+
+    /// <inheritdoc cref="Exclusive{T}"/>
+    public Task Exclusive(string sourceProjectId, Func<Task> work) =>
+        Exclusive(sourceProjectId, async () =>
+        {
+            await work();
+            return true;
+        });
 
     /// <summary>The file the database of <paramref name="sourceProjectId"/> is kept in, named after it.</summary>
     /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
@@ -73,6 +102,7 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
         if (await Projects(services).Get(id) is null) throw new ArgumentException($"Project {projectId} is not stored in source {sourceProjectId}", nameof(projectId));
         return new AnalysisRepository(
             services.GetRequiredService<DataModel>(),
+            services.GetRequiredService<InterlinearizerCrdtDbContext>(),
             services.GetRequiredService<ClientIdentity>(),
             id);
     }
@@ -92,7 +122,7 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var sourceProjectId in _scopes.Keys) await Close(sourceProjectId);
+        foreach (var sourceProjectId in _scopes.Keys) await Exclusive(sourceProjectId, () => Close(sourceProjectId));
     }
 
     private static InterlinearProjects Projects(IServiceProvider services) => new(

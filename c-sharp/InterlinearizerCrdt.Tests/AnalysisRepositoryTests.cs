@@ -566,6 +566,57 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyRefusesALinkNamingAnotherProjectsAnalysisApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var (other, _, _) = await OtherProject();
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => other.Apply(new ChangeSet
+        {
+            Intent = "borrow",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), TaAnd, "GEN 1:1:9", "beginning")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyRefusesAPutUnderAnIdDeletedAsAnotherKindApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "reuse as another kind",
+            PhraseAnalyses = RecordChanges<PhraseAnalysis>.Put(new PhraseAnalysis { Id = TaUnlinked, SurfaceText = "in the" }),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+        await Assert.That(await Repository.GetPhraseAnalyses([TaUnlinked])).IsEmpty();
+    }
+
+    [Test]
+    public async Task ApplyRefusesAPutUnderAnIdDeletedInAnotherProjectApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+        var (other, _, _) = await OtherProject();
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => other.Apply(new ChangeSet
+        {
+            Intent = "reuse in another project",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(TaUnlinked, "spare", "spare")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+        await Assert.That(await other.GetTokenAnalyses([TaUnlinked])).IsEmpty();
+    }
+
+    [Test]
     public async Task ApplyStampsCreatedRecordsWithTheProject()
     {
         await ApplyNext(FullAnalysis());

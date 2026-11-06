@@ -12,7 +12,7 @@ namespace Interlinearizer.Crdt;
 /// come back in no promised order, and a lookup by several keys returns each record once. Deleted
 /// records, and those of other projects, are not stored for the purposes of these calls.
 /// </summary>
-public class AnalysisRepository(DataModel dataModel, ClientIdentity client, Guid projectId)
+public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContext db, ClientIdentity client, Guid projectId)
 {
     /// <summary>The commit metadata key under which an apply records its change set's intent.</summary>
     public const string IntentMetadataKey = "intent";
@@ -27,9 +27,10 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client, Guid
     /// </summary>
     /// <exception cref="ArgumentException">
     /// If an id appears more than once in the changes, in one record kind or across kinds; if a
-    /// put's id is stored as a record of another kind or in another project; or if a put names a
-    /// project other than this one. Nothing is applied. Harmony keeps every entity in one table,
-    /// so two records cannot share an id across kinds or projects.
+    /// put's id is or was stored as a record of another kind or in another project; if a put names
+    /// a project other than this one; or if a link names an analysis stored in another project.
+    /// Nothing is applied. Harmony keeps every entity in one table, so two records cannot share an
+    /// id across kinds or projects, and a put under a deleted record's id brings that record back.
     /// </exception>
     public async Task Apply(ChangeSet changes, PutMode putMode = PutMode.Replace)
     {
@@ -71,6 +72,8 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client, Guid
         var putIds = kinds.SelectMany(k => k.PutIds).ToList();
         var storedKinds = new Dictionary<Guid, string>();
         foreach (var kind in kinds) await kind.LoadStored(this, putIds, storedKinds);
+        await AssertDeletedIdsReusable(kinds, putIds.Where(id => !storedKinds.ContainsKey(id)).ToList());
+        await AssertLinkedAnalysesInProject(kinds);
         var harmonyChanges = new List<IChange>();
         foreach (var kind in kinds) kind.AddChanges(harmonyChanges, putMode, projectId, storedKinds);
         if (harmonyChanges.Count == 0) return;
@@ -240,6 +243,52 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client, Guid
     private Task<List<T>> StoredInAnyProject<T>(IReadOnlyCollection<Guid> ids) where T : AnalysisRecord, IObjectBase =>
         dataModel.QueryLatest<T>(q => q.Where(e => ids.Contains(e.Id))).ToListAsync().AsTask();
 
+    /// <summary>
+    /// Refuses a put under the id of a deleted record of another kind or project, which Harmony
+    /// would bring back as the put's kind and project, history and all.
+    /// </summary>
+    private async Task AssertDeletedIdsReusable(IKindChanges[] kinds, List<Guid> unstoredPutIds)
+    {
+        if (unstoredPutIds.Count == 0) return;
+        var everStored = await db.Snapshots.Where(s => unstoredPutIds.Contains(s.EntityId)).Select(s => s.EntityId).Distinct().ToListAsync();
+        foreach (var id in everStored)
+        {
+            var deleted = (await dataModel.GetLatestSnapshotByObjectId(id)).Entity;
+            var kind = kinds.First(k => k.PutIds.Contains(id));
+            var deletedAs = kinds.FirstOrDefault(k => k.IsKindOf(deleted))?.Name ?? "interlinear project";
+            if (deletedAs != kind.Name) throw new ArgumentException($"The {kind.Name} {id} has been stored as a {deletedAs}", "changes");
+            if (deleted is AnalysisRecord record && record.ProjectId != projectId)
+            {
+                throw new ArgumentException($"The {kind.Name} {id} has been stored in project {record.ProjectId}", "changes");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Refuses a link naming another project's analysis, which this project's reads could not
+    /// resolve and whose deletion would delete the link.
+    /// </summary>
+    private async Task AssertLinkedAnalysesInProject(IKindChanges[] kinds)
+    {
+        var links = kinds.SelectMany(k => k.PutLinks).ToList();
+        if (links.Count == 0) return;
+        var analysisIds = links.Select(l => l.AnalysisId).Distinct().ToList();
+        var projects = new Dictionary<Guid, Guid>();
+        foreach (var analysis in (await StoredInAnyProject<TokenAnalysis>(analysisIds)).Cast<Analysis>()
+                     .Concat(await StoredInAnyProject<PhraseAnalysis>(analysisIds))
+                     .Concat(await StoredInAnyProject<SegmentAnalysis>(analysisIds)))
+        {
+            projects[analysis.Id] = analysis.ProjectId;
+        }
+        foreach (var link in links)
+        {
+            if (projects.TryGetValue(link.AnalysisId, out var analysisProject) && analysisProject != projectId)
+            {
+                throw new ArgumentException($"The link {link.Id} names analysis {link.AnalysisId}, stored in project {analysisProject}", "changes");
+            }
+        }
+    }
+
     private static void AssertIdsDistinct(IEnumerable<IKindChanges> kinds)
     {
         var seen = new Dictionary<Guid, string>();
@@ -267,6 +316,11 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client, Guid
         IEnumerable<Guid> Ids { get; }
 
         IEnumerable<Guid> PutIds { get; }
+
+        /// <summary>The puts of this kind that are links.</summary>
+        IEnumerable<AnalysisLink> PutLinks { get; }
+
+        bool IsKindOf(IObjectBase entity);
 
         /// <summary>
         /// Loads the records of this kind stored under any of <paramref name="allPutIds"/>, whichever
@@ -296,6 +350,10 @@ public class AnalysisRepository(DataModel dataModel, ClientIdentity client, Guid
         public IEnumerable<Guid> PutIds => changes?.Puts.Select(r => r.Id) ?? [];
 
         public IEnumerable<Guid> Ids => PutIds.Concat(changes?.Deletes ?? []);
+
+        public IEnumerable<AnalysisLink> PutLinks => changes?.Puts.OfType<AnalysisLink>() ?? [];
+
+        public bool IsKindOf(IObjectBase entity) => entity is T;
 
         public async Task LoadStored(AnalysisRepository repository, IReadOnlyCollection<Guid> allPutIds, Dictionary<Guid, string> storedKinds)
         {

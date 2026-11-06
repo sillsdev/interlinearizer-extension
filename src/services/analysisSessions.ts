@@ -302,10 +302,7 @@ type OpenSession = {
   replies: Map<string, Promise<EditReply | undefined>>;
   /** What each pass to a book's edited text changed, by book, until the edit is reported. */
   editPasses: Map<string, UnreportedPass[]>;
-  /**
-   * The books that {@link AnalysisSessions.reanchorOpenedBook} has re-anchored to or found no text
-   * for.
-   */
+  /** The books that the session has re-anchored to on their first open, or found no text for. */
   openedBooks: Set<string>;
   /** The start of the source's whole-text read, set from the session's first ask for it. */
   textRead?: Promise<void>;
@@ -699,10 +696,10 @@ export class AnalysisSessions {
   }
 
   /**
-   * Re-anchors the session's draft to the current text of `bookId`, as {@link reanchorBook} does,
-   * the first time the session opens the book. Commands sent later see the re-anchored draft. Does
-   * nothing when the session is not open or is read-only, or when the source has no text for the
-   * book.
+   * Re-anchors the session's draft to the current text of `bookId` the first time the session opens
+   * the book, in the session's turn and as no undo step. Commands sent later see the re-anchored
+   * draft. Does nothing when the session is not open or is read-only, or when the source has no
+   * text for the book.
    *
    * @throws Whatever reading the book or the draft, or applying the changes, throws; nothing is
    *   applied, and the next open of the book tries again.

@@ -31,7 +31,8 @@ export const CONCORDANCE_PANEL_STRING_KEYS = [
   '%interlinearizer_concordance_close%',
   '%interlinearizer_concordance_refresh%',
   '%interlinearizer_concordance_empty%',
-  '%interlinearizer_concordance_partial%',
+  '%interlinearizer_concordance_booksRead%',
+  '%interlinearizer_concordance_unreadBooks%',
   '%interlinearizer_concordance_occurrenceCountInBook%',
   ...SIDE_PANEL_TAB_STRING_KEYS,
   ...CONCORDANCE_ROW_STRING_KEYS,
@@ -208,14 +209,29 @@ export default function ConcordancePanel({
             </Button>
           </div>
         </div>
-        {text.isPartial && (
-          <p
-            className="tw:border-b tw:border-border tw:bg-accent/50 tw:px-3 tw:py-2 tw:text-xs"
-            data-testid="concordance-partial"
+        {text.status === 'ready' && (
+          <div
+            className={`tw:border-b tw:border-border tw:px-3 tw:py-2 tw:text-xs ${text.failedBookIds.length > 0 ? 'tw:bg-accent/50' : 'tw:text-muted-foreground'}`}
+            data-testid="concordance-read-summary"
             role="status"
           >
-            {localizedStrings['%interlinearizer_concordance_partial%']}
-          </p>
+            <p data-testid="concordance-books-read">
+              {formatReplacementString(
+                localizedStrings['%interlinearizer_concordance_booksRead%'],
+                {
+                  count: text.bookCount - text.failedBookIds.length,
+                },
+              )}
+            </p>
+            {text.failedBookIds.length > 0 && (
+              <p data-testid="concordance-unread-books">
+                {formatReplacementString(
+                  localizedStrings['%interlinearizer_concordance_unreadBooks%'],
+                  { books: text.failedBookIds.join(', ') },
+                )}
+              </p>
+            )}
+          </div>
         )}
         {body}
       </div>

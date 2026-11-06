@@ -15,6 +15,7 @@ import type { SourceText } from '../../hooks/useSourceTextReader';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { buildConcordanceEntries, indexBook, type ConcordanceEntry } from '../../utils/concordance';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
+import { makeSourceText } from './test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
 jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
@@ -61,18 +62,13 @@ const ENTRIES = buildConcordanceEntries(
 
 /** Builds the source text as the reading hook hands it over, ready by default. */
 function makeText(overrides: Partial<SourceText> = {}): SourceText {
-  return {
+  return makeSourceText({
     status: 'ready',
     booksRead: 2,
     bookCount: 2,
     readings: new Map(),
-    liveVersions: new Map(),
-    isPartial: false,
-    textForms: undefined,
-    refresh: () => {},
-    request: () => {},
     ...overrides,
-  };
+  });
 }
 
 /** Builds an approved link from `tokenRef` to the analysis. */
@@ -183,19 +179,36 @@ describe('ConcordancePanel', () => {
     );
   });
 
-  it('lists what was read beside a notice when a book failed to read', () => {
-    renderPanel({ text: makeText({ isPartial: true }) });
+  /** A reading of `bookCount` books where `failedBookIds` failed. */
+  function partialText(bookCount: number, failedBookIds: string[]): SourceText {
+    return makeText({ booksRead: bookCount, bookCount, failedBookIds });
+  }
 
-    expect(screen.getByTestId('concordance-partial')).toHaveTextContent(
-      '%interlinearizer_concordance_partial%',
-    );
-    expect(screen.getAllByTestId('concordance-row')).not.toHaveLength(0);
+  /** The panel's strings with templates for the reading summary. */
+  const SUMMARY_STRINGS = panelStrings({
+    '%interlinearizer_concordance_booksRead%': 'Read {count}',
+    '%interlinearizer_concordance_unreadBooks%': 'Unread: {books}',
   });
 
-  it('shows no partial-reading notice when every book was read', () => {
-    renderPanel();
+  it('says how many books were read once every book is read', () => {
+    renderPanel({ localizedStrings: SUMMARY_STRINGS });
 
-    expect(screen.queryByTestId('concordance-partial')).not.toBeInTheDocument();
+    expect(screen.getByTestId('concordance-books-read')).toHaveTextContent('Read 2');
+    expect(screen.queryByTestId('concordance-unread-books')).not.toBeInTheDocument();
+  });
+
+  it('shows no reading summary while the text is still being read', () => {
+    renderPanel({ text: makeText({ status: 'loading' }) });
+
+    expect(screen.queryByTestId('concordance-read-summary')).not.toBeInTheDocument();
+  });
+
+  it('names the books that failed to read beside what was read', () => {
+    renderPanel({ text: partialText(4, ['MRK', 'JHN']), localizedStrings: SUMMARY_STRINGS });
+
+    expect(screen.getByTestId('concordance-books-read')).toHaveTextContent('Read 2');
+    expect(screen.getByTestId('concordance-unread-books')).toHaveTextContent('Unread: MRK, JHN');
+    expect(screen.getAllByTestId('concordance-row')).not.toHaveLength(0);
   });
 
   it('lists every form of the text, most frequent first', () => {

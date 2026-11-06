@@ -28,7 +28,12 @@ import { emptyAnalysis } from '../../types/empty-factories';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
 import type { HeadingPlacement } from '../../utils/analysis-query';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';
-import { mockKeyAsValueLocalizedStrings, testSenseRef, withLexicon } from './test-helpers';
+import {
+  makeSourceText,
+  mockKeyAsValueLocalizedStrings,
+  testSenseRef,
+  withLexicon,
+} from './test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
 jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
@@ -103,22 +108,6 @@ function FocusPublishProbe({ tokenRef }: Readonly<{ tokenRef: string | undefined
   const { publishedFocus } = useInterlinearNav();
   useEffect(() => publishedFocus.publish(tokenRef), [publishedFocus, tokenRef]);
   return undefined;
-}
-
-/** Builds the source text as its hook hands it over, unread by default. */
-function makeText(overrides: Partial<SourceText> = {}): SourceText {
-  return {
-    status: 'idle',
-    booksRead: 0,
-    bookCount: 0,
-    readings: undefined,
-    liveVersions: new Map(),
-    isPartial: false,
-    textForms: undefined,
-    refresh: () => {},
-    request: () => {},
-    ...overrides,
-  };
 }
 
 /**
@@ -206,7 +195,7 @@ function PanelProviders({
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
         <FocusPublishProbe tokenRef={overrides.focusedTokenRef} />
-        <SourceTextContext.Provider value={overrides.text ?? makeText()}>
+        <SourceTextContext.Provider value={overrides.text ?? makeSourceText()}>
           {children}
         </SourceTextContext.Provider>
       </AnalysisStoreProvider>
@@ -2098,7 +2087,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('asks for the text to be read when filtering for them', async () => {
       const request = jest.fn();
-      renderPanel({ analysis: ONLY_STALE, text: makeText({ request }) });
+      renderPanel({ analysis: ONLY_STALE, text: makeSourceText({ request }) });
       await openFilters();
 
       await userEvent.click(
@@ -2277,7 +2266,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('asks for the text to be read when filtering for them', async () => {
       const request = jest.fn();
-      renderPanel({ analysis, text: makeText({ request }) });
+      renderPanel({ analysis, text: makeSourceText({ request }) });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
@@ -2288,7 +2277,7 @@ describe('AnalysisCatalogPanel', () => {
     it('asks for the text to be read when narrowed to them from outside', () => {
       const request = jest.fn();
       const ref = createRef<AnalysisCatalogPanelHandle>();
-      renderPanel({ ref, analysis, text: makeText({ request }) });
+      renderPanel({ ref, analysis, text: makeSourceText({ request }) });
 
       act(() => ref.current?.filterTo({ notInText: true }));
 
@@ -2296,7 +2285,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('keeps only the analyses whose form the text lacks once it is read', async () => {
-      const text = makeText({
+      const text = makeSourceText({
         status: 'ready',
         textForms: new Set([normalizeSurfaceForm('λόγος')]),
       });
@@ -2309,7 +2298,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('shows how far reading the text has got while filtering for them', async () => {
-      renderPanel({ analysis, text: makeText({ status: 'loading' }) });
+      renderPanel({ analysis, text: makeSourceText({ status: 'loading' }) });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
@@ -2319,7 +2308,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('says so when a book could not be read', async () => {
-      renderPanel({ analysis, text: makeText({ status: 'ready', isPartial: true }) });
+      renderPanel({ analysis, text: makeSourceText({ status: 'ready', failedBookIds: ['GEN'] }) });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
@@ -2331,7 +2320,10 @@ describe('AnalysisCatalogPanel', () => {
     it('marks an analysis whose form the text lacks once it is read', () => {
       renderPanel({
         analysis,
-        text: makeText({ status: 'ready', textForms: new Set([normalizeSurfaceForm('λόγος')]) }),
+        text: makeSourceText({
+          status: 'ready',
+          textForms: new Set([normalizeSurfaceForm('λόγος')]),
+        }),
       });
 
       expect(within(rowFor('gone')).getByTestId('catalog-row-not-in-text')).toBeInTheDocument();
@@ -2340,7 +2332,10 @@ describe('AnalysisCatalogPanel', () => {
     it('does not mark an analysis whose form the text holds', () => {
       renderPanel({
         analysis,
-        text: makeText({ status: 'ready', textForms: new Set([normalizeSurfaceForm('λόγος')]) }),
+        text: makeSourceText({
+          status: 'ready',
+          textForms: new Set([normalizeSurfaceForm('λόγος')]),
+        }),
       });
 
       expect(

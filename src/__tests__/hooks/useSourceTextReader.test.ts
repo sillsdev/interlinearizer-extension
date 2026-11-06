@@ -245,8 +245,29 @@ describe('useSourceTextReader', () => {
     const { result } = renderHook(() => useSourceTextReader(baseArgs));
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(result.current.isPartial).toBe(true);
+    expect(result.current.failedBookIds).toEqual(['GEN']);
     expect(result.current.textForms).toBeUndefined();
+  });
+
+  it('names the books that failed to read, in canonical order', async () => {
+    serveProject('111', async (id) => {
+      if (id !== 'EXO') throw new Error('unreadable');
+      return book(id, 'v1');
+    });
+
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.failedBookIds).toEqual(['GEN', 'LEV']);
+  });
+
+  it('names no failed book when every book reads', async () => {
+    serveProject('11', async (id) => book(id, 'v1'));
+
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.failedBookIds).toEqual([]);
   });
 
   it('drops a partial reading while the text is read again', async () => {
@@ -258,12 +279,12 @@ describe('useSourceTextReader', () => {
       return genesisReads === 1 ? Promise.reject(new Error('unreadable')) : secondGenesis.promise;
     });
     const { result, unmount } = renderHook(() => useSourceTextReader(baseArgs));
-    await waitFor(() => expect(result.current.isPartial).toBe(true));
+    await waitFor(() => expect(result.current.failedBookIds).toEqual(['GEN']));
 
     act(() => result.current.refresh());
 
     expect(result.current.status).toBe('loading');
-    expect(result.current.isPartial).toBe(false);
+    expect(result.current.failedBookIds).toEqual([]);
     // Abandons the re-read, so it cannot land after the test.
     unmount();
   });
@@ -277,13 +298,13 @@ describe('useSourceTextReader', () => {
       return book(id, 'v1');
     });
     const { result } = renderHook(() => useSourceTextReader(baseArgs));
-    await waitFor(() => expect(result.current.isPartial).toBe(true));
+    await waitFor(() => expect(result.current.failedBookIds).toEqual(['GEN']));
 
     act(() => result.current.refresh());
 
     await waitFor(() => expect(result.current.textForms).toBeDefined());
     expect(formsOf(result.current)).toEqual(['EXO@v1', 'GEN@v1']);
-    expect(result.current.isPartial).toBe(false);
+    expect(result.current.failedBookIds).toEqual([]);
   });
 
   it('reports an error when no book could be read', async () => {

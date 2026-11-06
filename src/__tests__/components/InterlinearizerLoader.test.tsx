@@ -29,10 +29,7 @@ import InterlinearizerLoader, {
 } from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useConcordanceEntries from '../../hooks/useConcordanceEntries';
-import useSourceTextReader, {
-  type SourceText,
-  type UseSourceTextReaderArgs,
-} from '../../hooks/useSourceTextReader';
+import useSourceTextReader, { type UseSourceTextReaderArgs } from '../../hooks/useSourceTextReader';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useSegmentPages, { type SegmentPages } from '../../hooks/useSegmentPages';
 import useLexiconRegistry from '../../hooks/useLexiconRegistry';
@@ -60,7 +57,7 @@ import {
   type ScrollGroupTuple,
   segmentPagesOf,
 } from '../test-helpers';
-import { mockKeyAsValueLocalizedStrings } from './test-helpers';
+import { makeSourceText, mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
 jest.mock('../../hooks/useConcordanceEntries');
@@ -601,22 +598,6 @@ function renderLoader(
     />,
   );
   return { ...result, updateWebViewDefinition };
-}
-
-/** Builds the source text as its hook hands it over, unread by default. */
-function makeSourceText(overrides: Partial<SourceText> = {}): SourceText {
-  return {
-    status: 'idle',
-    booksRead: 0,
-    bookCount: 0,
-    readings: undefined,
-    liveVersions: new Map(),
-    isPartial: false,
-    textForms: undefined,
-    refresh: jest.fn(),
-    request: jest.fn(),
-    ...overrides,
-  };
 }
 
 /** Has the source text report itself unread, as it is until something asks for it. */

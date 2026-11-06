@@ -1443,6 +1443,9 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  * submits it. Requires a fully-qualified reference (book, chapter, and verse — e.g. `"GEN 1:1"`);
  * partial references are ambiguous and are not auto-submitted by the control.
  *
+ * Resolves once the toolbar shows that reference. At the toolbar's narrowest width the label shows
+ * only the book, so there the check confirms the book alone.
+ *
  * Drives the TOP TOOLBAR's book-chapter control specifically. In Power mode — which
  * {@link E2E_SETTINGS_OVERRIDES} forces for every launch — it is not the only one on the page:
  * paranext-core also renders a PER-TAB `BookChapterControl` in each WebView's own tab toolbar, and
@@ -1472,10 +1475,11 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  *
  * @param page - The renderer page whose toolbar reference control is driven.
  * @param reference - Fully-qualified scripture reference to navigate to (e.g. `"GEN 1:1"`).
- * @throws If `reference` is not fully qualified, if the toolbar root that scopes the lookup never
- *   appears, if the control never becomes enabled within the wait (no navigation target resolved),
- *   if it is enabled but its popover does not open or close within the timeouts, or if the control
- *   never shows `reference` afterward.
+ * @throws If `reference` is not fully qualified.
+ * @throws If the toolbar root that scopes the lookup never appears.
+ * @throws If the control never becomes enabled within the wait (no navigation target resolved).
+ * @throws If the control is enabled but its popover does not open or close within the timeouts.
+ * @throws If the control never shows `reference` after it is submitted.
  */
 export async function navigateToScriptureRef(page: Page, reference: string): Promise<void> {
   const expectedLabel = scriptureRefTriggerPattern(reference);
@@ -1530,8 +1534,8 @@ export async function navigateToScriptureRef(page: Page, reference: string): Pro
   // The popover closes when the reference is accepted.
   await expect(input).not.toBeVisible({ timeout: 5_000 });
 
-  // A closed popover does not prove the scroll group moved, and a test that goes on to wait for
-  // verse text would otherwise fail much later on a vague missing-element timeout.
+  // A closed popover does not prove that the scroll group moved. Without this check, a failed
+  // navigation surfaces later as a vague missing-element timeout.
   await expect(
     trigger,
     `navigateToScriptureRef: the top toolbar never showed "${reference}" after it was submitted`,
@@ -1539,12 +1543,15 @@ export async function navigateToScriptureRef(page: Page, reference: string): Pro
 }
 
 /**
- * Matches the top toolbar trigger's label for `reference` at any of its widths. The trigger shows
- * the English book name when there is room and the book id when it shrinks, and drops the
- * chapter:verse entirely at its narrowest, so that part is optional.
+ * Builds a pattern that matches the top toolbar trigger's label for `reference` at every toolbar
+ * width.
+ *
+ * The label shows the English book name when the toolbar has room and the book id when the toolbar
+ * is tight. At the narrowest width the label omits the chapter and verse, so the pattern accepts
+ * the book alone.
  *
  * @param reference - Fully-qualified reference such as `"GEN 1:1"`.
- * @throws If `reference` is not of the form `BOOK chapter:verse`.
+ * @throws If `reference` is not fully qualified.
  */
 function scriptureRefTriggerPattern(reference: string): RegExp {
   const match = /^([1-4A-Z]{3}) (\d+):(\d+)$/.exec(reference.trim());

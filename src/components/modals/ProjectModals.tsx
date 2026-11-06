@@ -261,7 +261,6 @@ export default function ProjectModals({
       try {
         await newDraft({
           analysisLanguages: config.analysisLanguages,
-          suggestedName: config.name,
           ...(config.description !== undefined && { suggestedDescription: config.description }),
         });
       } catch (e) {

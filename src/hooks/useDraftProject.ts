@@ -107,8 +107,6 @@ export type OpenableProject = Pick<
 export type NewDraftConfig = {
   /** BCP 47 tags for the gloss / annotation languages the new draft should use. */
   analysisLanguages: string[];
-  /** Name typed in the New dialog. */
-  suggestedName?: string;
   /** Description typed in the New dialog, retained to prefill Save As; omitted when left blank. */
   suggestedDescription?: string;
 };
@@ -191,9 +189,9 @@ export type UseDraftProjectResult = {
   loadFromProject: (projectId: string) => Promise<void>;
   /**
    * Starts a fresh, empty draft for the current source — the "New" flow. Seeds the chosen analysis
-   * languages and retains the typed name/description as `suggestedName`/`suggestedDescription`. The
-   * new draft is clean (`dirty: false`), so the unsaved-changes indicator stays clear until the
-   * first edit. The caller is responsible for immediately persisting the project to the backend.
+   * languages and retains the typed description as `suggestedDescription`. The new draft is clean
+   * (`dirty: false`), so the unsaved-changes indicator stays clear until the first edit. The caller
+   * is responsible for immediately persisting the project to the backend.
    */
   newDraft: (config: NewDraftConfig) => void;
   /**
@@ -540,7 +538,6 @@ export default function useDraftProject(
           sourceProjectId,
           modelVersion: CURRENT_MODEL_VERSION,
           analysisLanguages: config.analysisLanguages,
-          ...(config.suggestedName !== undefined && { suggestedName: config.suggestedName }),
           ...(config.suggestedDescription !== undefined && {
             suggestedDescription: config.suggestedDescription,
           }),

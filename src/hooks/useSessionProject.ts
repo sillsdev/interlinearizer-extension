@@ -334,7 +334,6 @@ export default function useSessionProject(
     (config: NewDraftConfig) =>
       startOver({
         analysisLanguages: config.analysisLanguages,
-        ...(config.suggestedName !== undefined && { suggestedName: config.suggestedName }),
         ...(config.suggestedDescription !== undefined && {
           suggestedDescription: config.suggestedDescription,
         }),

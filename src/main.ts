@@ -1038,7 +1038,6 @@ async function startedDraft(sourceProjectId: string, from: DraftStart): Promise<
     draft = {
       ...started,
       analysisLanguages: from.analysisLanguages,
-      ...(from.suggestedName !== undefined && { suggestedName: from.suggestedName }),
       ...(from.suggestedDescription !== undefined && {
         suggestedDescription: from.suggestedDescription,
       }),
@@ -2893,7 +2892,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
                 },
                 from: {
                   description:
-                    'Either { interlinearProjectId } to copy a stored project (Open), or the New configuration { analysisLanguages, suggestedName?, suggestedDescription? }',
+                    'Either { interlinearProjectId } to copy a stored project (Open), or the New configuration { analysisLanguages, suggestedDescription? }',
                   type: 'object',
                 },
               },

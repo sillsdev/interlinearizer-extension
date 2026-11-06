@@ -188,7 +188,6 @@ describe('ConcordancePanel', () => {
   const SUMMARY_STRINGS = panelStrings({
     '%interlinearizer_concordance_booksRead%': 'Read {count}',
     '%interlinearizer_concordance_unreadBooks%': 'Unread: {books}',
-    '%interlinearizer_concordance_unreadBooksHeading%': 'Unread:',
   });
 
   it('says how many books were read once every book is read', () => {
@@ -209,27 +208,7 @@ describe('ConcordancePanel', () => {
 
     expect(screen.getByTestId('concordance-books-read')).toHaveTextContent('Read 2');
     expect(screen.getByTestId('concordance-unread-books')).toHaveTextContent('Unread: MRK, JHN');
-    expect(screen.queryByTestId('concordance-unread-books-line')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('concordance-row')).not.toHaveLength(0);
-  });
-
-  it('names as many as eight failed books on the heading line', () => {
-    const failed = ['GEN', 'EXO', 'LEV', 'NUM', 'DEU', 'JOS', 'JDG', 'RUT'];
-    renderPanel({ text: partialText(66, failed), localizedStrings: SUMMARY_STRINGS });
-
-    expect(screen.getByTestId('concordance-unread-books')).toHaveTextContent(
-      `Unread: ${failed.join(', ')}`,
-    );
-  });
-
-  it('lists more than eight failed books ten to a line below the heading', () => {
-    const failed = ['GEN', 'EXO', 'LEV', 'NUM', 'DEU', 'JOS', 'JDG', 'RUT', '1SA', '2SA', '1KI'];
-    renderPanel({ text: partialText(66, failed), localizedStrings: SUMMARY_STRINGS });
-
-    expect(screen.getByTestId('concordance-unread-books')).toHaveTextContent(/^Unread:$/);
-    expect(
-      screen.getAllByTestId('concordance-unread-books-line').map((line) => line.textContent),
-    ).toEqual(['GEN, EXO, LEV, NUM, DEU, JOS, JDG, RUT, 1SA, 2SA,', '1KI']);
   });
 
   it('lists every form of the text, most frequent first', () => {

@@ -33,26 +33,11 @@ export const CONCORDANCE_PANEL_STRING_KEYS = [
   '%interlinearizer_concordance_empty%',
   '%interlinearizer_concordance_booksRead%',
   '%interlinearizer_concordance_unreadBooks%',
-  '%interlinearizer_concordance_unreadBooksHeading%',
   '%interlinearizer_concordance_occurrenceCountInBook%',
   ...SIDE_PANEL_TAB_STRING_KEYS,
   ...CONCORDANCE_ROW_STRING_KEYS,
   ...TEXT_READING_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
-
-/** How many failed books may share a line with the heading that introduces them. */
-const UNREAD_BOOKS_INLINE_MAX = 8;
-
-/** How many failed books each line names once the books no longer fit beside the heading. */
-const UNREAD_BOOKS_PER_LINE = 10;
-
-/** Splits the failed books into listing lines; every line but the last ends in a comma. */
-function unreadBookLines(bookIds: readonly string[]): string[] {
-  const lines: string[] = [];
-  for (let start = 0; start < bookIds.length; start += UNREAD_BOOKS_PER_LINE)
-    lines.push(bookIds.slice(start, start + UNREAD_BOOKS_PER_LINE).join(', '));
-  return lines.map((line, i) => (i < lines.length - 1 ? `${line},` : line));
-}
 
 /** Props for {@link ConcordancePanel}. */
 type ConcordancePanelProps = Readonly<{
@@ -238,26 +223,13 @@ export default function ConcordancePanel({
                 },
               )}
             </p>
-            {text.failedBookIds.length > 0 &&
-              text.failedBookIds.length <= UNREAD_BOOKS_INLINE_MAX && (
-                <p data-testid="concordance-unread-books">
-                  {formatReplacementString(
-                    localizedStrings['%interlinearizer_concordance_unreadBooks%'],
-                    { books: text.failedBookIds.join(', ') },
-                  )}
-                </p>
-              )}
-            {text.failedBookIds.length > UNREAD_BOOKS_INLINE_MAX && (
-              <>
-                <p data-testid="concordance-unread-books">
-                  {localizedStrings['%interlinearizer_concordance_unreadBooksHeading%']}
-                </p>
-                {unreadBookLines(text.failedBookIds).map((line) => (
-                  <p key={line} data-testid="concordance-unread-books-line">
-                    {line}
-                  </p>
-                ))}
-              </>
+            {text.failedBookIds.length > 0 && (
+              <p data-testid="concordance-unread-books">
+                {formatReplacementString(
+                  localizedStrings['%interlinearizer_concordance_unreadBooks%'],
+                  { books: text.failedBookIds.join(', ') },
+                )}
+              </p>
             )}
           </div>
         )}

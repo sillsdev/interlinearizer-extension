@@ -449,7 +449,7 @@ describe('useSessionProject starting over', () => {
     await glossEarth(result, 'land');
 
     await act(async () => {
-      result.current.newDraft({ analysisLanguages: ['fr'], suggestedName: 'N' });
+      result.current.newDraft({ analysisLanguages: ['fr'], suggestedDescription: 'N' });
     });
 
     await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
@@ -491,12 +491,12 @@ describe('useSessionProject starting over', () => {
     const { result } = await renderLoaded();
 
     await act(async () =>
-      result.current.newDraft({ analysisLanguages: ['fr'], suggestedName: 'N' }),
+      result.current.newDraft({ analysisLanguages: ['fr'], suggestedDescription: 'N' }),
     );
 
     expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.startDraftOver', {
       sourceProjectId: 'src',
-      from: { analysisLanguages: ['fr'], suggestedName: 'N' },
+      from: { analysisLanguages: ['fr'], suggestedDescription: 'N' },
     });
   });
 

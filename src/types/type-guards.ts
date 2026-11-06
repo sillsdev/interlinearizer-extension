@@ -332,7 +332,6 @@ export function isDraftProject(value: unknown): value is DraftProject {
     'modelVersion' in value &&
     typeof value.modelVersion === 'number' &&
     (!('targetProjectId' in value) || typeof value.targetProjectId === 'string') &&
-    (!('suggestedName' in value) || typeof value.suggestedName === 'string') &&
     (!('suggestedDescription' in value) || typeof value.suggestedDescription === 'string') &&
     (!('segmentation' in value) || isSegmentationDelta(value.segmentation)) &&
     'analysis' in value &&

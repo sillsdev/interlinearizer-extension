@@ -110,7 +110,7 @@ describe('reanchorStoredBook', () => {
   it("moves the draft's splits in the book, keeping its record", async () => {
     const before = verseBook('GEN 1:1', 'alpha beta');
     const { repository, stored } = await storedDraft({
-      suggestedName: 'Named',
+      suggestedDescription: 'Named',
       segmentation: {
         removedVerseStarts: [],
         addedStarts: [{ tokenRef: tokenRefOf(before, 'beta'), surfaceText: 'beta' }],
@@ -124,7 +124,7 @@ describe('reanchorStoredBook', () => {
     expect(draft.segmentation?.addedStarts).toEqual([
       { tokenRef: tokenRefOf(edited, 'beta'), surfaceText: 'beta' },
     ]);
-    expect(draft.suggestedName).toBe('Named');
+    expect(draft.suggestedDescription).toBe('Named');
   });
 
   it('stales the links into a book the text lacks', async () => {

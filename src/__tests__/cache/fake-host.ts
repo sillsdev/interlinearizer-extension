@@ -66,7 +66,6 @@ function startedDraft(sourceProjectId: string, from: unknown): DraftProject {
   return {
     ...started,
     analysisLanguages: analysisLanguages.map(String),
-    ...('suggestedName' in from && { suggestedName: String(from.suggestedName) }),
     ...('suggestedDescription' in from && {
       suggestedDescription: String(from.suggestedDescription),
     }),

@@ -2483,7 +2483,7 @@ describe('main', () => {
 
       await handler({
         sourceProjectId: 'src-project',
-        from: { analysisLanguages: ['fr'], suggestedName: 'N', suggestedDescription: 'D' },
+        from: { analysisLanguages: ['fr'], suggestedDescription: 'D' },
       });
 
       expect(mockStartDraftOver).toHaveBeenCalledWith(expect.anything(), 'src-project', {
@@ -2491,7 +2491,6 @@ describe('main', () => {
         modelVersion: CURRENT_MODEL_VERSION,
         dirty: false,
         analysisLanguages: ['fr'],
-        suggestedName: 'N',
         suggestedDescription: 'D',
         analysis: emptyAnalysis(),
       });

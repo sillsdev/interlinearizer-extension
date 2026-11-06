@@ -1835,7 +1835,9 @@ describe('AnalysisSessions', () => {
 
       it('tries again on the next open after a failed pass', async () => {
         const { host, sessions, sessionId, storage } = await sessionGlossingBeta();
-        host.getOpenVerseBook.mockRejectedValueOnce(new Error('unreadable')).mockResolvedValue(AFTER);
+        host.getOpenVerseBook
+          .mockRejectedValueOnce(new Error('unreadable'))
+          .mockResolvedValue(AFTER);
 
         await expect(sessions.reanchorOpenedBook(sessionId, 'GEN')).rejects.toThrow('unreadable');
         await sessions.reanchorOpenedBook(sessionId, 'GEN');

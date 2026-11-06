@@ -13,6 +13,7 @@ import type {
   ChangeSet,
   ScopeRecord,
 } from '../../types/analysis-repository';
+import { LinkedAnalysisDeleteError } from '../../types/linked-analysis-delete-error';
 import { bookOfRef } from '../../utils/analysis-book';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
 import { jsonCopy } from '../../utils/json-copy';
@@ -210,6 +211,29 @@ export class ChangeBuffer {
   /** Stages `scope` to be stored whole as the scope's record. */
   putScope(scope: ScopeRecord): void {
     this.stagedScope = jsonCopy(scope);
+  }
+
+  /**
+   * Refuses the staged changes if any analysis they remove is still named by a link they keep.
+   *
+   * @throws {LinkedAnalysisDeleteError} If a kept link names a removed analysis.
+   */
+  async assertNoLinksToRemoved(): Promise<void> {
+    const removed = [
+      ...this.staged.tokenAnalyses.deletes.keys(),
+      ...this.staged.phraseAnalyses.deletes.keys(),
+      ...this.staged.segmentAnalyses.deletes.keys(),
+    ];
+    if (removed.length === 0) return;
+    const links = await this.findLinksToAnalyses(removed);
+    const named = new Set(
+      [
+        ...links.tokenAnalysisLinks,
+        ...links.phraseAnalysisLinks,
+        ...links.segmentAnalysisLinks,
+      ].map(({ analysisId }) => analysisId),
+    );
+    if (named.size > 0) throw new LinkedAnalysisDeleteError([...named].sort());
   }
 
   /**

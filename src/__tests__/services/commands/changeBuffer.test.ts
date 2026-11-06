@@ -2,6 +2,7 @@
 
 import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
+import { LinkedAnalysisDeleteError } from '../../../types/linked-analysis-delete-error';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
 import {
@@ -266,5 +267,56 @@ describe('ChangeBuffer', () => {
     buffer.create('tokenAnalysisLinks', link('tl-2', 'ta-1', 'GEN 1:1:3'));
 
     expect(ids(buffer.touched('tokenAnalysisLinks'))).toStrictEqual(['tl-1', 'tl-2']);
+  });
+
+  describe('assertNoLinksToRemoved', () => {
+    it('refuses removing an analysis that a kept link names, naming the analysis', async () => {
+      const buffer = await bufferOver({
+        tokenAnalyses: [payload('ta-1')],
+        tokenAnalysisLinks: [link('tl-1', 'ta-1', 'GEN 1:1:0')],
+      });
+
+      buffer.delete('tokenAnalyses', payload('ta-1'));
+
+      await expect(buffer.assertNoLinksToRemoved()).rejects.toThrow(
+        new LinkedAnalysisDeleteError(['ta-1']),
+      );
+    });
+
+    it('refuses removing an analysis that a staged link names', async () => {
+      const buffer = await bufferOver({
+        phraseAnalyses: [{ id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'a b' }],
+      });
+
+      buffer.delete('phraseAnalyses', { id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'a b' });
+      buffer.create('phraseAnalysisLinks', makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:3']));
+
+      await expect(buffer.assertNoLinksToRemoved()).rejects.toThrow(LinkedAnalysisDeleteError);
+    });
+
+    it('allows removing an analysis whose links the changes also remove', async () => {
+      const stored = link('tl-1', 'ta-1', 'GEN 1:1:0');
+      const buffer = await bufferOver({
+        tokenAnalyses: [payload('ta-1')],
+        tokenAnalysisLinks: [stored],
+      });
+
+      buffer.delete('tokenAnalysisLinks', stored);
+      buffer.delete('tokenAnalyses', payload('ta-1'));
+
+      await expect(buffer.assertNoLinksToRemoved()).resolves.toBeUndefined();
+    });
+
+    it('allows removing an analysis whose links the changes point elsewhere', async () => {
+      const buffer = await bufferOver({
+        tokenAnalyses: [payload('ta-1'), payload('ta-2')],
+        tokenAnalysisLinks: [link('tl-1', 'ta-1', 'GEN 1:1:0')],
+      });
+
+      buffer.put('tokenAnalysisLinks', link('tl-1', 'ta-2', 'GEN 1:1:0'));
+      buffer.delete('tokenAnalyses', payload('ta-1'));
+
+      await expect(buffer.assertNoLinksToRemoved()).resolves.toBeUndefined();
+    });
   });
 });

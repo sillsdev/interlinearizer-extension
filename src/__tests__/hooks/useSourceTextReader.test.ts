@@ -249,6 +249,27 @@ describe('useSourceTextReader', () => {
     expect(result.current.textForms).toBeUndefined();
   });
 
+  it('names the books that failed to read, in canonical order', async () => {
+    serveProject('111', async (id) => {
+      if (id !== 'EXO') throw new Error('unreadable');
+      return book(id, 'v1');
+    });
+
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.failedBookIds).toEqual(['GEN', 'LEV']);
+  });
+
+  it('names no failed book when every book reads', async () => {
+    serveProject('11', async (id) => book(id, 'v1'));
+
+    const { result } = renderHook(() => useSourceTextReader(baseArgs));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.failedBookIds).toEqual([]);
+  });
+
   it('drops a partial reading while the text is read again', async () => {
     const secondGenesis = deferred<Book>();
     let genesisReads = 0;
@@ -264,6 +285,7 @@ describe('useSourceTextReader', () => {
 
     expect(result.current.status).toBe('loading');
     expect(result.current.isPartial).toBe(false);
+    expect(result.current.failedBookIds).toEqual([]);
     // Abandons the re-read, so it cannot land after the test.
     unmount();
   });

@@ -612,6 +612,7 @@ function makeSourceText(overrides: Partial<SourceText> = {}): SourceText {
     readings: undefined,
     liveVersions: new Map(),
     isPartial: false,
+    failedBookIds: [],
     textForms: undefined,
     refresh: jest.fn(),
     request: jest.fn(),

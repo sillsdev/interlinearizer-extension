@@ -49,6 +49,8 @@ export interface SourceText {
   liveVersions: ReadonlyMap<string, BookConcordance>;
   /** Whether a book failed to read, leaving the readings short of the whole text. */
   isPartial: boolean;
+  /** The books that failed to read, in canonical order; `[]` unless the reading is partial. */
+  failedBookIds: readonly string[];
   /**
    * Every form the text holds, the live book's as it now reads; `undefined` until every book has
    * been read, and for a partial reading.
@@ -65,6 +67,8 @@ export interface SourceText {
  * indexed, few enough that the whole canon's USJ is never in memory at the same time.
  */
 const READ_CONCURRENCY = 4;
+
+const NO_BOOK_IDS: readonly string[] = [];
 
 /** Reads a tokenized book, `undefined` when the project serves no text for it. */
 async function readBook(projectId: string, bookId: string): Promise<Book | undefined> {
@@ -96,7 +100,8 @@ export default function useSourceTextReader({
   const [status, setStatus] = useState<SourceTextStatus>('idle');
   const [progress, setProgress] = useState({ booksRead: 0, bookCount: 0 });
   const [readings, setReadings] = useState<ReadonlyMap<string, BookConcordance>>();
-  const [isPartial, setIsPartial] = useState(false);
+  const [failedBookIds, setFailedBookIds] = useState(NO_BOOK_IDS);
+  const isPartial = failedBookIds.length > 0;
 
   const [liveVersions, setLiveVersions] = useState<ReadonlyMap<string, BookConcordance>>(
     () => new Map(),
@@ -126,7 +131,7 @@ export default function useSourceTextReader({
     // `readKeyRef` updates during render, before this cleanup runs, so check the key too.
     const isCurrent = () => !isAbandoned && readKeyRef.current === key;
     setStatus('loading');
-    setIsPartial(false);
+    setFailedBookIds(NO_BOOK_IDS);
     setProgress({ booksRead: 0, bookCount: 0 });
     perfMark('concordance-start');
     (async () => {
@@ -139,7 +144,7 @@ export default function useSourceTextReader({
         const read = new Map<string, BookConcordance>();
         const unread = [...bookIds];
         let booksRead = 0;
-        let booksFailed = 0;
+        const failed = new Set<string>();
         const readNext = async (): Promise<void> => {
           const bookId = unread.shift();
           if (bookId === undefined) return;
@@ -149,7 +154,7 @@ export default function useSourceTextReader({
             if (book) read.set(bookId, indexBook(book));
             else logger.warn(`Source text: project ${projectId} has no text for ${bookId}`);
           } catch (e) {
-            booksFailed += 1;
+            failed.add(bookId);
             logger.warn(`Source text: skipping ${bookId} in project ${projectId}`, e);
           }
           if (!isCurrent()) return;
@@ -161,16 +166,16 @@ export default function useSourceTextReader({
         await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
         if (!isCurrent()) return;
         // With nothing read, a failure could be hiding text, so an empty reading would misreport it.
-        if (read.size === 0 && booksFailed > 0) {
+        if (read.size === 0 && failed.size > 0) {
           logger.error(`Source text: no book of project ${projectId} could be read`);
           setStatus('error');
           return;
         }
         perfMeasure('concordance-read', 'concordance-start');
         setReadings(read);
-        setIsPartial(booksFailed > 0);
+        if (failed.size > 0) setFailedBookIds(bookIds.filter((id) => failed.has(id)));
         setStatus('ready');
-        if (booksFailed === 0) onTextReadRef.current?.(bookIds.filter((id) => read.has(id)));
+        if (failed.size === 0) onTextReadRef.current?.(bookIds.filter((id) => read.has(id)));
       } catch (e) {
         if (!isCurrent()) return;
         logger.error(`Source text: could not list the books of project ${projectId}`, e);
@@ -232,10 +237,21 @@ export default function useSourceTextReader({
       readings,
       liveVersions,
       isPartial,
+      failedBookIds,
       textForms,
       refresh,
       request,
     }),
-    [status, progress, readings, liveVersions, isPartial, textForms, refresh, request],
+    [
+      status,
+      progress,
+      readings,
+      liveVersions,
+      isPartial,
+      failedBookIds,
+      textForms,
+      refresh,
+      request,
+    ],
   );
 }

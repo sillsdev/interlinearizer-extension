@@ -156,6 +156,7 @@ function mockLoaderHooks(): void {
     readings: undefined,
     liveVersions: new Map(),
     isPartial: false,
+    failedBookIds: [],
     textForms: undefined,
     refresh: jest.fn(),
     request: jest.fn(),

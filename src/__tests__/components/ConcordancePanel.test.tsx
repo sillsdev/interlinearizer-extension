@@ -68,6 +68,7 @@ function makeText(overrides: Partial<SourceText> = {}): SourceText {
     readings: new Map(),
     liveVersions: new Map(),
     isPartial: false,
+    failedBookIds: [],
     textForms: undefined,
     refresh: () => {},
     request: () => {},
@@ -183,19 +184,57 @@ describe('ConcordancePanel', () => {
     );
   });
 
-  it('lists what was read beside a notice when a book failed to read', () => {
-    renderPanel({ text: makeText({ isPartial: true }) });
+  /** A reading of `bookCount` books where `failedBookIds` failed. */
+  function partialText(bookCount: number, failedBookIds: string[]): SourceText {
+    return makeText({ booksRead: bookCount, bookCount, isPartial: true, failedBookIds });
+  }
 
-    expect(screen.getByTestId('concordance-partial')).toHaveTextContent(
-      '%interlinearizer_concordance_partial%',
-    );
+  /** The panel's strings with templates for the reading summary. */
+  const SUMMARY_STRINGS = panelStrings({
+    '%interlinearizer_concordance_booksRead%': 'Read {count}',
+    '%interlinearizer_concordance_unreadBooks%': 'Unread: {books}',
+    '%interlinearizer_concordance_unreadBooksHeading%': 'Unread:',
+  });
+
+  it('says how many books were read once every book is read', () => {
+    renderPanel({ localizedStrings: SUMMARY_STRINGS });
+
+    expect(screen.getByTestId('concordance-books-read')).toHaveTextContent('Read 2');
+    expect(screen.queryByTestId('concordance-unread-books')).not.toBeInTheDocument();
+  });
+
+  it('shows no reading summary while the text is still being read', () => {
+    renderPanel({ text: makeText({ status: 'loading' }) });
+
+    expect(screen.queryByTestId('concordance-read-summary')).not.toBeInTheDocument();
+  });
+
+  it('names the books that failed to read beside what was read', () => {
+    renderPanel({ text: partialText(4, ['MRK', 'JHN']), localizedStrings: SUMMARY_STRINGS });
+
+    expect(screen.getByTestId('concordance-books-read')).toHaveTextContent('Read 2');
+    expect(screen.getByTestId('concordance-unread-books')).toHaveTextContent('Unread: MRK, JHN');
+    expect(screen.queryByTestId('concordance-unread-books-line')).not.toBeInTheDocument();
     expect(screen.getAllByTestId('concordance-row')).not.toHaveLength(0);
   });
 
-  it('shows no partial-reading notice when every book was read', () => {
-    renderPanel();
+  it('names as many as eight failed books on the heading line', () => {
+    const failed = ['GEN', 'EXO', 'LEV', 'NUM', 'DEU', 'JOS', 'JDG', 'RUT'];
+    renderPanel({ text: partialText(66, failed), localizedStrings: SUMMARY_STRINGS });
 
-    expect(screen.queryByTestId('concordance-partial')).not.toBeInTheDocument();
+    expect(screen.getByTestId('concordance-unread-books')).toHaveTextContent(
+      `Unread: ${failed.join(', ')}`,
+    );
+  });
+
+  it('lists more than eight failed books ten to a line below the heading', () => {
+    const failed = ['GEN', 'EXO', 'LEV', 'NUM', 'DEU', 'JOS', 'JDG', 'RUT', '1SA', '2SA', '1KI'];
+    renderPanel({ text: partialText(66, failed), localizedStrings: SUMMARY_STRINGS });
+
+    expect(screen.getByTestId('concordance-unread-books')).toHaveTextContent(/^Unread:$/);
+    expect(
+      screen.getAllByTestId('concordance-unread-books-line').map((line) => line.textContent),
+    ).toEqual(['GEN, EXO, LEV, NUM, DEU, JOS, JDG, RUT, 1SA, 2SA,', '1KI']);
   });
 
   it('lists every form of the text, most frequent first', () => {

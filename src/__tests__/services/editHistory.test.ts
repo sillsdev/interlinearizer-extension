@@ -471,7 +471,7 @@ describe('EditHistory re-anchoring', () => {
     return { history, repository, reanchorBooks, pass, storedLink };
   }
 
-  it('applies a pass as no undo step, returning what restores what it replaced', async () => {
+  it('applies a pass as no undo step, returning its inverse', async () => {
     const { history, pass, storedLink } = makeReanchoringHistory();
     const before = genesis('alpha beta');
     const after = genesis('new alpha beta');

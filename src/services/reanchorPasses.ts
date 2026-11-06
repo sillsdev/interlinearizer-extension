@@ -48,8 +48,8 @@ function reanchorInTurn(draft: DraftProject, books: readonly Book[]): ChangeSet 
  * goes unrecorded. An undo or redo then re-anchors only the other books. A book the text lacks is
  * passed as a book with no segments.
  *
- * @returns The changes applied, with what restores what they replaced; `undefined` when the draft
- *   already read as re-anchored.
+ * @returns The changes applied, with their inverse: the changes that undo them. `undefined` when
+ *   the draft already read as re-anchored.
  * @throws Whatever reading the draft or applying the changes throws; nothing is applied or
  *   recorded.
  */

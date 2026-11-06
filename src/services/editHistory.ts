@@ -199,8 +199,8 @@ export class EditHistory {
    * The pass is no undo step and leaves the draft as saved or unsaved as it was. A missing book is
    * passed as a book with no segments.
    *
-   * @returns The changes applied, with what restores what they replaced; `undefined` when `changes`
-   *   is.
+   * @returns The changes applied, with their inverse: the changes that undo them. `undefined` when
+   *   there are no changes to apply.
    * @throws Whatever applying the changes throws; nothing is applied or recorded.
    */
   async applyPass(book: Book, changes: ChangeSet | undefined): Promise<AppliedChange | undefined> {

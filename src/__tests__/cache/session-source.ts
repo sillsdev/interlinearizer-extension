@@ -69,6 +69,7 @@ export async function sessionOver(
     startTextRead: async () => {},
     stopTextRead: async () => {},
     heldBook: () => BOOK,
+    getOpenVerseBook: async () => BOOK,
     reportChange: (change) => listeners.forEach((listener) => listener(change)),
   });
   const { sessionId } = await sessions.open('src');

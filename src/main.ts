@@ -238,6 +238,7 @@ function createSessions(
     stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
     heldBook: (sourceProjectId, bookId, segmentation) =>
       bookService.heldBook(sourceProjectId, bookId, segmentation && JSON.stringify(segmentation)),
+    getOpenVerseBook: bookService.getOpenVerseBook,
     reportChange: (change) => emitter.emit(change),
   });
 }
@@ -832,7 +833,9 @@ async function sessionBoundaries(session: Session, bookId: string): Promise<stri
 /**
  * Outlines a book of a source project, or of a session's source. A project's book is segmented by
  * the boundaries that `segmentationJson` names. A session's book is segmented by its draft's
- * boundaries, and its outline also counts each segment's orphaned free-translation cards.
+ * boundaries, and its outline also counts each segment's orphaned free-translation cards. Before a
+ * session's first outline of a book, its draft is re-anchored to the book's text; a failed
+ * re-anchor is logged.
  *
  * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
@@ -849,6 +852,14 @@ async function getBookOutline(
       if (typeof address === 'string')
         return bookService.getBookOutline(address, bookId, segmentationJson);
       refuseBoundaries(segmentationJson);
+      sessions
+        .reanchorOpenedBook(address.sessionId, bookId)
+        .catch((e) =>
+          logger.warn(
+            `Interlinearizer: could not re-anchor ${bookId} of session ${address.sessionId}`,
+            e,
+          ),
+        );
       return sessions.run(address.sessionId, async (session) => {
         const book = await bookService.getOpenBook(
           session.scope.sourceProjectId,

@@ -535,6 +535,22 @@ export async function getVerseBook(
 }
 
 /**
+ * Reads a book of the source project, tokenized one segment per verse. The book becomes the
+ * project's open book, whose edits {@link onBookTextChanged} reports. The book is shared, so the
+ * caller must not change it.
+ *
+ * @returns `undefined` when the project has no text for the book.
+ * @throws If the book's text or the project's language tag cannot be read, or the text cannot be
+ *   tokenized.
+ */
+export async function getOpenVerseBook(
+  sourceProjectId: string,
+  bookId: string,
+): Promise<Book | undefined> {
+  return (await keepBook(sourceProjectId, bookId, true)).book;
+}
+
+/**
  * Reads a book of the source project, segmented by the boundaries `segmentationJson` names, as
  * {@link getSegments} pages it. The book's segments are shared, so the caller must not change them.
  *

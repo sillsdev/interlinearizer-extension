@@ -128,6 +128,13 @@ export interface SessionHost {
     bookId: string,
     segmentation: SegmentationDelta | undefined,
   ): Book | undefined;
+  /**
+   * Reads the source project's book, tokenized one segment per verse, and makes it the book whose
+   * edits are reported. The book is shared, so the caller must not change it.
+   *
+   * @returns `undefined` when the project has no text for the book.
+   */
+  getOpenVerseBook(sourceProjectId: string, bookId: string): Promise<Book | undefined>;
   /** Tells listeners what a change to a session's analysis touched. */
   reportChange(change: SessionAnalysisChange): void;
 }
@@ -295,6 +302,8 @@ type OpenSession = {
   replies: Map<string, Promise<EditReply | undefined>>;
   /** What each pass to a book's edited text changed, by book, until the edit is reported. */
   editPasses: Map<string, UnreportedPass[]>;
+  /** The books that the session has re-anchored to on their first open, or found no text for. */
+  openedBooks: Set<string>;
   /** The start of the source's whole-text read, set from the session's first ask for it. */
   textRead?: Promise<void>;
 };
@@ -361,6 +370,7 @@ export class AnalysisSessions {
         queue: Promise.resolve(),
         replies: new Map(),
         editPasses: new Map(),
+        openedBooks: new Set(),
       };
       if (isEmptyDraft(opened)) session.history.noteEmpty();
       this.sessions.set(session.id, entry);
@@ -682,6 +692,29 @@ export class AnalysisSessions {
       const unreported = editPasses.get(book.bookRef) ?? [];
       editPasses.set(book.bookRef, unreported);
       return reanchorNow(this.host, session, book, unreported);
+    });
+  }
+
+  /**
+   * Re-anchors the session's draft to the current text of `bookId` the first time the session opens
+   * the book, in the session's turn and as no undo step. Commands sent later see the re-anchored
+   * draft. Does nothing when the session is not open or is read-only, or when the source has no
+   * text for the book.
+   *
+   * @throws Whatever reading the book or the draft, or applying the changes, throws; nothing is
+   *   applied, and the next open of the book tries again.
+   * @throws Whatever describing the applied changes throws; the changes stay applied.
+   */
+  reanchorOpenedBook(sessionId: string, bookId: string): Promise<void> {
+    const entry = this.sessions.get(sessionId);
+    if (entry?.state !== 'open' || entry.session.repository.capabilities.readOnly) {
+      return Promise.resolve();
+    }
+    return this.run(sessionId, async (session) => {
+      if (entry.openedBooks.has(bookId)) return;
+      const book = await this.host.getOpenVerseBook(session.scope.sourceProjectId, bookId);
+      if (book) await reanchorNow(this.host, session, book);
+      entry.openedBooks.add(bookId);
     });
   }
 

@@ -129,12 +129,12 @@ export interface SessionHost {
     segmentation: SegmentationDelta | undefined,
   ): Book | undefined;
   /**
-   * Reads the source project's book, tokenized one segment per verse. The book is shared, so the
-   * caller must not change it.
+   * Reads the source project's book, tokenized one segment per verse, and makes it the book whose
+   * edits are reported. The book is shared, so the caller must not change it.
    *
    * @returns `undefined` when the project has no text for the book.
    */
-  getVerseBook(sourceProjectId: string, bookId: string): Promise<Book | undefined>;
+  getOpenVerseBook(sourceProjectId: string, bookId: string): Promise<Book | undefined>;
   /** Tells listeners what a change to a session's analysis touched. */
   reportChange(change: SessionAnalysisChange): void;
 }
@@ -712,7 +712,7 @@ export class AnalysisSessions {
     }
     return this.run(sessionId, async (session) => {
       if (entry.openedBooks.has(bookId)) return;
-      const book = await this.host.getVerseBook(session.scope.sourceProjectId, bookId);
+      const book = await this.host.getOpenVerseBook(session.scope.sourceProjectId, bookId);
       if (book) await reanchorNow(this.host, session, book);
       entry.openedBooks.add(bookId);
     });

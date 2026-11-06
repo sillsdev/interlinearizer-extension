@@ -92,7 +92,7 @@ function makeSessions(projects: InterlinearProject[] = []) {
     heldBook: jest.fn<Book | undefined, [string, string, SegmentationDelta | undefined]>(
       () => undefined,
     ),
-    getVerseBook: jest.fn<Promise<Book | undefined>, [string, string]>(async () => undefined),
+    getOpenVerseBook: jest.fn<Promise<Book | undefined>, [string, string]>(async () => undefined),
     reportChange: jest.fn<void, [SessionAnalysisChange]>(),
   } satisfies SessionHost;
   const seedDraft = (draft: DraftProject) =>
@@ -1815,27 +1815,27 @@ describe('AnalysisSessions', () => {
     describe('when the session opens a book', () => {
       it("re-anchors the draft to the book's current text", async () => {
         const { host, sessions, sessionId, storage } = await sessionGlossingBeta();
-        host.getVerseBook.mockResolvedValue(AFTER);
+        host.getOpenVerseBook.mockResolvedValue(AFTER);
 
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
 
-        expect(host.getVerseBook).toHaveBeenCalledWith(SOURCE, 'GEN');
+        expect(host.getOpenVerseBook).toHaveBeenCalledWith(SOURCE, 'GEN');
         expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
       });
 
       it('reads the book only on its first open', async () => {
         const { host, sessions, sessionId } = await sessionGlossingBeta();
-        host.getVerseBook.mockResolvedValue(AFTER);
+        host.getOpenVerseBook.mockResolvedValue(AFTER);
 
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
 
-        expect(host.getVerseBook).toHaveBeenCalledTimes(1);
+        expect(host.getOpenVerseBook).toHaveBeenCalledTimes(1);
       });
 
       it('tries again on the next open after a failed pass', async () => {
         const { host, sessions, sessionId, storage } = await sessionGlossingBeta();
-        host.getVerseBook.mockRejectedValueOnce(new Error('unreadable')).mockResolvedValue(AFTER);
+        host.getOpenVerseBook.mockRejectedValueOnce(new Error('unreadable')).mockResolvedValue(AFTER);
 
         await expect(sessions.reanchorOpenedBook(sessionId, 'GEN')).rejects.toThrow('unreadable');
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
@@ -1853,7 +1853,7 @@ describe('AnalysisSessions', () => {
 
       it('runs before a command sent after it', async () => {
         const { host, sessions, sessionId } = await sessionGlossingBeta();
-        host.getVerseBook.mockResolvedValue(AFTER);
+        host.getOpenVerseBook.mockResolvedValue(AFTER);
 
         const reanchoring = sessions.reanchorOpenedBook(sessionId, 'GEN');
         const tokenRef = await sessions.run(sessionId, async (session) => {
@@ -1870,7 +1870,7 @@ describe('AnalysisSessions', () => {
 
         await sessions.reanchorOpenedBook('no-such-session', 'GEN');
 
-        expect(host.getVerseBook).not.toHaveBeenCalled();
+        expect(host.getOpenVerseBook).not.toHaveBeenCalled();
       });
 
       it("does nothing for a Paratext 9 import's session", async () => {
@@ -1879,7 +1879,7 @@ describe('AnalysisSessions', () => {
 
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
 
-        expect(host.getVerseBook).not.toHaveBeenCalled();
+        expect(host.getOpenVerseBook).not.toHaveBeenCalled();
       });
     });
   });

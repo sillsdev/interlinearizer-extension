@@ -238,7 +238,7 @@ function createSessions(
     stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
     heldBook: (sourceProjectId, bookId, segmentation) =>
       bookService.heldBook(sourceProjectId, bookId, segmentation && JSON.stringify(segmentation)),
-    getVerseBook: bookService.getVerseBook,
+    getOpenVerseBook: bookService.getOpenVerseBook,
     reportChange: (change) => emitter.emit(change),
   });
 }

@@ -2829,6 +2829,7 @@ describe('main', () => {
       await seedDraft({});
       __mockSettingsGet.mockResolvedValue(['en']);
       jest.mocked(bookService.getVerseBook).mockResolvedValue(VERSE_BOOK);
+      jest.mocked(bookService.getOpenVerseBook).mockResolvedValue(VERSE_BOOK);
       jest.mocked(bookService.getSegmentedBook).mockResolvedValue(VERSE_BOOK);
     });
 
@@ -3262,13 +3263,13 @@ describe('main', () => {
 
         await getBookOutline({ sessionId }, 'GEN');
 
-        expect(bookService.getVerseBook).toHaveBeenCalledWith('src-project', 'GEN');
+        expect(bookService.getOpenVerseBook).toHaveBeenCalledWith('src-project', 'GEN');
         const { draft } = await repository.exportAll();
         expect(draft.analysis.tokenAnalysisLinks[0].status).toBe('stale');
       });
 
       it('logs a failed re-anchor and still outlines the book', async () => {
-        jest.mocked(bookService.getVerseBook).mockRejectedValue(new Error('unreadable'));
+        jest.mocked(bookService.getOpenVerseBook).mockRejectedValue(new Error('unreadable'));
         jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
         const { openSession, getBookOutline } = await activateSessionCommands();
         const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));

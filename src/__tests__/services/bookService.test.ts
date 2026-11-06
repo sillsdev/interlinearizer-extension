@@ -14,6 +14,7 @@ import {
   getSegments,
   getTextReadStatus,
   getTokenizedBook,
+  getOpenVerseBook,
   getVerseBook,
   getWritingSystem,
   heldBook,
@@ -579,6 +580,32 @@ describe('getVerseBook', () => {
     serveProject(() => undefined);
 
     await expect(getVerseBook('src', 'GEN')).resolves.toBeUndefined();
+  });
+});
+
+describe('getOpenVerseBook', () => {
+  beforeEach(() => {
+    tokenizeToVerseBook();
+    segmentStandIns();
+  });
+
+  it('serves the book its pages are segmented from', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    await expect(getOpenVerseBook('src', 'GEN')).resolves.toBe(VERSE_BOOK);
+  });
+
+  it('makes the book the open one, whose edits are reported', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    const listener = jest.fn();
+    const unsubscribe = onBookTextChanged(listener);
+    await getOpenVerseBook('src', 'GEN');
+
+    subscriptionsTo(project, 'GEN')[0].deliver(usj('GEN', 'v2'));
+    await settle();
+    unsubscribe();
+
+    expect(listener).toHaveBeenCalledWith('src', 'GEN');
   });
 });
 

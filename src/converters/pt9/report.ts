@@ -3,9 +3,10 @@
  *
  * - `verseNotFound`: the cluster's verse key matches neither a verse's segment, a heading filed under
  *   that verse, nor the book's front matter (or its book is missing from the project text).
- * - `formMismatch`: no token (or token run, for phrases) folds to the cluster's expected surface.
- *   Subsumes word-division disagreements and text PT9 analyzed that the text layer leaves out, such
- *   as footnotes, which are indistinguishable from plain mismatches without PT9's own text.
+ * - `formMismatch`: no token (or token run, for phrases) folds to the cluster's expected surface, or
+ *   a parse's forms do not spell out the token that its word cluster anchored to. Subsumes
+ *   word-division disagreements and text PT9 analyzed that the text layer leaves out, such as
+ *   footnotes, which are indistinguishable from plain mismatches without PT9's own text.
  * - `frontMatter`: the cluster analyzes text ahead of the book's first chapter — its identification
  *   line, titles, or introduction — which the text layer leaves out.
  * - `lemmaOrOther`: the cluster is a Lemma or Other-type cluster, inert legacy data in modern PT9.

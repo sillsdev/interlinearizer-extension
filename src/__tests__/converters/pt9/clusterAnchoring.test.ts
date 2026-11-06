@@ -94,17 +94,105 @@ describe('anchorVerseClusters', () => {
       const segment = segmentOf('hello world');
       const result = anchorVerseClusters(
         [segment],
+        [mkCluster(0, 5, [['Word:hello', 'S1']]), mkCluster(0, 5, [['Stem:hel'], ['Suffix:lo']])],
+      );
+
+      expect(result.groups).toHaveLength(1);
+      expect(result.groups[0].word).toBeDefined();
+      expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual(['hel', 'lo']);
+    });
+
+    it('drops a parse that does not spell out the token its word cluster anchored', () => {
+      const segment = segmentOf('hello world');
+      const result = anchorVerseClusters(
+        [segment],
         [
           mkCluster(0, 5, [['Word:hello', 'S1']]),
           mkCluster(0, 5, [['Stem:hello'], ['Suffix:ing']]),
         ],
       );
 
+      expect(result.dropCounts.formMismatch).toBe(1);
       expect(result.groups).toHaveLength(1);
-      expect(result.groups[0].word).toBeDefined();
+      expect(result.groups[0].word?.lexeme.senseId).toBe('S1');
+      expect(result.groups[0].parse).toBeUndefined();
+    });
+
+    it('matches a parse whose forms carry typed morph-type indicators', () => {
+      const segment = segmentOf('from here');
+      const result = anchorVerseClusters([segment], [mkCluster(0, 4, [['Stem:fr'], ['Stem:-om']])]);
+
+      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('from');
+      expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual(['fr', '-om']);
+    });
+
+    it('matches a parse against a word whose own surface carries an indicator character', () => {
+      const segment = segmentOf('twenty-one days');
+      const result = anchorVerseClusters(
+        [segment],
+        [
+          mkCluster(0, 10, [['Word:twenty-one']]),
+          mkCluster(0, 10, [['Stem:twenty'], ['Stem:one']]),
+        ],
+      );
+
+      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(result.groups[0].parse).toBeDefined();
+    });
+
+    it('drops a parse whose form spells a hyphen its word lacks', () => {
+      const segment = segmentOf('recover now');
+      const result = anchorVerseClusters([segment], [mkCluster(0, 7, [['Stem:re-cover']])]);
+
+      expect(result.dropCounts.formMismatch).toBe(1);
+      expect(result.groups).toHaveLength(0);
+    });
+
+    it('matches a parse whose form spells a hyphen its word carries', () => {
+      const segment = segmentOf('re-cover now');
+      const result = anchorVerseClusters([segment], [mkCluster(0, 8, [['Stem:re-cover']])]);
+
+      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('re-cover');
+    });
+
+    it('anchors a parse-only cluster whose suffix starts with a combining mark', () => {
+      const segment = segmentOf('cafe\u0301 noir'.normalize('NFC'));
+      const result = anchorVerseClusters(
+        [segment],
+        [mkCluster(0, 4, [['Stem:cafe'], ['Suffix:\u0301']])],
+      );
+
+      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('caf\u00e9');
+    });
+
+    it('anchors a parse whose combining-mark suffix sorts before the mark its stem ends with', () => {
+      const segment = segmentOf('a\u0301\u0327 noir'.normalize('NFC'));
+      const result = anchorVerseClusters(
+        [segment],
+        [mkCluster(0, 2, [['Stem:\u00e1'], ['Suffix:\u0327']])],
+      );
+
+      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('a\u0301\u0327'.normalize('NFC'));
+    });
+
+    it('keeps a paired parse whose suffix starts with a combining mark', () => {
+      const segment = segmentOf('cafe\u0301 noir'.normalize('NFC'));
+      const result = anchorVerseClusters(
+        [segment],
+        [
+          mkCluster(0, 4, [['Word:caf\u00e9']]),
+          mkCluster(0, 4, [['Stem:cafe'], ['Suffix:\u0301']]),
+        ],
+      );
+
+      expect(result.dropCounts.formMismatch).toBe(0);
       expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual([
-        'hello',
-        'ing',
+        'cafe',
+        '\u0301',
       ]);
     });
 

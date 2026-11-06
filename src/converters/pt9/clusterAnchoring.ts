@@ -254,6 +254,9 @@ function alignInOrder(
  * unknown, so each of the candidate `verseExtents` is tried and the closest fit counts. The layout
  * only approximates PT9's marker-bearing USFM, so only the proportion is meaningful, never the
  * absolute values themselves.
+ *
+ * When a verse is edited after PT9 analyzed it, PT9's offsets point at drifted text. The prior can
+ * then favor the wrong one of several equal-folding words.
  */
 function priorDistance(
   layout: VerseLayout,
@@ -265,12 +268,36 @@ function priorDistance(
   return Math.min(...verseExtents.map((extent) => Math.abs(at - clusterIndex / extent)));
 }
 
-/** The folded surface a range group's word facet names, or else its parse's forms joined. */
-function expectedForm({ word, parse }: RangeGroup): string {
-  if (word !== undefined) return normalizeSurfaceForm(word.classified.lexeme.key.Form);
-  /* v8 ignore next -- a range group is only ever created with at least one facet */
-  if (parse === undefined) return '';
-  return normalizeSurfaceForm(parse.classified.lexemes.map((l) => l.key.Form).join(''));
+/**
+ * Morph-type indicators that PT9 users type at the edges of parse forms, such as the `-` of `fr` +
+ * `-om`. PT9 stores them as part of the form, so a parse matches its word only once they are folded
+ * out. Within a form they are spelling, as in `re-cover`, and must match the word.
+ */
+const EDGE_INDICATORS = /^[-=~]+|[-=~]+$/g;
+
+/**
+ * A test of whether a folded surface is what a parse's forms spell out together. It ignores each
+ * form's edge indicators.
+ *
+ * The surface may carry indicator characters where two forms meet, as `twenty-one` does between
+ * `twenty` and `one`.
+ */
+function parseMatcher(lexemes: readonly ClassifiedLexeme[]): (surface: string) => boolean {
+  // Decomposed, because a form starting with a combining mark composes with the form before it in
+  // the surface, but not when each form is folded alone.
+  const cores = lexemes.map((l) =>
+    normalizeSurfaceForm(l.key.Form.replace(EDGE_INDICATORS, '')).normalize('NFD'),
+  );
+  // NFD reorders combining marks across a join only when it decomposes the forms together. An
+  // indicator at a join blocks that reordering, because it is a starter character.
+  const joined = cores.join('').normalize('NFD');
+  const pattern = new RegExp(
+    `^${cores.map((core) => core.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('[-=~]*')}$`,
+  );
+  return (surface) => {
+    const decomposed = surface.normalize('NFD');
+    return decomposed === joined || pattern.test(decomposed);
+  };
 }
 
 function countFrom(candidates: ReadonlySet<number>, cursor: number): number {
@@ -290,13 +317,18 @@ interface RangeGroup {
  * cluster landing on the book's front matter, which the text layer leaves out, is counted as a
  * front-matter drop rather than converted.
  *
- * Lexeme forms are the ground truth: they are matched case- and normalization-folded, in order,
- * because PT9's stored offsets index a different string than the segments' baseline text and cannot
- * be applied to it. The range index therefore serves only as ordering and, among equal-folding
+ * Lexeme forms are the ground truth: they are matched case- and normalization-folded, in order.
+ * PT9's stored offsets index a different string than the segments' baseline text. They also go
+ * stale when the text is edited, because PT9 matches analyses to words by form and leaves the
+ * offsets unrewritten. The range index therefore serves only as ordering and, among equal-folding
  * candidates, as a position prior. As many clusters anchor as that order allows, so a cluster over
  * text the layer leaves out, such as a footnote, cannot take a later token at the cost of the
  * clusters before that token. Word and parse clusters covering the identical range anchor together
  * onto one token, while phrases anchor to consecutive runs of word tokens within one segment.
+ *
+ * A parse's forms must spell out its token even when a word cluster at the same range chose the
+ * token. Indicators typed at a form's edges are ignored, as are indicator characters where the
+ * token joins two forms. A parse that fails is dropped as a mismatch, and its word converts alone.
  * Clusters that match nothing are counted by reason rather than silently lost.
  *
  * @param segments - The verse's own text, when it has any, and the headings within it, in document
@@ -357,9 +389,17 @@ export function anchorVerseClusters(
   const sortedGroups = [...rangeGroups.values()].sort(
     (a, b) => a.index - b.index || a.length - b.length,
   );
-  const groupCandidates = sortedGroups.map((group) => {
-    const expected = expectedForm(group);
-    return new Set(foldedWords.flatMap((form, j) => (form === expected ? [j] : [])));
+  const parseMatchers = sortedGroups.map(
+    ({ parse }) => parse && parseMatcher(parse.classified.lexemes),
+  );
+  const groupCandidates = sortedGroups.map(({ word }, item) => {
+    const wordForm = word && normalizeSurfaceForm(word.classified.lexeme.key.Form);
+    const matches = (form: string) =>
+      wordForm !== undefined
+        ? form === wordForm
+        : /* v8 ignore next -- a range group is only ever created with at least one facet */
+          (parseMatchers[item]?.(form) ?? false);
+    return new Set(foldedWords.flatMap((form, j) => (matches(form) ? [j] : [])));
   });
   const groupPlacements = alignInOrder(groupCandidates, wordTokens.length, (item, position) =>
     priorDistance(layout, position, sortedGroups[item].index, verseExtents),
@@ -383,14 +423,18 @@ export function anchorVerseClusters(
       return;
     }
     if (ambiguous) ambiguousCount += 1;
+    // A word cluster may have chosen the token by its own form, so the parse is checked against it.
+    const parseFits = parseMatchers[item]?.(foldedWords[chosen]) ?? true;
+    if (!parseFits) dropCounts.formMismatch += 1;
     groups.push({
       token: wordTokens[chosen],
       ...(word !== undefined && {
         word: { lexeme: word.classified.lexeme, excluded: word.classified.cluster.excluded },
       }),
-      ...(parse !== undefined && {
-        parse: { lexemes: parse.classified.lexemes, excluded: parse.classified.cluster.excluded },
-      }),
+      ...(parse !== undefined &&
+        parseFits && {
+          parse: { lexemes: parse.classified.lexemes, excluded: parse.classified.cluster.excluded },
+        }),
       ambiguous,
     });
   });

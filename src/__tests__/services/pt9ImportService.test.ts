@@ -219,7 +219,7 @@ describe('importPt9Project', () => {
       bookId: 'MAT',
       bookFound: true,
       versesTotal: 36,
-      clustersConverted: 24,
+      clustersConverted: 20,
     });
 
     const project = writtenProject();

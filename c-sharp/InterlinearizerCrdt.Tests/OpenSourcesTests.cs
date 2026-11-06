@@ -158,12 +158,17 @@ public class OpenSourcesTests : IAsyncDisposable
     {
         var release = new TaskCompletionSource();
         var blocked = _sources.Exclusive(S1, () => release.Task);
+        try
+        {
+            await _sources.Exclusive(S2, () => _sources.Open(S2)).WaitAsync(TimeSpan.FromSeconds(10));
 
-        await _sources.Exclusive(S2, () => _sources.Open(S2));
-
-        await Assert.That(blocked.IsCompleted).IsFalse();
-        release.SetResult();
-        await blocked;
+            await Assert.That(blocked.IsCompleted).IsFalse();
+        }
+        finally
+        {
+            release.SetResult();
+            await blocked;
+        }
     }
 
     [Test]

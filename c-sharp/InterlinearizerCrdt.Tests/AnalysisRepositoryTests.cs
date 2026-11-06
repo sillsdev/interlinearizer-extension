@@ -769,14 +769,17 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
-    public async Task PassesOverAnApprovedLinkNamingNoStoredPayloadWhenPickingATie()
+    public async Task PassesOverAnApprovedLinkNamingNoStoredTokenPayloadWhenPickingATie()
     {
         await ApplyNext(FullAnalysis());
+        var phraseNamed = Guid.NewGuid();
+        // A link naming no stored record at all lands deleted, so this one names a phrase payload.
         await ApplyNext(new ChangeSet
         {
-            Intent = "approveMissing",
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), Guid.NewGuid(), "GEN 1:1:0", "and")),
+            Intent = "approvePhrasePayload",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(phraseNamed, PaInThe, "GEN 1:1:0", "and")),
         });
+        await Assert.That(IdsOf((await Repository.FindLinksByToken(["GEN 1:1:0"])).TokenAnalysisLinks)).Contains(phraseNamed);
 
         var counts = await Repository.CountApprovals([TaAnd]);
 

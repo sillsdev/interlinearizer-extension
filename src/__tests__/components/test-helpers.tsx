@@ -5,8 +5,25 @@ import type { ResolvedSense } from 'interlinearizer/lexicon';
 import type { ReactElement, ReactNode } from 'react';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { LexiconSensesProvider } from '../../components/LexiconSenses';
+import type { SourceText } from '../../hooks/useSourceTextReader';
 import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
 import { ViewOptions } from '../../types/view-options';
+
+/** Builds the source text as its reading hook hands it over, unread by default. */
+export function makeSourceText(overrides: Partial<SourceText> = {}): SourceText {
+  return {
+    status: 'idle',
+    booksRead: 0,
+    bookCount: 0,
+    readings: undefined,
+    liveVersions: new Map(),
+    failedBookIds: [],
+    textForms: undefined,
+    refresh: jest.fn(),
+    request: jest.fn(),
+    ...overrides,
+  };
+}
 
 /**
  * Stubs {@link useLocalizedStrings} to echo each requested key back as its own value, so components

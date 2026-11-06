@@ -15,6 +15,7 @@ import type { SourceText } from '../../hooks/useSourceTextReader';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { buildConcordanceEntries, indexBook, type ConcordanceEntry } from '../../utils/concordance';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
+import { makeSourceText } from './test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
 jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
@@ -61,19 +62,13 @@ const ENTRIES = buildConcordanceEntries(
 
 /** Builds the source text as the reading hook hands it over, ready by default. */
 function makeText(overrides: Partial<SourceText> = {}): SourceText {
-  return {
+  return makeSourceText({
     status: 'ready',
     booksRead: 2,
     bookCount: 2,
     readings: new Map(),
-    liveVersions: new Map(),
-    isPartial: false,
-    failedBookIds: [],
-    textForms: undefined,
-    refresh: () => {},
-    request: () => {},
     ...overrides,
-  };
+  });
 }
 
 /** Builds an approved link from `tokenRef` to the analysis. */
@@ -186,7 +181,7 @@ describe('ConcordancePanel', () => {
 
   /** A reading of `bookCount` books where `failedBookIds` failed. */
   function partialText(bookCount: number, failedBookIds: string[]): SourceText {
-    return makeText({ booksRead: bookCount, bookCount, isPartial: true, failedBookIds });
+    return makeText({ booksRead: bookCount, bookCount, failedBookIds });
   }
 
   /** The panel's strings with templates for the reading summary. */

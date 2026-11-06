@@ -226,7 +226,7 @@ export default function ConcordancePanel({
         </div>
         {text.status === 'ready' && (
           <div
-            className={`tw:border-b tw:border-border tw:px-3 tw:py-2 tw:text-xs ${text.isPartial ? 'tw:bg-accent/50' : 'tw:text-muted-foreground'}`}
+            className={`tw:border-b tw:border-border tw:px-3 tw:py-2 tw:text-xs ${text.failedBookIds.length > 0 ? 'tw:bg-accent/50' : 'tw:text-muted-foreground'}`}
             data-testid="concordance-read-summary"
             role="status"
           >

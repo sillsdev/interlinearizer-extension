@@ -5,10 +5,10 @@ export const { TEXT_READING_STRING_KEYS } = jest.requireActual('../TextReadingSt
 /** Stands in for the reading status, exposing the reading state it was handed. */
 export default function TextReadingStatus({
   text,
-}: Readonly<{ text: Pick<SourceText, 'status' | 'isPartial'> }>) {
+}: Readonly<{ text: Pick<SourceText, 'status' | 'failedBookIds'> }>) {
   return (
     <p
-      data-partial={text.isPartial}
+      data-partial={text.failedBookIds.length > 0}
       data-status={text.status}
       data-testid="text-reading-status"
     />

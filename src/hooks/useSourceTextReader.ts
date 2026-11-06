@@ -1,6 +1,7 @@
 import papi, { logger } from '@papi/frontend';
 import type { Book } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { TextReadStatus } from '../types/text-read-status';
 import { presentBookIds } from '../utils/books-present';
 import { indexBook, type BookConcordance } from '../utils/concordance';
 import { perfMark, perfMeasure } from '../utils/perf-marks';
@@ -37,20 +38,12 @@ export interface UseSourceTextReaderArgs {
 }
 
 /** What {@link useSourceTextReader} hands back. */
-export interface SourceText {
+export interface SourceText extends TextReadStatus {
   status: SourceTextStatus;
-  /** How many of the project's books have been read so far. */
-  booksRead: number;
-  /** How many books the project has; `0` until the list of them has been read. */
-  bookCount: number;
   /** Each book's index as last read, by book code; `undefined` until a reading completes. */
   readings: ReadonlyMap<string, BookConcordance> | undefined;
   /** Live versions of books the editor has had loaded, each newer than the book's reading. */
   liveVersions: ReadonlyMap<string, BookConcordance>;
-  /** Whether a book failed to read, leaving the readings short of the whole text. */
-  isPartial: boolean;
-  /** The books that failed to read, in canonical order; `[]` unless the reading is partial. */
-  failedBookIds: readonly string[];
   /**
    * Every form the text holds, the live book's as it now reads; `undefined` until every book has
    * been read, and for a partial reading.
@@ -236,22 +229,11 @@ export default function useSourceTextReader({
       ...progress,
       readings,
       liveVersions,
-      isPartial,
       failedBookIds,
       textForms,
       refresh,
       request,
     }),
-    [
-      status,
-      progress,
-      readings,
-      liveVersions,
-      isPartial,
-      failedBookIds,
-      textForms,
-      refresh,
-      request,
-    ],
+    [status, progress, readings, liveVersions, failedBookIds, textForms, refresh, request],
   );
 }

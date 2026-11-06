@@ -14,7 +14,7 @@ describe('TextReadingStatus', () => {
     render(
       <TextReadingStatus
         idPrefix="panel"
-        text={{ status: 'loading', isPartial: false, booksRead: 12, bookCount: 66 }}
+        text={{ status: 'loading', failedBookIds: [], booksRead: 12, bookCount: 66 }}
         localizedStrings={localizedStrings}
       />,
     );
@@ -27,7 +27,7 @@ describe('TextReadingStatus', () => {
     render(
       <TextReadingStatus
         idPrefix="panel"
-        text={{ status: 'error', isPartial: false, booksRead: 0, bookCount: 66 }}
+        text={{ status: 'error', failedBookIds: [], booksRead: 0, bookCount: 66 }}
         localizedStrings={localizedStrings}
       />,
     );
@@ -40,7 +40,7 @@ describe('TextReadingStatus', () => {
     render(
       <TextReadingStatus
         idPrefix="panel"
-        text={{ status: 'ready', isPartial: true, booksRead: 66, bookCount: 66 }}
+        text={{ status: 'ready', failedBookIds: ['MRK'], booksRead: 66, bookCount: 66 }}
         localizedStrings={localizedStrings}
       />,
     );

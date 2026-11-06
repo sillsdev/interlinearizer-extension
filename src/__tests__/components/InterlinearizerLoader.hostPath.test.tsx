@@ -19,7 +19,7 @@ import useStaleAnalysisDismissal from '../../hooks/useStaleAnalysisDismissal';
 import { fakeHost, STORED_PROJECT } from '../cache/fake-host';
 import { BOOK, ref } from '../cache/session-source';
 import { makeScrollGroupHook, makeWebViewState } from '../test-helpers';
-import { mockKeyAsValueLocalizedStrings } from './test-helpers';
+import { makeSourceText, mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => true }));
 jest.mock('../../hooks/useConcordanceEntries');
@@ -149,18 +149,7 @@ function mockLoaderHooks(): void {
     resolveSense: async () => undefined,
     openChooser: undefined,
   });
-  jest.mocked(useSourceTextReader).mockReturnValue({
-    status: 'idle',
-    booksRead: 0,
-    bookCount: 0,
-    readings: undefined,
-    liveVersions: new Map(),
-    isPartial: false,
-    failedBookIds: [],
-    textForms: undefined,
-    refresh: jest.fn(),
-    request: jest.fn(),
-  });
+  jest.mocked(useSourceTextReader).mockReturnValue(makeSourceText());
   jest.mocked(useConcordanceEntries).mockReturnValue([]);
   jest
     .mocked(useData)

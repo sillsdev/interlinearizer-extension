@@ -49,7 +49,6 @@ const MOCK_DRAFT: DraftProject = {
   analysisLanguages: ['en'],
   analysis: emptyAnalysis(),
   dirty: true,
-  suggestedName: 'Suggested Name',
   suggestedDescription: 'Suggested Desc',
 };
 
@@ -553,7 +552,6 @@ describe('ProjectModals', () => {
       expect(setActiveProject.mock.calls[0][0]).not.toHaveProperty('analysis');
       expect(newDraft).toHaveBeenCalledWith({
         analysisLanguages: ['en'],
-        suggestedName: 'New',
         suggestedDescription: 'Desc',
       });
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
@@ -589,7 +587,6 @@ describe('ProjectModals', () => {
       await waitFor(() => expect(resetActiveProject).toHaveBeenCalledTimes(1));
       expect(newDraft).toHaveBeenCalledWith({
         analysisLanguages: ['en'],
-        suggestedName: 'New',
         suggestedDescription: 'Desc',
       });
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
@@ -721,7 +718,6 @@ describe('ProjectModals', () => {
       await waitFor(() =>
         expect(newDraft).toHaveBeenCalledWith({
           analysisLanguages: ['en'],
-          suggestedName: 'New',
           suggestedDescription: 'Desc',
         }),
       );

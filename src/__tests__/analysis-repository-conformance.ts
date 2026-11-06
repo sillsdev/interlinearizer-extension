@@ -259,7 +259,6 @@ function fullDraft(): DraftProject {
     modelVersion: CURRENT_MODEL_VERSION,
     analysisLanguages: ['fr', 'en'],
     targetProjectId: 'target-project',
-    suggestedName: 'Genesis draft',
     suggestedDescription: 'A draft of Genesis and Exodus.',
     analysis: fullAnalysis(),
     dirty: true,

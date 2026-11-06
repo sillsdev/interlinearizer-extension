@@ -2380,8 +2380,6 @@ declare module 'interlinearizer' {
     | {
         /** BCP 47 tags of the languages that the draft is analyzed in. */
         analysisLanguages: string[];
-        /** Name typed in New. */
-        suggestedName?: string;
         /** Retained to prefill Save As; omitted when left blank. */
         suggestedDescription?: string;
       };
@@ -2491,9 +2489,6 @@ declare module 'interlinearizer' {
      * bilateral alignment project. Carried so Save As can recreate the bilateral binding.
      */
     targetProjectId?: string;
-
-    /** Name typed in the "New" dialog. */
-    suggestedName?: string;
 
     /** Description typed in the "New" dialog, retained only to prefill the Save As dialog. */
     suggestedDescription?: string;

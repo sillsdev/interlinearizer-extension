@@ -248,7 +248,7 @@ describe('reanchorChangesForBook', () => {
     const draft = {
       ...draftOf(emptyAnalysis(), splitBeforeBeta()),
       analysisLanguages: ['fr'],
-      suggestedName: 'Named',
+      suggestedDescription: 'Named',
       dirty: true,
     };
 
@@ -257,7 +257,7 @@ describe('reanchorChangesForBook', () => {
     expect(scope).toEqual(
       expect.objectContaining({
         analysisLanguages: ['fr'],
-        suggestedName: 'Named',
+        suggestedDescription: 'Named',
         segmentation: {
           removedVerseStarts: [],
           addedStarts: [{ tokenRef: 'GEN 1:1:10', surfaceText: 'beta' }],

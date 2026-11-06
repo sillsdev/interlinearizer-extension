@@ -317,7 +317,8 @@ declare module 'papi-shared-types' {
      * Outlines a book of the source project, segmented by the boundaries `segmentationJson` names
      * (a JSON `SegmentationDelta`), or one segment per verse when it is omitted. Addressed by
      * session, it outlines the session's source as the session's draft segments it, taking no
-     * `segmentationJson`, and counts each segment's orphaned free-translation cards.
+     * `segmentationJson`, and counts each segment's orphaned free-translation cards. Before a
+     * session's first outline of a book, the session re-anchors its draft to the book's text.
      *
      * @returns The `BookOutline` as a JSON string, or `undefined` when the project has no text for
      *   the book.

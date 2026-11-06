@@ -193,8 +193,11 @@ export class EditHistory {
   /**
    * Applies `changes`, a pass that re-anchors the stored draft to `book`'s current text. Records
    * the pass, so that what an undo or redo restores is re-anchored to that text too. A pass that
-   * changes nothing is still recorded, because an undo or redo may restore records anchored to
+   * changes nothing is still recorded, because an undo or redo may restore analysis anchored to
    * older text.
+   *
+   * The pass goes unrecorded when the history holds no steps to undo or redo. It also goes
+   * unrecorded when the book's text is unchanged since its last recorded pass.
    *
    * The pass is no undo step and leaves the draft as saved or unsaved as it was. A missing book is
    * passed as a book with no segments.

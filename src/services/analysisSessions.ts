@@ -217,8 +217,11 @@ async function replyTo(
 }
 
 /**
- * Re-anchors the session's draft to `book`, recording the pass in its history. Reports what the
- * pass changed, or adds it to `unreported` when given.
+ * Re-anchors the session's draft to `book` and reports what the pass changed. When `unreported` is
+ * given, the pass is added to it instead of reported.
+ *
+ * The pass is recorded in the session's history only when the draft links into the book or holds
+ * boundary edits in it. An undo or redo re-anchors only the books whose passes are recorded.
  */
 async function reanchorNow(
   host: SessionHost,

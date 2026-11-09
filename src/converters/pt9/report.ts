@@ -17,15 +17,19 @@
  *   `Type:Form[:Homograph]` grammar.
  * - `blankMorphemeForm`: a lexeme's id parses but names a blank form, such as `Stem::2`.
  */
-export type Pt9ClusterDropReason =
-  | 'verseNotFound'
-  | 'formMismatch'
-  | 'parseFormMismatch'
-  | 'frontMatter'
-  | 'lemmaOrOther'
-  | 'duplicateCluster'
-  | 'unparseableLexemeId'
-  | 'blankMorphemeForm';
+export type Pt9ClusterDropReason = (typeof PT9_CLUSTER_DROP_REASONS)[number];
+
+/** Every {@link Pt9ClusterDropReason}. */
+export const PT9_CLUSTER_DROP_REASONS = [
+  'verseNotFound',
+  'formMismatch',
+  'parseFormMismatch',
+  'frontMatter',
+  'lemmaOrOther',
+  'duplicateCluster',
+  'unparseableLexemeId',
+  'blankMorphemeForm',
+] as const;
 
 /** Conversion outcome counts for one book of one gloss language. */
 export interface Pt9BookReport {
@@ -258,7 +262,7 @@ function isPt9BookReport(value: unknown): boolean {
         'verseRef' in drop &&
         typeof drop.verseRef === 'string' &&
         'reason' in drop &&
-        typeof drop.reason === 'string' &&
+        PT9_CLUSTER_DROP_REASONS.some((reason) => reason === drop.reason) &&
         'lexemeIds' in drop &&
         Array.isArray(drop.lexemeIds) &&
         drop.lexemeIds.every((id: unknown) => typeof id === 'string'),

@@ -142,4 +142,14 @@ describe('isPt9ImportReport', () => {
       isPt9ImportReport({ ...report, languages: [{ ...report.languages[0], books: [book] }] }),
     ).toBe(false);
   });
+  it('rejects a drop whose reason is not a drop reason', () => {
+    const report = makeReport();
+    const book: Record<string, unknown> = {
+      ...report.languages[0].books[0],
+      drops: [{ verseRef: 'MAT 1:1', reason: 'formMismtach', lexemeIds: ['Word:hello'] }],
+    };
+    expect(
+      isPt9ImportReport({ ...report, languages: [{ ...report.languages[0], books: [book] }] }),
+    ).toBe(false);
+  });
 });

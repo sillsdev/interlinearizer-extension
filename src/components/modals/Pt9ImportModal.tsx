@@ -1,13 +1,14 @@
 import { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import type {
-  Pt9ClusterDrop,
-  Pt9ClusterDropReason,
-  Pt9ImportReport,
-  Pt9UnreadableFile,
+import {
+  PT9_CLUSTER_DROP_REASONS,
+  type Pt9ClusterDrop,
+  type Pt9ClusterDropReason,
+  type Pt9ImportReport,
+  type Pt9UnreadableFile,
 } from '../../converters/pt9';
 import { ModalShell } from './ModalShell';
 
@@ -68,18 +69,6 @@ export interface LeftOutFiles {
   /** Files Paratext 9 never loads from where they are. */
   filesNeverLoaded: string[];
 }
-
-/** Every drop reason, for typed iteration over a book report's `clusterDrops`. */
-const DROP_REASONS: readonly Pt9ClusterDropReason[] = [
-  'verseNotFound',
-  'formMismatch',
-  'parseFormMismatch',
-  'frontMatter',
-  'lemmaOrOther',
-  'duplicateCluster',
-  'unparseableLexemeId',
-  'blankMorphemeForm',
-];
 
 /**
  * The counts and lists the report summary renders, folded from the per-language reports.
@@ -173,7 +162,7 @@ function foldReport(report: Pt9ImportReport): ReportTotals {
       clustersTotal += book.clustersTotal;
       clustersConverted += book.clustersConverted;
       phrasesConverted += book.phrasesConverted;
-      DROP_REASONS.forEach((reason) => {
+      PT9_CLUSTER_DROP_REASONS.forEach((reason) => {
         const count = book.clusterDrops[reason];
         if (count > 0) dropCounts.set(reason, (dropCounts.get(reason) ?? 0) + count);
       });
@@ -198,7 +187,7 @@ function foldReport(report: Pt9ImportReport): ReportTotals {
  * The most dropped-cluster lines the report lays out, because laying out every line of a large
  * import freezes the WebView. Copy all carries every line.
  */
-export const MAX_SHOWN_DROPS = 500;
+export const MAX_SHOWN_DROPS = 100;
 
 /**
  * A collapsed list of the dropped clusters, one line each, with a button that copies every line.
@@ -306,6 +295,8 @@ export function Pt9ImportModal({
   onClose: () => void;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(PT9_IMPORT_MODAL_STRING_KEYS);
+  const report = phase.kind === 'report' ? phase.report : undefined;
+  const totals = useMemo(() => report && foldReport(report), [report]);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
@@ -393,7 +384,8 @@ export function Pt9ImportModal({
     );
   }
 
-  const totals = foldReport(phase.report);
+  // Every phase left here is a report, so `totals` is set.
+  /* v8 ignore next */ if (!totals) return undefined;
   const dropTotal = totals.drops.reduce((sum, drop) => sum + drop.count, 0);
   const reasonLines = totals.drops.map(
     (drop) =>

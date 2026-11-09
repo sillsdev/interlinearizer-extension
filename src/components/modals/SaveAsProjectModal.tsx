@@ -36,6 +36,76 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
 ];
 
 /**
+ * Fields for saving the draft as a new project.
+ *
+ * The fields start from `initialName` and `initialDescription`. Later changes to those props never
+ * overwrite what the fields hold.
+ */
+function SaveAsNewForm({
+  initialName,
+  initialDescription,
+  isLoading,
+  isSubmitting,
+  nameLabel,
+  namePlaceholder,
+  descriptionLabel,
+  descriptionPlaceholder,
+  saveLabel,
+  onSave,
+}: Readonly<{
+  initialName: string;
+  initialDescription: string;
+  isLoading: boolean;
+  isSubmitting: boolean;
+  nameLabel: string;
+  namePlaceholder: string;
+  descriptionLabel: string;
+  descriptionPlaceholder: string;
+  saveLabel: string;
+  onSave: (name: string, description: string) => void;
+}>) {
+  const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState(initialDescription);
+
+  return (
+    <>
+      <Label className="tw:mb-1" htmlFor="save-as-name">
+        {nameLabel}
+      </Label>
+      <Input
+        id="save-as-name"
+        className="tw:mb-3 tw:w-full"
+        disabled={isLoading}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder={namePlaceholder}
+      />
+      <Label className="tw:mb-1" htmlFor="save-as-description">
+        {descriptionLabel}
+      </Label>
+      <Textarea
+        id="save-as-description"
+        className="tw:mb-3 tw:resize-none"
+        rows={2}
+        disabled={isLoading}
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder={descriptionPlaceholder}
+      />
+      <div className="tw:flex tw:justify-end tw:mb-4">
+        <Button
+          onClick={() => onSave(name, description)}
+          data-testid="save-as-new"
+          disabled={isLoading || isSubmitting || name.trim() === ''}
+        >
+          {saveLabel}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+/**
  * Save As dialog. Lets the user save the current draft either to a brand-new project (name +
  * description) or by overwriting an existing project for this source (with an inline confirm). This
  * component is presentational: it collects the choice and delegates the actual persistence to the
@@ -54,7 +124,8 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
  *   only meaningful when {@link activeProjectId} names a project in the list.
  * @param props.activeProjectName - Name of the project open as the active Save target, if any. The
  *   new-project field is prefilled with a copy of this name, numbered past any name that a loaded
- *   project of the source bears. With no active project, the field starts blank.
+ *   project of the source bears. With no active project, the field starts blank. A later change to
+ *   this name leaves the field as it is.
  * @param props.defaultDescription - Description prefilled into the new-project field.
  * @param props.onSaveNew - Called with the trimmed name/description to save the draft as a new
  *   project.
@@ -84,21 +155,16 @@ export function SaveAsProjectModal({
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(SAVE_AS_MODAL_STRING_KEYS);
 
-  const [name, setName] = useState<string | undefined>(undefined);
-  const [description, setDescription] = useState(defaultDescription ?? '');
   const { projects, isLoading } = useProjectsForSource(sourceProjectId);
-  // The prefill resolves with the strings and the project list, after the first render, so the
-  // typed name starts undefined and falls back to the prefill until edited.
-  const nameValue =
-    name ??
-    (stringsLoading || isLoading || activeProjectName === undefined
+  const initialName =
+    isLoading || activeProjectName === undefined
       ? ''
       : uniqueDefaultName(
           projects.map((project) => project.name),
           localizedStrings['%interlinearizer_modal_saveAs_defaultName%'],
           localizedStrings['%interlinearizer_modal_saveAs_defaultNameNumbered%'],
           { name: activeProjectName },
-        ));
+        );
   const overwriteTargets = projects.filter((project) => project.pt9Import === undefined);
 
   // Guards the save controls against double-submit; `isSubmitting` disables them while a save runs.
@@ -121,11 +187,11 @@ export function SaveAsProjectModal({
    * duplicate projects.
    */
   const handleSaveNew = useCallback(
-    () =>
+    (name: string, description: string) =>
       runGuarded(async () => {
-        await onSaveNew(nameValue.trim(), description.trim() || undefined);
+        await onSaveNew(name.trim(), description.trim() || undefined);
       }),
-    [nameValue, description, onSaveNew, runGuarded],
+    [onSaveNew, runGuarded],
   );
 
   /**
@@ -164,36 +230,22 @@ export function SaveAsProjectModal({
       <h3 className="tw:text-sm tw:font-medium tw:mb-2">
         {localizedStrings['%interlinearizer_modal_saveAs_new_section%']}
       </h3>
-      <Label className="tw:mb-1" htmlFor="save-as-name">
-        {localizedStrings['%interlinearizer_modal_create_name_label%']}
-      </Label>
-      <Input
-        id="save-as-name"
-        className="tw:mb-3 tw:w-full"
-        value={nameValue}
-        onChange={(e) => setName(e.target.value)}
-        placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
+      {/* Remounts the form when the list loads; only then is the prefilled name ready. */}
+      <SaveAsNewForm
+        key={isLoading ? 'loading' : 'ready'}
+        initialName={initialName}
+        initialDescription={defaultDescription ?? ''}
+        isLoading={isLoading}
+        isSubmitting={isSubmitting}
+        nameLabel={localizedStrings['%interlinearizer_modal_create_name_label%']}
+        namePlaceholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
+        descriptionLabel={localizedStrings['%interlinearizer_modal_create_description_label%']}
+        descriptionPlaceholder={
+          localizedStrings['%interlinearizer_modal_create_description_placeholder%']
+        }
+        saveLabel={localizedStrings['%interlinearizer_modal_saveAs_save_new%']}
+        onSave={handleSaveNew}
       />
-      <Label className="tw:mb-1" htmlFor="save-as-description">
-        {localizedStrings['%interlinearizer_modal_create_description_label%']}
-      </Label>
-      <Textarea
-        id="save-as-description"
-        className="tw:mb-3 tw:resize-none"
-        rows={2}
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
-      />
-      <div className="tw:flex tw:justify-end tw:mb-4">
-        <Button
-          onClick={handleSaveNew}
-          data-testid="save-as-new"
-          disabled={isSubmitting || nameValue.trim() === ''}
-        >
-          {localizedStrings['%interlinearizer_modal_saveAs_save_new%']}
-        </Button>
-      </div>
 
       <h3 className="tw:text-sm tw:font-medium tw:mb-2">
         {localizedStrings['%interlinearizer_modal_saveAs_existing_section%']}

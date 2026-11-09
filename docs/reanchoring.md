@@ -23,8 +23,14 @@ Do not grow this into a general diff, fuzzy matching, or cross-verse tracking. F
 
 When it runs, for an editable project only:
 
-- for the loaded book, whenever its text, its boundaries, or the draft changes;
-- for every other book the draft has records in, each time the whole source text is read (for the concordance, or a catalog filter that needs the text).
+- On the WebView path:
+  - for the loaded book, whenever its text, its boundaries, or the draft changes;
+  - for every other book the draft has records in, each time the whole source text is read (for the concordance, or a catalog filter that needs the text).
+- On the host path:
+  - for a book each time a session outlines it, before the outline answers, unless the session last re-anchored the book to the same text;
+  - for the open book, whenever its text changes;
+  - for each book as the session's whole-text read reaches it, and for each linked book the text lacks once the read finishes;
+  - for the books that a boundary edit, an undo, a redo, or a discard touches, in the same step.
 
 A book the project no longer has is treated as holding no text, so every approval in it goes stale. An imported, read-only project is a record of what was imported and is never healed. A pass that moves nothing leaves the analysis identical, so opening a book neither dirties the draft nor writes storage.
 

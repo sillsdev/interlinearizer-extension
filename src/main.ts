@@ -834,8 +834,8 @@ async function sessionBoundaries(session: Session, bookId: string): Promise<stri
  * Outlines a book of a source project, or of a session's source. A project's book is segmented by
  * the boundaries that `segmentationJson` names. A session's book is segmented by its draft's
  * boundaries, and its outline also counts each segment's orphaned free-translation cards. Before a
- * session's first outline of a book, its draft is re-anchored to the book's text; a failed
- * re-anchor is logged.
+ * session's outline, its draft is re-anchored to the book's text unless the session last
+ * re-anchored the book to the same text. A failed re-anchor is logged.
  *
  * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON

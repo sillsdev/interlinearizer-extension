@@ -74,7 +74,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'app.scriptureSave':
     "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
   'app.hostOpen':
-    "On the host path, a new view opens on the tier's book, with no feature needing the whole text, so the session reads none.",
+    "On the host path, a new view opens on the tier's book, with no feature needing the whole text, so the session reads none. The session re-anchors the draft to that book before the outline answers.",
   'app.hostEditDuringRead':
     "On the host path, one gloss committed while the session's whole-text read runs, started as a feature needing the text would start it. Only edits that the read outlasts are counted.",
   'app.hostEdit':

@@ -852,6 +852,14 @@ describe('AnalysisSessions', () => {
       );
       await expect(stored(storage)).resolves.toMatchObject({ dirty: false });
     });
+
+    it('refuses a session that is not open', async () => {
+      const { sessions } = makeSessions();
+
+      await expect(sessions.edit('not-a-session', 'nothing', async () => {})).rejects.toThrow(
+        'no session not-a-session is open',
+      );
+    });
   });
 
   describe('replies', () => {
@@ -1823,14 +1831,42 @@ describe('AnalysisSessions', () => {
         expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
       });
 
-      it('reads the book only on its first open', async () => {
+      it('skips the pass when the book opens again with the same text', async () => {
         const { host, sessions, sessionId } = await sessionGlossingBeta();
         host.getOpenVerseBook.mockResolvedValue(AFTER);
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+        const applied = jest.fn();
+        await sessions.run(sessionId, async (session) => {
+          jest.spyOn(session.repository, 'apply').mockImplementation(applied);
+        });
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect(applied).not.toHaveBeenCalled();
+      });
+
+      it('re-anchors again when the book opens with other text', async () => {
+        const { host, sessions, sessionId, storage } = await sessionGlossingBeta();
+        host.getOpenVerseBook.mockResolvedValueOnce(AFTER).mockResolvedValue(BEFORE);
 
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
 
-        expect(host.getOpenVerseBook).toHaveBeenCalledTimes(1);
+        expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(BEFORE, 'beta'));
+      });
+
+      it('skips the pass for a book the whole-text read re-anchored to the same text', async () => {
+        const { host, sessions, sessionId } = await sessionGlossingBeta();
+        host.getOpenVerseBook.mockResolvedValue(AFTER);
+        await sessions.reanchorBook(SOURCE, AFTER);
+        const applied = jest.fn();
+        await sessions.run(sessionId, async (session) => {
+          jest.spyOn(session.repository, 'apply').mockImplementation(applied);
+        });
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect(applied).not.toHaveBeenCalled();
       });
 
       it('tries again on the next open after a failed pass', async () => {

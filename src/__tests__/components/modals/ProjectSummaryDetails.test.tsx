@@ -38,14 +38,14 @@ describe('ProjectSummaryDetails', () => {
   });
 
   it('describes the books covered and how many analyses the project holds', () => {
-    const project = makeProjectSummary({ books: ['GEN', 'EXO'], tokenAnalysisCount: 412 });
+    const project = makeProjectSummary({ books: ['GEN', 'EXO'], analysisCount: 412 });
     render(<ProjectSummaryDetails {...LABELS} isActive={false} project={project} />);
 
     expect(screen.getByText('GEN, EXO · 412 analyses')).toBeInTheDocument();
   });
 
   it('describes an untouched project as holding no analyses, so an empty row still says so', () => {
-    const project = makeProjectSummary({ books: [], tokenAnalysisCount: 0 });
+    const project = makeProjectSummary({ books: [], analysisCount: 0 });
     render(<ProjectSummaryDetails {...LABELS} isActive={false} project={project} />);
 
     expect(screen.getByText('0 analyses')).toBeInTheDocument();

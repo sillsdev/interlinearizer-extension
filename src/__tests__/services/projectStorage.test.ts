@@ -1118,7 +1118,7 @@ describe('projectStorage', () => {
       await updateAnalysis(token, 'proj-id', newAnalysis);
 
       expect(writtenSummaries()).toEqual([
-        expect.objectContaining({ id: 'proj-id', tokenAnalysisCount: 1, updatedAt: UPDATE_TIME }),
+        expect.objectContaining({ id: 'proj-id', analysisCount: 1, updatedAt: UPDATE_TIME }),
       ]);
     });
 
@@ -3458,7 +3458,7 @@ describe('projectStorage', () => {
           expect.objectContaining({
             id: 'import-id',
             name: 'Paratext 9 Interlinear',
-            tokenAnalysisCount: 1,
+            analysisCount: 1,
             pt9Import: NEW_PROVENANCE,
           }),
         ]);

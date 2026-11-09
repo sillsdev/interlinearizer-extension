@@ -43,13 +43,13 @@ export function ProjectSummaryDetails({
   readOnlyLabel?: string;
   unnamedLabel: string;
 }>) {
-  const { books, tokenAnalysisCount } = project;
+  const { books, analysisCount } = project;
   const analysisLine =
-    tokenAnalysisCount === undefined
+    analysisCount === undefined
       ? undefined
       : [
           books?.length ? formatBooksTouched(books, booksMoreTemplate) : undefined,
-          formatReplacementString(analysisCountTemplate, { count: tokenAnalysisCount }),
+          formatReplacementString(analysisCountTemplate, { count: analysisCount }),
         ]
           .filter(Boolean)
           .join(' · ');

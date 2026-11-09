@@ -75,12 +75,6 @@ export default function CatalogStaleLocations({
   const visible = showsAll ? locations : locations.slice(0, inlineLimit);
   const hiddenCount = locations.length - visible.length;
 
-  const applyLabel = target
-    ? formatReplacementString(localizedStrings['%interlinearizer_analysisCatalog_staleApply%'], {
-        word: target.surfaceText,
-      })
-    : localizedStrings['%interlinearizer_analysisCatalog_staleApplyNoTarget%'];
-
   return (
     <div className="tw:flex tw:flex-col tw:gap-1" data-testid="catalog-stale-locations">
       <p className="tw:text-xs tw:gloss-stale">
@@ -105,18 +99,27 @@ export default function CatalogStaleLocations({
             </Button>
             {!readOnly && (
               <>
-                <Button
-                  data-testid="catalog-stale-location-apply"
-                  disabled={!target}
-                  onClick={
-                    target && (() => onReapply(location, target.tokenRef, target.surfaceText))
-                  }
-                  size="sm"
-                  type="button"
-                  variant="outline"
-                >
-                  {applyLabel}
-                </Button>
+                {target ? (
+                  <Button
+                    data-testid="catalog-stale-location-apply"
+                    onClick={() => onReapply(location, target.tokenRef, target.surfaceText)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    {formatReplacementString(
+                      localizedStrings['%interlinearizer_analysisCatalog_staleApply%'],
+                      { word: target.surfaceText },
+                    )}
+                  </Button>
+                ) : (
+                  <span
+                    className="tw:text-xs tw:text-muted-foreground"
+                    data-testid="catalog-stale-location-apply-hint"
+                  >
+                    {localizedStrings['%interlinearizer_analysisCatalog_staleApplyNoTarget%']}
+                  </span>
+                )}
                 <Button
                   data-testid="catalog-stale-location-discard"
                   onClick={() => onDiscard(location)}

@@ -107,7 +107,7 @@
       "%interlinearizer_analysisCatalog_senseDiffers%": "Differs from the lexicon sense's gloss: {gloss}",
       "%interlinearizer_analysisCatalog_staleHeading%": "Outdated: the text changed here after approval",
       "%interlinearizer_analysisCatalog_staleApply%": "Apply to “{word}”",
-      "%interlinearizer_analysisCatalog_staleApplyNoTarget%": "Select a word to apply to",
+      "%interlinearizer_analysisCatalog_staleApplyNoTarget%": "Click a word in the text to apply this to",
       "%interlinearizer_analysisCatalog_staleDiscard%": "Discard",
       "%interlinearizer_analysisCatalog_showAllStale%": "Show {count} more",
 

@@ -41,6 +41,8 @@ function makeReport() {
       sameTagCollisions: [],
       identicalPayloadsMerged: 0,
       identicalPhrasePayloadsMerged: 0,
+      duplicateLinksDropped: 0,
+      duplicatePhraseLinksDropped: 0,
     },
     senses: {
       specificResolved: 0,

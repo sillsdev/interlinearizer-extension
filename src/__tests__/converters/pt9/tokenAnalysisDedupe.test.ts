@@ -56,6 +56,7 @@ describe('dedupeTokenAnalyses', () => {
       link('a', 'PHP 1:6:15'),
     ]);
     expect(report.merge.identicalPayloadsMerged).toBe(1);
+    expect(report.merge.duplicateLinksDropped).toBe(0);
   });
 
   it('drops an unlinked payload identical to a linked one', () => {
@@ -84,6 +85,35 @@ describe('dedupeTokenAnalyses', () => {
 
     expect(result.tokenAnalyses.map((a) => a.id)).toStrictEqual(['a']);
     expect(result.tokenAnalysisLinks[1]).toStrictEqual(link('a', 'PHP 1:7:0', 'approved', 'Plovs'));
+  });
+
+  it('folds normalization variants, keeping the first spelling', () => {
+    const result = dedupeTokenAnalyses(
+      {
+        tokenAnalyses: [
+          payload('a', { surfaceText: 'pl\u00F3vs' }),
+          payload('b', { surfaceText: 'PLO\u0301VS' }),
+        ],
+        tokenAnalysisLinks: [],
+      },
+      emptyPt9ImportReport(),
+    );
+
+    expect(result.tokenAnalyses.map((a) => a.id)).toStrictEqual(['a']);
+    expect(result.tokenAnalyses[0].surfaceText).toBe('pl\u00F3vs');
+  });
+
+  it('counts each link dropped when twins fold onto one token', () => {
+    const report = emptyPt9ImportReport();
+    dedupeTokenAnalyses(
+      {
+        tokenAnalyses: [payload('a'), payload('b')],
+        tokenAnalysisLinks: [link('a', 'PHP 1:6:5'), link('b', 'PHP 1:6:5', 'candidate')],
+      },
+      report,
+    );
+
+    expect(report.merge.duplicateLinksDropped).toBe(1);
   });
 
   it.each<[string, Partial<TokenAnalysis>]>([

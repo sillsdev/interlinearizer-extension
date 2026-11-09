@@ -56,6 +56,7 @@ describe('dedupePhraseAnalyses', () => {
       link('a', 'GEN 1:2', 'candidate'),
     ]);
     expect(report.merge.identicalPhrasePayloadsMerged).toBe(1);
+    expect(report.merge.duplicatePhraseLinksDropped).toBe(0);
   });
 
   it('folds case variants, each link keeping its own token surfaces', () => {
@@ -71,6 +72,35 @@ describe('dedupePhraseAnalyses', () => {
     expect(result.phraseAnalysisLinks[1]).toStrictEqual(
       link('a', 'GEN 1:2', 'approved', ['En', 'el']),
     );
+  });
+
+  it('folds normalization variants, keeping the first spelling', () => {
+    const result = dedupePhraseAnalyses(
+      {
+        phraseAnalyses: [
+          payload('a', { surfaceText: 'en \u00E9l' }),
+          payload('b', { surfaceText: 'EN E\u0301L' }),
+        ],
+        phraseAnalysisLinks: [],
+      },
+      emptyPt9ImportReport(),
+    );
+
+    expect(result.phraseAnalyses.map((a) => a.id)).toStrictEqual(['a']);
+    expect(result.phraseAnalyses[0].surfaceText).toBe('en \u00E9l');
+  });
+
+  it('counts each link dropped when twins fold onto one run', () => {
+    const report = emptyPt9ImportReport();
+    dedupePhraseAnalyses(
+      {
+        phraseAnalyses: [payload('a'), payload('b')],
+        phraseAnalysisLinks: [link('a', 'GEN 1:1'), link('b', 'GEN 1:1', 'candidate')],
+      },
+      report,
+    );
+
+    expect(report.merge.duplicatePhraseLinksDropped).toBe(1);
   });
 
   it.each<[string, Partial<PhraseAnalysis>]>([

@@ -73,6 +73,13 @@ export interface Pt9MergeReport {
   identicalPayloadsMerged: number;
   /** Phrase analyses folded onto an earlier content-identical one, their links moved with them. */
   identicalPhrasePayloadsMerged: number;
+  /** Token links dropped because a fold left their token holding another link to the same payload. */
+  duplicateLinksDropped: number;
+  /**
+   * Phrase links dropped because a fold left their token run holding another link to the same
+   * payload.
+   */
+  duplicatePhraseLinksDropped: number;
 }
 
 /** Gloss and lexicon-reference resolution outcomes. */
@@ -203,6 +210,8 @@ export function emptyPt9ImportReport(): Pt9ImportReport {
       sameTagCollisions: [],
       identicalPayloadsMerged: 0,
       identicalPhrasePayloadsMerged: 0,
+      duplicateLinksDropped: 0,
+      duplicatePhraseLinksDropped: 0,
     },
     senses: {
       specificResolved: 0,

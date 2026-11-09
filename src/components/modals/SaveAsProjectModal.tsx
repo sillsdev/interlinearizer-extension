@@ -38,9 +38,8 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
 /**
  * Fields for saving the draft as a new project.
  *
- * The fields read `initialName` and `initialDescription` only at mount. Later changes to those
- * props leave the fields unchanged. Remount the form, such as with a new `key`, to reseed the
- * fields.
+ * The fields start from `initialName` and `initialDescription`. Later changes to those props never
+ * overwrite what the fields hold.
  */
 function SaveAsNewForm({
   initialName,
@@ -231,6 +230,7 @@ export function SaveAsProjectModal({
       <h3 className="tw:text-sm tw:font-medium tw:mb-2">
         {localizedStrings['%interlinearizer_modal_saveAs_new_section%']}
       </h3>
+      {/* Remounts the form when the list loads; only then is the prefilled name ready. */}
       <SaveAsNewForm
         key={isLoading ? 'loading' : 'ready'}
         initialName={initialName}

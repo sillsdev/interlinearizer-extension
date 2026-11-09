@@ -1779,6 +1779,33 @@ describe('AnalysisSessions', () => {
       expect((await storedLink(storage)).status).toBe('stale');
     });
 
+    it('skips the pass for a book that opened with the same text', async () => {
+      const { host, sessions, sessionId } = await sessionGlossingBeta();
+      host.getOpenVerseBook.mockResolvedValue(AFTER);
+      await sessions.reanchorOpenedBook(sessionId, 'GEN');
+      let read: jest.SpyInstance | undefined;
+      await sessions.run(sessionId, async (session) => {
+        read = jest.spyOn(session.repository, 'findLinksInBooks');
+      });
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it('skips the pass for an edit that leaves the same text', async () => {
+      const { sessions, sessionId } = await sessionGlossingBeta();
+      await sessions.reanchorBook(SOURCE, AFTER, true);
+      let read: jest.SpyInstance | undefined;
+      await sessions.run(sessionId, async (session) => {
+        read = jest.spyOn(session.repository, 'findLinksInBooks');
+      });
+
+      await sessions.reanchorBook(SOURCE, AFTER, true);
+
+      expect(read).not.toHaveBeenCalled();
+    });
+
     it('re-anchors in the session turn, after the commands sent before', async () => {
       const { sessions, sessionId, storage } = await sessionGlossingBeta();
       const command = deferred();
@@ -1835,14 +1862,14 @@ describe('AnalysisSessions', () => {
         const { host, sessions, sessionId } = await sessionGlossingBeta();
         host.getOpenVerseBook.mockResolvedValue(AFTER);
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
-        const applied = jest.fn();
+        let read: jest.SpyInstance | undefined;
         await sessions.run(sessionId, async (session) => {
-          jest.spyOn(session.repository, 'apply').mockImplementation(applied);
+          read = jest.spyOn(session.repository, 'findLinksInBooks');
         });
 
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
 
-        expect(applied).not.toHaveBeenCalled();
+        expect(read).not.toHaveBeenCalled();
       });
 
       it('re-anchors again when the book opens with other text', async () => {
@@ -1859,14 +1886,14 @@ describe('AnalysisSessions', () => {
         const { host, sessions, sessionId } = await sessionGlossingBeta();
         host.getOpenVerseBook.mockResolvedValue(AFTER);
         await sessions.reanchorBook(SOURCE, AFTER);
-        const applied = jest.fn();
+        let read: jest.SpyInstance | undefined;
         await sessions.run(sessionId, async (session) => {
-          jest.spyOn(session.repository, 'apply').mockImplementation(applied);
+          read = jest.spyOn(session.repository, 'findLinksInBooks');
         });
 
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
 
-        expect(applied).not.toHaveBeenCalled();
+        expect(read).not.toHaveBeenCalled();
       });
 
       it('tries again on the next open after a failed pass', async () => {

@@ -4,7 +4,7 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useEvent } from 'platform-bible-react';
 import useSessionProject from '../../hooks/useSessionProject';
-import { fakeHost, relayChange, STORED_PROJECT } from '../cache/fake-host';
+import { fakeHost, relayChange, replyProjectMissing, STORED_PROJECT } from '../cache/fake-host';
 import { glossing, ref } from '../cache/session-source';
 import { makeVerseBook, tokenRefOf } from '../test-helpers';
 
@@ -12,8 +12,15 @@ const SCR_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
 type ViewProps = Partial<Record<'saveTargetId' | 'importProjectId' | 'importVersion', string>>;
 
-/** Renders the hook over the source `src`, saving to `saveTargetId` or viewing `importProjectId`. */
-function renderProject(saveTargetId?: string, importProjectId?: string) {
+/**
+ * Renders the hook over the source `src`, saving to `saveTargetId` or viewing `importProjectId`,
+ * and calling `onProjectMissing` when its session opens on a missing project.
+ */
+function renderProject(
+  saveTargetId?: string,
+  importProjectId?: string,
+  onProjectMissing?: () => void,
+) {
   const initialProps: ViewProps = { saveTargetId, importProjectId };
   return renderHook(
     (props: ViewProps) =>
@@ -23,6 +30,7 @@ function renderProject(saveTargetId?: string, importProjectId?: string) {
         importVersion: props.importVersion,
         bookId: 'GEN',
         scrRef: SCR_REF,
+        onProjectMissing,
       }),
     { initialProps },
   );
@@ -532,6 +540,51 @@ describe('useSessionProject starting over', () => {
     });
 
     await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
+  });
+
+  it('tells the view once its session opens on a project the source does not have', async () => {
+    await fakeHost();
+    replyProjectMissing('gone');
+    const onProjectMissing = jest.fn();
+
+    const { result } = renderProject('gone', undefined, onProjectMissing);
+
+    await waitFor(() => expect(result.current.session).toBeDefined());
+    expect(onProjectMissing).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the view nothing once its session opens on a project the source has', async () => {
+    await fakeHost();
+    const onProjectMissing = jest.fn();
+
+    const { result } = renderProject('proj-1', undefined, onProjectMissing);
+
+    await waitFor(() => expect(result.current.session).toBeDefined());
+    expect(onProjectMissing).not.toHaveBeenCalled();
+  });
+
+  it('saves to the project the view names by the time a session on a missing project opens', async () => {
+    await fakeHost();
+    let open = () => {};
+    replyProjectMissing(
+      'gone',
+      new Promise((resolve) => {
+        open = resolve;
+      }),
+    );
+    const onProjectMissing = jest.fn();
+    const { result, rerender } = renderProject('gone', undefined, onProjectMissing);
+
+    rerender({ saveTargetId: 'proj-2' });
+    await act(async () => open());
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.setSaveTarget', {
+        sessionId: result.current.session?.sessionId,
+        interlinearProjectId: 'proj-2',
+      }),
+    );
+    expect(onProjectMissing).not.toHaveBeenCalled();
   });
 
   it('retargets its session, keeping it open, when the project the draft saves to changes', async () => {

@@ -21,6 +21,7 @@ type OpenedSession = Readonly<{
   sessionId: string;
   readOnly: boolean;
   hasFreeTranslations: boolean;
+  projectMissing: boolean;
   whole: WholeAnalysis;
 }>;
 
@@ -49,7 +50,14 @@ function sameEnvelope(a: DraftProject, b: DraftProject): boolean {
 export default function useSessionProject(
   sourceProjectId: string,
   _platformLanguage: string | undefined,
-  { saveTargetId, importProjectId, importVersion, bookId, scrRef }: ProjectViewOptions,
+  {
+    saveTargetId,
+    importProjectId,
+    importVersion,
+    bookId,
+    scrRef,
+    onProjectMissing,
+  }: ProjectViewOptions,
 ): ProjectApi {
   const [opened, setOpened] = useState<OpenedSession>();
   /** Bumped to open a fresh session on the same project. */
@@ -78,6 +86,11 @@ export default function useSessionProject(
   const targetRef = useRef<string | undefined>(undefined);
   const saveTargetRef = useRef(saveTargetId);
   saveTargetRef.current = saveTargetId;
+  const onProjectMissingRef = useRef(onProjectMissing);
+  onProjectMissingRef.current = onProjectMissing;
+  /** The project the view names now, which New or Open may change while a session opens. */
+  const namedProjectRef = useRef(importProjectId ?? saveTargetId);
+  namedProjectRef.current = importProjectId ?? saveTargetId;
 
   useEffect(() => {
     let isCurrent = true;
@@ -98,7 +111,9 @@ export default function useSessionProject(
         );
         if (isCurrent) await whole.refresh();
         if (!isCurrent) return reply.sessionId;
-        targetRef.current = interlinearProjectId;
+        targetRef.current = reply.projectMissing ? undefined : interlinearProjectId;
+        if (reply.projectMissing && namedProjectRef.current === interlinearProjectId)
+          onProjectMissingRef.current?.();
         setOpened({ ...reply, whole });
         setHasFreeTranslations(reply.hasFreeTranslations);
         noteHistory({ canUndo: false, canRedo: false });

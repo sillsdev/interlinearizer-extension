@@ -2491,6 +2491,7 @@ describe('main', () => {
         sessionId: expect.any(String),
         readOnly: false,
         hasFreeTranslations: false,
+        projectMissing: false,
       });
       expect(projectStorage.openDraftRepository).toHaveBeenCalledWith(
         expect.anything(),
@@ -2542,12 +2543,14 @@ describe('main', () => {
     });
 
     it('logs the error and rethrows when the session cannot open', async () => {
-      jest.mocked(projectStorage.getProjectSummariesForSource).mockResolvedValue([]);
+      jest
+        .mocked(projectStorage.getProjectSummariesForSource)
+        .mockRejectedValue(new Error('storage is down'));
       const { openSession } = await activateSessionCommands();
 
       await expect(
-        openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'missing' }),
-      ).rejects.toThrow('has no interlinear project missing');
+        openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'proj-1' }),
+      ).rejects.toThrow('storage is down');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to open a session on project src-project',
         expect.any(Error),

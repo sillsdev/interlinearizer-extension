@@ -127,6 +127,7 @@ describe('AnalysisSessions', () => {
         sessionId: expect.any(String),
         readOnly: false,
         hasFreeTranslations: false,
+        projectMissing: false,
       });
       expect(host.openDraftRepository).toHaveBeenCalledWith(SOURCE);
       await expect(sessions.run(opened.sessionId, async ({ scope }) => scope)).resolves.toEqual({
@@ -191,15 +192,6 @@ describe('AnalysisSessions', () => {
         sourceProjectId: SOURCE,
         interlinearProjectId: 'import-id',
       });
-    });
-
-    it('refuses an interlinear project the source project does not have', async () => {
-      const { sessions } = makeSessions([{ ...makeStubProject(), sourceProjectId: OTHER_SOURCE }]);
-
-      await expect(sessions.open(SOURCE, 'proj-id')).rejects.toThrow(
-        'source project src-project has no interlinear project proj-id',
-      );
-      await expect(sessions.open(SOURCE)).resolves.toMatchObject({ readOnly: false });
     });
 
     it('starts on the first analysis language its draft lists', async () => {
@@ -2094,6 +2086,49 @@ describe('AnalysisSessions save targets', () => {
     await expect(sessions.setSaveTarget(sessionId, 'proj-1')).rejects.toThrow(
       ReadOnlyAnalysisError,
     );
+  });
+
+  it('opens on the draft with no project to save to when the source has no such project', async () => {
+    const { sessions } = makeSessions([
+      { ...makeStubProject('proj-1'), sourceProjectId: OTHER_SOURCE },
+    ]);
+
+    const opened = await sessions.open(SOURCE, 'proj-1');
+
+    expect(opened).toMatchObject({ readOnly: false, projectMissing: true });
+    await expect(scopeOf(sessions, opened.sessionId)).resolves.toStrictEqual({
+      kind: 'draft',
+      sourceProjectId: SOURCE,
+    });
+  });
+
+  it('marks a saved draft holding analysis unsaved when it opens on a missing project', async () => {
+    const { sessions, storage } = makeSessions();
+    const first = await sessions.open(SOURCE);
+    await sessions.edit(first.sessionId, 'add', adding('a'), { unsavedMark: 'clear' });
+
+    await sessions.open(SOURCE, 'gone');
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: true });
+  });
+
+  it('leaves an empty, saved draft saved when it opens on a missing project', async () => {
+    const { sessions, storage } = makeSessions();
+
+    await sessions.open(SOURCE, 'gone');
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: false });
+  });
+
+  it('writes nothing to an unsaved draft when it opens on a missing project', async () => {
+    const { sessions } = makeSessions();
+    const first = await sessions.open(SOURCE);
+    await sessions.edit(first.sessionId, 'add', adding('a'));
+    const apply = jest.spyOn(DraftRepository.prototype, 'apply');
+
+    await sessions.open(SOURCE, 'gone');
+
+    expect(apply).not.toHaveBeenCalled();
   });
 
   it('marks a draft holding analysis unsaved once its project is deleted', async () => {

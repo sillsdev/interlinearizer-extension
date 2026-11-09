@@ -478,10 +478,9 @@ function InterlinearizerLoaderInner({
    * items and to route Save to the active project (Save As when none); written here to fold the
    * refreshed `updatedAt` from a successful save back into the snapshot.
    */
-  const [activeProject, setActiveProject] = useWebViewState<InterlinearProjectSummary | undefined>(
-    'activeProject',
-    undefined,
-  );
+  const [activeProject, setActiveProject, resetActiveProject] = useWebViewState<
+    InterlinearProjectSummary | undefined
+  >('activeProject', undefined);
 
   /**
    * First-open flag written by the open command when this source has convertible Paratext 9
@@ -592,6 +591,7 @@ function InterlinearizerLoaderInner({
     // The book's outline is asked for once its text has loaded.
     bookId: verseBook?.bookRef,
     scrRef,
+    onProjectMissing: resetActiveProject,
   });
 
   /**

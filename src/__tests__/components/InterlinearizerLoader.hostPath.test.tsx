@@ -15,7 +15,7 @@ import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting
 import useProjectBookIds from '../../hooks/useProjectBookIds';
 import useSourceTextReader from '../../hooks/useSourceTextReader';
 import useStaleAnalysisDismissal from '../../hooks/useStaleAnalysisDismissal';
-import { fakeHost, STORED_PROJECT } from '../cache/fake-host';
+import { fakeHost, replyProjectMissing, STORED_PROJECT } from '../cache/fake-host';
 import { BOOK, ref } from '../cache/session-source';
 import { makeScrollGroupHook, makeWebViewState } from '../test-helpers';
 import { makeSourceText, mockKeyAsValueLocalizedStrings } from './test-helpers';
@@ -46,17 +46,23 @@ let capturedBoundaries: SegmentationDispatch | undefined;
 
 jest.mock('../../components/modals/ProjectModals', () => ({
   __esModule: true,
-  /** Offers Open, New and a Paratext 9 import as buttons, in place of the project dialogs. */
+  /**
+   * Offers Open, New and a Paratext 9 import as buttons, in place of the project dialogs, and shows
+   * the active project's id.
+   */
   default: ({
+    activeProject,
     loadFromProject,
     newDraft,
     onImportPt9,
   }: {
+    activeProject: { id: string } | undefined;
     loadFromProject: (projectId: string) => Promise<void>;
     newDraft: (config: { analysisLanguages: string[] }) => Promise<void>;
     onImportPt9: () => void;
   }) => (
     <div>
+      <span data-testid="active-project">{activeProject?.id}</span>
       <button type="button" data-testid="open-project" onClick={() => loadFromProject('proj-de')}>
         Open
       </button>
@@ -171,13 +177,19 @@ const ACTIVE_PROJECT = {
  * Renders the loader on the source `src` and waits for its session's view to show.
  *
  * @param state - What the WebView's stored state starts with.
- * @param others - Answers the commands that the fake host does not serve.
+ * @param host - What the fake host answers.
+ * @param host.others - Answers the commands that the fake host does not serve.
+ * @param host.missingProjectId - A project that the host replies the source does not have.
  */
 async function renderLoaded(
   state: Record<string, unknown> = {},
-  others: Parameters<typeof fakeHost>[0] = async () => undefined,
+  {
+    others,
+    missingProjectId,
+  }: Readonly<{ others?: Parameters<typeof fakeHost>[0]; missingProjectId?: string }> = {},
 ) {
   const host = await fakeHost(others);
+  if (missingProjectId) replyProjectMissing(missingProjectId);
   jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
   render(
     <InterlinearizerLoader
@@ -277,6 +289,14 @@ describe('InterlinearizerLoader saving', () => {
   });
 });
 
+describe('InterlinearizerLoader opening on a missing project', () => {
+  it('forgets the active project once its session finds the source has no such project', async () => {
+    await renderLoaded({ activeProject: ACTIVE_PROJECT }, { missingProjectId: 'proj-1' });
+
+    await waitFor(() => expect(screen.getByTestId('active-project')).toBeEmptyDOMElement());
+  });
+});
+
 describe('InterlinearizerLoader starting over', () => {
   it('opens a project by sending the host its id, reading no project', async () => {
     await renderLoaded();
@@ -338,16 +358,22 @@ describe('InterlinearizerLoader opening a Paratext 9 import', () => {
   };
 
   it("opens the report's import from its summary, reading no project", async () => {
-    await renderLoaded({}, async (command) => {
-      if (command === 'interlinearizer.importPt9Project')
-        return JSON.stringify({
-          outcome: 'imported',
-          projectId: IMPORT_SUMMARY.id,
-          report: emptyPt9ImportReport(),
-        });
-      if (command === 'interlinearizer.getProjectSummary') return JSON.stringify(IMPORT_SUMMARY);
-      return undefined;
-    });
+    await renderLoaded(
+      {},
+      {
+        others: async (command) => {
+          if (command === 'interlinearizer.importPt9Project')
+            return JSON.stringify({
+              outcome: 'imported',
+              projectId: IMPORT_SUMMARY.id,
+              report: emptyPt9ImportReport(),
+            });
+          if (command === 'interlinearizer.getProjectSummary')
+            return JSON.stringify(IMPORT_SUMMARY);
+          return undefined;
+        },
+      },
+    );
 
     fireEvent.click(screen.getByTestId('import-pt9'));
     fireEvent.click(

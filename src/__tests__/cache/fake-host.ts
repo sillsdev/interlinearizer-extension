@@ -206,3 +206,25 @@ export async function fakeHost(
   });
   return made;
 }
+
+/**
+ * Makes the {@link fakeHost} answer an open on the project `missingId` as if the source has no such
+ * project, once `opened` resolves.
+ */
+export function replyProjectMissing(
+  missingId: string,
+  opened: Promise<void> = Promise.resolve(),
+): void {
+  const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+  jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+    const [command, args] = call;
+    const reply: unknown = await serve?.(...call);
+    const named =
+      args && typeof args === 'object' && 'interlinearProjectId' in args
+        ? args.interlinearProjectId
+        : undefined;
+    if (command !== 'interlinearizer.openSession' || named !== missingId) return reply;
+    await opened;
+    return JSON.stringify({ ...JSON.parse(String(reply)), projectMissing: true });
+  });
+}

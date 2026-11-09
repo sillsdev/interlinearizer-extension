@@ -127,4 +127,9 @@ export type ProjectViewOptions = Readonly<{
   /** The book whose pages to serve; none until its text has loaded. */
   bookId: string | undefined;
   scrRef: SerializedVerseRef;
+  /**
+   * Called when a session opens on a project that the source does not have, if the view still names
+   * that project. The session views the draft instead, which saves to no project.
+   */
+  onProjectMissing?: () => void;
 }>;

@@ -1,4 +1,5 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
+import { Canon } from '@sillsdev/scripture';
 import { Button } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import type {
@@ -86,6 +87,18 @@ type ReportTotals = {
   drops: { reason: Pt9ClusterDropReason; count: number }[];
 };
 
+/** Orders book ids canonically. */
+function compareBookIds(a: string, b: string): number {
+  return Canon.bookIdToNumber(a) - Canon.bookIdToNumber(b);
+}
+
+/** Orders files by the book each declares, canonically, with files declaring none last. */
+function compareUnreadableFiles(a: Pt9UnreadableFile, b: Pt9UnreadableFile): number {
+  const bookNumber = (file: Pt9UnreadableFile) =>
+    file.bookId === undefined ? Number.MAX_SAFE_INTEGER : Canon.bookIdToNumber(file.bookId);
+  return bookNumber(a) - bookNumber(b);
+}
+
 /**
  * Renders a byte count in mebibytes, the unit the platform's read ceiling is set in, so the size
  * and the limit beside it are read off the same scale. Whole values carry no decimal.
@@ -135,7 +148,10 @@ function LeftOutFileLines({
               limit: describeMebibytes(
                 Math.max(...filesTooLarge.map((file) => file.maxResponseBytes)),
               ),
-              files: filesTooLarge.map(describeUnreadableFile).join(', '),
+              files: filesTooLarge
+                .toSorted(compareUnreadableFiles)
+                .map(describeUnreadableFile)
+                .join(', '),
             },
           )}
         </p>
@@ -170,8 +186,8 @@ function foldReport(report: Pt9ImportReport): ReportTotals {
     .sort((a, b) => b.count - a.count);
   return {
     languages: report.languages.map((language) => language.tag),
-    books,
-    missingBooks,
+    books: books.sort(compareBookIds),
+    missingBooks: missingBooks.sort(compareBookIds),
     clustersTotal,
     clustersConverted,
     phrasesConverted,

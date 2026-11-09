@@ -228,6 +228,31 @@ describe('Pt9ImportModal', () => {
     expect(report).toHaveTextContent('Books with no text: MRK');
   });
 
+  it('lists books, and books with no text, in canonical order whatever order the files came in', () => {
+    const report = makeReport();
+    const [matthew] = report.languages[0].books;
+    const [mark] = report.languages[1].books;
+    report.languages[0].books = [
+      { ...matthew, bookId: 'REV', bookFound: false },
+      { ...matthew, bookId: '1JN', bookFound: false },
+      matthew,
+    ];
+    report.languages[1].books = [{ ...mark, bookId: 'GEN' }, mark];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    const rendered = screen.getByTestId('pt9-import-report');
+    expect(rendered).toHaveTextContent('Books: GEN, MAT, MRK, 1JN, REV');
+    expect(rendered).toHaveTextContent('Books with no text: GEN, MRK, 1JN, REV');
+  });
+
   it('groups the digits of large counts', () => {
     const report = makeReport();
     report.languages.splice(1, 1);
@@ -282,13 +307,11 @@ describe('Pt9ImportModal', () => {
     expect(rendered).not.toHaveTextContent('phrases');
   });
 
-  it('names the files it could not retrieve, pairing a book with its gloss language', () => {
+  it('names the files it could not retrieve in canonical order, pairing a book with its gloss language', () => {
     const report = makeReport();
     report.filesTooLargeToRead = [
       {
-        path: 'Interlinear_en/Interlinear_en_PSA.xml',
-        bookId: 'PSA',
-        glossLanguage: 'en',
+        path: 'Interlinear_en/mystery.xml',
         sizeBytes: 90_000_000,
         maxResponseBytes: 83_886_080,
       },
@@ -299,7 +322,9 @@ describe('Pt9ImportModal', () => {
         maxResponseBytes: 83_886_080,
       },
       {
-        path: 'Interlinear_en/mystery.xml',
+        path: 'Interlinear_en/Interlinear_en_PSA.xml',
+        bookId: 'PSA',
+        glossLanguage: 'en',
         sizeBytes: 90_000_000,
         maxResponseBytes: 83_886_080,
       },
@@ -315,8 +340,8 @@ describe('Pt9ImportModal', () => {
     );
 
     // A book id alone is not unique across gloss languages, so the language is named with it. A
-    // file whose root declares a book but no language is named by the book alone, and one
-    // declaring neither is named by its path.
+    // file whose root declares a book but no language is named by the book alone. A file declaring
+    // neither is named by its path and listed last.
     expect(screen.getByTestId('pt9-files-too-large')).toHaveTextContent(
       'Larger than the 80 MiB one read can carry, so left out: PSA (en) 85.8 MiB, 1TH 85.8 MiB, Interlinear_en/mystery.xml 85.8 MiB',
     );

@@ -71,7 +71,7 @@ describe('SaveAsProjectModal', () => {
     );
   });
 
-  it('holds the name blank and save-as-new disabled until the project list loads', async () => {
+  it('holds the new-project fields blank and disabled until the project list loads', async () => {
     let resolveList: (json: string) => void = () => {};
     mockSendCommand.mockReturnValue(
       new Promise<string>((resolve) => {
@@ -81,6 +81,8 @@ describe('SaveAsProjectModal', () => {
     render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
 
     expect(screen.getByLabelText('Name')).toHaveValue('');
+    expect(screen.getByLabelText('Name')).toBeDisabled();
+    expect(screen.getByLabelText('Description')).toBeDisabled();
     expect(screen.getByTestId('save-as-new')).toBeDisabled();
 
     resolveList(JSON.stringify([makeProjectSummary({ name: 'Copy of Greek' })]));
@@ -88,13 +90,13 @@ describe('SaveAsProjectModal', () => {
     await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Copy (2) of Greek'));
   });
 
-  it('follows a rename of the active project until the name is edited', async () => {
+  it('keeps the prefilled name when the active project changes under the open modal', async () => {
     const { rerender } = render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
     await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Copy of Greek'));
 
-    rerender(<SaveAsProjectModal {...defaultProps} activeProjectName="Koine" />);
+    rerender(<SaveAsProjectModal {...defaultProps} activeProjectName="Copy of Greek" />);
 
-    expect(screen.getByLabelText('Name')).toHaveValue('Copy of Koine');
+    expect(screen.getByLabelText('Name')).toHaveValue('Copy of Greek');
   });
 
   it('leaves the name blank when no project is active', async () => {
@@ -112,26 +114,10 @@ describe('SaveAsProjectModal', () => {
     );
   });
 
-  it('keeps an edited name when the project list loads after the edit', async () => {
-    let resolveList: (json: string) => void = () => {};
-    mockSendCommand.mockReturnValue(
-      new Promise<string>((resolve) => {
-        resolveList = resolve;
-      }),
-    );
-    render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
-
-    await userEvent.clear(screen.getByLabelText('Name'));
-    await userEvent.type(screen.getByLabelText('Name'), 'Mine');
-    resolveList(JSON.stringify([makeProjectSummary({ name: 'Copy of Greek' })]));
-
-    await screen.findByText('Copy of Greek');
-    expect(screen.getByLabelText('Name')).toHaveValue('Mine');
-  });
-
   it('calls onSaveNew with the trimmed name and description', async () => {
     const onSaveNew = jest.fn();
     render(<SaveAsProjectModal {...defaultProps} onSaveNew={onSaveNew} />);
+    await waitFor(() => expect(screen.getByLabelText('Name')).toBeEnabled());
 
     await userEvent.type(screen.getByLabelText('Name'), '  My Project  ');
     await userEvent.type(screen.getByLabelText('Description'), '  My Description  ');
@@ -143,6 +129,7 @@ describe('SaveAsProjectModal', () => {
   it('calls onSaveNew with an undefined description when the description field is blank', async () => {
     const onSaveNew = jest.fn();
     render(<SaveAsProjectModal {...defaultProps} onSaveNew={onSaveNew} />);
+    await waitFor(() => expect(screen.getByLabelText('Name')).toBeEnabled());
 
     await userEvent.type(screen.getByLabelText('Name'), 'My Project');
     await userEvent.type(screen.getByLabelText('Description'), '   ');

@@ -1782,6 +1782,7 @@ describe('InterlinearizerLoader', () => {
                 unparseableLexemeId: 0,
                 blankMorphemeForm: 0,
               },
+              drops: [],
               ambiguousAnchors: 0,
               punctuationEntriesIgnored: 0,
             },

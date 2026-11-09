@@ -15,6 +15,7 @@ export { isPt9ImportReport, isPt9UnreadableFileList } from './report';
 export type {
   Pt9BarePayloadReport,
   Pt9BookReport,
+  Pt9ClusterDrop,
   Pt9ClusterDropReason,
   Pt9ImportReport,
   Pt9LanguageReport,

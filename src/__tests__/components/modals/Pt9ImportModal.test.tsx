@@ -23,6 +23,9 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_notImportedCount%': '{count} clusters:',
   '%interlinearizer_pt9ImportModal_reason_verseNotFound%': 'verse not found',
   '%interlinearizer_pt9ImportModal_reason_formMismatch%': 'did not match the text',
+  '%interlinearizer_pt9ImportModal_reason_parseFormMismatch%': "parses that don't spell their word",
+  '%interlinearizer_pt9ImportModal_showDrops%': 'Show what was not imported',
+  '%interlinearizer_pt9ImportModal_dropLine%': '{verseRef} ({language}) {lexemeIds} — {reason}',
   '%interlinearizer_pt9ImportModal_reason_lemmaOrOther%': 'unused legacy data',
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%': 'duplicate data',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%': 'unreadable data',
@@ -43,6 +46,7 @@ function makeReport(): Pt9ImportReport {
   const emptyDrops = {
     verseNotFound: 0,
     formMismatch: 0,
+    parseFormMismatch: 0,
     frontMatter: 0,
     lemmaOrOther: 0,
     duplicateCluster: 0,
@@ -66,6 +70,7 @@ function makeReport(): Pt9ImportReport {
             clustersConverted: 15,
             phrasesConverted: 2,
             clusterDrops: { ...emptyDrops, formMismatch: 4, verseNotFound: 1, duplicateCluster: 1 },
+            drops: [],
             ambiguousAnchors: 0,
             punctuationEntriesIgnored: 0,
           },
@@ -86,6 +91,7 @@ function makeReport(): Pt9ImportReport {
             clustersConverted: 0,
             phrasesConverted: 0,
             clusterDrops: { ...emptyDrops, verseNotFound: 5 },
+            drops: [],
             ambiguousAnchors: 0,
             punctuationEntriesIgnored: 0,
           },
@@ -253,12 +259,60 @@ describe('Pt9ImportModal', () => {
     expect(rendered).toHaveTextContent('29,525 did not match the text');
   });
 
+  it('lists each drop, collapsed, with its verse, language, lexeme ids and reason', () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+      { verseRef: 'MAT 1:3', reason: 'parseFormMismatch', lexemeIds: ['Stem:run', 'Suffix:ing'] },
+    ];
+    report.languages[1].books[0].drops = [
+      { verseRef: 'MRK 1:1', reason: 'verseNotFound', lexemeIds: ['Word:bonjour'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    const drops = screen.getByTestId('pt9-import-drops');
+    expect(drops).not.toHaveAttribute('open');
+    expect(within(drops).getByText('Show what was not imported')).toBeInTheDocument();
+    expect(
+      within(drops)
+        .getAllByTestId('pt9-import-drop')
+        .map((line) => line.textContent),
+    ).toEqual([
+      'MAT 1:2 (en) Word:ghost — did not match the text',
+      "MAT 1:3 (en) Stem:run Suffix:ing — parses that don't spell their word",
+      'MRK 1:1 (fr) Word:bonjour — verse not found',
+    ]);
+  });
+
+  it('omits the drop list when nothing dropped', () => {
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report: makeReport() }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('pt9-import-drops')).not.toBeInTheDocument();
+  });
+
   it('omits the not-imported and missing-book rows when the import was clean', () => {
     const report = makeReport();
     report.languages.splice(1, 1);
     report.languages[0].books[0].clusterDrops = {
       verseNotFound: 0,
       formMismatch: 0,
+      parseFormMismatch: 0,
       frontMatter: 0,
       lemmaOrOther: 0,
       duplicateCluster: 0,

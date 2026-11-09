@@ -3,10 +3,12 @@
  *
  * - `verseNotFound`: the cluster's verse key matches neither a verse's segment, a heading filed under
  *   that verse, nor the book's front matter (or its book is missing from the project text).
- * - `formMismatch`: no token (or token run, for phrases) folds to the cluster's expected surface, or
- *   a parse's forms do not spell out the token that its word cluster anchored to. Subsumes
- *   word-division disagreements and text PT9 analyzed that the text layer leaves out, such as
- *   footnotes, which are indistinguishable from plain mismatches without PT9's own text.
+ * - `formMismatch`: no token (or token run, for phrases) folds to the cluster's expected surface.
+ *   Subsumes word-division disagreements and text PT9 analyzed that the text layer leaves out, such
+ *   as footnotes, which are indistinguishable from plain mismatches without PT9's own text.
+ * - `parseFormMismatch`: a parse's forms do not spell out the token that its word cluster anchored
+ *   to. The word converts without its morphemes. Deliberate analyses land here too, such as a
+ *   suffix written in one form across vowel harmony, a stem's citation form, or a zero morpheme.
  * - `frontMatter`: the cluster analyzes text ahead of the book's first chapter — its identification
  *   line, titles, or introduction — which the text layer leaves out.
  * - `lemmaOrOther`: the cluster is a Lemma or Other-type cluster, inert legacy data in modern PT9.
@@ -18,6 +20,7 @@
 export type Pt9ClusterDropReason =
   | 'verseNotFound'
   | 'formMismatch'
+  | 'parseFormMismatch'
   | 'frontMatter'
   | 'lemmaOrOther'
   | 'duplicateCluster'
@@ -40,6 +43,8 @@ export interface Pt9BookReport {
   /** Phrase clusters that anchored and produced a phrase record. */
   phrasesConverted: number;
   clusterDrops: Record<Pt9ClusterDropReason, number>;
+  /** Each dropped cluster, grouped by verse in the book's verse order. */
+  drops: Pt9ClusterDrop[];
   /** Anchors chosen among several candidate tokens rather than matched uniquely. */
   ambiguousAnchors: number;
   /**
@@ -47,6 +52,15 @@ export interface Pt9BookReport {
    * punctuation, which the analysis model has no place for.
    */
   punctuationEntriesIgnored: number;
+}
+
+/** One cluster that did not convert, named so a user can find it and redo it. */
+export interface Pt9ClusterDrop {
+  /** The verse key PT9 filed the cluster under, such as `GEN 1:1`. */
+  verseRef: string;
+  reason: Pt9ClusterDropReason;
+  /** The cluster's lexeme ids as PT9 wrote them, leaving out any lexeme that carries none. */
+  lexemeIds: string[];
 }
 
 /** Conversion outcome counts for one gloss language across its books. */
@@ -149,32 +163,12 @@ export interface Pt9UnreadableFile {
   maxResponseBytes: number;
 }
 
-/** Every drop reason, for typed iteration over `clusterDrops` records. */
-const PT9_CLUSTER_DROP_REASONS: readonly Pt9ClusterDropReason[] = [
-  'verseNotFound',
-  'formMismatch',
-  'frontMatter',
-  'lemmaOrOther',
-  'duplicateCluster',
-  'unparseableLexemeId',
-  'blankMorphemeForm',
-];
-
-/** Adds every count in `source` onto `target` in place. */
-export function addClusterDrops(
-  target: Record<Pt9ClusterDropReason, number>,
-  source: Record<Pt9ClusterDropReason, number>,
-): void {
-  PT9_CLUSTER_DROP_REASONS.forEach((reason) => {
-    target[reason] += source[reason];
-  });
-}
-
 /** A `clusterDrops` record with every reason at zero. */
 export function emptyClusterDrops(): Record<Pt9ClusterDropReason, number> {
   return {
     verseNotFound: 0,
     formMismatch: 0,
+    parseFormMismatch: 0,
     frontMatter: 0,
     lemmaOrOther: 0,
     duplicateCluster: 0,
@@ -195,6 +189,7 @@ export function emptyBookReport(bookId: string, bookFound: boolean): Pt9BookRepo
     clustersConverted: 0,
     phrasesConverted: 0,
     clusterDrops: emptyClusterDrops(),
+    drops: [],
     ambiguousAnchors: 0,
     punctuationEntriesIgnored: 0,
   };
@@ -235,7 +230,7 @@ export function emptyPt9ImportReport(): Pt9ImportReport {
   };
 }
 
-/** Validates one per-book section of a conversion report: identity, counts, and drop reasons. */
+/** Validates one per-book section of a conversion report: identity, counts, and drops. */
 function isPt9BookReport(value: unknown): boolean {
   return (
     !!value &&
@@ -253,7 +248,21 @@ function isPt9BookReport(value: unknown): boolean {
     'clusterDrops' in value &&
     !!value.clusterDrops &&
     typeof value.clusterDrops === 'object' &&
-    Object.values(value.clusterDrops).every((count) => typeof count === 'number')
+    Object.values(value.clusterDrops).every((count) => typeof count === 'number') &&
+    'drops' in value &&
+    Array.isArray(value.drops) &&
+    value.drops.every(
+      (drop) =>
+        !!drop &&
+        typeof drop === 'object' &&
+        'verseRef' in drop &&
+        typeof drop.verseRef === 'string' &&
+        'reason' in drop &&
+        typeof drop.reason === 'string' &&
+        'lexemeIds' in drop &&
+        Array.isArray(drop.lexemeIds) &&
+        drop.lexemeIds.every((id: unknown) => typeof id === 'string'),
+    )
   );
 }
 

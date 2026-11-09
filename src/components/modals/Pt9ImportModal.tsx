@@ -2,6 +2,7 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import type {
+  Pt9ClusterDrop,
   Pt9ClusterDropReason,
   Pt9ImportReport,
   Pt9UnreadableFile,
@@ -25,11 +26,14 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_pt9ImportModal_notImportedCount%',
   '%interlinearizer_pt9ImportModal_reason_verseNotFound%',
   '%interlinearizer_pt9ImportModal_reason_formMismatch%',
+  '%interlinearizer_pt9ImportModal_reason_parseFormMismatch%',
   '%interlinearizer_pt9ImportModal_reason_frontMatter%',
   '%interlinearizer_pt9ImportModal_reason_lemmaOrOther%',
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%',
   '%interlinearizer_pt9ImportModal_reason_blankMorphemeForm%',
+  '%interlinearizer_pt9ImportModal_showDrops%',
+  '%interlinearizer_pt9ImportModal_dropLine%',
   '%interlinearizer_pt9ImportModal_missingBooks%',
   '%interlinearizer_pt9ImportModal_filesTooLarge%',
   '%interlinearizer_pt9ImportModal_filesNeverLoaded%',
@@ -64,6 +68,7 @@ export interface LeftOutFiles {
 const DROP_REASONS: readonly Pt9ClusterDropReason[] = [
   'verseNotFound',
   'formMismatch',
+  'parseFormMismatch',
   'frontMatter',
   'lemmaOrOther',
   'duplicateCluster',
@@ -84,6 +89,8 @@ type ReportTotals = {
   clustersConverted: number;
   phrasesConverted: number;
   drops: { reason: Pt9ClusterDropReason; count: number }[];
+  /** Every dropped cluster, paired with the tag of the gloss language it was in. */
+  droppedClusters: (Pt9ClusterDrop & { language: string })[];
 };
 
 /**
@@ -152,8 +159,10 @@ function foldReport(report: Pt9ImportReport): ReportTotals {
   let clustersConverted = 0;
   let phrasesConverted = 0;
   const dropCounts = new Map<Pt9ClusterDropReason, number>();
+  const droppedClusters: ReportTotals['droppedClusters'] = [];
   report.languages.forEach((language) => {
     language.books.forEach((book) => {
+      book.drops.forEach((drop) => droppedClusters.push({ ...drop, language: language.tag }));
       if (!books.includes(book.bookId)) books.push(book.bookId);
       if (!book.bookFound && !missingBooks.includes(book.bookId)) missingBooks.push(book.bookId);
       clustersTotal += book.clustersTotal;
@@ -176,6 +185,7 @@ function foldReport(report: Pt9ImportReport): ReportTotals {
     clustersConverted,
     phrasesConverted,
     drops,
+    droppedClusters,
   };
 }
 
@@ -361,6 +371,31 @@ export function Pt9ImportModal({
               ))}
             </ul>
           </>
+        )}
+        {totals.droppedClusters.length > 0 && (
+          <details className="tw:text-sm" data-testid="pt9-import-drops">
+            <summary className="tw:cursor-pointer">
+              {localizedStrings['%interlinearizer_pt9ImportModal_showDrops%']}
+            </summary>
+            <div className="tw:max-h-48 tw:overflow-y-auto tw:ps-5 tw:text-muted-foreground">
+              {totals.droppedClusters.map((drop, index) => (
+                // Two drops can share every field, so only their position tells them apart.
+                // eslint-disable-next-line react/no-array-index-key
+                <p key={index} data-testid="pt9-import-drop">
+                  {formatReplacementString(
+                    localizedStrings['%interlinearizer_pt9ImportModal_dropLine%'],
+                    {
+                      verseRef: drop.verseRef,
+                      language: drop.language,
+                      lexemeIds: drop.lexemeIds.join(' '),
+                      reason:
+                        localizedStrings[`%interlinearizer_pt9ImportModal_reason_${drop.reason}%`],
+                    },
+                  )}
+                </p>
+              ))}
+            </div>
+          </details>
         )}
         {totals.missingBooks.length > 0 && (
           <p className="tw:text-sm tw:text-muted-foreground">

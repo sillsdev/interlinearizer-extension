@@ -1,9 +1,9 @@
 import type { Book, Segment } from 'interlinearizer';
-import type { Pt9InterlinearBook } from 'platform-scripture';
+import type { Pt9InterlinearBook, Pt9InterlinearCluster } from 'platform-scripture';
 import { composeLexemeKeyId, LexemeKeyData } from 'parsers/pt9/lexemeKey';
 import { anchorVerseClusters, ClassifiedLexeme } from './clusterAnchoring';
 import type { Pt9GlossSource } from './pt9GlossSource';
-import { addClusterDrops, emptyBookReport, Pt9BookReport, Pt9SenseReport } from './report';
+import { emptyBookReport, Pt9BookReport, Pt9ClusterDropReason, Pt9SenseReport } from './report';
 
 /** A lexeme with its gloss resolved for one language: the facts merging needs, nothing more. */
 export interface ResolvedLexeme {
@@ -115,19 +115,27 @@ export function buildLanguageBookAnalyses(args: {
     if (verse.approvedHash !== undefined) bookReport.versesHashed += 1;
     bookReport.punctuationEntriesIgnored += verse.punctuations.length;
     bookReport.clustersTotal += verse.clusters.length;
+    const recordDrop = (reason: Pt9ClusterDropReason, cluster: Pt9InterlinearCluster) => {
+      bookReport.clusterDrops[reason] += 1;
+      bookReport.drops.push({
+        verseRef: verse.reference,
+        reason,
+        lexemeIds: cluster.lexemes.flatMap((lexeme) => lexeme.lexemeId ?? []),
+      });
+    };
 
     const segments = segmentsByVerseId.get(verse.reference) ?? [];
     const filedFrontMatter = verse.reference === frontMatterVerseId ? frontMatter : [];
     if (segments.length === 0 && filedFrontMatter.length === 0) {
       bookReport.versesNotFound += 1;
-      bookReport.clusterDrops.verseNotFound += verse.clusters.length;
+      verse.clusters.forEach((cluster) => recordDrop('verseNotFound', cluster));
       return;
     }
 
     const baseStatus: LangRecordStatus =
       verse.approvedHash !== undefined ? 'approved' : 'suggested';
     const anchored = anchorVerseClusters(segments, verse.clusters, filedFrontMatter);
-    addClusterDrops(bookReport.clusterDrops, anchored.dropCounts);
+    anchored.drops.forEach(({ reason, cluster }) => recordDrop(reason, cluster));
     bookReport.ambiguousAnchors += anchored.ambiguousCount;
 
     anchored.groups.forEach((group) => {

@@ -21,7 +21,7 @@ export interface DatasetManifest {
     segmentAnalyses: number;
   };
   bytes: {
-    /** The draft as `saveDraft` receives it. */
+    /** The whole draft, serialized as JSON. */
     draftJson: number;
     /** The largest one book's shard of the draft as storage holds it. */
     largestShard: number;

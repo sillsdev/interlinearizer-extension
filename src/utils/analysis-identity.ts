@@ -16,8 +16,8 @@ const NORMALIZED_FORM_CACHE_MAX = 50_000;
 
 /**
  * Memoizes normalized surface forms by raw input string. Normalization runs once per visible
- * un-approved token on every store dispatch, so the same handful of forms would otherwise be
- * re-derived constantly. Bounded by {@link NORMALIZED_FORM_CACHE_MAX} because the cache is
+ * un-approved token each time the selectors recompute, so the same handful of forms would otherwise
+ * be re-derived constantly. Bounded by {@link NORMALIZED_FORM_CACHE_MAX} because the cache is
  * module-global rather than project-scoped.
  */
 const normalizedFormCache = new Map<string, string>();

@@ -149,7 +149,7 @@ function seedOrphans(draft: DraftProject, books: readonly Book[]): void {
   });
 }
 
-/** What the WebView's store holds for each range of a book, read from the whole analysis. */
+/** What the selectors derive from the whole analysis for each range of a book. */
 function expectedPages(analysis: TextAnalysis, book: Book) {
   const state = { analysis, analysisLanguage: 'en' };
   const pool = selectPoolIndex(state);
@@ -249,7 +249,8 @@ function expectedPages(analysis: TextAnalysis, book: Book) {
 }
 
 /**
- * Compares each page and the outline of every book with what the WebView's store holds for them.
+ * Compares each page and the outline of every book with what the selectors derive for them from the
+ * whole analysis.
  *
  * @returns The pages that differ, by book and start, with what differed.
  */

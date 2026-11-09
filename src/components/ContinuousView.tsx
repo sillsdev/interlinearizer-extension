@@ -817,7 +817,7 @@ export default function ContinuousView({
     [getFocus, groupIndexByTokenRef, focusToken],
   );
 
-  /** Splits a phrase arc at a token boundary and dispatches the resulting phrase-store writes. */
+  /** Splits a phrase arc at a token boundary through the session's phrase split command. */
   const handleArcSplit = useArcSplitHandler();
 
   /**

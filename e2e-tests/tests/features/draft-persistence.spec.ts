@@ -34,9 +34,9 @@ test.describe('Draft persistence', () => {
     await glossInput.press('Tab');
     await expect(glossInput).toHaveValue(gloss);
 
-    // The draft auto-saves on a 300 ms debounce, with no UI signal that the storage write has landed
-    // (the tab's dirty marker tracks draft-vs-project, not draft-vs-storage). This fixed wait covers
-    // the debounce so the test exercises the debounced-save path (not the unmount-flush path).
+    // The gloss command saves the draft on the host, with no UI signal that the save has landed (the
+    // tab's dirty marker tracks draft-vs-project, not draft-vs-storage). This fixed wait gives the
+    // command time to reach the host and save before the tab closes.
     await mainPage.waitForTimeout(1_000);
 
     await closeInterlinearizerTab(mainPage);

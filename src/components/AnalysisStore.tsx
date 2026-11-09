@@ -59,27 +59,27 @@ import {
   useWholeSelector as useSessionWholeSelector,
   useWholeStateGetter as useSessionWholeStateGetter,
 } from '../cache/pageHooks';
-import {
-  useAnalysisRowCommands,
-  useApproveAnalysisCommand,
-  useConfirmMorphemesCommand,
-  useGlossCommand,
-  useMorphemeBreakdownCommand,
-  useMorphemeDeleteCommand,
-  useMorphemeGlossCommand,
-  usePhraseCommands,
-  usePhraseGlossCommand,
-  useRemovalPreviews,
-  useSegmentFreeTranslationCommand,
-  useStaleFreeTranslationCommands,
-  useStaleLocationCommands,
-} from '../cache/sessionEdits';
+import { useGlossCommand, useRemovalPreviews } from '../cache/sessionEdits';
 import type { CatalogRow, HeadingPlacement } from '../utils/analysis-query';
 import {
   placeStaleFreeTranslations,
   type PlacedStaleFreeTranslations,
 } from '../utils/stale-free-translations';
 import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils/suggestion-engine';
+
+export {
+  useAnalysisRowDispatch,
+  useApproveAnalysisDispatch,
+  useConfirmMorphemesDispatch,
+  useMorphemeBreakdownDispatch,
+  useMorphemeDeleteDispatch,
+  useMorphemeGlossDispatch,
+  usePhraseDispatch,
+  usePhraseGlossDispatch,
+  useSegmentFreeTranslationDispatch,
+  useStaleFreeTranslationDispatch,
+  useStaleLocationDispatch,
+} from '../cache/sessionEdits';
 
 // #region Internal context
 
@@ -230,22 +230,6 @@ function useRequiredCallbacks(hookName: string): ProviderCallbacks {
   const ctx = useContext(AnalysisCallbackCtx);
   if (!ctx) throw new Error(`${hookName} must be used inside a SessionAnalysisProvider`);
   return ctx;
-}
-
-/** What the session says a stale discard or reapply would reclaim. */
-function useStaleReclaimsFromSession(): StaleLocationReclaims {
-  const previews = useRemovalPreviews();
-  return useMemo(
-    () => ({ discard: previews.discardStale, reapply: previews.reapplyStale }),
-    [previews],
-  );
-}
-
-/** What the session says a gloss clear would reclaim. */
-function useGlossClearReclaimsFromSession(): (
-  analysisIds: readonly string[],
-) => Settles<readonly string[]> {
-  return useRemovalPreviews().clearGlosses;
 }
 
 /**
@@ -422,15 +406,6 @@ export function useStaleMorphemesAnalysisId(tokenRef: string): string | undefine
 }
 
 /**
- * Returns a stable callback that keeps an analysis's stale breakdown as it stands, clearing the
- * mark for every token linked to it. Persists immediately, recording the optional `tokenRef` as the
- * place the confirmation was made at.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export const useConfirmMorphemesDispatch = useConfirmMorphemesCommand;
-
-/**
  * Returns whether resetting `tokenRef`'s morpheme breakdown would discard glosses or lexicon
  * references no other token still holds, so the morpheme editor can confirm before discarding them.
  * A payload shared with other tokens does not qualify: it is forked rather than emptied, leaving
@@ -533,19 +508,6 @@ export type AnalysisRowDispatch = {
 };
 
 /**
- * Returns stable callbacks for editing the analysis records that the catalog lists. Every callback
- * here is keyed by `analysisId` and so rewrites the record for all its tokens at once — the
- * opposite of the `tokenRef`-keyed hooks above, which fork a shared payload to keep an edit local
- * to one token. The key is the whole of the distinction; neither family takes a scope flag.
- *
- * Each write reports where it left the record, so the caller can tell the reader that an edit
- * collapsed the row onto a sibling rather than letting it vanish unexplained.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export const useAnalysisRowDispatch = useAnalysisRowCommands;
-
-/**
  * The write callbacks for the places an analysis went stale at, each keyed by one such place and so
  * local to it.
  */
@@ -563,14 +525,6 @@ export type StaleLocationDispatch = {
     surfaceText: string,
   ) => void;
 };
-
-/**
- * Returns stable callbacks for reviewing the places that analyses went stale at. Each persists
- * immediately.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export const useStaleLocationDispatch = useStaleLocationCommands;
 
 /** What each {@link StaleLocationDispatch} write would reclaim. */
 export type StaleLocationReclaims = {
@@ -594,7 +548,13 @@ export type StaleLocationReclaims = {
  *
  * @throws When called outside a {@link SessionAnalysisProvider}.
  */
-export const useStaleLocationReclaims = useStaleReclaimsFromSession;
+export function useStaleLocationReclaims(): StaleLocationReclaims {
+  const previews = useRemovalPreviews();
+  return useMemo(
+    () => ({ discard: previews.discardStale, reapply: previews.reapplyStale }),
+    [previews],
+  );
+}
 
 /**
  * Returns a stable getter for the ids of the records that clearing the glosses on `analysisIds`
@@ -603,7 +563,11 @@ export const useStaleLocationReclaims = useStaleReclaimsFromSession;
  *
  * @throws When called outside a {@link SessionAnalysisProvider}.
  */
-export const useGlossClearReclaims = useGlossClearReclaimsFromSession;
+export function useGlossClearReclaims(): (
+  analysisIds: readonly string[],
+) => Settles<readonly string[]> {
+  return useRemovalPreviews().clearGlosses;
+}
 
 /**
  * Returns a stable getter for what deleting a record would do to the tokens that approve it — left
@@ -665,45 +629,6 @@ export function useAnalysis(): TextAnalysis {
 export function useGlossDispatch(): (tokenRef: string, surfaceText: string, value: string) => void {
   return useRequiredCallbacks('useGlossDispatch').requestGlossEdit;
 }
-
-/**
- * Returns a stable callback that approves an existing shared `TokenAnalysis` payload for a token —
- * the persisted half of accepting a suggestion (the suggested payload) or promoting a candidate (a
- * chosen alternative). Persists immediately. Accepting approves the token's link to the existing
- * payload — flipping one it already holds, or adding one — and never rewrites the shared content,
- * so no other token's gloss changes.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export const useApproveAnalysisDispatch = useApproveAnalysisCommand;
-
-/**
- * Returns a stable callback that replaces the morpheme breakdown on the approved `TokenAnalysis`
- * for a given token. The edit is per-token: a shared payload is forked before re-segmenting, so
- * editing one token's breakdown never rewrites the others. Persists immediately.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export const useMorphemeBreakdownDispatch = useMorphemeBreakdownCommand;
-
-/**
- * Returns a stable callback that removes the morpheme breakdown from the approved `TokenAnalysis`
- * for a given token (deleting the analysis record entirely when removing the breakdown leaves it
- * with no other content — no gloss, POS, features, or lexicon sense reference). Persists
- * immediately.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export const useMorphemeDeleteDispatch = useMorphemeDeleteCommand;
-
-/**
- * Returns a stable callback that writes a gloss on a single morpheme within the approved
- * `TokenAnalysis` for a given token. The edit is per-token: a shared payload is forked before
- * writing, so editing one token's morpheme gloss never rewrites the others. Persists immediately.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export const useMorphemeGlossDispatch = useMorphemeGlossCommand;
 
 // #endregion
 
@@ -770,14 +695,6 @@ export function usePhraseSenseRef(phraseId: string): SenseRef | undefined {
   return usePageSelector((state: AnalysisState) => selectPhraseSenseRef(state, phraseId));
 }
 
-/**
- * Returns a stable callback that writes the gloss of a phrase occurrence, persisting it
- * immediately.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export const usePhraseGlossDispatch = usePhraseGlossCommand;
-
 /** Return value of {@link usePhraseDispatch}. */
 export type PhraseDispatch = {
   /**
@@ -816,13 +733,6 @@ export type PhraseDispatch = {
    */
   splitPhrase: (phraseLink: PhraseAnalysisLink, splitAfterTokenRef: string) => void;
 };
-
-/**
- * Returns stable callbacks for editing phrase occurrences. Each persists immediately.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export const usePhraseDispatch: () => PhraseDispatch = usePhraseCommands;
 
 // #endregion
 
@@ -901,17 +811,6 @@ export function useStaleTokenLinks(): readonly TokenAnalysisLink[] {
   return useSessionWholeSelector((state: AnalysisState) => selectStaleTokenLinks(state));
 }
 
-/**
- * Returns a stable callback that writes a free-translation value for the given segment, persisting
- * it immediately. Mirrors {@link useGlossDispatch}: a blank value clears the translation and may
- * drop the now-empty `SegmentAnalysis` record. A segment with no approved translation adopts the
- * stale one that `adoptStaleAnalysisId` names, where given, as the translation the value was typed
- * over.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export const useSegmentFreeTranslationDispatch = useSegmentFreeTranslationCommand;
-
 /** The write callbacks for reviewing stale free translations. */
 export type StaleFreeTranslationDispatch = {
   /**
@@ -922,12 +821,5 @@ export type StaleFreeTranslationDispatch = {
   /** Drops the stale translation `analysisId`. */
   discard: (analysisId: string) => void;
 };
-
-/**
- * Returns stable callbacks for reviewing stale free translations. Each persists immediately.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export const useStaleFreeTranslationDispatch = useStaleFreeTranslationCommands;
 
 // #endregion

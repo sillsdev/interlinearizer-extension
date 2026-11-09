@@ -31,7 +31,7 @@ export function useEditPhraseTokens(phraseMode: PhraseMode): TokenSnapshot[] | u
   return useMemo(
     () =>
       phraseMode.kind === 'edit'
-        ? /* v8 ignore next -- phrase always exists in the store when edit mode is entered */
+        ? /* v8 ignore next -- the phrase is always held when edit mode is entered */
           phraseLinkById.get(phraseMode.phraseId)?.tokens
         : undefined,
     [phraseMode, phraseLinkById],

@@ -512,8 +512,8 @@ const MAX_REANCHOR_PASSES = 8;
  * heading of that verse and marker reading exactly as it did. Every link the pass rewrites takes
  * `now` as its `updatedAt`.
  *
- * @returns The healed analysis, or `analysis` itself when nothing moved — so an unchanged book
- *   neither reseeds the store nor marks the draft dirty.
+ * @returns The healed analysis, or `analysis` itself when nothing moved, so the caller finds no
+ *   changes to apply for an unchanged book.
  */
 export function reanchorAnalysisToBook(
   analysis: TextAnalysis,

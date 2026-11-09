@@ -39,7 +39,7 @@ npm run perf:app         # Production-build the extension and time it, WebView a
 npm run perf:summary     # Render the newest results as markdown tables
 npm run perf:shape       # Compare analysis shape across tiers and stored projects
 npm run perf:indexes     # Check derived indexes and lookups against the records, after random edits
-npm run perf:pages       # Check session pages, outlines and change events against the WebView's store
+npm run perf:pages       # Check session pages, outlines and change events against what the selectors derive from the whole analysis
 ```
 
 Only a template merge moves the dependency baseline that `npm run lint:dependencies` checks against. Refresh it in that same commit with `npm run template:baseline`, which writes both the baseline (a copy of the template's `package.json`) and the `MERGED_TEMPLATE_COMMIT` id in [scripts/check-dependency-scope.cjs](scripts/check-dependency-scope.cjs). [README.md](README.md) has the full procedure.
@@ -257,7 +257,7 @@ Jest with ts-jest, jsdom environment. PAPI is fully mocked in `__mocks__/`. Cove
 
 `resetMocks: true` is set globally — mock implementations are cleared before every test, so each test must set up its own mocks (typically in `beforeEach`). Never rely on implementation state leaking from a prior test.
 
-Any `console.error` or `console.warn` call fails the test that is running when it lands, or the file when it lands after the last test ([jest.environment.ts](jest.environment.ts)). A log from a cleanup hook fails the test that the hook ran after. A log from loading a test file, or from its `afterAll`, fails the file. Redux Toolkit's warning that an invariant check ran slowly is silenced, because load alone can cause it. A test that expects a log silences it with `jest.spyOn(console, 'error').mockImplementation(...)`. A test that leaves async work running, such as a lookup that sets state once it resolves, waits for that work with `findBy*` or `waitFor`, or unmounts to abandon it.
+Any `console.error` or `console.warn` call fails the test that is running when it lands, or the file when it lands after the last test ([jest.environment.ts](jest.environment.ts)). A log from a cleanup hook fails the test that the hook ran after. A log from loading a test file, or from its `afterAll`, fails the file. A test that expects a log silences it with `jest.spyOn(console, 'error').mockImplementation(...)`. A test that leaves async work running, such as a lookup that sets state once it resolves, waits for that work with `findBy*` or `waitFor`, or unmounts to abandon it.
 
 `@papi/backend` and `@papi/frontend` mocks are mutually exclusive: backend tests use `papi-backend.ts`, WebView tests use `papi-frontend.ts` + `papi-frontend-react.ts`. Each mock file ends with `export {}` so TypeScript treats it as a module.
 

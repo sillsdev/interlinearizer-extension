@@ -680,7 +680,7 @@ function SegmentChipView({
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
 
-  /** Bridges an {@link ArcOverlay} split-button click into the phrase-store split dispatch. */
+  /** Bridges an {@link ArcOverlay} split-button click into the session's phrase split command. */
   const handleArcSplit = useArcSplitHandler();
 
   /**

@@ -218,7 +218,7 @@ export function replyProjectMissing(
   const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
   jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
     const [command, args] = call;
-    const reply: unknown = await serve?.(...call);
+    const reply = await serve?.(...call);
     const named =
       args && typeof args === 'object' && 'interlinearProjectId' in args
         ? args.interlinearProjectId

@@ -42,15 +42,18 @@ interface HeldBook {
 const latestBooks = new Map<string, HeldBook>();
 
 /**
- * Each source project's open book, the one whose outline was last asked for. It stays kept while
- * other books are read, and its edits are reported to {@link onBookTextChanged}'s listeners.
+ * Each source project's open book, the one last asked for as open. It stays kept while other books
+ * are read, and its edits are reported to {@link onBookTextChanged}'s listeners.
  */
 const openBooks = new Map<string, HeldBook>();
 
 /** Tells a request whether its project closed while it was under way. */
 const closeCounts = new Map<string, number>();
 
-/** Tells an outline request whether a later one, which picks the open book instead, has started. */
+/**
+ * Tells a request for the open book whether a later one, which picks the open book instead, has
+ * started.
+ */
 const outlineCounts = new Map<string, number>();
 
 /**
@@ -287,9 +290,9 @@ async function reportOpenBookEdit(sourceProjectId: string, held: HeldBook): Prom
 
 /**
  * Finds the source project's book tokenized under the project's language tag, and keeps it as the
- * project's latest book, and as its open book too when `isOpen` and no later outline request has
- * started. A kept book is served again until its text changes, another book takes its place, or
- * {@link closeProject} lets it go.
+ * project's latest book, and as its open book too when `isOpen` and no later request for the open
+ * book has started. A kept book is served again until its text changes, another book takes its
+ * place, or {@link closeProject} lets it go.
  */
 async function keepBook(
   sourceProjectId: string,
@@ -376,9 +379,9 @@ function segmentsOf(
 
 /**
  * Calls `listener` whenever the Scripture text changes in a book the service watches, until the
- * returned function is called. A source project's watched books are its open book, the one whose
- * outline was last asked for, and every book its whole-text read has read. Once the listener is
- * called, a request for the book reads the edit, and the whole-text read's answers include it.
+ * returned function is called. A source project's watched books are its open book, the one last
+ * asked for as open, and every book its whole-text read has read. Once the listener is called, a
+ * request for the book reads the edit, and the whole-text read's answers include it.
  */
 export function onBookTextChanged(listener: BookTextListener): () => boolean {
   bookTextListeners.add(listener);
@@ -532,6 +535,22 @@ export async function getVerseBook(
   bookId: string,
 ): Promise<Book | undefined> {
   return (await keptBook(sourceProjectId, bookId)).book;
+}
+
+/**
+ * Reads a book of the source project, tokenized one segment per verse. The book becomes the
+ * project's open book, whose edits {@link onBookTextChanged} reports. The book is shared, so the
+ * caller must not change it.
+ *
+ * @returns `undefined` when the project has no text for the book.
+ * @throws If the book's text or the project's language tag cannot be read, or the text cannot be
+ *   tokenized.
+ */
+export async function getOpenVerseBook(
+  sourceProjectId: string,
+  bookId: string,
+): Promise<Book | undefined> {
+  return (await keepBook(sourceProjectId, bookId, true)).book;
 }
 
 /**

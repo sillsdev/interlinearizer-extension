@@ -71,6 +71,7 @@ describe('splitSegment', () => {
       startTextRead: async () => {},
       stopTextRead: async () => {},
       heldBook: () => undefined,
+      getOpenVerseBook: async () => undefined,
       reportChange: () => {},
     });
     const stored = async () => {

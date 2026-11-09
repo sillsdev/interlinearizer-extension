@@ -92,6 +92,7 @@ function makeSessions(projects: InterlinearProject[] = []) {
     heldBook: jest.fn<Book | undefined, [string, string, SegmentationDelta | undefined]>(
       () => undefined,
     ),
+    getOpenVerseBook: jest.fn<Promise<Book | undefined>, [string, string]>(async () => undefined),
     reportChange: jest.fn<void, [SessionAnalysisChange]>(),
   } satisfies SessionHost;
   const seedDraft = (draft: DraftProject) =>
@@ -850,6 +851,14 @@ describe('AnalysisSessions', () => {
         expect.objectContaining({ scope: expect.objectContaining({ sourceProjectId: SOURCE }) }),
       );
       await expect(stored(storage)).resolves.toMatchObject({ dirty: false });
+    });
+
+    it('refuses a session that is not open', async () => {
+      const { sessions } = makeSessions();
+
+      await expect(sessions.edit('not-a-session', 'nothing', async () => {})).rejects.toThrow(
+        'no session not-a-session is open',
+      );
     });
   });
 
@@ -1770,6 +1779,43 @@ describe('AnalysisSessions', () => {
       expect((await storedLink(storage)).status).toBe('stale');
     });
 
+    it('skips the pass for a book that opened with the same text', async () => {
+      const { host, sessions, sessionId } = await sessionGlossingBeta();
+      host.getOpenVerseBook.mockResolvedValue(AFTER);
+      await sessions.reanchorOpenedBook(sessionId, 'GEN');
+      let read: jest.SpyInstance | undefined;
+      await sessions.run(sessionId, async (session) => {
+        read = jest.spyOn(session.repository, 'findLinksInBooks');
+      });
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it('revives the links into a missing book that returns with the text it had', async () => {
+      const { sessions, storage } = await sessionGlossingBeta();
+      await sessions.reanchorBook(SOURCE, AFTER);
+      await sessions.reanchorMissingBooks(SOURCE, []);
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      expect((await storedLink(storage)).status).toBe('approved');
+    });
+
+    it('skips the pass for an edit that leaves the same text', async () => {
+      const { sessions, sessionId } = await sessionGlossingBeta();
+      await sessions.reanchorBook(SOURCE, AFTER, true);
+      let read: jest.SpyInstance | undefined;
+      await sessions.run(sessionId, async (session) => {
+        read = jest.spyOn(session.repository, 'findLinksInBooks');
+      });
+
+      await sessions.reanchorBook(SOURCE, AFTER, true);
+
+      expect(read).not.toHaveBeenCalled();
+    });
+
     it('re-anchors in the session turn, after the commands sent before', async () => {
       const { sessions, sessionId, storage } = await sessionGlossingBeta();
       const command = deferred();
@@ -1809,6 +1855,107 @@ describe('AnalysisSessions', () => {
       await sessions.reanchorMissingBooks(SOURCE, []);
 
       expect(applied).not.toHaveBeenCalled();
+    });
+
+    describe('when the session opens a book', () => {
+      it("re-anchors the draft to the book's current text", async () => {
+        const { host, sessions, sessionId, storage } = await sessionGlossingBeta();
+        host.getOpenVerseBook.mockResolvedValue(AFTER);
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect(host.getOpenVerseBook).toHaveBeenCalledWith(SOURCE, 'GEN');
+        expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
+      });
+
+      it('skips the pass when the book opens again with the same text', async () => {
+        const { host, sessions, sessionId } = await sessionGlossingBeta();
+        host.getOpenVerseBook.mockResolvedValue(AFTER);
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+        let read: jest.SpyInstance | undefined;
+        await sessions.run(sessionId, async (session) => {
+          read = jest.spyOn(session.repository, 'findLinksInBooks');
+        });
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect(read).not.toHaveBeenCalled();
+      });
+
+      it('re-anchors again when the book opens with other text', async () => {
+        const { host, sessions, sessionId, storage } = await sessionGlossingBeta();
+        host.getOpenVerseBook.mockResolvedValueOnce(AFTER).mockResolvedValue(BEFORE);
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(BEFORE, 'beta'));
+      });
+
+      it('skips the pass for a book the whole-text read re-anchored to the same text', async () => {
+        const { host, sessions, sessionId } = await sessionGlossingBeta();
+        host.getOpenVerseBook.mockResolvedValue(AFTER);
+        await sessions.reanchorBook(SOURCE, AFTER);
+        let read: jest.SpyInstance | undefined;
+        await sessions.run(sessionId, async (session) => {
+          read = jest.spyOn(session.repository, 'findLinksInBooks');
+        });
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect(read).not.toHaveBeenCalled();
+      });
+
+      it('tries again on the next open after a failed pass', async () => {
+        const { host, sessions, sessionId, storage } = await sessionGlossingBeta();
+        host.getOpenVerseBook
+          .mockRejectedValueOnce(new Error('unreadable'))
+          .mockResolvedValue(AFTER);
+
+        await expect(sessions.reanchorOpenedBook(sessionId, 'GEN')).rejects.toThrow('unreadable');
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
+      });
+
+      it('leaves the draft alone for a book the source has no text for', async () => {
+        const { sessions, sessionId, storage } = await sessionGlossingBeta();
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-1'));
+      });
+
+      it('runs before a command sent after it', async () => {
+        const { host, sessions, sessionId } = await sessionGlossingBeta();
+        host.getOpenVerseBook.mockResolvedValue(AFTER);
+
+        const reanchoring = sessions.reanchorOpenedBook(sessionId, 'GEN');
+        const tokenRef = await sessions.run(sessionId, async (session) => {
+          const { draft } = await session.repository.exportAll();
+          return draft.analysis.tokenAnalysisLinks[0].token.tokenRef;
+        });
+        await reanchoring;
+
+        expect(tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
+      });
+
+      it('does nothing for a session that is not open', async () => {
+        const { host, sessions } = makeSessions();
+
+        await sessions.reanchorOpenedBook('no-such-session', 'GEN');
+
+        expect(host.getOpenVerseBook).not.toHaveBeenCalled();
+      });
+
+      it("does nothing for a Paratext 9 import's session", async () => {
+        const { host, sessions } = makeSessions([makeImport()]);
+        const { sessionId } = await sessions.open(SOURCE, 'import-id');
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect(host.getOpenVerseBook).not.toHaveBeenCalled();
+      });
     });
   });
 

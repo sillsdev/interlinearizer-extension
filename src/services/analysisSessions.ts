@@ -128,6 +128,13 @@ export interface SessionHost {
     bookId: string,
     segmentation: SegmentationDelta | undefined,
   ): Book | undefined;
+  /**
+   * Reads the source project's book, tokenized one segment per verse, and makes it the book whose
+   * edits are reported. The book is shared, so the caller must not change it.
+   *
+   * @returns `undefined` when the project has no text for the book.
+   */
+  getOpenVerseBook(sourceProjectId: string, bookId: string): Promise<Book | undefined>;
   /** Tells listeners what a change to a session's analysis touched. */
   reportChange(change: SessionAnalysisChange): void;
 }
@@ -295,6 +302,11 @@ type OpenSession = {
   replies: Map<string, Promise<EditReply | undefined>>;
   /** What each pass to a book's edited text changed, by book, until the edit is reported. */
   editPasses: Map<string, UnreportedPass[]>;
+  /**
+   * The `textVersion` that each book was last re-anchored to as it opened or as its text was read.
+   * A book that opened with no text maps to `''`.
+   */
+  anchoredVersions: Map<string, string>;
   /** The start of the source's whole-text read, set from the session's first ask for it. */
   textRead?: Promise<void>;
 };
@@ -361,6 +373,7 @@ export class AnalysisSessions {
         queue: Promise.resolve(),
         replies: new Map(),
         editPasses: new Map(),
+        anchoredVersions: new Map(),
       };
       if (isEmptyDraft(opened)) session.history.noteEmpty();
       this.sessions.set(session.id, entry);
@@ -669,19 +682,51 @@ export class AnalysisSessions {
    * Re-anchors the draft of the source project's session to `book`'s current text, in the session's
    * turn and as no undo step. Where the draft links into the book or holds boundary edits in it,
    * what a later undo or redo restores is re-anchored to it too. A book the text lacks is passed as
-   * a book with no segments. Does nothing when the source has no session open, or only a read-only
-   * one. When `edited`, what the pass changes is reported with the edit to the book's text, by
-   * {@link reportScriptureEdit}, rather than on its own.
+   * a book with no segments. Does nothing when the source has no session open or only a read-only
+   * one, or when the session last re-anchored the book to the same text. When `edited`, what the
+   * pass changes is reported with the edit to the book's text, by {@link reportScriptureEdit},
+   * rather than on its own.
    *
    * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
    * @throws Whatever describing the applied changes throws; the changes stay applied.
    */
   reanchorBook(sourceProjectId: string, book: Book, edited = false): Promise<void> {
-    return this.runOnWritable(sourceProjectId, ({ session, editPasses }) => {
-      if (!edited) return reanchorNow(this.host, session, book);
-      const unreported = editPasses.get(book.bookRef) ?? [];
-      editPasses.set(book.bookRef, unreported);
-      return reanchorNow(this.host, session, book, unreported);
+    return this.runOnWritable(
+      sourceProjectId,
+      async ({ session, editPasses, anchoredVersions }) => {
+        if (anchoredVersions.get(book.bookRef) === book.textVersion) return;
+        let unreported: UnreportedPass[] | undefined;
+        if (edited) {
+          unreported = editPasses.get(book.bookRef) ?? [];
+          editPasses.set(book.bookRef, unreported);
+        }
+        await reanchorNow(this.host, session, book, unreported);
+        anchoredVersions.set(book.bookRef, book.textVersion);
+      },
+    );
+  }
+
+  /**
+   * Re-anchors the session's draft to the current text of `bookId` when the session opens the book,
+   * in the session's turn and as no undo step. Commands sent later see the re-anchored draft. Does
+   * nothing when the session is not open or is read-only, when the source has no text for the book,
+   * or when the session last re-anchored the book to the same text.
+   *
+   * @throws Whatever reading the book or the draft, or applying the changes, throws; nothing is
+   *   applied, and the next open of the book tries again.
+   * @throws Whatever describing the applied changes throws; the changes stay applied.
+   */
+  reanchorOpenedBook(sessionId: string, bookId: string): Promise<void> {
+    const entry = this.sessions.get(sessionId);
+    if (entry?.state !== 'open' || entry.session.repository.capabilities.readOnly) {
+      return Promise.resolve();
+    }
+    return this.run(sessionId, async (session) => {
+      const book = await this.host.getOpenVerseBook(session.scope.sourceProjectId, bookId);
+      const textVersion = book?.textVersion ?? '';
+      if (entry.anchoredVersions.get(bookId) === textVersion) return;
+      if (book) await reanchorNow(this.host, session, book);
+      entry.anchoredVersions.set(bookId, textVersion);
     });
   }
 
@@ -719,13 +764,13 @@ export class AnalysisSessions {
    *   re-anchored.
    */
   reanchorMissingBooks(sourceProjectId: string, textBookIds: readonly string[]): Promise<void> {
-    return this.runOnWritable(sourceProjectId, async ({ session }) => {
+    return this.runOnWritable(sourceProjectId, async ({ session, anchoredVersions }) => {
       const missing = booksMissingFrom(await session.repository.findLinkedBooks(), textBookIds);
-      await missing.reduce<Promise<void>>(
-        (previous, bookCode) =>
-          previous.then(() => reanchorNow(this.host, session, missingBook(bookCode))),
-        Promise.resolve(),
-      );
+      await missing.reduce<Promise<void>>(async (previous, bookCode) => {
+        await previous;
+        await reanchorNow(this.host, session, missingBook(bookCode));
+        anchoredVersions.delete(bookCode);
+      }, Promise.resolve());
     });
   }
 

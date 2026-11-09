@@ -31,6 +31,7 @@ describe('setAnalysisLanguage parity with the reducer', () => {
       startTextRead: async () => {},
       stopTextRead: async () => {},
       heldBook: () => undefined,
+      getOpenVerseBook: async () => undefined,
       reportChange: () => {},
     });
     const { sessionId } = await sessions.open(SOURCE);

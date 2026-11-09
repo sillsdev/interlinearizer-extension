@@ -1181,6 +1181,9 @@ describe('main', () => {
 
       expect(__mockGetOpenWebViewDefinition).not.toHaveBeenCalled();
       expect(__mockSelectProject).toHaveBeenCalledTimes(1);
+      expect(__mockSelectProject).toHaveBeenCalledWith(
+        expect.objectContaining({ includeProjectInterfaces: '^platformScripture\\.USJ_Book$' }),
+      );
       expect(__mockOpenWebView).toHaveBeenCalledWith(
         mainWebViewType,
         undefined,

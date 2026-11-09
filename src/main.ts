@@ -262,6 +262,7 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
     (await papi.dialogs.selectProject({
       title: '%interlinearizer_dialog_open_title%',
       prompt: '%interlinearizer_dialog_open_prompt%',
+      includeProjectInterfaces: '^platformScripture\\.USJ_Book$',
     }));
 
   if (!resolvedProjectId) return undefined;

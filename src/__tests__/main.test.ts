@@ -2516,7 +2516,7 @@ describe('main', () => {
       const { openSession } = await activateSessionCommands();
 
       const opened = JSON.parse(
-        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'import-id' }),
+        await openSession({ sourceProjectId: 'src-project', importProjectId: 'import-id' }),
       );
 
       expect(opened.readOnly).toBe(true);

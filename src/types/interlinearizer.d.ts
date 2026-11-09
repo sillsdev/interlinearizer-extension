@@ -351,19 +351,21 @@ declare module 'papi-shared-types' {
     }) => Promise<void>;
 
     /**
-     * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
-     * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
-     * When the source has no project of that id, the session opens on the draft, which then saves
-     * to no project. A draft that holds analysis is then marked unsaved. Closes the source's
-     * earlier session, if any.
+     * Opens a session read-only on the Paratext 9 import `importProjectId` when given, otherwise on
+     * the source project's draft, which saves to `interlinearProjectId` when given. When the source
+     * has no project of the id named, the session opens on the draft, which then saves to no
+     * project. A draft that holds analysis is then marked unsaved, unless the missing project was
+     * an import. Closes the source's earlier session, if any.
      *
      * @returns A JSON string of an `OpenedSession`.
-     * @throws If finding the project, loading the analysis, or marking the draft unsaved fails
-     *   (logged before rethrowing).
+     * @throws If both ids are given, an id names a project of the wrong kind, or finding the
+     *   project, loading the analysis, or marking the draft unsaved fails (logged before
+     *   rethrowing).
      */
     'interlinearizer.openSession': (args: {
       sourceProjectId: string;
       interlinearProjectId?: string;
+      importProjectId?: string;
     }) => Promise<string>;
 
     /**

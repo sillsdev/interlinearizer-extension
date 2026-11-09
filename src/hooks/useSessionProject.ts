@@ -94,14 +94,16 @@ export default function useSessionProject(
 
   useEffect(() => {
     let isCurrent = true;
-    const interlinearProjectId = importProjectId ?? saveTargetRef.current;
+    const saveTarget = importProjectId === undefined ? saveTargetRef.current : undefined;
+    const interlinearProjectId = importProjectId ?? saveTarget;
     let sessionId: string | undefined;
     const opening = (async () => {
       try {
         const reply: Omit<OpenedSession, 'whole'> = JSON.parse(
           await papi.commands.sendCommand('interlinearizer.openSession', {
             sourceProjectId,
-            ...(interlinearProjectId !== undefined && { interlinearProjectId }),
+            ...(saveTarget !== undefined && { interlinearProjectId: saveTarget }),
+            ...(importProjectId !== undefined && { importProjectId }),
           }),
         );
         ({ sessionId } = reply);

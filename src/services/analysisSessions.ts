@@ -338,27 +338,44 @@ export class AnalysisSessions {
   }
 
   /**
-   * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
-   * otherwise on the source project's draft, which saves to `interlinearProjectId` when given. When
-   * the source has no project of that id, the session opens on the draft, which then saves to no
-   * project. A draft that holds analysis is then marked unsaved. Opening closes the source's
-   * earlier session, if any. The new session starts on what storage holds, with nothing to undo.
-   * Its first command waits while the repository builds its indexes. Opening reads none of the
-   * source's text; {@link startTextRead} starts that.
+   * Opens a session read-only on the Paratext 9 import `importProjectId` when given, otherwise on
+   * the source project's draft, which saves to `interlinearProjectId` when given. When the source
+   * has no project of the id named, the session opens on the draft, which then saves to no project.
+   * A draft that holds analysis is then marked unsaved, unless the missing project was an import,
+   * which the draft never saved to. Opening closes the source's earlier session, if any. The new
+   * session starts on what storage holds, with nothing to undo. Its first command waits while the
+   * repository builds its indexes. Opening reads none of the source's text; {@link startTextRead}
+   * starts that.
    *
    * The session starts on the opened draft's first analysis language. When the draft lists none, it
    * starts on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the
    * platform lists none either.
    *
+   * @throws {Error} If both ids are given, or an id names a project of the wrong kind.
    * @throws Whatever finding the project, loading the scope's analysis, or marking the draft
    *   unsaved throws; the source is left with no session.
    */
-  open(sourceProjectId: string, interlinearProjectId?: string): Promise<OpenedSession> {
+  open(
+    sourceProjectId: string,
+    interlinearProjectId?: string,
+    importProjectId?: string,
+  ): Promise<OpenedSession> {
     return this.onLifecycle(sourceProjectId, async () => {
+      if (interlinearProjectId !== undefined && importProjectId !== undefined)
+        throw new Error(
+          `Interlinearizer: cannot open a session on both ${interlinearProjectId} and the Paratext 9 import ${importProjectId}`,
+        );
       const replaced = this.sessionsBySource.get(sourceProjectId);
       if (replaced) await this.closeNow(replaced);
 
-      const found = await this.resolveScope(sourceProjectId, interlinearProjectId);
+      const named = importProjectId ?? interlinearProjectId;
+      const found = await this.resolveScope(sourceProjectId, named);
+      if (found && (found.kind === 'pt9Import') !== (importProjectId !== undefined))
+        throw new Error(
+          importProjectId === undefined
+            ? `Interlinearizer: cannot save a draft to the Paratext 9 import ${named}`
+            : `Interlinearizer: ${named} is not a Paratext 9 import`,
+        );
       const scope: SessionScope = found ?? { kind: 'draft', sourceProjectId };
       const repository =
         scope.kind === 'pt9Import'
@@ -366,7 +383,7 @@ export class AnalysisSessions {
           : this.host.openDraftRepository(sourceProjectId);
       const { draft: opened } = await repository.exportAll();
       // Kept unsaved, because the draft is all that is left of the missing project's work.
-      if (!found && !isEmptyDraft(opened) && !opened.dirty)
+      if (!found && importProjectId === undefined && !isEmptyDraft(opened) && !opened.dirty)
         await repository.apply({ intent: 'detachFromProject' });
       const session: Session = {
         id: crypto.randomUUID(),

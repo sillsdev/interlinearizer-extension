@@ -936,21 +936,28 @@ type ParamDoc = Extract<MethodDocumentationWithoutName['params'][number], { name
 type ArgsOf<C extends keyof CommandHandlers> = Parameters<CommandHandlers[C]>[0];
 
 /**
- * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import, otherwise
- * on the source project's draft, which saves to `interlinearProjectId` when given. When the source
- * has no project of that id, the session opens on the draft, which then saves to no project. A
- * draft that holds analysis is then marked unsaved. Closes the source's earlier session, if any.
+ * Opens a session read-only on the Paratext 9 import `importProjectId` when given, otherwise on the
+ * source project's draft, which saves to `interlinearProjectId` when given. When the source has no
+ * project of the id named, the session opens on the draft, which then saves to no project. A draft
+ * that holds analysis is then marked unsaved, unless the missing project was an import. Closes the
+ * source's earlier session, if any.
  *
  * @returns A JSON string of an {@link OpenedSession}.
- * @throws If finding the project, loading the analysis, or marking the draft unsaved fails. The
- *   error is logged before rethrowing.
+ * @throws If both ids are given, an id names a project of the wrong kind, or finding the project,
+ *   loading the analysis, or marking the draft unsaved fails. The error is logged before
+ *   rethrowing.
  */
 async function openSession({
   sourceProjectId,
   interlinearProjectId,
+  importProjectId,
 }: ArgsOf<'interlinearizer.openSession'>): Promise<string> {
   try {
-    const opened: OpenedSession = await sessions.open(sourceProjectId, interlinearProjectId);
+    const opened: OpenedSession = await sessions.open(
+      sourceProjectId,
+      interlinearProjectId,
+      importProjectId,
+    );
     return JSON.stringify(opened);
   } catch (e) {
     logger.error(`Interlinearizer: failed to open a session on project ${sourceProjectId}`, e);
@@ -1757,8 +1764,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           {
             name: 'interlinearProjectId',
             required: false,
-            summary:
-              'UUID of the interlinear project the draft saves to, or of the Paratext 9 import to read; omit for the draft alone',
+            summary: 'UUID of the interlinear project the draft saves to; omit for the draft alone',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'importProjectId',
+            required: false,
+            summary: 'UUID of the Paratext 9 import to read instead of the draft',
             schema: { type: 'string' },
           },
         ]),

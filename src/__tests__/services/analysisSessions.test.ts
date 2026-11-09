@@ -183,7 +183,7 @@ describe('AnalysisSessions', () => {
     it('opens a Paratext 9 import read-only, reading its analysis', async () => {
       const { host, sessions } = makeSessions([makeImport({ analysis: FREE_TRANSLATED })]);
 
-      const opened = await sessions.open(SOURCE, 'import-id');
+      const opened = await sessions.open(SOURCE, undefined, 'import-id');
 
       expect(opened).toMatchObject({ readOnly: true, hasFreeTranslations: true });
       expect(host.openDraftRepository).not.toHaveBeenCalled();
@@ -338,7 +338,7 @@ describe('AnalysisSessions', () => {
 
     it("releases no draft for a Paratext 9 import's session", async () => {
       const { host, sessions } = makeSessions([makeImport()]);
-      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+      const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
 
       await sessions.close(sessionId);
 
@@ -552,7 +552,7 @@ describe('AnalysisSessions', () => {
   describe('runEdit', () => {
     it("refuses an edit on a Paratext 9 import's session without running it", async () => {
       const { sessions } = makeSessions([makeImport()]);
-      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+      const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
       const edit = jest.fn(async () => {});
 
       await expect(sessions.runEdit(sessionId, edit)).rejects.toThrow(ReadOnlyAnalysisError);
@@ -612,14 +612,14 @@ describe('AnalysisSessions', () => {
 
     it("refuses an undo on a Paratext 9 import's session", async () => {
       const { sessions } = makeSessions([makeImport()]);
-      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+      const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
 
       await expect(sessions.undo(sessionId)).rejects.toThrow(ReadOnlyAnalysisError);
     });
 
     it("refuses a redo on a Paratext 9 import's session", async () => {
       const { sessions } = makeSessions([makeImport()]);
-      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+      const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
 
       await expect(sessions.redo(sessionId)).rejects.toThrow(ReadOnlyAnalysisError);
     });
@@ -770,7 +770,7 @@ describe('AnalysisSessions', () => {
 
     it("refuses an edit on a Paratext 9 import's session without running it", async () => {
       const { sessions } = makeSessions([makeImport()]);
-      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+      const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
       const command = jest.fn(async () => {});
 
       await expect(sessions.edit(sessionId, 'add', command)).rejects.toThrow(ReadOnlyAnalysisError);
@@ -1464,7 +1464,7 @@ describe('AnalysisSessions', () => {
 
     it("answers on a Paratext 9 import's session", async () => {
       const { sessions } = makeSessions([makeImport()]);
-      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+      const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
 
       await expect(sessions.preview(sessionId, 'nothing', async () => {})).resolves.toStrictEqual({
         intent: 'nothing',
@@ -1837,7 +1837,7 @@ describe('AnalysisSessions', () => {
 
     it("does nothing for a Paratext 9 import's session", async () => {
       const { sessions } = makeSessions([makeImport()]);
-      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+      const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
       const applied = jest.fn();
       await sessions.run(sessionId, async (session) => {
         jest.spyOn(session.repository, 'apply').mockImplementation(applied);
@@ -1942,7 +1942,7 @@ describe('AnalysisSessions', () => {
 
       it("does nothing for a Paratext 9 import's session", async () => {
         const { host, sessions } = makeSessions([makeImport()]);
-        const { sessionId } = await sessions.open(SOURCE, 'import-id');
+        const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
 
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
 
@@ -2002,7 +2002,7 @@ describe('AnalysisSessions', () => {
 
     it("sets the language of a Paratext 9 import's session", async () => {
       const { sessions } = makeSessions([makeImport()]);
-      const { sessionId } = await sessions.open(SOURCE, 'import-id');
+      const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
 
       await sessions.setAnalysisLanguage(sessionId, 'fr');
 
@@ -2081,7 +2081,7 @@ describe('AnalysisSessions save targets', () => {
 
   it('refuses to retarget a session on a Paratext 9 import', async () => {
     const { sessions } = makeSessions([makeImport(), makeStubProject('proj-1')]);
-    const { sessionId } = await sessions.open(SOURCE, 'import-id');
+    const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
 
     await expect(sessions.setSaveTarget(sessionId, 'proj-1')).rejects.toThrow(
       ReadOnlyAnalysisError,
@@ -2118,6 +2118,41 @@ describe('AnalysisSessions save targets', () => {
     await sessions.open(SOURCE, 'gone');
 
     await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: false });
+  });
+
+  it('leaves a saved draft holding analysis saved when it opens on a missing import', async () => {
+    const { sessions, storage } = makeSessions();
+    const first = await sessions.open(SOURCE);
+    await sessions.edit(first.sessionId, 'add', adding('a'), { unsavedMark: 'clear' });
+
+    const opened = await sessions.open(SOURCE, undefined, 'gone');
+
+    expect(opened).toMatchObject({ readOnly: false, projectMissing: true });
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: false });
+  });
+
+  it('refuses to open a draft saving to a Paratext 9 import', async () => {
+    const { sessions } = makeSessions([makeImport()]);
+
+    await expect(sessions.open(SOURCE, 'import-id')).rejects.toThrow(
+      'cannot save a draft to the Paratext 9 import import-id',
+    );
+  });
+
+  it('refuses to open a project that is not a Paratext 9 import as one', async () => {
+    const { sessions } = makeSessions([makeStubProject('proj-1')]);
+
+    await expect(sessions.open(SOURCE, undefined, 'proj-1')).rejects.toThrow(
+      'proj-1 is not a Paratext 9 import',
+    );
+  });
+
+  it('refuses to open on both a project and an import', async () => {
+    const { sessions } = makeSessions([makeStubProject('proj-1'), makeImport()]);
+
+    await expect(sessions.open(SOURCE, 'proj-1', 'import-id')).rejects.toThrow(
+      'cannot open a session on both proj-1 and the Paratext 9 import import-id',
+    );
   });
 
   it('writes nothing to an unsaved draft when it opens on a missing project', async () => {

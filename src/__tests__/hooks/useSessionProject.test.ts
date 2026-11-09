@@ -635,7 +635,7 @@ describe('useSessionProject starting over', () => {
     await waitFor(() =>
       expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.openSession', {
         sourceProjectId: 'src',
-        interlinearProjectId: 'import-1',
+        importProjectId: 'import-1',
       }),
     );
   });
@@ -655,7 +655,7 @@ describe('useSessionProject starting over', () => {
     );
     expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.openSession', {
       sourceProjectId: 'src',
-      interlinearProjectId: 'import-1',
+      importProjectId: 'import-1',
     });
     await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
   });

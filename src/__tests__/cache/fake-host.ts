@@ -219,10 +219,9 @@ export function replyProjectMissing(
   jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
     const [command, args] = call;
     const reply = await serve?.(...call);
-    const named =
-      args && typeof args === 'object' && 'interlinearProjectId' in args
-        ? args.interlinearProjectId
-        : undefined;
+    const arg = (name: string) =>
+      args && typeof args === 'object' && name in args ? Reflect.get(args, name) : undefined;
+    const named = arg('importProjectId') ?? arg('interlinearProjectId');
     if (command !== 'interlinearizer.openSession' || named !== missingId) return reply;
     await opened;
     return JSON.stringify({ ...JSON.parse(String(reply)), projectMissing: true });

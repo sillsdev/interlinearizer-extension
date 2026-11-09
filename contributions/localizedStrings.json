@@ -258,7 +258,7 @@
       "%interlinearizer_duplicateTab_description%": "A project can be open in one Interlinearizer tab at a time. Close this tab, or go to the one that has the project open.",
       "%interlinearizer_duplicateTab_goToTab%": "Go to the open tab",
 
-      "%interlinearizer_modal_create_title%": "Create Interlinear Project",
+      "%interlinearizer_modal_create_title%": "New interlinear: {projectName}",
       "%interlinearizer_modal_create_name_label%": "Name",
       "%interlinearizer_modal_create_name_placeholder%": "e.g. Greek NT glossing",
       "%interlinearizer_modal_create_description_label%": "Description (optional)",
@@ -280,7 +280,7 @@
       "%interlinearizer_modal_metadata_save%": "Save",
       "%interlinearizer_modal_metadata_close%": "Close",
 
-      "%interlinearizer_modal_select_title%": "Select Interlinear Project",
+      "%interlinearizer_modal_select_title%": "Select interlinear: {projectName}",
       "%interlinearizer_modal_select_none%": "No interlinear projects exist for this source yet.",
       "%interlinearizer_modal_select_name_unnamed%": "Unnamed",
       "%interlinearizer_modal_select_actions_button_label%": "Project actions",
@@ -288,7 +288,7 @@
       "%interlinearizer_modal_select_delete%": "Delete",
       "%interlinearizer_modal_select_active_badge%": "Active",
       "%interlinearizer_modal_select_modified_prefix%": "Modified",
-      "%interlinearizer_modal_select_analysis_count%": "{count} token analyses",
+      "%interlinearizer_modal_select_analysis_count%": "{count} analyses",
       "%interlinearizer_modal_select_books_more%": "+{count} more",
       "%interlinearizer_modal_select_create_new%": "Create New",
       "%interlinearizer_modal_select_cancel%": "Cancel",

@@ -1,6 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button, Input, Label, Textarea } from 'platform-bible-react';
-import { useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import useProjectsForSource from '../../hooks/useProjectsForSource';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
@@ -36,12 +36,15 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
 ];
 
 /**
- * Fields for saving the draft as a new project.
+ * Fields for saving the draft as a new project, then `children`, then the dialog's Cancel and Save
+ * buttons. The dialog's footer lives here because its Save button reads the fields.
  *
  * The fields start from `initialName` and `initialDescription`. Later changes to those props never
  * overwrite what the fields hold.
  */
 function SaveAsNewForm({
+  cancelLabel,
+  children,
   initialName,
   initialDescription,
   isLoading,
@@ -51,8 +54,11 @@ function SaveAsNewForm({
   descriptionLabel,
   descriptionPlaceholder,
   saveLabel,
+  onCancel,
   onSave,
 }: Readonly<{
+  cancelLabel: string;
+  children: ReactNode;
   initialName: string;
   initialDescription: string;
   isLoading: boolean;
@@ -62,6 +68,7 @@ function SaveAsNewForm({
   descriptionLabel: string;
   descriptionPlaceholder: string;
   saveLabel: string;
+  onCancel: () => void;
   onSave: (name: string, description: string) => void;
 }>) {
   const [name, setName] = useState(initialName);
@@ -92,7 +99,11 @@ function SaveAsNewForm({
         onChange={(e) => setDescription(e.target.value)}
         placeholder={descriptionPlaceholder}
       />
-      <div className="tw:flex tw:justify-end tw:mb-4">
+      {children}
+      <div className="tw:modal-actions">
+        <Button variant="secondary" onClick={onCancel} disabled={isLoading || isSubmitting}>
+          {cancelLabel}
+        </Button>
         <Button
           onClick={() => onSave(name, description)}
           data-testid="save-as-new"
@@ -233,6 +244,7 @@ export function SaveAsProjectModal({
       {/* Remounts the form when the list loads; only then is the prefilled name ready. */}
       <SaveAsNewForm
         key={isLoading ? 'loading' : 'ready'}
+        cancelLabel={localizedStrings['%interlinearizer_modal_saveAs_cancel%']}
         initialName={initialName}
         initialDescription={defaultDescription ?? ''}
         isLoading={isLoading}
@@ -244,122 +256,117 @@ export function SaveAsProjectModal({
           localizedStrings['%interlinearizer_modal_create_description_placeholder%']
         }
         saveLabel={localizedStrings['%interlinearizer_modal_saveAs_save_new%']}
+        onCancel={onClose}
         onSave={handleSaveNew}
-      />
-
-      <h3 className="tw:text-sm tw:font-medium tw:mb-2">
-        {localizedStrings['%interlinearizer_modal_saveAs_existing_section%']}
-      </h3>
-      {overwriteTargets.length === 0 ? (
-        <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">
-          {localizedStrings['%interlinearizer_modal_saveAs_none%']}
-        </p>
-      ) : (
-        <ul className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-x-2 tw:gap-y-1 tw:mb-4 tw:max-h-72 tw:overflow-y-auto">
-          {overwriteTargets.map((project) => {
-            const projectName =
-              project.name ?? localizedStrings['%interlinearizer_modal_select_name_unnamed%'];
-            // The active project is the one the draft is already open on, so writing to it is the
-            // plain Save — nothing is at risk and no confirmation is warranted. A clean draft has
-            // nothing left to write there at all.
-            const isActive = project.id === activeProjectId;
-            const isNoOp = isActive && !hasUnsavedWork;
-            // Show the confirm inline under the row whose Overwrite was pressed, and highlight that
-            // row, so it is unambiguous which project the confirm will replace.
-            const isConfirming = confirmOverwrite?.id === project.id;
-            return (
-              <li key={project.id} className="tw:contents">
-                <span
-                  className={`tw:flex tw:rounded tw:border tw:px-3 tw:py-2 tw:text-sm tw:min-w-0 ${
-                    isConfirming
-                      ? 'tw:border-destructive tw:bg-destructive/10'
-                      : 'tw:border-border tw:bg-muted/40'
-                  }`}
-                >
-                  <ProjectSummaryDetails
-                    activeBadgeLabel={
-                      localizedStrings['%interlinearizer_modal_select_active_badge%']
-                    }
-                    analysisCountTemplate={
-                      localizedStrings['%interlinearizer_modal_select_analysis_count%']
-                    }
-                    booksMoreTemplate={
-                      localizedStrings['%interlinearizer_modal_select_books_more%']
-                    }
-                    className="tw:flex-1"
-                    isActive={isActive}
-                    modifiedPrefix={
-                      localizedStrings['%interlinearizer_modal_select_modified_prefix%']
-                    }
-                    project={project}
-                    unnamedLabel={localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
-                  />
-                </span>
-                {isNoOp ? (
-                  <span className="tw:text-sm tw:text-muted-foreground tw:text-center">
-                    {localizedStrings['%interlinearizer_modal_saveAs_save_active_clean%']}
-                  </span>
-                ) : (
-                  <Button
-                    className="tw:w-full"
-                    variant="secondary"
-                    onClick={
-                      isActive
-                        ? () => handleConfirmOverwrite(project)
-                        : () => setConfirmOverwrite(project)
-                    }
-                    disabled={isSubmitting || isConfirming}
+      >
+        <h3 className="tw:text-sm tw:font-medium tw:mb-2">
+          {localizedStrings['%interlinearizer_modal_saveAs_existing_section%']}
+        </h3>
+        {overwriteTargets.length === 0 ? (
+          <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">
+            {localizedStrings['%interlinearizer_modal_saveAs_none%']}
+          </p>
+        ) : (
+          <ul className="tw:grid tw:grid-cols-[1fr_auto] tw:items-center tw:gap-x-2 tw:gap-y-1 tw:mb-4 tw:max-h-72 tw:overflow-y-auto">
+            {overwriteTargets.map((project) => {
+              const projectName =
+                project.name ?? localizedStrings['%interlinearizer_modal_select_name_unnamed%'];
+              // The active project is the one the draft is already open on, so writing to it is the
+              // plain Save — nothing is at risk and no confirmation is warranted. A clean draft has
+              // nothing left to write there at all.
+              const isActive = project.id === activeProjectId;
+              const isNoOp = isActive && !hasUnsavedWork;
+              // Show the confirm inline under the row whose Overwrite was pressed, and highlight that
+              // row, so it is unambiguous which project the confirm will replace.
+              const isConfirming = confirmOverwrite?.id === project.id;
+              return (
+                <li key={project.id} className="tw:contents">
+                  <span
+                    className={`tw:flex tw:rounded tw:border tw:px-3 tw:py-2 tw:text-sm tw:min-w-0 ${
+                      isConfirming
+                        ? 'tw:border-destructive tw:bg-destructive/10'
+                        : 'tw:border-border tw:bg-muted/40'
+                    }`}
                   >
-                    {
-                      localizedStrings[
+                    <ProjectSummaryDetails
+                      activeBadgeLabel={
+                        localizedStrings['%interlinearizer_modal_select_active_badge%']
+                      }
+                      analysisCountTemplate={
+                        localizedStrings['%interlinearizer_modal_select_analysis_count%']
+                      }
+                      booksMoreTemplate={
+                        localizedStrings['%interlinearizer_modal_select_books_more%']
+                      }
+                      className="tw:flex-1"
+                      isActive={isActive}
+                      modifiedPrefix={
+                        localizedStrings['%interlinearizer_modal_select_modified_prefix%']
+                      }
+                      project={project}
+                      unnamedLabel={localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
+                    />
+                  </span>
+                  {isNoOp ? (
+                    <span className="tw:text-sm tw:text-muted-foreground tw:text-center">
+                      {localizedStrings['%interlinearizer_modal_saveAs_save_active_clean%']}
+                    </span>
+                  ) : (
+                    <Button
+                      className="tw:w-full"
+                      variant="secondary"
+                      onClick={
                         isActive
-                          ? '%interlinearizer_modal_saveAs_save_active%'
-                          : '%interlinearizer_modal_saveAs_overwrite%'
-                      ]
-                    }
-                  </Button>
-                )}
-                {isConfirming && (
-                  <div className="tw:col-span-2 tw:modal-error-box tw:p-3 tw:mt-1">
-                    <p className="tw:text-sm tw:mb-2">
-                      <span className="tw:font-medium tw:block tw:mb-1">{projectName}</span>
-                      {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_body%']}
-                    </p>
-                    <div className="tw:modal-actions">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setConfirmOverwrite(undefined)}
-                      >
-                        {
-                          localizedStrings[
-                            '%interlinearizer_modal_saveAs_overwrite_confirm_cancel%'
-                          ]
-                        }
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        data-testid="save-as-overwrite-confirm"
-                        onClick={() => handleConfirmOverwrite(project)}
-                        disabled={isSubmitting}
-                      >
-                        {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_ok%']}
-                      </Button>
+                          ? () => handleConfirmOverwrite(project)
+                          : () => setConfirmOverwrite(project)
+                      }
+                      disabled={isSubmitting || isConfirming}
+                    >
+                      {
+                        localizedStrings[
+                          isActive
+                            ? '%interlinearizer_modal_saveAs_save_active%'
+                            : '%interlinearizer_modal_saveAs_overwrite%'
+                        ]
+                      }
+                    </Button>
+                  )}
+                  {isConfirming && (
+                    <div className="tw:col-span-2 tw:modal-error-box tw:p-3 tw:mt-1">
+                      <p className="tw:text-sm tw:mb-2">
+                        <span className="tw:font-medium tw:block tw:mb-1">{projectName}</span>
+                        {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_body%']}
+                      </p>
+                      <div className="tw:modal-actions">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setConfirmOverwrite(undefined)}
+                        >
+                          {
+                            localizedStrings[
+                              '%interlinearizer_modal_saveAs_overwrite_confirm_cancel%'
+                            ]
+                          }
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          data-testid="save-as-overwrite-confirm"
+                          onClick={() => handleConfirmOverwrite(project)}
+                          disabled={isSubmitting}
+                        >
+                          {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_ok%']}
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      <div className="tw:modal-actions">
-        <Button variant="secondary" onClick={onClose} disabled={isLoading || isSubmitting}>
-          {localizedStrings['%interlinearizer_modal_saveAs_cancel%']}
-        </Button>
-      </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </SaveAsNewForm>
     </ModalShell>
   );
 }

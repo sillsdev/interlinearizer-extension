@@ -566,10 +566,9 @@ describe('SaveAsProjectModal', () => {
     render(<SaveAsProjectModal {...defaultProps} onClose={onClose} />);
 
     // The Cancel button is disabled until the initial load resolves.
-    const cancelButton = screen.getByRole('button', { name: 'Cancel' });
-    await waitFor(() => expect(cancelButton).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled());
 
-    await userEvent.click(cancelButton);
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });

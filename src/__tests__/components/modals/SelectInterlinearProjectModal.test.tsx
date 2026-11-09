@@ -12,7 +12,7 @@ import { getMockedPdpGet, makeProjectSummary } from '../../test-helpers';
 const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 
 const LOCALIZED: Record<string, string> = {
-  '%interlinearizer_modal_select_title%': 'Select Interlinear Project',
+  '%interlinearizer_modal_select_title%': 'Select interlinear: {projectName}',
   '%interlinearizer_modal_select_none%': 'No projects yet.',
   '%interlinearizer_modal_select_create_new%': 'Create New',
   '%interlinearizer_modal_select_cancel%': 'Cancel',
@@ -52,6 +52,7 @@ function serveProjects(projects: unknown[]) {
 
 const defaultProps = {
   sourceProjectId: 'src-proj',
+  sourceShortName: 'WEB',
   onSelect: jest.fn(),
   onCreateNew: jest.fn(),
   onImportPt9: jest.fn(),
@@ -67,12 +68,10 @@ describe('SelectInterlinearProjectModal', () => {
     jest.mocked(papi.notifications.send).mockResolvedValue('mock-notification-id');
   });
 
-  it('renders the modal heading when strings are loaded', async () => {
+  it('ends the title with the source short name', async () => {
     render(<SelectInterlinearProjectModal {...defaultProps} />);
     await waitFor(() =>
-      expect(
-        screen.getByRole('heading', { name: /select interlinear project/i }),
-      ).toBeInTheDocument(),
+      expect(screen.getByRole('heading', { name: 'Select interlinear: WEB' })).toBeInTheDocument(),
     );
   });
 

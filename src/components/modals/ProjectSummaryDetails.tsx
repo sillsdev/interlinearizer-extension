@@ -10,7 +10,7 @@ import { formatBooksTouched, formatModified } from '../../utils/project-summary-
  * supplies around it.
  *
  * @param props.activeBadgeLabel - Localized text of the active badge.
- * @param props.analysisCountTemplate - Localized `"{count} token analyses"` template.
+ * @param props.analysisCountTemplate - Localized `"{count} analyses"` template.
  * @param props.booksMoreTemplate - Localized `"+{count} more"` template for books past the cap.
  * @param props.className - Extra classes appended to the wrapper (e.g. `tw:flex-1` so the block
  *   grows to fill the row).
@@ -18,6 +18,8 @@ import { formatBooksTouched, formatModified } from '../../utils/project-summary-
  *   active badge is shown beside the name.
  * @param props.modifiedPrefix - Localized `"Modified"` label preceding the formatted date.
  * @param props.project - The project summary to describe.
+ * @param props.readOnlyLabel - Localized text of the read-only chip, shown before the language tags
+ *   when the project is a Paratext 9 import. Without it, no chip is shown.
  * @param props.unnamedLabel - Localized fallback label rendered when the project has no name.
  */
 export function ProjectSummaryDetails({
@@ -28,6 +30,7 @@ export function ProjectSummaryDetails({
   isActive,
   modifiedPrefix,
   project,
+  readOnlyLabel,
   unnamedLabel,
 }: Readonly<{
   activeBadgeLabel: string;
@@ -37,6 +40,7 @@ export function ProjectSummaryDetails({
   isActive: boolean;
   modifiedPrefix: string;
   project: InterlinearProjectSummary;
+  readOnlyLabel?: string;
   unnamedLabel: string;
 }>) {
   const { books, tokenAnalysisCount } = project;
@@ -61,8 +65,18 @@ export function ProjectSummaryDetails({
             {activeBadgeLabel}
           </span>
         )}
-        <span className="tw:font-mono tw:text-xs tw:text-muted-foreground tw:shrink-0 tw:ms-auto">
-          {project.analysisLanguages.join(', ')}
+        <span className="tw:flex tw:items-center tw:gap-2 tw:shrink-0 tw:ms-auto">
+          {readOnlyLabel !== undefined && project.pt9Import !== undefined && (
+            <span
+              className="tw:rounded tw:bg-muted tw:px-1.5 tw:py-0.5 tw:text-xs tw:text-muted-foreground"
+              data-testid="readonly-chip"
+            >
+              {readOnlyLabel}
+            </span>
+          )}
+          <span className="tw:font-mono tw:text-xs tw:text-muted-foreground">
+            {project.analysisLanguages.join(', ')}
+          </span>
         </span>
       </span>
       <span className="tw:text-xs tw:text-muted-foreground">

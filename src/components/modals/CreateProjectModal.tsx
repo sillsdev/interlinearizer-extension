@@ -1,5 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button, Input, Label, Textarea } from 'platform-bible-react';
+import { formatReplacementString } from 'platform-bible-utils';
 import { useState, useCallback } from 'react';
 import { parseLanguageTags } from '../../utils/language-tags';
 import { ModalShell } from './ModalShell';
@@ -42,6 +43,7 @@ export function CreateProjectModal({
   isSubmitting = false,
   onClose,
   onCreateDraft,
+  sourceShortName,
 }: Readonly<{
   /**
    * BCP 47 tag pre-populated in the analysis language field; pass the platform UI language so the
@@ -54,6 +56,8 @@ export function CreateProjectModal({
   onClose: () => void;
   /** Receives the collected configuration on submit. */
   onCreateDraft: (config: CreateDraftConfig) => void;
+  /** Short name of the source project, which the title ends with. */
+  sourceShortName: string;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(CREATE_PROJECT_MODAL_STRING_KEYS);
 
@@ -81,7 +85,9 @@ export function CreateProjectModal({
   return (
     <ModalShell
       titleTestId="create-project-modal-title"
-      title={localizedStrings['%interlinearizer_modal_create_title%']}
+      title={formatReplacementString(localizedStrings['%interlinearizer_modal_create_title%'], {
+        projectName: sourceShortName,
+      })}
       width="tw:w-96"
       onClose={isSubmitting ? undefined : onClose}
     >

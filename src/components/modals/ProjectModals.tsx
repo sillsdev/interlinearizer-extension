@@ -544,6 +544,7 @@ export default function ProjectModals({
       {modal === 'select' && (
         <SelectInterlinearProjectModal
           sourceProjectId={projectId}
+          sourceShortName={sourceShortName}
           activeProjectId={activeProject?.id}
           isOpening={openGuard.isSubmitting}
           onSelect={handleSelectProject}
@@ -561,6 +562,7 @@ export default function ProjectModals({
           isSubmitting={createGuard.isSubmitting}
           onClose={handleCreateClose}
           onCreateDraft={handleCreateDraft}
+          sourceShortName={sourceShortName}
         />
       )}
 

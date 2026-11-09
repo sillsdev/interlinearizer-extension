@@ -10,7 +10,7 @@ describe('CreateProjectModal', () => {
   beforeEach(() => {
     jest.mocked(useLocalizedStrings).mockReturnValue([
       {
-        '%interlinearizer_modal_create_title%': 'Create Interlinear Project',
+        '%interlinearizer_modal_create_title%': 'New interlinear: {projectName}',
         '%interlinearizer_modal_create_name_label%': 'Name',
         '%interlinearizer_modal_create_name_placeholder%': 'e.g. My Project',
         '%interlinearizer_modal_create_description_label%': 'Description',
@@ -24,9 +24,17 @@ describe('CreateProjectModal', () => {
     ]);
   });
 
+  it('ends the title with the source short name', () => {
+    render(
+      <CreateProjectModal sourceShortName="WEB" onClose={() => {}} onCreateDraft={() => {}} />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'New interlinear: WEB' })).toBeInTheDocument();
+  });
+
   it('calls onClose when cancel is clicked', async () => {
     const onClose = jest.fn();
-    render(<CreateProjectModal onClose={onClose} onCreateDraft={() => {}} />);
+    render(<CreateProjectModal sourceShortName="WEB" onClose={onClose} onCreateDraft={() => {}} />);
 
     await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
@@ -35,7 +43,9 @@ describe('CreateProjectModal', () => {
 
   it('calls onCreateDraft with the default language, the trimmed name, and no description', async () => {
     const onCreateDraft = jest.fn();
-    render(<CreateProjectModal onClose={() => {}} onCreateDraft={onCreateDraft} />);
+    render(
+      <CreateProjectModal sourceShortName="WEB" onClose={() => {}} onCreateDraft={onCreateDraft} />,
+    );
 
     await userEvent.type(screen.getByLabelText(/^name$/i), '  My Project  ');
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
@@ -48,13 +58,17 @@ describe('CreateProjectModal', () => {
   });
 
   it('disables Create while the name is empty', () => {
-    render(<CreateProjectModal onClose={() => {}} onCreateDraft={() => {}} />);
+    render(
+      <CreateProjectModal sourceShortName="WEB" onClose={() => {}} onCreateDraft={() => {}} />,
+    );
 
     expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
   });
 
   it('disables Create while the name is only whitespace', async () => {
-    render(<CreateProjectModal onClose={() => {}} onCreateDraft={() => {}} />);
+    render(
+      <CreateProjectModal sourceShortName="WEB" onClose={() => {}} onCreateDraft={() => {}} />,
+    );
 
     await userEvent.type(screen.getByLabelText(/^name$/i), '   ');
 
@@ -65,6 +79,7 @@ describe('CreateProjectModal', () => {
     const onCreateDraft = jest.fn();
     render(
       <CreateProjectModal
+        sourceShortName="WEB"
         defaultAnalysisLanguage="fr"
         onClose={() => {}}
         onCreateDraft={onCreateDraft}
@@ -83,7 +98,9 @@ describe('CreateProjectModal', () => {
 
   it('includes the entered name and description', async () => {
     const onCreateDraft = jest.fn();
-    render(<CreateProjectModal onClose={() => {}} onCreateDraft={onCreateDraft} />);
+    render(
+      <CreateProjectModal sourceShortName="WEB" onClose={() => {}} onCreateDraft={onCreateDraft} />,
+    );
 
     await userEvent.type(screen.getByLabelText(/^name$/i), 'My Project');
     await userEvent.type(screen.getByLabelText(/^description$/i), 'My Desc');
@@ -98,7 +115,9 @@ describe('CreateProjectModal', () => {
 
   it('parses a comma-separated language list into an array', async () => {
     const onCreateDraft = jest.fn();
-    render(<CreateProjectModal onClose={() => {}} onCreateDraft={onCreateDraft} />);
+    render(
+      <CreateProjectModal sourceShortName="WEB" onClose={() => {}} onCreateDraft={onCreateDraft} />,
+    );
 
     const languageInput = screen.getByLabelText(/analysis language/i);
     await userEvent.clear(languageInput);
@@ -114,14 +133,28 @@ describe('CreateProjectModal', () => {
   });
 
   it('disables both buttons when isSubmitting is true', () => {
-    render(<CreateProjectModal isSubmitting onClose={() => {}} onCreateDraft={() => {}} />);
+    render(
+      <CreateProjectModal
+        sourceShortName="WEB"
+        isSubmitting
+        onClose={() => {}}
+        onCreateDraft={() => {}}
+      />,
+    );
 
     expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
   });
 
   it('keeps both buttons enabled when isSubmitting is false and a name is entered', async () => {
-    render(<CreateProjectModal isSubmitting={false} onClose={() => {}} onCreateDraft={() => {}} />);
+    render(
+      <CreateProjectModal
+        sourceShortName="WEB"
+        isSubmitting={false}
+        onClose={() => {}}
+        onCreateDraft={() => {}}
+      />,
+    );
 
     await userEvent.type(screen.getByLabelText(/^name$/i), 'My Project');
 
@@ -131,7 +164,9 @@ describe('CreateProjectModal', () => {
 
   it('defaults the language to ["und"] when the field contains only whitespace', async () => {
     const onCreateDraft = jest.fn();
-    render(<CreateProjectModal onClose={() => {}} onCreateDraft={onCreateDraft} />);
+    render(
+      <CreateProjectModal sourceShortName="WEB" onClose={() => {}} onCreateDraft={onCreateDraft} />,
+    );
 
     const languageInput = screen.getByLabelText(/analysis language/i);
     await userEvent.clear(languageInput);

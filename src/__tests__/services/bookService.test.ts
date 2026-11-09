@@ -8,10 +8,8 @@ import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtrac
 import {
   closeAllProjects,
   closeProject,
-  getBookOutline,
   getOpenBook,
   getSegmentedBook,
-  getSegments,
   getTextReadStatus,
   getTokenizedBook,
   getOpenVerseBook,
@@ -25,7 +23,6 @@ import {
   startTextRead,
   stopTextRead,
 } from '../../services/bookService';
-import type { BookOutline, SegmentPage } from '../../types/segment-pages';
 import type { TextReadStatus } from '../../types/text-read-status';
 import { buildBookOutline } from '../../utils/book-outline';
 import * as perfMarks from '../../utils/perf-marks';
@@ -126,16 +123,6 @@ function settle() {
 
 function parseBook(json: string | undefined): Book {
   if (!json) throw new Error('Expected a tokenized book');
-  return JSON.parse(json);
-}
-
-function parseOutline(json: string | undefined): BookOutline {
-  if (!json) throw new Error('Expected an outline');
-  return JSON.parse(json);
-}
-
-function parsePage(json: string | undefined): SegmentPage {
-  if (!json) throw new Error('Expected a page');
   return JSON.parse(json);
 }
 
@@ -388,168 +375,6 @@ describe('getTokenizedBook', () => {
   });
 });
 
-describe('getBookOutline', () => {
-  beforeEach(() => {
-    tokenizeToVerseBook();
-    segmentStandIns();
-  });
-
-  it('outlines the book segmented by the boundaries named, re-anchored to its text', async () => {
-    serveProject((bookId) => usj(bookId));
-
-    const outline = parseOutline(await getBookOutline('src', 'GEN', JSON.stringify(DELTA)));
-
-    expect(reanchorSegmentation).toHaveBeenCalledWith(VERSE_BOOK, DELTA);
-    expect(resegmentBook).toHaveBeenCalledWith(VERSE_BOOK, REANCHORED);
-    expect(buildBookOutline).toHaveBeenCalledWith(
-      expect.objectContaining({ bookRef: 'GEN', textVersion: VERSE_BOOK.textVersion }),
-      SEGMENTED,
-    );
-    expect(outline.segments.map((seg) => seg.id)).toEqual(['GEN 1:1', 'GEN 1:3']);
-  });
-
-  it('names no boundaries to segment by when none are given', async () => {
-    serveProject((bookId) => usj(bookId));
-
-    await getBookOutline('src', 'GEN');
-
-    expect(reanchorSegmentation).toHaveBeenCalledWith(VERSE_BOOK, undefined);
-  });
-
-  it('names no boundaries to segment by when they arrive as null', async () => {
-    serveProject((bookId) => usj(bookId));
-    // Over PAPI an omitted argument arrives as null, which the signature has no room for.
-    // eslint-disable-next-line no-null/no-null
-    const args = ['src', 'GEN', null];
-
-    await Reflect.apply(getBookOutline, undefined, args);
-
-    expect(reanchorSegmentation).toHaveBeenCalledWith(VERSE_BOOK, undefined);
-  });
-
-  it('resolves undefined when the project has no text for the book', async () => {
-    serveProject(() => undefined);
-
-    await expect(getBookOutline('src', 'GEN')).resolves.toBeUndefined();
-  });
-
-  it('rejects boundaries that are not a SegmentationDelta', async () => {
-    serveProject((bookId) => usj(bookId));
-
-    await expect(getBookOutline('src', 'GEN', '{"removed":[]}')).rejects.toThrow(
-      'not a SegmentationDelta',
-    );
-  });
-
-  it('rejects boundaries that are not JSON', async () => {
-    serveProject((bookId) => usj(bookId));
-
-    await expect(getBookOutline('src', 'GEN', '{')).rejects.toThrow(SyntaxError);
-  });
-
-  it('tokenizes the book once for its outline and for the whole book', async () => {
-    serveProject((bookId) => usj(bookId));
-
-    await Promise.all([getTokenizedBook('src', 'GEN'), getBookOutline('src', 'GEN')]);
-
-    expect(tokenizeBook).toHaveBeenCalledTimes(1);
-  });
-
-  it('segments the book once for its outline and its pages under the same boundaries', async () => {
-    serveProject((bookId) => usj(bookId));
-    const json = JSON.stringify(DELTA);
-
-    await getBookOutline('src', 'GEN', json);
-    await getSegments('src', 'GEN', 0, 2, json);
-
-    expect(resegmentBook).toHaveBeenCalledTimes(1);
-  });
-
-  it('segments the book again for other boundaries', async () => {
-    serveProject((bookId) => usj(bookId));
-
-    await getBookOutline('src', 'GEN', JSON.stringify(DELTA));
-    await getBookOutline('src', 'GEN');
-
-    expect(resegmentBook).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('getSegments', () => {
-  beforeEach(() => {
-    tokenizeToVerseBook();
-    segmentStandIns();
-  });
-
-  it('serves the segments at the outline indexes asked for', async () => {
-    serveProject((bookId) => usj(bookId));
-
-    const page = parsePage(await getSegments('src', 'GEN', 1, 2, JSON.stringify(DELTA)));
-
-    expect(resegmentBook).toHaveBeenCalledWith(VERSE_BOOK, REANCHORED);
-    expect(page).toEqual({ textVersion: 'v1@en', start: 1, segments: [SEGMENTED[1]] });
-  });
-
-  it('serves the segments the book has of a range running past its end', async () => {
-    serveProject((bookId) => usj(bookId));
-
-    const page = parsePage(await getSegments('src', 'GEN', 1, 50));
-
-    expect(page.segments).toEqual([SEGMENTED[1]]);
-  });
-
-  it('starts a range running before the book at its first segment', async () => {
-    serveProject((bookId) => usj(bookId));
-
-    const page = parsePage(await getSegments('src', 'GEN', -5, 1));
-
-    expect(page).toMatchObject({ start: 0, segments: [SEGMENTED[0]] });
-  });
-
-  it('serves no segments for a range that ends before it starts', async () => {
-    serveProject((bookId) => usj(bookId));
-
-    const page = parsePage(await getSegments('src', 'GEN', 2, 1));
-
-    expect(page.segments).toEqual([]);
-  });
-
-  it('resolves undefined when the project has no text for the book', async () => {
-    serveProject(() => undefined);
-
-    await expect(getSegments('src', 'GEN', 0, 1)).resolves.toBeUndefined();
-  });
-
-  it('times segmenting the book for a page as part of the page request', async () => {
-    const timed = jest.spyOn(perfMarks, 'perfTime');
-    serveProject((bookId) => usj(bookId));
-
-    await getSegments('src', 'GEN', 0, 1);
-
-    expect(timed).toHaveBeenCalledWith('getSegments:resegment', expect.any(Function));
-  });
-
-  it("serves a kept book's segments without reading the language tag again", async () => {
-    serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
-    mockPdpGet.mockClear();
-
-    await getSegments('src', 'GEN', 0, 1);
-
-    expect(mockPdpGet).not.toHaveBeenCalledWith('platform.base', 'src');
-  });
-
-  it("reads the language tag for a book it doesn't keep", async () => {
-    serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
-    mockPdpGet.mockClear();
-
-    await getSegments('src', 'EXO', 0, 1);
-
-    expect(mockPdpGet).toHaveBeenCalledWith('platform.base', 'src');
-  });
-});
-
 describe('getVerseBook', () => {
   beforeEach(() => {
     tokenizeToVerseBook();
@@ -558,7 +383,7 @@ describe('getVerseBook', () => {
 
   it('serves the book its pages are segmented from', async () => {
     serveProject((bookId) => usj(bookId));
-    await getSegments('src', 'GEN', 0, 1);
+    await getSegmentedBook('src', 'GEN');
 
     const served = await getVerseBook('src', 'GEN');
 
@@ -568,7 +393,7 @@ describe('getVerseBook', () => {
 
   it('serves a kept book without reading the language tag again', async () => {
     serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     mockPdpGet.mockClear();
 
     await getVerseBook('src', 'GEN');
@@ -615,6 +440,14 @@ describe('getSegmentedBook', () => {
     segmentStandIns();
   });
 
+  it('refuses boundaries that are not a SegmentationDelta', async () => {
+    serveProject((bookId) => usj(bookId));
+
+    await expect(getSegmentedBook('src', 'GEN', '{"removed":[]}')).rejects.toThrow(
+      'The segmentation is not a SegmentationDelta',
+    );
+  });
+
   it('serves the book segmented by the boundaries named', async () => {
     serveProject((bookId) => usj(bookId));
 
@@ -627,7 +460,7 @@ describe('getSegmentedBook', () => {
 
   it('serves the segments its pages hold for the same boundaries without segmenting again', async () => {
     serveProject((bookId) => usj(bookId));
-    await getSegments('src', 'GEN', 0, 1, JSON.stringify(DELTA));
+    await getSegmentedBook('src', 'GEN', JSON.stringify(DELTA));
 
     await getSegmentedBook('src', 'GEN', JSON.stringify(DELTA));
 
@@ -826,9 +659,9 @@ describe('onBookTextChanged', () => {
   it('subscribes once to a book that is outlined and read whole', async () => {
     const project = serveProject((bookId) => usj(bookId));
 
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     await getTokenizedBook('src', 'GEN');
-    await getSegments('src', 'GEN', 0, 1);
+    await getSegmentedBook('src', 'GEN');
 
     expect(project.subscriptions).toHaveLength(1);
   });
@@ -836,32 +669,32 @@ describe('onBookTextChanged', () => {
   it('subscribes once to a book however often it is outlined', async () => {
     const project = serveProject((bookId) => usj(bookId));
 
-    await getBookOutline('src', 'GEN');
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
+    await getOpenBook('src', 'GEN');
 
     expect(project.subscriptions).toHaveLength(1);
   });
 
   it('keeps the outlined book while other books are read whole', async () => {
     const project = serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     await getTokenizedBook('src', 'EXO');
     await getTokenizedBook('src', 'LEV');
     await settle();
     jest.mocked(tokenizeBook).mockClear();
 
     await getTokenizedBook('src', 'GEN');
-    await getBookOutline('src', 'GEN');
-    const page = parsePage(await getSegments('src', 'GEN', 0, 2));
+    await getOpenBook('src', 'GEN');
+    const book = await getSegmentedBook('src', 'GEN');
 
-    expect(page.segments).toHaveLength(2);
+    expect(book?.segments).toHaveLength(2);
     expect(tokenizeBook).not.toHaveBeenCalled();
     expect(subscriptionsTo(project, 'GEN')).toHaveLength(1);
   });
 
   it('lets go of a book read whole once another replaces it, but not the outlined book', async () => {
     const project = serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     await getTokenizedBook('src', 'EXO');
 
     await getTokenizedBook('src', 'LEV');
@@ -877,7 +710,7 @@ describe('onBookTextChanged', () => {
   it('reports an edit to the outlined book with its project and book', async () => {
     const project = serveProject((bookId) => usj(bookId));
     const listener = listen();
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
 
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
     await settle();
@@ -889,7 +722,7 @@ describe('onBookTextChanged', () => {
   it('reports an edit to every listener', async () => {
     const project = serveProject((bookId) => usj(bookId));
     const listeners = [listen(), listen()];
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
 
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
     await settle();
@@ -899,7 +732,7 @@ describe('onBookTextChanged', () => {
 
   it('watches the book again once an edit to it is reported', async () => {
     const project = serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     const [first] = project.subscriptions;
 
     first.deliver(usj('GEN', 'v2'));
@@ -912,7 +745,7 @@ describe('onBookTextChanged', () => {
   it('reads the edited text when the book is next requested', async () => {
     let version = 'v1';
     const project = serveProject((bookId) => usj(bookId, version));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     version = 'v2';
 
     project.subscriptions[0].deliver(usj('GEN', version));
@@ -925,7 +758,7 @@ describe('onBookTextChanged', () => {
     let version = 'v1';
     const project = serveProject((bookId) => usj(bookId, version));
     const listener = listen();
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     await getTokenizedBook('src', 'EXO');
     await getTokenizedBook('src', 'LEV');
     version = 'v2';
@@ -935,13 +768,13 @@ describe('onBookTextChanged', () => {
 
     expect(listener).toHaveBeenCalledWith('src', 'GEN');
     expect(parseBook(await getTokenizedBook('src', 'GEN')).textVersion).toBe('v2@en');
-    expect(parseOutline(await getBookOutline('src', 'GEN')).textVersion).toBe('v2@en');
+    expect((await getOpenBook('src', 'GEN'))?.textVersion).toBe('v2@en');
   });
 
   it('reports later edits through the book watched again', async () => {
     const project = serveProject((bookId) => usj(bookId));
     const listener = listen();
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
     await settle();
 
@@ -953,7 +786,7 @@ describe('onBookTextChanged', () => {
 
   it('keeps the book held for another when the outlined book is edited', async () => {
     const project = serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     await getTokenizedBook('src', 'EXO');
     const [exo] = subscriptionsTo(project, 'EXO');
 
@@ -966,7 +799,7 @@ describe('onBookTextChanged', () => {
   it('stops watching an outlined book that fails to read', async () => {
     const project = serveProject(() => platformError('busy'));
 
-    await expect(getBookOutline('src', 'GEN')).rejects.toThrow('busy');
+    await expect(getOpenBook('src', 'GEN')).rejects.toThrow('busy');
     await settle();
 
     expect(project.subscriptions[0].unsubscribe).toHaveBeenCalled();
@@ -976,11 +809,11 @@ describe('onBookTextChanged', () => {
     let delivery: Delivery = platformError('busy');
     const project = serveProject(() => delivery);
     const listener = listen();
-    await expect(getBookOutline('src', 'GEN')).rejects.toThrow('busy');
+    await expect(getOpenBook('src', 'GEN')).rejects.toThrow('busy');
     await settle();
     delivery = usj('GEN');
 
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     subscriptionsTo(project, 'GEN')[1].deliver(usj('GEN', 'v2'));
     await settle();
 
@@ -990,17 +823,17 @@ describe('onBookTextChanged', () => {
 
   it('keeps the newer outlined book when the one it replaced fails to read', async () => {
     const project = serveProject();
-    getBookOutline('src', 'GEN').catch(() => undefined);
+    getOpenBook('src', 'GEN').catch(() => undefined);
     await settle();
     const replaced = project.subscriptions[0];
-    const outline = getBookOutline('src', 'EXO');
+    const outline = getOpenBook('src', 'EXO');
     await settle();
     subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO'));
     await outline;
 
     replaced.deliver(platformError('busy'));
     await settle();
-    await getBookOutline('src', 'EXO');
+    await getOpenBook('src', 'EXO');
 
     expect(subscriptionsTo(project, 'EXO')).toHaveLength(1);
   });
@@ -1009,7 +842,7 @@ describe('onBookTextChanged', () => {
     const project = serveProject((bookId) => usj(bookId));
     const listener = listen();
     await getTokenizedBook('src', 'GEN');
-    await getSegments('src', 'GEN', 0, 1);
+    await getSegmentedBook('src', 'GEN');
 
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
 
@@ -1018,11 +851,11 @@ describe('onBookTextChanged', () => {
 
   it('stops watching the previous outlined book once another is outlined', async () => {
     const project = serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     await getTokenizedBook('src', 'EXO');
     const [gen] = project.subscriptions;
 
-    await getBookOutline('src', 'LEV');
+    await getOpenBook('src', 'LEV');
     await settle();
 
     expect(gen.unsubscribe).toHaveBeenCalled();
@@ -1031,8 +864,8 @@ describe('onBookTextChanged', () => {
   it('reports edits to the newly outlined book', async () => {
     const project = serveProject((bookId) => usj(bookId));
     const listener = listen();
-    await getBookOutline('src', 'GEN');
-    await getBookOutline('src', 'EXO');
+    await getOpenBook('src', 'GEN');
+    await getOpenBook('src', 'EXO');
 
     subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO', 'v2'));
     await settle();
@@ -1046,10 +879,10 @@ describe('onBookTextChanged', () => {
     const listener = listen();
     const tag = Promise.withResolvers<string>();
     project.languageTag = tag.promise;
-    const earlier = getBookOutline('src', 'GEN');
+    const earlier = getOpenBook('src', 'GEN');
     await settle();
     project.languageTag = 'en';
-    await getBookOutline('src', 'EXO');
+    await getOpenBook('src', 'EXO');
     tag.resolve('en');
     await earlier;
 
@@ -1061,7 +894,7 @@ describe('onBookTextChanged', () => {
 
   it("stops watching the project's books once it closes", async () => {
     const project = serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     await getTokenizedBook('src', 'EXO');
 
     await closeProject('src');
@@ -1071,7 +904,7 @@ describe('onBookTextChanged', () => {
 
   it('stops watching an outlined book that is also the latest once the project closes', async () => {
     const project = serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
 
     await closeProject('src');
 
@@ -1080,9 +913,9 @@ describe('onBookTextChanged', () => {
 
   it('stops watching every outlined book once all projects close', async () => {
     const project = serveProject((bookId) => usj(bookId));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     await getTokenizedBook('src', 'EXO');
-    await getBookOutline('other', 'LEV');
+    await getOpenBook('other', 'LEV');
 
     await closeAllProjects();
 
@@ -1192,7 +1025,7 @@ describe('onBookTextChanged', () => {
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '1';
     const listener = listen();
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     readStatus();
     await settle();
 
@@ -1206,7 +1039,7 @@ describe('onBookTextChanged', () => {
     const project = serveProject();
     project.booksPresent = '1';
     const listener = listen();
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     project.subscriptions[0].deliver(usj('GEN'));
     await outline;
@@ -1223,7 +1056,7 @@ describe('onBookTextChanged', () => {
     const project = serveProject();
     project.booksPresent = '1';
     const listener = listen();
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     const [open] = project.subscriptions;
     open.deliver(usj('GEN'));
@@ -1245,7 +1078,7 @@ describe('onBookTextChanged', () => {
     const project = serveProject();
     project.booksPresent = '1';
     const listener = listen();
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     const [open] = project.subscriptions;
     open.deliver(usj('GEN'));
@@ -1266,7 +1099,7 @@ describe('onBookTextChanged', () => {
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '1';
     const listener = listen();
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     project.subscribeError = new Error('no provider');
     readStatus();
     await settle();
@@ -1283,7 +1116,7 @@ describe('onBookTextChanged', () => {
     let version = 'v1';
     const project = serveProject((bookId) => usj(bookId, version));
     project.booksPresent = '1';
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     readStatus();
     await settle();
     const [, read] = subscriptionsTo(project, 'GEN');
@@ -1294,7 +1127,7 @@ describe('onBookTextChanged', () => {
     await settle();
 
     expect(listener).toHaveBeenCalledTimes(1);
-    expect(parseOutline(await getBookOutline('src', 'GEN')).textVersion).toBe('v2@en');
+    expect((await getOpenBook('src', 'GEN'))?.textVersion).toBe('v2@en');
   });
 
   it('reports nothing for an edit that lands while the project closes', async () => {
@@ -1352,7 +1185,7 @@ describe('onBookTextChanged', () => {
     const project = serveProject((bookId) => usj(bookId));
     const listener = jest.fn();
     const unsubscribe = onBookTextChanged(listener);
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
 
     unsubscribe();
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
@@ -1437,7 +1270,7 @@ describe('onBookRead', () => {
     const heard: string[] = [];
     listenForBooks((_, book, edited) => heard.push(`read ${book.textVersion} ${edited}`));
     unsubscribers.push(onBookTextChanged(() => heard.push('edited')));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
 
     version = 'v2';
     project.subscriptions[0].deliver(usj('GEN', version));
@@ -1451,7 +1284,7 @@ describe('onBookRead', () => {
     project.booksPresent = '1';
     const heard: string[] = [];
     listenForBooks((_, book) => heard.push(book.textVersion));
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     const [open] = project.subscriptions;
     open.deliver(usj('GEN'));
@@ -1483,7 +1316,7 @@ describe('onBookRead', () => {
     project.booksPresent = '1';
     const heard: string[] = [];
     listenForBooks((_, book) => heard.push(book.textVersion));
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     const [open] = project.subscriptions;
     open.deliver(usj('GEN'));
@@ -1515,7 +1348,7 @@ describe('onBookRead', () => {
     project.booksPresent = '1';
     const edits = jest.fn();
     unsubscribers.push(onBookTextChanged(edits));
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     const [open] = project.subscriptions;
     open.deliver(usj('GEN'));
@@ -1548,7 +1381,7 @@ describe('onBookRead', () => {
     listenForBooks((_, book) => heard.push(`${book.id} ${book.textVersion}`));
     const edits = jest.fn();
     unsubscribers.push(onBookTextChanged(edits));
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     const [open] = project.subscriptions;
     open.deliver(usj('GEN'));
@@ -1560,7 +1393,7 @@ describe('onBookRead', () => {
     await settle();
     const [, , read] = subscriptionsTo(project, 'GEN');
 
-    const otherOutline = getBookOutline('src', 'EXO');
+    const otherOutline = getOpenBook('src', 'EXO');
     await settle();
     subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO'));
     await otherOutline;
@@ -1578,7 +1411,7 @@ describe('onBookRead', () => {
     project.booksPresent = '1';
     const heard: string[] = [];
     listenForBooks((_, book) => heard.push(book.textVersion));
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     const [open] = project.subscriptions;
     open.deliver(usj('GEN'));
@@ -1609,7 +1442,7 @@ describe('onBookRead', () => {
     project.booksPresent = '1';
     const heard: string[] = [];
     listenForBooks((_, book) => heard.push(`${book.id} ${book.textVersion}`));
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     const [open] = project.subscriptions;
     open.deliver(usj('GEN'));
@@ -1618,7 +1451,7 @@ describe('onBookRead', () => {
     await settle();
     const [, firstReread] = subscriptionsTo(project, 'GEN');
 
-    const otherOutline = getBookOutline('src', 'EXO');
+    const otherOutline = getOpenBook('src', 'EXO');
     await settle();
     subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO'));
     await otherOutline;
@@ -1637,7 +1470,7 @@ describe('onBookRead', () => {
     const project = serveProject();
     project.booksPresent = '1';
     const listener = listenForBooks();
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     const [open] = project.subscriptions;
     open.deliver(usj('GEN'));
@@ -1646,7 +1479,7 @@ describe('onBookRead', () => {
     await settle();
     const [, firstReread] = subscriptionsTo(project, 'GEN');
 
-    const otherOutline = getBookOutline('src', 'EXO');
+    const otherOutline = getOpenBook('src', 'EXO');
     await settle();
     subscriptionsTo(project, 'EXO')[0].deliver(usj('EXO'));
     await otherOutline;
@@ -1667,7 +1500,7 @@ describe('onBookRead', () => {
     const listener = listenForBooks();
     const edits = jest.fn();
     unsubscribers.push(onBookTextChanged(edits));
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
 
     delivery = platformError('busy');
     project.subscriptions[0].deliver(usj('GEN', 'v2'));
@@ -1682,7 +1515,7 @@ describe('onBookRead', () => {
     const listener = listenForBooks();
     const edits = jest.fn();
     unsubscribers.push(onBookTextChanged(edits));
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     project.subscriptions[0].deliver(usj('GEN'));
     await outline;
@@ -1916,7 +1749,7 @@ describe('startTextRead and stopTextRead', () => {
     segmentStandIns();
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '1';
-    await getBookOutline('src', 'EXO');
+    await getOpenBook('src', 'EXO');
     readStatus();
     await settle();
 
@@ -1949,7 +1782,7 @@ describe('startTextRead and stopTextRead', () => {
     segmentStandIns();
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '1';
-    await getBookOutline('src', 'EXO');
+    await getOpenBook('src', 'EXO');
     await startTextRead('src');
     await settle();
 
@@ -2137,7 +1970,7 @@ describe('getTextReadStatus', () => {
     segmentStandIns();
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '1';
-    await getBookOutline('src', 'GEN');
+    await getOpenBook('src', 'GEN');
     project.subscribeError = new Error('no provider');
     readStatus();
     await settle();
@@ -2283,7 +2116,7 @@ describe('isFormInText', () => {
     tokenizeToWords();
     const project = serveProject();
     project.booksPresent = '1';
-    const outline = getBookOutline('src', 'GEN');
+    const outline = getOpenBook('src', 'GEN');
     await settle();
     const [open] = project.subscriptions;
     open.deliver(usj('GEN'));

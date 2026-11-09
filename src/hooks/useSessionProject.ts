@@ -8,8 +8,12 @@ import { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { CommandReply } from '../types/command-reply';
 import type { EditStep } from '../types/edit-step';
-import type { ProjectApi, ProjectViewOptions } from '../types/project-api';
-import type { DraftCopyResult, NewDraftConfig } from './useDraftProject';
+import type {
+  ProjectApi,
+  ProjectViewOptions,
+  DraftCopyResult,
+  NewDraftConfig,
+} from '../types/project-api';
 import useSessionPages from './useSessionPages';
 
 /** The session open on the source, with what opening it answered. */
@@ -20,16 +24,10 @@ type OpenedSession = Readonly<{
   whole: WholeAnalysis;
 }>;
 
-/** How far the session's read of the whole text has progressed, as `getTextReadStatus` answers. */
-type TextReadStatus = Readonly<{ booksRead: number; bookCount: number; failedBookIds: string[] }>;
-
 const NO_WHOLE = new WholeAnalysis(async () => {
   /* v8 ignore next -- a stand-in that no read is asked of, used until a session opens */
   throw new Error('Interlinearizer: no session is open');
 });
-
-/* v8 ignore next -- stands in for WebView-path members that do nothing on the host path */
-const ignore = () => {};
 
 /** Whether `a` and `b` hold equal fields, their analysis aside. */
 function sameEnvelope(a: DraftProject, b: DraftProject): boolean {
@@ -74,8 +72,6 @@ export default function useSessionProject(
     historyFlags.current = next;
   }, []);
   const [hasFreeTranslations, setHasFreeTranslations] = useState(false);
-  const [readStatus, setReadStatus] = useState<{ sessionId: string; status: TextReadStatus }>();
-  const readStatusJson = useRef<string | undefined>(undefined);
   const [isTextWanted, setIsTextWanted] = useState(false);
 
   /** The interlinear project that the open session was opened on, or was last told to save to. */
@@ -158,8 +154,7 @@ export default function useSessionProject(
       logger.error('Interlinearizer: failed to detach the draft from its project', e);
     }
   }, [sessionId, whole]);
-  // Re-renders only when the draft's envelope changes; its analysis is read at render, as the
-  // WebView path reads its draft.
+  // Re-renders only when the draft's envelope changes; its analysis is read at render.
   const envelope = useRef<DraftProject | undefined>(undefined);
   useSyncExternalStore(
     useCallback((listener: () => void) => whole.subscribe(listener), [whole]),
@@ -174,39 +169,14 @@ export default function useSessionProject(
   const pages = useSessionPages({ sessionId, bookId, scrRef });
   const { client } = pages;
 
-  /**
-   * Fetches how far the session's read of the whole text has progressed, once the text is wanted.
-   * The first fetch starts the session's read.
-   */
-  const readTextStatus = useCallback(() => {
+  // Asking how far the read has got starts the session's read of the whole text.
+  useEffect(() => {
     if (sessionId === undefined || !isTextWanted) return;
     papi.commands
       .sendCommand('interlinearizer.getTextReadStatus', { sessionId })
-      .then((json) => {
-        const status: TextReadStatus = JSON.parse(json);
-        const seen = readStatusJson.current;
-        readStatusJson.current = `${sessionId}:${json}`;
-        // An unchanged status sets no state, so the view does not render again for it.
-        return seen === readStatusJson.current ? undefined : setReadStatus({ sessionId, status });
-      })
-      .catch((e) => logger.warn('Interlinearizer: could not read the whole-text status', e));
+      .catch((e) => logger.warn("Interlinearizer: could not start reading the session's text", e));
   }, [sessionId, isTextWanted]);
-  useEffect(readTextStatus, [readTextStatus]);
   const requestTextRead = useCallback(() => setIsTextWanted(true), []);
-
-  const textReadEvent = useMemo(
-    () => papi.network.getNetworkEvent('interlinearizer.onTextRead'),
-    [],
-  );
-  useEvent(
-    textReadEvent,
-    useCallback(
-      (read: NetworkEvents['interlinearizer.onTextRead']) => {
-        if (read.sourceProjectId === sourceProjectId) readTextStatus();
-      },
-      [sourceProjectId, readTextStatus],
-    ),
-  );
 
   /** Fetches the whole draft again, logging a failure. */
   const refreshWhole = useCallback(() => {
@@ -236,9 +206,8 @@ export default function useSessionProject(
         if (!('sessionId' in change) || change.sessionId !== sessionId) return;
         // With pages loaded, the client tells which changes its replies left out.
         if (!client) takeHeard(change);
-        readTextStatus();
       },
-      [sessionId, client, takeHeard, readTextStatus],
+      [sessionId, client, takeHeard],
     ),
   );
   useEffect(() => client?.subscribeHeard(takeHeard), [client, takeHeard]);
@@ -342,9 +311,10 @@ export default function useSessionProject(
   );
 
   const commitDraft = useCallback(
-    async (copy: (snapshot: DraftProject, sessionId?: string) => Promise<DraftCopyResult>) => {
+    async (copy: (snapshot: DraftProject, sessionId: string) => Promise<DraftCopyResult>) => {
       const snapshot = whole.draft;
-      if (!snapshot || isSaving) return false;
+      /* v8 ignore next -- the whole draft is read only once the session has opened */
+      if (!snapshot || isSaving || sessionId === undefined) return false;
       setIsSaving(true);
       try {
         const copied = await copy(snapshot, sessionId);
@@ -423,16 +393,11 @@ export default function useSessionProject(
   const undo = useCallback(() => move('interlinearizer.undoEdit'), [move]);
   const redo = useCallback(() => move('interlinearizer.redoEdit'), [move]);
 
-  // The segmentation version, bumped whenever the draft's boundaries change, as a boundary edit
-  // bumps it on the WebView path.
+  // The segmentation version, bumped whenever the draft's boundaries change.
   const segmentationKey = JSON.stringify(draft?.segmentation ?? {});
   const segmentation = useRef({ key: segmentationKey, version: 0 });
   if (segmentation.current.key !== segmentationKey)
     segmentation.current = { key: segmentationKey, version: segmentation.current.version + 1 };
-
-  const status = readStatus?.sessionId === sessionId ? readStatus?.status : undefined;
-  const staleCoversDraft =
-    !!status && status.booksRead === status.bookCount && status.failedBookIds.length === 0;
 
   return {
     isDraftLoading: !opened || !draft,
@@ -443,8 +408,6 @@ export default function useSessionProject(
     getDraftSnapshot,
     isSaving,
     commitDraft,
-    autosaveAnalysis: ignore,
-    autosaveSegmentation: ignore,
     loadFromProject,
     newDraft,
     discardBook,
@@ -456,11 +419,6 @@ export default function useSessionProject(
     subscribeToHistoryRevisions,
     undo,
     redo,
-    asOneStep: (action) => action(),
-    // On the host path, the session re-anchors the draft. No analysis store is fed there.
-    reanchorBook: ignore,
-    /* v8 ignore next -- no analysis store subscribes on the host path */
-    subscribeToAnalysisReplacements: () => ignore,
     session: opened && {
       sessionId: opened.sessionId,
       readOnly: opened.readOnly,
@@ -468,7 +426,6 @@ export default function useSessionProject(
       pages,
       client,
       hasFreeTranslations,
-      staleCoversDraft,
       requestTextRead,
       boundaries,
       setAnalysisLanguage,

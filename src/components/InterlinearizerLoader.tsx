@@ -30,17 +30,12 @@ import {
   useTransition,
 } from 'react';
 import type { ComponentProps, ReactNode, RefObject } from 'react';
-import type { Segment, TextAnalysis } from 'interlinearizer';
+import type { Segment } from 'interlinearizer';
 import type { Pt9InterlinearProjectManifest } from 'platform-scripture';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useLatestRef from '../hooks/useLatestRef';
 import useUndoRedoKeys from '../hooks/useUndoRedoKeys';
-import useWholeTextReanchor from '../hooks/useWholeTextReanchor';
-import useDraftProject from '../hooks/useDraftProject';
 import useSessionProject from '../hooks/useSessionProject';
-import type { DraftContent } from '../types/draft-content';
-import type { ProjectApi, ProjectViewOptions } from '../types/project-api';
-import { hostPathEnabled } from '../utils/host-path';
 import { whenSettled } from '../utils/settles';
 import type { EditStep } from '../types/edit-step';
 import { formatTemplate } from '../utils/format-template';
@@ -50,28 +45,17 @@ import { LexiconSensesProvider } from './LexiconSenses';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../hooks/useProjectBookIds';
-import useSegmentPages from '../hooks/useSegmentPages';
 import useStaleAnalysisDismissal from '../hooks/useStaleAnalysisDismissal';
-import {
-  isEmptyDelta,
-  mergeSegments,
-  moveBoundary,
-  reanchorSegmentation,
-  segmentationForBook,
-  splitSegmentBefore,
-  unmergeableVerseStarts,
-} from '../utils/segmentation';
+import { reanchorSegmentation, unmergeableVerseStarts } from '../utils/segmentation';
 import { perfTrack } from '../utils/perf-marks';
-import { reanchorDraftToBook } from '../utils/reanchor-changes';
-import { isInterlinearProjectSummary, isTextAnalysis, isWordToken } from '../types/type-guards';
-import { readOpenableProject } from '../utils/read-openable-project';
+import { isInterlinearProjectSummary, isWordToken } from '../types/type-guards';
 import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';
 import { toProjectSummary } from '../types/interlinear-project-summary';
 import useSubmitGuard from '../hooks/useSubmitGuard';
 import { NO_OP_SEGMENTATION_DISPATCH, type SegmentationDispatch } from './SegmentationStore';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import Interlinearizer from './Interlinearizer';
-import { AnalysisStoreProvider, SessionAnalysisProvider } from './AnalysisStore';
+import { SessionAnalysisProvider } from './AnalysisStore';
 import StaleAnalysesReporter, { type StaleAnalysesReport } from './StaleAnalysesReporter';
 import AnalysisCatalogPanel, {
   ANALYSIS_CATALOG_PANEL_STRING_KEYS,
@@ -300,7 +284,6 @@ const STRING_KEYS = [
   '%interlinearizer_undone_discardAll%',
   '%interlinearizer_redone_discardAll%',
   '%interlinearizer_error_load_book_heading%',
-  '%interlinearizer_error_pt9Import_load_failed%',
   '%interlinearizer_loading%',
   '%interlinearizer_error_projectUnavailable%',
   '%interlinearizer_sidePanel_resize%',
@@ -382,16 +365,7 @@ function fileHashesEqual(a: Record<string, string>, b: Record<string, string>): 
   return aKeys.length === Object.keys(b).length && aKeys.every((key) => a[key] === b[key]);
 }
 
-const onHostPath = hostPathEnabled();
-
-/** Keeps the draft: in the WebView, or in a session on the host path. */
-const useProject: (
-  sourceProjectId: string,
-  platformLanguage: string | undefined,
-  options: ProjectViewOptions,
-) => ProjectApi = onHostPath ? useSessionProject : useDraftProject;
-
-/** The segment pages shown on the host path while the session opens. */
+/** The segment pages shown while the session opens. */
 const OPENING_PAGES = { pages: undefined, isLoading: true, error: undefined };
 
 /**
@@ -540,7 +514,6 @@ function InterlinearizerLoaderInner({
     isLoading,
     bookError,
     writingSystem,
-    reload: reloadBook,
   } = useInterlinearizerBookData({
     projectId,
     scrRef,
@@ -589,16 +562,14 @@ function InterlinearizerLoaderInner({
     !projectBookIds &&
     confirmedProjectId !== projectId;
 
-  // The always-present draft is the runtime source of truth for the analysis being edited. Edits
-  // auto-save here (not to the active project); Save / Save As copy the draft into a project.
+  // The always-present draft, kept by the session, is the source of truth for the analysis being
+  // edited. Edits are stored to it (not to the active project); Save / Save As copy it into one.
   const {
     isDraftLoading,
     draft,
     draftVersion,
     segmentationVersion,
     dirty,
-    autosaveAnalysis,
-    autosaveSegmentation,
     loadFromProject,
     newDraft,
     getDraftSnapshot,
@@ -607,9 +578,6 @@ function InterlinearizerLoaderInner({
     discardBook,
     discardAll,
     detachFromProject,
-    reanchorBook,
-    asOneStep,
-    subscribeToAnalysisReplacements,
     canUndo,
     canRedo,
     undo,
@@ -617,11 +585,11 @@ function InterlinearizerLoaderInner({
     getHistoryRevision,
     subscribeToHistoryRevisions,
     session,
-  } = useProject(projectId, isInterfaceLanguageLoading ? undefined : platformLanguage, {
+  } = useSessionProject(projectId, isInterfaceLanguageLoading ? undefined : platformLanguage, {
     saveTargetId: activeProject?.pt9Import ? undefined : activeProject?.id,
     importProjectId: activeProject?.pt9Import ? activeProject.id : undefined,
     importVersion: activeProject?.pt9Import ? activeProject.updatedAt : undefined,
-    // The book's outline is asked for once its text has loaded, as the WebView path's is.
+    // The book's outline is asked for once its text has loaded.
     bookId: verseBook?.bookRef,
     scrRef,
   });
@@ -664,62 +632,8 @@ function InterlinearizerLoaderInner({
     [chosenLanguages, languageKey, setChosenLanguages],
   );
 
-  /**
-   * Which version of the import the view fetches: its id and the modification time a sync bumps.
-   * `undefined` while the draft is the view, and on the host path, where the session holds the
-   * import.
-   */
-  const importTag =
-    isImportView && activeProject && !onHostPath
-      ? `${activeProject.id}:${activeProject.updatedAt}`
-      : undefined;
-
-  /**
-   * The import analysis last fetched, under the version tag it was fetched for; no `analysis` when
-   * that fetch found none to show. An analysis the sync has already replaced is therefore never one
-   * the view can paint.
-   */
-  const [importLoad, setImportLoad] = useState<{ tag: string; analysis?: TextAnalysis }>();
-  useEffect(() => {
-    if (importTag === undefined || !activeProject) return undefined;
-    const { id } = activeProject;
-    let ignore = false;
-    (async () => {
-      try {
-        const json = await papi.commands.sendCommand('interlinearizer.getProject', id);
-        const parsed: unknown = json ? JSON.parse(json) : undefined;
-        const analysis =
-          parsed && typeof parsed === 'object' && 'analysis' in parsed
-            ? parsed.analysis
-            : undefined;
-        if (ignore) return;
-        // Either outcome is reported by the panel's own line rather than a toast: it stays on
-        // screen next to the empty view, and there is only one message to reconcile.
-        setImportLoad(isTextAnalysis(analysis) ? { tag: importTag, analysis } : { tag: importTag });
-      } catch (e) {
-        logger.error('Interlinearizer: failed to load the imported analysis', e);
-        if (!ignore) setImportLoad({ tag: importTag });
-      }
-    })();
-    return () => {
-      ignore = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the tag names the version to fetch; the project object also changes for edits that leave the analysis alone
-  }, [importTag]);
-
-  /** The fetch's outcome for the version on screen; `undefined` until that version has one. */
-  const importLoaded = importLoad?.tag === importTag ? importLoad : undefined;
-
-  const importAnalysis = importLoaded?.analysis;
-
-  /** Whether the version on screen is one whose analysis could not be read. */
-  const importLoadFailed = importLoaded !== undefined && importLoaded.analysis === undefined;
-
-  /**
-   * Whether the version on screen is an import whose analysis has not arrived yet. On the host
-   * path, the session holds the import, so this is whether the session has yet to open.
-   */
-  const isImportLoading = isImportView && (onHostPath ? !session : importLoaded === undefined);
+  /** Whether the session that holds the import on screen has yet to open. */
+  const isImportLoading = isImportView && !session;
 
   // Whether any gloss input currently holds uncommitted text. Gloss writes are deferred to blur, so
   // the persisted `dirty` flag does not flip until then; tracking in-progress edits here lets the
@@ -772,11 +686,11 @@ function InterlinearizerLoaderInner({
   // cannot take its input away mid-edit.
   const seedHasFreeTranslations = useMemo(
     () => {
-      const seed = isImportView ? importAnalysis : draft?.analysis;
+      const seed = isImportView ? undefined : draft?.analysis;
       return seed ? analysisHasFreeTranslations(seed) : false;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- draftVersion and isDraftLoading track draft?.analysis, a ref value
-    [isImportView, importAnalysis, draftVersion, isDraftLoading],
+    [isImportView, draftVersion, isDraftLoading],
   );
   const hasFreeTranslations = session ? session.hasFreeTranslations : seedHasFreeTranslations;
 
@@ -817,7 +731,7 @@ function InterlinearizerLoaderInner({
    * `draft.segmentation` is read fresh from the ref-held draft at recompute time; the deps are the
    * two version counters that cover every path that can change it — `segmentationVersion` for
    * boundary edits, `draftVersion` for wholesale replacements (New / Open / Discard). The draft
-   * object itself is deliberately NOT a dep: gloss auto-saves replace its identity on every write
+   * object itself is deliberately NOT a dep: gloss edits replace its identity on every write
    * without touching the boundaries, so keying on it would re-run the full re-segmentation after
    * every gloss edit. `isDraftLoading` covers the one replacement that bumps neither counter: the
    * initial draft load.
@@ -827,27 +741,6 @@ function InterlinearizerLoaderInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
     [verseBook, segmentationVersion, draftVersion, isDraftLoading],
   );
-
-  // One pass per loaded book, so each rerun is the pass the undo history already holds.
-  const reanchor = useMemo(
-    () => verseBook && { bookCode: verseBook.bookRef, pass: reanchorDraftToBook(verseBook) },
-    [verseBook],
-  );
-  // Re-anchors the draft whenever the loaded book's text, the boundaries, or the draft itself
-  // changes. An import is read-only and does not show the draft, so the draft waits until it does.
-  useEffect(() => {
-    if (isImportView || isDraftLoading || !reanchor) return;
-    reanchorBook(reanchor.bookCode, reanchor.pass);
-  }, [reanchorBook, reanchor, isImportView, isDraftLoading, segmentationVersion, draftVersion]);
-
-  const wholeTextReanchor = useWholeTextReanchor({
-    loadedBookCode: verseBook?.bookRef,
-    isImportView,
-    isDraftLoading,
-    draftVersion,
-    getDraftSnapshot,
-    reanchorBook,
-  });
 
   /**
    * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
@@ -877,31 +770,7 @@ function InterlinearizerLoaderInner({
     [liveTokensByRef],
   );
 
-  /** The boundaries the host segments the book's pages by; mirrors the `book` memo above. */
-  const pageSegmentation = useMemo(
-    () =>
-      isImportView || !verseBook
-        ? undefined
-        : segmentationForBook(draft?.segmentation, verseBook.bookRef),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
-    [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
-  );
-
-  const sourcePages = useSegmentPages({
-    projectId,
-    // Held back until the draft has loaded, so the first outline carries its boundaries. The host
-    // path reads its pages from the session instead.
-    verseBook: isDraftLoading || onHostPath ? undefined : verseBook,
-    segmentation: pageSegmentation,
-    segmentationVersion,
-    scrRef,
-    onTextChanged: reloadBook,
-  });
-  const {
-    pages,
-    isLoading: isPagesLoading,
-    error: pagesError,
-  } = onHostPath ? (session?.pages ?? OPENING_PAGES) : sourcePages;
+  const { pages, isLoading: isPagesLoading, error: pagesError } = session?.pages ?? OPENING_PAGES;
 
   const headingPlacements = useMemo(() => placeHeadings(verseBook?.segments ?? []), [verseBook]);
 
@@ -952,46 +821,15 @@ function InterlinearizerLoaderInner({
   const unmergeableStarts = verseBook && unmergeableVerseStarts(verseBook);
 
   /**
-   * Boundary-editing operations exposed through the segmentation context, inert while an import is
-   * the view. On the host path they are the session's own. Otherwise each reads the draft's latest
-   * boundary delta synchronously (so rapid edits compose correctly), applies the relevant pure
-   * transform against the original verse book, and auto-saves the normalized result — clearing the
-   * field back to `undefined` when the edit restores the default verse segmentation.
+   * Boundary-editing operations exposed through the segmentation context: the session's own, inert
+   * while an import is the view or the session has yet to open.
    */
-  const segmentationDispatch = useMemo<SegmentationDispatch>(() => {
-    // An import is read-only and its view is not backed by the draft, so a boundary edit reached
-    // from it has nowhere legitimate to land: the controls are absent there, and this keeps any
-    // that slips through from rewriting the draft the import is preserving.
-    if (isImportView) return NO_OP_SEGMENTATION_DISPATCH;
-    if (session) return session.boundaries;
-    /**
-     * Auto-saves the result of a boundary transform, clearing the segmentation field back to
-     * `undefined` when the edit restores the default verse segmentation.
-     */
-    const apply = (next: ReturnType<typeof mergeSegments>, location: string) => {
-      autosaveSegmentation(isEmptyDelta(next) ? undefined : next, location);
-    };
-    return {
-      merge: (secondSegmentStartRef) => {
-        /* v8 ignore next -- boundary controls only render once the book has loaded */
-        if (!verseBook) return;
-        apply(
-          mergeSegments(verseBook, getDraftSnapshot()?.segmentation, secondSegmentStartRef),
-          secondSegmentStartRef,
-        );
-      },
-      split: (tokenRef) => {
-        /* v8 ignore next -- boundary controls only render once the book has loaded */
-        if (!verseBook) return;
-        apply(splitSegmentBefore(verseBook, getDraftSnapshot()?.segmentation, tokenRef), tokenRef);
-      },
-      move: (fromRef, toRef) => {
-        /* v8 ignore next -- the cross-segment link only renders once the book has loaded */
-        if (!verseBook) return;
-        apply(moveBoundary(verseBook, getDraftSnapshot()?.segmentation, fromRef, toRef), toRef);
-      },
-    };
-  }, [autosaveSegmentation, getDraftSnapshot, isImportView, session, verseBook]);
+  const segmentationDispatch = useMemo<SegmentationDispatch>(
+    // An import is read-only, so a boundary edit reached from it has nowhere legitimate to land: the
+    // controls are absent there, and this keeps any that slips through from reaching the draft.
+    () => (isImportView || !session ? NO_OP_SEGMENTATION_DISPATCH : session.boundaries),
+    [isImportView, session],
+  );
 
   // The active reference handed to the interlinearizer. The host emits `verseNum: 0` both for a
   // chapter's verse-0 superscription (which has its own segment) and for a plain whole-chapter
@@ -1424,7 +1262,7 @@ function InterlinearizerLoaderInner({
   }, [setOfferPt9Import, runPt9Import]);
 
   /**
-   * Declines the first-open offer (dismissing the dialog means No): persists the empty draft so the
+   * Declines the first-open offer (dismissing the dialog means No): stores the empty draft so the
    * offer never repeats for this source, then continues into the draft as an open does today.
    */
   const handlePt9OfferNo = useCallback(() => {
@@ -1432,12 +1270,10 @@ function InterlinearizerLoaderInner({
     const snapshot = getDraftSnapshot();
     /* v8 ignore next -- the offer only renders once the draft has loaded */
     if (!snapshot) return;
-    papi.commands
-      .sendCommand('interlinearizer.saveDraft', projectId, JSON.stringify(snapshot))
-      .catch((e) =>
-        logger.error('Interlinearizer: failed to persist the draft declining the offer', e),
-      );
-  }, [setOfferPt9Import, getDraftSnapshot, projectId]);
+    newDraft({ analysisLanguages: snapshot.analysisLanguages }).catch((e) =>
+      logger.error('Interlinearizer: failed to store the draft declining the offer', e),
+    );
+  }, [setOfferPt9Import, getDraftSnapshot, newDraft]);
 
   /**
    * Creates the editable copy and asks {@link ProjectModals} to open it through the normal
@@ -1494,19 +1330,13 @@ function InterlinearizerLoaderInner({
       await commitDraft(async (_snapshot, sessionId) => {
         const savedJson = await perfTrack(
           'save',
-          sessionId === undefined
-            ? papi.commands.sendCommand(
-                'interlinearizer.saveDraftToProject',
-                projectId,
-                activeProject.id,
-              )
-            : papi.commands.sendCommand(
-                'interlinearizer.saveDraftToProject',
-                projectId,
-                activeProject.id,
-                undefined,
-                sessionId,
-              ),
+          papi.commands.sendCommand(
+            'interlinearizer.saveDraftToProject',
+            projectId,
+            activeProject.id,
+            undefined,
+            sessionId,
+          ),
           // The bytes the Save sends over the bus.
           { bytes: JSON.stringify([projectId, activeProject.id]).length },
         );
@@ -1540,39 +1370,21 @@ function InterlinearizerLoaderInner({
 
   /**
    * Resets the chosen scope to the active project's stored content, or empties it when no project
-   * is active. When the stored content can't be read, or the discard fails, it notifies the user
-   * and leaves the draft untouched. Either way, the dialog closes once the discard ends.
+   * is active. When the discard fails, it notifies the user and leaves the draft untouched. Either
+   * way, the dialog closes once the discard ends.
    */
   const handleDiscardChangesConfirm = useCallback(
     (scope: DiscardScope) =>
       runDiscardGuarded(async () => {
         try {
           const bookCode = book?.bookRef;
-          let saved: DraftContent | undefined;
-          // The host reads the saved content itself.
-          if (activeProject && !onHostPath) {
-            const project = await readOpenableProject(activeProject.id).catch((e) => {
-              logger.error('Interlinearizer: failed to read the project to discard changes', e);
-              return undefined;
-            });
-            if (!project) {
-              await papi.notifications
-                .send({
-                  message: '%interlinearizer_error_discardChanges_failed%',
-                  severity: 'error',
-                })
-                .catch(() => {});
-              return;
-            }
-            saved = { analysis: project.analysis, segmentation: project.segmentation };
-          }
           if (scope === 'book') {
             /* v8 ignore next -- defensive: the dialog disables the book scope unless a book is loaded */
-            if (bookCode) await discardBook(bookCode, saved);
+            if (bookCode) await discardBook(bookCode);
           }
           // Match 'all' explicitly rather than via an else, so a future scope can't fall through to
           // the whole-draft discard.
-          if (scope === 'all') await discardAll(saved);
+          if (scope === 'all') await discardAll();
           /* v8 ignore start -- defensive: restoring validated content has no known way to throw, but
              a failure must not close the dialog silently */
         } catch (e) {
@@ -1588,7 +1400,7 @@ function InterlinearizerLoaderInner({
           setDiscardChangesModalOpen(false);
         }
       }),
-    [activeProject, book, discardBook, discardAll, runDiscardGuarded],
+    [book, discardBook, discardAll, runDiscardGuarded],
   );
 
   /** Dismisses the discard dialog, leaving the draft untouched. */
@@ -1891,12 +1703,6 @@ function InterlinearizerLoaderInner({
           {resolvedOrEmpty(localizedStrings['%interlinearizer_loading%'])}
         </p>
       )}
-
-      {!hasError && !showLoading && importLoadFailed && !stringsLoading && (
-        <p className="tw:text-sm tw:text-destructive" data-testid="pt9-import-load-error">
-          {localizedStrings['%interlinearizer_error_pt9Import_load_failed%']}
-        </p>
-      )}
     </div>
   );
 
@@ -1917,8 +1723,6 @@ function InterlinearizerLoaderInner({
           segmentationDispatch={segmentationDispatch}
           formerBoundaries={formerBoundaries}
           unmergeableStarts={unmergeableStarts}
-          asOneStep={asOneStep}
-          dispatchBreaksPhrases={onHostPath}
         />
       </PendingViewWrapper>
     );
@@ -1967,7 +1771,6 @@ function InterlinearizerLoaderInner({
               <AnalysisCatalogPanel
                 ref={catalogPanelRef}
                 announceUndoable={announceUndoable}
-                asOneStep={asOneStep}
                 currentBook={scrRef.book}
                 currentBookName={currentBookName}
                 headingPlacements={headingPlacements}
@@ -1977,9 +1780,6 @@ function InterlinearizerLoaderInner({
                 onShowConcordance={handleShowConcordance}
                 showMorphology={showMorphology}
                 sourceLanguageTag={writingSystem}
-                staleCoversDraft={
-                  session ? session.staleCoversDraft : wholeTextReanchor.staleCoversDraft
-                }
               />
             ) : (
               <ConcordancePanel
@@ -1997,69 +1797,26 @@ function InterlinearizerLoaderInner({
     </ResizablePanelGroup>
   );
 
-  // What fills the view area: the session's provider on the host path, the import's read-only
-  // store, the draft-backed store, or the loading/error panel while the source is still arriving.
-  // The provider sits above the cross-book fade curtain (which lives inside the view panel), so the
-  // side panel can read it without being dimmed by it.
-  let viewArea: ReactNode;
-  if (onHostPath) {
-    // The session holds the draft or the import. Its client holds the loaded book's pages.
-    viewArea =
-      session?.client === undefined ? (
-        <BookFadeWrapper fadePhase={fadePhase}>{loadingOrErrorPanel}</BookFadeWrapper>
-      ) : (
-        <SessionAnalysisProvider
-          client={session.client}
-          whole={session.whole}
-          sessionId={session.sessionId}
-          analysisLanguage={analysisLanguage}
-          onPendingEditsChange={setPendingEdits}
-          readOnly={session.readOnly}
-        >
-          {book && isLoaded && <StaleAnalysesReporter book={book} onReport={setStaleReport} />}
-          {panelGroup}
-        </SessionAnalysisProvider>
-      );
-  } else if (isImportView && activeProject) {
-    viewArea =
-      importAnalysis === undefined ? (
-        <BookFadeWrapper fadePhase={fadePhase}>{loadingOrErrorPanel}</BookFadeWrapper>
-      ) : (
-        // Keyed on the version tag so a sync reseeds by remounting, the same non-reactive-seed
-        // contract the draft-backed store relies on.
-        <AnalysisStoreProvider
-          key={`pt9:${importTag}`}
-          initialAnalysis={importAnalysis}
-          analysisLanguage={analysisLanguage}
-          readOnly
-        >
-          {panelGroup}
-        </AnalysisStoreProvider>
-      );
-  } else if (isDraftLoading) {
-    // The store below waits for the draft: it seeds on mount alone, and the draft version that
-    // remounts it does not bump when the load completes. Nothing is lost by waiting - while the
-    // draft loads there is only ever a placeholder or an error panel to show.
-    viewArea = <BookFadeWrapper fadePhase={fadePhase}>{loadingOrErrorPanel}</BookFadeWrapper>;
-  } else {
-    // The store's lifetime is the draft's, not the loaded book's - it holds every book. Keyed on
-    // the draft version because the seed is not reactive, so a wholesale replacement (New / Open /
-    // Discard) reseeds by remounting. Wrapping the loading and error branches too keeps it alive
-    // across the gap while the next book's USJ is in flight.
-    viewArea = (
-      <AnalysisStoreProvider
-        key={draftVersion}
-        initialAnalysis={draft?.analysis}
+  // What fills the view area: the session's provider, or the loading/error panel while the
+  // session opens. The provider sits above the cross-book fade curtain (which lives inside the view
+  // panel), so the side panel can read it without being dimmed by it.
+  // The session holds the draft or the import. Its client holds the loaded book's pages.
+  const viewArea =
+    session?.client === undefined ? (
+      <BookFadeWrapper fadePhase={fadePhase}>{loadingOrErrorPanel}</BookFadeWrapper>
+    ) : (
+      <SessionAnalysisProvider
+        client={session.client}
+        whole={session.whole}
+        sessionId={session.sessionId}
         analysisLanguage={analysisLanguage}
-        onSave={autosaveAnalysis}
         onPendingEditsChange={setPendingEdits}
-        subscribeToReplacements={subscribeToAnalysisReplacements}
+        readOnly={session.readOnly}
       >
         {book && isLoaded && <StaleAnalysesReporter book={book} onReport={setStaleReport} />}
         {panelGroup}
-      </AnalysisStoreProvider>
+      </SessionAnalysisProvider>
     );
-  }
 
   let staleNoticeMessage: string;
   if (staleGlossCount > 0 && staleFreeTranslationCount > 0)
@@ -2233,10 +1990,7 @@ function InterlinearizerLoaderInner({
         <SourceTextProvider
           enabled={concordanceWanted}
           liveBook={verseBook}
-          onBookRead={wholeTextReanchor.onBookRead}
-          onTextRead={wholeTextReanchor.onTextRead}
           onWanted={session?.requestTextRead}
-          readKey={wholeTextReanchor.readKey}
           projectId={projectId}
           shown={sidePanel === 'concordance'}
           writingSystem={writingSystem}

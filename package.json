@@ -41,7 +41,6 @@
     "test:coverage": "jest --coverage",
     "test:e2e": "npm run test:e2e:smoke && npm run test:e2e:cdp",
     "test:e2e:cdp": "playwright test --config e2e-tests/playwright-cdp.config.ts",
-    "test:e2e:old-path": "cross-env E2E_HOST_PATH=false npm run test:e2e",
     "test:e2e:headless": "xvfb-run --auto-servernum --server-args=\"-screen 0 1280x960x24\" npm run test:e2e",
     "test:e2e:smoke": "playwright test --config e2e-tests/playwright.config.ts --project=smoke",
     "perf:capture": "playwright test --config e2e-tests/playwright-perf.config.ts --project=capture",
@@ -72,8 +71,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@reduxjs/toolkit": "^2.13.0",
     "@sillsdev/scripture": "^2.1.0",
-    "platform-bible-utils": "file:../paranext-core/lib/platform-bible-utils",
-    "react-redux": "^9.3.1"
+    "platform-bible-utils": "file:../paranext-core/lib/platform-bible-utils"
   },
   "devDependencies": {
     "@dreamsicle.io/stylelint-config-tailwindcss": "^1.2.2",

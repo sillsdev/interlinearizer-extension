@@ -44,21 +44,19 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     'Heap in use before the view opens, then how far it has grown at each later point. The host heap belongs to the whole platform, not just this extension.',
   'app.cold': "The packaged app restarts before each run, then the view opens on the tier's book.",
   'app.open':
-    "A new view opens on the tier's book in an app that is already running. Some steps run at the same time, so they do not add up to the total.",
+    "A new view opens on the tier's book in an app that is already running. The session re-anchors the draft to that book before the outline answers. Some steps run at the same time, so they do not add up to the total.",
   'app.switchBook':
     "With the view open, the book changes to Jude and back; the times are for the return. Book change to rendered includes fetching the book's text.",
   'app.edit':
-    'One gloss typed and committed with Tab, then the autosave that commit sets off. `gloss-settle` ends once the view shows the gloss and, when the Tab moves the focus, that move. The host path times it the same way.',
+    "One gloss typed and committed with Tab, with the session reading no text. `edit-command` is the command's round trip, and its `:outbound` and `:inbound` rows split the transport at the host's start and end. `reply-apply` takes the reply into the view's pages. `gloss-settle` ends once the view shows the gloss and, when the Tab moves the focus, that move.",
   'app.picker':
     'The Select Interlinear Project dialog opens, listing every saved project for the source.',
   'app.save': 'Save from the Project menu writes the analysis to the project it came from.',
   'app.concordance':
-    "The concordance opens in a fresh view, which reads and indexes every book of the source and re-anchors the draft to each book it analyzes beyond the open one. Only large-loadable's draft spans more than the open book, so only its read includes re-anchoring.",
-  'bench.timings.load': 'The steps of opening the view on a book.',
+    'The concordance opens in a fresh view, which reads and indexes every book of the source.',
+  'bench.timings.load': 'Tokenizing the view book and parsing the draft.',
   'bench.timings.storage':
     'Splitting the draft into per-book shards to store it, and merging them back.',
-  'bench.timings.edit':
-    "Committing one gloss to the store and rerunning the view's selectors, then serializing the draft to save it.",
   'bench.timings.concordance':
     'Indexing every book of the source and deriving the concordance rows.',
   'bench.timings.text':
@@ -73,24 +71,18 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     "With a view open, the host reads every book of the source and files its word forms, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes each book's USJ, which the platform keeps for every book subscription.",
   'app.scriptureSave':
     "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
-  'app.hostOpen':
-    "On the host path, a new view opens on the tier's book, with no feature needing the whole text, so the session reads none. The session re-anchors the draft to that book before the outline answers.",
-  'app.hostEditDuringRead':
-    "On the host path, one gloss committed while the session's whole-text read runs, started as a feature needing the text would start it. Only edits that the read outlasts are counted.",
-  'app.hostEdit':
-    "On the host path, one gloss committed once the session's whole-text read has finished. `edit-command` is the command's round trip, and its `:outbound` and `:inbound` rows split the transport at the host's start and end. `reply-apply` takes the reply into the view's pages. `gloss-settle` ends once the view shows the gloss and, when the Tab moves the focus, that move.",
-  'app.hostScriptureSave':
-    'As the Scripture save above, on the host path before any feature needs the whole text, so the session reads none.',
-  'app.hostScriptureSaveAfterRead':
-    "As the Scripture save above, on the host path with the session's whole-text read finished, so the host watches every book.",
-  'bench.memory': 'Heap held by the parsed draft, and by an undo history filled to its limit.',
+  'app.editDuringRead':
+    "One gloss committed while the session's whole-text read runs, started as a feature needing the text would start it. Only edits that the read outlasts are counted.",
+  'app.editAfterRead': "As the edit above, once the session's whole-text read has finished.",
+  'app.scriptureSaveAfterRead':
+    "As the Scripture save above, with the session's whole-text read finished, so the host watches every book.",
+  'bench.memory': 'Heap held by the parsed draft.',
 };
 
-/** What the host-path sections measure when their sessions read no text. */
+/** What the after-read sections measure when their sessions read no text. */
 const SKIPPED_READ_DESCRIPTIONS: Record<string, string> = {
-  'app.hostEdit': 'On the host path, one gloss committed, with the session reading no text.',
-  'app.hostScriptureSaveAfterRead':
-    'As the Scripture save above, on the host path with the session reading no text.',
+  'app.editAfterRead': 'As the edit above, with the session reading no text.',
+  'app.scriptureSaveAfterRead': 'As the Scripture save above, with the session reading no text.',
 };
 
 /**
@@ -126,11 +118,9 @@ const SECTION_LABELS: Record<string, string> = {
   concordance: 'Open the concordance',
   textRead: 'Read the whole text in the host',
   scriptureSave: 'Save a Scripture chapter',
-  hostOpen: 'Host path: open the view in a running app',
-  hostEditDuringRead: 'Host path: edit one gloss during the whole-text read',
-  hostEdit: 'Host path: edit one gloss',
-  hostScriptureSave: 'Host path: save a Scripture chapter',
-  hostScriptureSaveAfterRead: 'Host path: save a Scripture chapter after the whole-text read',
+  editDuringRead: 'Edit one gloss during the whole-text read',
+  editAfterRead: 'Edit one gloss after the whole-text read',
+  scriptureSaveAfterRead: 'Save a Scripture chapter after the whole-text read',
   formsNotInText: 'Catalog forms not in the text',
   applyBooksReached: 'Books an apply reaches',
   'timings.load': 'Load',

@@ -168,11 +168,11 @@ A command sent again under a `changeId` the session has applied gets its first r
 
 Each change a session applies, re-anchor passes included, is described by [describeChange](src/services/analysisChanges.ts) and goes out as the session form of `onAnalysisChanged`. That event carries the change's segment ranges by book, a flag on each book where the change put or removed a stale free translation, analysis ids, touched forms, and cross-book queries. A report of re-anchor passes also carries the change sets they applied, which the view applies to its whole-draft copy; any other report it hears makes it fetch that copy again. A book the host keeps no tokenized copy of is named whole.
 
-#### The WebView on the host path
+#### The WebView's sessions
 
-The WebView uses sessions only on the host path, which a window takes unless its `interlinearizer.hostPath` local-storage key is `'false'` ([host-path](src/utils/host-path.ts)). There, [useSessionProject](src/hooks/useSessionProject.ts) keeps the draft in a session, and the analysis hooks read pages through a `PageClient` and send each edit as a session command.
+[useSessionProject](src/hooks/useSessionProject.ts) keeps the draft in a session, and the analysis hooks read pages through a `PageClient` and send each edit as a session command.
 
-`getBookOutline`, `getSegments`, and `getTextReadStatus` also take a `{ sessionId }` address. That form segments the text by the draft's boundaries and adds the analysis that `sessionPages` reads. Its pages also span each phrase they touch with every member token, wherever it sits.
+`getBookOutline`, `getSegments`, and `getTextReadStatus` take a `{ sessionId }` address. They segment the text by the draft's boundaries, and the pages add the analysis that `sessionPages` reads. Each page also spans each phrase it touches with every member token, wherever it sits. The source-project form of `onAnalysisChanged` names a Scripture edit, so that the view reads the book's text again; it goes once 5d removes `getTokenizedBook`.
 
 [RecordCache](src/cache/recordCache.ts) holds one book's pages and their records, and a [PageClient](src/cache/pageClient.ts) fills it from a session. The client:
 
@@ -191,13 +191,13 @@ Host commands live in [src/services/commands/](src/services/commands/), one modu
 
 A command stages its changes in a [ChangeBuffer](src/services/commands/changeBuffer.ts), whose reads answer as the repository will once those changes apply. `AnalysisSessions.edit` applies what it staged as one undo step. It first refuses changes that break the approval rule or that leave a kept link naming an analysis that won't be stored.
 
-Each command copies the WebView code it replaces, and its parity tests run one input through both:
+Each command family's outcome tests run inputs through the command and check what its changes leave, through [command-runs](src/__tests__/services/commands/command-runs.ts):
 
-- A command that replaces a reducer copies it step for step; [runParity](src/__tests__/services/commands/parity.ts) runs its tests.
-- A boundary command copies the WebView's boundary dispatch, phrase breaks included; `runBoundaryParity` runs its tests. The session then re-anchors the book's analysis to the new segments in the same undo step, as the WebView's pass does after a boundary edit.
-- An unsaved-change discard copies what the WebView's discard saves; `runDiscardParity` runs its tests. The discard re-anchors each book it rewrites in the same undo step.
+- `runCommand` runs a command over a stored draft.
+- `runBoundaryCommand` runs a boundary command, which breaks the phrases a new boundary would cut. The session then re-anchors the book's analysis to the new segments in the same undo step.
+- `runDiscardCommand` runs an unsaved-change discard, which re-anchors each book it rewrites in the same undo step.
 
-A reducer or dispatch change in Phase 3 updates its command and parity tests in the same PR.
+The handlers that turn each command's arguments into a call on its family live in [sessionEditHandlers](src/services/sessionEditHandlers.ts). `main.ts` registers them, and the test host in [fake-host](src/__tests__/cache/fake-host.ts) serves the WebView's edits through them.
 
 ### Components
 
@@ -263,7 +263,7 @@ Any `console.error` or `console.warn` call fails the test that is running when i
 
 ### Testing hooks
 
-Test context hooks and dispatchers directly with `renderHook` + a `wrapper`, not a throwaway button-and-click component. See `renderStoreHook` in [AnalysisStore.test.tsx](src/__tests__/components/AnalysisStore.test.tsx) for the provider-wrapping pattern: return the hooks under test from the callback, drive dispatchers inside `act(...)`, and assert on state read off `result.current`. Reserve rendered components for behavior that genuinely needs the DOM — re-render / render-count assertions and mount/unmount lifecycle.
+Test context hooks and dispatchers directly with `renderHook` + a `wrapper`, not a throwaway button-and-click component. See `sessionProviderOver` in [AnalysisStore.test.tsx](src/__tests__/components/AnalysisStore.test.tsx) for the provider-wrapping pattern: return the hooks under test from the callback, drive dispatchers inside `act(...)`, and assert on state read off `result.current`. Reserve rendered components for behavior that genuinely needs the DOM — re-render / render-count assertions and mount/unmount lifecycle.
 
 ### Branches not worth testing
 

@@ -200,42 +200,6 @@ describe('useSourceTextReader', () => {
     expect(builtFrom(result.current.readings)).toEqual(['EXO@v1']);
   });
 
-  it('hands on each book it reads', async () => {
-    serveProject('11', async (id) => book(id, 'v1'));
-    const onBookRead = jest.fn();
-
-    renderHook(() => useSourceTextReader({ ...baseArgs, onBookRead }));
-
-    await waitFor(() =>
-      expect(onBookRead.mock.calls.map(([read]) => read)).toEqual([
-        book('GEN', 'v1'),
-        book('EXO', 'v1'),
-      ]),
-    );
-  });
-
-  it('reports the books it read text for once every book is in', async () => {
-    serveProject('111', async (id) => (id === 'EXO' ? undefined : book(id, 'v1')));
-    const onTextRead = jest.fn();
-
-    renderHook(() => useSourceTextReader({ ...baseArgs, onTextRead }));
-
-    await waitFor(() => expect(onTextRead).toHaveBeenCalledWith(['GEN', 'LEV']));
-  });
-
-  it('reports no reading of the text while a book of it failed to read', async () => {
-    serveProject('11', async (id) => {
-      if (id === 'GEN') throw new Error('unreadable');
-      return book(id, 'v1');
-    });
-    const onTextRead = jest.fn();
-
-    const { result } = renderHook(() => useSourceTextReader({ ...baseArgs, onTextRead }));
-
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(onTextRead).not.toHaveBeenCalled();
-  });
-
   it('withholds the text forms while a book of it failed to read', async () => {
     serveProject('11', async (id) => {
       if (id === 'GEN') throw new Error('unreadable');
@@ -464,50 +428,6 @@ describe('useSourceTextReader', () => {
 
     expect(result.current.status).toBe('ready');
     expect(builtFrom(result.current.readings)).toEqual(['EXO@v1', 'GEN@v2']);
-  });
-
-  it('hands on no book from a read abandoned by a refresh', async () => {
-    const firstGenesis = deferred<Book>();
-    let genesisReads = 0;
-    serveProject('1', () => {
-      genesisReads += 1;
-      return genesisReads === 1 ? firstGenesis.promise : Promise.resolve(book('GEN', 'v2'));
-    });
-    const onBookRead = jest.fn();
-    const { result } = renderHook(() => useSourceTextReader({ ...baseArgs, onBookRead }));
-    await waitFor(() => expect(genesisReads).toBe(1));
-    act(() => result.current.refresh());
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-
-    await act(async () => firstGenesis.resolve(book('GEN', 'stale')));
-
-    expect(onBookRead.mock.calls.map(([read]) => read)).toEqual([book('GEN', 'v2')]);
-  });
-
-  it('reads every book again when its read key changes', async () => {
-    let version = 'v1';
-    serveProject('1', async (id) => book(id, version));
-    const { result, rerender } = renderHook(
-      (args: UseSourceTextReaderArgs) => useSourceTextReader(args),
-      { initialProps: { ...baseArgs, readKey: 1 } },
-    );
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-    version = 'v2';
-
-    rerender({ ...baseArgs, readKey: 2 });
-
-    await waitFor(() => expect(formsOf(result.current)).toEqual(['GEN@v2']));
-  });
-
-  it('reads nothing when its read key changes before the text is wanted', () => {
-    const readTokenizedBook = serveProject('1', async (id) => book(id, 'v1'));
-    const { rerender } = renderHook((args: UseSourceTextReaderArgs) => useSourceTextReader(args), {
-      initialProps: { ...baseArgs, enabled: false, readKey: 1 },
-    });
-
-    rerender({ ...baseArgs, enabled: false, readKey: 2 });
-
-    expect(readTokenizedBook).not.toHaveBeenCalled();
   });
 
   it('abandons listing the books when unmounted', async () => {

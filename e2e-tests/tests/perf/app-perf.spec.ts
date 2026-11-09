@@ -23,7 +23,6 @@ import {
   connect,
   detailValue,
   HOST_CALLS,
-  HOST_PATH_KEY,
   hostHeap,
   hostPid,
   heapUsed,
@@ -47,7 +46,7 @@ import {
 
 const RUNS = Number(process.env.PERF_RUNS ?? 10);
 
-/** Whether host-path sessions open without reading the whole text, to isolate that read's cost. */
+/** Whether sessions open without reading the whole text, to isolate that read's cost. */
 const SKIP_SESSION_READS = process.env.PERF_SKIP_SESSION_READS === 'true';
 
 /** Edits made before reading the heap, enough to fill the undo history. */
@@ -96,26 +95,11 @@ async function editableAt(frame: Frame): Promise<number> {
   return Number(await handle.jsonValue());
 }
 
-/**
- * The view holding an edit or Save whose autosave has yet to be seen landing. Closing a view sends
- * its pending autosave, which could then land after the next tier's seed and overwrite it.
- */
-let unsavedFrame: Frame | undefined;
-
-/**
- * Glosses the `index`th visible word and commits it, as a reader moving on with Tab does. A view on
- * the host path passes `autosaves` false, because its session stores each edit itself.
- */
-async function editGloss(
-  frame: Frame,
-  index: number,
-  value: string,
-  autosaves = true,
-): Promise<void> {
+/** Glosses the `index`th visible word and commits it, as a reader moving on with Tab does. */
+async function editGloss(frame: Frame, index: number, value: string): Promise<void> {
   const input = tokenGlossInputs(frame).nth(index);
   await input.fill(value);
   await input.press('Tab');
-  if (autosaves) unsavedFrame = frame;
 }
 
 /**
@@ -140,31 +124,46 @@ const sleep = (ms: number) =>
     setTimeout(resolve, Math.max(0, ms));
   });
 
-/** Waits for the view's autosave to land, and stops counting the view as unsaved. */
-async function waitForAutosave(frame: Frame): Promise<Measure[]> {
-  const measures = await waitForMeasure(frame, 'autosave');
-  if (unsavedFrame === frame) unsavedFrame = undefined;
-  return measures;
+/**
+ * The id of the session that the source's view has open, waiting for the view to open one.
+ *
+ * @throws If no session opens within the timeout.
+ */
+async function viewSessionId(page: Page, projectId: string): Promise<string> {
+  let sessionId: unknown;
+  await expect
+    .poll(
+      async () => {
+        sessionId = await sendCommand(page, 'interlinearizer.sessionIdFor', projectId);
+        return typeof sessionId === 'string';
+      },
+      { timeout: 60_000, intervals: [250] },
+    )
+    .toBe(true);
+  return String(sessionId);
 }
 
 /**
- * Reads the host's whole-text read status for the source, starting the read when it has none.
+ * Reads the whole-text read status of the source's view session, starting the read when it has
+ * none, as a feature needing the text does.
  *
  * @returns The status, or `undefined` when the command answers with something other than a string.
  */
 async function textReadStatus(page: Page, projectId: string): Promise<TextReadStatus | undefined> {
-  const json = await sendCommand(page, 'interlinearizer.getTextReadStatus', projectId);
+  const sessionId = await viewSessionId(page, projectId);
+  const json = await sendCommand(page, 'interlinearizer.getTextReadStatus', { sessionId });
   return typeof json === 'string' ? JSON.parse(json) : undefined;
 }
 
-/** Whether the host's whole-text read of the source has read every book. */
+/** Whether the view session's whole-text read has read every book. */
 async function isTextRead(page: Page, projectId: string): Promise<boolean> {
   const status = await textReadStatus(page, projectId);
   return status !== undefined && status.booksRead === status.bookCount;
 }
 
 /**
- * Starts the host's read of the source's whole text, and waits until it has read every book.
+ * Starts the view session's read of the source's whole text, and waits until it has read every
+ * book.
  *
  * @throws If any book failed to read, since the read's timing would then leave it out.
  */
@@ -253,9 +252,9 @@ async function saveChapter(
  * Times saves of the first chapter of the view's book, each with a word added and followed at once
  * by a gloss commit. Restores the chapter after each run.
  *
- * Reads the extension host's CPU time over each save's settle period when given `cpuPid`. Waits for
- * each gloss's autosave when `autosaves` is set. Each gloss starts with `glossPrefix`, which must
- * differ between calls on the same draft, because a gloss committed unchanged sends no edit.
+ * Reads the extension host's CPU time over each save's settle period when given `cpuPid`. Each
+ * gloss starts with `glossPrefix`, which must differ between calls on the same draft, because a
+ * gloss committed unchanged sends no edit.
  */
 async function measureScriptureSaves(
   page: Page,
@@ -263,7 +262,6 @@ async function measureScriptureSaves(
   projectId: string,
   book: string,
   cpuPid: number | undefined,
-  autosaves: boolean,
   glossPrefix: string,
 ): Promise<Record<string, unknown>> {
   const samples = new Samples();
@@ -281,11 +279,9 @@ async function measureScriptureSaves(
         await saveChapter(page, projectId, book, withWord(original, `perfsave${run}`)),
       );
       // eslint-disable-next-line no-await-in-loop
-      await editGloss(frame, run % 10, `${glossPrefix}-${run}`, autosaves);
+      await editGloss(frame, run % 10, `${glossPrefix}-${run}`);
       // eslint-disable-next-line no-await-in-loop
       samples.add(await waitForMeasure(frame, 'gloss-render'), ['gloss-render']);
-      // eslint-disable-next-line no-await-in-loop
-      if (autosaves) await waitForAutosave(frame);
       // eslint-disable-next-line no-await-in-loop
       await sleep(SAVE_SETTLE_MS - (Date.now() - startedAt));
       if (cpuPid !== undefined)
@@ -309,50 +305,67 @@ function epochIn(detail: unknown, key: string): number | undefined {
 }
 
 /**
- * Times the host path. It first times opening a view and Scripture saves before any feature needs
- * the whole text, so the session reads none. It then starts the session's read, as such a feature
- * would. It times edits committed while the read runs and once it has finished, then Scripture
- * saves with every book watched.
+ * Times one gloss edit per run into `edits`, splitting the command's transport at the host's start
+ * and end by the wall clock both processes share. Each gloss starts with `glossPrefix`.
+ */
+async function measureEdits(
+  page: Page,
+  frame: Frame,
+  glossPrefix: string,
+  edits: ScenarioSamples,
+): Promise<void> {
+  const origin = await frame.evaluate(() => performance.timeOrigin);
+  for (let run = 0; run < RUNS; run += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await clearMeasures(frame);
+    // eslint-disable-next-line no-await-in-loop
+    await takeHostEntries(page);
+    // eslint-disable-next-line no-await-in-loop
+    await editGloss(frame, run, `${glossPrefix}-${run}`);
+    // eslint-disable-next-line no-await-in-loop
+    const measures = await waitForMeasure(frame, 'gloss-render');
+    edits.webView.add(measures, ['gloss-render', 'edit-command', 'reply-apply']);
+    // eslint-disable-next-line no-await-in-loop
+    edits.webView.addValue('gloss-settle', await glossSettle(frame, measures));
+    // eslint-disable-next-line no-await-in-loop
+    const hostEntries = await takeHostEntries(page);
+    edits.addHostCall(HOST_CALLS.writeGloss, hostEntries, measures);
+    const command = measures.find(({ name }) => name === 'edit-command');
+    const hostCall = hostEntries.find(({ name }) => name === HOST_CALLS.writeGloss.command);
+    const sentAt = epochIn(command?.detail, 'sentAt');
+    const startedAt = epochIn(hostCall?.detail, 'startedAt');
+    if (command && hostCall && sentAt !== undefined && startedAt !== undefined) {
+      edits.webView.addValue('edit-command:outbound', startedAt - sentAt);
+      edits.webView.addValue(
+        'edit-command:inbound',
+        origin + command.end - (startedAt + hostCall.duration),
+      );
+    }
+  }
+}
+
+/**
+ * Starts the view session's read, as a feature needing the whole text would. It times edits
+ * committed while the read runs and once it has finished, then Scripture saves with every book
+ * watched.
  *
  * With {@link SKIP_SESSION_READS}, the session never reads the text, so nothing waits for the read
- * and edits during it go untimed. Writes its sections into `result`. Leaves no view open and the
- * host-path flag off.
+ * and edits during it go untimed. Writes its sections into `result`. Leaves no view open.
  */
-async function measureHostPath(
+async function measureAfterRead(
   page: Page,
   projectId: string,
   tier: TierSpec,
   cpuPid: number | undefined,
   result: Record<string, unknown>,
 ): Promise<void> {
-  await closeSettledView(page);
+  await closeView(page);
   try {
-    await page.evaluate((key) => localStorage.setItem(key, 'true'), HOST_PATH_KEY);
     if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', true);
-    const open = new Samples();
-    for (let run = 0; run < RUNS; run += 1) {
-      // eslint-disable-next-line no-await-in-loop
-      await closeView(page);
-      // eslint-disable-next-line no-await-in-loop
-      const { frame, openedAt } = await openView(page, projectId, tier.viewBook);
-      // eslint-disable-next-line no-await-in-loop
-      open.addValue('open-to-editable', (await editableAt(frame)) - openedAt);
-    }
-    result.hostOpen = open.summary();
-
-    await closeView(page);
     const { frame } = await openView(page, projectId, tier.viewBook);
-    result.hostScriptureSave = await measureScriptureSaves(
-      page,
-      frame,
-      projectId,
-      tier.viewBook,
-      cpuPid,
-      false,
-      'host-save',
-    );
+    await editableAt(frame);
 
-    await sendCommand(page, 'interlinearizer.startSessionTextRead', projectId);
+    await textReadStatus(page, projectId);
     if (!SKIP_SESSION_READS) {
       // Only edits that the read outlasts are counted, so a quick read yields fewer samples.
       const editsDuringRead = new Samples();
@@ -360,77 +373,36 @@ async function measureHostPath(
         // eslint-disable-next-line no-await-in-loop
         await clearMeasures(frame);
         // eslint-disable-next-line no-await-in-loop
-        await editGloss(frame, run, `host-read-${run}`, false);
+        await editGloss(frame, run, `read-${run}`);
         // eslint-disable-next-line no-await-in-loop
         const measures = await waitForMeasure(frame, 'gloss-render');
         // eslint-disable-next-line no-await-in-loop
         if (await isTextRead(page, projectId)) break;
         editsDuringRead.add(measures, ['gloss-render']);
       }
-      result.hostEditDuringRead = editsDuringRead.summary();
+      result.editDuringRead = editsDuringRead.summary();
       await readWholeText(page, projectId);
     }
 
     const edits = scenarioSamples();
-    const origin = await frame.evaluate(() => performance.timeOrigin);
-    for (let run = 0; run < RUNS; run += 1) {
-      // eslint-disable-next-line no-await-in-loop
-      await clearMeasures(frame);
-      // eslint-disable-next-line no-await-in-loop
-      await takeHostEntries(page);
-      // eslint-disable-next-line no-await-in-loop
-      await editGloss(frame, run, `host-${run}`, false);
-      // eslint-disable-next-line no-await-in-loop
-      const measures = await waitForMeasure(frame, 'gloss-render');
-      edits.webView.add(measures, ['gloss-render', 'edit-command', 'reply-apply']);
-      // eslint-disable-next-line no-await-in-loop
-      edits.webView.addValue('gloss-settle', await glossSettle(frame, measures));
-      // eslint-disable-next-line no-await-in-loop
-      const hostEntries = await takeHostEntries(page);
-      edits.addHostCall(HOST_CALLS.writeGloss, hostEntries, measures);
-      // Splits the transport at the host's start and end, by the wall clock both processes share.
-      const command = measures.find(({ name }) => name === 'edit-command');
-      const hostCall = hostEntries.find(({ name }) => name === HOST_CALLS.writeGloss.command);
-      const sentAt = epochIn(command?.detail, 'sentAt');
-      const startedAt = epochIn(hostCall?.detail, 'startedAt');
-      if (command && hostCall && sentAt !== undefined && startedAt !== undefined) {
-        edits.webView.addValue('edit-command:outbound', startedAt - sentAt);
-        edits.webView.addValue(
-          'edit-command:inbound',
-          origin + command.end - (startedAt + hostCall.duration),
-        );
-      }
-    }
-    result.hostEdit = edits.summary();
+    await measureEdits(page, frame, 'after-read', edits);
+    result.editAfterRead = edits.summary();
 
-    result.hostScriptureSaveAfterRead = await measureScriptureSaves(
+    result.scriptureSaveAfterRead = await measureScriptureSaves(
       page,
       frame,
       projectId,
       tier.viewBook,
       cpuPid,
-      false,
-      'host-read-save',
+      'read-save',
     );
   } finally {
     try {
       await closeView(page);
     } finally {
-      await page.evaluate((key) => localStorage.setItem(key, 'false'), HOST_PATH_KEY);
       if (SKIP_SESSION_READS) await sendCommand(page, 'interlinearizer.setSkipSessionReads', false);
     }
   }
-}
-
-/** Waits for any autosave an edit or Save started to land. */
-async function settleAutosave(): Promise<void> {
-  if (unsavedFrame) await waitForAutosave(unsavedFrame);
-}
-
-/** Closes the open view once any autosave it owes has landed, so none lands after a later seed. */
-async function closeSettledView(page: Page): Promise<void> {
-  await settleAutosave();
-  await closeView(page);
 }
 
 /** Picks `item` from the Project menu, starting over when a re-render closes the menu mid-click. */
@@ -463,7 +435,6 @@ async function enableMarks(page: Page): Promise<void> {
  * @returns Milliseconds until the new instance was ready.
  */
 async function restart(app: App, whileStopped?: () => Promise<void>): Promise<number> {
-  await settleAutosave();
   await app.browser?.close();
   await stopPackagedApp();
   await whileStopped?.();
@@ -478,7 +449,7 @@ async function restart(app: App, whileStopped?: () => Promise<void>): Promise<nu
 /**
  * Stores the tier's draft and saved projects straight into the app's extension storage, adding each
  * project's id to `created` as it lands. A running app sees the draft from its next load of it, so
- * no view may be open and no autosave in flight.
+ * no view may be open.
  */
 async function seedTier(
   projectId: string,
@@ -507,7 +478,7 @@ async function deleteLeftoverProjects(page: Page, projectId: string): Promise<vo
 }
 
 /**
- * Opens a fresh view on `book` and adds its load, the host's draft, book, outline and page fetches
+ * Opens a fresh view on `book` and adds its load, the host's book, outline and page fetches
  * included, to `open`.
  */
 async function measureOpen(
@@ -519,8 +490,7 @@ async function measureOpen(
   await takeHostEntries(page);
   const { frame, openedAt } = await openView(page, projectId, book);
   const editable = editableAt(frame);
-  await waitForMeasure(frame, 'book-render', book);
-  const settled = await waitForMeasure(frame, 'reanchor', book);
+  const settled = await waitForMeasure(frame, 'book-render', book);
   open.webView.add(settled);
   open.webView.addValue('open-to-editable', (await editable) - openedAt);
   const frameOrigin = await frame.evaluate(() => performance.timeOrigin);
@@ -529,7 +499,6 @@ async function measureOpen(
     frameOrigin + Math.max(...settled.map((m) => m.end)) - openedAt,
   );
   const hostEntries = await takeHostEntries(page);
-  open.addHostCall(HOST_CALLS.getDraft, hostEntries, settled);
   open.addHostCall(HOST_CALLS.getTokenizedBook, hostEntries, settled);
   open.addHostCall(HOST_CALLS.getBookOutline, hostEntries, settled);
   // The first pages load side by side, so each is sampled without a transport to pair it with.
@@ -538,7 +507,7 @@ async function measureOpen(
     .forEach(({ duration }) => open.host.addValue('page-fetch', duration));
   const tokenizes = hostEntries.filter(({ name }) => name === 'getTokenizedBook:tokenize').length;
   if (tokenizes !== 1) console.warn(`Opening ${book} tokenized it ${tokenizes} times, not once`);
-  await closeSettledView(page);
+  await closeView(page);
 }
 
 /** The bytes a measure's detail records, when it records any. */
@@ -570,7 +539,7 @@ async function measureTier(
   }
 
   const seed = () => seedTier(projectId, tier, draftJson, createdProjects);
-  await closeSettledView(app.page);
+  await closeView(app.page);
   // A packaged app restarts before its first open below, so it is seeded while stopped.
   if (!PACKAGED_APP_PATH) await seed();
 
@@ -622,7 +591,7 @@ async function measureTier(
 
   // Switching back to the view book in a WebView that already holds the draft.
   const { frame } = await openView(page, projectId, tier.viewBook);
-  await waitForMeasure(frame, 'reanchor', tier.viewBook);
+  await waitForMeasure(frame, 'book-render', tier.viewBook);
   await recordMemory('viewLoaded');
   const switchBook = new Samples();
   for (let run = 0; run < RUNS; run += 1) {
@@ -631,64 +600,33 @@ async function measureTier(
     // eslint-disable-next-line no-await-in-loop
     await setBook(page, AWAY_BOOK);
     // eslint-disable-next-line no-await-in-loop
-    await waitForMeasure(frame, 'reanchor', AWAY_BOOK);
+    await waitForMeasure(frame, 'book-render', AWAY_BOOK);
     // eslint-disable-next-line no-await-in-loop
     await clearMeasures(frame);
     // eslint-disable-next-line no-await-in-loop
     await setBook(page, tier.viewBook);
-    // eslint-disable-next-line no-await-in-loop
-    await waitForMeasure(frame, 'book-render', tier.viewBook);
     switchBook.add(
       // eslint-disable-next-line no-await-in-loop
-      await waitForMeasure(frame, 'reanchor', tier.viewBook),
-      [
-        'book-fetch',
-        'book-parse',
-        'outline-fetch',
-        'outline-parse',
-        'page-fetch',
-        'page-parse',
-        'reanchor',
-        'book-render',
-      ],
+      await waitForMeasure(frame, 'book-render', tier.viewBook),
+      ['book-fetch', 'book-parse', 'book-render'],
     );
   }
   result.switchBook = switchBook.summary();
 
-  // Edits: one gloss committed, then its debounced autosave round-trip.
+  // Edits: one gloss committed, with the session reading no text.
   const edits = scenarioSamples();
-  for (let run = 0; run < RUNS; run += 1) {
-    // eslint-disable-next-line no-await-in-loop
-    await clearMeasures(frame);
-    // eslint-disable-next-line no-await-in-loop
-    await takeHostEntries(page);
-    // eslint-disable-next-line no-await-in-loop
-    await editGloss(frame, run, `perf-${run}`);
-    // eslint-disable-next-line no-await-in-loop
-    await waitForMeasure(frame, 'dispatch-render');
-    // eslint-disable-next-line no-await-in-loop
-    const measures = await waitForAutosave(frame);
-    edits.webView.add(measures, [
-      'dispatch-render',
-      'gloss-render',
-      'autosave-serialize',
-      'autosave',
-    ]);
-    // eslint-disable-next-line no-await-in-loop
-    edits.webView.addValue('gloss-settle', await glossSettle(frame, measures));
-    // eslint-disable-next-line no-await-in-loop
-    edits.addHostCall(HOST_CALLS.saveDraft, await takeHostEntries(page), measures);
-  }
+  await measureEdits(page, frame, 'perf', edits);
   result.edit = edits.summary();
 
   for (let i = 0; i < UNDO_FILL_EDITS; i += 1) {
-    // The last edit's autosave lands before the heaps are read, so neither holds a save in flight.
     // eslint-disable-next-line no-await-in-loop
-    if (i === UNDO_FILL_EDITS - 1) await clearMeasures(frame);
+    await clearMeasures(frame);
     // eslint-disable-next-line no-await-in-loop
     await editGloss(frame, i % 20, `undo-${i}`);
+    // Each reply renders before the next edit, so the heaps hold no edit in flight.
+    // eslint-disable-next-line no-await-in-loop
+    await waitForMeasure(frame, 'gloss-render');
   }
-  await waitForAutosave(frame);
   await clearMeasures(frame);
   await recordMemory('withFullUndoHistory');
 
@@ -732,8 +670,9 @@ async function measureTier(
     .click({ timeout: 5_000 })
     .catch(() => {});
   await expect(dialog).toHaveCount(0, { timeout: 60_000 });
-  // Opening the project reseeds the store; a menu opened before that lands is dismissed by it.
-  await waitForMeasure(frame, 'store-mount');
+  // Opening the project reopens the session; a menu opened before the view is editable again is
+  // dismissed by it.
+  await editableAt(frame);
   const saves = scenarioSamples();
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop
@@ -758,11 +697,11 @@ async function measureTier(
   const concordance = new Samples();
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop
-    await closeSettledView(page);
+    await closeView(page);
     // eslint-disable-next-line no-await-in-loop
     const { frame: view } = await openView(page, projectId, tier.viewBook);
     // eslint-disable-next-line no-await-in-loop
-    await waitForMeasure(view, 'reanchor', tier.viewBook);
+    await waitForMeasure(view, 'book-render', tier.viewBook);
     // eslint-disable-next-line no-await-in-loop
     await clearMeasures(view);
     // eslint-disable-next-line no-await-in-loop
@@ -781,11 +720,11 @@ async function measureTier(
   for (let run = 0; run < RUNS; run += 1) {
     const isLast = run === RUNS - 1;
     // eslint-disable-next-line no-await-in-loop
-    await closeSettledView(page);
+    await closeView(page);
     // eslint-disable-next-line no-await-in-loop
     const { frame: view } = await openView(page, projectId, tier.viewBook);
     // eslint-disable-next-line no-await-in-loop
-    await waitForMeasure(view, 'reanchor', tier.viewBook);
+    await waitForMeasure(view, 'book-render', tier.viewBook);
     // eslint-disable-next-line no-await-in-loop
     if (isLast) await recordMemory('beforeTextRead');
     // eslint-disable-next-line no-await-in-loop
@@ -810,20 +749,19 @@ async function measureTier(
 
   // Scripture saves with no whole-text read running; closing the last view ended it.
   const cpuPid = hostBefore ? await hostPid(page) : undefined;
-  await closeSettledView(page);
+  await closeView(page);
   const { frame: saveView } = await openView(page, projectId, tier.viewBook);
-  await waitForMeasure(saveView, 'reanchor', tier.viewBook);
+  await waitForMeasure(saveView, 'book-render', tier.viewBook);
   result.scriptureSave = await measureScriptureSaves(
     page,
     saveView,
     projectId,
     tier.viewBook,
     cpuPid,
-    true,
     'save',
   );
 
-  await measureHostPath(page, projectId, tier, cpuPid, result);
+  await measureAfterRead(page, projectId, tier, cpuPid, result);
 }
 
 test('measure the app', async ({ mainPage }) => {
@@ -834,11 +772,10 @@ test('measure the app', async ({ mainPage }) => {
 
   const requested = (process.env.PERF_TIERS ?? '').split(',').filter(Boolean);
   const tiers = TIERS.filter((t) => requested.length === 0 || requested.includes(t.name));
-  await closeSettledView(mainPage);
+  await closeView(mainPage);
   await deleteLeftoverProjects(mainPage, projectId);
   const originalDraft = await readDraft(STORAGE_DIR, projectId);
   await enableMarks(mainPage);
-  await mainPage.evaluate((key) => localStorage.setItem(key, 'false'), HOST_PATH_KEY);
 
   const createdProjects: string[] = [];
   const results: Record<string, Record<string, unknown>> = {};
@@ -853,7 +790,7 @@ test('measure the app', async ({ mainPage }) => {
         result.error = e instanceof Error ? e.message : String(e);
       } finally {
         // Each tier's picker lists only the projects that tier seeded.
-        await closeSettledView(app.page);
+        await closeView(app.page);
         await Promise.all(
           createdProjects
             .splice(0)
@@ -863,9 +800,8 @@ test('measure the app', async ({ mainPage }) => {
       console.log(`${tier.name}: ${JSON.stringify(result, undefined, 2)}`);
     }, Promise.resolve());
   } finally {
-    await closeSettledView(app.page);
+    await closeView(app.page);
     await app.page.evaluate((key) => localStorage.removeItem(key), PERF_MARKS_KEY);
-    await app.page.evaluate((key) => localStorage.removeItem(key), HOST_PATH_KEY);
     await setHostPerfMarks(app.page, false);
     await writeDraft(STORAGE_DIR, originalDraft);
   }

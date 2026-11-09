@@ -13,27 +13,21 @@ import {
   keepStaleFreeTranslation as keepFreeTranslationCommand,
   reapplyStaleAnalysis as reapplyCommand,
 } from '../../../services/commands/staleCommands';
-import {
-  discardStaleAnalysis,
-  discardStaleFreeTranslation,
-  keepStaleFreeTranslation,
-  reapplyStaleAnalysis,
-} from '../../../store/analysisSlice';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../../test-helpers';
 import {
   analysisOf,
   EARLIER,
-  expectRemovalPreviewParity,
+  expectRemovalPreview,
   ids,
   LATER,
   NOW,
   OTHER_TOKEN,
-  type ParityCase,
+  type CommandCase,
   payload,
-  runParity,
+  runCommand,
   TOKEN,
-} from './parity';
+} from './command-runs';
 
 function morpheme(id: string, form: string, fields: Partial<MorphemeAnalysis> = {}) {
   return { id, form, writingSystem: 'qaa', ...fields };
@@ -55,8 +49,8 @@ function link(
   };
 }
 
-describe('discardStaleAnalysis parity with the reducer', () => {
-  const cases: [string, ParityCase<{ tokenRef: string }>][] = [
+describe('discardStaleAnalysis', () => {
+  const cases: [string, CommandCase<{ tokenRef: string }>][] = [
     [
       'drops the stale link and the payload nothing else links',
       {
@@ -65,9 +59,9 @@ describe('discardStaleAnalysis parity with the reducer', () => {
           [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
         ),
         input: { tokenRef: TOKEN },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toStrictEqual([]);
-          expect(store.tokenAnalyses).toStrictEqual([]);
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toStrictEqual([]);
+          expect(result.tokenAnalyses).toStrictEqual([]);
         },
       },
     ],
@@ -82,9 +76,9 @@ describe('discardStaleAnalysis parity with the reducer', () => {
           ],
         ),
         input: { tokenRef: TOKEN },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-other']);
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-in']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-other']);
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
         },
       },
     ],
@@ -99,8 +93,8 @@ describe('discardStaleAnalysis parity with the reducer', () => {
           ],
         ),
         input: { tokenRef: TOKEN },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toStrictEqual([]);
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toStrictEqual([]);
         },
       },
     ],
@@ -109,8 +103,8 @@ describe('discardStaleAnalysis parity with the reducer', () => {
       {
         analysis: analysisOf([], [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })]),
         input: { tokenRef: TOKEN },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toStrictEqual([]);
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toStrictEqual([]);
         },
       },
     ],
@@ -125,33 +119,27 @@ describe('discardStaleAnalysis parity with the reducer', () => {
           ],
         ),
         input: { tokenRef: TOKEN },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-in', 'tl-stale']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-in', 'tl-stale']);
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { analysis, input, expectStore }) => {
+  it.each(cases)('%s', async (_name, { analysis, input, expectResult }) => {
     const request = { analysisId: 'ta-in', tokenRef: input.tokenRef };
-    const outcome = await runParity(
-      analysis,
-      'en',
-      { type: discardStaleAnalysis.type, payload: request },
-      (buffer) => discardCommand(buffer, request),
-    );
+    const outcome = await runCommand(analysis, 'en', (buffer) => discardCommand(buffer, request));
 
-    expectStore(outcome.store);
-    expect(outcome.host).toStrictEqual(outcome.store);
+    expectResult(outcome.result);
     expect(outcome.indexDifferences).toStrictEqual([]);
-    expectRemovalPreviewParity(outcome, analysis);
+    expectRemovalPreview(outcome, analysis);
   });
 });
 
 type ReapplyInput = { tokenRef: string; surfaceText: string };
 
-describe('reapplyStaleAnalysis parity with the reducer', () => {
-  const cases: [string, ParityCase<ReapplyInput>][] = [
+describe('reapplyStaleAnalysis', () => {
+  const cases: [string, CommandCase<ReapplyInput>][] = [
     [
       'approves the analysis on a token of the same spelling, dropping the stale link',
       {
@@ -160,8 +148,8 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
           [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'In' },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toStrictEqual([
             link('new-link', 'ta-in', OTHER_TOKEN, { createdAt: NOW, updatedAt: NOW }),
           ]);
         },
@@ -175,8 +163,8 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
           [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'Inn' },
-        expectStore: (store) => {
-          expect(store.tokenAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toStrictEqual([
             payload('new-analysis', 'Inn', { gloss: { en: 'at' }, createdAt: NOW, updatedAt: NOW }),
           ]);
         },
@@ -190,8 +178,8 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
           [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'Inn' },
-        expectStore: (store) => {
-          expect(store.tokenAnalyses.map(({ morphemes }) => morphemes)).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.tokenAnalyses.map(({ morphemes }) => morphemes)).toStrictEqual([
             [morpheme('m-in', 'Inn')],
           ]);
         },
@@ -209,8 +197,8 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
           [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'Inn' },
-        expectStore: (store) => {
-          expect(store.tokenAnalyses[0].morphemes?.[0].form).toBe('in');
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].morphemes?.[0].form).toBe('in');
         },
       },
     ],
@@ -222,8 +210,8 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
           [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'Unto' },
-        expectStore: (store) => {
-          expect(store.tokenAnalyses).toMatchObject([
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toMatchObject([
             { morphemes: [{ form: 'in' }, { form: 'to' }], morphemesStale: true },
           ]);
         },
@@ -240,9 +228,9 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
           [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'Inn' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-inn']);
-          expect(store.tokenAnalysisLinks[0].analysisId).toBe('ta-inn');
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-inn']);
+          expect(result.tokenAnalysisLinks[0].analysisId).toBe('ta-inn');
         },
       },
     ],
@@ -260,9 +248,11 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
           ],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'In' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalyses)).toStrictEqual(['ta-in']);
-          expect(store.tokenAnalysisLinks).toMatchObject([{ id: 'tl-other', analysisId: 'ta-in' }]);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
+          expect(result.tokenAnalysisLinks).toMatchObject([
+            { id: 'tl-other', analysisId: 'ta-in' },
+          ]);
         },
       },
     ],
@@ -280,8 +270,8 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
           ],
         ),
         input: { tokenRef: TOKEN, surfaceText: 'In' },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toMatchObject([
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toMatchObject([
             { id: 'tl-in', analysisId: 'ta-in', confidence: 'high', createdAt: EARLIER.createdAt },
           ]);
         },
@@ -301,8 +291,8 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
           ],
         ),
         input: { tokenRef: TOKEN, surfaceText: 'In' },
-        expectStore: (store) => {
-          expect(store.tokenAnalysisLinks).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.tokenAnalysisLinks).toStrictEqual([
             link('tl-in', 'ta-in', TOKEN, { ...EARLIER, updatedAt: NOW }),
           ]);
         },
@@ -316,8 +306,8 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
           [link('tl-in', 'ta-in', TOKEN)],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'In' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-in']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-in']);
         },
       },
     ],
@@ -326,27 +316,23 @@ describe('reapplyStaleAnalysis parity with the reducer', () => {
       {
         analysis: analysisOf([], [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })]),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'In' },
-        expectStore: (store) => {
-          expect(ids(store.tokenAnalysisLinks)).toStrictEqual(['tl-stale']);
+        expectResult: (result) => {
+          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-stale']);
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { analysis, input, expectStore }) => {
+  it.each(cases)('%s', async (_name, { analysis, input, expectResult }) => {
     const request = { analysisId: 'ta-in', staleTokenRef: TOKEN, ...input };
     const stamp = { linkId: 'new-link', now: NOW };
-    const outcome = await runParity(
-      analysis,
-      'en',
-      { type: reapplyStaleAnalysis.type, payload: { ...request, ...stamp, id: 'new-analysis' } },
-      (buffer) => reapplyCommand(buffer, { ...request, ...stamp, copyId: 'new-analysis' }),
+    const outcome = await runCommand(analysis, 'en', (buffer) =>
+      reapplyCommand(buffer, { ...request, ...stamp, copyId: 'new-analysis' }),
     );
 
-    expectStore(outcome.store);
-    expect(outcome.host).toStrictEqual(outcome.store);
+    expectResult(outcome.result);
     expect(outcome.indexDifferences).toStrictEqual([]);
-    expectRemovalPreviewParity(outcome, analysis);
+    expectRemovalPreview(outcome, analysis);
   });
 });
 
@@ -372,8 +358,8 @@ function translationsOf(
 
 const SEGMENT = 'GEN 1:1';
 
-describe('keepStaleFreeTranslation parity with the reducer', () => {
-  const cases: [string, ParityCase<{ segmentId: string }>][] = [
+describe('keepStaleFreeTranslation', () => {
+  const cases: [string, CommandCase<{ segmentId: string }>][] = [
     [
       'approves the stale translation for the segment it is shown in, restamping its text',
       {
@@ -382,11 +368,11 @@ describe('keepStaleFreeTranslation parity with the reducer', () => {
           [segmentLink('sl-stale', 'sa-1', 'GEN 1:1-2', 'stale')],
         ),
         input: { segmentId: SEGMENT },
-        expectStore: (store) => {
-          expect(store.segmentAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.segmentAnalyses).toStrictEqual([
             { ...translation('sa-1', 'In the start', 'At first'), updatedAt: NOW },
           ]);
-          expect(store.segmentAnalysisLinks).toStrictEqual([
+          expect(result.segmentAnalysisLinks).toStrictEqual([
             { ...segmentLink('sl-stale', 'sa-1', SEGMENT, 'approved'), updatedAt: NOW },
           ]);
         },
@@ -406,8 +392,8 @@ describe('keepStaleFreeTranslation parity with the reducer', () => {
           ],
         ),
         input: { segmentId: SEGMENT },
-        expectStore: (store) => {
-          expect(store.segmentAnalysisLinks.find(({ id }) => id === 'sl-stale')?.status).toBe(
+        expectResult: (result) => {
+          expect(result.segmentAnalysisLinks.find(({ id }) => id === 'sl-stale')?.status).toBe(
             'stale',
           );
         },
@@ -421,30 +407,26 @@ describe('keepStaleFreeTranslation parity with the reducer', () => {
           [segmentLink('sl-1', 'sa-1', 'GEN 1:2', 'approved')],
         ),
         input: { segmentId: SEGMENT },
-        expectStore: (store) => {
-          expect(store.segmentAnalysisLinks[0].segmentId).toBe('GEN 1:2');
+        expectResult: (result) => {
+          expect(result.segmentAnalysisLinks[0].segmentId).toBe('GEN 1:2');
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { analysis, input, expectStore }) => {
+  it.each(cases)('%s', async (_name, { analysis, input, expectResult }) => {
     const request = { analysisId: 'sa-1', surfaceText: 'In the start', now: NOW, ...input };
-    const outcome = await runParity(
-      analysis,
-      'en',
-      { type: keepStaleFreeTranslation.type, payload: request },
-      (buffer) => keepFreeTranslationCommand(buffer, request),
+    const outcome = await runCommand(analysis, 'en', (buffer) =>
+      keepFreeTranslationCommand(buffer, request),
     );
 
-    expectStore(outcome.store);
-    expect(outcome.host).toStrictEqual(outcome.store);
+    expectResult(outcome.result);
     expect(outcome.indexDifferences).toStrictEqual([]);
   });
 });
 
-describe('discardStaleFreeTranslation parity with the reducer', () => {
-  const cases: [string, ParityCase<undefined>][] = [
+describe('discardStaleFreeTranslation', () => {
+  const cases: [string, CommandCase<undefined>][] = [
     [
       'drops the stale translation with its link',
       {
@@ -453,9 +435,9 @@ describe('discardStaleFreeTranslation parity with the reducer', () => {
           [segmentLink('sl-stale', 'sa-1', SEGMENT, 'stale')],
         ),
         input: undefined,
-        expectStore: (store) => {
-          expect(store.segmentAnalyses).toStrictEqual([]);
-          expect(store.segmentAnalysisLinks).toStrictEqual([]);
+        expectResult: (result) => {
+          expect(result.segmentAnalyses).toStrictEqual([]);
+          expect(result.segmentAnalysisLinks).toStrictEqual([]);
         },
       },
     ],
@@ -473,9 +455,9 @@ describe('discardStaleFreeTranslation parity with the reducer', () => {
           ],
         ),
         input: undefined,
-        expectStore: (store) => {
-          expect(ids(store.segmentAnalyses)).toStrictEqual(['sa-2']);
-          expect(ids(store.segmentAnalysisLinks)).toStrictEqual(['sl-2']);
+        expectResult: (result) => {
+          expect(ids(result.segmentAnalyses)).toStrictEqual(['sa-2']);
+          expect(ids(result.segmentAnalysisLinks)).toStrictEqual(['sl-2']);
         },
       },
     ],
@@ -490,9 +472,9 @@ describe('discardStaleFreeTranslation parity with the reducer', () => {
           ],
         ),
         input: undefined,
-        expectStore: (store) => {
-          expect(ids(store.segmentAnalyses)).toStrictEqual(['sa-1']);
-          expect(ids(store.segmentAnalysisLinks)).toStrictEqual(['sl-other']);
+        expectResult: (result) => {
+          expect(ids(result.segmentAnalyses)).toStrictEqual(['sa-1']);
+          expect(ids(result.segmentAnalysisLinks)).toStrictEqual(['sl-other']);
         },
       },
     ],
@@ -504,24 +486,20 @@ describe('discardStaleFreeTranslation parity with the reducer', () => {
           [segmentLink('sl-1', 'sa-1', SEGMENT, 'approved')],
         ),
         input: undefined,
-        expectStore: (store) => {
-          expect(ids(store.segmentAnalyses)).toStrictEqual(['sa-1']);
+        expectResult: (result) => {
+          expect(ids(result.segmentAnalyses)).toStrictEqual(['sa-1']);
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { analysis, expectStore }) => {
+  it.each(cases)('%s', async (_name, { analysis, expectResult }) => {
     const request = { analysisId: 'sa-1' };
-    const outcome = await runParity(
-      analysis,
-      'en',
-      { type: discardStaleFreeTranslation.type, payload: request },
-      (buffer) => discardFreeTranslationCommand(buffer, request),
+    const outcome = await runCommand(analysis, 'en', (buffer) =>
+      discardFreeTranslationCommand(buffer, request),
     );
 
-    expectStore(outcome.store);
-    expect(outcome.host).toStrictEqual(outcome.store);
+    expectResult(outcome.result);
     expect(outcome.indexDifferences).toStrictEqual([]);
   });
 });

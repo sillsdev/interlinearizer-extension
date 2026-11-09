@@ -5,11 +5,9 @@ import { resegmentBook } from 'parsers/papi/resegmentBook';
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
 import { isPlatformError } from 'platform-bible-utils';
 import type { IUSJBookProjectDataProvider } from 'platform-scripture';
-import type { SegmentPage } from '../types/segment-pages';
 import type { TextReadStatus } from '../types/text-read-status';
 import { isSegmentationDelta } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
-import { buildBookOutline } from '../utils/book-outline';
 import { presentBookIds } from '../utils/books-present';
 import { FormIndex, formsOfBook } from '../utils/form-index';
 import { perfTime, perfTrack } from '../utils/perf-marks';
@@ -363,7 +361,7 @@ function segmentsOf(
   held: HeldBook,
   book: Book,
   segmentationJson: string | undefined,
-  call: 'getBookOutline' | 'getSegments' | 'getSegmentedBook' | 'heldBook',
+  call: 'getBookOutline' | 'getSegmentedBook' | 'heldBook',
 ): Segment[] {
   const key = segmentationJson || '';
   if (held.segmented?.key !== key) {
@@ -438,27 +436,6 @@ export async function getOpenBook(
 }
 
 /**
- * Outlines a book of the source project: its segments, segmented by the boundaries
- * `segmentationJson` names, each without its text. The book becomes the project's open book, whose
- * edits {@link onBookTextChanged} reports.
- *
- * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
- *   `SegmentationDelta`.
- */
-export async function getBookOutline(
-  sourceProjectId: string,
-  bookId: string,
-  segmentationJson?: string,
-): Promise<string | undefined> {
-  const book = await getOpenBook(sourceProjectId, bookId, segmentationJson);
-  if (!book) return undefined;
-  return perfTime('getBookOutline:serialize', () =>
-    JSON.stringify(buildBookOutline(book, book.segments)),
-  );
-}
-
-/**
  * The source project's book, segmented by the boundaries `segmentationJson` names, when the project
  * keeps a tokenized copy as its open or latest book. Reads nothing. The book's segments are shared,
  * so the caller must not change them.
@@ -493,38 +470,8 @@ async function keptBook(sourceProjectId: string, bookId: string): Promise<HeldBo
 }
 
 /**
- * Serves the segments at outline indexes `[start, end)` of a book of the source project, segmented
- * by the boundaries `segmentationJson` names. Pages keep the language tag the book was last read
- * under, so they match its outline.
- *
- * @returns The `SegmentPage` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
- *   `SegmentationDelta`.
- */
-export async function getSegments(
-  sourceProjectId: string,
-  bookId: string,
-  start: number,
-  end: number,
-  segmentationJson?: string,
-): Promise<string | undefined> {
-  const held = await keptBook(sourceProjectId, bookId);
-  const book = await held.book;
-  if (!book) return undefined;
-  const segments = segmentsOf(held, book, segmentationJson, 'getSegments');
-  const from = Math.max(0, start);
-  const page: SegmentPage = {
-    textVersion: book.textVersion,
-    start: from,
-    segments: segments.slice(from, Math.max(from, end)),
-  };
-  return perfTime('getSegments:serialize', () => JSON.stringify(page));
-}
-
-/**
- * Reads a book of the source project, tokenized one segment per verse: the book that
- * {@link getSegments} resegments into its pages. The book is shared, so the caller must not change
- * it.
+ * Reads a book of the source project, tokenized one segment per verse: the book that a session's
+ * pages resegment. The book is shared, so the caller must not change it.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book's text or the project's language tag cannot be read, or the text cannot be
@@ -554,8 +501,8 @@ export async function getOpenVerseBook(
 }
 
 /**
- * Reads a book of the source project, segmented by the boundaries `segmentationJson` names, as
- * {@link getSegments} pages it. The book's segments are shared, so the caller must not change them.
+ * Reads a book of the source project, segmented by the boundaries `segmentationJson` names, as a
+ * session's pages segment it. The book's segments are shared, so the caller must not change them.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON

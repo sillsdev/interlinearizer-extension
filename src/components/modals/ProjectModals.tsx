@@ -58,8 +58,8 @@ type PendingReplace =
  *   into the draft (the "Open" flow). Rejects when the project can't be read or the draft can't be
  *   stored.
  * @param props.newDraft - Seeds the draft with empty analysis and the given config; called before
- *   the New flow's backend round-trip so the editor is ready regardless of whether persistence
- *   succeeds. Settles once the draft is stored, and rejects when it can't be.
+ *   the New flow creates its project. Settles once the draft is stored, and rejects when it can't
+ *   be.
  * @param props.modal - Which modal is currently open.
  * @param props.onImportPt9 - Called when the user chooses "Import from Paratext 9" in the select
  *   modal; the caller owns the import run and its modal.
@@ -241,12 +241,11 @@ export default function ProjectModals({
    * draft from it so Save targets the newly created project. This is the "New" flow: the project is
    * persisted immediately so it shows up in "Select Interlinear Project" right away.
    *
-   * `newDraft` is called before the backend round-trip so the editor is ready regardless of whether
-   * persistence succeeds. It settles once the draft is stored, and the project is created only
-   * after; a draft that can't be stored creates none. This is safe: when `hasUnsavedWork` is
-   * `false` the draft is either already committed to the active project or empty (nothing to lose);
-   * when `hasUnsavedWork` is `true` the {@link DiscardDraftConfirm} dialog has already obtained
-   * consent to discard.
+   * `newDraft` is called before the project is created. It settles once the draft is stored, and
+   * the project is created only after, so a draft that can't be stored creates none. This is safe:
+   * when `hasUnsavedWork` is `false` the draft is either already committed to the active project or
+   * empty (nothing to lose); when `hasUnsavedWork` is `true` the {@link DiscardDraftConfirm} dialog
+   * has already obtained consent to discard.
    *
    * The `interlinearizer.createProject` command sends its own error notification before rethrowing,
    * so the catch around it only needs to log.
@@ -414,12 +413,12 @@ export default function ProjectModals({
           const { analysisLanguages, targetProjectId } = snapshot;
           const createdJson = await papi.commands.sendCommand(
             'interlinearizer.saveDraftAsProject',
+            sessionId,
             projectId,
             analysisLanguages,
             targetProjectId,
             name,
             description,
-            sessionId,
           );
           const created: unknown = JSON.parse(createdJson);
           if (!isSavedAsProject(created)) {
@@ -458,10 +457,10 @@ export default function ProjectModals({
           };
           const savedJson = await papi.commands.sendCommand(
             'interlinearizer.saveDraftToProject',
+            sessionId,
             projectId,
             project.id,
             config,
-            sessionId,
           );
           // `undefined` means the project no longer exists, so nothing was persisted.
           if (!savedJson) {

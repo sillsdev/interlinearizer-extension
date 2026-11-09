@@ -37,7 +37,7 @@ export type SessionView = Readonly<{
   hasFreeTranslations: boolean;
   /**
    * Marks the whole text as wanted, for this session and every later one that the view opens. Each
-   * such session then starts reading the text.
+   * such session then starts reading the text. A read that fails to start clears the mark.
    */
   requestTextRead: () => void;
   /** The boundary edits, sent to the session. */
@@ -89,9 +89,15 @@ export type ProjectApi = {
   /**
    * Discards one book's unsaved changes, by 3-letter book code, restoring the book as the draft's
    * project holds it.
+   *
+   * @throws If the session refuses or fails the discard.
    */
   discardBook: (bookCode: string) => Promise<void>;
-  /** Discards every unsaved change to the draft, restoring what the draft's project holds. */
+  /**
+   * Discards every unsaved change to the draft, restoring what the draft's project holds.
+   *
+   * @throws If the session refuses or fails the discard.
+   */
   discardAll: () => Promise<void>;
   /** Records that the project the draft saves to was deleted. */
   detachFromProject: () => Promise<void>;

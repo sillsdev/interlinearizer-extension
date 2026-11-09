@@ -1,12 +1,6 @@
 /// <reference types="jest" />
 
-import type {
-  MorphemeAnalysis,
-  SegmentAnalysis,
-  SegmentAnalysisLink,
-  TextAnalysis,
-  TokenAnalysisLink,
-} from 'interlinearizer';
+import type { SegmentAnalysis, SegmentAnalysisLink, TextAnalysis } from 'interlinearizer';
 import {
   discardStaleAnalysis as discardCommand,
   discardStaleFreeTranslation as discardFreeTranslationCommand,
@@ -19,8 +13,9 @@ import {
   analysisOf,
   EARLIER,
   expectRemovalPreview,
-  ids,
   LATER,
+  link,
+  morpheme,
   NOW,
   OTHER_TOKEN,
   type CommandCase,
@@ -29,26 +24,6 @@ import {
   TOKEN,
 } from './command-runs';
 
-function morpheme(id: string, form: string, fields: Partial<MorphemeAnalysis> = {}) {
-  return { id, form, writingSystem: 'qaa', ...fields };
-}
-
-function link(
-  id: string,
-  analysisId: string,
-  tokenRef: string,
-  fields: Partial<TokenAnalysisLink> = {},
-): TokenAnalysisLink {
-  return {
-    id,
-    analysisId,
-    ...FIXTURE_STAMPS,
-    status: 'approved',
-    token: { tokenRef, surfaceText: 'In' },
-    ...fields,
-  };
-}
-
 describe('discardStaleAnalysis', () => {
   const cases: [string, CommandCase<{ tokenRef: string }>][] = [
     [
@@ -56,7 +31,7 @@ describe('discardStaleAnalysis', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
-          [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
+          [link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale' })],
         ),
         input: { tokenRef: TOKEN },
         expectResult: (result) => {
@@ -71,14 +46,31 @@ describe('discardStaleAnalysis', () => {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
           [
-            link('tl-stale', 'ta-in', TOKEN, { status: 'stale' }),
+            link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale' }),
             link('tl-other', 'ta-in', OTHER_TOKEN),
           ],
         ),
         input: { tokenRef: TOKEN },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-other']);
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-other',
+              analysisId: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:2:0', surfaceText: 'In' },
+            },
+          ]);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+          ]);
         },
       },
     ],
@@ -88,8 +80,8 @@ describe('discardStaleAnalysis', () => {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
           [
-            link('tl-stale-1', 'ta-in', TOKEN, { status: 'stale' }),
-            link('tl-stale-2', 'ta-in', TOKEN, { status: 'stale' }),
+            link('tl-stale-1', 'ta-in', TOKEN, 'In', { status: 'stale' }),
+            link('tl-stale-2', 'ta-in', TOKEN, 'In', { status: 'stale' }),
           ],
         ),
         input: { tokenRef: TOKEN },
@@ -101,7 +93,7 @@ describe('discardStaleAnalysis', () => {
     [
       'drops a stale link whose payload is missing',
       {
-        analysis: analysisOf([], [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })]),
+        analysis: analysisOf([], [link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale' })]),
         input: { tokenRef: TOKEN },
         expectResult: (result) => {
           expect(result.tokenAnalysisLinks).toStrictEqual([]);
@@ -115,12 +107,29 @@ describe('discardStaleAnalysis', () => {
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
           [
             link('tl-in', 'ta-in', TOKEN),
-            link('tl-stale', 'ta-in', OTHER_TOKEN, { status: 'stale' }),
+            link('tl-stale', 'ta-in', OTHER_TOKEN, 'In', { status: 'stale' }),
           ],
         ),
         input: { tokenRef: TOKEN },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-in', 'tl-stale']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-in',
+              analysisId: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+            {
+              id: 'tl-stale',
+              analysisId: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'stale',
+              token: { tokenRef: 'GEN 1:2:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -131,7 +140,6 @@ describe('discardStaleAnalysis', () => {
     const outcome = await runCommand(analysis, 'en', (buffer) => discardCommand(buffer, request));
 
     expectResult(outcome.result);
-    expect(outcome.indexDifferences).toStrictEqual([]);
     expectRemovalPreview(outcome, analysis);
   });
 });
@@ -145,12 +153,12 @@ describe('reapplyStaleAnalysis', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
-          [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
+          [link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'In' },
         expectResult: (result) => {
           expect(result.tokenAnalysisLinks).toStrictEqual([
-            link('new-link', 'ta-in', OTHER_TOKEN, { createdAt: NOW, updatedAt: NOW }),
+            link('new-link', 'ta-in', OTHER_TOKEN, 'In', { createdAt: NOW, updatedAt: NOW }),
           ]);
         },
       },
@@ -160,7 +168,7 @@ describe('reapplyStaleAnalysis', () => {
       {
         analysis: analysisOf(
           [payload('ta-in', 'In', { gloss: { en: 'at' } })],
-          [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
+          [link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'Inn' },
         expectResult: (result) => {
@@ -174,13 +182,13 @@ describe('reapplyStaleAnalysis', () => {
       "respells a breakdown that is the old word whole as one morpheme in the token's copy",
       {
         analysis: analysisOf(
-          [payload('ta-in', 'In', { morphemes: [morpheme('m-in', 'in')] })],
-          [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
+          [payload('ta-in', 'In', { morphemes: [morpheme('m-in', 'in', 'qaa')] })],
+          [link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'Inn' },
         expectResult: (result) => {
           expect(result.tokenAnalyses.map(({ morphemes }) => morphemes)).toStrictEqual([
-            [morpheme('m-in', 'Inn')],
+            [morpheme('m-in', 'Inn', 'qaa')],
           ]);
         },
       },
@@ -191,10 +199,12 @@ describe('reapplyStaleAnalysis', () => {
         analysis: analysisOf(
           [
             payload('ta-in', 'In', {
-              morphemes: [morpheme('m-in', 'in', { entryRef: { authority: 'fw', entryId: 'e' } })],
+              morphemes: [
+                morpheme('m-in', 'in', 'qaa', { entryRef: { authority: 'fw', entryId: 'e' } }),
+              ],
             }),
           ],
-          [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
+          [link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'Inn' },
         expectResult: (result) => {
@@ -206,8 +216,12 @@ describe('reapplyStaleAnalysis', () => {
       "marks a breakdown of several morphemes stale in the token's copy, keeping its forms",
       {
         analysis: analysisOf(
-          [payload('ta-in', 'Into', { morphemes: [morpheme('m-1', 'in'), morpheme('m-2', 'to')] })],
-          [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
+          [
+            payload('ta-in', 'Into', {
+              morphemes: [morpheme('m-1', 'in', 'qaa'), morpheme('m-2', 'to', 'qaa')],
+            }),
+          ],
+          [link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'Unto' },
         expectResult: (result) => {
@@ -225,11 +239,19 @@ describe('reapplyStaleAnalysis', () => {
             payload('ta-in', 'In', { gloss: { en: 'at' } }),
             payload('ta-inn', 'Inn', { gloss: { en: 'at' } }),
           ],
-          [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })],
+          [link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale' })],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'Inn' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-inn']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-inn',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'Inn',
+              gloss: { en: 'at' },
+            },
+          ]);
           expect(result.tokenAnalysisLinks[0].analysisId).toBe('ta-inn');
         },
       },
@@ -243,13 +265,21 @@ describe('reapplyStaleAnalysis', () => {
             payload('ta-old', 'In', { gloss: { en: 'on' } }),
           ],
           [
-            link('tl-stale', 'ta-in', TOKEN, { status: 'stale' }),
+            link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale' }),
             link('tl-other', 'ta-old', OTHER_TOKEN),
           ],
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'In' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+          ]);
           expect(result.tokenAnalysisLinks).toMatchObject([
             { id: 'tl-other', analysisId: 'ta-in' },
           ]);
@@ -265,8 +295,12 @@ describe('reapplyStaleAnalysis', () => {
             payload('ta-old', 'In', { gloss: { en: 'on' } }),
           ],
           [
-            link('tl-stale', 'ta-in', TOKEN, { status: 'stale', confidence: 'high', ...EARLIER }),
-            link('tl-in', 'ta-old', TOKEN, { confidence: 'low', ...LATER }),
+            link('tl-stale', 'ta-in', TOKEN, 'In', {
+              status: 'stale',
+              confidence: 'high',
+              ...EARLIER,
+            }),
+            link('tl-in', 'ta-old', TOKEN, 'In', { confidence: 'low', ...LATER }),
           ],
         ),
         input: { tokenRef: TOKEN, surfaceText: 'In' },
@@ -286,14 +320,14 @@ describe('reapplyStaleAnalysis', () => {
             payload('ta-old', 'In', { gloss: { en: 'on' } }),
           ],
           [
-            link('tl-stale', 'ta-in', TOKEN, { status: 'stale', ...LATER }),
-            link('tl-in', 'ta-old', TOKEN, { confidence: 'low', ...EARLIER }),
+            link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale', ...LATER }),
+            link('tl-in', 'ta-old', TOKEN, 'In', { confidence: 'low', ...EARLIER }),
           ],
         ),
         input: { tokenRef: TOKEN, surfaceText: 'In' },
         expectResult: (result) => {
           expect(result.tokenAnalysisLinks).toStrictEqual([
-            link('tl-in', 'ta-in', TOKEN, { ...EARLIER, updatedAt: NOW }),
+            link('tl-in', 'ta-in', TOKEN, 'In', { ...EARLIER, updatedAt: NOW }),
           ]);
         },
       },
@@ -307,17 +341,35 @@ describe('reapplyStaleAnalysis', () => {
         ),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'In' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-in']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-in',
+              analysisId: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
     [
       'changes nothing for a stale link whose payload is missing',
       {
-        analysis: analysisOf([], [link('tl-stale', 'ta-in', TOKEN, { status: 'stale' })]),
+        analysis: analysisOf([], [link('tl-stale', 'ta-in', TOKEN, 'In', { status: 'stale' })]),
         input: { tokenRef: OTHER_TOKEN, surfaceText: 'In' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-stale']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-stale',
+              analysisId: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'stale',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -331,7 +383,6 @@ describe('reapplyStaleAnalysis', () => {
     );
 
     expectResult(outcome.result);
-    expect(outcome.indexDifferences).toStrictEqual([]);
     expectRemovalPreview(outcome, analysis);
   });
 });
@@ -421,7 +472,6 @@ describe('keepStaleFreeTranslation', () => {
     );
 
     expectResult(outcome.result);
-    expect(outcome.indexDifferences).toStrictEqual([]);
   });
 });
 
@@ -456,8 +506,25 @@ describe('discardStaleFreeTranslation', () => {
         ),
         input: undefined,
         expectResult: (result) => {
-          expect(ids(result.segmentAnalyses)).toStrictEqual(['sa-2']);
-          expect(ids(result.segmentAnalysisLinks)).toStrictEqual(['sl-2']);
+          expect(result.segmentAnalyses).toStrictEqual([
+            {
+              id: 'sa-2',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the beginning',
+              freeTranslation: { en: 'At first' },
+            },
+          ]);
+          expect(result.segmentAnalysisLinks).toStrictEqual([
+            {
+              id: 'sl-2',
+              analysisId: 'sa-2',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'stale',
+              segmentId: 'GEN 1:1',
+            },
+          ]);
         },
       },
     ],
@@ -473,8 +540,25 @@ describe('discardStaleFreeTranslation', () => {
         ),
         input: undefined,
         expectResult: (result) => {
-          expect(ids(result.segmentAnalyses)).toStrictEqual(['sa-1']);
-          expect(ids(result.segmentAnalysisLinks)).toStrictEqual(['sl-other']);
+          expect(result.segmentAnalyses).toStrictEqual([
+            {
+              id: 'sa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the beginning',
+              freeTranslation: { en: 'At first' },
+            },
+          ]);
+          expect(result.segmentAnalysisLinks).toStrictEqual([
+            {
+              id: 'sl-other',
+              analysisId: 'sa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              segmentId: 'GEN 1:2',
+            },
+          ]);
         },
       },
     ],
@@ -487,7 +571,15 @@ describe('discardStaleFreeTranslation', () => {
         ),
         input: undefined,
         expectResult: (result) => {
-          expect(ids(result.segmentAnalyses)).toStrictEqual(['sa-1']);
+          expect(result.segmentAnalyses).toStrictEqual([
+            {
+              id: 'sa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the beginning',
+              freeTranslation: { en: 'At first' },
+            },
+          ]);
         },
       },
     ],
@@ -500,6 +592,5 @@ describe('discardStaleFreeTranslation', () => {
     );
 
     expectResult(outcome.result);
-    expect(outcome.indexDifferences).toStrictEqual([]);
   });
 });

@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import type {
+  MorphemeAnalysis,
   SegmentationDelta,
   TextAnalysis,
   TokenAnalysis,
@@ -15,7 +16,7 @@ import {
 } from '../../../services/commands/discardCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { draftAnalysisKey } from '../../../services/storageKeys';
-import type { ChangeSet, IndexDifference } from '../../../types/analysis-repository';
+import type { ChangeSet } from '../../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
 import { isEmptyChangeSet } from '../../../utils/change-set';
 import { FIXTURE_STAMPS, memoryStorage, silentLogger } from '../../test-helpers';
@@ -46,7 +47,7 @@ export function link(
   id: string,
   analysisId: string,
   tokenRef: string,
-  surfaceText: string,
+  surfaceText = 'In',
   fields: Partial<TokenAnalysisLink> = {},
 ): TokenAnalysisLink {
   return {
@@ -59,6 +60,16 @@ export function link(
   };
 }
 
+/** A morpheme of `form` in `writingSystem`, with `fields` overriding the defaults. */
+export function morpheme(
+  id: string,
+  form: string,
+  writingSystem: string,
+  fields: Partial<MorphemeAnalysis> = {},
+): MorphemeAnalysis {
+  return { id, form, writingSystem, ...fields };
+}
+
 /** An analysis holding only the given token analyses and links. */
 export function analysisOf(
   tokenAnalyses: TokenAnalysis[],
@@ -66,9 +77,6 @@ export function analysisOf(
 ): TextAnalysis {
   return { ...emptyAnalysis(), tokenAnalyses, tokenAnalysisLinks };
 }
-
-/** The ids of `records`, sorted. */
-export const ids = (records: readonly { id: string }[]) => records.map(({ id }) => id).sort();
 
 /** One input that a suite runs through a command, with what its result must show. */
 export type CommandCase<Input> = {
@@ -86,8 +94,6 @@ export type CommandOutcome = {
   result: TextAnalysis;
   /** The changes the command staged. */
   changes: ChangeSet;
-  /** Where the repository's kept indexes differ from its records after applying the changes. */
-  indexDifferences: IndexDifference[];
 };
 
 /** `analysis` as JSON holds it, with each record list in id order. */
@@ -126,8 +132,8 @@ async function seededStorage(seed: DraftSeed) {
 }
 
 /**
- * Stages `command`'s changes over a draft holding `seed`, then applies them and reloads the draft
- * from storage.
+ * Stages `command`'s changes over a draft holding `seed`, then applies them, asserts that the
+ * repository's indexes still match its records, and reloads the draft from storage.
  */
 async function runOnHost(seed: DraftSeed, command: (buffer: ChangeBuffer) => Promise<unknown>) {
   const { storage } = await seededStorage(seed);
@@ -137,24 +143,23 @@ async function runOnHost(seed: DraftSeed, command: (buffer: ChangeBuffer) => Pro
   await command(buffer);
   const changes = buffer.toChangeSet('command');
   await repository.apply(changes);
+  expect(await repository.checkIndexes()).toStrictEqual([]);
   const { draft } = await new DraftRepository(storage, 'src', logger).exportAll();
-  return { draft, changes, indexDifferences: await repository.checkIndexes() };
+  return { draft, changes };
 }
 
 /**
  * Stages `command`'s changes over a draft holding `analysis`, working in `analysisLanguage`, then
- * applies them and reloads the draft from storage.
+ * applies them, asserts that the repository's indexes still match its records, and reloads the
+ * draft from storage.
  */
 export async function runCommand(
   analysis: TextAnalysis,
   analysisLanguage: string,
   command: (buffer: ChangeBuffer) => Promise<unknown>,
 ): Promise<CommandOutcome> {
-  const { draft, changes, indexDifferences } = await runOnHost(
-    { analysis, analysisLanguage },
-    command,
-  );
-  return { result: normalized(draft.analysis), changes, indexDifferences };
+  const { draft, changes } = await runOnHost({ analysis, analysisLanguage }, command);
+  return { result: normalized(draft.analysis), changes };
 }
 
 /** A boundary edit to run. */
@@ -182,33 +187,23 @@ function idSequence(): () => string {
 }
 
 /**
- * Stages a boundary command's changes over a draft holding `seed`, then applies them and reloads
- * the draft from storage. Ids come from a fixed sequence, which reaches `command` as `newId`.
+ * Stages a boundary command's changes over a draft holding `seed`, then applies them, asserts that
+ * the repository's indexes still match its records, and reloads the draft from storage. Ids come
+ * from a fixed sequence, which reaches `command` as `newId`.
  */
 export async function runBoundaryCommand(
   seed: Omit<DraftSeed, 'analysisLanguage'>,
   command: (buffer: ChangeBuffer, newId: () => string) => Promise<void>,
 ): Promise<BoundaryCommandOutcome> {
   const newId = idSequence();
-  const { draft, changes, indexDifferences } = await runOnHost(
-    { ...seed, analysisLanguage: 'en' },
-    (buffer) => command(buffer, newId),
+  const { draft, changes } = await runOnHost({ ...seed, analysisLanguage: 'en' }, (buffer) =>
+    command(buffer, newId),
   );
   return {
     result: normalized(draft.analysis),
     changes,
-    indexDifferences,
     resultSegmentation: draft.segmentation,
   };
-}
-
-/** Asserts that the command took the path that the case names and left consistent indexes. */
-export function expectOutcome(
-  outcome: CommandOutcome,
-  expectResult: CommandCase<unknown>['expectResult'],
-): void {
-  expectResult(outcome.result);
-  expect(outcome.indexDifferences).toStrictEqual([]);
 }
 
 /**
@@ -248,7 +243,8 @@ export type DiscardCommandOutcome = CommandOutcome & {
 /**
  * Runs one unsaved-change discard over a draft holding `seed`, restoring `saved`, the content of
  * the project the draft saves to. Stages the host's command over the stored draft, applies its
- * changes, then reloads the draft from storage.
+ * changes, asserts that the repository's indexes still match its records, then reloads the draft
+ * from storage.
  */
 export async function runDiscardCommand(
   seed: DiscardSeed,
@@ -270,12 +266,12 @@ export async function runDiscardCommand(
       : discardAll(buffer, stored, savedCopy());
   const changes = buffer.toChangeSet('discard');
   if (!isEmptyChangeSet(changes)) await repository.apply(changes);
+  expect(await repository.checkIndexes()).toStrictEqual([]);
   const { draft } = await new DraftRepository(host.storage, 'src', logger).exportAll();
 
   return {
     result: normalized(draft.analysis),
     changes,
-    indexDifferences: await repository.checkIndexes(),
     resultSegmentation: draft.segmentation,
     commandOutcome,
     unreadableShards: (seed.unreadableBooks ?? []).map((bookCode) =>

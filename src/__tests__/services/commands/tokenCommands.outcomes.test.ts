@@ -8,8 +8,6 @@ import { emptyAnalysis } from '../../../types/empty-factories';
 import {
   analysisOf,
   EARLIER,
-  expectOutcome,
-  ids,
   LATER,
   link,
   NOW,
@@ -30,8 +28,25 @@ describe('writeGloss', () => {
         analysis: emptyAnalysis(),
         input: { value: 'at' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['new-analysis']);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['new-link']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+          ]);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'new-link',
+              analysisId: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -44,7 +59,15 @@ describe('writeGloss', () => {
         ),
         input: { value: 'at' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'in',
+              gloss: { en: 'at' },
+            },
+          ]);
           expect(result.tokenAnalysisLinks.find(({ id }) => id === 'new-link')?.analysisId).toBe(
             'ta-in',
           );
@@ -98,7 +121,22 @@ describe('writeGloss', () => {
         ),
         input: { value: 'start' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['new-analysis', 'ta-in']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'start' },
+            },
+            {
+              id: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+          ]);
         },
       },
     ],
@@ -118,7 +156,15 @@ describe('writeGloss', () => {
         ),
         input: { value: 'within' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-within']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-within',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'within' },
+            },
+          ]);
           expect(result.tokenAnalyses[0].morphemesStale).toBeUndefined();
         },
       },
@@ -167,7 +213,15 @@ describe('writeGloss', () => {
               expect.objectContaining({ id: 'tl-offered', status: 'suggested' }),
             ]),
           );
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-within']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-within',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2025-06-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'within' },
+            },
+          ]);
         },
       },
     ],
@@ -236,8 +290,25 @@ describe('writeGloss', () => {
         ),
         input: { value: '' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-other']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+          ]);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-other',
+              analysisId: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:2:0', surfaceText: 'in' },
+            },
+          ]);
         },
       },
     ],
@@ -254,7 +325,16 @@ describe('writeGloss', () => {
         input: { value: '' },
         expectResult: (result) => {
           expect(result.tokenAnalyses).toStrictEqual([payload('ta-in', 'In', { updatedAt: NOW })]);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-rejected']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-rejected',
+              analysisId: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'rejected',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'in' },
+            },
+          ]);
         },
       },
     ],
@@ -270,7 +350,15 @@ describe('writeGloss', () => {
         ),
         input: { value: '' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-bare']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-bare',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2025-06-01T00:00:00.000Z',
+              surfaceText: 'in',
+              pos: 'prep',
+            },
+          ]);
           expect(result.tokenAnalysisLinks[0].analysisId).toBe('ta-bare');
         },
       },
@@ -284,7 +372,15 @@ describe('writeGloss', () => {
         ),
         input: { value: 'at' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+          ]);
           expect(result.tokenAnalysisLinks.every(({ analysisId }) => analysisId === 'ta-in')).toBe(
             true,
           );
@@ -318,7 +414,15 @@ describe('writeGloss', () => {
         analysis: analysisOf([payload('ta-in', 'In', { gloss: { en: 'at' } })], []),
         input: { value: '' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+          ]);
         },
       },
     ],
@@ -328,7 +432,16 @@ describe('writeGloss', () => {
         analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'in')]),
         input: { value: 'at' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['new-link']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'new-link',
+              analysisId: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -358,7 +471,7 @@ describe('writeGloss', () => {
       }),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
   });
 });
 
@@ -414,7 +527,15 @@ describe('approveAnalysisForToken', () => {
         ),
         input: { analysisId: 'ta-on' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-on']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-on',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'on' },
+            },
+          ]);
           expect(result.tokenAnalysisLinks[0].analysisId).toBe('ta-on');
         },
       },
@@ -431,7 +552,22 @@ describe('approveAnalysisForToken', () => {
         ),
         input: { analysisId: 'ta-on' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-at', 'ta-on']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-at',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+            {
+              id: 'ta-on',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'on' },
+            },
+          ]);
         },
       },
     ],
@@ -457,7 +593,15 @@ describe('approveAnalysisForToken', () => {
               createdAt: EARLIER.createdAt,
             }),
           ]);
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-on']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-on',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'on' },
+            },
+          ]);
         },
       },
     ],
@@ -467,7 +611,16 @@ describe('approveAnalysisForToken', () => {
         analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'in')]),
         input: { analysisId: 'ta-unknown' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-orphan']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-orphan',
+              analysisId: 'ta-missing',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'in' },
+            },
+          ]);
         },
       },
     ],
@@ -483,7 +636,16 @@ describe('approveAnalysisForToken', () => {
         ),
         input: { analysisId: 'ta-in' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-in']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-in',
+              analysisId: 'ta-in',
+              createdAt: '2026-03-01T00:00:00.000Z',
+              updatedAt: '2026-03-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'in' },
+            },
+          ]);
         },
       },
     ],
@@ -496,7 +658,16 @@ describe('approveAnalysisForToken', () => {
         ),
         input: { analysisId: 'ta-in' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['new-link']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'new-link',
+              analysisId: 'ta-in',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -513,6 +684,6 @@ describe('approveAnalysisForToken', () => {
       }),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
   });
 });

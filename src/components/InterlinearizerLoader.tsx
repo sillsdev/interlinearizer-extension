@@ -92,7 +92,6 @@ import {
 import { placeHeadings, type CatalogFilters } from '../utils/analysis-query';
 import { nextSegmentAmong } from '../utils/stale-free-translations';
 import { resolvedOrEmpty } from '../utils/localized-strings';
-import { analysisHasFreeTranslations } from '../utils/free-translations';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
 import { isPt9TooLargeError } from '../utils/pt9-import-error';
 import { readPt9Manifest } from '../utils/pt9-manifest';
@@ -458,12 +457,7 @@ function InterlinearizerLoaderInner({
     'platform.interfaceMode',
     'simple',
   );
-  // The draft waits for this setting to load, because the `['und']` default would otherwise become
-  // a brand-new source's gloss language.
-  const [interfaceLanguages, , , isInterfaceLanguageLoading] = useSetting(
-    'platform.interfaceLanguage',
-    ['und'],
-  );
+  const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
   /* v8 ignore next 3 -- useSetting never returns PlatformError for this key in practice */
   const platformLanguage = isPlatformError(interfaceLanguages)
     ? 'und'
@@ -584,7 +578,7 @@ function InterlinearizerLoaderInner({
     getHistoryRevision,
     subscribeToHistoryRevisions,
     session,
-  } = useSessionProject(projectId, isInterfaceLanguageLoading ? undefined : platformLanguage, {
+  } = useSessionProject(projectId, {
     saveTargetId: activeProject?.pt9Import ? undefined : activeProject?.id,
     importProjectId: activeProject?.pt9Import ? activeProject.id : undefined,
     importVersion: activeProject?.pt9Import ? activeProject.updatedAt : undefined,
@@ -682,17 +676,7 @@ function InterlinearizerLoaderInner({
     interfaceMode === 'power',
   );
 
-  // Read from the seed analysis rather than the live store, so clearing the last free translation
-  // cannot take its input away mid-edit.
-  const seedHasFreeTranslations = useMemo(
-    () => {
-      const seed = isImportView ? undefined : draft?.analysis;
-      return seed ? analysisHasFreeTranslations(seed) : false;
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- draftVersion and isDraftLoading track draft?.analysis, a ref value
-    [isImportView, draftVersion, isDraftLoading],
-  );
-  const hasFreeTranslations = session ? session.hasFreeTranslations : seedHasFreeTranslations;
+  const hasFreeTranslations = session?.hasFreeTranslations ?? false;
 
   const {
     isLoading: isShowFreeTranslationLoading,
@@ -1263,7 +1247,7 @@ function InterlinearizerLoaderInner({
 
   /**
    * Declines the first-open offer (dismissing the dialog means No): stores the empty draft so the
-   * offer never repeats for this source, then continues into the draft as an open does today.
+   * offer never repeats for this source, then continues into the draft as an open does.
    */
   const handlePt9OfferNo = useCallback(() => {
     setOfferPt9Import(false);
@@ -1332,13 +1316,12 @@ function InterlinearizerLoaderInner({
           'save',
           papi.commands.sendCommand(
             'interlinearizer.saveDraftToProject',
+            sessionId,
             projectId,
             activeProject.id,
-            undefined,
-            sessionId,
           ),
           // The bytes the Save sends over the bus.
-          { bytes: JSON.stringify([projectId, activeProject.id]).length },
+          { bytes: JSON.stringify([sessionId, projectId, activeProject.id]).length },
         );
         // `undefined` means the project no longer exists, so nothing was persisted.
         if (!savedJson) {
@@ -1385,8 +1368,6 @@ function InterlinearizerLoaderInner({
           // Match 'all' explicitly rather than via an else, so a future scope can't fall through to
           // the whole-draft discard.
           if (scope === 'all') await discardAll();
-          /* v8 ignore start -- defensive: restoring validated content has no known way to throw, but
-             a failure must not close the dialog silently */
         } catch (e) {
           logger.error('Interlinearizer: failed to discard changes', e);
           await papi.notifications
@@ -1395,7 +1376,6 @@ function InterlinearizerLoaderInner({
               severity: 'error',
             })
             .catch(() => {});
-          /* v8 ignore stop */
         } finally {
           setDiscardChangesModalOpen(false);
         }

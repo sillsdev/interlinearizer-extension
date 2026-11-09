@@ -4,7 +4,7 @@ import type { SegmentAnalysis, SegmentAnalysisLink, TextAnalysis } from 'interli
 import { writeSegmentFreeTranslation as writeCommand } from '../../../services/commands/freeTranslationCommands';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../../test-helpers';
-import { ids, LATER, NOW, type CommandCase, runCommand } from './command-runs';
+import { LATER, NOW, type CommandCase, runCommand } from './command-runs';
 
 const NEW = { linkId: 'new-link', analysisId: 'new-analysis' };
 
@@ -123,7 +123,16 @@ describe('writeSegmentFreeTranslation', () => {
         analysis: analysisOf([], [link('sl-orphan', 'sa-missing')]),
         input: { value: 'At first' },
         expectResult: (result) => {
-          expect(ids(result.segmentAnalysisLinks)).toStrictEqual(['new-link']);
+          expect(result.segmentAnalysisLinks).toStrictEqual([
+            {
+              id: 'new-link',
+              analysisId: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              segmentId: 'GEN 1:1',
+            },
+          ]);
         },
       },
     ],
@@ -351,7 +360,21 @@ describe('writeSegmentFreeTranslation', () => {
         ),
         input: { value: 'At first', adoptStaleAnalysisId: 'sa-elsewhere' },
         expectResult: (result) => {
-          expect(ids(result.segmentAnalyses)).toStrictEqual(['new-analysis', 'sa-elsewhere']);
+          expect(result.segmentAnalyses).toStrictEqual([
+            {
+              id: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In the beginning',
+              freeTranslation: { en: 'At first' },
+            },
+            {
+              id: 'sa-elsewhere',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the start',
+            },
+          ]);
         },
       },
     ],
@@ -361,7 +384,24 @@ describe('writeSegmentFreeTranslation', () => {
         analysis: analysisOf([], [link('sl-stale', 'sa-missing', { status: 'stale' })]),
         input: { value: 'At first', adoptStaleAnalysisId: 'sa-missing' },
         expectResult: (result) => {
-          expect(ids(result.segmentAnalysisLinks)).toStrictEqual(['new-link', 'sl-stale']);
+          expect(result.segmentAnalysisLinks).toStrictEqual([
+            {
+              id: 'new-link',
+              analysisId: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              segmentId: 'GEN 1:1',
+            },
+            {
+              id: 'sl-stale',
+              analysisId: 'sa-missing',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'stale',
+              segmentId: 'GEN 1:1',
+            },
+          ]);
         },
       },
     ],
@@ -423,7 +463,16 @@ describe('writeSegmentFreeTranslation', () => {
         ),
         input: { value: '', adoptStaleAnalysisId: 'sa-stale' },
         expectResult: (result) => {
-          expect(ids(result.segmentAnalysisLinks)).toStrictEqual(['sl-stale']);
+          expect(result.segmentAnalysisLinks).toStrictEqual([
+            {
+              id: 'sl-stale',
+              analysisId: 'sa-stale',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'stale',
+              segmentId: 'GEN 1:2',
+            },
+          ]);
         },
       },
     ],
@@ -488,6 +537,5 @@ describe('writeSegmentFreeTranslation', () => {
     );
 
     expectResult(outcome.result);
-    expect(outcome.indexDifferences).toStrictEqual([]);
   });
 });

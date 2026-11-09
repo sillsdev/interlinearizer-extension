@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import papi from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import { useData, useProjectSetting, useSetting } from '@papi/frontend/react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useGloss, useGlossDispatch } from '../../components/AnalysisStore';
@@ -280,10 +280,9 @@ describe('InterlinearizerLoader saving', () => {
     await waitFor(() =>
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftToProject',
+        expect.any(String),
         'src',
         'proj-1',
-        undefined,
-        expect.any(String),
       ),
     );
   });
@@ -347,6 +346,29 @@ describe('InterlinearizerLoader discarding', () => {
       'interlinearizer.getProject',
       expect.anything(),
     );
+  });
+  it('tells the user when the session fails the discard, and closes the dialog', async () => {
+    await renderLoaded({ activeProject: ACTIVE_PROJECT });
+    const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+    jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+      if (call[0] === 'interlinearizer.discardAll') throw new Error('not stored');
+      return serve?.(...call);
+    });
+
+    fireEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+    fireEvent.click(screen.getByTestId('discard-all'));
+
+    await waitFor(() =>
+      expect(papi.notifications.send).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_discardChanges_unexpected%',
+        severity: 'error',
+      }),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      'Interlinearizer: failed to discard changes',
+      expect.any(Error),
+    );
+    await waitFor(() => expect(screen.queryByTestId('discard-all')).not.toBeInTheDocument());
   });
 });
 

@@ -2,7 +2,6 @@
 
 import type {
   MergedContent,
-  MorphemeAnalysis,
   TextAnalysis,
   TokenAnalysis,
   TokenAnalysisLink,
@@ -16,62 +15,25 @@ import {
   writeAnalysisMorphemeGloss as writeMorphemeGlossCommand,
   writeAnalysisMorphemes as writeMorphemesCommand,
 } from '../../../services/commands/catalogCommands';
-import { emptyAnalysis } from '../../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../../test-helpers';
-import { expectRemovalPreview, NOW, runCommand, type CommandOutcome } from './command-runs';
+import {
+  analysisOf,
+  EARLIER,
+  expectRemovalPreview,
+  LATER,
+  link,
+  morpheme,
+  NOW,
+  OTHER_TOKEN,
+  type CommandCase,
+  payload,
+  runCommand,
+  TOKEN,
+} from './command-runs';
 
-function payload(id: string, surfaceText: string, fields: Partial<TokenAnalysis> = {}) {
-  return { id, ...FIXTURE_STAMPS, surfaceText, ...fields };
-}
-
-function morpheme(id: string, form: string, fields: Partial<MorphemeAnalysis> = {}) {
-  return { id, form, writingSystem: 'qaa', ...fields };
-}
-
-function link(
-  id: string,
-  analysisId: string,
-  tokenRef: string,
-  fields: Partial<TokenAnalysisLink> = {},
-): TokenAnalysisLink {
-  return {
-    id,
-    analysisId,
-    ...FIXTURE_STAMPS,
-    status: 'approved',
-    token: { tokenRef, surfaceText: 'In' },
-    ...fields,
-  };
-}
-
-function analysisOf(
-  tokenAnalyses: TokenAnalysis[],
-  tokenAnalysisLinks: TokenAnalysisLink[],
-): TextAnalysis {
-  return { ...emptyAnalysis(), tokenAnalyses, tokenAnalysisLinks };
-}
-
-const EARLIER = { createdAt: '2025-06-01T00:00:00.000Z', updatedAt: '2025-06-01T00:00:00.000Z' };
-const LATER = { createdAt: '2026-03-01T00:00:00.000Z', updatedAt: '2026-03-01T00:00:00.000Z' };
-const TOKEN = 'GEN 1:1:0';
-const OTHER_TOKEN = 'GEN 1:2:0';
 const THIRD_TOKEN = 'GEN 1:3:0';
 const SENSE = { authority: 'x-test', senseId: 'sense-in' };
 const OTHER_SENSE = { authority: 'x-test', senseId: 'sense-at' };
-
-type CommandCase<Input> = {
-  analysis: TextAnalysis;
-  input: Input;
-  /** What the command's result must show, so the case exercises the path it names. */
-  expectResult: (result: TextAnalysis) => void;
-};
-
-const ids = (records: readonly { id: string }[]) => records.map(({ id }) => id).sort();
-
-function expectOutcome(outcome: CommandOutcome, expectResult: (result: TextAnalysis) => void) {
-  expectResult(outcome.result);
-  expect(outcome.indexDifferences).toStrictEqual([]);
-}
 
 /** Two homographs glossed apart, each approved on its own token. */
 function homographs(
@@ -102,7 +64,24 @@ describe('writeAnalysisGloss', () => {
               updatedAt: NOW,
             }),
           ]);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-1', 'tl-2']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-1',
+              analysisId: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+            {
+              id: 'tl-2',
+              analysisId: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:2:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -142,7 +121,7 @@ describe('writeAnalysisGloss', () => {
             payload('ta-in', 'In', {
               gloss: { en: 'at' },
               glossSenseRef: SENSE,
-              morphemes: [morpheme('m-in', 'in')],
+              morphemes: [morpheme('m-in', 'in', 'qaa')],
             }),
           ],
           [link('tl-1', 'ta-in', TOKEN)],
@@ -152,7 +131,7 @@ describe('writeAnalysisGloss', () => {
           expect(result.tokenAnalyses).toStrictEqual([
             payload('ta-in', 'In', {
               glossSenseRef: SENSE,
-              morphemes: [morpheme('m-in', 'in')],
+              morphemes: [morpheme('m-in', 'in', 'qaa')],
               updatedAt: NOW,
             }),
           ]);
@@ -166,15 +145,31 @@ describe('writeAnalysisGloss', () => {
           [payload('ta-in', 'In', { gloss: { en: 'at' } }), payload('ta-on', 'On')],
           [
             link('tl-approved', 'ta-in', TOKEN),
-            link('tl-suggested', 'ta-in', OTHER_TOKEN, { status: 'suggested' }),
-            link('tl-stale', 'ta-in', THIRD_TOKEN, { status: 'stale' }),
-            link('tl-on', 'ta-on', THIRD_TOKEN, { status: 'suggested' }),
+            link('tl-suggested', 'ta-in', OTHER_TOKEN, 'In', { status: 'suggested' }),
+            link('tl-stale', 'ta-in', THIRD_TOKEN, 'In', { status: 'stale' }),
+            link('tl-on', 'ta-on', THIRD_TOKEN, 'In', { status: 'suggested' }),
           ],
         ),
         input: { analysisId: 'ta-in', value: '' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-on']);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-on']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-on',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'On',
+            },
+          ]);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-on',
+              analysisId: 'ta-on',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'suggested',
+              token: { tokenRef: 'GEN 1:3:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -198,13 +193,13 @@ describe('writeAnalysisGloss', () => {
       'leaves a token linking both payloads one link, approved, dated by the earlier',
       {
         analysis: homographs({ gloss: { en: 'at' } }, { gloss: { en: 'in' } }, [
-          link('tl-a', 'ta-a', TOKEN, LATER),
-          link('tl-b', 'ta-b', TOKEN, { ...EARLIER, status: 'suggested' }),
+          link('tl-a', 'ta-a', TOKEN, 'In', LATER),
+          link('tl-b', 'ta-b', TOKEN, 'In', { ...EARLIER, status: 'suggested' }),
         ]),
         input: { analysisId: 'ta-a', value: 'in' },
         expectResult: (result) => {
           expect(result.tokenAnalysisLinks).toStrictEqual([
-            link('tl-a', 'ta-b', TOKEN, { ...LATER, createdAt: EARLIER.createdAt }),
+            link('tl-a', 'ta-b', TOKEN, 'In', { ...LATER, createdAt: EARLIER.createdAt }),
           ]);
         },
       },
@@ -213,15 +208,15 @@ describe('writeAnalysisGloss', () => {
       "clears the sibling's stale mark when the edited breakdown is not stale",
       {
         analysis: homographs(
-          { gloss: { en: 'at' }, morphemes: [morpheme('m-a', 'in')] },
-          { gloss: { en: 'in' }, morphemes: [morpheme('m-b', 'in')], morphemesStale: true },
+          { gloss: { en: 'at' }, morphemes: [morpheme('m-a', 'in', 'qaa')] },
+          { gloss: { en: 'in' }, morphemes: [morpheme('m-b', 'in', 'qaa')], morphemesStale: true },
         ),
         input: { analysisId: 'ta-a', value: 'in' },
         expectResult: (result) => {
           expect(result.tokenAnalyses).toStrictEqual([
             payload('ta-b', 'In', {
               gloss: { en: 'in' },
-              morphemes: [morpheme('m-b', 'in')],
+              morphemes: [morpheme('m-b', 'in', 'qaa')],
               updatedAt: NOW,
             }),
           ]);
@@ -232,15 +227,15 @@ describe('writeAnalysisGloss', () => {
       "keeps the sibling's stale mark when both breakdowns are stale",
       {
         analysis: homographs(
-          { gloss: { en: 'at' }, morphemes: [morpheme('m-a', 'in')], morphemesStale: true },
-          { gloss: { en: 'in' }, morphemes: [morpheme('m-b', 'in')], morphemesStale: true },
+          { gloss: { en: 'at' }, morphemes: [morpheme('m-a', 'in', 'qaa')], morphemesStale: true },
+          { gloss: { en: 'in' }, morphemes: [morpheme('m-b', 'in', 'qaa')], morphemesStale: true },
         ),
         input: { analysisId: 'ta-a', value: 'in' },
         expectResult: (result) => {
           expect(result.tokenAnalyses).toStrictEqual([
             payload('ta-b', 'In', {
               gloss: { en: 'in' },
-              morphemes: [morpheme('m-b', 'in')],
+              morphemes: [morpheme('m-b', 'in', 'qaa')],
               morphemesStale: true,
             }),
           ]);
@@ -269,7 +264,7 @@ describe('writeAnalysisGloss', () => {
       writeGlossCommand(buffer, { ...input, analysisLanguage: 'en', now: NOW }),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
   });
 });
 
@@ -280,7 +275,10 @@ describe('clearAnalysisGlosses', () => {
       {
         analysis: analysisOf(
           [
-            payload('ta-in', 'In', { gloss: { en: 'at' }, morphemes: [morpheme('m-in', 'in')] }),
+            payload('ta-in', 'In', {
+              gloss: { en: 'at' },
+              morphemes: [morpheme('m-in', 'in', 'qaa')],
+            }),
             payload('ta-on', 'On', { gloss: { en: 'upon' }, pos: 'prep' }),
           ],
           [link('tl-in', 'ta-in', TOKEN), link('tl-on', 'ta-on', OTHER_TOKEN)],
@@ -291,7 +289,24 @@ describe('clearAnalysisGlosses', () => {
             undefined,
             undefined,
           ]);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-in', 'tl-on']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-in',
+              analysisId: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+            {
+              id: 'tl-on',
+              analysisId: 'ta-on',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:2:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -304,8 +319,25 @@ describe('clearAnalysisGlosses', () => {
         ),
         input: { analysisIds: ['ta-in', 'ta-on'] },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-on']);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-on']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-on',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'On',
+              pos: 'p',
+            },
+          ]);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-on',
+              analysisId: 'ta-on',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:2:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -332,7 +364,7 @@ describe('clearAnalysisGlosses', () => {
       clearGlossesCommand(buffer, { ...input, analysisLanguage: 'en', now: NOW }),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
     expectRemovalPreview(outcome, analysis);
   });
 });
@@ -351,7 +383,10 @@ describe('writeAnalysisMorphemes', () => {
         analysis: analysisOf(
           [
             payload('ta-in', 'Inside', {
-              morphemes: [morpheme('m-in', 'in', { gloss: { en: 'in' } }), morpheme('m-to', 'to')],
+              morphemes: [
+                morpheme('m-in', 'in', 'qaa', { gloss: { en: 'in' } }),
+                morpheme('m-to', 'to', 'qaa'),
+              ],
             }),
           ],
           [link('tl-1', 'ta-in', TOKEN)],
@@ -366,8 +401,8 @@ describe('writeAnalysisMorphemes', () => {
         },
         expectResult: (result) => {
           expect(result.tokenAnalyses[0].morphemes).toStrictEqual([
-            morpheme('m-in', 'in', { gloss: { en: 'in' }, writingSystem: 'qab' }),
-            morpheme('new-2', 'side', { writingSystem: 'qab' }),
+            morpheme('m-in', 'in', 'qaa', { gloss: { en: 'in' }, writingSystem: 'qab' }),
+            morpheme('new-2', 'side', 'qaa', { writingSystem: 'qab' }),
           ]);
           expect(result.tokenAnalyses[0].updatedAt).toBe(NOW);
         },
@@ -379,7 +414,7 @@ describe('writeAnalysisMorphemes', () => {
         analysis: analysisOf(
           [
             payload('ta-in', 'In', {
-              morphemes: [morpheme('m-in', 'in')],
+              morphemes: [morpheme('m-in', 'in', 'qaa')],
               morphemesStale: true,
             }),
           ],
@@ -392,7 +427,7 @@ describe('writeAnalysisMorphemes', () => {
         },
         expectResult: (result) => {
           expect(result.tokenAnalyses).toStrictEqual([
-            payload('ta-in', 'In', { morphemes: [morpheme('m-in', 'in')], updatedAt: NOW }),
+            payload('ta-in', 'In', { morphemes: [morpheme('m-in', 'in', 'qaa')], updatedAt: NOW }),
           ]);
         },
       },
@@ -401,7 +436,12 @@ describe('writeAnalysisMorphemes', () => {
       'removes the breakdown for no forms, keeping an analysis with a gloss',
       {
         analysis: analysisOf(
-          [payload('ta-in', 'In', { gloss: { en: 'at' }, morphemes: [morpheme('m-in', 'in')] })],
+          [
+            payload('ta-in', 'In', {
+              gloss: { en: 'at' },
+              morphemes: [morpheme('m-in', 'in', 'qaa')],
+            }),
+          ],
           [link('tl-1', 'ta-in', TOKEN)],
         ),
         input: { analysisId: 'ta-in', morphemes: [], writingSystem: 'qaa' },
@@ -416,8 +456,11 @@ describe('writeAnalysisMorphemes', () => {
       'removes an analysis left empty, with its links',
       {
         analysis: analysisOf(
-          [payload('ta-in', 'In', { morphemes: [morpheme('m-in', 'in')] })],
-          [link('tl-1', 'ta-in', TOKEN), link('tl-2', 'ta-in', OTHER_TOKEN, { status: 'stale' })],
+          [payload('ta-in', 'In', { morphemes: [morpheme('m-in', 'in', 'qaa')] })],
+          [
+            link('tl-1', 'ta-in', TOKEN),
+            link('tl-2', 'ta-in', OTHER_TOKEN, 'In', { status: 'stale' }),
+          ],
         ),
         input: { analysisId: 'ta-in', morphemes: [], writingSystem: 'qaa' },
         expectResult: (result) => {
@@ -430,8 +473,11 @@ describe('writeAnalysisMorphemes', () => {
       'folds an analysis the re-split makes identical into the sibling',
       {
         analysis: homographs(
-          { gloss: { en: 'in' }, morphemes: [morpheme('m-a', 'i'), morpheme('m-n', 'n')] },
-          { gloss: { en: 'in' }, morphemes: [morpheme('m-b', 'in')] },
+          {
+            gloss: { en: 'in' },
+            morphemes: [morpheme('m-a', 'i', 'qaa'), morpheme('m-n', 'n', 'qaa')],
+          },
+          { gloss: { en: 'in' }, morphemes: [morpheme('m-b', 'in', 'qaa')] },
         ),
         input: {
           analysisId: 'ta-a',
@@ -439,7 +485,16 @@ describe('writeAnalysisMorphemes', () => {
           writingSystem: 'qaa',
         },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-b']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-b',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'in' },
+              morphemes: [{ id: 'm-b', form: 'in', writingSystem: 'qaa' }],
+            },
+          ]);
           expect(result.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toStrictEqual([
             'ta-b',
             'ta-b',
@@ -466,7 +521,7 @@ describe('writeAnalysisMorphemes', () => {
       writeMorphemesCommand(buffer, { ...input, now: NOW }),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
   });
 });
 
@@ -476,13 +531,18 @@ describe('confirmAnalysisMorphemes', () => {
       'clears the stale mark, keeping the breakdown',
       {
         analysis: analysisOf(
-          [payload('ta-in', 'In', { morphemes: [morpheme('m-in', 'in')], morphemesStale: true })],
+          [
+            payload('ta-in', 'In', {
+              morphemes: [morpheme('m-in', 'in', 'qaa')],
+              morphemesStale: true,
+            }),
+          ],
           [link('tl-1', 'ta-in', TOKEN)],
         ),
         input: { analysisId: 'ta-in' },
         expectResult: (result) => {
           expect(result.tokenAnalyses).toStrictEqual([
-            payload('ta-in', 'In', { morphemes: [morpheme('m-in', 'in')], updatedAt: NOW }),
+            payload('ta-in', 'In', { morphemes: [morpheme('m-in', 'in', 'qaa')], updatedAt: NOW }),
           ]);
         },
       },
@@ -491,7 +551,7 @@ describe('confirmAnalysisMorphemes', () => {
       'changes nothing when the breakdown is not stale',
       {
         analysis: analysisOf(
-          [payload('ta-in', 'In', { morphemes: [morpheme('m-in', 'in')] })],
+          [payload('ta-in', 'In', { morphemes: [morpheme('m-in', 'in', 'qaa')] })],
           [link('tl-1', 'ta-in', TOKEN)],
         ),
         input: { analysisId: 'ta-in' },
@@ -517,7 +577,7 @@ describe('confirmAnalysisMorphemes', () => {
       confirmMorphemesCommand(buffer, { ...input, now: NOW }),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
   });
 });
 
@@ -528,7 +588,7 @@ describe('writeAnalysisMorphemeGloss', () => {
     analysisOf(
       [
         payload('ta-in', 'Into', {
-          morphemes: [morpheme('m-in', 'in', { gloss }), morpheme('m-to', 'to')],
+          morphemes: [morpheme('m-in', 'in', 'qaa', { gloss }), morpheme('m-to', 'to', 'qaa')],
         }),
       ],
       [link('tl-1', 'ta-in', TOKEN)],
@@ -566,8 +626,8 @@ describe('writeAnalysisMorphemeGloss', () => {
         input: { analysisId: 'ta-in', morphemeId: 'm-in', value: '' },
         expectResult: (result) => {
           expect(result.tokenAnalyses[0].morphemes).toStrictEqual([
-            morpheme('m-in', 'in'),
-            morpheme('m-to', 'to'),
+            morpheme('m-in', 'in', 'qaa'),
+            morpheme('m-to', 'to', 'qaa'),
           ]);
         },
       },
@@ -588,7 +648,9 @@ describe('writeAnalysisMorphemeGloss', () => {
         analysis: glossed(),
         input: { analysisId: 'ta-in', morphemeId: 'm-in', value: '' },
         expectResult: (result) => {
-          expect(result.tokenAnalyses[0].morphemes?.[0]).toStrictEqual(morpheme('m-in', 'in'));
+          expect(result.tokenAnalyses[0].morphemes?.[0]).toStrictEqual(
+            morpheme('m-in', 'in', 'qaa'),
+          );
           expect(result.tokenAnalyses[0].updatedAt).toBe(NOW);
         },
       },
@@ -597,12 +659,20 @@ describe('writeAnalysisMorphemeGloss', () => {
       'folds an analysis the write makes identical into the sibling',
       {
         analysis: homographs(
-          { morphemes: [morpheme('m-a', 'in')] },
-          { morphemes: [morpheme('m-b', 'in', { gloss: { en: 'in' } })] },
+          { morphemes: [morpheme('m-a', 'in', 'qaa')] },
+          { morphemes: [morpheme('m-b', 'in', 'qaa', { gloss: { en: 'in' } })] },
         ),
         input: { analysisId: 'ta-a', morphemeId: 'm-a', value: 'in' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-b']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-b',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              morphemes: [{ id: 'm-b', form: 'in', writingSystem: 'qaa', gloss: { en: 'in' } }],
+            },
+          ]);
           expect(result.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toStrictEqual([
             'ta-b',
             'ta-b',
@@ -637,7 +707,7 @@ describe('writeAnalysisMorphemeGloss', () => {
       writeMorphemeGlossCommand(buffer, { ...input, analysisLanguage: 'en', now: NOW }),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
   });
 });
 
@@ -654,15 +724,32 @@ describe('deleteAnalyses', () => {
           ],
           [
             link('tl-in', 'ta-in', TOKEN),
-            link('tl-in-stale', 'ta-in', OTHER_TOKEN, { status: 'stale' }),
-            link('tl-on', 'ta-on', THIRD_TOKEN, { status: 'suggested' }),
+            link('tl-in-stale', 'ta-in', OTHER_TOKEN, 'In', { status: 'stale' }),
+            link('tl-on', 'ta-on', THIRD_TOKEN, 'In', { status: 'suggested' }),
             link('tl-to', 'ta-to', OTHER_TOKEN),
           ],
         ),
         input: { analysisIds: ['ta-in', 'ta-on'] },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-to']);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-to']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-to',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'To',
+              gloss: { en: 'toward' },
+            },
+          ]);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-to',
+              analysisId: 'ta-to',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:2:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -675,8 +762,25 @@ describe('deleteAnalyses', () => {
         ),
         input: { analysisIds: ['ta-missing'] },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-in']);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-in']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+          ]);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-in',
+              analysisId: 'ta-in',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -687,7 +791,7 @@ describe('deleteAnalyses', () => {
       deleteAnalysesCommand(buffer, input),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
   });
 });
 
@@ -737,8 +841,8 @@ describe('mergeAnalysesInto', () => {
             payload('ta-s', 'In', { gloss: { en: 'in' }, updatedAt: NOW }),
           ]);
           expect(result.tokenAnalysisLinks).toStrictEqual([
-            link('tl-a', 'ta-s', OTHER_TOKEN, { updatedAt: NOW }),
-            link('tl-b', 'ta-s', THIRD_TOKEN, { updatedAt: NOW }),
+            link('tl-a', 'ta-s', OTHER_TOKEN, 'In', { updatedAt: NOW }),
+            link('tl-b', 'ta-s', THIRD_TOKEN, 'In', { updatedAt: NOW }),
             link('tl-s', 'ta-s', TOKEN),
           ]);
         },
@@ -754,7 +858,22 @@ describe('mergeAnalysesInto', () => {
           content: settled('in'),
         },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-b', 'ta-s']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-b',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'into' },
+            },
+            {
+              id: 'ta-s',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'in' },
+            },
+          ]);
         },
       },
     ],
@@ -768,7 +887,29 @@ describe('mergeAnalysesInto', () => {
           content: settled('in'),
         },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-a', 'ta-b', 'ta-s']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-a',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+            {
+              id: 'ta-b',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'into' },
+            },
+            {
+              id: 'ta-s',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'in' },
+            },
+          ]);
         },
       },
     ],
@@ -781,8 +922,8 @@ describe('mergeAnalysesInto', () => {
             payload('ta-a', 'In', { gloss: { en: 'at' } }),
           ],
           [
-            link('tl-s', 'ta-s', TOKEN, { ...EARLIER, status: 'suggested' }),
-            link('tl-a', 'ta-a', TOKEN, LATER),
+            link('tl-s', 'ta-s', TOKEN, 'In', { ...EARLIER, status: 'suggested' }),
+            link('tl-a', 'ta-a', TOKEN, 'In', LATER),
           ],
         ),
         input: {
@@ -792,7 +933,7 @@ describe('mergeAnalysesInto', () => {
         },
         expectResult: (result) => {
           expect(result.tokenAnalysisLinks).toStrictEqual([
-            link('tl-a', 'ta-s', TOKEN, { createdAt: EARLIER.createdAt, updatedAt: NOW }),
+            link('tl-a', 'ta-s', TOKEN, 'In', { createdAt: EARLIER.createdAt, updatedAt: NOW }),
           ]);
         },
       },
@@ -806,8 +947,8 @@ describe('mergeAnalysesInto', () => {
             payload('ta-a', 'In', { gloss: { en: 'at' } }),
           ],
           [
-            link('tl-s', 'ta-s', TOKEN, { ...LATER, status: 'suggested' }),
-            link('tl-a', 'ta-a', TOKEN, { ...EARLIER, status: 'candidate' }),
+            link('tl-s', 'ta-s', TOKEN, 'In', { ...LATER, status: 'suggested' }),
+            link('tl-a', 'ta-a', TOKEN, 'In', { ...EARLIER, status: 'candidate' }),
           ],
         ),
         input: {
@@ -817,7 +958,7 @@ describe('mergeAnalysesInto', () => {
         },
         expectResult: (result) => {
           expect(result.tokenAnalysisLinks).toStrictEqual([
-            link('tl-a', 'ta-s', TOKEN, {
+            link('tl-a', 'ta-s', TOKEN, 'In', {
               status: 'candidate',
               createdAt: EARLIER.createdAt,
               updatedAt: NOW,
@@ -903,8 +1044,8 @@ describe('mergeAnalysesInto', () => {
           mergedAnalysisIds: ['ta-a', 'ta-b'],
           content: settled('in', {
             morphemes: [
-              morpheme('m-i', 'i', { gloss: { en: ' ' } }),
-              morpheme('m-n', 'n', { gloss: { en: ' ', fr: 'n' } }),
+              morpheme('m-i', 'i', 'qaa', { gloss: { en: ' ' } }),
+              morpheme('m-n', 'n', 'qaa', { gloss: { en: ' ', fr: 'n' } }),
             ],
             morphemesStale: true,
             pos: 'prep',
@@ -916,7 +1057,10 @@ describe('mergeAnalysesInto', () => {
           expect(result.tokenAnalyses).toStrictEqual([
             payload('ta-s', 'In', {
               gloss: { en: 'in' },
-              morphemes: [morpheme('m-i', 'i'), morpheme('m-n', 'n', { gloss: { fr: 'n' } })],
+              morphemes: [
+                morpheme('m-i', 'i', 'qaa'),
+                morpheme('m-n', 'n', 'qaa', { gloss: { fr: 'n' } }),
+              ],
               morphemesStale: true,
               pos: 'prep',
               features: { case: 'loc' },
@@ -932,7 +1076,7 @@ describe('mergeAnalysesInto', () => {
       {
         analysis: threeHomographs({
           gloss: { en: 'in' },
-          morphemes: [morpheme('m-in', 'in')],
+          morphemes: [morpheme('m-in', 'in', 'qaa')],
           morphemesStale: true,
           pos: 'prep',
           features: { case: 'loc' },
@@ -1047,6 +1191,6 @@ describe('mergeAnalysesInto', () => {
       mergeCommand(buffer, { ...input, analysisLanguage: 'en', now: NOW }),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
   });
 });

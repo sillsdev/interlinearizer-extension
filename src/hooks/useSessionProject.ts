@@ -14,6 +14,7 @@ import type {
   DraftCopyResult,
   NewDraftConfig,
 } from '../types/project-api';
+import useLatestRef from './useLatestRef';
 import useSessionPages from './useSessionPages';
 
 /** The session open on the source, with what opening it answered. */
@@ -49,7 +50,6 @@ function sameEnvelope(a: DraftProject, b: DraftProject): boolean {
  */
 export default function useSessionProject(
   sourceProjectId: string,
-  _platformLanguage: string | undefined,
   {
     saveTargetId,
     importProjectId,
@@ -84,13 +84,10 @@ export default function useSessionProject(
 
   /** The interlinear project that the open session was opened on, or was last told to save to. */
   const targetRef = useRef<string | undefined>(undefined);
-  const saveTargetRef = useRef(saveTargetId);
-  saveTargetRef.current = saveTargetId;
-  const onProjectMissingRef = useRef(onProjectMissing);
-  onProjectMissingRef.current = onProjectMissing;
+  const saveTargetRef = useLatestRef(saveTargetId);
+  const onProjectMissingRef = useLatestRef(onProjectMissing);
   /** The project the view names now, which New or Open may change while a session opens. */
-  const namedProjectRef = useRef(importProjectId ?? saveTargetId);
-  namedProjectRef.current = importProjectId ?? saveTargetId;
+  const namedProjectRef = useLatestRef(importProjectId ?? saveTargetId);
 
   useEffect(() => {
     let isCurrent = true;
@@ -113,7 +110,7 @@ export default function useSessionProject(
         );
         if (isCurrent) await whole.refresh();
         if (!isCurrent) return reply.sessionId;
-        targetRef.current = reply.projectMissing ? undefined : interlinearProjectId;
+        targetRef.current = interlinearProjectId;
         if (reply.projectMissing && namedProjectRef.current === interlinearProjectId)
           onProjectMissingRef.current?.();
         setOpened({ ...reply, whole });
@@ -141,7 +138,16 @@ export default function useSessionProject(
         )
         .catch((e) => logger.error('Interlinearizer: failed to close a session', e));
     };
-  }, [sourceProjectId, importProjectId, importVersion, openCount, noteHistory]);
+  }, [
+    sourceProjectId,
+    importProjectId,
+    importVersion,
+    openCount,
+    noteHistory,
+    saveTargetRef,
+    onProjectMissingRef,
+    namedProjectRef,
+  ]);
 
   const sessionId = opened?.sessionId;
   const whole = opened?.whole ?? NO_WHOLE;
@@ -186,12 +192,14 @@ export default function useSessionProject(
   const pages = useSessionPages({ sessionId, bookId, scrRef });
   const { client } = pages;
 
-  // Asking how far the read has got starts the session's read of the whole text.
+  // Asking how far the read has got starts the session's read of the whole text. A failed start
+  // clears the request, so that the next feature that wants the text asks again.
   useEffect(() => {
     if (sessionId === undefined || !isTextWanted) return;
-    papi.commands
-      .sendCommand('interlinearizer.getTextReadStatus', { sessionId })
-      .catch((e) => logger.warn("Interlinearizer: could not start reading the session's text", e));
+    papi.commands.sendCommand('interlinearizer.getTextReadStatus', { sessionId }).catch((e) => {
+      logger.warn("Interlinearizer: could not start reading the session's text", e);
+      setIsTextWanted(false);
+    });
   }, [sessionId, isTextWanted]);
   const requestTextRead = useCallback(() => setIsTextWanted(true), []);
 
@@ -245,6 +253,25 @@ export default function useSessionProject(
   useEffect(() => client?.subscribeReplies(takeReply), [client, takeReply]);
 
   /**
+   * Sends an edit through the client so that its reply lands in the pages.
+   *
+   * @throws If the pages' outline has not loaded yet, or whatever the edit's command throws.
+   */
+  const sendEditOrThrow = useCallback(
+    async (
+      call: (args: SessionEditArgs) => Promise<string | undefined>,
+    ): Promise<CommandReply | undefined> => {
+      /* v8 ignore next -- edits come only from a view whose pages have loaded */
+      if (!client || sessionId === undefined) return undefined;
+      return client.send(async (changeId) => {
+        const reply = await call({ sessionId, changeId });
+        return reply === undefined ? undefined : JSON.parse(reply);
+      });
+    },
+    [client, sessionId],
+  );
+
+  /**
    * Sends an edit through the client so that its reply lands in the pages. A failure is logged and
    * resolves `undefined`.
    */
@@ -253,19 +280,14 @@ export default function useSessionProject(
       failing: string,
       call: (args: SessionEditArgs) => Promise<string | undefined>,
     ): Promise<CommandReply | undefined> => {
-      /* v8 ignore next -- edits come only from a view whose pages have loaded */
-      if (!client || sessionId === undefined) return undefined;
       try {
-        return await client.send(async (changeId) => {
-          const reply = await call({ sessionId, changeId });
-          return reply === undefined ? undefined : JSON.parse(reply);
-        });
+        return await sendEditOrThrow(call);
       } catch (e) {
         logger.error(`Interlinearizer: failed to ${failing}`, e);
         return undefined;
       }
     },
-    [client, sessionId],
+    [sendEditOrThrow],
   );
 
   const move = useCallback(
@@ -344,15 +366,20 @@ export default function useSessionProject(
     [whole, isSaving, sessionId],
   );
 
-  /** Sends a discard, which replaces the draft's content wholesale. */
+  /**
+   * Sends a discard, which replaces the draft's content wholesale.
+   *
+   * @throws If the pages' outline has not loaded yet, or whatever the discard's command throws.
+   */
   const discard = useCallback(
     async (call: (args: SessionEditArgs) => Promise<string>) => {
-      if (!(await sendEdit('discard changes', call))) return;
+      /* v8 ignore next -- a discard's command always replies */
+      if (!(await sendEditOrThrow(call))) return;
       // The reply leaves out how the discard left the draft's unsaved mark.
       refreshWhole();
       setDraftVersion((version) => version + 1);
     },
-    [sendEdit, refreshWhole],
+    [sendEditOrThrow, refreshWhole],
   );
 
   const boundaries = useMemo<SegmentationDispatch>(

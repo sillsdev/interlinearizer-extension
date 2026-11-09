@@ -14,6 +14,7 @@ import {
   formatReplacementString,
   type LocalizeKey,
   type PlatformEventEmitter,
+  type UnsubscriberAsync,
 } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
@@ -576,18 +577,17 @@ async function reportUnreadableBooks(
 }
 
 /**
- * Runs `save`, in the session's turn when `sessionId` is given. When `whole` says that the result
- * holds the whole draft, the session's history then marks the draft saved. A failed mark is only
- * logged, because the project holds the saved content either way.
+ * Runs `save` in the session's turn. When `whole` says that the result holds the whole draft, the
+ * session's history then marks the draft saved. A failed mark is only logged, because the project
+ * holds the saved content either way.
  *
  * @throws If the session is not open, or whatever `save` throws.
  */
 async function savingInSession<T>(
-  sessionId: string | undefined,
+  sessionId: string,
   save: () => Promise<T>,
   whole: (result: T) => boolean,
 ): Promise<T> {
-  if (sessionId === undefined) return save();
   return sessions.run(sessionId, async ({ history }) => {
     const result = await save();
     if (whole(result)) {
@@ -603,16 +603,15 @@ async function savingInSession<T>(
 
 /**
  * Copies the source project's stored draft into an existing interlinearizer project: Save, and Save
- * As onto an existing project. Given the session editing the draft, the copy runs after the
- * session's earlier edits. A draft that cannot be read for some book is not copied, and the user is
- * told which books and how to recover.
+ * As onto an existing project. The copy runs after the session's earlier edits. A draft that cannot
+ * be read for some book is not copied, and the user is told which books and how to recover.
  *
+ * @param sessionId - The session editing the draft. The copy runs in the session's turn, and the
+ *   session's history marks the draft saved.
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param interlinearProjectId - UUID of the interlinearizer project to save into.
  * @param config - The configuration to set on the project in the same write; omit to leave the
  *   project's configuration unchanged.
- * @param sessionId - The session editing the draft, if any. The copy then runs in the session's
- *   turn, and the session's history marks the draft saved.
  * @returns The saved project's `InterlinearProjectSummary` (carrying the refreshed `updatedAt`) as
  *   a JSON string, or `undefined` if no project with the given ID exists.
  * @throws If `sessionId` names no open session, if the draft cannot be read for some book, if the
@@ -620,10 +619,10 @@ async function savingInSession<T>(
  *   storage fails. The error is logged and an error notification is sent before rethrowing.
  */
 async function saveDraftToProject(
+  sessionId: string,
   sourceProjectId: string,
   interlinearProjectId: string,
   config?: ProjectConfig,
-  sessionId?: string,
 ): Promise<string | undefined> {
   try {
     return await perfTimeAsync('saveDraftToProject', async () => {
@@ -656,28 +655,28 @@ async function saveDraftToProject(
 
 /**
  * Creates an interlinearizer project holding a copy of the source project's stored draft: Save As
- * to a new project. Given the session editing the draft, the copy runs after the session's earlier
- * edits. A book of the draft that cannot be read is left out, and the user is told which.
+ * to a new project. The copy runs after the session's earlier edits. A book of the draft that
+ * cannot be read is left out, and the user is told which.
  *
+ * @param sessionId - The session editing the draft. The copy runs in the session's turn, and when
+ *   no book is left out, the session's history marks the draft saved.
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param analysisLanguages - BCP 47 tags for the new project's analysis languages.
  * @param targetProjectId - Optional Platform.Bible project ID of the target text.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
- * @param sessionId - The session editing the draft, if any. The copy then runs in the session's
- *   turn, and when no book is left out, the session's history marks the draft saved.
  * @returns The created project's summary and the books it left out, as a JSON
  *   {@link SavedAsProject}.
  * @throws If `sessionId` names no open session, the stored draft is unreadable, or storage fails.
  *   The error is logged and an error notification is sent before rethrowing.
  */
 async function saveDraftAsProject(
+  sessionId: string,
   sourceProjectId: string,
   analysisLanguages: string[],
   targetProjectId?: string,
   name?: string,
   description?: string,
-  sessionId?: string,
 ): Promise<string> {
   try {
     return await perfTimeAsync('saveDraftAsProject', async () => {
@@ -940,7 +939,8 @@ type ArgsOf<C extends keyof CommandHandlers> = Parameters<CommandHandlers[C]>[0]
  * source project's draft, which saves to `interlinearProjectId` when given. When the source has no
  * project of the id named, the session opens on the draft, which then saves to no project. A draft
  * that holds analysis is then marked unsaved, unless the missing project was an import. Closes the
- * source's earlier session, if any.
+ * source's earlier session, if any. Warns the user of each book whose stored analysis could not be
+ * read.
  *
  * @returns A JSON string of an {@link OpenedSession}.
  * @throws If both ids are given, an id names a project of the wrong kind, or finding the project,
@@ -957,6 +957,11 @@ async function openSession({
       sourceProjectId,
       interlinearProjectId,
       importProjectId,
+    );
+    await reportUnreadableBooks(
+      opened.unreadableBooks,
+      '%interlinearizer_warning_loadDraft_unreadableBooks%',
+      'warning',
     );
     return JSON.stringify(opened);
   } catch (e) {
@@ -1431,6 +1436,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         summary: "Copy a source project's stored draft into an existing interlinearizer project",
         params: [
           {
+            name: 'sessionId',
+            required: true,
+            summary:
+              'The session editing the draft; the copy runs in its turn, and its history marks the draft saved',
+            schema: { type: 'string' },
+          },
+          {
             name: 'sourceProjectId',
             required: true,
             summary: 'Platform.Bible project ID whose draft to copy',
@@ -1456,13 +1468,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
               required: ['analysisLanguages'],
             },
           },
-          {
-            name: 'sessionId',
-            required: false,
-            summary:
-              'The session editing the draft; the copy then runs in its turn, and its history marks the draft saved',
-            schema: { type: 'string' },
-          },
         ],
         result: {
           name: 'return value',
@@ -1481,6 +1486,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       method: {
         summary: "Create an interlinearizer project holding a copy of a source project's draft",
         params: [
+          {
+            name: 'sessionId',
+            required: true,
+            summary:
+              'The session editing the draft; the copy runs in its turn, and when no book is left out, its history marks the draft saved',
+            schema: { type: 'string' },
+          },
           {
             name: 'sourceProjectId',
             required: true,
@@ -1511,13 +1523,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             name: 'description',
             required: false,
             summary: 'Optional user-facing description for the project',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'sessionId',
-            required: false,
-            summary:
-              'The session editing the draft; the copy then runs in its turn, and when no book is left out, its history marks the draft saved',
             schema: { type: 'string' },
           },
         ],
@@ -1776,7 +1781,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         ]),
         result: {
           name: 'return value',
-          summary: 'JSON-stringified { sessionId, readOnly, hasFreeTranslations }',
+          summary: 'JSON-stringified OpenedSession',
           schema: { type: 'string' },
         },
       },
@@ -1896,115 +1901,94 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  const writeGlossCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.writeGloss',
-    edits['interlinearizer.writeGloss'],
-    {
-      method: {
-        summary: "Write a token's gloss in a session's analysis language; a blank value clears it",
-        params: sessionArgs(
-          ...tokenParams,
-          {
-            name: 'value',
-            required: true,
-            summary: 'The gloss',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
-      },
-    },
-  );
+  const editRegistrations: UnsubscriberAsync[] = [];
+  async function registerEdit(
+    commandName: keyof typeof edits,
+    method: MethodDocumentationWithoutName,
+  ): Promise<void> {
+    editRegistrations.push(
+      await papi.commands.registerCommand(commandName, edits[commandName], { method }),
+    );
+  }
 
-  const approveAnalysisForTokenCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.approveAnalysisForToken',
-    edits['interlinearizer.approveAnalysisForToken'],
-    {
-      method: {
-        summary:
-          'Approve a stored token analysis for a token, in place of any approval the token held',
-        params: sessionArgs(
-          ...tokenParams,
-          {
-            name: 'analysisId',
-            required: true,
-            summary: 'Id of the stored token analysis to approve',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
+  await registerEdit('interlinearizer.writeGloss', {
+    summary: "Write a token's gloss in a session's analysis language; a blank value clears it",
+    params: sessionArgs(
+      ...tokenParams,
+      {
+        name: 'value',
+        required: true,
+        summary: 'The gloss',
+        schema: { type: 'string' },
       },
-    },
-  );
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
-  const writeMorphemesCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.writeMorphemes',
-    edits['interlinearizer.writeMorphemes'],
-    {
-      method: {
-        summary: "Write a token's morpheme breakdown",
-        params: sessionArgs(
-          ...tokenParams,
-          {
-            name: 'forms',
-            required: true,
-            summary: 'The morpheme forms, in order',
-            schema: { type: 'array', items: { type: 'string' } },
-          },
-          {
-            name: 'writingSystem',
-            required: true,
-            summary: 'BCP 47 tag of the writing system the forms are in',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
+  await registerEdit('interlinearizer.approveAnalysisForToken', {
+    summary: 'Approve a stored token analysis for a token, in place of any approval the token held',
+    params: sessionArgs(
+      ...tokenParams,
+      {
+        name: 'analysisId',
+        required: true,
+        summary: 'Id of the stored token analysis to approve',
+        schema: { type: 'string' },
       },
-    },
-  );
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
-  const deleteMorphemesCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.deleteMorphemes',
-    edits['interlinearizer.deleteMorphemes'],
-    {
-      method: {
-        summary: "Remove a token's morpheme breakdown",
-        params: sessionArgs(tokenParams[0], changeIdParam),
-        result: editResult,
+  await registerEdit('interlinearizer.writeMorphemes', {
+    summary: "Write a token's morpheme breakdown",
+    params: sessionArgs(
+      ...tokenParams,
+      {
+        name: 'forms',
+        required: true,
+        summary: 'The morpheme forms, in order',
+        schema: { type: 'array', items: { type: 'string' } },
       },
-    },
-  );
+      {
+        name: 'writingSystem',
+        required: true,
+        summary: 'BCP 47 tag of the writing system the forms are in',
+        schema: { type: 'string' },
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
-  const writeMorphemeGlossCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.writeMorphemeGloss',
-    edits['interlinearizer.writeMorphemeGloss'],
-    {
-      method: {
-        summary:
-          "Gloss one morpheme of a token's breakdown in a session's analysis language; a blank value clears the morpheme's gloss",
-        params: sessionArgs(
-          tokenParams[0],
-          {
-            name: 'morphemeId',
-            required: true,
-            summary: 'MorphemeAnalysis.id of the morpheme glossed',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'value',
-            required: true,
-            summary: 'The gloss',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
+  await registerEdit('interlinearizer.deleteMorphemes', {
+    summary: "Remove a token's morpheme breakdown",
+    params: sessionArgs(tokenParams[0], changeIdParam),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.writeMorphemeGloss', {
+    summary:
+      "Gloss one morpheme of a token's breakdown in a session's analysis language; a blank value clears the morpheme's gloss",
+    params: sessionArgs(
+      tokenParams[0],
+      {
+        name: 'morphemeId',
+        required: true,
+        summary: 'MorphemeAnalysis.id of the morpheme glossed',
+        schema: { type: 'string' },
       },
-    },
-  );
+      {
+        name: 'value',
+        required: true,
+        summary: 'The gloss',
+        schema: { type: 'string' },
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
   const staleAnalysisParam = {
     name: 'analysisId',
@@ -2013,49 +1997,37 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  const discardStaleAnalysisCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.discardStaleAnalysis',
-    edits['interlinearizer.discardStaleAnalysis'],
-    {
-      method: {
-        summary: 'Give up the place an analysis went stale at, leaving its other places alone',
-        params: sessionArgs(
-          staleAnalysisParam,
-          {
-            name: 'tokenRef',
-            required: true,
-            summary: 'Token.ref the stale link names',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
+  await registerEdit('interlinearizer.discardStaleAnalysis', {
+    summary: 'Give up the place an analysis went stale at, leaving its other places alone',
+    params: sessionArgs(
+      staleAnalysisParam,
+      {
+        name: 'tokenRef',
+        required: true,
+        summary: 'Token.ref the stale link names',
+        schema: { type: 'string' },
       },
-    },
-  );
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
-  const reapplyStaleAnalysisCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.reapplyStaleAnalysis',
-    edits['interlinearizer.reapplyStaleAnalysis'],
-    {
-      method: {
-        summary:
-          'Move an analysis from a place it went stale at onto a token, approving it there in place of whatever the token held',
-        params: sessionArgs(
-          staleAnalysisParam,
-          {
-            name: 'staleTokenRef',
-            required: true,
-            summary: 'Token.ref the stale link names',
-            schema: { type: 'string' },
-          },
-          ...tokenParams,
-          changeIdParam,
-        ),
-        result: editResult,
+  await registerEdit('interlinearizer.reapplyStaleAnalysis', {
+    summary:
+      'Move an analysis from a place it went stale at onto a token, approving it there in place of whatever the token held',
+    params: sessionArgs(
+      staleAnalysisParam,
+      {
+        name: 'staleTokenRef',
+        required: true,
+        summary: 'Token.ref the stale link names',
+        schema: { type: 'string' },
       },
-    },
-  );
+      ...tokenParams,
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
   const staleTranslationParam = {
     name: 'analysisId',
@@ -2064,45 +2036,33 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  const keepStaleFreeTranslationCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.keepStaleFreeTranslation',
-    edits['interlinearizer.keepStaleFreeTranslation'],
-    {
-      method: {
-        summary:
-          "Keep a stale free translation as a claim about a segment's current text, approving it for that segment",
-        params: sessionArgs(
-          staleTranslationParam,
-          {
-            name: 'segmentId',
-            required: true,
-            summary: 'Segment.id of the segment it is kept for',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'surfaceText',
-            required: true,
-            summary: "The segment's current baseline text",
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
+  await registerEdit('interlinearizer.keepStaleFreeTranslation', {
+    summary:
+      "Keep a stale free translation as a claim about a segment's current text, approving it for that segment",
+    params: sessionArgs(
+      staleTranslationParam,
+      {
+        name: 'segmentId',
+        required: true,
+        summary: 'Segment.id of the segment it is kept for',
+        schema: { type: 'string' },
       },
-    },
-  );
+      {
+        name: 'surfaceText',
+        required: true,
+        summary: "The segment's current baseline text",
+        schema: { type: 'string' },
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
-  const discardStaleFreeTranslationCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.discardStaleFreeTranslation',
-    edits['interlinearizer.discardStaleFreeTranslation'],
-    {
-      method: {
-        summary: 'Drop a stale free translation, one whose verse the book no longer holds included',
-        params: sessionArgs(staleTranslationParam, changeIdParam),
-        result: editResult,
-      },
-    },
-  );
+  await registerEdit('interlinearizer.discardStaleFreeTranslation', {
+    summary: 'Drop a stale free translation, one whose verse the book no longer holds included',
+    params: sessionArgs(staleTranslationParam, changeIdParam),
+    result: editResult,
+  });
 
   /** The field naming the token analysis that a catalog-wide edit acts on. */
   const catalogAnalysisParam = {
@@ -2119,153 +2079,110 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'array', items: { type: 'string' } },
   } as const;
 
-  const writeAnalysisGlossCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.writeAnalysisGloss',
-    edits['interlinearizer.writeAnalysisGloss'],
-    {
-      method: {
+  await registerEdit('interlinearizer.writeAnalysisGloss', {
+    summary:
+      "Write a token analysis's gloss in a session's analysis language, for every token linked to it; a blank value clears it",
+    params: sessionArgs(
+      catalogAnalysisParam,
+      { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.clearAnalysisGlosses', {
+    summary: "Clear the glosses of several token analyses in a session's analysis language",
+    params: sessionArgs(analysisIdsParam, changeIdParam),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.writeAnalysisMorphemes', {
+    summary:
+      "Re-split a token analysis's breakdown, for every token linked to it; no forms removes the breakdown",
+    params: sessionArgs(
+      catalogAnalysisParam,
+      {
+        name: 'forms',
+        required: true,
+        summary: "The breakdown's forms in order",
+        schema: { type: 'array', items: { type: 'string' } },
+      },
+      {
+        name: 'writingSystem',
+        required: true,
+        summary: 'Writing system the morphemes are tagged with',
+        schema: { type: 'string' },
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.confirmAnalysisMorphemes', {
+    summary: "Keep a token analysis's stale breakdown as it stands, for every token linked to it",
+    params: sessionArgs(
+      catalogAnalysisParam,
+      {
+        name: 'tokenRef',
+        required: false,
         summary:
-          "Write a token analysis's gloss in a session's analysis language, for every token linked to it; a blank value clears it",
-        params: sessionArgs(
-          catalogAnalysisParam,
-          { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
-          changeIdParam,
-        ),
-        result: editResult,
+          "Token.ref the undo step is placed at; omit to name the analysis's catalog row instead",
+        schema: { type: 'string' },
       },
-    },
-  );
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
-  const clearAnalysisGlossesCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.clearAnalysisGlosses',
-    edits['interlinearizer.clearAnalysisGlosses'],
-    {
-      method: {
-        summary: "Clear the glosses of several token analyses in a session's analysis language",
-        params: sessionArgs(analysisIdsParam, changeIdParam),
-        result: editResult,
+  await registerEdit('interlinearizer.writeAnalysisMorphemeGloss', {
+    summary:
+      "Write the gloss of one morpheme of a token analysis in a session's analysis language, for every token linked to it; a blank value clears it",
+    params: sessionArgs(
+      catalogAnalysisParam,
+      {
+        name: 'morphemeId',
+        required: true,
+        summary: 'MorphemeAnalysis.id of the morpheme glossed',
+        schema: { type: 'string' },
       },
-    },
-  );
+      { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
-  const writeAnalysisMorphemesCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.writeAnalysisMorphemes',
-    edits['interlinearizer.writeAnalysisMorphemes'],
-    {
-      method: {
-        summary:
-          "Re-split a token analysis's breakdown, for every token linked to it; no forms removes the breakdown",
-        params: sessionArgs(
-          catalogAnalysisParam,
-          {
-            name: 'forms',
-            required: true,
-            summary: "The breakdown's forms in order",
-            schema: { type: 'array', items: { type: 'string' } },
-          },
-          {
-            name: 'writingSystem',
-            required: true,
-            summary: 'Writing system the morphemes are tagged with',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
-      },
-    },
-  );
+  await registerEdit('interlinearizer.deleteAnalyses', {
+    summary: 'Remove token analyses with every token link to them',
+    params: sessionArgs(analysisIdsParam, changeIdParam),
+    result: editResult,
+  });
 
-  const confirmAnalysisMorphemesCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.confirmAnalysisMorphemes',
-    edits['interlinearizer.confirmAnalysisMorphemes'],
-    {
-      method: {
-        summary:
-          "Keep a token analysis's stale breakdown as it stands, for every token linked to it",
-        params: sessionArgs(
-          catalogAnalysisParam,
-          {
-            name: 'tokenRef',
-            required: false,
-            summary:
-              "Token.ref the undo step is placed at; omit to name the analysis's catalog row instead",
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
+  await registerEdit('interlinearizer.mergeAnalysesInto', {
+    summary:
+      "Fold token analyses into a survivor and write the settled content onto it, in a session's analysis language",
+    params: sessionArgs(
+      {
+        name: 'survivorAnalysisId',
+        required: true,
+        summary: 'Id of the token analysis kept',
+        schema: { type: 'string' },
       },
-    },
-  );
-
-  const writeAnalysisMorphemeGlossCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.writeAnalysisMorphemeGloss',
-    edits['interlinearizer.writeAnalysisMorphemeGloss'],
-    {
-      method: {
-        summary:
-          "Write the gloss of one morpheme of a token analysis in a session's analysis language, for every token linked to it; a blank value clears it",
-        params: sessionArgs(
-          catalogAnalysisParam,
-          {
-            name: 'morphemeId',
-            required: true,
-            summary: 'MorphemeAnalysis.id of the morpheme glossed',
-            schema: { type: 'string' },
-          },
-          { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
-          changeIdParam,
-        ),
-        result: editResult,
+      {
+        name: 'mergedAnalysisIds',
+        required: true,
+        summary: 'Ids of the token analyses folded in, most-preferred first',
+        schema: { type: 'array', items: { type: 'string' } },
       },
-    },
-  );
-
-  const deleteAnalysesCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.deleteAnalyses',
-    edits['interlinearizer.deleteAnalyses'],
-    {
-      method: {
-        summary: 'Remove token analyses with every token link to them',
-        params: sessionArgs(analysisIdsParam, changeIdParam),
-        result: editResult,
+      {
+        name: 'content',
+        required: true,
+        summary: 'MergedContent the survivor says once the merge settles',
+        schema: { type: 'object' },
       },
-    },
-  );
-
-  const mergeAnalysesIntoCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.mergeAnalysesInto',
-    edits['interlinearizer.mergeAnalysesInto'],
-    {
-      method: {
-        summary:
-          "Fold token analyses into a survivor and write the settled content onto it, in a session's analysis language",
-        params: sessionArgs(
-          {
-            name: 'survivorAnalysisId',
-            required: true,
-            summary: 'Id of the token analysis kept',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'mergedAnalysisIds',
-            required: true,
-            summary: 'Ids of the token analyses folded in, most-preferred first',
-            schema: { type: 'array', items: { type: 'string' } },
-          },
-          {
-            name: 'content',
-            required: true,
-            summary: 'MergedContent the survivor says once the merge settles',
-            schema: { type: 'object' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
-      },
-    },
-  );
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
   /** The field naming the phrase occurrence that a phrase edit acts on. */
   const phraseIdParam = {
@@ -2287,258 +2204,191 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   };
 
-  const createPhraseCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.createPhrase',
-    edits['interlinearizer.createPhrase'],
-    {
-      method: {
+  await registerEdit('interlinearizer.createPhrase', {
+    summary:
+      'Add an approved phrase occurrence, sharing a content-identical stored payload where one exists',
+    params: sessionArgs(
+      {
+        name: 'tokens',
+        required: true,
+        summary: "The phrase's token snapshots, in document order",
+        schema: tokenSnapshotsSchema,
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.updatePhrase', {
+    summary: 'Give a phrase occurrence a new token run, keeping its gloss; an empty run removes it',
+    params: sessionArgs(
+      phraseIdParam,
+      {
+        name: 'tokens',
+        required: true,
+        summary: 'The new token snapshots, in document order',
+        schema: tokenSnapshotsSchema,
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.deletePhrase', {
+    summary: 'Remove a phrase occurrence, with its payload unless another occurrence shares it',
+    params: sessionArgs(phraseIdParam, changeIdParam),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.mergePhrases', {
+    summary:
+      'Grow a phrase occurrence to a merged token run, removing the absorbed occurrence when named',
+    params: sessionArgs(
+      {
+        name: 'targetPhraseId',
+        required: true,
+        summary: 'PhraseAnalysisLink.id of the phrase occurrence that grows',
+        schema: { type: 'string' },
+      },
+      {
+        name: 'tokens',
+        required: true,
+        summary: 'The merged token snapshots, in document order',
+        schema: tokenSnapshotsSchema,
+      },
+      {
+        name: 'absorbedPhraseId',
+        required: false,
         summary:
-          'Add an approved phrase occurrence, sharing a content-identical stored payload where one exists',
-        params: sessionArgs(
-          {
-            name: 'tokens',
-            required: true,
-            summary: "The phrase's token snapshots, in document order",
-            schema: tokenSnapshotsSchema,
-          },
-          changeIdParam,
-        ),
-        result: editResult,
+          'PhraseAnalysisLink.id of the neighboring occurrence merged in; omit when the neighbor is in no phrase',
+        schema: { type: 'string' },
       },
-    },
-  );
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
-  const updatePhraseCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.updatePhrase',
-    edits['interlinearizer.updatePhrase'],
-    {
-      method: {
+  await registerEdit('interlinearizer.writePhraseGloss', {
+    summary:
+      "Write a phrase occurrence's gloss in a session's analysis language; a blank value clears it",
+    params: sessionArgs(
+      phraseIdParam,
+      {
+        name: 'value',
+        required: true,
+        summary: 'The gloss',
+        schema: { type: 'string' },
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.approvePhrase', {
+    summary: 'Approve a phrase occurrence, unless any of its tokens is in an approved phrase',
+    params: sessionArgs(phraseIdParam, changeIdParam),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.splitPhrase', {
+    summary:
+      "Split a phrase occurrence just after a token, in the document order of the token's book",
+    params: sessionArgs(
+      phraseIdParam,
+      {
+        name: 'splitAfterTokenRef',
+        required: true,
+        summary: 'Token.ref of the token the first half ends with',
+        schema: { type: 'string' },
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.writeSegmentFreeTranslation', {
+    summary:
+      "Write a segment's free translation in a session's analysis language; a blank value clears it",
+    params: sessionArgs(
+      {
+        name: 'segmentId',
+        required: true,
+        summary: 'Segment.id of the segment translated',
+        schema: { type: 'string' },
+      },
+      {
+        name: 'surfaceText',
+        required: true,
+        summary: "The segment's current baseline text",
+        schema: { type: 'string' },
+      },
+      {
+        name: 'value',
+        required: true,
+        summary: 'The free translation',
+        schema: { type: 'string' },
+      },
+      {
+        name: 'adoptStaleAnalysisId',
+        required: false,
         summary:
-          'Give a phrase occurrence a new token run, keeping its gloss; an empty run removes it',
-        params: sessionArgs(
-          phraseIdParam,
-          {
-            name: 'tokens',
-            required: true,
-            summary: 'The new token snapshots, in document order',
-            schema: tokenSnapshotsSchema,
-          },
-          changeIdParam,
-        ),
-        result: editResult,
+          'Id of the stale translation the value was typed over, adopted when the segment has no approved one; omit when there is none',
+        schema: { type: 'string' },
       },
-    },
-  );
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
-  const deletePhraseCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.deletePhrase',
-    edits['interlinearizer.deletePhrase'],
-    {
-      method: {
-        summary: 'Remove a phrase occurrence, with its payload unless another occurrence shares it',
-        params: sessionArgs(phraseIdParam, changeIdParam),
-        result: editResult,
+  await registerEdit('interlinearizer.mergeSegments', {
+    summary: 'Merge the segment beginning at a token into the one before it',
+    params: sessionArgs(
+      {
+        name: 'secondSegmentStartRef',
+        required: true,
+        summary: 'Token.ref of the first token of the segment merged away',
+        schema: { type: 'string' },
       },
-    },
-  );
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
-  const mergePhrasesCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.mergePhrases',
-    edits['interlinearizer.mergePhrases'],
-    {
-      method: {
-        summary:
-          'Grow a phrase occurrence to a merged token run, removing the absorbed occurrence when named',
-        params: sessionArgs(
-          {
-            name: 'targetPhraseId',
-            required: true,
-            summary: 'PhraseAnalysisLink.id of the phrase occurrence that grows',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'tokens',
-            required: true,
-            summary: 'The merged token snapshots, in document order',
-            schema: tokenSnapshotsSchema,
-          },
-          {
-            name: 'absorbedPhraseId',
-            required: false,
-            summary:
-              'PhraseAnalysisLink.id of the neighboring occurrence merged in; omit when the neighbor is in no phrase',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
+  await registerEdit('interlinearizer.splitSegment', {
+    summary:
+      'Split a segment so a new one begins at a token, first splitting every approved phrase the boundary would cut',
+    params: sessionArgs(
+      {
+        name: 'tokenRef',
+        required: true,
+        summary: 'Token.ref of the token the new segment begins with',
+        schema: { type: 'string' },
       },
-    },
-  );
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
-  const writePhraseGlossCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.writePhraseGloss',
-    edits['interlinearizer.writePhraseGloss'],
-    {
-      method: {
-        summary:
-          "Write a phrase occurrence's gloss in a session's analysis language; a blank value clears it",
-        params: sessionArgs(
-          phraseIdParam,
-          {
-            name: 'value',
-            required: true,
-            summary: 'The gloss',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
+  await registerEdit('interlinearizer.moveBoundary', {
+    summary:
+      'Move a segment boundary from one token to another, first splitting every approved phrase the moved boundary would cut',
+    params: sessionArgs(
+      {
+        name: 'fromRef',
+        required: true,
+        summary: 'Token.ref of the token that stops beginning a segment',
+        schema: { type: 'string' },
       },
-    },
-  );
-
-  const approvePhraseCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.approvePhrase',
-    edits['interlinearizer.approvePhrase'],
-    {
-      method: {
-        summary: 'Approve a phrase occurrence, unless any of its tokens is in an approved phrase',
-        params: sessionArgs(phraseIdParam, changeIdParam),
-        result: editResult,
+      {
+        name: 'toRef',
+        required: true,
+        summary: 'Token.ref of the token that begins a segment instead',
+        schema: { type: 'string' },
       },
-    },
-  );
-
-  const splitPhraseCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.splitPhrase',
-    edits['interlinearizer.splitPhrase'],
-    {
-      method: {
-        summary:
-          "Split a phrase occurrence just after a token, in the document order of the token's book",
-        params: sessionArgs(
-          phraseIdParam,
-          {
-            name: 'splitAfterTokenRef',
-            required: true,
-            summary: 'Token.ref of the token the first half ends with',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
-      },
-    },
-  );
-
-  const writeSegmentFreeTranslationCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.writeSegmentFreeTranslation',
-    edits['interlinearizer.writeSegmentFreeTranslation'],
-    {
-      method: {
-        summary:
-          "Write a segment's free translation in a session's analysis language; a blank value clears it",
-        params: sessionArgs(
-          {
-            name: 'segmentId',
-            required: true,
-            summary: 'Segment.id of the segment translated',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'surfaceText',
-            required: true,
-            summary: "The segment's current baseline text",
-            schema: { type: 'string' },
-          },
-          {
-            name: 'value',
-            required: true,
-            summary: 'The free translation',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'adoptStaleAnalysisId',
-            required: false,
-            summary:
-              'Id of the stale translation the value was typed over, adopted when the segment has no approved one; omit when there is none',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
-      },
-    },
-  );
-
-  const mergeSegmentsCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.mergeSegments',
-    edits['interlinearizer.mergeSegments'],
-    {
-      method: {
-        summary: 'Merge the segment beginning at a token into the one before it',
-        params: sessionArgs(
-          {
-            name: 'secondSegmentStartRef',
-            required: true,
-            summary: 'Token.ref of the first token of the segment merged away',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
-      },
-    },
-  );
-
-  const splitSegmentCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.splitSegment',
-    edits['interlinearizer.splitSegment'],
-    {
-      method: {
-        summary:
-          'Split a segment so a new one begins at a token, first splitting every approved phrase the boundary would cut',
-        params: sessionArgs(
-          {
-            name: 'tokenRef',
-            required: true,
-            summary: 'Token.ref of the token the new segment begins with',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
-      },
-    },
-  );
-
-  const moveBoundaryCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.moveBoundary',
-    edits['interlinearizer.moveBoundary'],
-    {
-      method: {
-        summary:
-          'Move a segment boundary from one token to another, first splitting every approved phrase the moved boundary would cut',
-        params: sessionArgs(
-          {
-            name: 'fromRef',
-            required: true,
-            summary: 'Token.ref of the token that stops beginning a segment',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'toRef',
-            required: true,
-            summary: 'Token.ref of the token that begins a segment instead',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: editResult,
-      },
-    },
-  );
+      changeIdParam,
+    ),
+    result: editResult,
+  });
 
   const discardResult = {
     name: 'return value',
@@ -2547,60 +2397,42 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  const discardBookCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.discardBook',
-    edits['interlinearizer.discardBook'],
-    {
-      method: {
-        summary:
-          "Discard the unsaved changes to one book of a session's draft, restoring what the project it saves to holds for the book",
-        params: sessionArgs(
-          {
-            name: 'bookCode',
-            required: true,
-            summary: 'Three-letter code of the book discarded',
-            schema: { type: 'string' },
-          },
-          changeIdParam,
-        ),
-        result: discardResult,
+  await registerEdit('interlinearizer.discardBook', {
+    summary:
+      "Discard the unsaved changes to one book of a session's draft, restoring what the project it saves to holds for the book",
+    params: sessionArgs(
+      {
+        name: 'bookCode',
+        required: true,
+        summary: 'Three-letter code of the book discarded',
+        schema: { type: 'string' },
       },
-    },
-  );
+      changeIdParam,
+    ),
+    result: discardResult,
+  });
 
-  const discardAllCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.discardAll',
-    edits['interlinearizer.discardAll'],
-    {
-      method: {
-        summary:
-          "Discard every unsaved change to a session's draft, restoring what the project it saves to holds",
-        params: sessionArgs(changeIdParam),
-        result: discardResult,
-      },
-    },
-  );
+  await registerEdit('interlinearizer.discardAll', {
+    summary:
+      "Discard every unsaved change to a session's draft, restoring what the project it saves to holds",
+    params: sessionArgs(changeIdParam),
+    result: discardResult,
+  });
 
-  const previewRemovalsCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.previewRemovals',
-    edits['interlinearizer.previewRemovals'],
-    {
-      method: {
-        summary: "Name the token analyses a command would remove from a session's draft",
-        params: sessionArgs({
-          name: 'request',
-          required: true,
-          summary: 'RemovalPreviewRequest naming the command by intent, with its arguments',
-          schema: { type: 'object' },
-        }),
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified ids of the token analyses; "[]" when it would remove none',
-          schema: { type: 'string' },
-        },
-      },
+  await registerEdit('interlinearizer.previewRemovals', {
+    summary: "Name the token analyses a command would remove from a session's draft",
+    params: sessionArgs({
+      name: 'request',
+      required: true,
+      summary: 'RemovalPreviewRequest naming the command by intent, with its arguments',
+      schema: { type: 'object' },
+    }),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified ids of the token analyses; "[]" when it would remove none',
+      schema: { type: 'string' },
     },
-  );
+  });
 
   const checkIndexesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.checkIndexes',
@@ -3035,6 +2867,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   );
 
   context.registrations.add(
+    ...editRegistrations,
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
     continuousScrollValidatorRegistration,
@@ -3060,36 +2893,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     redoEditCommandRegistration,
     checkIndexesCommandRegistration,
     getFullAnalysisCommandRegistration,
-    writeGlossCommandRegistration,
-    approveAnalysisForTokenCommandRegistration,
-    writeMorphemesCommandRegistration,
-    deleteMorphemesCommandRegistration,
-    writeMorphemeGlossCommandRegistration,
-    discardStaleAnalysisCommandRegistration,
-    reapplyStaleAnalysisCommandRegistration,
-    keepStaleFreeTranslationCommandRegistration,
-    discardStaleFreeTranslationCommandRegistration,
-    writeAnalysisGlossCommandRegistration,
-    clearAnalysisGlossesCommandRegistration,
-    writeAnalysisMorphemesCommandRegistration,
-    confirmAnalysisMorphemesCommandRegistration,
-    writeAnalysisMorphemeGlossCommandRegistration,
-    deleteAnalysesCommandRegistration,
-    mergeAnalysesIntoCommandRegistration,
-    createPhraseCommandRegistration,
-    updatePhraseCommandRegistration,
-    deletePhraseCommandRegistration,
-    mergePhrasesCommandRegistration,
-    writePhraseGlossCommandRegistration,
-    approvePhraseCommandRegistration,
-    splitPhraseCommandRegistration,
-    writeSegmentFreeTranslationCommandRegistration,
-    mergeSegmentsCommandRegistration,
-    splitSegmentCommandRegistration,
-    moveBoundaryCommandRegistration,
-    discardBookCommandRegistration,
-    discardAllCommandRegistration,
-    previewRemovalsCommandRegistration,
     setPerfMarksCommandRegistration,
     setSkipSessionReadsCommandRegistration,
     sessionIdForCommandRegistration,

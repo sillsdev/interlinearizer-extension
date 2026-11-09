@@ -1,6 +1,7 @@
 import type { Book } from 'interlinearizer';
 import { sessionEditHandlers, type SessionEditHost } from '../../services/sessionEditHandlers';
 import { BOOK, GLOSSED, ref, sessionOver } from '../cache/session-source';
+import { FIXTURE_STAMPS, makeStubProject, makeTokenLink } from '../test-helpers';
 
 /** Handlers over a session on {@link GLOSSED}, reading `book` for GEN unless a test overrides it. */
 async function handlersOver(overrides: Partial<SessionEditHost> = {}, book: Book = BOOK) {
@@ -14,6 +15,16 @@ async function handlersOver(overrides: Partial<SessionEditHost> = {}, book: Book
     ...overrides,
   };
   return { ...made, host, edits: sessionEditHandlers(host) };
+}
+
+/** Points the session's draft at saving to the interlinear project `proj-1`. */
+async function saveToProject(
+  sessions: Awaited<ReturnType<typeof handlersOver>>['sessions'],
+  sessionId: string,
+) {
+  await sessions.run(sessionId, async (session) => {
+    session.scope = { kind: 'draft', sourceProjectId: 'src', interlinearProjectId: 'proj-1' };
+  });
 }
 
 describe('sessionEditHandlers', () => {
@@ -75,6 +86,39 @@ describe('sessionEditHandlers', () => {
 
     const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
     expect(draft.analysis.tokenAnalyses).toStrictEqual([]);
+  });
+
+  it('restores what the project that the draft saves to holds when its changes are discarded', async () => {
+    const saved = {
+      ...makeStubProject('proj-1'),
+      analysis: {
+        ...makeStubProject().analysis,
+        tokenAnalyses: [
+          { id: 'ta-deity', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'Deity' } },
+        ],
+        tokenAnalysisLinks: [
+          makeTokenLink('ta-deity', ref('God'), { surfaceText: 'God', id: 'tl-deity' }),
+        ],
+      },
+    };
+    const getProject = jest.fn(async () => saved);
+    const { edits, sessionId, sessions } = await handlersOver({ getProject });
+    await saveToProject(sessions, sessionId);
+
+    await edits['interlinearizer.discardAll']({ sessionId });
+
+    expect(getProject).toHaveBeenCalledWith('proj-1');
+    const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(draft.analysis.tokenAnalyses.map((ta) => ta.gloss)).toStrictEqual([{ en: 'Deity' }]);
+  });
+
+  it('refuses a discard when the project that the draft saves to is not stored', async () => {
+    const { edits, sessionId, sessions } = await handlersOver();
+    await saveToProject(sessions, sessionId);
+
+    await expect(edits['interlinearizer.discardAll']({ sessionId })).rejects.toThrow(
+      'interlinear project proj-1 is not stored',
+    );
   });
 
   it('logs an edit that fails before rethrowing it', async () => {

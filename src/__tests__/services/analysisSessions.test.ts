@@ -18,7 +18,7 @@ import type { ChangeBuffer } from '../../services/commands/changeBuffer';
 import { DraftRepository } from '../../services/draftRepository';
 import type { EditOptions } from '../../services/editHistory';
 import { Pt9ImportRepository } from '../../services/pt9ImportRepository';
-import { draftKey } from '../../services/storageKeys';
+import { draftAnalysisKey, draftKey } from '../../services/storageKeys';
 import * as sessionPages from '../../services/sessionPages';
 import { LinkedAnalysisDeleteError } from '../../types/linked-analysis-delete-error';
 import { ReadOnlyAnalysisError } from '../../types/read-only-analysis-error';
@@ -128,12 +128,31 @@ describe('AnalysisSessions', () => {
         readOnly: false,
         hasFreeTranslations: false,
         projectMissing: false,
+        unreadableBooks: [],
       });
       expect(host.openDraftRepository).toHaveBeenCalledWith(SOURCE);
       await expect(sessions.run(opened.sessionId, async ({ scope }) => scope)).resolves.toEqual({
         kind: 'draft',
         sourceProjectId: SOURCE,
       });
+    });
+
+    it('names the books whose stored analysis could not be read', async () => {
+      const { sessions, seedDraft, storage } = makeSessions();
+      await seedDraft({
+        ...emptyDraft(SOURCE),
+        analysisLanguages: ['en'],
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'In' }],
+          tokenAnalysisLinks: [makeTokenLink('ta-in', 'GEN 1:1:0')],
+        },
+      });
+      await storage.write(draftAnalysisKey(SOURCE, 'GEN'), 'not json');
+
+      const opened = await sessions.open(SOURCE);
+
+      expect(opened.unreadableBooks).toStrictEqual(['GEN']);
     });
 
     it("builds the repository's indexes once it opens, without waiting for a command", async () => {

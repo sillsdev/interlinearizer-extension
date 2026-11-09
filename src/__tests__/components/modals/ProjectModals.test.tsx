@@ -796,12 +796,12 @@ describe('ProjectModals', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledTimes(1);
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftAsProject',
+        SESSION_ID,
         'source-proj',
         ['en'],
         undefined,
         'NewName',
         'NewDesc',
-        SESSION_ID,
       );
       // The copy landed, so the draft counts the save.
       expect(outcomes).toEqual([true]);
@@ -817,12 +817,12 @@ describe('ProjectModals', () => {
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveDraftAsProject',
+          SESSION_ID,
           'source-proj',
           ['en'],
           undefined,
           'NewName',
           'NewDesc',
-          SESSION_ID,
         ),
       );
     });
@@ -851,12 +851,12 @@ describe('ProjectModals', () => {
       await act(async () => release());
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftAsProject',
+        SESSION_ID,
         'source-proj',
         ['en'],
         undefined,
         'NewName',
         'NewDesc',
-        SESSION_ID,
       );
     });
 
@@ -939,10 +939,10 @@ describe('ProjectModals', () => {
       await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftToProject',
+        SESSION_ID,
         'source-proj',
         'proj-1',
         { analysisLanguages: ['en'], targetProjectId: undefined },
-        SESSION_ID,
       );
       expect(outcomes).toEqual([true]);
     });
@@ -957,10 +957,10 @@ describe('ProjectModals', () => {
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveDraftToProject',
+          SESSION_ID,
           'source-proj',
           'proj-1',
           { analysisLanguages: ['en'], targetProjectId: undefined },
-          SESSION_ID,
         ),
       );
     });
@@ -977,10 +977,10 @@ describe('ProjectModals', () => {
       await act(async () => release());
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftToProject',
+        SESSION_ID,
         'source-proj',
         'proj-1',
         { analysisLanguages: ['en'], targetProjectId: undefined },
-        SESSION_ID,
       );
     });
 
@@ -1110,10 +1110,10 @@ describe('ProjectModals', () => {
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveDraftToProject',
+          SESSION_ID,
           'source-proj',
           'proj-1',
           { analysisLanguages: ['sw', 'fr'], targetProjectId: 'tgt-9' },
-          SESSION_ID,
         ),
       );
       expect(papi.commands.sendCommand).toHaveBeenCalledTimes(1);

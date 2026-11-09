@@ -24,7 +24,7 @@ function renderProject(
   const initialProps: ViewProps = { saveTargetId, importProjectId };
   return renderHook(
     (props: ViewProps) =>
-      useSessionProject('src', 'en', {
+      useSessionProject('src', {
         saveTargetId: props.saveTargetId,
         importProjectId: props.importProjectId,
         importVersion: props.importVersion,
@@ -131,7 +131,7 @@ describe('useSessionProject', () => {
     let renders = 0;
     const { result } = renderHook(() => {
       renders += 1;
-      return useSessionProject('src', 'en', {
+      return useSessionProject('src', {
         saveTargetId: undefined,
         importProjectId: undefined,
         importVersion: undefined,
@@ -553,6 +553,19 @@ describe('useSessionProject starting over', () => {
     expect(onProjectMissing).toHaveBeenCalledTimes(1);
   });
 
+  it('asks no session to save to a missing project while the view still names it', async () => {
+    await fakeHost();
+    replyProjectMissing('gone');
+
+    const { result } = renderProject('gone', undefined, jest.fn());
+
+    await waitFor(() => expect(result.current.session).toBeDefined());
+    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+      'interlinearizer.setSaveTarget',
+      expect.anything(),
+    );
+  });
+
   it('tells the view nothing once its session opens on a project the source has', async () => {
     await fakeHost();
     const onProjectMissing = jest.fn();
@@ -794,7 +807,7 @@ describe('useSessionProject edits sent to the session', () => {
     expect(fullReads()).toBe(reads + 1);
   });
 
-  it('leaves the draft as it was when a discard fails', async () => {
+  it('leaves the draft as it was and rethrows when a discard fails', async () => {
     await fakeHost(async (command) => {
       if (command === 'interlinearizer.discardAll') throw new Error('refused');
       return undefined;
@@ -805,15 +818,11 @@ describe('useSessionProject edits sent to the session', () => {
     const reads = fullReads();
 
     await act(async () => {
-      await result.current.discardAll();
+      await expect(result.current.discardAll()).rejects.toThrow('refused');
     });
 
     expect(result.current.draftVersion).toBe(version);
     expect(fullReads()).toBe(reads);
-    expect(logger.error).toHaveBeenCalledWith(
-      'Interlinearizer: failed to discard changes',
-      expect.any(Error),
-    );
   });
 
   it('logs a draft it cannot read again after a discard', async () => {
@@ -964,6 +973,24 @@ describe('useSessionProject whole-text read', () => {
         expect.any(Error),
       ),
     );
+  });
+
+  it('asks again when the text is next requested after a read could not be started', async () => {
+    let attempts = 0;
+    await fakeHost(async (command) => {
+      if (command !== 'interlinearizer.getTextReadStatus') return undefined;
+      attempts += 1;
+      if (attempts === 1) throw new Error('offline');
+      return JSON.stringify(READ);
+    });
+    const { result } = renderProject();
+    await waitFor(() => expect(result.current.session).toBeDefined());
+    act(() => result.current.session?.requestTextRead());
+    await waitFor(() => expect(logger.warn).toHaveBeenCalled());
+
+    act(() => result.current.session?.requestTextRead());
+
+    await waitFor(() => expect(attempts).toBe(2));
   });
 
   it("starts a fresh session's read when the text was requested of an earlier session", async () => {

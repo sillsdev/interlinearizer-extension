@@ -86,20 +86,22 @@ const SKIPPED_READ_DESCRIPTIONS: Record<string, string> = {
 };
 
 /**
- * What the host-path sections measured in results that lack `hostScriptureSaveAfterRead`. Those
- * were recorded when a session's read still started at open.
+ * What the host-path sections measured in results that have `hostOpen` but lack
+ * `hostScriptureSaveAfterRead`. Those were recorded when a session's read still started at open.
  */
 const READ_AT_OPEN_DESCRIPTIONS: Record<string, string> = {
   'app.hostOpen':
     "On the host path, a new view opens on the tier's book while the session's whole-text read starts. The view's first pages wait only for the re-anchor passes queued before them.",
-  'app.hostScriptureSave': SECTION_DESCRIPTIONS['app.hostScriptureSaveAfterRead'],
+  'app.hostScriptureSave':
+    "As the Scripture save above, on the host path with the session's whole-text read finished, so the host watches every book.",
 };
 
 /** {@link READ_AT_OPEN_DESCRIPTIONS} for results whose sessions read no text. */
 const READ_AT_OPEN_SKIPPED_DESCRIPTIONS: Record<string, string> = {
   'app.hostOpen':
     "On the host path, a new view opens on the tier's book, with the session reading no text.",
-  'app.hostScriptureSave': SKIPPED_READ_DESCRIPTIONS['app.hostScriptureSaveAfterRead'],
+  'app.hostScriptureSave':
+    'As the Scripture save above, on the host path with the session reading no text.',
 };
 
 /** The memory reading every other one in its section is taken against. */
@@ -363,7 +365,7 @@ function report(result: Json): string {
     DATASET_NOTE,
     ...tierProblems(tiers),
   ].filter(Boolean);
-  const readAtOpen = !sections.has('hostScriptureSaveAfterRead');
+  const readAtOpen = sections.has('hostOpen') && !sections.has('hostScriptureSaveAfterRead');
   const tables = [...sections].map(([section, rows]) => {
     const caveat = kind === 'app' && section === 'memory' ? memoryCaveat(tiers) : undefined;
     const key = `${kind}.${section}`;

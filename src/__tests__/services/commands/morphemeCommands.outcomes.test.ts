@@ -1,6 +1,5 @@
 /// <reference types="jest" />
 
-import type { MorphemeAnalysis } from 'interlinearizer';
 import {
   deleteMorphemes as deleteMorphemesCommand,
   writeMorphemeGloss as writeMorphemeGlossCommand,
@@ -11,10 +10,9 @@ import { FIXTURE_STAMPS } from '../../test-helpers';
 import {
   analysisOf,
   EARLIER,
-  expectOutcome,
-  ids,
   LATER,
   link,
+  morpheme,
   NOW,
   OTHER_TOKEN,
   type CommandCase,
@@ -23,13 +21,9 @@ import {
   TOKEN,
 } from './command-runs';
 
-function morpheme(id: string, form: string, fields: Partial<MorphemeAnalysis> = {}) {
-  return { id, form, writingSystem: 'en', ...fields };
-}
-
 /** A breakdown as the WebView prepares one: a fresh id per form. */
 const forms = (...list: string[]) => list.map((form, i) => ({ id: `new-m-${i}`, form }));
-const CAT_S = [morpheme('m-cat', 'cat'), morpheme('m-s', '-s')];
+const CAT_S = [morpheme('m-cat', 'cat', 'en'), morpheme('m-s', '-s', 'en')];
 
 type MorphemesInput = {
   surfaceText?: string;
@@ -49,10 +43,19 @@ describe('writeMorphemes', () => {
             payload('new-analysis', 'cats', {
               createdAt: NOW,
               updatedAt: NOW,
-              morphemes: [morpheme('new-m-0', 'cat'), morpheme('new-m-1', '-s')],
+              morphemes: [morpheme('new-m-0', 'cat', 'en'), morpheme('new-m-1', '-s', 'en')],
             }),
           ]);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['new-link']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'new-link',
+              analysisId: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'cats' },
+            },
+          ]);
         },
       },
     ],
@@ -65,7 +68,18 @@ describe('writeMorphemes', () => {
         ),
         input: { morphemes: forms('cat', '-s') },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-cats']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-cats',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'cats',
+              morphemes: [
+                { id: 'm-cat', form: 'cat', writingSystem: 'en' },
+                { id: 'm-s', form: '-s', writingSystem: 'en' },
+              ],
+            },
+          ]);
           expect(result.tokenAnalysisLinks.find(({ id }) => id === 'new-link')?.analysisId).toBe(
             'ta-cats',
           );
@@ -100,7 +114,7 @@ describe('writeMorphemes', () => {
             payload('ta-cats', 'cats', {
               updatedAt: NOW,
               gloss: { en: 'cats' },
-              morphemes: [morpheme('new-m-0', 'cat'), morpheme('new-m-1', '-s')],
+              morphemes: [morpheme('new-m-0', 'cat', 'en'), morpheme('new-m-1', '-s', 'en')],
             }),
           ]);
         },
@@ -113,11 +127,11 @@ describe('writeMorphemes', () => {
           [
             payload('ta-cats', 'cats', {
               morphemes: [
-                morpheme('m-cat', 'cat', {
+                morpheme('m-cat', 'cat', 'en', {
                   gloss: { en: 'feline' },
                   senseRef: { authority: 'fwlite', senseId: 's-cat' },
                 }),
-                morpheme('m-s', '-s', { gloss: { en: 'PL' } }),
+                morpheme('m-s', '-s', 'en', { gloss: { en: 'PL' } }),
               ],
               morphemesStale: true,
             }),
@@ -130,11 +144,11 @@ describe('writeMorphemes', () => {
             payload('ta-cats', 'cats,', {
               updatedAt: NOW,
               morphemes: [
-                morpheme('m-cat', 'cat', {
+                morpheme('m-cat', 'cat', 'en', {
                   gloss: { en: 'feline' },
                   senseRef: { authority: 'fwlite', senseId: 's-cat' },
                 }),
-                morpheme('new-m-1', 's'),
+                morpheme('new-m-1', 's', 'en'),
               ],
             }),
           ]);
@@ -149,8 +163,8 @@ describe('writeMorphemes', () => {
           [
             payload('ta-baba', 'baba', {
               morphemes: [
-                morpheme('m-1', 'ba', { gloss: { en: 'first' } }),
-                morpheme('m-2', 'ba', { gloss: { en: 'second' } }),
+                morpheme('m-1', 'ba', 'en', { gloss: { en: 'first' } }),
+                morpheme('m-2', 'ba', 'en', { gloss: { en: 'second' } }),
               ],
             }),
           ],
@@ -172,7 +186,7 @@ describe('writeMorphemes', () => {
         analysis: analysisOf(
           [
             payload('ta-cats', 'cats', {
-              morphemes: [morpheme('m-cat', 'cat', { gloss: { en: 'feline' } })],
+              morphemes: [morpheme('m-cat', 'cat', 'en', { gloss: { en: 'feline' } })],
             }),
           ],
           [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
@@ -180,8 +194,8 @@ describe('writeMorphemes', () => {
         input: { writingSystem: 'en-Latn', morphemes: forms('cat', '-s') },
         expectResult: (result) => {
           expect(result.tokenAnalyses[0].morphemes).toStrictEqual([
-            morpheme('m-cat', 'cat', { writingSystem: 'en-Latn', gloss: { en: 'feline' } }),
-            morpheme('new-m-1', '-s', { writingSystem: 'en-Latn' }),
+            morpheme('m-cat', 'cat', 'en', { writingSystem: 'en-Latn', gloss: { en: 'feline' } }),
+            morpheme('new-m-1', '-s', 'en', { writingSystem: 'en-Latn' }),
           ]);
         },
       },
@@ -198,7 +212,28 @@ describe('writeMorphemes', () => {
         ),
         input: { morphemes: forms('ca', 'ts') },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['new-analysis', 'ta-cats']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'cats',
+              morphemes: [
+                { id: 'new-m-0', form: 'ca', writingSystem: 'en' },
+                { id: 'new-m-1', form: 'ts', writingSystem: 'en' },
+              ],
+            },
+            {
+              id: 'ta-cats',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'cats',
+              morphemes: [
+                { id: 'm-cat', form: 'cat', writingSystem: 'en' },
+                { id: 'm-s', form: '-s', writingSystem: 'en' },
+              ],
+            },
+          ]);
           expect(result.tokenAnalyses.find(({ id }) => id === 'ta-cats')?.morphemes).toStrictEqual(
             CAT_S,
           );
@@ -217,7 +252,18 @@ describe('writeMorphemes', () => {
         ),
         input: { morphemes: forms('cat', '-s') },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-cats']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-cats',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'cats',
+              morphemes: [
+                { id: 'm-cat', form: 'cat', writingSystem: 'en' },
+                { id: 'm-s', form: '-s', writingSystem: 'en' },
+              ],
+            },
+          ]);
           expect(
             result.tokenAnalysisLinks.every(({ analysisId }) => analysisId === 'ta-cats'),
           ).toBe(true);
@@ -230,7 +276,7 @@ describe('writeMorphemes', () => {
         analysis: analysisOf(
           [
             payload('ta-split', 'cats', {
-              morphemes: [morpheme('m-ca', 'ca'), morpheme('m-ts', 'ts')],
+              morphemes: [morpheme('m-ca', 'ca', 'en'), morpheme('m-ts', 'ts', 'en')],
             }),
             payload('ta-cats', 'Cats', { ...EARLIER, morphemes: CAT_S, morphemesStale: true }),
           ],
@@ -241,7 +287,18 @@ describe('writeMorphemes', () => {
         ),
         input: { morphemes: forms('cat', '-s') },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-cats']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-cats',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'Cats',
+              morphemes: [
+                { id: 'm-cat', form: 'cat', writingSystem: 'en' },
+                { id: 'm-s', form: '-s', writingSystem: 'en' },
+              ],
+            },
+          ]);
           expect(result.tokenAnalyses[0].morphemesStale).toBeUndefined();
           expect(
             result.tokenAnalysisLinks.every(({ analysisId }) => analysisId === 'ta-cats'),
@@ -255,7 +312,7 @@ describe('writeMorphemes', () => {
         analysis: analysisOf(
           [
             payload('ta-split', 'cats', {
-              morphemes: [morpheme('m-ca', 'ca'), morpheme('m-ts', 'ts')],
+              morphemes: [morpheme('m-ca', 'ca', 'en'), morpheme('m-ts', 'ts', 'en')],
             }),
             payload('ta-cats', 'cats', { ...EARLIER, morphemes: CAT_S }),
           ],
@@ -281,7 +338,7 @@ describe('writeMorphemes', () => {
       {
         analysis: analysisOf(
           [
-            payload('ta-old', 'cats', { morphemes: [morpheme('m-old', 'cats')] }),
+            payload('ta-old', 'cats', { morphemes: [morpheme('m-old', 'cats', 'en')] }),
             payload('ta-new', 'cats', { morphemes: CAT_S }),
           ],
           [
@@ -295,7 +352,7 @@ describe('writeMorphemes', () => {
             result.tokenAnalyses.find(({ id }) => id === 'ta-new')?.morphemes?.map((m) => m.form),
           ).toStrictEqual(['ca', 'ts']);
           expect(result.tokenAnalyses.find(({ id }) => id === 'ta-old')?.morphemes).toStrictEqual([
-            morpheme('m-old', 'cats'),
+            morpheme('m-old', 'cats', 'en'),
           ]);
         },
       },
@@ -319,7 +376,16 @@ describe('writeMorphemes', () => {
         analysis: analysisOf([], [link('tl-orphan', 'ta-missing', TOKEN, 'cats')]),
         input: { morphemes: forms('cat', '-s') },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['new-link']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'new-link',
+              analysisId: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'cats' },
+            },
+          ]);
         },
       },
     ],
@@ -340,7 +406,7 @@ describe('writeMorphemes', () => {
       }),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
   });
 });
 
@@ -361,8 +427,8 @@ describe('writeMorphemeGloss', () => {
             payload('ta-cats', 'cats', {
               updatedAt: NOW,
               morphemes: [
-                morpheme('m-cat', 'cat', { gloss: { en: 'feline' } }),
-                morpheme('m-s', '-s'),
+                morpheme('m-cat', 'cat', 'en', { gloss: { en: 'feline' } }),
+                morpheme('m-s', '-s', 'en'),
               ],
               morphemesStale: true,
             }),
@@ -377,7 +443,7 @@ describe('writeMorphemeGloss', () => {
         analysis: analysisOf(
           [
             payload('ta-cats', 'cats', {
-              morphemes: [morpheme('m-cat', 'cat', { gloss: { en: 'feline', fr: 'chat' } })],
+              morphemes: [morpheme('m-cat', 'cat', 'en', { gloss: { en: 'feline', fr: 'chat' } })],
             }),
           ],
           [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
@@ -397,7 +463,7 @@ describe('writeMorphemeGloss', () => {
         analysis: analysisOf(
           [
             payload('ta-cats', 'cats', {
-              morphemes: [morpheme('m-cat', 'cat', { gloss: { en: 'feline' } })],
+              morphemes: [morpheme('m-cat', 'cat', 'en', { gloss: { en: 'feline' } })],
             }),
           ],
           [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
@@ -405,7 +471,10 @@ describe('writeMorphemeGloss', () => {
         input: { value: '  ' },
         expectResult: (result) => {
           expect(result.tokenAnalyses).toStrictEqual([
-            payload('ta-cats', 'cats', { updatedAt: NOW, morphemes: [morpheme('m-cat', 'cat')] }),
+            payload('ta-cats', 'cats', {
+              updatedAt: NOW,
+              morphemes: [morpheme('m-cat', 'cat', 'en')],
+            }),
           ]);
         },
       },
@@ -416,7 +485,7 @@ describe('writeMorphemeGloss', () => {
         analysis: analysisOf(
           [
             payload('ta-cats', 'cats', {
-              morphemes: [morpheme('m-cat', 'cat', { gloss: { en: 'feline', fr: 'chat' } })],
+              morphemes: [morpheme('m-cat', 'cat', 'en', { gloss: { en: 'feline', fr: 'chat' } })],
             }),
           ],
           [link('tl-cats', 'ta-cats', TOKEN, 'cats')],
@@ -434,7 +503,7 @@ describe('writeMorphemeGloss', () => {
           [
             payload('ta-cats', 'cats', {
               morphemes: [
-                morpheme('m-cat', 'cat', {
+                morpheme('m-cat', 'cat', 'en', {
                   gloss: { en: 'feline' },
                   senseRef: { authority: 'fwlite', senseId: 's-cat' },
                 }),
@@ -446,7 +515,7 @@ describe('writeMorphemeGloss', () => {
         input: { value: '' },
         expectResult: (result) => {
           expect(result.tokenAnalyses[0].morphemes).toStrictEqual([
-            morpheme('m-cat', 'cat', { senseRef: { authority: 'fwlite', senseId: 's-cat' } }),
+            morpheme('m-cat', 'cat', 'en', { senseRef: { authority: 'fwlite', senseId: 's-cat' } }),
           ]);
         },
       },
@@ -477,7 +546,28 @@ describe('writeMorphemeGloss', () => {
         ),
         input: { value: 'feline' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['new-analysis', 'ta-cats']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'cats',
+              morphemes: [
+                { id: 'm-cat', form: 'cat', writingSystem: 'en', gloss: { en: 'feline' } },
+                { id: 'm-s', form: '-s', writingSystem: 'en' },
+              ],
+            },
+            {
+              id: 'ta-cats',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'cats',
+              morphemes: [
+                { id: 'm-cat', form: 'cat', writingSystem: 'en' },
+                { id: 'm-s', form: '-s', writingSystem: 'en' },
+              ],
+            },
+          ]);
           expect(
             result.tokenAnalyses.find(({ id }) => id === 'new-analysis')?.morphemes?.[0].gloss,
           ).toStrictEqual({ en: 'feline' });
@@ -496,8 +586,8 @@ describe('writeMorphemeGloss', () => {
             payload('ta-glossed', 'cats', {
               ...EARLIER,
               morphemes: [
-                morpheme('m-cat-2', 'cat', { gloss: { en: 'feline' } }),
-                morpheme('m-s-2', '-s'),
+                morpheme('m-cat-2', 'cat', 'en', { gloss: { en: 'feline' } }),
+                morpheme('m-s-2', '-s', 'en'),
               ],
               morphemesStale: true,
             }),
@@ -509,7 +599,18 @@ describe('writeMorphemeGloss', () => {
         ),
         input: { value: 'feline' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-glossed']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-glossed',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'cats',
+              morphemes: [
+                { id: 'm-cat-2', form: 'cat', writingSystem: 'en', gloss: { en: 'feline' } },
+                { id: 'm-s-2', form: '-s', writingSystem: 'en' },
+              ],
+            },
+          ]);
           expect(result.tokenAnalyses[0].morphemesStale).toBeUndefined();
           expect(
             result.tokenAnalysisLinks.every(({ analysisId }) => analysisId === 'ta-glossed'),
@@ -524,13 +625,13 @@ describe('writeMorphemeGloss', () => {
           [
             payload('ta-glossed', 'cats', {
               morphemes: [
-                morpheme('m-cat', 'cat', { gloss: { en: 'feline' } }),
-                morpheme('m-s', '-s'),
+                morpheme('m-cat', 'cat', 'en', { gloss: { en: 'feline' } }),
+                morpheme('m-s', '-s', 'en'),
               ],
             }),
             payload('ta-bare', 'cats', {
               ...EARLIER,
-              morphemes: [morpheme('m-cat-2', 'cat'), morpheme('m-s-2', '-s')],
+              morphemes: [morpheme('m-cat-2', 'cat', 'en'), morpheme('m-s-2', '-s', 'en')],
             }),
           ],
           [
@@ -540,7 +641,18 @@ describe('writeMorphemeGloss', () => {
         ),
         input: { value: '' },
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-bare']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-bare',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2025-06-01T00:00:00.000Z',
+              surfaceText: 'cats',
+              morphemes: [
+                { id: 'm-cat-2', form: 'cat', writingSystem: 'en' },
+                { id: 'm-s-2', form: '-s', writingSystem: 'en' },
+              ],
+            },
+          ]);
           expect(
             result.tokenAnalysisLinks.every(({ analysisId }) => analysisId === 'ta-bare'),
           ).toBe(true);
@@ -611,7 +723,7 @@ describe('writeMorphemeGloss', () => {
       }),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
   });
 });
 
@@ -678,7 +790,16 @@ describe('deleteMorphemes', () => {
           expect(result.tokenAnalyses).toStrictEqual([
             payload('ta-cats', 'cats', { updatedAt: NOW }),
           ]);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-rejected']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-rejected',
+              analysisId: 'ta-cats',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'rejected',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'cats' },
+            },
+          ]);
         },
       },
     ],
@@ -755,7 +876,26 @@ describe('deleteMorphemes', () => {
           ],
         ),
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['new-analysis', 'ta-cats']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'cats',
+              gloss: { en: 'cats' },
+            },
+            {
+              id: 'ta-cats',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'cats',
+              gloss: { en: 'cats' },
+              morphemes: [
+                { id: 'm-cat', form: 'cat', writingSystem: 'en' },
+                { id: 'm-s', form: '-s', writingSystem: 'en' },
+              ],
+            },
+          ]);
           expect(result.tokenAnalyses.find(({ id }) => id === 'ta-cats')?.morphemes).toStrictEqual(
             CAT_S,
           );
@@ -776,7 +916,16 @@ describe('deleteMorphemes', () => {
           expect(result.tokenAnalyses).toStrictEqual([
             payload('ta-cats', 'cats', { morphemes: CAT_S }),
           ]);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-other']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-other',
+              analysisId: 'ta-cats',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:2:0', surfaceText: 'cats' },
+            },
+          ]);
         },
       },
     ],
@@ -794,7 +943,15 @@ describe('deleteMorphemes', () => {
           ],
         ),
         expectResult: (result) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-plain']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-plain',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2025-06-01T00:00:00.000Z',
+              surfaceText: 'Cats',
+              gloss: { en: 'cats' },
+            },
+          ]);
           expect(
             result.tokenAnalysisLinks.every(({ analysisId }) => analysisId === 'ta-plain'),
           ).toBe(true);
@@ -841,6 +998,6 @@ describe('deleteMorphemes', () => {
       deleteMorphemesCommand(buffer, { tokenRef: TOKEN, analysisId: 'new-analysis', now: NOW }),
     );
 
-    expectOutcome(outcome, expectResult);
+    expectResult(outcome.result);
   });
 });

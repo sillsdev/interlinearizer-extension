@@ -59,6 +59,8 @@ export type OpenedSession = {
    * session then opened on the draft, which saves to no project.
    */
   projectMissing: boolean;
+  /** The books whose stored analysis could not be read, which the session opened without. */
+  unreadableBooks: string[];
 };
 
 /** How a session applies an edit. */
@@ -381,7 +383,7 @@ export class AnalysisSessions {
         scope.kind === 'pt9Import'
           ? this.host.openPt9ImportRepository(scope.interlinearProjectId)
           : this.host.openDraftRepository(sourceProjectId);
-      const { draft: opened } = await repository.exportAll();
+      const { draft: opened, unreadableBooks } = await repository.exportAll();
       // Kept unsaved, because the draft is all that is left of the missing project's work.
       if (!found && importProjectId === undefined && !isEmptyDraft(opened) && !opened.dirty)
         await repository.apply({ intent: 'detachFromProject' });
@@ -412,6 +414,7 @@ export class AnalysisSessions {
         readOnly: repository.capabilities.readOnly,
         hasFreeTranslations: analysisHasFreeTranslations(opened.analysis),
         projectMissing: !found,
+        unreadableBooks,
       };
     });
   }

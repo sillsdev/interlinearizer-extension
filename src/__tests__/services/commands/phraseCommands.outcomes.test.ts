@@ -18,7 +18,7 @@ import {
 } from '../../../services/commands/phraseCommands';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../../test-helpers';
-import { EARLIER, ids, NOW, type CommandCase, runCommand } from './command-runs';
+import { EARLIER, NOW, type CommandCase, runCommand } from './command-runs';
 
 const STAMP = { forkId: 'fork', now: NOW };
 const NEW = { linkId: 'new-link', analysisId: 'new-analysis' };
@@ -61,10 +61,7 @@ const linkOf = (result: TextAnalysis, id: string) =>
 const payloadOf = (result: TextAnalysis, id: string) =>
   result.phraseAnalyses.find((pa) => pa.id === id);
 
-/**
- * Runs `analysis` through `command`, checking its result with `expectResult` and its indexes for
- * consistency.
- */
+/** Runs `analysis` through `command`, checking its result with `expectResult`. */
 async function expectOutcome(
   { analysis, expectResult }: Omit<CommandCase<unknown>, 'input'>,
   command: (buffer: ChangeBuffer) => Promise<void>,
@@ -72,7 +69,6 @@ async function expectOutcome(
   const outcome = await runCommand(analysis, 'en', command);
 
   expectResult(outcome.result);
-  expect(outcome.indexDifferences).toStrictEqual([]);
 }
 
 describe('createPhrase', () => {
@@ -135,7 +131,21 @@ describe('createPhrase', () => {
         ),
         input: run(1, 0, 1),
         expectResult: (result) => {
-          expect(ids(result.phraseAnalyses)).toStrictEqual(['new-analysis', 'pa-in-the']);
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In the',
+            },
+            {
+              id: 'pa-in-the',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the',
+              gloss: { en: 'at first' },
+            },
+          ]);
         },
       },
     ],
@@ -182,7 +192,22 @@ describe('updatePhrase', () => {
         ),
         input: { phraseId: 'pl-1', tokens: run(1, 0, 1, 2) },
         expectResult: (result) => {
-          expect(ids(result.phraseAnalyses)).toStrictEqual(['fork', 'pa-1']);
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'fork',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In the beginning',
+              gloss: { en: 'in the' },
+            },
+            {
+              id: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the',
+              gloss: { en: 'in the' },
+            },
+          ]);
           expect(payloadOf(result, 'pa-1')?.surfaceText).toBe('In the');
           expect(payloadOf(result, 'fork')).toStrictEqual({
             id: 'fork',
@@ -206,7 +231,15 @@ describe('updatePhrase', () => {
         ),
         input: { phraseId: 'pl-1', tokens: run(1, 0, 1, 2) },
         expectResult: (result) => {
-          expect(ids(result.phraseAnalyses)).toStrictEqual(['pa-2']);
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'pa-2',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2025-06-01T00:00:00.000Z',
+              surfaceText: 'in the beginning',
+              gloss: { en: 'x' },
+            },
+          ]);
           expect(linkOf(result, 'pl-1')).toStrictEqual(
             link('pl-1', 'pa-2', run(1, 0, 1, 2), { updatedAt: NOW }),
           );
@@ -246,8 +279,27 @@ describe('updatePhrase', () => {
         ),
         input: { phraseId: 'pl-1', tokens: [] },
         expectResult: (result) => {
-          expect(ids(result.phraseAnalyses)).toStrictEqual(['pa-1']);
-          expect(ids(result.phraseAnalysisLinks)).toStrictEqual(['pl-2']);
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the',
+            },
+          ]);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-2',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:2:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:2:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
         },
       },
     ],
@@ -269,7 +321,19 @@ describe('updatePhrase', () => {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: { phraseId: 'pl-unknown', tokens: [] },
         expectResult: (result) => {
-          expect(ids(result.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
         },
       },
     ],
@@ -304,8 +368,27 @@ describe('deletePhrase', () => {
         ),
         input: 'pl-1',
         expectResult: (result) => {
-          expect(ids(result.phraseAnalyses)).toStrictEqual(['pa-1']);
-          expect(ids(result.phraseAnalysisLinks)).toStrictEqual(['pl-2']);
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the',
+            },
+          ]);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-2',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'rejected',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
         },
       },
     ],
@@ -325,7 +408,19 @@ describe('deletePhrase', () => {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: 'pl-unknown',
         expectResult: (result) => {
-          expect(ids(result.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
         },
       },
     ],
@@ -355,7 +450,21 @@ describe('mergePhrases', () => {
           expect(result.phraseAnalyses).toStrictEqual([
             payload('pa-1', 'In the beginning God', { gloss: { en: 'in the' }, updatedAt: NOW }),
           ]);
-          expect(ids(result.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+                { tokenRef: 'GEN 1:1:2', surfaceText: 'beginning' },
+                { tokenRef: 'GEN 1:1:3', surfaceText: 'God' },
+              ],
+            },
+          ]);
         },
       },
     ],
@@ -394,7 +503,14 @@ describe('mergePhrases', () => {
         ),
         input: { targetPhraseId: 'pl-1', tokens: run(1, 0, 1, 2) },
         expectResult: (result) => {
-          expect(ids(result.phraseAnalyses)).toStrictEqual(['pa-3']);
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'pa-3',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2025-06-01T00:00:00.000Z',
+              surfaceText: 'In the beginning',
+            },
+          ]);
           expect(linkOf(result, 'pl-1')?.analysisId).toBe('pa-3');
         },
       },
@@ -499,7 +615,15 @@ describe('writePhraseGloss', () => {
         ),
         input: { value: 'b' },
         expectResult: (result) => {
-          expect(ids(result.phraseAnalyses)).toStrictEqual(['pa-2']);
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'pa-2',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2025-06-01T00:00:00.000Z',
+              surfaceText: 'in the',
+              gloss: { en: 'b' },
+            },
+          ]);
           expect(linkOf(result, 'pl-1')).toStrictEqual(
             link('pl-1', 'pa-2', run(1, 0, 1), { updatedAt: NOW }),
           );
@@ -565,7 +689,19 @@ describe('writePhraseGloss', () => {
           expect(result.phraseAnalyses).toStrictEqual([
             payload('pa-1', 'In the', { updatedAt: NOW }),
           ]);
-          expect(ids(result.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
         },
       },
     ],
@@ -751,7 +887,19 @@ describe('splitPhrase split', () => {
         ),
         input: { splitAfterTokenRef: 'GEN 1:1:0' },
         expectResult: (result) => {
-          expect(ids(result.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+                { tokenRef: 'GEN 1:1:2', surfaceText: 'beginning' },
+              ],
+            },
+          ]);
           expect(linkOf(result, 'pl-1')?.tokens).toStrictEqual(run(1, 1, 2));
         },
       },
@@ -765,7 +913,19 @@ describe('splitPhrase split', () => {
         ),
         input: { splitAfterTokenRef: 'GEN 1:1:1' },
         expectResult: (result) => {
-          expect(ids(result.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
           expect(linkOf(result, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1));
         },
       },
@@ -814,7 +974,26 @@ describe('splitPhrase split', () => {
         ),
         input: { splitAfterTokenRef: 'GEN 1:1:1' },
         expectResult: (result) => {
-          expect(ids(result.phraseAnalyses)).toStrictEqual(['fork', 'pa-1', 'pa-bg']);
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'fork',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In the',
+            },
+            {
+              id: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the beginning God',
+            },
+            {
+              id: 'pa-bg',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'beginning God',
+            },
+          ]);
           expect(linkOf(result, 'pl-1')?.analysisId).toBe('fork');
           expect(linkOf(result, 'new-link')?.analysisId).toBe('pa-bg');
         },

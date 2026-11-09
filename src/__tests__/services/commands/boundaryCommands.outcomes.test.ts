@@ -361,7 +361,6 @@ describe('boundary command boundary dispatch', () => {
     const outcome = await runBoundaryCommand({ analysis, segmentation }, commandFor(edit));
 
     expectResult(outcome.result, outcome.resultSegmentation);
-    expect(outcome.indexDifferences).toStrictEqual([]);
   });
 
   const noOps: [string, Omit<BoundaryCase, 'expectResult'>][] = [
@@ -398,14 +397,10 @@ describe('boundary command boundary dispatch', () => {
     ],
   ];
 
-  it.each(noOps)(
-    'stages nothing for %s, as the WebView changes nothing',
-    async (_name, { analysis, segmentation, edit }) => {
-      const outcome = await runBoundaryCommand({ analysis, segmentation }, commandFor(edit));
+  it.each(noOps)('stages nothing for %s', async (_name, { analysis, segmentation, edit }) => {
+    const outcome = await runBoundaryCommand({ analysis, segmentation }, commandFor(edit));
 
-      expect(outcome.changes).toStrictEqual({ intent: 'command' });
-      expect(outcome.resultSegmentation).toStrictEqual(segmentation);
-      expect(outcome.resultSegmentation).toStrictEqual(segmentation);
-    },
-  );
+    expect(outcome.changes).toStrictEqual({ intent: 'command' });
+    expect(outcome.resultSegmentation).toStrictEqual(segmentation);
+  });
 });

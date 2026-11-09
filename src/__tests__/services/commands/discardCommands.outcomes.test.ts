@@ -96,8 +96,40 @@ describe('unsaved-change discard', () => {
         saved: savedInBothBooks,
         edit: GEN,
         expectResult: ({ result }) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-exo-now', 'ta-gen-saved']);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-exo-now', 'tl-gen-saved']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-exo-now',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'And',
+              gloss: { en: 'and' },
+            },
+            {
+              id: 'ta-gen-saved',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+          ]);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-exo-now',
+              analysisId: 'ta-exo-now',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'EXO 1:1:0', surfaceText: 'In' },
+            },
+            {
+              id: 'tl-gen-saved',
+              analysisId: 'ta-gen-saved',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -117,7 +149,15 @@ describe('unsaved-change discard', () => {
         edit: GEN,
         expectResult: ({ result }) => {
           expect(result.tokenAnalysisLinks).toStrictEqual([link('tl-gen', 'ta-saved', GEN_TOKEN)]);
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-saved']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-saved',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+          ]);
         },
       },
     ],
@@ -147,8 +187,25 @@ describe('unsaved-change discard', () => {
         saved: undefined,
         edit: GEN,
         expectResult: ({ result }) => {
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-exo-now']);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-exo-now']);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-exo-now',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'And',
+              gloss: { en: 'and' },
+            },
+          ]);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-exo-now',
+              analysisId: 'ta-exo-now',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'EXO 1:1:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -253,7 +310,24 @@ describe('unsaved-change discard', () => {
         },
         edit: ALL,
         expectResult: ({ result, resultSegmentation }) => {
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-exo-saved', 'tl-gen-saved']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-exo-saved',
+              analysisId: 'ta-exo-saved',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'EXO 1:1:0', surfaceText: 'In' },
+            },
+            {
+              id: 'tl-gen-saved',
+              analysisId: 'ta-gen-saved',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+            },
+          ]);
           expect(resultSegmentation).toStrictEqual({
             removedVerseStarts: ['GEN 1:2:0'],
             addedStarts: [],
@@ -284,7 +358,16 @@ describe('unsaved-change discard', () => {
         edit: GEN,
         expectResult: ({ result, unreadableShards }) => {
           expect(unreadableShards).toStrictEqual(['not json']);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-exo-now']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-exo-now',
+              analysisId: 'ta-exo-now',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'EXO 1:1:0', surfaceText: 'In' },
+            },
+          ]);
         },
       },
     ],
@@ -303,8 +386,25 @@ describe('unsaved-change discard', () => {
         edit: ALL,
         expectResult: ({ result, unreadableShards }) => {
           expect(unreadableShards).toStrictEqual(['not json']);
-          expect(ids(result.tokenAnalysisLinks)).toStrictEqual(['tl-exo-shared']);
-          expect(ids(result.tokenAnalyses)).toStrictEqual(['ta-shared']);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              id: 'tl-exo-shared',
+              analysisId: 'ta-shared',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              token: { tokenRef: 'EXO 1:1:0', surfaceText: 'In' },
+            },
+          ]);
+          expect(result.tokenAnalyses).toStrictEqual([
+            {
+              id: 'ta-shared',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In',
+              gloss: { en: 'at' },
+            },
+          ]);
         },
       },
     ],
@@ -359,6 +459,5 @@ describe('unsaved-change discard', () => {
     const outcome = await runDiscardCommand(seed, saved, edit);
 
     expectResult(outcome);
-    expect(outcome.indexDifferences).toStrictEqual([]);
   });
 });

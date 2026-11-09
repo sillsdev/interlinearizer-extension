@@ -425,7 +425,7 @@ function editsSent(): unknown[] {
  * clean and resolves to `project` as JSON.
  */
 async function answerSave(project: object, args: unknown[]): Promise<string> {
-  const sessionId = args[4];
+  const sessionId = args[1];
   if (typeof sessionId !== 'string') throw new Error('Expected a Save under a session');
   await host.sessions.run(sessionId, (session) => session.repository.markClean());
   return JSON.stringify(project);
@@ -735,7 +735,6 @@ function analysisWithFreeTranslation(): TextAnalysis {
  * @param interfaceMode - Value for `platform.interfaceMode`; defaults to `'simple'`.
  * @param interfaceLanguage - Value for `platform.interfaceLanguage`; defaults to `[]`.
  * @param isInterfaceModeLoading - Whether `platform.interfaceMode` is still loading.
- * @param isInterfaceLanguageLoading - Whether `platform.interfaceLanguage` is still loading.
  * @throws {Error} When `useSetting` is called with any key other than `platform.interfaceMode` or
  *   `platform.interfaceLanguage` (message: `useSetting mock: unexpected key "<key>"`).
  */
@@ -743,13 +742,12 @@ function mockSettings(
   interfaceMode: 'simple' | 'power' = 'simple',
   interfaceLanguage: string[] = [],
   isInterfaceModeLoading = false,
-  isInterfaceLanguageLoading = false,
 ): void {
   jest.mocked(useSetting).mockImplementation((key: string) => {
     if (key === 'platform.interfaceMode')
       return [interfaceMode, jest.fn(), jest.fn(), isInterfaceModeLoading];
     if (key === 'platform.interfaceLanguage')
-      return [interfaceLanguage, jest.fn(), jest.fn(), isInterfaceLanguageLoading];
+      return [interfaceLanguage, jest.fn(), jest.fn(), false];
     throw new Error(`useSetting mock: unexpected key "${key}"`);
   });
 }
@@ -1493,7 +1491,6 @@ describe('InterlinearizerLoader', () => {
     });
 
     await userEvent.click(screen.getByTestId('continuous-scroll-toggle'));
-    await flushHost();
     expect(onChangeByKey.get('interlinearizer.continuousScroll')).toHaveBeenCalledWith(true);
   });
 
@@ -1582,7 +1579,6 @@ describe('InterlinearizerLoader', () => {
     });
 
     await userEvent.click(screen.getByTestId('show-morphology-toggle'));
-    await flushHost();
     expect(onChangeByKey.get('interlinearizer.showMorphology')).toHaveBeenCalledWith(true);
   });
 
@@ -1601,7 +1597,6 @@ describe('InterlinearizerLoader', () => {
     expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(false);
 
     await userEvent.click(screen.getByTestId('show-morphology-toggle'));
-    await flushHost();
 
     expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(true);
   });
@@ -1624,7 +1619,6 @@ describe('InterlinearizerLoader', () => {
     });
 
     await userEvent.click(screen.getByTestId('show-free-translation-toggle'));
-    await flushHost();
     expect(onChangeByKey.get('interlinearizer.showFreeTranslation')).toHaveBeenCalledWith(true);
   });
 
@@ -1653,7 +1647,6 @@ describe('InterlinearizerLoader', () => {
     await act(async () =>
       renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
     );
-    await flushHost();
 
     expect(capturedStoreProps?.analysisLanguage).toBe('fr');
   });
@@ -1666,27 +1659,6 @@ describe('InterlinearizerLoader', () => {
     });
 
     expect(capturedStoreProps?.analysisLanguage).toBe('fr');
-  });
-
-  it('waits for interfaceLanguage to load before seeding a draft that has no analysis language', async () => {
-    // While loading, the setting reports its `['und']` default.
-    mockSettings('simple', ['und'], false, true);
-    const view = await act(async () => renderLoader());
-
-    mockSettings('simple', ['en']);
-    await flushHost(async () => {
-      view.rerender(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          webViewId={testWebViewId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-          updateWebViewDefinition={view.updateWebViewDefinition}
-        />,
-      );
-    });
-
-    expect(capturedStoreProps?.analysisLanguage).toBe('en');
   });
 
   it('passes the platform language to ProjectModals as defaultAnalysisLanguage', async () => {
@@ -1867,9 +1839,7 @@ describe('InterlinearizerLoader', () => {
       mockSendCommand.mockClear();
 
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('tab-toolbar-save-as'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
       await flushHost();
 
@@ -1911,7 +1881,6 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportPrompt_yes%' }),
       );
-      await flushHost();
 
       expect(await screen.findByTestId('pt9-import-report')).toBeInTheDocument();
       expect(screen.queryByTestId('pt9-convert-prompt-message')).not.toBeInTheDocument();
@@ -1932,7 +1901,6 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportPrompt_yes%' }),
       );
-      await flushHost();
       await screen.findByTestId('pt9-import-report');
 
       expect(
@@ -1942,7 +1910,6 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
       );
-      await flushHost();
 
       expect(await screen.findByTestId('pt9-import-banner')).toBeInTheDocument();
     });
@@ -2044,9 +2011,7 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
-      await flushHost();
 
       expect(await screen.findByTestId('pt9-import-report')).toBeInTheDocument();
       expect(screen.queryByTestId('pt9-convert-prompt-message')).not.toBeInTheDocument();
@@ -2060,15 +2025,12 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
-      await flushHost();
 
       expect(await screen.findByTestId('pt9-import-report')).toBeInTheDocument();
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
       );
-      await flushHost();
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
@@ -2132,15 +2094,12 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
-      await flushHost();
       await screen.findByTestId('pt9-import-report');
 
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
       );
-      await flushHost();
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'select');
     });
@@ -2151,9 +2110,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
-      await flushHost();
 
       const error = await screen.findByTestId('pt9-import-error');
       expect(error).toHaveTextContent('%interlinearizer_pt9ImportModal_failed%');
@@ -2187,9 +2144,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
-      await flushHost();
 
       const error = await screen.findByTestId('pt9-import-error');
       expect(error).toHaveTextContent('%interlinearizer_pt9ImportModal_tooLarge%');
@@ -2207,7 +2162,6 @@ describe('InterlinearizerLoader', () => {
       await renderImportView();
 
       await userEvent.click(screen.getByTestId('pt9-sync-button'));
-      await flushHost();
 
       expect(await screen.findByTestId('pt9-import-report')).toBeInTheDocument();
       expect(
@@ -2216,7 +2170,6 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
       );
-      await flushHost();
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
         'data-active-project-updated',
@@ -2255,7 +2208,6 @@ describe('InterlinearizerLoader', () => {
       await renderImportView();
 
       await userEvent.click(screen.getByTestId('pt9-sync-button'));
-      await flushHost();
 
       expect(screen.getByTestId('pt9-import-stale-kept')).toBeInTheDocument();
       expect(screen.getByTestId('pt9-files-too-large')).toBeInTheDocument();
@@ -2288,9 +2240,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-open-import'));
-      await flushHost();
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
@@ -2315,9 +2265,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-open-import'));
-      await flushHost();
 
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.importPt9Project',
@@ -2343,9 +2291,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-open-import'));
-      await flushHost();
 
       expect(await screen.findByTestId('pt9-import-running')).toHaveTextContent(
         '%interlinearizer_pt9ImportModal_syncing%',
@@ -2397,9 +2343,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-open-import'));
-      await flushHost();
 
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
         message: '%interlinearizer_warning_pt9Sync_failed%',
@@ -2424,11 +2368,9 @@ describe('InterlinearizerLoader', () => {
       await renderImportView();
 
       await userEvent.click(screen.getByTestId('pt9-copy-button'));
-      await flushHost();
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_copyModal_create%' }),
       );
-      await flushHost();
 
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.createEditableCopy',
@@ -2452,9 +2394,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-open-import'));
-      await flushHost();
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
       // The stale summary opened untouched: the pre-sync timestamp is still the one cached.
@@ -2470,9 +2410,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
-      await flushHost();
 
       expect(await screen.findByTestId('pt9-import-error')).toBeInTheDocument();
     });
@@ -2486,9 +2424,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-open-import'));
-      await flushHost();
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
@@ -2565,9 +2501,7 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-open-import'));
-      await flushHost();
 
       expect(await screen.findByTestId('pt9-import-banner')).toBeInTheDocument();
       await waitFor(() =>
@@ -2601,7 +2535,6 @@ describe('InterlinearizerLoader', () => {
           }),
         }),
       );
-      await flushHost();
 
       expect(await screen.findByTestId('pt9-import-banner')).toBeInTheDocument();
       expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
@@ -2613,9 +2546,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
-      await flushHost();
 
       expect(await screen.findByTestId('pt9-import-error')).toBeInTheDocument();
     });
@@ -2628,9 +2559,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
-      await flushHost();
       await screen.findByTestId('pt9-import-report');
 
       jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
@@ -2642,7 +2571,6 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
       );
-      await flushHost();
 
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
         message: '%interlinearizer_error_load_projects_failed%',
@@ -2677,19 +2605,15 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
-      await flushHost();
       await screen.findByTestId('pt9-import-report');
 
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
       );
-      await flushHost();
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_close%' }),
       );
-      await flushHost();
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'select');
 
       await flushHost(async () => {
@@ -2721,15 +2645,12 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-import-pt9'));
-      await flushHost();
       await screen.findByTestId('pt9-import-report');
 
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportModal_open%' }),
       );
-      await flushHost();
 
       expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
         'Interlinearizer: failed to load the imported project for opening',
@@ -2748,11 +2669,9 @@ describe('InterlinearizerLoader', () => {
       await renderImportView();
 
       await userEvent.click(screen.getByTestId('pt9-copy-button'));
-      await flushHost();
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_copyModal_create%' }),
       );
-      await flushHost();
 
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
         message: '%interlinearizer_error_createEditableCopy_failed%',
@@ -2766,7 +2685,6 @@ describe('InterlinearizerLoader', () => {
       await renderImportView();
 
       await userEvent.click(screen.getByTestId('pt9-copy-button'));
-      await flushHost();
       expect(screen.getByTestId('copy-to-editable-modal-title')).toBeInTheDocument();
       mockSendCommand.mockClear();
       await userEvent.click(
@@ -2793,11 +2711,9 @@ describe('InterlinearizerLoader', () => {
       await renderImportView();
 
       await userEvent.click(screen.getByTestId('pt9-copy-button'));
-      await flushHost();
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_copyModal_create%' }),
       );
-      await flushHost();
 
       expect(logger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to copy the imported project',
@@ -2813,7 +2729,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
 
       expect(screen.getByTestId('select-modal')).toBeInTheDocument();
     });
@@ -2836,7 +2751,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('create-modal-close'));
       await flushHost();
 
@@ -2850,7 +2764,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-close'));
       await flushHost();
 
@@ -2863,9 +2776,7 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-create-new'));
-      await flushHost();
 
       expect(screen.getByTestId('create-modal')).toBeInTheDocument();
     });
@@ -2876,9 +2787,7 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-create-new'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('create-modal-created'));
       await flushHost();
 
@@ -2892,14 +2801,12 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-select'));
       await flushHost();
 
       expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
       // After selection the view-project-info button becomes available, confirming activeProject is set
       await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
-      await flushHost();
       expect(screen.getByTestId('metadata-modal')).toBeInTheDocument();
     });
 
@@ -2910,11 +2817,8 @@ describe('InterlinearizerLoader', () => {
 
       // Select a project so activeProject is set
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-select'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
-      await flushHost();
 
       expect(screen.getByTestId('metadata-modal')).toBeInTheDocument();
     });
@@ -2936,11 +2840,8 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-select'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('metadata-modal-close'));
       await flushHost();
 
@@ -2954,11 +2855,8 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-select'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('metadata-modal-deleted'));
       await flushHost();
 
@@ -3084,11 +2982,8 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('select-modal-select'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('metadata-modal-saved'));
       await flushHost();
 
@@ -3220,7 +3115,6 @@ describe('InterlinearizerLoader', () => {
         });
 
         await userEvent.click(screen.getByTestId('tab-toolbar-lexicon-chooser'));
-        await flushHost();
 
         await waitFor(() =>
           expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
@@ -3322,14 +3216,12 @@ describe('InterlinearizerLoader', () => {
 
       result?.updateWebViewDefinition.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
-      await flushHost();
 
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftToProject',
+        expect.any(String),
         testProjectId,
         'proj-1',
-        undefined,
-        expect.any(String),
       );
       await waitFor(() =>
         expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({
@@ -3590,7 +3482,6 @@ describe('InterlinearizerLoader', () => {
       await renderOnLoadedBook();
 
       await userEvent.click(screen.getByTestId('lost-boundaries-dismiss'));
-      await flushHost();
 
       expect(onDismiss).toHaveBeenCalledTimes(1);
     });
@@ -3600,7 +3491,6 @@ describe('InterlinearizerLoader', () => {
       await renderOnLoadedBook();
 
       await userEvent.click(screen.getByTestId('lost-boundaries-dismiss'));
-      await flushHost();
 
       // The banner is read-only: the anchors themselves stay for a source that reverts.
       expect(editsSent()).toEqual([]);
@@ -3862,7 +3752,6 @@ describe('InterlinearizerLoader', () => {
       await renderOnLoadedBook();
 
       await userEvent.click(screen.getByTestId('stale-review-glosses'));
-      await flushHost();
 
       expect(screen.getAllByTestId('catalog-row').map((row) => row.dataset.analysisId)).toEqual([
         'ta-gen',
@@ -3874,10 +3763,8 @@ describe('InterlinearizerLoader', () => {
       mockStaleAnalyses({ glossCount: 1 });
       await renderOnLoadedBook();
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
 
       await userEvent.click(screen.getByTestId('stale-review-glosses'));
-      await flushHost();
 
       expect(screen.getAllByTestId('catalog-row').map((row) => row.dataset.analysisId)).toEqual([
         'ta-gen',
@@ -3889,7 +3776,6 @@ describe('InterlinearizerLoader', () => {
       const setScrRef = await renderOnLoadedBook({ book: THREE_VERSE_BOOK });
 
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
-      await flushHost();
 
       expect(setScrRef).toHaveBeenLastCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 3 });
     });
@@ -3900,7 +3786,6 @@ describe('InterlinearizerLoader', () => {
       await renderOnLoadedBook({ book: THREE_VERSE_BOOK });
 
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
-      await flushHost();
 
       expect(probeFocusRequest).toBe('GEN 1:3');
     });
@@ -3911,7 +3796,6 @@ describe('InterlinearizerLoader', () => {
       await renderOnLoadedBook({ book: THREE_VERSE_BOOK });
 
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
-      await flushHost();
 
       expect(probeRecenterRequest).toEqual({
         ref: { book: 'GEN', chapterNum: 1, verseNum: 3 },
@@ -3926,7 +3810,6 @@ describe('InterlinearizerLoader', () => {
       });
       await renderWithHeldScrRef(THREE_VERSE_BOOK, 3);
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
-      await flushHost();
       expect(probeFocusRequest).toBe('GEN 1:1');
 
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
@@ -4000,7 +3883,6 @@ describe('InterlinearizerLoader', () => {
       await renderOnLoadedBook({ book: THREE_VERSE_BOOK });
 
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
-      await flushHost();
 
       expect(onChangeByKey.get('interlinearizer.showFreeTranslation')).toHaveBeenCalledWith(true);
     });
@@ -4021,7 +3903,6 @@ describe('InterlinearizerLoader', () => {
       await renderOnLoadedBook();
 
       await userEvent.click(screen.getByTestId('stale-analyses-dismiss'));
-      await flushHost();
 
       expect(onDismiss).toHaveBeenCalledTimes(1);
     });
@@ -4048,11 +3929,9 @@ describe('InterlinearizerLoader', () => {
       await act(async () =>
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
       );
-      await flushHost();
 
       mockSendCommand.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
-      await flushHost();
 
       // Nothing was pending, so the stored draft is already current: Save's first command is the
       // host copy, carrying only ids. The host marks the stored draft clean itself, so no draft
@@ -4062,13 +3941,7 @@ describe('InterlinearizerLoader', () => {
           ([command]) => command !== 'interlinearizer.getFullAnalysis',
         ),
       ).toEqual([
-        [
-          'interlinearizer.saveDraftToProject',
-          testProjectId,
-          'proj-1',
-          undefined,
-          expect.any(String),
-        ],
+        ['interlinearizer.saveDraftToProject', expect.any(String), testProjectId, 'proj-1'],
       ]);
     });
 
@@ -4095,7 +3968,6 @@ describe('InterlinearizerLoader', () => {
         probeWriteGloss?.('GEN 1:1:0', 'In', 'edited');
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
-      await flushHost();
 
       // The stub surfaces the cached activeProject's updatedAt, so the refreshed value proves the
       // fold reached WebView state.
@@ -4117,13 +3989,11 @@ describe('InterlinearizerLoader', () => {
       await act(async () =>
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: seeded }) }),
       );
-      await flushHost();
 
       await flushHost(() => {
         probeWriteGloss?.('GEN 1:1:0', 'In', 'edited');
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
-      await flushHost();
 
       // The previously cached Modified time is preserved rather than being cleared.
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
@@ -4155,7 +4025,6 @@ describe('InterlinearizerLoader', () => {
 
       updateWebViewDefinition?.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
-      await flushHost();
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
         'data-active-project-updated',
@@ -4194,11 +4063,8 @@ describe('InterlinearizerLoader', () => {
 
       expect(screen.getByTestId('saving-indicator')).toBeInTheDocument();
       await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('tab-toolbar-save-as'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
       await flushHost();
 
@@ -4261,7 +4127,6 @@ describe('InterlinearizerLoader', () => {
 
       updateWebViewDefinition?.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
-      await flushHost();
 
       await waitFor(() =>
         expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer: WEB' }),
@@ -4334,12 +4199,10 @@ describe('InterlinearizerLoader', () => {
       await act(async () =>
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
       );
-      await flushHost();
 
       const error = new Error('save failed');
       otherCommands.mockRejectedValueOnce(error);
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
-      await flushHost();
 
       expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
         'Interlinearizer: failed to save draft to project',
@@ -4353,7 +4216,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
-      await flushHost();
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'saveAs');
       expect(screen.getByTestId('save-as-modal')).toBeInTheDocument();
@@ -4369,7 +4231,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-save-as'));
-      await flushHost();
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'saveAs');
     });
@@ -4386,7 +4247,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
 
       expect(screen.getByTestId('concordance-panel')).toBeInTheDocument();
       expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
@@ -4397,7 +4257,6 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
 
       await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
       await flushHost();
@@ -4411,7 +4270,6 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
 
       await userEvent.click(screen.getByTestId('side-panel-tab-concordance'));
       await flushHost();
@@ -4433,17 +4291,12 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
       const row = screen.getByTestId('catalog-row');
       await userEvent.click(within(row).getByTestId('catalog-row-toggle'));
-      await flushHost();
       await userEvent.click(within(row).getByTestId('catalog-row-breakdown-open'));
-      await flushHost();
       await userEvent.type(within(row).getByTestId('morpheme-breakdown-input'), '-a');
-      await flushHost();
 
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
 
       expect(screen.getByTestId('catalog-close-prompt')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_discardForSwitchPrompt%',
@@ -4456,7 +4309,6 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
 
       await userEvent.click(screen.getByTestId('concordance-close'));
       await flushHost();
@@ -4471,7 +4323,6 @@ describe('InterlinearizerLoader', () => {
         renderLoader({ useWebViewState });
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
 
       cleanup();
       await flushHost(async () => {
@@ -4486,7 +4337,6 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
 
       expect(useSourceTextReader).toHaveBeenLastCalledWith(
         expect.objectContaining({ enabled: false }),
@@ -4500,7 +4350,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
 
       expect(useSourceTextReader).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -4540,12 +4389,9 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
 
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('discard-changes-confirm-all'));
-      await flushHost();
 
       expect(editsSent()).toEqual(['interlinearizer.discardAll']);
       expect(readerMounts).toBe(1);
@@ -4556,12 +4402,9 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
 
       await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('analysis-catalog-close'));
-      await flushHost();
 
       expect(useSourceTextReader).toHaveBeenLastCalledWith(
         expect.objectContaining({ enabled: true }),
@@ -4573,10 +4416,8 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
 
       await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
-      await flushHost();
 
       expect(useConcordanceEntries).toHaveBeenLastCalledWith(
         expect.objectContaining({ shown: false }),
@@ -4606,7 +4447,6 @@ describe('InterlinearizerLoader', () => {
       await resolveStrings();
 
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
 
       expect(rawKeysIn(screen.getByTestId('analysis-catalog-panel'))).toEqual([]);
     });
@@ -4616,11 +4456,9 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
       await resolveStrings();
 
       await userEvent.click(screen.getByTestId('side-panel-tab-concordance'));
-      await flushHost();
 
       expect(rawKeysIn(screen.getByTestId('concordance-panel'))).toEqual([]);
     });
@@ -4630,11 +4468,9 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
       await resolveStrings();
 
       await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
-      await flushHost();
 
       expect(rawKeysIn(screen.getByTestId('analysis-catalog-panel'))).toEqual([]);
     });
@@ -4649,11 +4485,9 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
       await resolveStrings();
 
       await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
-      await flushHost();
 
       expect(screen.getByTestId('catalog-sort-usageCountInBook')).toHaveTextContent(
         'Most used in Genèse',
@@ -4672,7 +4506,6 @@ describe('InterlinearizerLoader', () => {
       await resolveStrings();
 
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
 
       expect(screen.getByTestId('catalog-sort-usageCountInBook')).toHaveTextContent(
         'Most used in Genesis',
@@ -4687,7 +4520,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
 
       expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
       // The panel sits beside the view rather than replacing it: jump-to-usage navigates the view
@@ -4713,7 +4545,6 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
 
       await userEvent.click(screen.getByTestId('analysis-catalog-close'));
       await flushHost();
@@ -4727,7 +4558,6 @@ describe('InterlinearizerLoader', () => {
         renderLoader({ useWebViewState });
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
 
       // A fresh render against the same state store stands in for the tab being restored.
       cleanup();
@@ -4748,7 +4578,6 @@ describe('InterlinearizerLoader', () => {
           renderLoader({ useWebViewState });
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-        await flushHost();
 
         // A step lands somewhere the default is not, so a layout read back on remount can only be
         // a stored one.
@@ -4775,15 +4604,12 @@ describe('InterlinearizerLoader', () => {
           renderLoader();
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-        await flushHost();
 
         fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'ArrowRight' });
         await flushHost();
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
-        await flushHost();
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-        await flushHost();
 
         expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
       } finally {
@@ -4804,19 +4630,16 @@ describe('InterlinearizerLoader', () => {
           renderLoader({ useWebViewState });
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-        await flushHost();
 
         fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'ArrowRight' });
         await flushHost();
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
-        await flushHost();
         cleanup();
         await flushHost(async () => {
           renderLoader({ useWebViewState });
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-        await flushHost();
 
         expect(catalogPanelElement()).toHaveAttribute('data-panel-layout', '30');
       } finally {
@@ -4833,12 +4656,9 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('analysis-catalog-close'));
-      await flushHost();
 
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
 
       expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
     });
@@ -4850,7 +4670,6 @@ describe('InterlinearizerLoader', () => {
           renderLoader();
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-        await flushHost();
 
         fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'ArrowRight' });
         await flushHost();
@@ -4878,7 +4697,6 @@ describe('InterlinearizerLoader', () => {
           renderLoader({ useWebViewState });
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-        await flushHost();
 
         fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'Home' });
         await flushHost();
@@ -4908,7 +4726,6 @@ describe('InterlinearizerLoader', () => {
       const viewBeforeOpening = screen.getByTestId('interlinearizer');
 
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
 
       expect(screen.getByTestId('interlinearizer')).toBe(viewBeforeOpening);
     });
@@ -4918,11 +4735,9 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
       const viewBeforeClosing = screen.getByTestId('interlinearizer');
 
       await userEvent.click(screen.getByTestId('analysis-catalog-close'));
-      await flushHost();
 
       expect(screen.getByTestId('interlinearizer')).toBe(viewBeforeClosing);
     });
@@ -4949,7 +4764,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
-      await flushHost();
 
       // The dialog must appear before anything is discarded, with the loaded book reflected.
       expect(screen.getByTestId('discard-changes-modal-panel')).toHaveAttribute(
@@ -4965,7 +4779,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('discard-changes-confirm-book'));
       await flushHost();
 
@@ -4980,7 +4793,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('discard-changes-confirm-all'));
       await flushHost();
 
@@ -4998,7 +4810,6 @@ describe('InterlinearizerLoader', () => {
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
         await userEvent.click(screen.getByTestId(`discard-changes-confirm-${scope}`));
-        await flushHost();
       }
 
       it('has the session restore the whole draft from the project', async () => {
@@ -5061,7 +4872,6 @@ describe('InterlinearizerLoader', () => {
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
-      await flushHost();
       mockSendCommand.mockClear();
       await userEvent.click(screen.getByTestId('discard-changes-modal-cancel'));
       await flushHost();
@@ -5228,7 +5038,6 @@ describe('InterlinearizerLoader', () => {
 
       // Wiping the whole draft bumps draftVersion, which the loader watches to reset phraseMode.
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('discard-changes-confirm-all'));
 
       await waitFor(() =>
@@ -5753,13 +5562,9 @@ describe('undo and redo', () => {
       });
       await flushHost(async () => renderLoader());
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('catalog-row-toggle'));
-      await flushHost();
       await userEvent.type(screen.getByTestId('catalog-row-gloss-input'), 'alpha');
-      await flushHost();
       await userEvent.tab();
-      await flushHost();
 
       await flushHost(async () => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
@@ -5779,11 +5584,8 @@ describe('undo and redo', () => {
       });
       await flushHost(async () => renderLoader());
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('catalog-row-check'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('catalog-selection-delete'));
-      await flushHost();
 
       await flushHost(async () => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
@@ -5809,11 +5611,8 @@ describe('undo and redo', () => {
       });
       await flushHost(async () => renderLoader());
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('catalog-row-check'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
-      await flushHost();
 
       await flushHost(async () => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
@@ -5838,13 +5637,9 @@ describe('undo and redo', () => {
         });
         await flushHost(async () => renderLoader());
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-        await flushHost();
         await userEvent.click(screen.getByTestId('catalog-row-toggle'));
-        await flushHost();
         await userEvent.type(screen.getByTestId('catalog-row-gloss-input'), 'alpha');
-        await flushHost();
         await userEvent.tab();
-        await flushHost();
 
         await flushHost(() => {
           fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
@@ -5887,18 +5682,13 @@ describe('undo and redo', () => {
         });
         await flushHost(async () => renderLoader());
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-        await flushHost();
         const edited = rowFor('ta-1');
         if (!edited) throw new Error('no catalog row for ta-1');
         await userEvent.click(within(edited).getByTestId('catalog-row-toggle'));
-        await flushHost();
         const input = within(edited).getByTestId('catalog-row-gloss-input');
         await userEvent.clear(input);
-        await flushHost();
         await userEvent.type(input, 'second');
-        await flushHost();
         await userEvent.tab();
-        await flushHost();
         await flushHost(() => {
           fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
         });
@@ -5929,12 +5719,9 @@ describe('undo and redo', () => {
         });
         await flushHost(async () => renderLoader());
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-        await flushHost();
         await userEvent.click(screen.getByTestId('catalog-row-toggle'));
-        await flushHost();
         await userEvent.click(screen.getByTestId('catalog-row-delete'));
         await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
-        await flushHost();
         await flushHost(() => {
           fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
         });
@@ -6119,10 +5906,8 @@ describe('undo and redo', () => {
       await renderAndDelete();
       await flushHost(() => screen.getByTestId('tab-toolbar-undo').click());
       await userEvent.click(screen.getByTestId('catalog-row-toggle'));
-      await flushHost();
       await userEvent.click(screen.getByTestId('catalog-row-delete'));
       await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
-      await flushHost();
 
       await flushHost(async () => deliveries.at(-1)?.('toast-2'));
       await flushHost(async () => deliveries[0]('toast-1'));
@@ -6275,7 +6060,6 @@ describe('analysis language switch', () => {
         useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'fr' } }),
       }),
     );
-    await flushHost();
 
     expect(capturedStoreProps?.analysisLanguage).toBe('fr');
   });
@@ -6287,7 +6071,6 @@ describe('analysis language switch', () => {
         useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'de' } }),
       }),
     );
-    await flushHost();
 
     expect(capturedStoreProps?.analysisLanguage).toBe('en');
   });
@@ -6302,7 +6085,6 @@ describe('analysis language switch', () => {
         }),
       }),
     );
-    await flushHost();
 
     await waitFor(() => expect(capturedStoreProps?.analysisLanguage).toBe('swh'));
   });
@@ -6312,7 +6094,6 @@ describe('analysis language switch', () => {
     await act(async () =>
       renderLoader({ useWebViewState: makeWebViewState({ activeProject: IMPORT_LISTING_TWO }) }),
     );
-    await flushHost();
 
     await flushHost(async () => {
       fireEvent.click(await screen.findByTestId('analysis-language-en'));

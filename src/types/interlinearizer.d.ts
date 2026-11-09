@@ -231,16 +231,16 @@ declare module 'papi-shared-types' {
     /**
      * Copies the source project's stored draft, its analysis and custom segment boundaries, into an
      * existing interlinearizer project. Called from the WebView on Save and on Save As onto an
-     * existing project. Given the session editing the draft, the copy reads the stored draft after
-     * the session's earlier edits, so no analysis crosses the bus.
+     * existing project. The copy reads the stored draft after the session's earlier edits, so no
+     * analysis crosses the bus.
      *
+     * @param sessionId - The session editing the draft. The copy runs in the session's turn, and
+     *   the session's history marks the draft saved.
      * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
      * @param interlinearProjectId - UUID of the interlinearizer project to save into.
      * @param config - The configuration to set on the project in the same write, so Save As onto an
      *   existing project makes its declared configuration match the glosses it now holds; omit to
      *   leave the configuration unchanged, as Save does.
-     * @param sessionId - The session editing the draft, if any. The copy then runs in the session's
-     *   turn, and the session's history marks the draft saved.
      * @returns The saved project's `InterlinearProjectSummary` (with its refreshed `updatedAt`) as
      *   a JSON string, or `undefined` if no project with the given ID exists. The WebView uses the
      *   refreshed `updatedAt` to keep the cached Modified time current after a Save.
@@ -250,37 +250,36 @@ declare module 'papi-shared-types' {
      *   second notification.
      */
     'interlinearizer.saveDraftToProject': (
+      sessionId: string,
       sourceProjectId: string,
       interlinearProjectId: string,
       config?: import('interlinearizer').ProjectConfig,
-      sessionId?: string,
     ) => Promise<string | undefined>;
 
     /**
      * Creates an interlinearizer project holding a copy of the source project's stored draft, its
      * analysis and custom segment boundaries. Called from the WebView on Save As to a new project.
-     * Given the session editing the draft, the copy reads the stored draft after the session's
-     * earlier edits.
+     * The copy reads the stored draft after the session's earlier edits.
      *
+     * @param sessionId - The session editing the draft. The copy runs in the session's turn, and
+     *   the session's history marks the draft saved when no book is left out.
      * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
      * @param analysisLanguages - BCP 47 tags for the new project's analysis languages.
      * @param targetProjectId - Optional Platform.Bible project ID of the target text.
      * @param name - Optional user-facing name for the project.
      * @param description - Optional user-facing description for the project.
-     * @param sessionId - The session editing the draft, if any. The copy then runs in the session's
-     *   turn, and the session's history marks the draft saved when no book is left out.
      * @returns The created project's summary and the books it left out, as a JSON `SavedAsProject`.
      * @throws If `sessionId` names no open session, if the stored draft itself cannot be read, or
      *   if storage fails. Error is logged and an error notification is sent before rethrowing so
      *   callers do not need to send a second notification.
      */
     'interlinearizer.saveDraftAsProject': (
+      sessionId: string,
       sourceProjectId: string,
       analysisLanguages: string[],
       targetProjectId?: string,
       name?: string,
       description?: string,
-      sessionId?: string,
     ) => Promise<string>;
 
     /**
@@ -355,7 +354,8 @@ declare module 'papi-shared-types' {
      * the source project's draft, which saves to `interlinearProjectId` when given. When the source
      * has no project of the id named, the session opens on the draft, which then saves to no
      * project. A draft that holds analysis is then marked unsaved, unless the missing project was
-     * an import. Closes the source's earlier session, if any.
+     * an import. Closes the source's earlier session, if any. Warns the user of each book whose
+     * stored analysis could not be read.
      *
      * @returns A JSON string of an `OpenedSession`.
      * @throws If both ids are given, an id names a project of the wrong kind, or finding the

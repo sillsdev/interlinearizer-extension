@@ -35,6 +35,13 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_select_modified_prefix%',
 ];
 
+/**
+ * Fields for saving the draft as a new project.
+ *
+ * The fields read `initialName` and `initialDescription` only at mount. Later changes to those
+ * props leave the fields unchanged. Remount the form, such as with a new `key`, to reseed the
+ * fields.
+ */
 function SaveAsNewForm({
   initialName,
   initialDescription,
@@ -118,7 +125,8 @@ function SaveAsNewForm({
  *   only meaningful when {@link activeProjectId} names a project in the list.
  * @param props.activeProjectName - Name of the project open as the active Save target, if any. The
  *   new-project field is prefilled with a copy of this name, numbered past any name that a loaded
- *   project of the source bears. With no active project, the field starts blank.
+ *   project of the source bears. With no active project, the field starts blank. A later change to
+ *   this name leaves the field as it is.
  * @param props.defaultDescription - Description prefilled into the new-project field.
  * @param props.onSaveNew - Called with the trimmed name/description to save the draft as a new
  *   project.

@@ -1793,6 +1793,16 @@ describe('AnalysisSessions', () => {
       expect(read).not.toHaveBeenCalled();
     });
 
+    it('revives the links into a missing book that returns with the text it had', async () => {
+      const { sessions, storage } = await sessionGlossingBeta();
+      await sessions.reanchorBook(SOURCE, AFTER);
+      await sessions.reanchorMissingBooks(SOURCE, []);
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      expect((await storedLink(storage)).status).toBe('approved');
+    });
+
     it('skips the pass for an edit that leaves the same text', async () => {
       const { sessions, sessionId } = await sessionGlossingBeta();
       await sessions.reanchorBook(SOURCE, AFTER, true);

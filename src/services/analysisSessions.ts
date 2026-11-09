@@ -764,13 +764,13 @@ export class AnalysisSessions {
    *   re-anchored.
    */
   reanchorMissingBooks(sourceProjectId: string, textBookIds: readonly string[]): Promise<void> {
-    return this.runOnWritable(sourceProjectId, async ({ session }) => {
+    return this.runOnWritable(sourceProjectId, async ({ session, anchoredVersions }) => {
       const missing = booksMissingFrom(await session.repository.findLinkedBooks(), textBookIds);
-      await missing.reduce<Promise<void>>(
-        (previous, bookCode) =>
-          previous.then(() => reanchorNow(this.host, session, missingBook(bookCode))),
-        Promise.resolve(),
-      );
+      await missing.reduce<Promise<void>>(async (previous, bookCode) => {
+        await previous;
+        await reanchorNow(this.host, session, missingBook(bookCode));
+        anchoredVersions.delete(bookCode);
+      }, Promise.resolve());
     });
   }
 

@@ -1,5 +1,7 @@
+import { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
+import { useState } from 'react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import type {
   Pt9ClusterDrop,
@@ -33,6 +35,9 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%',
   '%interlinearizer_pt9ImportModal_reason_blankMorphemeForm%',
   '%interlinearizer_pt9ImportModal_showDrops%',
+  '%interlinearizer_pt9ImportModal_moreDrops%',
+  '%interlinearizer_pt9ImportModal_copyDrops%',
+  '%interlinearizer_pt9ImportModal_dropsCopied%',
   '%interlinearizer_pt9ImportModal_dropLine%',
   '%interlinearizer_pt9ImportModal_missingBooks%',
   '%interlinearizer_pt9ImportModal_filesTooLarge%',
@@ -189,6 +194,78 @@ function foldReport(report: Pt9ImportReport): ReportTotals {
   };
 }
 
+/**
+ * The most dropped-cluster lines the report lays out, because laying out every line of a large
+ * import freezes the WebView. Copy all carries every line.
+ */
+export const MAX_SHOWN_DROPS = 500;
+
+/**
+ * A collapsed list of the dropped clusters, one line each, with a button that copies every line.
+ * Lines are built only while the list is open.
+ */
+function DroppedClusterList({
+  droppedClusters,
+  localizedStrings,
+}: Readonly<{
+  droppedClusters: ReportTotals['droppedClusters'];
+  localizedStrings: LanguageStrings;
+}>) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const describe = (drop: ReportTotals['droppedClusters'][number]) =>
+    formatReplacementString(localizedStrings['%interlinearizer_pt9ImportModal_dropLine%'], {
+      verseRef: drop.verseRef,
+      language: drop.language,
+      lexemeIds: drop.lexemeIds.join(' '),
+      reason: localizedStrings[`%interlinearizer_pt9ImportModal_reason_${drop.reason}%`],
+    });
+  const hiddenCount = droppedClusters.length - MAX_SHOWN_DROPS;
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(droppedClusters.map(describe).join('\n'));
+      setCopied(true);
+    } catch (e) {
+      logger.error('Interlinearizer: failed to copy the clusters a Paratext 9 import dropped', e);
+    }
+  };
+  return (
+    <details
+      className="tw:text-sm"
+      data-testid="pt9-import-drops"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="tw:cursor-pointer">
+        {localizedStrings['%interlinearizer_pt9ImportModal_showDrops%']}
+      </summary>
+      {open && (
+        <div className="tw:flex tw:flex-col tw:gap-1 tw:ps-5">
+          <pre
+            className="tw:max-h-48 tw:overflow-auto tw:font-sans tw:text-muted-foreground"
+            data-testid="pt9-import-drop-lines"
+          >
+            {droppedClusters.slice(0, MAX_SHOWN_DROPS).map(describe).join('\n')}
+          </pre>
+          {hiddenCount > 0 && (
+            <p className="tw:text-muted-foreground">
+              {formatReplacementString(
+                localizedStrings['%interlinearizer_pt9ImportModal_moreDrops%'],
+                { count: hiddenCount.toLocaleString() },
+              )}
+            </p>
+          )}
+          <Button className="tw:self-start" size="sm" variant="secondary" onClick={copyAll}>
+            {copied
+              ? localizedStrings['%interlinearizer_pt9ImportModal_dropsCopied%']
+              : localizedStrings['%interlinearizer_pt9ImportModal_copyDrops%']}
+          </Button>
+        </div>
+      )}
+    </details>
+  );
+}
+
 /** One labeled row of the report summary. */
 function ReportRow({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
@@ -327,10 +404,10 @@ export function Pt9ImportModal({
     <ModalShell
       titleTestId="pt9-import-modal-title"
       title={title}
-      width="tw:w-96"
+      width="tw:w-xl"
       onClose={mode === 'offer' ? onOpen : onClose}
     >
-      <div className="tw:flex tw:flex-col tw:gap-1" data-testid="pt9-import-report">
+      <div className="tw:flex tw:min-w-0 tw:flex-col tw:gap-1" data-testid="pt9-import-report">
         <ReportRow
           label={localizedStrings['%interlinearizer_pt9ImportModal_languages_label%']}
           value={totals.languages.join(', ')}
@@ -373,29 +450,10 @@ export function Pt9ImportModal({
           </>
         )}
         {totals.droppedClusters.length > 0 && (
-          <details className="tw:text-sm" data-testid="pt9-import-drops">
-            <summary className="tw:cursor-pointer">
-              {localizedStrings['%interlinearizer_pt9ImportModal_showDrops%']}
-            </summary>
-            <div className="tw:max-h-48 tw:overflow-y-auto tw:ps-5 tw:text-muted-foreground">
-              {totals.droppedClusters.map((drop, index) => (
-                // Two drops can share every field, so only their position tells them apart.
-                // eslint-disable-next-line react/no-array-index-key
-                <p key={index} data-testid="pt9-import-drop">
-                  {formatReplacementString(
-                    localizedStrings['%interlinearizer_pt9ImportModal_dropLine%'],
-                    {
-                      verseRef: drop.verseRef,
-                      language: drop.language,
-                      lexemeIds: drop.lexemeIds.join(' '),
-                      reason:
-                        localizedStrings[`%interlinearizer_pt9ImportModal_reason_${drop.reason}%`],
-                    },
-                  )}
-                </p>
-              ))}
-            </div>
-          </details>
+          <DroppedClusterList
+            droppedClusters={totals.droppedClusters}
+            localizedStrings={localizedStrings}
+          />
         )}
         {totals.missingBooks.length > 0 && (
           <p className="tw:text-sm tw:text-muted-foreground">

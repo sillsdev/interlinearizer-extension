@@ -1,11 +1,12 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Pt9ImportModal } from '../../../components/modals/Pt9ImportModal';
-import type { Pt9ImportReport } from '../../../converters/pt9';
+import { MAX_SHOWN_DROPS, Pt9ImportModal } from '../../../components/modals/Pt9ImportModal';
+import type { Pt9ClusterDrop, Pt9ImportReport } from '../../../converters/pt9';
 
 const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_title%': 'Import from Paratext 9: {projectName}',
@@ -25,6 +26,9 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_reason_formMismatch%': 'did not match the text',
   '%interlinearizer_pt9ImportModal_reason_parseFormMismatch%': "parses that don't spell their word",
   '%interlinearizer_pt9ImportModal_showDrops%': 'Show what was not imported',
+  '%interlinearizer_pt9ImportModal_moreDrops%': '{count} more not shown',
+  '%interlinearizer_pt9ImportModal_copyDrops%': 'Copy all',
+  '%interlinearizer_pt9ImportModal_dropsCopied%': 'Copied',
   '%interlinearizer_pt9ImportModal_dropLine%': '{verseRef} ({language}) {lexemeIds} — {reason}',
   '%interlinearizer_pt9ImportModal_reason_lemmaOrOther%': 'unused legacy data',
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%': 'duplicate data',
@@ -259,7 +263,7 @@ describe('Pt9ImportModal', () => {
     expect(rendered).toHaveTextContent('29,525 did not match the text');
   });
 
-  it('lists each drop, collapsed, with its verse, language, lexeme ids and reason', () => {
+  it('lists each drop, collapsed, with its verse, language, lexeme ids and reason', async () => {
     const report = makeReport();
     report.languages[0].books[0].drops = [
       { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
@@ -280,16 +284,119 @@ describe('Pt9ImportModal', () => {
 
     const drops = screen.getByTestId('pt9-import-drops');
     expect(drops).not.toHaveAttribute('open');
-    expect(within(drops).getByText('Show what was not imported')).toBeInTheDocument();
-    expect(
-      within(drops)
-        .getAllByTestId('pt9-import-drop')
-        .map((line) => line.textContent),
-    ).toEqual([
-      'MAT 1:2 (en) Word:ghost — did not match the text',
-      "MAT 1:3 (en) Stem:run Suffix:ing — parses that don't spell their word",
-      'MRK 1:1 (fr) Word:bonjour — verse not found',
-    ]);
+    expect(screen.queryByTestId('pt9-import-drop-lines')).not.toBeInTheDocument();
+
+    await userEvent.click(within(drops).getByText('Show what was not imported'));
+
+    expect(await screen.findByTestId('pt9-import-drop-lines')).toHaveTextContent(
+      [
+        'MAT 1:2 (en) Word:ghost — did not match the text',
+        "MAT 1:3 (en) Stem:run Suffix:ing — parses that don't spell their word",
+        'MRK 1:1 (fr) Word:bonjour — verse not found',
+      ].join('\n'),
+      { normalizeWhitespace: false },
+    );
+  });
+
+  it('shows only the first lines of a long list and copies every line', async () => {
+    const user = userEvent.setup();
+    const report = makeReport();
+    const total = MAX_SHOWN_DROPS + 2;
+    report.languages[0].books[0].drops = Array.from({ length: total }, (_, i): Pt9ClusterDrop => ({
+      verseRef: `MAT 1:${i + 1}`,
+      reason: 'formMismatch',
+      lexemeIds: ['Word:ghost'],
+    }));
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await user.click(screen.getByText('Show what was not imported'));
+
+    const shown = (await screen.findByTestId('pt9-import-drop-lines')).textContent?.split('\n');
+    expect(shown).toHaveLength(MAX_SHOWN_DROPS);
+    expect(screen.getByTestId('pt9-import-drops')).toHaveTextContent('2 more not shown');
+
+    await user.click(screen.getByRole('button', { name: 'Copy all' }));
+
+    const copied = (await navigator.clipboard.readText()).split('\n');
+    expect(copied).toHaveLength(total);
+    expect(copied[total - 1]).toBe(`MAT 1:${total} (en) Word:ghost — did not match the text`);
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
+  });
+
+  it('logs a failed copy and leaves the button offering to copy', async () => {
+    const user = userEvent.setup();
+    jest.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await user.click(screen.getByText('Show what was not imported'));
+
+    await user.click(await screen.findByRole('button', { name: 'Copy all' }));
+
+    await waitFor(() => expect(logger.error).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'Copy all' })).toBeInTheDocument();
+  });
+
+  it('notes no hidden lines when every drop is shown', async () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByText('Show what was not imported'));
+
+    await screen.findByTestId('pt9-import-drop-lines');
+    expect(screen.getByTestId('pt9-import-drops')).not.toHaveTextContent('not shown');
+  });
+
+  it('drops the lines again when the list is collapsed', async () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    const summary = screen.getByText('Show what was not imported');
+    await userEvent.click(summary);
+    await screen.findByTestId('pt9-import-drop-lines');
+
+    await userEvent.click(summary);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('pt9-import-drop-lines')).not.toBeInTheDocument(),
+    );
   });
 
   it('omits the drop list when nothing dropped', () => {

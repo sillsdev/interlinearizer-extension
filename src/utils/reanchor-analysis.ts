@@ -53,16 +53,23 @@ function countByValue(values: string[]): Map<string, number> {
  * of the form as were stored. A spare occurrence means the pairing was chosen rather than forced —
  * glosses on two of three identical words could as easily be the first two as the last two.
  *
+ * A form in `interchangeable` stays placeable when the verse lost occurrences of it, because any of
+ * its stored copies may take a survivor. A spare occurrence still makes it unplaceable.
+ *
  * One ambiguity survives, being unresolvable from a {@link TokenSnapshot}: a form stored once whose
  * occurrence was deleted, leaving one unglossed twin, presents exactly as that gloss shifted along
  * by an edit.
  *
+ * @param stored - The stored forms, in document order.
+ * @param current - The verse's current forms, in document order.
  * @param paired - For each stored position, the token index it aligned to, or `undefined`.
+ * @param interchangeable - The forms whose stored copies are interchangeable.
  */
 function unambiguousForms(
   stored: string[],
   current: string[],
   paired: (number | undefined)[],
+  interchangeable: Set<string>,
 ): Set<string> {
   const storedCounts = countByValue(stored);
   const currentCounts = countByValue(current);
@@ -71,9 +78,12 @@ function unambiguousForms(
     if (paired[index] === undefined) unpaired.add(form);
   });
   return new Set(
-    stored.filter((form) => {
-      if (unpaired.has(form)) return false;
-      return storedCounts.get(form) === currentCounts.get(form);
+    [...storedCounts].flatMap(([form, count]) => {
+      const currentCount = currentCounts.get(form) ?? 0;
+      const placeable = interchangeable.has(form)
+        ? count >= currentCount
+        : !unpaired.has(form) && count === currentCount;
+      return placeable ? [form] : [];
     }),
   );
 }
@@ -82,7 +92,11 @@ function unambiguousForms(
  * Pairs each stored form with the index of the current form it aligns to in order, or `undefined`
  * where it has no counterpart or is too ambiguous to place.
  */
-function pairUnambiguously(a: string[], b: string[]): (number | undefined)[] {
+function pairUnambiguously(
+  a: string[],
+  b: string[],
+  interchangeable: Set<string>,
+): (number | undefined)[] {
   // lengths[i][j] — the LCS length of a.slice(i) against b.slice(j), filled back-to-front so the
   // forward walk below can pick the branch that keeps the most pairings.
   const lengths: number[][] = Array.from({ length: a.length + 1 }, () =>
@@ -110,7 +124,7 @@ function pairUnambiguously(a: string[], b: string[]): (number | undefined)[] {
     }
   }
 
-  const unambiguous = unambiguousForms(a, b, paired);
+  const unambiguous = unambiguousForms(a, b, paired, interchangeable);
   return paired.map((tokenIndex, index) =>
     tokenIndex !== undefined && unambiguous.has(a[index]) ? tokenIndex : undefined,
   );
@@ -131,15 +145,31 @@ function pairUnambiguously(a: string[], b: string[]): (number | undefined)[] {
  * that moved past others places when its form is unambiguous, so aligning the result again changes
  * nothing. A position `live` does not mark counts toward whether its form is ambiguous but never
  * dislodges a live one from its own ref, its ref possibly predating an edit.
+ *
+ * A form whose positions all share one defined `kin` has interchangeable copies. When the verse
+ * holds fewer of that form than were stored, its remaining tokens still place. Only the extra
+ * positions yield `undefined`, because it makes no difference which copy an edit removed.
  */
 function alignForms(
   stored: string[],
   storedRefs: string[],
   tokens: Token[],
   live: boolean[],
+  kin: (string | undefined)[],
 ): Anchor[] {
   const a = stored.map(normalizeSurfaceForm);
   const b = tokens.map((t) => normalizeSurfaceForm(t.surfaceText));
+
+  const kinByForm = new Map<string, string | undefined>();
+  a.forEach((form, index) =>
+    kinByForm.set(
+      form,
+      kinByForm.has(form) && kinByForm.get(form) !== kin[index] ? undefined : kin[index],
+    ),
+  );
+  const interchangeable = new Set(
+    [...kinByForm].flatMap(([form, formKin]) => (formKin === undefined ? [] : [form])),
+  );
 
   // A stored position whose own ref still names a token of its form has not moved, whatever the
   // alignment would pair it with — the ref is better evidence of which twin a gloss meant. Not so
@@ -150,7 +180,9 @@ function alignForms(
   const overcounted = (forms: string[]) =>
     new Set(
       [...countByValue(forms)]
-        .filter(([form, count]) => count > (currentCounts.get(form) ?? 0))
+        .filter(
+          ([form, count]) => !interchangeable.has(form) && count > (currentCounts.get(form) ?? 0),
+        )
         .map(([form]) => form),
     );
   const overcountedLive = overcounted(a.filter((_, index) => live[index]));
@@ -164,7 +196,7 @@ function alignForms(
   // Pairing keeps order, so a word moved past others pairs only once they are withheld as placed.
   // Ends: each round places more or unsettles another form.
   for (;;) {
-    paired = pairAroundSettled(a, b, storedRefs, indexByRef, unsettled, placed);
+    paired = pairAroundSettled(a, b, storedRefs, indexByRef, unsettled, placed, interchangeable);
     const crossed = formsOutOfOrder(a, paired, live);
     if (crossed.size > 0) {
       crossed.forEach((form) => unsettledForms.add(form));
@@ -196,6 +228,7 @@ function pairAroundSettled(
   indexByRef: Map<string, number>,
   unsettled: (index: number) => boolean,
   placed: Map<number, number>,
+  interchangeable: Set<string>,
 ): (number | undefined)[] {
   const settled = a.map((form, index) => {
     const placedIndex = placed.get(index);
@@ -213,6 +246,7 @@ function pairAroundSettled(
   const openPaired = pairUnambiguously(
     openStored.map((index) => a[index]),
     openTokens.map((index) => b[index]),
+    interchangeable,
   );
 
   const paired = [...settled];
@@ -277,16 +311,19 @@ function tokensByVerse(book: Book): Map<string, Token[]> {
  * word at a ref each get their own answer. Places `deferred` only on tokens `snapshots` leave
  * unclaimed, so none of them can displace one of `snapshots`. The snapshots whose keys `isLive`
  * accepts hold their token ahead of the rest of `snapshots`, all of them when it is omitted.
+ * Snapshots of one form are interchangeable copies when `kinOf` maps all their keys to one value. A
+ * key that `kinOf` maps to `undefined` has no kin.
  */
 function buildAnchorMap(
   snapshots: TokenSnapshot[],
   book: Book,
   deferred: TokenSnapshot[] = [],
   isLive: (key: string) => boolean = () => true,
+  kinOf: (key: string) => string | undefined = () => undefined,
 ): Map<string, Anchor> {
   const byVerse = tokensByVerse(book);
   const anchorMap = new Map<string, Anchor>();
-  anchorByVerse(snapshots, byVerse, book.bookRef, anchorMap, isLive);
+  anchorByVerse(snapshots, byVerse, book.bookRef, anchorMap, isLive, kinOf);
   if (deferred.length === 0) return anchorMap;
 
   const claimed = new Set(anchorMap.values());
@@ -299,6 +336,7 @@ function buildAnchorMap(
     book.bookRef,
     anchorMap,
     () => true,
+    () => undefined,
   );
   return anchorMap;
 }
@@ -310,6 +348,7 @@ function anchorByVerse(
   bookRef: string,
   anchorMap: Map<string, Anchor>,
   isLive: (key: string) => boolean,
+  kinOf: (key: string) => string | undefined,
 ): void {
   // Deduplicated: a token named by several links contributes a snapshot from each, and aligning the
   // same word twice would consume two current tokens and orphan one copy.
@@ -340,6 +379,7 @@ function anchorByVerse(
       ordered.map((s) => s.tokenRef),
       tokens,
       ordered.map((s) => isLive(snapshotKey(s))),
+      ordered.map((s) => kinOf(snapshotKey(s))),
     );
     ordered.forEach((snapshot, index) => anchorMap.set(snapshotKey(snapshot), anchors[index]));
   });
@@ -493,6 +533,10 @@ const MAX_REANCHOR_PASSES = 8;
  * `'stale'`. A phrase whose tokens fall in more than one of `book`'s segments is staled the same
  * way, since no phrase may span a segment boundary.
  *
+ * Where every copy of a word carries the same links and no phrase names any of them, the copies are
+ * interchangeable. An edit that removes some of them strands only as many copies as it removed. The
+ * other copies keep their status.
+ *
  * Only approvals are staled and only stale links revived, so the pass gives back exactly what it
  * takes: a stale link whose snapshot places again returns to `'approved'`, restoring an analysis an
  * upstream edit stranded, while a verdict someone recorded — a rejection, a candidate — keeps its
@@ -558,11 +602,27 @@ function reanchorOnce(
   // same evidence; the rest place only on tokens those leave unclaimed, displacing none.
   const weighs = (link: AnalysisLink) => occupies(link) || link.status === 'stale';
   const liveKeys = new Set(snapshotsWhere(occupies).map(snapshotKey));
+  // Copies of a word are kin when the links naming them match exactly. It then makes no difference
+  // which kin copy an edit removes. A copy in a phrase has no kin, because the phrase ties it to
+  // its place.
+  const linksByKey = new Map<string, string[]>();
+  analysis.tokenAnalysisLinks.forEach((link) => {
+    const key = snapshotKey(link.token);
+    const signature = JSON.stringify([link.analysisId, link.status]);
+    linksByKey.set(key, [...(linksByKey.get(key) ?? []), signature]);
+  });
+  const kinByKey = new Map(
+    [...linksByKey].map(([key, signatures]) => [key, signatures.sort().join('\n')]),
+  );
+  analysis.phraseAnalysisLinks.forEach((link) =>
+    link.tokens.forEach((token) => kinByKey.delete(snapshotKey(token))),
+  );
   const anchorMap = buildAnchorMap(
     snapshotsWhere(weighs),
     book,
     snapshotsWhere((link) => !weighs(link)),
     (key) => liveKeys.has(key),
+    (key) => kinByKey.get(key),
   );
   let changed = false;
 

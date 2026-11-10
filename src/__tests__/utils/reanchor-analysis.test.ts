@@ -154,6 +154,89 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'stale']);
   });
 
+  it('stales only the edited twin when both twins carry the same analysis', () => {
+    // Written against "Wug blicket wug", at 0 and 12.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'Wug blicket wig' }]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug' }),
+      makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'wug' }),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks.map((l) => [l.status, l.token.tokenRef])).toEqual([
+      ['approved', 'GEN 1:1:0'],
+      ['stale', 'GEN 1:1:12'],
+    ]);
+  });
+
+  it('keeps the shifted survivor approved when the earlier of two same-analysis twins is deleted', () => {
+    // Written against "Wug blicket wug", at 0 and 12.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'blicket wug' }]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug' }),
+      makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'wug' }),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    const approved = result.tokenAnalysisLinks.filter((l) => l.status === 'approved');
+    expect(approved.map((l) => l.token.tokenRef)).toEqual(['GEN 1:1:8']);
+    expect(result.tokenAnalysisLinks.map((l) => l.status).sort()).toEqual(['approved', 'stale']);
+  });
+
+  it('stales both twins when their links share an analysis but not a status', () => {
+    // Written against "Wug blicket wug", at 0 and 12.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'Wug blicket wig' }]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug' }),
+      makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'wug', status: 'candidate' }),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'stale',
+      token: { tokenRef: 'GEN 1:1:0' },
+    });
+  });
+
+  it('stales both twins when only one of them also carries a rejected analysis', () => {
+    // Written against "Wug blicket wug", at 0 and 12.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'Wug blicket wig' }]);
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug' }),
+      makeTokenLink('ta-other', 'GEN 1:1:0', { surfaceText: 'Wug', status: 'rejected' }),
+      makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'wug' }),
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'stale',
+      token: { tokenRef: 'GEN 1:1:0' },
+    });
+  });
+
+  it('stales both same-analysis twins when only one of them sits in a phrase', () => {
+    // Written against "Wug blicket wug", at 0 and 12.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'Wug blicket wig' }]);
+    const analysis: TextAnalysis = {
+      ...analysisWithTokenLinks([
+        makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug' }),
+        makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'wug' }),
+      ]),
+      phraseAnalysisLinks: [makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:4'], ['Wug', 'blicket'])],
+    };
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'stale',
+      token: { tokenRef: 'GEN 1:1:0' },
+    });
+  });
+
   it('leaves a lone repeated form where it was written rather than picking an occurrence', () => {
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'the light and the dark' }]);
     // Only the second "the" is glossed, and its own ref still names it, so it stays put.

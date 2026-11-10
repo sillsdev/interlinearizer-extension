@@ -3,7 +3,6 @@
 
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import CatalogRowEditor, {
   createGlossRetry,
   type GlossRetry,
@@ -12,6 +11,7 @@ import CatalogRowEditor, {
 import type { CatalogRow } from '../../utils/analysis-query';
 import type { Settles } from '../../utils/settles';
 import { FIXTURE_STAMPS } from '../test-helpers';
+import { EmptyAnalysisProvider } from './test-helpers';
 
 const STRINGS = Object.fromEntries(ROW_EDITOR_STRING_KEYS.map((key) => [key, key]));
 
@@ -23,7 +23,7 @@ function editor(
   analysisLanguage = 'en',
 ) {
   return (
-    <AnalysisStoreProvider analysisLanguage="en">
+    <EmptyAnalysisProvider analysisLanguage="en">
       <CatalogRowEditor
         analysisId="ta-1"
         surfaceText="ἀρχῇ"
@@ -41,7 +41,7 @@ function editor(
         onBreakdownDraftChange={() => {}}
         localizedStrings={STRINGS}
       />
-    </AnalysisStoreProvider>
+    </EmptyAnalysisProvider>
   );
 }
 
@@ -55,7 +55,7 @@ describe('CatalogRowEditor', () => {
     await userEvent.type(input, 'beginning');
     await userEvent.tab();
 
-    rerender(<AnalysisStoreProvider analysisLanguage="en">{undefined}</AnalysisStoreProvider>);
+    rerender(<EmptyAnalysisProvider analysisLanguage="en">{undefined}</EmptyAnalysisProvider>);
 
     expect(onGlossCommit.mock.calls).toStrictEqual([['beginning']]);
   });
@@ -119,7 +119,7 @@ describe('CatalogRowEditor', () => {
       const input = screen.getByTestId('catalog-row-gloss-input');
       await userEvent.clear(input);
       await userEvent.type(input, 'beginning{Enter}');
-      rerender(<AnalysisStoreProvider analysisLanguage="en">{undefined}</AnalysisStoreProvider>);
+      rerender(<EmptyAnalysisProvider analysisLanguage="en">{undefined}</EmptyAnalysisProvider>);
       await act(async () => rejects[0](new Error('refused')));
       unmount();
     }
@@ -248,7 +248,7 @@ describe('CatalogRowEditor', () => {
       const input = screen.getByTestId('catalog-row-gloss-input');
       await userEvent.clear(input);
       await userEvent.type(input, 'beginning');
-      rerender(<AnalysisStoreProvider analysisLanguage="en">{undefined}</AnalysisStoreProvider>);
+      rerender(<EmptyAnalysisProvider analysisLanguage="en">{undefined}</EmptyAnalysisProvider>);
     }
 
     it('does not send the draft', async () => {

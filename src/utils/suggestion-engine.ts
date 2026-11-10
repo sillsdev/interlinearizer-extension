@@ -1,7 +1,7 @@
 /**
  * Pure suggestion-engine core: builds the analysis pool, ranks competing payloads, and derives
  * per-token suggestions. Everything here is a pure function over plain data, so the engine is
- * trivially testable; the memoized selectors that feed it live in the store.
+ * trivially testable; the memoized selectors that feed it live in `analysis-selectors.ts`.
  *
  * The engine's own suggestions are derived on read and never persisted. The pool is the set of
  * approved analyses in the current draft; a token's persisted non-approved analyses, such as an

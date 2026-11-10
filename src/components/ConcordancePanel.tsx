@@ -219,7 +219,7 @@ export default function ConcordancePanel({
               {formatReplacementString(
                 localizedStrings['%interlinearizer_concordance_booksRead%'],
                 {
-                  count: text.bookCount - text.failedBookIds.length,
+                  count: text.readings?.size ?? 0,
                 },
               )}
             </p>

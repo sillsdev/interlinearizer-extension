@@ -41,7 +41,6 @@
     "test:coverage": "jest --coverage",
     "test:e2e": "npm run test:e2e:smoke && npm run test:e2e:cdp",
     "test:e2e:cdp": "playwright test --config e2e-tests/playwright-cdp.config.ts",
-    "test:e2e:old-path": "cross-env E2E_HOST_PATH=false npm run test:e2e",
     "test:e2e:headless": "xvfb-run --auto-servernum --server-args=\"-screen 0 1280x960x24\" npm run test:e2e",
     "test:e2e:smoke": "playwright test --config e2e-tests/playwright.config.ts --project=smoke",
     "perf:capture": "playwright test --config e2e-tests/playwright-perf.config.ts --project=capture",
@@ -70,15 +69,14 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@reduxjs/toolkit": "^2.13.0",
+    "@reduxjs/toolkit": "^2.14.0",
     "@sillsdev/scripture": "^2.1.0",
-    "platform-bible-utils": "file:../paranext-core/lib/platform-bible-utils",
-    "react-redux": "^9.3.1"
+    "platform-bible-utils": "file:../paranext-core/lib/platform-bible-utils"
   },
   "devDependencies": {
     "@dreamsicle.io/stylelint-config-tailwindcss": "^1.2.2",
     "@fontsource-variable/ibm-plex-sans": "^5.2.8",
-    "@playwright/test": "^1.64.1",
+    "@playwright/test": "^1.65.0",
     "@stylistic/eslint-plugin-ts": "^2.13.0",
     "@swc/core": "1.13.3",
     "@tailwindcss/postcss": "^4.3.0",
@@ -141,7 +139,7 @@
     "webpack": "^5.105.2",
     "webpack-cli": "^5.1.4",
     "webpack-merge": "^6.0.1",
-    "ws": "^8.22.0",
+    "ws": "^8.22.1",
     "zip-build": "^1.8.0"
   },
   "overrides": {

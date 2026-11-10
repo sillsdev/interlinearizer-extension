@@ -2,7 +2,7 @@ import type { FrontMatterParagraph, Segment, Token } from 'interlinearizer';
 import type { Pt9InterlinearCluster } from 'platform-scripture';
 import { LexemeKeyData, parseLexemeKeyId } from 'parsers/pt9/lexemeKey';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
-import { emptyClusterDrops, Pt9ClusterDropReason } from './report';
+import type { Pt9ClusterDropReason } from './report';
 
 /** One lexeme of a classified cluster: its parsed key and the cluster's sense selection for it. */
 export interface ClassifiedLexeme {
@@ -84,7 +84,8 @@ export interface AnchoredPhrase {
 export interface VerseAnchorResult {
   groups: AnchoredTokenGroup[];
   phrases: AnchoredPhrase[];
-  dropCounts: Record<Pt9ClusterDropReason, number>;
+  /** The clusters that did not convert, in no particular order. */
+  drops: { cluster: Pt9InterlinearCluster; reason: Pt9ClusterDropReason }[];
   /** Anchors (token groups and phrases) placed ambiguously. */
   ambiguousCount: number;
 }
@@ -328,8 +329,8 @@ interface RangeGroup {
  *
  * A parse's forms must spell out its token even when a word cluster at the same range chose the
  * token. Indicators typed at a form's edges are ignored, as are indicator characters where the
- * token joins two forms. A parse that fails is dropped as a mismatch, and its word converts alone.
- * Clusters that match nothing are counted by reason rather than silently lost.
+ * token joins two forms. A parse that fails is dropped. Its word converts alone. Clusters that
+ * match nothing are returned with their reason rather than silently lost.
  *
  * @param segments - The verse's own text, when it has any, and the headings within it, in document
  *   order.
@@ -342,14 +343,17 @@ export function anchorVerseClusters(
   clusters: Pt9InterlinearCluster[],
   frontMatter: readonly FrontMatterParagraph[] = [],
 ): VerseAnchorResult {
-  const dropCounts = emptyClusterDrops();
+  const drops: VerseAnchorResult['drops'] = [];
+  const drop = (reason: Pt9ClusterDropReason, cluster: Pt9InterlinearCluster) => {
+    drops.push({ cluster, reason });
+  };
   const wordClassified: Extract<ClassifiedCluster, { kind: 'word' }>[] = [];
   const parseClassified: Extract<ClassifiedCluster, { kind: 'wordParse' }>[] = [];
   const phraseClassified: Extract<ClassifiedCluster, { kind: 'phrase' }>[] = [];
 
   clusters.forEach((cluster) => {
     const classified = classifyCluster(cluster);
-    if (classified.kind === 'drop') dropCounts[classified.reason] += 1;
+    if (classified.kind === 'drop') drop(classified.reason, cluster);
     else if (classified.kind === 'word') wordClassified.push(classified);
     else if (classified.kind === 'wordParse') parseClassified.push(classified);
     else phraseClassified.push(classified);
@@ -369,12 +373,12 @@ export function anchorVerseClusters(
   };
   wordClassified.forEach((classified) => {
     const group = groupFor(classified.cluster);
-    if (group.word !== undefined) dropCounts.duplicateCluster += 1;
+    if (group.word !== undefined) drop('duplicateCluster', classified.cluster);
     else group.word = { classified };
   });
   parseClassified.forEach((classified) => {
     const group = groupFor(classified.cluster);
-    if (group.parse !== undefined) dropCounts.duplicateCluster += 1;
+    if (group.parse !== undefined) drop('duplicateCluster', classified.cluster);
     else group.parse = { classified };
   });
 
@@ -411,21 +415,24 @@ export function anchorVerseClusters(
   sortedGroups.forEach((group, item) => {
     const { word, parse } = group;
     const chosen = groupPlacements[item];
-    const facetCount = [word, parse].filter((facet) => facet !== undefined).length;
+    const dropFacets = (reason: Pt9ClusterDropReason) => {
+      if (word !== undefined) drop(reason, word.classified.cluster);
+      if (parse !== undefined) drop(reason, parse.classified.cluster);
+    };
     if (chosen === undefined) {
-      dropCounts.formMismatch += facetCount;
+      dropFacets('formMismatch');
       return;
     }
     const ambiguous = countFrom(groupCandidates[item], cursor) > 1;
     cursor = chosen + 1;
     if (layout.words[chosen].inFrontMatter) {
-      dropCounts.frontMatter += facetCount;
+      dropFacets('frontMatter');
       return;
     }
     if (ambiguous) ambiguousCount += 1;
     // A word cluster may have chosen the token by its own form, so the parse is checked against it.
     const parseFits = parseMatchers[item]?.(foldedWords[chosen]) ?? true;
-    if (!parseFits) dropCounts.formMismatch += 1;
+    if (parse !== undefined && !parseFits) drop('parseFormMismatch', parse.classified.cluster);
     groups.push({
       token: wordTokens[chosen],
       ...(word !== undefined && {
@@ -465,13 +472,13 @@ export function anchorVerseClusters(
   sortedPhrases.forEach((classified, item) => {
     const start = phrasePlacements[item];
     if (start === undefined) {
-      dropCounts.formMismatch += 1;
+      drop('formMismatch', classified.cluster);
       return;
     }
     const ambiguous = countFrom(phraseCandidates[item], phraseCursor) > 1;
     phraseCursor = start + 1;
     if (layout.words[start].inFrontMatter) {
-      dropCounts.frontMatter += 1;
+      drop('frontMatter', classified.cluster);
       return;
     }
     if (ambiguous) ambiguousCount += 1;
@@ -483,5 +490,5 @@ export function anchorVerseClusters(
     });
   });
 
-  return { groups, phrases, dropCounts, ambiguousCount };
+  return { groups, phrases, drops, ambiguousCount };
 }

@@ -79,11 +79,6 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
   }
 
   /** @throws {ReadOnlyAnalysisError} Always; nothing is written. */
-  async replaceAll(): Promise<string[]> {
-    throw this.readOnlyError();
-  }
-
-  /** @throws {ReadOnlyAnalysisError} Always; nothing is written. */
   async markClean(): Promise<void> {
     throw this.readOnlyError();
   }

@@ -41,9 +41,9 @@ export function Pt9CheckingModal({ sourceShortName }: Readonly<{ sourceShortName
 
 /**
  * First-open offer to convert the source project's Paratext 9 interlinear data. Yes runs the
- * import, whose result becomes the only project created; No continues into the empty draft exactly
- * as an open does today. Dismissing the dialog (Escape or a click outside) means No. The title
- * names the source project by `sourceShortName`.
+ * import, whose result becomes the only project created; No continues into the empty draft, as any
+ * other open does. Dismissing the dialog (Escape or a click outside) means No. The title names the
+ * source project by `sourceShortName`.
  */
 export function Pt9ConvertPromptModal({
   sourceShortName,

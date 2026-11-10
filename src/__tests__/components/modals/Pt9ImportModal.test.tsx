@@ -1,11 +1,16 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Pt9ImportModal } from '../../../components/modals/Pt9ImportModal';
-import type { Pt9ImportReport } from '../../../converters/pt9';
+import {
+  COPY_FEEDBACK_MS,
+  MAX_SHOWN_DROPS,
+  Pt9ImportModal,
+} from '../../../components/modals/Pt9ImportModal';
+import type { Pt9ClusterDrop, Pt9ImportReport } from '../../../converters/pt9';
 
 const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_title%': 'Import from Paratext 9: {projectName}',
@@ -23,6 +28,13 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_notImportedCount%': '{count} clusters:',
   '%interlinearizer_pt9ImportModal_reason_verseNotFound%': 'verse not found',
   '%interlinearizer_pt9ImportModal_reason_formMismatch%': 'did not match the text',
+  '%interlinearizer_pt9ImportModal_reason_parseFormMismatch%': "parses that don't spell their word",
+  '%interlinearizer_pt9ImportModal_showDrops%': 'Show what was not imported',
+  '%interlinearizer_pt9ImportModal_moreDrops%': '{count} more not shown',
+  '%interlinearizer_pt9ImportModal_copyDrops%': 'Copy all',
+  '%interlinearizer_pt9ImportModal_dropsCopied%': 'Copied',
+  '%interlinearizer_pt9ImportModal_copyFailed%': "Couldn't copy",
+  '%interlinearizer_pt9ImportModal_dropLine%': '{verseRef} ({language}) {lexemeIds} — {reason}',
   '%interlinearizer_pt9ImportModal_reason_lemmaOrOther%': 'unused legacy data',
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%': 'duplicate data',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%': 'unreadable data',
@@ -43,6 +55,7 @@ function makeReport(): Pt9ImportReport {
   const emptyDrops = {
     verseNotFound: 0,
     formMismatch: 0,
+    parseFormMismatch: 0,
     frontMatter: 0,
     lemmaOrOther: 0,
     duplicateCluster: 0,
@@ -66,6 +79,7 @@ function makeReport(): Pt9ImportReport {
             clustersConverted: 15,
             phrasesConverted: 2,
             clusterDrops: { ...emptyDrops, formMismatch: 4, verseNotFound: 1, duplicateCluster: 1 },
+            drops: [],
             ambiguousAnchors: 0,
             punctuationEntriesIgnored: 0,
           },
@@ -86,6 +100,7 @@ function makeReport(): Pt9ImportReport {
             clustersConverted: 0,
             phrasesConverted: 0,
             clusterDrops: { ...emptyDrops, verseNotFound: 5 },
+            drops: [],
             ambiguousAnchors: 0,
             punctuationEntriesIgnored: 0,
           },
@@ -278,12 +293,221 @@ describe('Pt9ImportModal', () => {
     expect(rendered).toHaveTextContent('29,525 did not match the text');
   });
 
+  it('lists each drop, collapsed, with its verse, language, lexeme ids and reason', async () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+      { verseRef: 'MAT 1:3', reason: 'parseFormMismatch', lexemeIds: ['Stem:run', 'Suffix:ing'] },
+    ];
+    report.languages[1].books[0].drops = [
+      { verseRef: 'MRK 1:1', reason: 'verseNotFound', lexemeIds: ['Word:bonjour'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    const drops = screen.getByTestId('pt9-import-drops');
+    expect(drops).not.toHaveAttribute('open');
+    expect(screen.queryByTestId('pt9-import-drop-lines')).not.toBeInTheDocument();
+
+    await userEvent.click(within(drops).getByText('Show what was not imported'));
+
+    expect(await screen.findByTestId('pt9-import-drop-lines')).toHaveTextContent(
+      [
+        'MAT 1:2 (en) Word:ghost — did not match the text',
+        "MAT 1:3 (en) Stem:run Suffix:ing — parses that don't spell their word",
+        'MRK 1:1 (fr) Word:bonjour — verse not found',
+      ].join('\n'),
+      { normalizeWhitespace: false },
+    );
+  });
+
+  it('shows only the first lines of a long list and copies every line', async () => {
+    const user = userEvent.setup();
+    const report = makeReport();
+    const total = MAX_SHOWN_DROPS + 2;
+    report.languages[0].books[0].drops = Array.from({ length: total }, (_, i): Pt9ClusterDrop => ({
+      verseRef: `MAT 1:${i + 1}`,
+      reason: 'formMismatch',
+      lexemeIds: ['Word:ghost'],
+    }));
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await user.click(screen.getByText('Show what was not imported'));
+
+    const shown = (await screen.findByTestId('pt9-import-drop-lines')).textContent?.split('\n');
+    expect(shown).toHaveLength(MAX_SHOWN_DROPS);
+    expect(screen.getByTestId('pt9-import-drops')).toHaveTextContent('2 more not shown');
+
+    await user.click(screen.getByRole('button', { name: 'Copy all' }));
+
+    const copied = (await navigator.clipboard.readText()).split('\n');
+    expect(copied).toHaveLength(total);
+    expect(copied[total - 1]).toBe(`MAT 1:${total} (en) Word:ghost — did not match the text`);
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
+  });
+
+  it('logs a failed copy and says so on the button', async () => {
+    const user = userEvent.setup();
+    jest.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await user.click(screen.getByText('Show what was not imported'));
+
+    await user.click(await screen.findByRole('button', { name: 'Copy all' }));
+
+    await waitFor(() => expect(logger.error).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: "Couldn't copy" })).toBeInTheDocument();
+  });
+
+  it('offers to copy again once the feedback has passed', async () => {
+    jest.useFakeTimers();
+    try {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const report = makeReport();
+      report.languages[0].books[0].drops = [
+        { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+      ];
+      render(
+        <Pt9ImportModal
+          phase={{ kind: 'report', report }}
+          mode="import"
+          sourceShortName="SRC"
+          onOpen={jest.fn()}
+          onClose={jest.fn()}
+        />,
+      );
+      await user.click(screen.getByText('Show what was not imported'));
+      await user.click(await screen.findByRole('button', { name: 'Copy all' }));
+      await screen.findByRole('button', { name: 'Copied' });
+
+      act(() => jest.advanceTimersByTime(COPY_FEEDBACK_MS));
+
+      expect(screen.getByRole('button', { name: 'Copy all' })).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('offers to copy again when the list is reopened', async () => {
+    const user = userEvent.setup();
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    const summary = screen.getByText('Show what was not imported');
+    await user.click(summary);
+    await user.click(await screen.findByRole('button', { name: 'Copy all' }));
+    await screen.findByRole('button', { name: 'Copied' });
+
+    await user.click(summary);
+    await waitFor(() =>
+      expect(screen.queryByTestId('pt9-import-drop-lines')).not.toBeInTheDocument(),
+    );
+    await user.click(summary);
+
+    expect(await screen.findByRole('button', { name: 'Copy all' })).toBeInTheDocument();
+  });
+
+  it('notes no hidden lines when every drop is shown', async () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByText('Show what was not imported'));
+
+    await screen.findByTestId('pt9-import-drop-lines');
+    expect(screen.getByTestId('pt9-import-drops')).not.toHaveTextContent('not shown');
+  });
+
+  it('drops the lines again when the list is collapsed', async () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    const summary = screen.getByText('Show what was not imported');
+    await userEvent.click(summary);
+    await screen.findByTestId('pt9-import-drop-lines');
+
+    await userEvent.click(summary);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('pt9-import-drop-lines')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('omits the drop list when nothing dropped', () => {
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report: makeReport() }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('pt9-import-drops')).not.toBeInTheDocument();
+  });
+
   it('omits the not-imported and missing-book rows when the import was clean', () => {
     const report = makeReport();
     report.languages.splice(1, 1);
     report.languages[0].books[0].clusterDrops = {
       verseNotFound: 0,
       formMismatch: 0,
+      parseFormMismatch: 0,
       frontMatter: 0,
       lemmaOrOther: 0,
       duplicateCluster: 0,

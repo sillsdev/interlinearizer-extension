@@ -2,8 +2,10 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { TooltipProvider } from 'platform-bible-react';
 import type { SenseRef } from 'interlinearizer';
 import type { ResolvedSense } from 'interlinearizer/lexicon';
-import type { ReactElement, ReactNode } from 'react';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
+import { useState, type ReactElement, type ReactNode } from 'react';
+import { PageClient } from '../../cache/pageClient';
+import { WholeAnalysis } from '../../cache/wholeAnalysis';
+import { SessionAnalysisProvider } from '../../components/AnalysisStore';
 import { LexiconSensesProvider } from '../../components/LexiconSenses';
 import type { SourceText } from '../../hooks/useSourceTextReader';
 import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
@@ -54,21 +56,48 @@ export function mockKeyAsValueLocalizedStrings(overrides: Record<string, string>
   });
 }
 
+/** Throws, standing in for a host that an empty analysis never asks anything of. */
+async function unreachableHost(): Promise<never> {
+  throw new Error('An empty analysis asks nothing of the host');
+}
+
 /**
- * Testing Library render options that wrap a subject in `AnalysisStoreProvider` with the default
- * analysis language ("und") used across component tests.
+ * Gives `children` an analysis provider holding nothing, over a session that is never opened, read
+ * in `analysisLanguage`, and read-only when `readOnly` is set.
+ */
+export function EmptyAnalysisProvider({
+  children,
+  analysisLanguage = 'und',
+  readOnly,
+}: Readonly<{ children: ReactNode; analysisLanguage?: string; readOnly?: boolean }>) {
+  const [client] = useState(
+    () => new PageClient({ getOutline: unreachableHost, getSegments: unreachableHost }),
+  );
+  const [whole] = useState(() => new WholeAnalysis(unreachableHost));
+  return (
+    <SessionAnalysisProvider
+      client={client}
+      whole={whole}
+      sessionId="empty"
+      analysisLanguage={analysisLanguage}
+      readOnly={readOnly}
+    >
+      {children}
+    </SessionAnalysisProvider>
+  );
+}
+
+/**
+ * Testing Library render options that wrap a subject in an {@link EmptyAnalysisProvider} read in
+ * "und".
  *
  * Supplies a {@link withTooltipProvider} wrapper too: a `Tooltip` throws without one, so a subject
  * that renders tooltips under an enclosing provider in the app needs it to mount in isolation at
  * all.
  */
-export const withAnalysisStore = {
+export const withEmptyAnalysis = {
   wrapper({ children }: Readonly<{ children: ReactNode }>) {
-    return (
-      <AnalysisStoreProvider analysisLanguage="und">
-        {withTooltipProvider(children)}
-      </AnalysisStoreProvider>
-    );
+    return <EmptyAnalysisProvider>{withTooltipProvider(children)}</EmptyAnalysisProvider>;
   },
 };
 

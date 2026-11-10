@@ -16,7 +16,7 @@ import {
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { phraseSurfaceText } from '../../../utils/phrase-text';
 import { FIXTURE_STAMPS, makeVerseBook } from '../../test-helpers';
-import { type BoundaryEdit, NOW, runBoundaryParity } from './parity';
+import { type BoundaryEdit, NOW, runBoundaryCommand } from './command-runs';
 
 const VERSE_BOOK = makeVerseBook([
   { sid: 'GEN 1:1', text: 'In the beginning God created.' },
@@ -98,15 +98,18 @@ function sharingOnePayload(...occurrences: [string, TokenSnapshot[]][]): TextAna
   };
 }
 
-const tokensOf = (store: TextAnalysis) =>
+const tokensOf = (result: TextAnalysis) =>
   Object.fromEntries(
-    store.phraseAnalysisLinks.map(({ id, tokens }) => [id, tokens.map(({ tokenRef }) => tokenRef)]),
+    result.phraseAnalysisLinks.map(({ id, tokens }) => [
+      id,
+      tokens.map(({ tokenRef }) => tokenRef),
+    ]),
   );
 
 const refs = (...tokens: TokenSnapshot[]) => tokens.map(({ tokenRef }) => tokenRef);
 
-const payloadsOf = (store: TextAnalysis) =>
-  Object.fromEntries(store.phraseAnalysisLinks.map(({ id, analysisId }) => [id, analysisId]));
+const payloadsOf = (result: TextAnalysis) =>
+  Object.fromEntries(result.phraseAnalysisLinks.map(({ id, analysisId }) => [id, analysisId]));
 
 /** The host command for `edit`. */
 function commandFor(edit: BoundaryEdit) {
@@ -122,19 +125,19 @@ type BoundaryCase = {
   analysis: TextAnalysis;
   segmentation?: SegmentationDelta;
   edit: BoundaryEdit;
-  /** What the WebView's result must show, so the case exercises the path it names. */
-  expectStore: (store: TextAnalysis, segmentation: SegmentationDelta | undefined) => void;
+  /** What the command's result must show, so the case exercises the path it names. */
+  expectResult: (result: TextAnalysis, segmentation: SegmentationDelta | undefined) => void;
 };
 
-describe('boundary command parity with the WebView boundary dispatch', () => {
+describe('boundary command boundary dispatch', () => {
   const cases: [string, BoundaryCase][] = [
     [
       'splits a segment cutting no phrase, leaving the phrases alone',
       {
         analysis: analysisOf(phrase('pl-1', [IN, THE])),
         edit: { kind: 'split', tokenRef: GOD.tokenRef },
-        expectStore: (store, segmentation) => {
-          expect(tokensOf(store)).toStrictEqual({ 'pl-1': refs(IN, THE) });
+        expectResult: (result, segmentation) => {
+          expect(tokensOf(result)).toStrictEqual({ 'pl-1': refs(IN, THE) });
           expect(segmentation).toStrictEqual({ removedVerseStarts: [], addedStarts: [GOD] });
         },
       },
@@ -144,8 +147,8 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
       {
         analysis: analysisOf(phrase('pl-1', [THE, BEGINNING, GOD, CREATED])),
         edit: { kind: 'split', tokenRef: GOD.tokenRef },
-        expectStore: (store) => {
-          expect(tokensOf(store)).toStrictEqual({
+        expectResult: (result) => {
+          expect(tokensOf(result)).toStrictEqual({
             'pl-1': refs(THE, BEGINNING),
             'id-2': refs(GOD, CREATED),
           });
@@ -157,9 +160,9 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
       {
         analysis: analysisOf(phrase('pl-1', [BEGINNING, GOD])),
         edit: { kind: 'split', tokenRef: GOD.tokenRef },
-        expectStore: (store) => {
-          expect(store.phraseAnalysisLinks).toStrictEqual([]);
-          expect(store.phraseAnalyses).toStrictEqual([]);
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([]);
+          expect(result.phraseAnalyses).toStrictEqual([]);
         },
       },
     ],
@@ -169,8 +172,8 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
         analysis: analysisOf(phrase('pl-1', [THE, BEGINNING, GOD]), phrase('pl-2', [AND, THE_2])),
         segmentation: MERGED,
         edit: { kind: 'split', tokenRef: GOD.tokenRef },
-        expectStore: (store) => {
-          expect(tokensOf(store)).toStrictEqual({
+        expectResult: (result) => {
+          expect(tokensOf(result)).toStrictEqual({
             'pl-1': refs(THE, BEGINNING),
             'pl-2': refs(AND, THE_2),
           });
@@ -187,8 +190,8 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
         ),
         segmentation: MERGED,
         edit: { kind: 'split', tokenRef: CREATED.tokenRef },
-        expectStore: (store, segmentation) => {
-          expect(tokensOf(store)).toStrictEqual({
+        expectResult: (result, segmentation) => {
+          expect(tokensOf(result)).toStrictEqual({
             'pl-a': refs(BEGINNING, GOD),
             'pl-b': refs(CREATED, THE_2),
             'pl-c': refs(EARTH, WAS),
@@ -203,12 +206,12 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
         analysis: sharingOnePayload(['pl-b', [BEGINNING, CREATED, AND]], ['pl-a', [IN, THE, GOD]]),
         segmentation: MERGED,
         edit: { kind: 'split', tokenRef: GOD.tokenRef },
-        expectStore: (store) => {
-          expect(tokensOf(store)).toStrictEqual({
+        expectResult: (result) => {
+          expect(tokensOf(result)).toStrictEqual({
             'pl-a': refs(IN, THE),
             'pl-b': refs(CREATED, AND),
           });
-          expect(payloadsOf(store)).toStrictEqual({ 'pl-a': 'id-1', 'pl-b': 'pa-shared' });
+          expect(payloadsOf(result)).toStrictEqual({ 'pl-a': 'id-1', 'pl-b': 'pa-shared' });
         },
       },
     ],
@@ -220,12 +223,12 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
           ['pl-exo', [EXO_THE, EXO_BEGINNING, EXO_GOD]],
         ),
         edit: { kind: 'split', tokenRef: GOD.tokenRef },
-        expectStore: (store) => {
-          expect(tokensOf(store)).toStrictEqual({
+        expectResult: (result) => {
+          expect(tokensOf(result)).toStrictEqual({
             'pl-exo': refs(EXO_THE, EXO_BEGINNING, EXO_GOD),
             'pl-gen': refs(THE, BEGINNING),
           });
-          expect(payloadsOf(store)).toStrictEqual({ 'pl-exo': 'pa-shared', 'pl-gen': 'id-1' });
+          expect(payloadsOf(result)).toStrictEqual({ 'pl-exo': 'pa-shared', 'pl-gen': 'id-1' });
         },
       },
     ],
@@ -234,8 +237,8 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
       {
         analysis: analysisOf(phrase('pl-1', [THE, BEGINNING, GONE, GOD, CREATED])),
         edit: { kind: 'split', tokenRef: GOD.tokenRef },
-        expectStore: (store) => {
-          expect(tokensOf(store)).toStrictEqual({
+        expectResult: (result) => {
+          expect(tokensOf(result)).toStrictEqual({
             'pl-1': refs(THE, BEGINNING),
             'id-2': refs(GONE, GOD, CREATED),
           });
@@ -248,8 +251,8 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
         analysis: analysisOf(phrase('pl-1', [THE, AND])),
         segmentation: MERGED,
         edit: { kind: 'split', tokenRef: CREATED.tokenRef },
-        expectStore: (store) => {
-          expect(store.phraseAnalysisLinks).toStrictEqual([]);
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([]);
         },
       },
     ],
@@ -258,8 +261,8 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
       {
         analysis: analysisOf(phrase('pl-1', [GOD, CREATED, AND])),
         edit: { kind: 'split', tokenRef: AND.tokenRef },
-        expectStore: (store, segmentation) => {
-          expect(tokensOf(store)).toStrictEqual({ 'pl-1': refs(GOD, CREATED) });
+        expectResult: (result, segmentation) => {
+          expect(tokensOf(result)).toStrictEqual({ 'pl-1': refs(GOD, CREATED) });
           expect(segmentation).toBeUndefined();
         },
       },
@@ -270,7 +273,7 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
         analysis: emptyAnalysis(),
         segmentation: MERGED,
         edit: { kind: 'split', tokenRef: AND.tokenRef },
-        expectStore: (_store, segmentation) => {
+        expectResult: (_store, segmentation) => {
           expect(segmentation).toBeUndefined();
         },
       },
@@ -281,7 +284,7 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
         analysis: emptyAnalysis(),
         segmentation: { removedVerseStarts: ['EXO 1:2:0'], addedStarts: [] },
         edit: { kind: 'split', tokenRef: GOD.tokenRef },
-        expectStore: (_store, segmentation) => {
+        expectResult: (_store, segmentation) => {
           expect(segmentation).toStrictEqual({
             removedVerseStarts: ['EXO 1:2:0'],
             addedStarts: [GOD],
@@ -294,8 +297,8 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
       {
         analysis: analysisOf(phrase('pl-1', [AND, THE_2]), phrase('pl-2', [GOD, CREATED])),
         edit: { kind: 'move', fromRef: AND.tokenRef, toRef: THE_2.tokenRef },
-        expectStore: (store, segmentation) => {
-          expect(tokensOf(store)).toStrictEqual({ 'pl-2': refs(GOD, CREATED) });
+        expectResult: (result, segmentation) => {
+          expect(tokensOf(result)).toStrictEqual({ 'pl-2': refs(GOD, CREATED) });
           expect(segmentation).toStrictEqual({
             removedVerseStarts: [AND.tokenRef],
             addedStarts: [THE_2],
@@ -309,8 +312,8 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
         analysis: analysisOf(phrase('pl-1', [THE, GOD, CREATED])),
         segmentation: { removedVerseStarts: [], addedStarts: [THE] },
         edit: { kind: 'move', fromRef: THE.tokenRef, toRef: BEGINNING.tokenRef },
-        expectStore: (store, segmentation) => {
-          expect(tokensOf(store)).toStrictEqual({ 'pl-1': refs(GOD, CREATED) });
+        expectResult: (result, segmentation) => {
+          expect(tokensOf(result)).toStrictEqual({ 'pl-1': refs(GOD, CREATED) });
           expect(segmentation).toStrictEqual({ removedVerseStarts: [], addedStarts: [BEGINNING] });
         },
       },
@@ -321,8 +324,8 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
         analysis: analysisOf(phrase('pl-1', [GOD, CREATED])),
         segmentation: { removedVerseStarts: [], addedStarts: [CREATED] },
         edit: { kind: 'move', fromRef: CREATED.tokenRef, toRef: AND.tokenRef },
-        expectStore: (store, segmentation) => {
-          expect(tokensOf(store)).toStrictEqual({ 'pl-1': refs(GOD, CREATED) });
+        expectResult: (result, segmentation) => {
+          expect(tokensOf(result)).toStrictEqual({ 'pl-1': refs(GOD, CREATED) });
           expect(segmentation).toBeUndefined();
         },
       },
@@ -332,8 +335,8 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
       {
         analysis: analysisOf(phrase('pl-1', [GOD, CREATED]), phrase('pl-2', [AND, THE_2])),
         edit: { kind: 'merge', secondSegmentStartRef: AND.tokenRef },
-        expectStore: (store, segmentation) => {
-          expect(tokensOf(store)).toStrictEqual({
+        expectResult: (result, segmentation) => {
+          expect(tokensOf(result)).toStrictEqual({
             'pl-1': refs(GOD, CREATED),
             'pl-2': refs(AND, THE_2),
           });
@@ -347,28 +350,20 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
         analysis: emptyAnalysis(),
         segmentation: { removedVerseStarts: [], addedStarts: [GOD] },
         edit: { kind: 'merge', secondSegmentStartRef: GOD.tokenRef },
-        expectStore: (_store, segmentation) => {
+        expectResult: (_store, segmentation) => {
           expect(segmentation).toBeUndefined();
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { analysis, segmentation, edit, expectStore }) => {
-    const outcome = await runBoundaryParity(
-      VERSE_BOOK,
-      { analysis, segmentation },
-      edit,
-      commandFor(edit),
-    );
+  it.each(cases)('%s', async (_name, { analysis, segmentation, edit, expectResult }) => {
+    const outcome = await runBoundaryCommand({ analysis, segmentation }, commandFor(edit));
 
-    expectStore(outcome.store, outcome.storeSegmentation);
-    expect(outcome.host).toStrictEqual(outcome.store);
-    expect(outcome.hostSegmentation).toStrictEqual(outcome.storeSegmentation);
-    expect(outcome.indexDifferences).toStrictEqual([]);
+    expectResult(outcome.result, outcome.resultSegmentation);
   });
 
-  const noOps: [string, Omit<BoundaryCase, 'expectStore'>][] = [
+  const noOps: [string, Omit<BoundaryCase, 'expectResult'>][] = [
     [
       'splitting before a token that already begins a segment',
       { analysis: emptyAnalysis(), edit: { kind: 'split', tokenRef: AND.tokenRef } },
@@ -402,20 +397,10 @@ describe('boundary command parity with the WebView boundary dispatch', () => {
     ],
   ];
 
-  it.each(noOps)(
-    'stages nothing for %s, as the WebView changes nothing',
-    async (_name, { analysis, segmentation, edit }) => {
-      const outcome = await runBoundaryParity(
-        VERSE_BOOK,
-        { analysis, segmentation },
-        edit,
-        commandFor(edit),
-      );
+  it.each(noOps)('stages nothing for %s', async (_name, { analysis, segmentation, edit }) => {
+    const outcome = await runBoundaryCommand({ analysis, segmentation }, commandFor(edit));
 
-      expect(outcome.changes).toStrictEqual({ intent: 'parity' });
-      expect(outcome.host).toStrictEqual(outcome.store);
-      expect(outcome.storeSegmentation).toStrictEqual(segmentation);
-      expect(outcome.hostSegmentation).toStrictEqual(segmentation);
-    },
-  );
+    expect(outcome.changes).toStrictEqual({ intent: 'command' });
+    expect(outcome.resultSegmentation).toStrictEqual(segmentation);
+  });
 });

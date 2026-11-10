@@ -27,7 +27,7 @@ import {
 import {
   allFalseViewOptions,
   mockKeyAsValueLocalizedStrings,
-  withAnalysisStore,
+  withEmptyAnalysis,
 } from './test-helpers';
 
 // ---------------------------------------------------------------------------
@@ -57,7 +57,9 @@ let mockReadOnly = false;
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useAnalysisReadOnly: () => mockReadOnly,
-  AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
+  SessionAnalysisProvider({
+    children,
+  }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
     return children;
   },
   useGloss: () => '',
@@ -291,33 +293,33 @@ describe('SegmentView', () => {
   });
 
   it('renders word token chips in token-chip mode (default)', () => {
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} />, withEmptyAnalysis);
 
     expect(screen.getByText('In')).toBeInTheDocument();
     expect(screen.getByText('the')).toBeInTheDocument();
   });
 
   it('renders non-word (punctuation) tokens in token-chip mode', () => {
-    render(<SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} />, withEmptyAnalysis);
 
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
   it('marks no verse inline at the verse a card opens on (token-chip)', () => {
     // The gutter already names it.
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} />, withEmptyAnalysis);
 
     expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
   });
 
   it('marks no heading marker inline (token-chip)', () => {
-    render(<SegmentView {...requiredProps()} segment={HEADING_SEGMENT} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} segment={HEADING_SEGMENT} />, withEmptyAnalysis);
 
     expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
   });
 
   it('marks a verse starting partway through a merged card (token-chip)', () => {
-    render(<SegmentView {...requiredProps()} segment={MERGED_CHIP_SEGMENT} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} segment={MERGED_CHIP_SEGMENT} />, withEmptyAnalysis);
 
     const sups = screen.getAllByTestId('verse-superscript');
     expect(sups.map((s) => s.textContent)).toEqual(['2']);
@@ -330,14 +332,14 @@ describe('SegmentView', () => {
         segment={MERGED_CHIP_SEGMENT}
         verseStartLabels={['1', '2:1']}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2:1');
   });
 
   it('marks no verse inline at the verse a card opens on (baseline-text)', () => {
-    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withEmptyAnalysis);
 
     expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
   });
@@ -349,7 +351,7 @@ describe('SegmentView', () => {
         displayMode="baseline-text"
         segment={MERGED_BASELINE_SEGMENT}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     const sups = screen.getAllByTestId('verse-superscript');
@@ -366,14 +368,14 @@ describe('SegmentView', () => {
         segment={MERGED_BASELINE_SEGMENT}
         verseStartLabels={['1', '2:1']}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2:1');
   });
 
   it('renders the gutter label in token-chip mode', () => {
-    render(<SegmentView {...requiredProps()} gutterLabel="2–3" />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} gutterLabel="2–3" />, withEmptyAnalysis);
 
     expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('2–3');
   });
@@ -381,7 +383,7 @@ describe('SegmentView', () => {
   it('renders the gutter label in baseline-text mode', () => {
     render(
       <SegmentView {...requiredProps()} displayMode="baseline-text" gutterLabel="2–3" />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('2–3');
@@ -390,7 +392,7 @@ describe('SegmentView', () => {
   });
 
   it('renders baselineText in baseline-text mode', () => {
-    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withEmptyAnalysis);
 
     expect(screen.getByTestId('segment-container')).toHaveTextContent('In the beginning.');
   });
@@ -400,27 +402,27 @@ describe('SegmentView', () => {
     // every segment below it shifts when the chips arrive.
     render(
       <SegmentView {...requiredProps()} displayMode="baseline-text" placeholderHeightPx={172} />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     expect(screen.getByTestId('segment-container')).toHaveStyle({ minHeight: '172px' });
   });
 
   it('does not render individual tokens in baseline-text mode', () => {
-    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withEmptyAnalysis);
 
     expect(screen.queryByText('In')).not.toBeInTheDocument();
     expect(screen.queryByText('the')).not.toBeInTheDocument();
   });
 
   it('sets aria-current="true" when isActive is true', () => {
-    const { container } = render(<SegmentView {...requiredProps()} isActive />, withAnalysisStore);
+    const { container } = render(<SegmentView {...requiredProps()} isActive />, withEmptyAnalysis);
 
     expect(container.firstChild).toHaveAttribute('aria-current', 'true');
   });
 
   it('does not set aria-current when isActive is omitted', () => {
-    const { container } = render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    const { container } = render(<SegmentView {...requiredProps()} />, withEmptyAnalysis);
 
     expect(container.firstChild).not.toHaveAttribute('aria-current');
   });
@@ -428,7 +430,7 @@ describe('SegmentView', () => {
   it('sets aria-current="true" on the baseline-text button when isActive is true', () => {
     const { container } = render(
       <SegmentView {...requiredProps()} displayMode="baseline-text" isActive />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     expect(container.firstChild).toHaveAttribute('aria-current', 'true');
@@ -438,7 +440,7 @@ describe('SegmentView', () => {
     const handleSelect = jest.fn();
     render(
       <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     await userEvent.click(screen.getByTestId('segment-container'));
@@ -710,7 +712,7 @@ describe('SegmentView', () => {
         displayMode="baseline-text"
         viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     expect(screen.getByTestId('segment-free-translation-input')).toBeInTheDocument();
@@ -726,7 +728,7 @@ describe('SegmentView', () => {
         onSelect={handleSelect}
         staleFreeTranslations={[{ analysisId: 'sa-1', segmentId: 'GEN 1:1', text: 'Au début' }]}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     await userEvent.click(screen.getByTestId('stale-free-translation-discard'));
@@ -743,7 +745,7 @@ describe('SegmentView', () => {
         viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
         onSelect={handleSelect}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     // Focusing the input selects the verse; the container's click handler must not also fire, so
@@ -758,7 +760,7 @@ describe('SegmentView', () => {
 
   it('calls onSelect with the verse ref and token id when a word token is clicked', async () => {
     const handleSelect = jest.fn();
-    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withEmptyAnalysis);
 
     await userEvent.click(screen.getByRole('button', { name: 'In' }));
 
@@ -807,7 +809,7 @@ describe('SegmentView', () => {
             localizedStrings={options.localizedStrings ?? keyAsValueStrings()}
           />
         </SegmentationProvider>,
-        withAnalysisStore,
+        withEmptyAnalysis,
       );
       return { dispatch, onSelect };
     }
@@ -1052,7 +1054,7 @@ describe('SegmentView', () => {
   });
 
   it('renders word tokens as interactive buttons when onSelect is provided', () => {
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} />, withEmptyAnalysis);
 
     expect(screen.getByRole('button', { name: 'In' })).toBeInTheDocument();
   });
@@ -1074,7 +1076,7 @@ describe('SegmentView', () => {
     ]);
     mockUsePhraseLinkMap.mockReturnValue(phraseLinkMap);
 
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} />, withEmptyAnalysis);
 
     // Both tokens grouped into one PhraseBox: one wrapper, two buttons.
     expect(document.querySelectorAll('[data-focus-state]')).toHaveLength(1);
@@ -1118,7 +1120,7 @@ describe('SegmentView', () => {
           ])
         }
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     // boxes[0]=tok-a (1st fragment), boxes[1]=tok-b (free), boxes[2]=tok-c (2nd fragment)
@@ -1133,7 +1135,7 @@ describe('SegmentView', () => {
     // Active, since only the active segment renders link icons.
     render(
       <SegmentView {...requiredProps()} focusedTokenRef="tok-0" isActive />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     const leadingSlot = document.querySelector('[data-prev-ref="none"][data-next-ref="tok-0"]');
@@ -1166,7 +1168,7 @@ describe('SegmentView', () => {
         {...requiredProps()}
         phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: sharedLink.tokens }}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
     expect(document.querySelector('[data-phrase-box]')).toHaveAttribute('data-split-free-refs', '');
   });
@@ -1189,7 +1191,7 @@ describe('SegmentView', () => {
       ]),
     );
     mockSplitFreeTokenRefs.current = new Set(['tok-0']);
-    render(<SegmentView {...requiredProps()} phraseMode={{ kind: 'view' }} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} phraseMode={{ kind: 'view' }} />, withEmptyAnalysis);
     // In view mode the live hover set passes through unchanged.
     expect(document.querySelector('[data-phrase-box]')).toHaveAttribute(
       'data-split-free-refs',
@@ -1198,7 +1200,7 @@ describe('SegmentView', () => {
   });
 
   it('fires mouse-leave on the token row without throwing', async () => {
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} />, withEmptyAnalysis);
     const tokenRow = document.querySelector('.tw\\:token-row');
     expect(tokenRow).not.toBeNull();
     await userEvent.unhover(tokenRow ?? document.body);
@@ -1222,7 +1224,7 @@ describe('SegmentView', () => {
     ]);
     mockUsePhraseLinkMap.mockReturnValue(phraseLinkMap);
     const onHoverPhrase = jest.fn();
-    render(<SegmentView {...requiredProps()} onHoverPhrase={onHoverPhrase} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} onHoverPhrase={onHoverPhrase} />, withEmptyAnalysis);
     // The PhraseGroup wrapper span wraps the mocked PhraseBox span (data-focus-state).
     const focusStateEl = document.querySelector('[data-focus-state]');
     const phraseGroupSpan = focusStateEl?.parentElement;
@@ -1234,16 +1236,16 @@ describe('SegmentView', () => {
   });
 
   it('splits a known phrase through the dispatch when the arc split button is clicked', async () => {
-    const deletePhrase = jest.fn();
+    const splitPhrase = jest.fn();
     mockUsePhraseDispatch.mockReturnValue(
       withSplitPhrase({
         createPhrase: jest.fn(),
         updatePhrase: jest.fn(),
-        deletePhrase,
+        deletePhrase: jest.fn(),
         mergePhrases: jest.fn(),
+        splitPhrase,
       }),
     );
-    // Two-token phrase split at tok-0 — both halves are 1 token — deletePhrase called
     mockUsePhraseLinkMap.mockReturnValue(
       new Map([['tok-0', makePhraseLink('phrase-1', ['tok-0', 'tok-1'], ['In', 'the'])]]),
     );
@@ -1257,30 +1259,31 @@ describe('SegmentView', () => {
           ])
         }
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
     await userEvent.click(screen.getByTestId('arc-split-btn'));
-    expect(deletePhrase).toHaveBeenCalledWith('phrase-1');
+    expect(splitPhrase).toHaveBeenCalledWith(expect.objectContaining({ id: 'phrase-1' }), 'tok-0');
   });
 
   it('does nothing when the arc split button fires for an unknown phrase id', async () => {
-    const deletePhrase = jest.fn();
+    const splitPhrase = jest.fn();
     mockUsePhraseDispatch.mockReturnValue(
       withSplitPhrase({
         createPhrase: jest.fn(),
         updatePhrase: jest.fn(),
-        deletePhrase,
+        deletePhrase: jest.fn(),
         mergePhrases: jest.fn(),
+        splitPhrase,
       }),
     );
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} />, withEmptyAnalysis);
     await userEvent.click(screen.getByTestId('arc-split-btn'));
-    expect(deletePhrase).not.toHaveBeenCalled();
+    expect(splitPhrase).not.toHaveBeenCalled();
   });
 
   it('focuses the first word token and updates the verse when the background is clicked', async () => {
     const handleSelect = jest.fn();
-    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withEmptyAnalysis);
 
     await userEvent.click(screen.getByTestId('segment-container'));
 
@@ -1294,7 +1297,7 @@ describe('SegmentView', () => {
     const handleSelect = jest.fn();
     render(
       <SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} onSelect={handleSelect} />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     await userEvent.click(screen.getByTestId('segment-container'));
@@ -1304,7 +1307,7 @@ describe('SegmentView', () => {
 
   it('ignores background clicks that bubble up from an interactive child', async () => {
     const handleSelect = jest.fn();
-    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withEmptyAnalysis);
 
     // Clicking the token button calls onSelect itself (with the clicked token), but the bubbled
     // click on the container must not fire handleBackgroundClick a second time.
@@ -1316,7 +1319,7 @@ describe('SegmentView', () => {
 
   it('ignores background clicks that bubble up from a phrase-box label, not just an interactive tag', async () => {
     const handleSelect = jest.fn();
-    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withEmptyAnalysis);
 
     // Clicking a chip's surface text lands on a <label>/<span> inside the phrase box; the browser
     // forwards that to the input (firing its own phrase focus), so the bubbled background click must
@@ -1332,7 +1335,7 @@ describe('SegmentView', () => {
     // an empty clickable gap. Clicking that gap must be a no-op, not snap focus to the first phrase.
     const { container } = render(
       <SegmentView {...requiredProps()} onSelect={handleSelect} />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     const slot = container.querySelector('[data-link-slot]');
@@ -1343,7 +1346,7 @@ describe('SegmentView', () => {
   });
 
   it('enables the link-slot fade transition after mount', () => {
-    const { container } = render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    const { container } = render(<SegmentView {...requiredProps()} />, withEmptyAnalysis);
 
     // After mount, SegmentView stops suppressing the opacity transition so later toggles of isActive
     // fade the icon rather than snapping. The fade-carrying span is the icon wrapper, identified by
@@ -1363,7 +1366,7 @@ describe('SegmentView', () => {
     };
     mockUsePhraseLinkMap.mockReturnValue(new Map([['tok-0', phraseLink]]));
     mockCandidateTokenRefs.current = new Set(['tok-0']);
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    render(<SegmentView {...requiredProps()} />, withEmptyAnalysis);
     // The hovered candidate token (tok-0) resolves to its phrase (phrase-1), passed to ArcOverlay.
     expect(screen.getByTestId('arc-split-btn')).toHaveAttribute(
       'data-candidate-phrase-ids',
@@ -1377,7 +1380,7 @@ describe('SegmentView', () => {
         {...requiredProps()}
         viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     expect(screen.getByTestId('segment-free-translation-input')).toBeInTheDocument();
@@ -1389,7 +1392,7 @@ describe('SegmentView', () => {
         {...requiredProps()}
         viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: false }}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     expect(screen.queryByTestId('segment-free-translation-input')).not.toBeInTheDocument();
@@ -1402,7 +1405,7 @@ describe('SegmentView', () => {
         displayMode="baseline-text"
         viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: false }}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     expect(screen.queryByTestId('segment-free-translation-input')).not.toBeInTheDocument();
@@ -1414,7 +1417,7 @@ describe('SegmentView', () => {
         {...requiredProps()}
         viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     const input = screen.getByTestId('segment-free-translation-input');
@@ -1434,7 +1437,7 @@ describe('SegmentView', () => {
         {...requiredProps()}
         viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     const input = screen.getByTestId('segment-free-translation-input');
@@ -1452,7 +1455,7 @@ describe('SegmentView', () => {
         viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
         onSelect={handleSelect}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     await userEvent.click(screen.getByTestId('segment-free-translation-input'));
@@ -1471,7 +1474,7 @@ describe('SegmentView', () => {
         viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
         onSelect={handleSelect}
       />,
-      withAnalysisStore,
+      withEmptyAnalysis,
     );
 
     await userEvent.click(screen.getByTestId('segment-free-translation-input'));

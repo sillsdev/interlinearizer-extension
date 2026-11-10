@@ -442,7 +442,8 @@ describe('convertPt9Project', () => {
       expect(book.clustersConverted).toBe(20);
       expect(book.clusterDrops).toStrictEqual({
         verseNotFound: 37,
-        formMismatch: 4,
+        formMismatch: 0,
+        parseFormMismatch: 4,
         frontMatter: 0,
         lemmaOrOther: 0,
         duplicateCluster: 0,

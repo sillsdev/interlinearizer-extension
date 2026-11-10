@@ -54,6 +54,13 @@ export type OpenedSession = {
   readOnly: boolean;
   /** Whether any segment of the opened analysis had a free translation when it opened. */
   hasFreeTranslations: boolean;
+  /**
+   * Whether the source project had no interlinear project of the id that the open named. The
+   * session then opened on the draft, which saves to no project.
+   */
+  projectMissing: boolean;
+  /** The books whose stored analysis could not be read, which the session opened without. */
+  unreadableBooks: string[];
 };
 
 /** How a session applies an edit. */
@@ -159,7 +166,10 @@ async function describeApplied(
 }
 
 /** Whether `draft` holds no analysis and no boundary edits. */
-function isEmptyDraft({ analysis, segmentation }: DraftProject): boolean {
+export function isEmptyDraft({
+  analysis,
+  segmentation,
+}: Pick<DraftProject, 'analysis' | 'segmentation'>): boolean {
   return (
     Object.values(analysis).every((records) => records.length === 0) && isEmptyDelta(segmentation)
   );
@@ -333,31 +343,53 @@ export class AnalysisSessions {
   }
 
   /**
-   * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
-   * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
-   * Opening closes the source's earlier session, if any. The new session starts on what storage
-   * holds, with nothing to undo. Its first command waits while the repository builds its indexes.
-   * Opening reads none of the source's text; {@link startTextRead} starts that.
+   * Opens a session read-only on the Paratext 9 import `importProjectId` when given, otherwise on
+   * the source project's draft, which saves to `interlinearProjectId` when given. When the source
+   * has no project of the id named, the session opens on the draft, which then saves to no project.
+   * A draft that holds analysis is then marked unsaved, unless the missing project was an import,
+   * which the draft never saved to. Opening closes the source's earlier session, if any. The new
+   * session starts on what storage holds, with nothing to undo. Its first command waits while the
+   * repository builds its indexes. Opening reads none of the source's text; {@link startTextRead}
+   * starts that.
    *
    * The session starts on the opened draft's first analysis language. When the draft lists none, it
    * starts on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the
    * platform lists none either.
    *
-   * @throws {Error} If the source project has no interlinear project `interlinearProjectId`.
-   * @throws Whatever finding the project or loading the scope's analysis throws; the source is left
-   *   with no session.
+   * @throws {Error} If both ids are given, or an id names a project of the wrong kind.
+   * @throws Whatever finding the project, loading the scope's analysis, or marking the draft
+   *   unsaved throws; the source is left with no session.
    */
-  open(sourceProjectId: string, interlinearProjectId?: string): Promise<OpenedSession> {
+  open(
+    sourceProjectId: string,
+    interlinearProjectId?: string,
+    importProjectId?: string,
+  ): Promise<OpenedSession> {
     return this.onLifecycle(sourceProjectId, async () => {
+      if (interlinearProjectId !== undefined && importProjectId !== undefined)
+        throw new Error(
+          `Interlinearizer: cannot open a session on both ${interlinearProjectId} and the Paratext 9 import ${importProjectId}`,
+        );
       const replaced = this.sessionsBySource.get(sourceProjectId);
       if (replaced) await this.closeNow(replaced);
 
-      const scope = await this.resolveScope(sourceProjectId, interlinearProjectId);
+      const named = importProjectId ?? interlinearProjectId;
+      const found = await this.resolveScope(sourceProjectId, named);
+      if (found && (found.kind === 'pt9Import') !== (importProjectId !== undefined))
+        throw new Error(
+          importProjectId === undefined
+            ? `Interlinearizer: cannot save a draft to the Paratext 9 import ${named}`
+            : `Interlinearizer: ${named} is not a Paratext 9 import`,
+        );
+      const scope: SessionScope = found ?? { kind: 'draft', sourceProjectId };
       const repository =
         scope.kind === 'pt9Import'
           ? this.host.openPt9ImportRepository(scope.interlinearProjectId)
           : this.host.openDraftRepository(sourceProjectId);
-      const { draft: opened } = await repository.exportAll();
+      const { draft: opened, unreadableBooks } = await repository.exportAll();
+      // Kept unsaved, because the draft is all that is left of the missing project's work.
+      if (!found && importProjectId === undefined && !isEmptyDraft(opened) && !opened.dirty)
+        await repository.apply({ intent: 'detachFromProject' });
       const session: Session = {
         id: crypto.randomUUID(),
         scope,
@@ -384,6 +416,8 @@ export class AnalysisSessions {
         sessionId: session.id,
         readOnly: repository.capabilities.readOnly,
         hasFreeTranslations: analysisHasFreeTranslations(opened.analysis),
+        projectMissing: !found,
+        unreadableBooks,
       };
     });
   }
@@ -641,7 +675,12 @@ export class AnalysisSessions {
    */
   setSaveTarget(sessionId: string, interlinearProjectId: string | undefined): Promise<void> {
     return this.runEdit(sessionId, async (session) => {
-      const scope = await this.resolveScope(session.scope.sourceProjectId, interlinearProjectId);
+      const { sourceProjectId } = session.scope;
+      const scope = await this.resolveScope(sourceProjectId, interlinearProjectId);
+      if (!scope)
+        throw new Error(
+          `Interlinearizer: source project ${sourceProjectId} has no interlinear project ${interlinearProjectId}`,
+        );
       if (scope.kind === 'pt9Import')
         throw new Error(
           `Interlinearizer: cannot save a draft to the Paratext 9 import ${interlinearProjectId}`,
@@ -656,8 +695,8 @@ export class AnalysisSessions {
    * marked unsaved.
    *
    * An empty draft has nothing to lose, so its saved states are the exception. The current state
-   * stays saved when the draft is empty, as does the state the session opened on when that was
-   * empty.
+   * stays saved when the draft is empty, as does each empty state that the session opened on or
+   * saved.
    *
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.
@@ -839,21 +878,15 @@ export class AnalysisSessions {
 
   /**
    * Resolves the scope for a session on the source project, paired with `interlinearProjectId` when
-   * given.
-   *
-   * @throws {Error} If the source project has no interlinear project `interlinearProjectId`.
+   * given. Answers `undefined` when the source has no such project.
    */
   private async resolveScope(
     sourceProjectId: string,
     interlinearProjectId: string | undefined,
-  ): Promise<SessionScope> {
+  ): Promise<SessionScope | undefined> {
     if (interlinearProjectId === undefined) return { kind: 'draft', sourceProjectId };
     const project = await this.host.findProject(sourceProjectId, interlinearProjectId);
-    if (!project) {
-      throw new Error(
-        `Interlinearizer: source project ${sourceProjectId} has no interlinear project ${interlinearProjectId}`,
-      );
-    }
+    if (!project) return undefined;
     return {
       kind: project.pt9Import ? 'pt9Import' : 'draft',
       sourceProjectId,

@@ -13,7 +13,7 @@ export type HeardChange = Omit<SessionAnalysisChange, 'sessionId'>;
 export const PAGE_SIZE = 32;
 
 /** The waits before each retry of a failed load; the load is given up after the last. */
-export const PAGE_RETRY_DELAYS_MS: readonly number[] = [1000, 4000, 16000];
+const PAGE_RETRY_DELAYS_MS: readonly number[] = [1000, 4000, 16000];
 
 /**
  * Indexes of the pages that hold any of the segments at `[start, end)` in a book of `count`

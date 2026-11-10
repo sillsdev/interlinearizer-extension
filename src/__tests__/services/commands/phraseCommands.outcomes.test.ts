@@ -1,6 +1,5 @@
 /// <reference types="jest" />
 
-import type { UnknownAction } from '@reduxjs/toolkit';
 import type {
   PhraseAnalysis,
   PhraseAnalysisLink,
@@ -17,18 +16,9 @@ import {
   updatePhrase as updateCommand,
   writePhraseGloss as writeGlossCommand,
 } from '../../../services/commands/phraseCommands';
-import {
-  approvePhrase,
-  createPhrase,
-  deletePhrase,
-  mergePhrases,
-  updatePhrase,
-  writePhraseGloss,
-} from '../../../store/analysisSlice';
 import { emptyAnalysis } from '../../../types/empty-factories';
-import { splitPhraseAtBoundary } from '../../../utils/phrase-arc';
 import { FIXTURE_STAMPS } from '../../test-helpers';
-import { EARLIER, ids, NOW, type ParityCase, runParity } from './parity';
+import { EARLIER, NOW, type CommandCase, runCommand } from './command-runs';
 
 const STAMP = { forkId: 'fork', now: NOW };
 const NEW = { linkId: 'new-link', analysisId: 'new-analysis' };
@@ -65,40 +55,34 @@ function analysisOf(
   return { ...emptyAnalysis(), phraseAnalyses, phraseAnalysisLinks };
 }
 
-const linkOf = (store: TextAnalysis, id: string) =>
-  store.phraseAnalysisLinks.find((l) => l.id === id);
+const linkOf = (result: TextAnalysis, id: string) =>
+  result.phraseAnalysisLinks.find((l) => l.id === id);
 
-const payloadOf = (store: TextAnalysis, id: string) =>
-  store.phraseAnalyses.find((pa) => pa.id === id);
+const payloadOf = (result: TextAnalysis, id: string) =>
+  result.phraseAnalyses.find((pa) => pa.id === id);
 
-/**
- * Runs `analysis` through both `action` and `command`. Checks the reducer's result with
- * `expectStore`, then checks that the command leaves the same analysis with consistent indexes.
- */
-async function expectParity(
-  { analysis, expectStore }: Omit<ParityCase<unknown>, 'input'>,
-  action: UnknownAction | readonly UnknownAction[],
+/** Runs `analysis` through `command`, checking its result with `expectResult`. */
+async function expectOutcome(
+  { analysis, expectResult }: Omit<CommandCase<unknown>, 'input'>,
   command: (buffer: ChangeBuffer) => Promise<void>,
 ): Promise<void> {
-  const outcome = await runParity(analysis, 'en', action, command);
+  const outcome = await runCommand(analysis, 'en', command);
 
-  expectStore(outcome.store);
-  expect(outcome.host).toStrictEqual(outcome.store);
-  expect(outcome.indexDifferences).toStrictEqual([]);
+  expectResult(outcome.result);
 }
 
-describe('createPhrase parity with the reducer', () => {
-  const cases: [string, ParityCase<TokenSnapshot[]>][] = [
+describe('createPhrase', () => {
+  const cases: [string, CommandCase<TokenSnapshot[]>][] = [
     [
       'creates a payload and an approved link over the tokens',
       {
         analysis: emptyAnalysis(),
         input: run(1, 0, 1),
-        expectStore: (store) => {
-          expect(store.phraseAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
             { id: 'new-analysis', createdAt: NOW, updatedAt: NOW, surfaceText: 'In the' },
           ]);
-          expect(store.phraseAnalysisLinks).toStrictEqual([
+          expect(result.phraseAnalysisLinks).toStrictEqual([
             {
               id: 'new-link',
               analysisId: 'new-analysis',
@@ -119,9 +103,9 @@ describe('createPhrase parity with the reducer', () => {
           [link('pl-other', 'pa-in-the', run(2, 0, 1))],
         ),
         input: run(1, 0, 1),
-        expectStore: (store) => {
-          expect(store.phraseAnalyses).toStrictEqual([payload('pa-in-the', 'in the')]);
-          expect(linkOf(store, 'new-link')?.analysisId).toBe('pa-in-the');
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([payload('pa-in-the', 'in the')]);
+          expect(linkOf(result, 'new-link')?.analysisId).toBe('pa-in-the');
         },
       },
     ],
@@ -133,8 +117,8 @@ describe('createPhrase parity with the reducer', () => {
           [link('pl-a', 'pa-a', run(2, 0, 1)), link('pl-b', 'pa-b', run(3, 0, 1))],
         ),
         input: run(1, 0, 1),
-        expectStore: (store) => {
-          expect(linkOf(store, 'new-link')?.analysisId).toBe('pa-b');
+        expectResult: (result) => {
+          expect(linkOf(result, 'new-link')?.analysisId).toBe('pa-b');
         },
       },
     ],
@@ -146,29 +130,38 @@ describe('createPhrase parity with the reducer', () => {
           [link('pl-other', 'pa-in-the', run(2, 0, 1))],
         ),
         input: run(1, 0, 1),
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalyses)).toStrictEqual(['new-analysis', 'pa-in-the']);
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In the',
+            },
+            {
+              id: 'pa-in-the',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the',
+              gloss: { en: 'at first' },
+            },
+          ]);
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { input: tokens, ...parityCase }) => {
-    await expectParity(
-      parityCase,
-      {
-        type: createPhrase.type,
-        payload: { id: 'new-link', analysisId: 'new-analysis', tokens, now: NOW },
-      },
-      (buffer) => createCommand(buffer, { ...NEW, tokens, now: NOW }),
+  it.each(cases)('%s', async (_name, { input: tokens, ...commandCase }) => {
+    await expectOutcome(commandCase, (buffer) =>
+      createCommand(buffer, { ...NEW, tokens, now: NOW }),
     );
   });
 });
 
 type UpdateInput = { phraseId: string; tokens: TokenSnapshot[] };
 
-describe('updatePhrase parity with the reducer', () => {
-  const cases: [string, ParityCase<UpdateInput>][] = [
+describe('updatePhrase', () => {
+  const cases: [string, CommandCase<UpdateInput>][] = [
     [
       'reshapes an unshared payload in place, re-deriving its surface text and keeping its gloss',
       {
@@ -177,11 +170,11 @@ describe('updatePhrase parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1))],
         ),
         input: { phraseId: 'pl-1', tokens: run(1, 0, 1, 2) },
-        expectStore: (store) => {
-          expect(store.phraseAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
             payload('pa-1', 'In the beginning', { gloss: { en: 'in the' }, updatedAt: NOW }),
           ]);
-          expect(store.phraseAnalysisLinks).toStrictEqual([
+          expect(result.phraseAnalysisLinks).toStrictEqual([
             link('pl-1', 'pa-1', run(1, 0, 1, 2), { updatedAt: NOW }),
           ]);
         },
@@ -198,10 +191,25 @@ describe('updatePhrase parity with the reducer', () => {
           ],
         ),
         input: { phraseId: 'pl-1', tokens: run(1, 0, 1, 2) },
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalyses)).toStrictEqual(['fork', 'pa-1']);
-          expect(payloadOf(store, 'pa-1')?.surfaceText).toBe('In the');
-          expect(payloadOf(store, 'fork')).toStrictEqual({
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'fork',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In the beginning',
+              gloss: { en: 'in the' },
+            },
+            {
+              id: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the',
+              gloss: { en: 'in the' },
+            },
+          ]);
+          expect(payloadOf(result, 'pa-1')?.surfaceText).toBe('In the');
+          expect(payloadOf(result, 'fork')).toStrictEqual({
             id: 'fork',
             createdAt: NOW,
             updatedAt: NOW,
@@ -222,9 +230,17 @@ describe('updatePhrase parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-2', run(2, 0, 1, 2))],
         ),
         input: { phraseId: 'pl-1', tokens: run(1, 0, 1, 2) },
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalyses)).toStrictEqual(['pa-2']);
-          expect(linkOf(store, 'pl-1')).toStrictEqual(
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'pa-2',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2025-06-01T00:00:00.000Z',
+              surfaceText: 'in the beginning',
+              gloss: { en: 'x' },
+            },
+          ]);
+          expect(linkOf(result, 'pl-1')).toStrictEqual(
             link('pl-1', 'pa-2', run(1, 0, 1, 2), { updatedAt: NOW }),
           );
         },
@@ -238,9 +254,9 @@ describe('updatePhrase parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-1', run(2, 0, 1))],
         ),
         input: { phraseId: 'pl-1', tokens: run(3, 0, 1) },
-        expectStore: (store) => {
-          expect(store.phraseAnalyses).toStrictEqual([payload('pa-1', 'In the')]);
-          expect(linkOf(store, 'pl-1')?.analysisId).toBe('pa-1');
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([payload('pa-1', 'In the')]);
+          expect(linkOf(result, 'pl-1')?.analysisId).toBe('pa-1');
         },
       },
     ],
@@ -249,8 +265,8 @@ describe('updatePhrase parity with the reducer', () => {
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: { phraseId: 'pl-1', tokens: [] },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(emptyAnalysis());
+        expectResult: (result) => {
+          expect(result).toStrictEqual(emptyAnalysis());
         },
       },
     ],
@@ -262,9 +278,28 @@ describe('updatePhrase parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-1', run(2, 0, 1))],
         ),
         input: { phraseId: 'pl-1', tokens: [] },
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalyses)).toStrictEqual(['pa-1']);
-          expect(ids(store.phraseAnalysisLinks)).toStrictEqual(['pl-2']);
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the',
+            },
+          ]);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-2',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:2:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:2:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
         },
       },
     ],
@@ -273,8 +308,8 @@ describe('updatePhrase parity with the reducer', () => {
       {
         analysis: analysisOf([], [link('pl-1', 'pa-missing', run(1, 0, 1))]),
         input: { phraseId: 'pl-1', tokens: run(1, 0, 1, 2) },
-        expectStore: (store) => {
-          expect(store.phraseAnalysisLinks).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([
             link('pl-1', 'pa-missing', run(1, 0, 1, 2), { updatedAt: NOW }),
           ]);
         },
@@ -285,31 +320,39 @@ describe('updatePhrase parity with the reducer', () => {
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: { phraseId: 'pl-unknown', tokens: [] },
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { input, ...parityCase }) => {
-    await expectParity(
-      parityCase,
-      { type: updatePhrase.type, payload: { ...input, ...STAMP } },
-      (buffer) => updateCommand(buffer, { ...input, ...STAMP }),
-    );
+  it.each(cases)('%s', async (_name, { input, ...commandCase }) => {
+    await expectOutcome(commandCase, (buffer) => updateCommand(buffer, { ...input, ...STAMP }));
   });
 });
 
-describe('deletePhrase parity with the reducer', () => {
-  const cases: [string, ParityCase<string>][] = [
+describe('deletePhrase', () => {
+  const cases: [string, CommandCase<string>][] = [
     [
       'removes the occurrence and its unshared payload',
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: 'pl-1',
-        expectStore: (store) => {
-          expect(store).toStrictEqual(emptyAnalysis());
+        expectResult: (result) => {
+          expect(result).toStrictEqual(emptyAnalysis());
         },
       },
     ],
@@ -324,9 +367,28 @@ describe('deletePhrase parity with the reducer', () => {
           ],
         ),
         input: 'pl-1',
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalyses)).toStrictEqual(['pa-1']);
-          expect(ids(store.phraseAnalysisLinks)).toStrictEqual(['pl-2']);
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the',
+            },
+          ]);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-2',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'rejected',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
         },
       },
     ],
@@ -335,8 +397,8 @@ describe('deletePhrase parity with the reducer', () => {
       {
         analysis: analysisOf([], [link('pl-1', 'pa-missing', run(1, 0, 1))]),
         input: 'pl-1',
-        expectStore: (store) => {
-          expect(store).toStrictEqual(emptyAnalysis());
+        expectResult: (result) => {
+          expect(result).toStrictEqual(emptyAnalysis());
         },
       },
     ],
@@ -345,24 +407,34 @@ describe('deletePhrase parity with the reducer', () => {
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: 'pl-unknown',
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { input: phraseId, ...parityCase }) => {
-    await expectParity(parityCase, deletePhrase({ phraseId }), (buffer) =>
-      deleteCommand(buffer, { phraseId }),
-    );
+  it.each(cases)('%s', async (_name, { input: phraseId, ...commandCase }) => {
+    await expectOutcome(commandCase, (buffer) => deleteCommand(buffer, { phraseId }));
   });
 });
 
 type MergeInput = { targetPhraseId: string; tokens: TokenSnapshot[]; absorbedPhraseId?: string };
 
-describe('mergePhrases parity with the reducer', () => {
-  const cases: [string, ParityCase<MergeInput>][] = [
+describe('mergePhrases', () => {
+  const cases: [string, CommandCase<MergeInput>][] = [
     [
       'grows the target over the absorbed occurrence, removing it and its payload',
       {
@@ -374,11 +446,25 @@ describe('mergePhrases parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-2', run(1, 2, 3))],
         ),
         input: { targetPhraseId: 'pl-1', tokens: run(1, 0, 1, 2, 3), absorbedPhraseId: 'pl-2' },
-        expectStore: (store) => {
-          expect(store.phraseAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
             payload('pa-1', 'In the beginning God', { gloss: { en: 'in the' }, updatedAt: NOW }),
           ]);
-          expect(ids(store.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+                { tokenRef: 'GEN 1:1:2', surfaceText: 'beginning' },
+                { tokenRef: 'GEN 1:1:3', surfaceText: 'God' },
+              ],
+            },
+          ]);
         },
       },
     ],
@@ -387,9 +473,9 @@ describe('mergePhrases parity with the reducer', () => {
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: { targetPhraseId: 'pl-1', tokens: run(1, 0, 1, 2) },
-        expectStore: (store) => {
-          expect(linkOf(store, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1, 2));
-          expect(payloadOf(store, 'pa-1')?.surfaceText).toBe('In the beginning');
+        expectResult: (result) => {
+          expect(linkOf(result, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1, 2));
+          expect(payloadOf(result, 'pa-1')?.surfaceText).toBe('In the beginning');
         },
       },
     ],
@@ -401,8 +487,8 @@ describe('mergePhrases parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-1', run(1, 2, 3))],
         ),
         input: { targetPhraseId: 'pl-1', tokens: run(1, 0, 1, 2, 3), absorbedPhraseId: 'pl-2' },
-        expectStore: (store) => {
-          expect(store.phraseAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
             payload('pa-1', 'In the beginning God', { updatedAt: NOW }),
           ]);
         },
@@ -416,9 +502,16 @@ describe('mergePhrases parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-3', 'pa-3', run(2, 0, 1, 2))],
         ),
         input: { targetPhraseId: 'pl-1', tokens: run(1, 0, 1, 2) },
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalyses)).toStrictEqual(['pa-3']);
-          expect(linkOf(store, 'pl-1')?.analysisId).toBe('pa-3');
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'pa-3',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2025-06-01T00:00:00.000Z',
+              surfaceText: 'In the beginning',
+            },
+          ]);
+          expect(linkOf(result, 'pl-1')?.analysisId).toBe('pa-3');
         },
       },
     ],
@@ -434,8 +527,8 @@ describe('mergePhrases parity with the reducer', () => {
           tokens: run(1, 0, 1, 2, 3),
           absorbedPhraseId: 'pl-2',
         },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(
+        expectResult: (result) => {
+          expect(result).toStrictEqual(
             analysisOf(
               [payload('pa-1', 'In the'), payload('pa-2', 'beginning God')],
               [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-2', run(1, 2, 3))],
@@ -449,33 +542,29 @@ describe('mergePhrases parity with the reducer', () => {
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: { targetPhraseId: 'pl-1', tokens: run(1, 0, 1, 2), absorbedPhraseId: 'pl-1' },
-        expectStore: (store) => {
-          expect(store.phraseAnalysisLinks).toStrictEqual([link('pl-1', 'pa-1', run(1, 0, 1))]);
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([link('pl-1', 'pa-1', run(1, 0, 1))]);
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { input, ...parityCase }) => {
-    await expectParity(
-      parityCase,
-      { type: mergePhrases.type, payload: { ...input, ...STAMP } },
-      (buffer) => mergeCommand(buffer, { ...input, ...STAMP }),
-    );
+  it.each(cases)('%s', async (_name, { input, ...commandCase }) => {
+    await expectOutcome(commandCase, (buffer) => mergeCommand(buffer, { ...input, ...STAMP }));
   });
 });
 
 type GlossInput = { phraseId?: string; value: string };
 
-describe('writePhraseGloss parity with the reducer', () => {
-  const cases: [string, ParityCase<GlossInput>][] = [
+describe('writePhraseGloss', () => {
+  const cases: [string, CommandCase<GlossInput>][] = [
     [
       'writes the gloss on an unshared payload',
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: { value: 'at first' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(
+        expectResult: (result) => {
+          expect(result).toStrictEqual(
             analysisOf(
               [payload('pa-1', 'In the', { gloss: { en: 'at first' }, updatedAt: NOW })],
               [link('pl-1', 'pa-1', run(1, 0, 1), { updatedAt: NOW })],
@@ -492,10 +581,10 @@ describe('writePhraseGloss parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-1', run(2, 0, 1))],
         ),
         input: { value: 'at first' },
-        expectStore: (store) => {
-          expect(payloadOf(store, 'pa-1')?.gloss).toStrictEqual({ fr: 'au' });
-          expect(payloadOf(store, 'fork')?.gloss).toStrictEqual({ fr: 'au', en: 'at first' });
-          expect(linkOf(store, 'pl-1')?.analysisId).toBe('fork');
+        expectResult: (result) => {
+          expect(payloadOf(result, 'pa-1')?.gloss).toStrictEqual({ fr: 'au' });
+          expect(payloadOf(result, 'fork')?.gloss).toStrictEqual({ fr: 'au', en: 'at first' });
+          expect(linkOf(result, 'pl-1')?.analysisId).toBe('fork');
         },
       },
     ],
@@ -507,10 +596,10 @@ describe('writePhraseGloss parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-1', run(2, 0, 1))],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(payloadOf(store, 'pa-1')?.gloss).toStrictEqual({ en: 'a', fr: 'au' });
-          expect(payloadOf(store, 'fork')?.gloss).toStrictEqual({ fr: 'au' });
-          expect(linkOf(store, 'pl-1')?.analysisId).toBe('fork');
+        expectResult: (result) => {
+          expect(payloadOf(result, 'pa-1')?.gloss).toStrictEqual({ en: 'a', fr: 'au' });
+          expect(payloadOf(result, 'fork')?.gloss).toStrictEqual({ fr: 'au' });
+          expect(linkOf(result, 'pl-1')?.analysisId).toBe('fork');
         },
       },
     ],
@@ -525,9 +614,17 @@ describe('writePhraseGloss parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-2', run(2, 0, 1))],
         ),
         input: { value: 'b' },
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalyses)).toStrictEqual(['pa-2']);
-          expect(linkOf(store, 'pl-1')).toStrictEqual(
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'pa-2',
+              createdAt: '2025-06-01T00:00:00.000Z',
+              updatedAt: '2025-06-01T00:00:00.000Z',
+              surfaceText: 'in the',
+              gloss: { en: 'b' },
+            },
+          ]);
+          expect(linkOf(result, 'pl-1')).toStrictEqual(
             link('pl-1', 'pa-2', run(1, 0, 1), { updatedAt: NOW }),
           );
         },
@@ -541,8 +638,8 @@ describe('writePhraseGloss parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1))],
         ),
         input: { value: 'at first' },
-        expectStore: (store) => {
-          expect(store.phraseAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
             payload('pa-1', 'In the', {
               gloss: { en: 'at first' },
               senseRef: SENSE,
@@ -560,8 +657,8 @@ describe('writePhraseGloss parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1))],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(store.phraseAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
             payload('pa-1', 'In the', { senseRef: SENSE, updatedAt: NOW }),
           ]);
         },
@@ -575,8 +672,8 @@ describe('writePhraseGloss parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1))],
         ),
         input: { value: '  ' },
-        expectStore: (store) => {
-          expect(store.phraseAnalyses[0].gloss).toStrictEqual({ fr: 'au' });
+        expectResult: (result) => {
+          expect(result.phraseAnalyses[0].gloss).toStrictEqual({ fr: 'au' });
         },
       },
     ],
@@ -588,11 +685,23 @@ describe('writePhraseGloss parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1))],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(store.phraseAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
             payload('pa-1', 'In the', { updatedAt: NOW }),
           ]);
-          expect(ids(store.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
         },
       },
     ],
@@ -604,8 +713,8 @@ describe('writePhraseGloss parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-1', run(2, 0, 1))],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(
+        expectResult: (result) => {
+          expect(result).toStrictEqual(
             analysisOf(
               [payload('pa-1', 'In the', { gloss: { fr: 'au' } })],
               [link('pl-1', 'pa-1', run(1, 0, 1)), link('pl-2', 'pa-1', run(2, 0, 1))],
@@ -619,8 +728,8 @@ describe('writePhraseGloss parity with the reducer', () => {
       {
         analysis: analysisOf([], [link('pl-1', 'pa-missing', run(1, 0, 1))]),
         input: { value: 'at first' },
-        expectStore: (store) => {
-          expect(store.phraseAnalysisLinks).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([
             link('pl-1', 'pa-missing', run(1, 0, 1)),
           ]);
         },
@@ -631,25 +740,23 @@ describe('writePhraseGloss parity with the reducer', () => {
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: { phraseId: 'pl-unknown', value: 'at first' },
-        expectStore: (store) => {
-          expect(store.phraseAnalyses).toStrictEqual([payload('pa-1', 'In the')]);
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([payload('pa-1', 'In the')]);
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { input, ...parityCase }) => {
+  it.each(cases)('%s', async (_name, { input, ...commandCase }) => {
     const { phraseId = 'pl-1', value } = input;
-    await expectParity(
-      parityCase,
-      { type: writePhraseGloss.type, payload: { phraseId, value, ...STAMP } },
-      (buffer) => writeGlossCommand(buffer, { phraseId, value, analysisLanguage: 'en', ...STAMP }),
+    await expectOutcome(commandCase, (buffer) =>
+      writeGlossCommand(buffer, { phraseId, value, analysisLanguage: 'en', ...STAMP }),
     );
   });
 });
 
-describe('approvePhrase parity with the reducer', () => {
-  const cases: [string, ParityCase<string>][] = [
+describe('approvePhrase', () => {
+  const cases: [string, CommandCase<string>][] = [
     [
       'approves a suggested occurrence, keeping its confidence',
       {
@@ -658,8 +765,8 @@ describe('approvePhrase parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1), { status: 'suggested', confidence: 'guess' })],
         ),
         input: 'pl-1',
-        expectStore: (store) => {
-          expect(store.phraseAnalysisLinks).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([
             link('pl-1', 'pa-1', run(1, 0, 1), { confidence: 'guess', updatedAt: NOW }),
           ]);
         },
@@ -676,8 +783,8 @@ describe('approvePhrase parity with the reducer', () => {
           ],
         ),
         input: 'pl-1',
-        expectStore: (store) => {
-          expect(linkOf(store, 'pl-1')?.status).toBe('suggested');
+        expectResult: (result) => {
+          expect(linkOf(result, 'pl-1')?.status).toBe('suggested');
         },
       },
     ],
@@ -692,8 +799,8 @@ describe('approvePhrase parity with the reducer', () => {
           ],
         ),
         input: 'pl-1',
-        expectStore: (store) => {
-          expect(linkOf(store, 'pl-1')?.status).toBe('approved');
+        expectResult: (result) => {
+          expect(linkOf(result, 'pl-1')?.status).toBe('approved');
         },
       },
     ],
@@ -702,8 +809,8 @@ describe('approvePhrase parity with the reducer', () => {
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: 'pl-1',
-        expectStore: (store) => {
-          expect(store.phraseAnalysisLinks).toStrictEqual([link('pl-1', 'pa-1', run(1, 0, 1))]);
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([link('pl-1', 'pa-1', run(1, 0, 1))]);
         },
       },
     ],
@@ -715,19 +822,15 @@ describe('approvePhrase parity with the reducer', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1), { status: 'suggested' })],
         ),
         input: 'pl-unknown',
-        expectStore: (store) => {
-          expect(linkOf(store, 'pl-1')?.status).toBe('suggested');
+        expectResult: (result) => {
+          expect(linkOf(result, 'pl-1')?.status).toBe('suggested');
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { input: phraseId, ...parityCase }) => {
-    await expectParity(
-      parityCase,
-      { type: approvePhrase.type, payload: { phraseId, now: NOW } },
-      (buffer) => approveCommand(buffer, { phraseId, now: NOW }),
-    );
+  it.each(cases)('%s', async (_name, { input: phraseId, ...commandCase }) => {
+    await expectOutcome(commandCase, (buffer) => approveCommand(buffer, { phraseId, now: NOW }));
   });
 });
 
@@ -740,39 +843,8 @@ const DOC_ORDER = new Map(
 
 type SplitInput = { splitAfterTokenRef: string; tokenDocOrder?: ReadonlyMap<string, number> };
 
-/**
- * The actions the WebView's split dispatches for `input` over `pl-1`, each stamped as its `prepare`
- * would stamp it.
- */
-function splitActions(analysis: TextAnalysis, input: SplitInput): UnknownAction[] {
-  const phrase = analysis.phraseAnalysisLinks.find(({ id }) => id === 'pl-1');
-  if (!phrase) throw new Error('The split fixtures hold pl-1');
-  const actions: UnknownAction[] = [];
-  splitPhraseAtBoundary(
-    phrase,
-    input.splitAfterTokenRef,
-    {
-      createPhrase: (tokens) => {
-        actions.push({
-          type: createPhrase.type,
-          payload: { id: 'new-link', analysisId: 'new-analysis', tokens, now: NOW },
-        });
-        return 'new-link';
-      },
-      updatePhrase: (phraseId, tokens) => {
-        actions.push({ type: updatePhrase.type, payload: { phraseId, tokens, ...STAMP } });
-      },
-      deletePhrase: (phraseId) => {
-        actions.push(deletePhrase({ phraseId }));
-      },
-    },
-    input.tokenDocOrder ?? DOC_ORDER,
-  );
-  return actions;
-}
-
-describe('splitPhrase parity with the WebView split', () => {
-  const cases: [string, ParityCase<SplitInput>][] = [
+describe('splitPhrase split', () => {
+  const cases: [string, CommandCase<SplitInput>][] = [
     [
       'shrinks to the first half and makes the second a phrase when both keep two tokens',
       {
@@ -781,18 +853,18 @@ describe('splitPhrase parity with the WebView split', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1, 2, 3))],
         ),
         input: { splitAfterTokenRef: 'GEN 1:1:1' },
-        expectStore: (store) => {
-          expect(payloadOf(store, 'pa-1')).toStrictEqual(
+        expectResult: (result) => {
+          expect(payloadOf(result, 'pa-1')).toStrictEqual(
             payload('pa-1', 'In the', { gloss: { en: 'x' }, updatedAt: NOW }),
           );
-          expect(payloadOf(store, 'new-analysis')).toStrictEqual({
+          expect(payloadOf(result, 'new-analysis')).toStrictEqual({
             id: 'new-analysis',
             createdAt: NOW,
             updatedAt: NOW,
             surfaceText: 'beginning God',
           });
-          expect(linkOf(store, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1));
-          expect(linkOf(store, 'new-link')?.tokens).toStrictEqual(run(1, 2, 3));
+          expect(linkOf(result, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1));
+          expect(linkOf(result, 'new-link')?.tokens).toStrictEqual(run(1, 2, 3));
         },
       },
     ],
@@ -801,8 +873,8 @@ describe('splitPhrase parity with the WebView split', () => {
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: { splitAfterTokenRef: 'GEN 1:1:0' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(emptyAnalysis());
+        expectResult: (result) => {
+          expect(result).toStrictEqual(emptyAnalysis());
         },
       },
     ],
@@ -814,9 +886,21 @@ describe('splitPhrase parity with the WebView split', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1, 2))],
         ),
         input: { splitAfterTokenRef: 'GEN 1:1:0' },
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
-          expect(linkOf(store, 'pl-1')?.tokens).toStrictEqual(run(1, 1, 2));
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+                { tokenRef: 'GEN 1:1:2', surfaceText: 'beginning' },
+              ],
+            },
+          ]);
+          expect(linkOf(result, 'pl-1')?.tokens).toStrictEqual(run(1, 1, 2));
         },
       },
     ],
@@ -828,9 +912,21 @@ describe('splitPhrase parity with the WebView split', () => {
           [link('pl-1', 'pa-1', run(1, 0, 1, 2))],
         ),
         input: { splitAfterTokenRef: 'GEN 1:1:1' },
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalysisLinks)).toStrictEqual(['pl-1']);
-          expect(linkOf(store, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1));
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([
+            {
+              id: 'pl-1',
+              analysisId: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              tokens: [
+                { tokenRef: 'GEN 1:1:0', surfaceText: 'In' },
+                { tokenRef: 'GEN 1:1:1', surfaceText: 'the' },
+              ],
+            },
+          ]);
+          expect(linkOf(result, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1));
         },
       },
     ],
@@ -842,9 +938,9 @@ describe('splitPhrase parity with the WebView split', () => {
           [link('pl-1', 'pa-1', run(1, 2, 0, 1, 3))],
         ),
         input: { splitAfterTokenRef: 'GEN 1:1:1' },
-        expectStore: (store) => {
-          expect(linkOf(store, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1));
-          expect(linkOf(store, 'new-link')?.tokens).toStrictEqual(run(1, 2, 3));
+        expectResult: (result) => {
+          expect(linkOf(result, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1));
+          expect(linkOf(result, 'new-link')?.tokens).toStrictEqual(run(1, 2, 3));
         },
       },
     ],
@@ -859,9 +955,9 @@ describe('splitPhrase parity with the WebView split', () => {
           splitAfterTokenRef: 'GEN 1:1:1',
           tokenDocOrder: new Map(run(1, 0, 1, 2).map(({ tokenRef }, i) => [tokenRef, i])),
         },
-        expectStore: (store) => {
-          expect(linkOf(store, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1));
-          expect(linkOf(store, 'new-link')?.tokens).toStrictEqual(run(1, 2, 3));
+        expectResult: (result) => {
+          expect(linkOf(result, 'pl-1')?.tokens).toStrictEqual(run(1, 0, 1));
+          expect(linkOf(result, 'new-link')?.tokens).toStrictEqual(run(1, 2, 3));
         },
       },
     ],
@@ -877,10 +973,29 @@ describe('splitPhrase parity with the WebView split', () => {
           ],
         ),
         input: { splitAfterTokenRef: 'GEN 1:1:1' },
-        expectStore: (store) => {
-          expect(ids(store.phraseAnalyses)).toStrictEqual(['fork', 'pa-1', 'pa-bg']);
-          expect(linkOf(store, 'pl-1')?.analysisId).toBe('fork');
-          expect(linkOf(store, 'new-link')?.analysisId).toBe('pa-bg');
+        expectResult: (result) => {
+          expect(result.phraseAnalyses).toStrictEqual([
+            {
+              id: 'fork',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In the',
+            },
+            {
+              id: 'pa-1',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the beginning God',
+            },
+            {
+              id: 'pa-bg',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'beginning God',
+            },
+          ]);
+          expect(linkOf(result, 'pl-1')?.analysisId).toBe('fork');
+          expect(linkOf(result, 'new-link')?.analysisId).toBe('pa-bg');
         },
       },
     ],
@@ -889,8 +1004,8 @@ describe('splitPhrase parity with the WebView split', () => {
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: { splitAfterTokenRef: 'GEN 1:1:1' },
-        expectStore: (store) => {
-          expect(store.phraseAnalysisLinks).toStrictEqual([link('pl-1', 'pa-1', run(1, 0, 1))]);
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([link('pl-1', 'pa-1', run(1, 0, 1))]);
         },
       },
     ],
@@ -899,15 +1014,15 @@ describe('splitPhrase parity with the WebView split', () => {
       {
         analysis: analysisOf([payload('pa-1', 'In the')], [link('pl-1', 'pa-1', run(1, 0, 1))]),
         input: { splitAfterTokenRef: 'GEN 1:1:4' },
-        expectStore: (store) => {
-          expect(store.phraseAnalysisLinks).toStrictEqual([link('pl-1', 'pa-1', run(1, 0, 1))]);
+        expectResult: (result) => {
+          expect(result.phraseAnalysisLinks).toStrictEqual([link('pl-1', 'pa-1', run(1, 0, 1))]);
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { input, ...parityCase }) => {
-    await expectParity(parityCase, splitActions(parityCase.analysis, input), (buffer) =>
+  it.each(cases)('%s', async (_name, { input, ...commandCase }) => {
+    await expectOutcome(commandCase, (buffer) =>
       splitCommand(buffer, {
         ...NEW,
         ...STAMP,

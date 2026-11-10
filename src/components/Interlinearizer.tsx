@@ -1,9 +1,9 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseDispatch, usePhraseLinkByIdGetter, usePhraseLinkByIdMap } from './AnalysisStore';
+import { usePhraseDispatch, usePhraseLinkByIdMap } from './AnalysisStore';
 import {
   NO_OP_SEGMENTATION_DISPATCH,
   SegmentationProvider,
@@ -13,17 +13,13 @@ import {
 import ContinuousView from './ContinuousView';
 import EditPhraseControls from './controls/EditPhraseControls';
 import useBookIndexes from '../hooks/useBookIndexes';
-import type { SegmentPages } from '../hooks/useSegmentPages';
+import type { SegmentPages } from '../types/segment-pages';
 import { useAltHeldAttribute } from '../hooks/useAltHeldAttribute';
 import type { PhraseMode } from '../types/phrase-mode';
 import { TOOLTIP_DELAY_MS } from './tooltip-delay';
 import type { ViewOptions } from '../types/view-options';
 import { perfMeasure } from '../utils/perf-marks';
-import {
-  phrasesStraddlingBoundary,
-  splitPhraseAtBoundary,
-  straddledRefs,
-} from '../utils/phrase-arc';
+import { straddledRefs } from '../utils/phrase-arc';
 import SegmentListView from './SegmentListView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
 import { FocusProvider } from './FocusStore';
@@ -35,9 +31,6 @@ const EMPTY_FORMER_BOUNDARIES: ReadonlyMap<string, string> = new Map();
 
 /** Stable empty set used as the `unmergeableStarts` default so memoization holds. */
 const EMPTY_UNMERGEABLE_STARTS: ReadonlySet<string> = new Set();
-
-/** Runs an action with no undo history to group its edits in. */
-const RUN_UNGROUPED = (action: () => void) => action();
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
@@ -72,13 +65,6 @@ type InterlinearizerProps = Readonly<{
   formerBoundaries?: ReadonlyMap<string, string>;
   /** Segment-start refs no merge can remove; when absent, none are. */
   unmergeableStarts?: ReadonlySet<string>;
-  /** Runs an action so every edit it makes undoes as one step; ungrouped when omitted. */
-  asOneStep?: (action: () => void) => void;
-  /**
-   * Whether `segmentationDispatch` itself breaks the phrases that a new boundary would cut, as a
-   * session's boundary edits do. When it doesn't, they are broken before the boundary is added.
-   */
-  dispatchBreaksPhrases?: boolean;
 }>;
 
 /**
@@ -97,8 +83,6 @@ export default function Interlinearizer({
   segmentationDispatch = NO_OP_SEGMENTATION_DISPATCH,
   formerBoundaries = EMPTY_FORMER_BOUNDARIES,
   unmergeableStarts = EMPTY_UNMERGEABLE_STARTS,
-  asOneStep = RUN_UNGROUPED,
-  dispatchBreaksPhrases = false,
 }: InterlinearizerProps) {
   // Navigation surface from the context: `consumeInternalNav` lets the segment window suppress the
   // fade for internal moves, `recenterRequest` asks it to frame a jump navigation alone would not,
@@ -114,15 +98,12 @@ export default function Interlinearizer({
     segmentById,
     segmentOrder,
     tokenDocOrder,
-    fullTokenOrder,
     gapTextByWordRef,
     tokenSegmentMap,
     wordTokenByRef,
     wordRefByOrder,
   } = useBookIndexes(book);
 
-  const phraseDispatch = usePhraseDispatch();
-  const getPhraseLinkById = usePhraseLinkByIdGetter();
   const phraseLinkById = usePhraseLinkByIdMap();
 
   /** The not-mid-phrase guard: word-token refs before which a segment boundary would cut a phrase. */
@@ -131,52 +112,10 @@ export default function Interlinearizer({
     [phraseLinkById, tokenDocOrder, wordRefByOrder],
   );
 
-  /**
-   * Splits every phrase that a new segment boundary before `boundaryRef` would cut, so no phrase
-   * ever spans two segments. Reads the phrase links at call time (not via subscription) and applies
-   * {@link splitPhraseAtBoundary} at each straddled phrase's boundary-side split point.
-   */
-  const forceBreakStraddledPhrases = useCallback(
-    (boundaryRef: string) => {
-      phrasesStraddlingBoundary(boundaryRef, getPhraseLinkById().values(), fullTokenOrder).forEach(
-        ({ link, splitAfterTokenRef }) =>
-          splitPhraseAtBoundary(link, splitAfterTokenRef, phraseDispatch, tokenDocOrder),
-      );
-    },
-    [getPhraseLinkById, fullTokenOrder, phraseDispatch, tokenDocOrder],
-  );
-
-  /**
-   * The dispatch provided through the segmentation context: wraps the raw boundary writer so any
-   * operation that adds a boundary (split, and the add-half of move) first force-breaks the phrases
-   * the new boundary would cut. Merge only removes a boundary, which can never leave a phrase
-   * straddling segments, so it passes through. A dispatch that breaks phrases itself passes through
-   * unwrapped.
-   */
-  const dispatch = useMemo<SegmentationDispatch>(
-    () =>
-      dispatchBreaksPhrases
-        ? segmentationDispatch
-        : {
-            merge: segmentationDispatch.merge,
-            split: (tokenRef) =>
-              asOneStep(() => {
-                forceBreakStraddledPhrases(tokenRef);
-                segmentationDispatch.split(tokenRef);
-              }),
-            move: (fromRef, toRef) =>
-              asOneStep(() => {
-                forceBreakStraddledPhrases(toRef);
-                segmentationDispatch.move(fromRef, toRef);
-              }),
-          },
-    [segmentationDispatch, forceBreakStraddledPhrases, asOneStep, dispatchBreaksPhrases],
-  );
-
   /** Segmentation context value — the dispatch paired with the lookups it operates over. */
   const segmentationValue = useMemo<SegmentationContextValue>(
     () => ({
-      dispatch,
+      dispatch: segmentationDispatch,
       segmentById,
       segmentOrder,
       formerBoundaries,
@@ -184,7 +123,7 @@ export default function Interlinearizer({
       unmergeableStarts,
     }),
     [
-      dispatch,
+      segmentationDispatch,
       segmentById,
       segmentOrder,
       formerBoundaries,

@@ -34,7 +34,7 @@ import * as staleCommands from '../../src/services/commands/staleCommands';
 import * as tokenCommands from '../../src/services/commands/tokenCommands';
 import { DraftRepository } from '../../src/services/draftRepository';
 import { readBookOutline, readSegmentPage } from '../../src/services/sessionPages';
-import { selectPoolIndex, selectStaleFreeTranslations } from '../../src/store/analysisSlice';
+import { selectPoolIndex, selectStaleFreeTranslations } from '../../src/utils/analysis-selectors';
 import type {
   ChangeSet,
   KeyValueStorage,
@@ -149,7 +149,7 @@ function seedOrphans(draft: DraftProject, books: readonly Book[]): void {
   });
 }
 
-/** What the WebView's store holds for each range of a book, read from the whole analysis. */
+/** What the selectors derive from the whole analysis for each range of a book. */
 function expectedPages(analysis: TextAnalysis, book: Book) {
   const state = { analysis, analysisLanguage: 'en' };
   const pool = selectPoolIndex(state);
@@ -249,7 +249,8 @@ function expectedPages(analysis: TextAnalysis, book: Book) {
 }
 
 /**
- * Compares each page and the outline of every book with what the WebView's store holds for them.
+ * Compares each page and the outline of every book with what the selectors derive for them from the
+ * whole analysis.
  *
  * @returns The pages that differ, by book and start, with what differed.
  */
@@ -622,7 +623,7 @@ async function checkEvents(
   steps: number,
 ): Promise<{ changes: number; mismatches: string[]; races: number }> {
   const storage = memoryStorage();
-  await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
+  await new DraftRepository(storage, draft.sourceProjectId, SILENT).startOver(draft);
   const segmented = segmenter(new Map(books.map((b) => [b.bookRef, b])));
   const reported = new Map<string, SessionAnalysisChange>();
   let hear: (change: SessionAnalysisChange) => void = () => {};
@@ -923,7 +924,7 @@ async function timeFirstRequest(
   viewBook: Book,
 ): Promise<{ open: number; first: number; next: number }> {
   const storage = memoryStorage();
-  await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
+  await new DraftRepository(storage, draft.sourceProjectId, SILENT).startOver(draft);
   const sessions = new AnalysisSessions(
     sessionHost(
       storage,
@@ -960,7 +961,7 @@ async function checkTier(tier: TierSpec): Promise<boolean> {
   const timing = await timeFirstRequest(draft, viewBook);
 
   const storage = memoryStorage();
-  await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
+  await new DraftRepository(storage, draft.sourceProjectId, SILENT).startOver(draft);
   const repository = new DraftRepository(storage, draft.sourceProjectId, SILENT);
   const pages = await checkPages(repository, draft.analysis, books, tier.viewBook);
 

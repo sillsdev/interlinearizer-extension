@@ -8,7 +8,7 @@ type CatalogStepSummary = {
 };
 
 /** What an undo step made at no one place tells the reader it was, once undone or redone. */
-export type StepSummary = Readonly<
+type StepSummary = Readonly<
   | (CatalogStepSummary & { kind: 'catalogEdit' | 'catalogMerge' | 'catalogDeleteUnused' })
   | (CatalogStepSummary & {
       kind: 'catalogDelete';

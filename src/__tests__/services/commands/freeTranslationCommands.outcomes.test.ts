@@ -2,10 +2,9 @@
 
 import type { SegmentAnalysis, SegmentAnalysisLink, TextAnalysis } from 'interlinearizer';
 import { writeSegmentFreeTranslation as writeCommand } from '../../../services/commands/freeTranslationCommands';
-import { writeSegmentFreeTranslation } from '../../../store/analysisSlice';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { FIXTURE_STAMPS } from '../../test-helpers';
-import { ids, LATER, NOW, type ParityCase, runParity } from './parity';
+import { LATER, NOW, type CommandCase, runCommand } from './command-runs';
 
 const NEW = { linkId: 'new-link', analysisId: 'new-analysis' };
 
@@ -32,23 +31,23 @@ function analysisOf(
   return { ...emptyAnalysis(), segmentAnalyses, segmentAnalysisLinks };
 }
 
-const translationOf = (store: TextAnalysis, id: string) =>
-  store.segmentAnalyses.find((sa) => sa.id === id);
+const translationOf = (result: TextAnalysis, id: string) =>
+  result.segmentAnalyses.find((sa) => sa.id === id);
 
-const linkOf = (store: TextAnalysis, id: string) =>
-  store.segmentAnalysisLinks.find((l) => l.id === id);
+const linkOf = (result: TextAnalysis, id: string) =>
+  result.segmentAnalysisLinks.find((l) => l.id === id);
 
 type WriteInput = { value: string; adoptStaleAnalysisId?: string };
 
-describe('writeSegmentFreeTranslation parity with the reducer', () => {
-  const cases: [string, ParityCase<WriteInput>][] = [
+describe('writeSegmentFreeTranslation', () => {
+  const cases: [string, CommandCase<WriteInput>][] = [
     [
       'makes an approved translation for a segment with none',
       {
         analysis: emptyAnalysis(),
         input: { value: 'At first' },
-        expectStore: (store) => {
-          expect(store.segmentAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.segmentAnalyses).toStrictEqual([
             {
               id: 'new-analysis',
               createdAt: NOW,
@@ -57,7 +56,7 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
               freeTranslation: { en: 'At first' },
             },
           ]);
-          expect(store.segmentAnalysisLinks).toStrictEqual([
+          expect(result.segmentAnalysisLinks).toStrictEqual([
             {
               id: 'new-link',
               analysisId: 'new-analysis',
@@ -78,15 +77,15 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-1', 'sa-1')],
         ),
         input: { value: 'At first' },
-        expectStore: (store) => {
-          expect(translationOf(store, 'sa-1')).toStrictEqual(
+        expectResult: (result) => {
+          expect(translationOf(result, 'sa-1')).toStrictEqual(
             translation('sa-1', {
               surfaceText: TEXT,
               updatedAt: NOW,
               freeTranslation: { en: 'At first', fr: 'Au début' },
             }),
           );
-          expect(linkOf(store, 'sl-1')?.updatedAt).toBe(NOW);
+          expect(linkOf(result, 'sl-1')?.updatedAt).toBe(NOW);
         },
       },
     ],
@@ -98,9 +97,9 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-1', 'sa-1'), link('sl-2', 'sa-2', LATER)],
         ),
         input: { value: 'At first' },
-        expectStore: (store) => {
-          expect(translationOf(store, 'sa-2')?.freeTranslation).toStrictEqual({ en: 'At first' });
-          expect(translationOf(store, 'sa-1')?.freeTranslation).toBeUndefined();
+        expectResult: (result) => {
+          expect(translationOf(result, 'sa-2')?.freeTranslation).toStrictEqual({ en: 'At first' });
+          expect(translationOf(result, 'sa-1')?.freeTranslation).toBeUndefined();
         },
       },
     ],
@@ -112,9 +111,9 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-2', 'sa-2'), link('sl-1', 'sa-1')],
         ),
         input: { value: 'At first' },
-        expectStore: (store) => {
-          expect(translationOf(store, 'sa-1')?.freeTranslation).toStrictEqual({ en: 'At first' });
-          expect(translationOf(store, 'sa-2')?.freeTranslation).toBeUndefined();
+        expectResult: (result) => {
+          expect(translationOf(result, 'sa-1')?.freeTranslation).toStrictEqual({ en: 'At first' });
+          expect(translationOf(result, 'sa-2')?.freeTranslation).toBeUndefined();
         },
       },
     ],
@@ -123,8 +122,17 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
       {
         analysis: analysisOf([], [link('sl-orphan', 'sa-missing')]),
         input: { value: 'At first' },
-        expectStore: (store) => {
-          expect(ids(store.segmentAnalysisLinks)).toStrictEqual(['new-link']);
+        expectResult: (result) => {
+          expect(result.segmentAnalysisLinks).toStrictEqual([
+            {
+              id: 'new-link',
+              analysisId: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              segmentId: 'GEN 1:1',
+            },
+          ]);
         },
       },
     ],
@@ -133,8 +141,8 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
       {
         analysis: analysisOf([], [link('sl-orphan', 'sa-missing')]),
         input: { value: '  ' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(analysisOf([], [link('sl-orphan', 'sa-missing')]));
+        expectResult: (result) => {
+          expect(result).toStrictEqual(analysisOf([], [link('sl-orphan', 'sa-missing')]));
         },
       },
     ],
@@ -146,8 +154,8 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-1', 'sa-1'), link('sl-orphan', 'sa-missing')],
         ),
         input: { value: 'At first' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(
+        expectResult: (result) => {
+          expect(result).toStrictEqual(
             analysisOf(
               [translation('sa-1', { freeTranslation: { en: 'At first' } })],
               [link('sl-1', 'sa-1'), link('sl-orphan', 'sa-missing')],
@@ -164,8 +172,8 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-1', 'sa-1')],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(
+        expectResult: (result) => {
+          expect(result).toStrictEqual(
             analysisOf(
               [translation('sa-1', { freeTranslation: { fr: 'Au début' } })],
               [link('sl-1', 'sa-1')],
@@ -182,15 +190,15 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-1', 'sa-1')],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(translationOf(store, 'sa-1')).toStrictEqual(
+        expectResult: (result) => {
+          expect(translationOf(result, 'sa-1')).toStrictEqual(
             translation('sa-1', {
               surfaceText: TEXT,
               updatedAt: NOW,
               freeTranslation: { fr: 'Au début' },
             }),
           );
-          expect(linkOf(store, 'sl-1')?.updatedAt).toBe(NOW);
+          expect(linkOf(result, 'sl-1')?.updatedAt).toBe(NOW);
         },
       },
     ],
@@ -202,8 +210,8 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-1', 'sa-1')],
         ),
         input: { value: ' ' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(emptyAnalysis());
+        expectResult: (result) => {
+          expect(result).toStrictEqual(emptyAnalysis());
         },
       },
     ],
@@ -215,8 +223,8 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-1', 'sa-1'), link('sl-2', 'sa-1', { segmentId: OTHER_SEGMENT })],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(
+        expectResult: (result) => {
+          expect(result).toStrictEqual(
             analysisOf(
               [translation('sa-1', { surfaceText: TEXT, updatedAt: NOW })],
               [link('sl-2', 'sa-1', { segmentId: OTHER_SEGMENT })],
@@ -238,8 +246,8 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-1', 'sa-1')],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(translationOf(store, 'sa-1')).toStrictEqual(
+        expectResult: (result) => {
+          expect(translationOf(result, 'sa-1')).toStrictEqual(
             translation('sa-1', {
               surfaceText: TEXT,
               updatedAt: NOW,
@@ -257,8 +265,8 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-stale', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT })],
         ),
         input: { value: '' },
-        expectStore: (store) => {
-          expect(translationOf(store, 'sa-stale')?.freeTranslation).toStrictEqual({
+        expectResult: (result) => {
+          expect(translationOf(result, 'sa-stale')?.freeTranslation).toStrictEqual({
             en: 'At first',
           });
         },
@@ -272,15 +280,15 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-stale', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT })],
         ),
         input: { value: 'At first', adoptStaleAnalysisId: 'sa-stale' },
-        expectStore: (store) => {
-          expect(store.segmentAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.segmentAnalyses).toStrictEqual([
             translation('sa-stale', {
               surfaceText: TEXT,
               updatedAt: NOW,
               freeTranslation: { en: 'At first', fr: 'Au début' },
             }),
           ]);
-          expect(store.segmentAnalysisLinks).toStrictEqual([
+          expect(result.segmentAnalysisLinks).toStrictEqual([
             link('sl-stale', 'sa-stale', { updatedAt: NOW }),
           ]);
         },
@@ -301,9 +309,9 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           ],
         ),
         input: { value: 'At first', adoptStaleAnalysisId: 'sa-stale' },
-        expectStore: (store) => {
-          expect(linkOf(store, 'sl-stale-2')?.status).toBe('approved');
-          expect(linkOf(store, 'sl-stale-1')?.status).toBe('stale');
+        expectResult: (result) => {
+          expect(linkOf(result, 'sl-stale-2')?.status).toBe('approved');
+          expect(linkOf(result, 'sl-stale-1')?.status).toBe('stale');
         },
       },
     ],
@@ -318,9 +326,9 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           ],
         ),
         input: { value: 'At first', adoptStaleAnalysisId: 'sa-stale' },
-        expectStore: (store) => {
-          expect(linkOf(store, 'sl-stale-1')?.status).toBe('approved');
-          expect(linkOf(store, 'sl-stale-2')?.status).toBe('stale');
+        expectResult: (result) => {
+          expect(linkOf(result, 'sl-stale-1')?.status).toBe('approved');
+          expect(linkOf(result, 'sl-stale-2')?.status).toBe('stale');
         },
       },
     ],
@@ -335,9 +343,9 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           ],
         ),
         input: { value: 'At first', adoptStaleAnalysisId: 'sa-stale' },
-        expectStore: (store) => {
-          expect(translationOf(store, 'sa-1')?.freeTranslation).toStrictEqual({ en: 'At first' });
-          expect(linkOf(store, 'sl-stale')).toStrictEqual(
+        expectResult: (result) => {
+          expect(translationOf(result, 'sa-1')?.freeTranslation).toStrictEqual({ en: 'At first' });
+          expect(linkOf(result, 'sl-stale')).toStrictEqual(
             link('sl-stale', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT }),
           );
         },
@@ -351,8 +359,22 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-elsewhere', 'sa-elsewhere', { segmentId: OTHER_SEGMENT })],
         ),
         input: { value: 'At first', adoptStaleAnalysisId: 'sa-elsewhere' },
-        expectStore: (store) => {
-          expect(ids(store.segmentAnalyses)).toStrictEqual(['new-analysis', 'sa-elsewhere']);
+        expectResult: (result) => {
+          expect(result.segmentAnalyses).toStrictEqual([
+            {
+              id: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              surfaceText: 'In the beginning',
+              freeTranslation: { en: 'At first' },
+            },
+            {
+              id: 'sa-elsewhere',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              surfaceText: 'In the start',
+            },
+          ]);
         },
       },
     ],
@@ -361,8 +383,25 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
       {
         analysis: analysisOf([], [link('sl-stale', 'sa-missing', { status: 'stale' })]),
         input: { value: 'At first', adoptStaleAnalysisId: 'sa-missing' },
-        expectStore: (store) => {
-          expect(ids(store.segmentAnalysisLinks)).toStrictEqual(['new-link', 'sl-stale']);
+        expectResult: (result) => {
+          expect(result.segmentAnalysisLinks).toStrictEqual([
+            {
+              id: 'new-link',
+              analysisId: 'new-analysis',
+              createdAt: '2026-06-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'approved',
+              segmentId: 'GEN 1:1',
+            },
+            {
+              id: 'sl-stale',
+              analysisId: 'sa-missing',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+              status: 'stale',
+              segmentId: 'GEN 1:1',
+            },
+          ]);
         },
       },
     ],
@@ -374,11 +413,11 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-stale', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT })],
         ),
         input: { value: '', adoptStaleAnalysisId: 'sa-stale' },
-        expectStore: (store) => {
-          expect(store.segmentAnalyses).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.segmentAnalyses).toStrictEqual([
             translation('sa-stale', { updatedAt: NOW, freeTranslation: { fr: 'Au début' } }),
           ]);
-          expect(store.segmentAnalysisLinks).toStrictEqual([
+          expect(result.segmentAnalysisLinks).toStrictEqual([
             link('sl-stale', 'sa-stale', {
               status: 'stale',
               segmentId: OTHER_SEGMENT,
@@ -399,8 +438,8 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           ],
         ),
         input: { value: '', adoptStaleAnalysisId: 'sa-stale' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(
+        expectResult: (result) => {
+          expect(result).toStrictEqual(
             analysisOf(
               [translation('sa-stale', { freeTranslation: { fr: 'Au début' } })],
               [
@@ -423,8 +462,17 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           ],
         ),
         input: { value: '', adoptStaleAnalysisId: 'sa-stale' },
-        expectStore: (store) => {
-          expect(ids(store.segmentAnalysisLinks)).toStrictEqual(['sl-stale']);
+        expectResult: (result) => {
+          expect(result.segmentAnalysisLinks).toStrictEqual([
+            {
+              id: 'sl-stale',
+              analysisId: 'sa-stale',
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-06-01T00:00:00.000Z',
+              status: 'stale',
+              segmentId: 'GEN 1:2',
+            },
+          ]);
         },
       },
     ],
@@ -436,8 +484,8 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-stale', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT })],
         ),
         input: { value: 'At first', adoptStaleAnalysisId: 'sa-stale' },
-        expectStore: (store) => {
-          expect(store.segmentAnalysisLinks).toStrictEqual([
+        expectResult: (result) => {
+          expect(result.segmentAnalysisLinks).toStrictEqual([
             link('sl-stale', 'sa-stale', { updatedAt: NOW }),
           ]);
         },
@@ -454,9 +502,9 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           ],
         ),
         input: { value: '', adoptStaleAnalysisId: 'sa-stale' },
-        expectStore: (store) => {
-          expect(linkOf(store, 'sl-stale-1')?.updatedAt).toBe(NOW);
-          expect(linkOf(store, 'sl-stale-2')?.updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
+        expectResult: (result) => {
+          expect(linkOf(result, 'sl-stale-1')?.updatedAt).toBe(NOW);
+          expect(linkOf(result, 'sl-stale-2')?.updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
         },
       },
     ],
@@ -468,45 +516,26 @@ describe('writeSegmentFreeTranslation parity with the reducer', () => {
           [link('sl-stale', 'sa-stale', { status: 'stale', segmentId: OTHER_SEGMENT })],
         ),
         input: { value: '', adoptStaleAnalysisId: 'sa-stale' },
-        expectStore: (store) => {
-          expect(store).toStrictEqual(emptyAnalysis());
+        expectResult: (result) => {
+          expect(result).toStrictEqual(emptyAnalysis());
         },
       },
     ],
   ];
 
-  it.each(cases)('%s', async (_name, { analysis, input, expectStore }) => {
-    const outcome = await runParity(
-      analysis,
-      'en',
-      {
-        type: writeSegmentFreeTranslation.type,
-        payload: {
-          segmentId: SEGMENT,
-          surfaceText: TEXT,
-          value: input.value,
-          id: NEW.analysisId,
-          linkId: NEW.linkId,
-          now: NOW,
-          ...(input.adoptStaleAnalysisId !== undefined && {
-            adoptStaleAnalysisId: input.adoptStaleAnalysisId,
-          }),
-        },
-      },
-      (buffer) =>
-        writeCommand(buffer, {
-          ...NEW,
-          segmentId: SEGMENT,
-          surfaceText: TEXT,
-          value: input.value,
-          analysisLanguage: 'en',
-          adoptStaleAnalysisId: input.adoptStaleAnalysisId,
-          now: NOW,
-        }),
+  it.each(cases)('%s', async (_name, { analysis, input, expectResult }) => {
+    const outcome = await runCommand(analysis, 'en', (buffer) =>
+      writeCommand(buffer, {
+        ...NEW,
+        segmentId: SEGMENT,
+        surfaceText: TEXT,
+        value: input.value,
+        analysisLanguage: 'en',
+        adoptStaleAnalysisId: input.adoptStaleAnalysisId,
+        now: NOW,
+      }),
     );
 
-    expectStore(outcome.store);
-    expect(outcome.host).toStrictEqual(outcome.store);
-    expect(outcome.indexDifferences).toStrictEqual([]);
+    expectResult(outcome.result);
   });
 });

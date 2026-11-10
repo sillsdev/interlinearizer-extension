@@ -6,7 +6,7 @@ import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { convertPt9Project, Pt9ImportReport, Pt9UnreadableFile } from '../converters/pt9';
-import { getWritingSystem } from './bookService';
+import { listBooks } from './bookService';
 import { readPt9InterlinearData, type Pt9InterlinearReadFile } from './pt9DataReader';
 import * as projectStorage from './projectStorage';
 import { summarizeProject } from './projectSummaries';
@@ -170,12 +170,15 @@ export async function importPt9Project(
   const bookIds = [
     ...new Set(data.books.flatMap((book) => (book.bookId === undefined ? [] : [book.bookId]))),
   ];
-  const writingSystem = await getWritingSystem(sourceProjectId);
+  const { bookIds: presentBookIds, writingSystem } = await listBooks(sourceProjectId);
+  const presentBooks = new Set(presentBookIds);
   const usjPdp = await papi.projectDataProviders.get('platformScripture.USJ_Book', sourceProjectId);
   const books: Book[] = (
     await Promise.all(
       bookIds.map(async (bookId): Promise<Book[]> => {
-        const usj = await usjPdp.getBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 });
+        const usj = presentBooks.has(bookId)
+          ? await usjPdp.getBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 })
+          : undefined;
         if (!usj) {
           logger.warn(
             `Interlinearizer: project ${sourceProjectId} has no USJ for book ${bookId}; its interlinear data is skipped`,

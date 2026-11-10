@@ -372,13 +372,31 @@ describe('createGlossRetry', () => {
 
   const GLOSS = { language: 'en', analysisId: 'ta-1' };
   const STEM = { language: 'en', analysisId: 'ta-1', morphemeId: 'm-1' };
+  const ASKED: ReadonlySet<string> = new Set(['ta-1']);
+
+  it('keeps a draft whose analysis the rows were not asked for', () => {
+    const glossRetry = createGlossRetry(jest.fn());
+    glossRetry.reject(GLOSS, { draft: 'beginning', typedOver: 'start' });
+
+    glossRetry.prune([], new Set());
+
+    expect(glossRetry.draftFor(GLOSS, 'start')).toBe('beginning');
+  });
+
+  it('names the analyses it keeps a draft for, each once', () => {
+    const glossRetry = createGlossRetry(jest.fn());
+    glossRetry.reject(GLOSS, { draft: 'beginning', typedOver: 'start' });
+    glossRetry.reject(STEM, { draft: 'begin', typedOver: '' });
+
+    expect(glossRetry.keptAnalysisIds()).toEqual(['ta-1']);
+  });
 
   it('keeps a draft whose gloss is still the one it was typed over', () => {
     const onHeldChange = jest.fn();
     const glossRetry = createGlossRetry(onHeldChange);
     glossRetry.reject(GLOSS, { draft: 'beginning', typedOver: 'start' });
 
-    glossRetry.prune(rows({ en: 'start' }));
+    glossRetry.prune(rows({ en: 'start' }), ASKED);
 
     expect(glossRetry.draftFor(GLOSS, 'start')).toBe('beginning');
     expect(onHeldChange.mock.calls).toStrictEqual([[true]]);
@@ -389,7 +407,7 @@ describe('createGlossRetry', () => {
     const glossRetry = createGlossRetry(onHeldChange);
     glossRetry.reject(GLOSS, { draft: 'beginning', typedOver: 'start' });
 
-    glossRetry.prune(rows({ en: 'origin' }));
+    glossRetry.prune(rows({ en: 'origin' }), ASKED);
 
     expect(glossRetry.draftFor(GLOSS, 'start')).toBeUndefined();
     expect(onHeldChange).toHaveBeenLastCalledWith(false);
@@ -400,7 +418,7 @@ describe('createGlossRetry', () => {
     const glossRetry = createGlossRetry(onHeldChange);
     glossRetry.reject(GLOSS, { draft: 'beginning', typedOver: 'start' });
 
-    glossRetry.prune([]);
+    glossRetry.prune([], ASKED);
 
     expect(onHeldChange).toHaveBeenLastCalledWith(false);
   });
@@ -411,7 +429,7 @@ describe('createGlossRetry', () => {
     const french = { language: 'fr', analysisId: 'ta-1' };
     glossRetry.reject(french, { draft: 'commencement', typedOver: 'début' });
 
-    glossRetry.prune(rows({ en: 'start', fr: 'début' }));
+    glossRetry.prune(rows({ en: 'start', fr: 'début' }), ASKED);
 
     expect(glossRetry.draftFor(french, 'début')).toBe('commencement');
   });
@@ -420,7 +438,7 @@ describe('createGlossRetry', () => {
     const glossRetry = createGlossRetry(jest.fn());
     glossRetry.reject(STEM, { draft: 'begin', typedOver: '' });
 
-    glossRetry.prune(rows({ en: 'start' }));
+    glossRetry.prune(rows({ en: 'start' }), ASKED);
 
     expect(glossRetry.draftFor(STEM, '')).toBe('begin');
   });
@@ -430,7 +448,7 @@ describe('createGlossRetry', () => {
     const glossRetry = createGlossRetry(onHeldChange);
     glossRetry.reject({ ...STEM, morphemeId: 'm-2' }, { draft: 'begin', typedOver: '' });
 
-    glossRetry.prune(rows({ en: 'start' }));
+    glossRetry.prune(rows({ en: 'start' }), ASKED);
 
     expect(onHeldChange).toHaveBeenLastCalledWith(false);
   });
@@ -441,7 +459,7 @@ describe('createGlossRetry', () => {
     glossRetry.reject(GLOSS, { draft: 'beginning', typedOver: 'start' });
     glossRetry.reject(STEM, { draft: 'begin', typedOver: 'start' });
 
-    glossRetry.prune(rows({ en: 'start' }, { en: 'stem' }));
+    glossRetry.prune(rows({ en: 'start' }, { en: 'stem' }), ASKED);
 
     expect(glossRetry.draftFor(GLOSS, 'start')).toBe('beginning');
     expect(onHeldChange).toHaveBeenLastCalledWith(true);

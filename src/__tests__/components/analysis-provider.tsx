@@ -5,7 +5,7 @@ import { PageClient } from '../../cache/pageClient';
 import { WholeAnalysis } from '../../cache/wholeAnalysis';
 import { SessionAnalysisProvider } from '../../components/AnalysisStore';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { fakeHost } from '../cache/fake-host';
+import { fakeHost, hostSettled, type FakeText } from '../cache/fake-host';
 
 /** What the last provider made saves its edits to. */
 type Saved = Readonly<{
@@ -50,15 +50,16 @@ export type AnalysisProviderProps = Readonly<{
 
 /**
  * Makes a {@link SessionAnalysisProvider} over a session on `analysis` that a fake host serves, with
- * every segment of `book` loaded. {@link settle}, {@link savedAnalysis} and {@link editsSaved} then
- * answer for it.
+ * every segment of `book` loaded, and `text` as the source text it reads whole, unread by default.
+ * {@link settle}, {@link savedAnalysis} and {@link editsSaved} then answer for it.
  */
 export async function prepareAnalysis(
   analysis: Partial<TextAnalysis>,
   book: Book,
+  text?: FakeText,
 ): Promise<(props: AnalysisProviderProps) => ReactElement> {
   const seeded = { ...emptyAnalysis(), ...analysis };
-  const host = await fakeHost(undefined, undefined, { analysis: seeded, book });
+  const host = await fakeHost(undefined, undefined, { analysis: seeded, book, text });
   const readDraft = () =>
     host.sessions.run(host.sessionId, (session) => session.repository.getWholeDraft());
   const client = new PageClient(
@@ -86,6 +87,7 @@ export async function prepareAnalysis(
       act(async () => {
         await client.settled();
         await whole.refresh();
+        await hostSettled();
       }),
     savedAnalysis: async () => (await readDraft()).analysis,
     editsSaved: () => saves,

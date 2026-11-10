@@ -121,9 +121,12 @@ export type GlossRetry = Readonly<{
   restored: (field: GlossField) => void;
   /**
    * Drops each kept draft that no field can show again: one whose analysis or morpheme is not among
-   * `rows`, or whose gloss there differs from the value the draft was typed over.
+   * `rows`, or whose gloss there differs from the value the draft was typed over. Only drafts whose
+   * analysis `askedIds` names are judged; the rest are kept.
    */
-  prune: (rows: readonly CatalogRow[]) => void;
+  prune: (rows: readonly CatalogRow[], askedIds: ReadonlySet<string>) => void;
+  /** The analyses a draft is kept for, each named once. */
+  keptAnalysisIds: () => string[];
   /** Records whether the mounted `field` shows a draft whose commit failed. */
   holding: (field: GlossField, held: boolean) => void;
   /** Tracks a commit in flight, until it settles. */
@@ -185,12 +188,18 @@ export function createGlossRetry(onHeldChange: (held: boolean) => void): GlossRe
       rejected.delete(keyOf(field));
       report();
     },
-    prune: (rows) => {
+    prune: (rows, askedIds) => {
       [...rejected]
-        .filter(([, { field, gloss }]) => committedGloss(rows, field) !== gloss.typedOver)
+        .filter(
+          ([, { field, gloss }]) =>
+            askedIds.has(field.analysisId) && committedGloss(rows, field) !== gloss.typedOver,
+        )
         .forEach(([key]) => rejected.delete(key));
       report();
     },
+    keptAnalysisIds: () => [
+      ...new Set([...rejected.values()].map(({ field }) => field.analysisId)),
+    ],
     holding: (field, isHeld) => {
       if (isHeld) failedKeys.add(keyOf(field));
       else failedKeys.delete(keyOf(field));

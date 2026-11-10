@@ -666,9 +666,40 @@ describe('SegmentView', () => {
 
       fireEvent.click(box);
 
-      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'w-alpha', {
-        anchor: true,
-      });
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'w-alpha');
+    });
+
+    it('selects the first word of a clicked verse number whose verse starts with punctuation', () => {
+      const handleSelect = jest.fn();
+      const segment: Segment = {
+        ...MERGED_BASELINE_SEGMENT,
+        baselineText: 'End. "Hello',
+        tokens: [
+          makeWordToken('w-end', 'End'),
+          makePunctToken('p-period', '.', 3),
+          makePunctToken('p-quote', '"', 5),
+          makeWordToken('w-hello', 'Hello', 6),
+        ],
+        verseStarts: [
+          { charStart: 0, number: '1', chapter: 1 },
+          { charStart: 5, number: '2', chapter: 1 },
+        ],
+      };
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={segment}
+          onSelect={handleSelect}
+        />,
+        withAnalysisStore,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, '2', 1);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 }, 'w-hello');
     });
   });
 

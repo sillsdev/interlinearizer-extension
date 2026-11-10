@@ -144,9 +144,9 @@ function buildBaselinePieces(
 
 /**
  * The word under a click on the baseline text rendered in `baselineTextEl`, or the last word before
- * it when the click lands between words. A click on a verse number counts as a click at the start
- * of the text that follows it. Undefined when the click precedes every word or hits no baseline
- * text.
+ * it when the click lands between words. A click on a verse number gives that verse's first word. A
+ * click ahead of every word gives the first word. Undefined when the click hits no baseline text or
+ * the segment has no word.
  */
 function wordTokenAtClick(
   event: MouseEvent,
@@ -155,6 +155,9 @@ function wordTokenAtClick(
 ): Token | undefined {
   const caret = document.caretPositionFromPoint(event.clientX, event.clientY);
   if (!caret || !baselineTextEl.contains(caret.offsetNode)) return undefined;
+  const caretElement =
+    caret.offsetNode instanceof Element ? caret.offsetNode : caret.offsetNode.parentElement;
+  const inSuperscript = !!caretElement?.closest('sup');
   // Superscript labels are not part of `baselineText`, so their text is skipped in the count.
   const walker = document.createTreeWalker(baselineTextEl, NodeFilter.SHOW_TEXT, (node) =>
     node.parentElement?.closest('sup') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
@@ -173,7 +176,12 @@ function wordTokenAtClick(
     /* v8 ignore next -- a text node's content is never null */
     charOffset += node.textContent?.length ?? 0;
   }
-  return segment.tokens.findLast((t) => t.type === 'word' && t.charStart <= charOffset);
+  const words = segment.tokens.filter((t) => t.type === 'word');
+  // The verse number sits ahead of any punctuation that opens its verse.
+  const wordAfterVerseNumber = inSuperscript
+    ? words.find((t) => t.charStart >= charOffset)
+    : undefined;
+  return wordAfterVerseNumber ?? words.findLast((t) => t.charStart <= charOffset) ?? words[0];
 }
 
 /** The verse that `token` lies in. A heading's tokens lie in the start verse of `segment`. */
@@ -591,12 +599,13 @@ function SegmentBaselineView({
   }, [firstWordTokenRef, onSelect, ref]);
 
   /**
-   * Selects this segment when its baseline-text body is clicked, focusing the clicked word, the
-   * word before a click between words, or else the first word token. A clicked word selects the
-   * verse it lies in. A word token is passed so the segment gains focus (and the active highlight)
-   * even when it is verse 0 — a superscription that cannot be written back to the host as the
-   * active verse, and so would otherwise never become active from a bare-ref select. Clicks inside
-   * the free-translation input or its review buttons are ignored: the input already selects this
+   * Selects this segment when its baseline-text body is clicked, focusing a word picked by where
+   * the click lands. A click that hits no baseline text passes the first word token as an anchor.
+   * An anchor keeps a focus that already lies in this segment. A clicked word selects the verse it
+   * lies in. A word token is passed so the segment gains focus (and the active highlight) even when
+   * it is verse 0 — a superscription that cannot be written back to the host as the active verse,
+   * and so would otherwise never become active from a bare-ref select. Clicks inside the
+   * free-translation input or its review buttons are ignored: the input already selects this
    * segment on focus, and reviewing a stale translation is no request to select its verse. The
    * click that ends a drag-selection is ignored too, so the selection survives.
    */

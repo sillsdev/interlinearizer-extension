@@ -512,7 +512,49 @@ describe('SegmentView', () => {
 
       fireEvent.click(box);
 
-      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'w-gamma');
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 22 }, 'w-gamma');
+    });
+
+    it('selects the verse of a clicked word in a merged segment', () => {
+      const handleSelect = jest.fn();
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={MERGED_CHIP_SEGMENT}
+          onSelect={handleSelect}
+        />,
+        withAnalysisStore,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, 'Gamma', 2);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 }, 'GEN 1:2:0');
+    });
+
+    it('selects the start verse for a word clicked in a heading', () => {
+      const handleSelect = jest.fn();
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={HEADING_SEGMENT}
+          onSelect={handleSelect}
+        />,
+        withAnalysisStore,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, 'Heading', 1);
+
+      fireEvent.click(box);
+
+      const headingWord = HEADING_SEGMENT.tokens.find((t) => t.surfaceText === 'Heading');
+      expect(handleSelect).toHaveBeenCalledWith(
+        { book: 'GEN', chapter: 1, verse: 1 },
+        headingWord?.ref,
+      );
     });
 
     it('selects the word before a click that lands between words', () => {

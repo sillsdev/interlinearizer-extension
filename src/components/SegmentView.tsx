@@ -28,6 +28,7 @@ import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/tok
 import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
 import { resolveSplitAnchor } from '../utils/split-anchor';
 import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
+import { firstVerseNumber } from '../utils/verse-ref';
 import { AltHoverTooltip } from './AltHoverTooltip';
 import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
@@ -142,11 +143,11 @@ function buildBaselinePieces(
  * it when the click lands between words. Undefined when the click precedes every word or hits no
  * baseline text.
  */
-function wordTokenRefAtClick(
+function wordTokenAtClick(
   event: MouseEvent,
   baselineTextEl: HTMLElement,
   segment: Segment,
-): string | undefined {
+): Token | undefined {
   const caret = document.caretPositionFromPoint(event.clientX, event.clientY);
   if (!caret || !baselineTextEl.contains(caret.offsetNode)) return undefined;
   // Superscript labels are not part of `baselineText`, so their text is skipped in the count.
@@ -160,7 +161,17 @@ function wordTokenRefAtClick(
     charOffset += node.textContent?.length ?? 0;
   }
   charOffset += caret.offset;
-  return segment.tokens.findLast((t) => t.type === 'word' && t.charStart <= charOffset)?.ref;
+  return segment.tokens.findLast((t) => t.type === 'word' && t.charStart <= charOffset);
+}
+
+/** The verse that `token` lies in. A heading's tokens lie in the start verse of `segment`. */
+function verseRefOfToken(segment: Segment, token: Token): ScriptureRef {
+  const { book, chapter, verse } = segment.startRef;
+  const verseStart = segment.verseStarts.findLast((vs) => vs.charStart <= token.charStart);
+  if (!verseStart) return { book, chapter, verse };
+  /* v8 ignore next -- every verse start the tokenizer emits names a verse number */
+  const verseNum = firstVerseNumber(verseStart.number) ?? verse;
+  return { book, chapter: verseStart.chapter, verse: verseNum };
 }
 
 /**
@@ -568,18 +579,19 @@ function SegmentBaselineView({
 
   /**
    * Selects this segment when its baseline-text body is clicked, focusing the clicked word, the
-   * word before a click between words, or else the first word token. A word token is passed so the
-   * segment gains focus (and the active highlight) even when it is verse 0 — a superscription that
-   * cannot be written back to the host as the active verse, and so would otherwise never become
-   * active from a bare-ref select. Clicks inside the free-translation input or its review buttons
-   * are ignored: the input already selects this segment on focus, and reviewing a stale translation
-   * is no request to select its verse.
+   * word before a click between words, or else the first word token. A clicked word selects the
+   * verse it lies in. A word token is passed so the segment gains focus (and the active highlight)
+   * even when it is verse 0 — a superscription that cannot be written back to the host as the
+   * active verse, and so would otherwise never become active from a bare-ref select. Clicks inside
+   * the free-translation input or its review buttons are ignored: the input already selects this
+   * segment on focus, and reviewing a stale translation is no request to select its verse.
    */
   const handleBaselineClick = useCallback(
     (event: MouseEvent) => {
       if (event.target instanceof Element && event.target.closest('input, button')) return;
-      const clickedWordRef = baselineTextEl && wordTokenRefAtClick(event, baselineTextEl, segment);
-      onSelect(ref, clickedWordRef ?? firstWordTokenRef);
+      const clickedWord = baselineTextEl && wordTokenAtClick(event, baselineTextEl, segment);
+      if (clickedWord) onSelect(verseRefOfToken(segment, clickedWord), clickedWord.ref);
+      else onSelect(ref, firstWordTokenRef);
     },
     [baselineTextEl, firstWordTokenRef, onSelect, ref, segment],
   );

@@ -74,7 +74,7 @@ function unambiguousForms(
   });
   return new Set(
     [...storedCounts].flatMap(([form, count]) => {
-      const placeable = !unpaired.has(form) && count === (currentCounts.get(form) ?? 0);
+      const placeable = !unpaired.has(form) && count === currentCounts.get(form);
       return placeable ? [form] : [];
     }),
   );

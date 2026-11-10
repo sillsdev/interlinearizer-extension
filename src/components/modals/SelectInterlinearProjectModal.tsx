@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
   Spinner,
 } from 'platform-bible-react';
+import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useRef, useState } from 'react';
 import useProjectsForSource from '../../hooks/useProjectsForSource';
 import usePt9ImportAvailability from '../../hooks/usePt9ImportAvailability';
@@ -41,6 +42,7 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  * created.
  *
  * @param props.sourceProjectId - Platform.Bible project ID whose interlinear projects to list.
+ * @param props.sourceShortName - Short name of the source project, which the title ends with.
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if
  *   any; the matching list entry is highlighted and badged so the user can tell which project the
  *   draft is currently working against.
@@ -62,6 +64,7 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  */
 export function SelectInterlinearProjectModal({
   sourceProjectId,
+  sourceShortName,
   activeProjectId,
   isOpening = false,
   onSelect,
@@ -72,6 +75,7 @@ export function SelectInterlinearProjectModal({
   onProjectDeleted,
 }: Readonly<{
   sourceProjectId: string;
+  sourceShortName: string;
   activeProjectId?: string;
   isOpening?: boolean;
   onSelect: (project: InterlinearProjectSummary) => void;
@@ -113,7 +117,9 @@ export function SelectInterlinearProjectModal({
   return (
     <ModalShell
       titleTestId="select-project-modal-title"
-      title={localizedStrings['%interlinearizer_modal_select_title%']}
+      title={formatReplacementString(localizedStrings['%interlinearizer_modal_select_title%'], {
+        projectName: sourceShortName,
+      })}
       width="tw:w-lg"
       // The list load deliberately does not suppress dismissal: it is a read-only fetch with
       // nothing to abandon, and withholding `onClose` for it would strand the user behind disabled
@@ -172,16 +178,9 @@ export function SelectInterlinearProjectModal({
                       localizedStrings['%interlinearizer_modal_select_modified_prefix%']
                     }
                     project={project}
+                    readOnlyLabel={localizedStrings['%interlinearizer_readonly_chip%']}
                     unnamedLabel={localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
                   />
-                  {project.pt9Import !== undefined && (
-                    <span
-                      className="tw:ml-2 tw:shrink-0 tw:self-center tw:rounded tw:bg-muted tw:px-1.5 tw:py-0.5 tw:text-xs tw:text-muted-foreground"
-                      data-testid="readonly-chip"
-                    >
-                      {localizedStrings['%interlinearizer_readonly_chip%']}
-                    </span>
-                  )}
                 </button>
                 <DropdownMenu>
                   {/* Disabled on the trigger, because a disabled button still receives the pointerdown

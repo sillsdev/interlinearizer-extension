@@ -239,7 +239,7 @@ export default function ProjectModals({
   /**
    * Creates a new project in storage with the given config and an empty analysis, then seeds the
    * draft from it so Save targets the newly created project. This is the "New" flow: the project is
-   * persisted immediately so it shows up in "Select Interlinear Project" right away.
+   * persisted immediately so it shows up in the Select interlinear dialog right away.
    *
    * `newDraft` is called before the project is created. It settles once the draft is stored, and
    * the project is created only after, so a draft that can't be stored creates none. This is safe:
@@ -525,6 +525,7 @@ export default function ProjectModals({
       {modal === 'select' && (
         <SelectInterlinearProjectModal
           sourceProjectId={projectId}
+          sourceShortName={sourceShortName}
           activeProjectId={activeProject?.id}
           isOpening={openGuard.isSubmitting}
           onSelect={handleSelectProject}
@@ -542,6 +543,7 @@ export default function ProjectModals({
           isSubmitting={createGuard.isSubmitting}
           onClose={handleCreateClose}
           onCreateDraft={handleCreateDraft}
+          sourceShortName={sourceShortName}
         />
       )}
 

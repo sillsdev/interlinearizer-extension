@@ -25,9 +25,8 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_saveAs_overwrite_confirm_body%',
   '%interlinearizer_modal_saveAs_overwrite_confirm_ok%',
   '%interlinearizer_modal_saveAs_overwrite_confirm_cancel%',
-  '%interlinearizer_modal_saveAs_save_active%',
   '%interlinearizer_modal_saveAs_save_active_clean%',
-  '%interlinearizer_modal_saveAs_cancel%',
+  '%interlinearizer_modal_saveAs_close%',
   '%interlinearizer_modal_select_name_unnamed%',
   '%interlinearizer_modal_select_analysis_count%',
   '%interlinearizer_modal_select_books_more%',
@@ -112,8 +111,8 @@ function SaveAsNewForm({
  * caller via {@link onSaveNew} / {@link onOverwrite}.
  *
  * Writing to the project the draft is already open against is an ordinary save rather than a
- * clobber, so that row is presented as a save and needs no confirmation; when the draft holds
- * nothing unsaved, that same write would change nothing and is not offered at all.
+ * clobber, so that row's Overwrite needs no confirmation. When the draft holds nothing unsaved,
+ * that write would change nothing, so the row offers no Overwrite at all.
  *
  * @param props.sourceProjectId - Source project whose existing interlinear projects to list as
  *   overwrite targets. Paratext 9 imports are left out because they are read-only.
@@ -259,9 +258,8 @@ export function SaveAsProjectModal({
           {overwriteTargets.map((project) => {
             const projectName =
               project.name ?? localizedStrings['%interlinearizer_modal_select_name_unnamed%'];
-            // The active project is the one the draft is already open on, so writing to it is the
-            // plain Save — nothing is at risk and no confirmation is warranted. A clean draft has
-            // nothing left to write there at all.
+            // The draft is already open on the active project. Writing to it risks nothing and
+            // needs no confirmation. A clean draft has nothing left to write there at all.
             const isActive = project.id === activeProjectId;
             const isNoOp = isActive && !hasUnsavedWork;
             // Show the confirm inline under the row whose Overwrite was pressed, and highlight that
@@ -310,13 +308,7 @@ export function SaveAsProjectModal({
                     }
                     disabled={isSubmitting || isConfirming}
                   >
-                    {
-                      localizedStrings[
-                        isActive
-                          ? '%interlinearizer_modal_saveAs_save_active%'
-                          : '%interlinearizer_modal_saveAs_overwrite%'
-                      ]
-                    }
+                    {localizedStrings['%interlinearizer_modal_saveAs_overwrite%']}
                   </Button>
                 )}
                 {isConfirming && (
@@ -357,7 +349,7 @@ export function SaveAsProjectModal({
 
       <div className="tw:modal-actions">
         <Button variant="secondary" onClick={onClose} disabled={isLoading || isSubmitting}>
-          {localizedStrings['%interlinearizer_modal_saveAs_cancel%']}
+          {localizedStrings['%interlinearizer_modal_saveAs_close%']}
         </Button>
       </div>
     </ModalShell>

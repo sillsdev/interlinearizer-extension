@@ -51,8 +51,8 @@ export function toProjectSummary(summary: InterlinearProjectSummary): Interlinea
     ...(summary.description !== undefined && { description: summary.description }),
     ...(summary.pt9Import !== undefined && { pt9Import: summary.pt9Import }),
     ...(summary.books !== undefined && { books: summary.books }),
-    ...(summary.tokenAnalysisCount !== undefined && {
-      tokenAnalysisCount: summary.tokenAnalysisCount,
+    ...(summary.analysisCount !== undefined && {
+      analysisCount: summary.analysisCount,
     }),
   };
 }

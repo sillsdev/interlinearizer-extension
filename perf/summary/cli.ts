@@ -49,8 +49,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     "With the view open, the book changes to Jude and back; the times are for the return. Book change to rendered includes fetching the book's text.",
   'app.edit':
     "One gloss typed and committed with Tab, with the session reading no text. `edit-command` is the command's round trip, and its `:outbound` and `:inbound` rows split the transport at the host's start and end. `reply-apply` takes the reply into the view's pages. `gloss-settle` ends once the view shows the gloss and, when the Tab moves the focus, that move.",
-  'app.picker':
-    'The Select Interlinear Project dialog opens, listing every saved project for the source.',
+  'app.picker': 'The Select interlinear dialog opens, listing every saved project for the source.',
   'app.save': 'Save from the Project menu writes the analysis to the project it came from.',
   'app.concordance':
     'The concordance opens in a fresh view, which reads and indexes every book of the source.',

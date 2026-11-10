@@ -36,7 +36,7 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
     (!('targetProjectId' in p) || typeof p.targetProjectId === 'string') &&
     (!('pt9Import' in p) || isPt9ImportProvenance(p.pt9Import)) &&
     (!('books' in p) || (Array.isArray(p.books) && p.books.every((b) => typeof b === 'string'))) &&
-    (!('tokenAnalysisCount' in p) || typeof p.tokenAnalysisCount === 'number')
+    (!('analysisCount' in p) || typeof p.analysisCount === 'number')
   );
 }
 

@@ -257,7 +257,7 @@
       "%interlinearizer_duplicateTab_description%": "A project can be open in one Interlinearizer tab at a time. Close this tab, or go to the one that has the project open.",
       "%interlinearizer_duplicateTab_goToTab%": "Go to the open tab",
 
-      "%interlinearizer_modal_create_title%": "Create Interlinear Project",
+      "%interlinearizer_modal_create_title%": "New interlinear: {projectName}",
       "%interlinearizer_modal_create_name_label%": "Name",
       "%interlinearizer_modal_create_name_placeholder%": "e.g. Greek NT glossing",
       "%interlinearizer_modal_create_description_label%": "Description (optional)",
@@ -279,7 +279,7 @@
       "%interlinearizer_modal_metadata_save%": "Save",
       "%interlinearizer_modal_metadata_close%": "Close",
 
-      "%interlinearizer_modal_select_title%": "Select Interlinear Project",
+      "%interlinearizer_modal_select_title%": "Select interlinear: {projectName}",
       "%interlinearizer_modal_select_none%": "No interlinear projects exist for this source yet.",
       "%interlinearizer_modal_select_name_unnamed%": "Unnamed",
       "%interlinearizer_modal_select_actions_button_label%": "Project actions",
@@ -287,7 +287,7 @@
       "%interlinearizer_modal_select_delete%": "Delete",
       "%interlinearizer_modal_select_active_badge%": "Active",
       "%interlinearizer_modal_select_modified_prefix%": "Modified",
-      "%interlinearizer_modal_select_analysis_count%": "{count} token analyses",
+      "%interlinearizer_modal_select_analysis_count%": "Analyses: {count}",
       "%interlinearizer_modal_select_books_more%": "+{count} more",
       "%interlinearizer_modal_select_create_new%": "Create New",
       "%interlinearizer_modal_select_cancel%": "Cancel",
@@ -314,9 +314,8 @@
       "%interlinearizer_modal_saveAs_overwrite_confirm_body%": "Overwrite this project? Its saved analysis will be replaced with the current draft.",
       "%interlinearizer_modal_saveAs_overwrite_confirm_ok%": "Overwrite",
       "%interlinearizer_modal_saveAs_overwrite_confirm_cancel%": "Cancel",
-      "%interlinearizer_modal_saveAs_save_active%": "Save",
       "%interlinearizer_modal_saveAs_save_active_clean%": "No changes to save.",
-      "%interlinearizer_modal_saveAs_cancel%": "Cancel",
+      "%interlinearizer_modal_saveAs_close%": "Close",
 
       "%interlinearizer_discardChanges_modal_title%": "Discard unsaved changes",
       "%interlinearizer_discardChanges_modal_prompt%": "Choose how much of the unsaved analyses to discard.",

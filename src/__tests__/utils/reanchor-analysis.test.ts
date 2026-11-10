@@ -186,6 +186,25 @@ describe('reanchorAnalysisToBook', () => {
     expect(result.tokenAnalysisLinks.map((l) => l.status).sort()).toEqual(['approved', 'stale']);
   });
 
+  it('places both survivors when the earlier of two same-analysis twins is deleted before another word', () => {
+    // Written against "wug x wug", at 0, 4 and 6.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug' }),
+      makeTokenLink('ta-x', 'GEN 1:1:4', { surfaceText: 'x' }),
+      makeTokenLink('ta-dig', 'GEN 1:1:6', { surfaceText: 'wug' }),
+    ]);
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'x wug' }]));
+
+    expect(
+      result.tokenAnalysisLinks.map((l) => [l.analysisId, l.status, l.token.tokenRef]).sort(),
+    ).toEqual([
+      ['ta-dig', 'approved', 'GEN 1:1:2'],
+      ['ta-dig', 'stale', 'GEN 1:1:6'],
+      ['ta-x', 'approved', 'GEN 1:1:0'],
+    ]);
+  });
+
   it('keeps one approval when one pass deletes two of three same-analysis copies', () => {
     // Written against "wug wug wug", at 0, 4 and 8.
     const analysis = analysisWithTokenLinks([

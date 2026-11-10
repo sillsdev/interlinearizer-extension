@@ -53,9 +53,6 @@ function countByValue(values: string[]): Map<string, number> {
  * of the form as were stored. A spare occurrence means the pairing was chosen rather than forced —
  * glosses on two of three identical words could as easily be the first two as the last two.
  *
- * A form in `interchangeable` stays placeable when the verse lost occurrences of it, because any of
- * its stored copies may take a survivor. A spare occurrence still makes it unplaceable.
- *
  * One ambiguity survives, being unresolvable from a {@link TokenSnapshot}. A form whose glossed
  * occurrences were deleted, leaving an unglossed twin, presents exactly as those glosses shifted
  * along by an edit. That holds for a form stored once or as interchangeable copies.
@@ -63,13 +60,11 @@ function countByValue(values: string[]): Map<string, number> {
  * @param stored - The stored forms, in document order.
  * @param current - The verse's current forms, in document order.
  * @param paired - For each stored position, the token index it aligned to, or `undefined`.
- * @param interchangeable - The forms whose stored copies are interchangeable.
  */
 function unambiguousForms(
   stored: string[],
   current: string[],
   paired: (number | undefined)[],
-  interchangeable: Set<string>,
 ): Set<string> {
   const storedCounts = countByValue(stored);
   const currentCounts = countByValue(current);
@@ -79,10 +74,7 @@ function unambiguousForms(
   });
   return new Set(
     [...storedCounts].flatMap(([form, count]) => {
-      const currentCount = currentCounts.get(form) ?? 0;
-      const placeable = interchangeable.has(form)
-        ? count >= currentCount
-        : !unpaired.has(form) && count === currentCount;
+      const placeable = !unpaired.has(form) && count === (currentCounts.get(form) ?? 0);
       return placeable ? [form] : [];
     }),
   );
@@ -92,11 +84,7 @@ function unambiguousForms(
  * Pairs each stored form with the index of the current form it aligns to in order, or `undefined`
  * where it has no counterpart or is too ambiguous to place.
  */
-function pairUnambiguously(
-  a: string[],
-  b: string[],
-  interchangeable: Set<string>,
-): (number | undefined)[] {
+function pairUnambiguously(a: string[], b: string[]): (number | undefined)[] {
   // lengths[i][j] — the LCS length of a.slice(i) against b.slice(j), filled back-to-front so the
   // forward walk below can pick the branch that keeps the most pairings.
   const lengths: number[][] = Array.from({ length: a.length + 1 }, () =>
@@ -124,7 +112,7 @@ function pairUnambiguously(
     }
   }
 
-  const unambiguous = unambiguousForms(a, b, paired, interchangeable);
+  const unambiguous = unambiguousForms(a, b, paired);
   return paired.map((tokenIndex, index) =>
     tokenIndex !== undefined && unambiguous.has(a[index]) ? tokenIndex : undefined,
   );
@@ -157,11 +145,9 @@ function alignForms(
   live: boolean[],
   kin: (string | undefined)[],
 ): Anchor[] {
-  const a = stored.map(normalizeSurfaceForm);
-  const b = tokens.map((t) => normalizeSurfaceForm(t.surfaceText));
-
+  const forms = stored.map(normalizeSurfaceForm);
   const kinByForm = new Map<string, Set<string | undefined>>();
-  a.forEach((form, index) => {
+  forms.forEach((form, index) => {
     const formKin = kinByForm.get(form) ?? new Set<string | undefined>();
     formKin.add(kin[index]);
     kinByForm.set(form, formKin);
@@ -171,6 +157,39 @@ function alignForms(
       formKin.size === 1 && !formKin.has(undefined) ? [form] : [],
     ),
   );
+  const currentCounts = countByValue(tokens.map((t) => normalizeSurfaceForm(t.surfaceText)));
+  const keptCounts = new Map<string, number>();
+  const kept = forms.flatMap((form, index) => {
+    const count = (keptCounts.get(form) ?? 0) + 1;
+    keptCounts.set(form, count);
+    return interchangeable.has(form) && count > (currentCounts.get(form) ?? 0) ? [] : [index];
+  });
+
+  const keptAnchors = alignKept(
+    kept.map((index) => stored[index]),
+    kept.map((index) => storedRefs[index]),
+    tokens,
+    kept.map((index) => live[index]),
+  );
+  const anchors = new Array<Anchor>(stored.length).fill(undefined);
+  kept.forEach((index, keptIndex) => {
+    anchors[index] = keptAnchors[keptIndex];
+  });
+  return anchors;
+}
+
+/**
+ * Gives each stored form the token ref it should carry, given that no interchangeable form has more
+ * stored copies than the verse has tokens of it.
+ */
+function alignKept(
+  stored: string[],
+  storedRefs: string[],
+  tokens: Token[],
+  live: boolean[],
+): Anchor[] {
+  const a = stored.map(normalizeSurfaceForm);
+  const b = tokens.map((t) => normalizeSurfaceForm(t.surfaceText));
 
   // A stored position whose own ref still names a token of its form has not moved, whatever the
   // alignment would pair it with — the ref is better evidence of which twin a gloss meant. Not so
@@ -181,9 +200,7 @@ function alignForms(
   const overcounted = (forms: string[]) =>
     new Set(
       [...countByValue(forms)]
-        .filter(
-          ([form, count]) => !interchangeable.has(form) && count > (currentCounts.get(form) ?? 0),
-        )
+        .filter(([form, count]) => count > (currentCounts.get(form) ?? 0))
         .map(([form]) => form),
     );
   const overcountedLive = overcounted(a.filter((_, index) => live[index]));
@@ -197,7 +214,7 @@ function alignForms(
   // Pairing keeps order, so a word moved past others pairs only once they are withheld as placed.
   // Ends: each round places more or unsettles another form.
   for (;;) {
-    paired = pairAroundSettled(a, b, storedRefs, indexByRef, unsettled, placed, interchangeable);
+    paired = pairAroundSettled(a, b, storedRefs, indexByRef, unsettled, placed);
     const crossed = formsOutOfOrder(a, paired, live);
     if (crossed.size > 0) {
       crossed.forEach((form) => unsettledForms.add(form));
@@ -229,7 +246,6 @@ function pairAroundSettled(
   indexByRef: Map<string, number>,
   unsettled: (index: number) => boolean,
   placed: Map<number, number>,
-  interchangeable: Set<string>,
 ): (number | undefined)[] {
   const settled = a.map((form, index) => {
     const placedIndex = placed.get(index);
@@ -247,7 +263,6 @@ function pairAroundSettled(
   const openPaired = pairUnambiguously(
     openStored.map((index) => a[index]),
     openTokens.map((index) => b[index]),
-    interchangeable,
   );
 
   const paired = [...settled];

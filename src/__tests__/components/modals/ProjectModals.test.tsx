@@ -7,7 +7,7 @@ import papi, { logger } from '@papi/frontend';
 import type { DraftProject } from 'interlinearizer';
 import type { ModalState } from '../../../components/modals/ProjectModals';
 import ProjectModals from '../../../components/modals/ProjectModals';
-import type { DraftCopyResult } from '../../../hooks/useDraftProject';
+import type { DraftCopyResult } from '../../../types/project-api';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../../types/model-version';
 import type { InterlinearProjectSummary } from '../../../types/interlinear-project-summary';
@@ -287,7 +287,7 @@ type ModalsOverrides = Partial<{
   getDraftSnapshot: () => DraftProject | undefined;
   detachFromProject: jest.Mock;
   commitDraft: (
-    copy: (snapshot: DraftProject, sessionId?: string) => Promise<DraftCopyResult>,
+    copy: (snapshot: DraftProject, sessionId: string) => Promise<DraftCopyResult>,
   ) => Promise<boolean>;
   loadFromProject: jest.Mock;
   newDraft: jest.Mock;
@@ -298,6 +298,9 @@ type ModalsOverrides = Partial<{
   setModal: jest.Mock;
   useWebViewState: ReturnType<typeof makeWebViewState>;
 }>;
+
+/** The session that the draft in these tests is kept in. */
+const SESSION_ID = 'session-1';
 
 /**
  * Builds a complete ProjectModals prop set, filling required props with sensible defaults so each
@@ -315,7 +318,7 @@ function buildProps(overrides: ModalsOverrides = {}) {
       overrides.commitDraft ??
       (async (copy) => {
         const snapshot = getDraftSnapshot();
-        return snapshot ? (await copy(snapshot)) !== false : false;
+        return snapshot ? (await copy(snapshot, SESSION_ID)) !== false : false;
       }),
     loadFromProject: overrides.loadFromProject ?? jest.fn(),
     newDraft: overrides.newDraft ?? jest.fn(),
@@ -336,13 +339,13 @@ function savedAs(project: InterlinearProjectSummary, omittedBooks: string[] = []
 }
 
 /**
- * A `commitDraft` that runs the copy on {@link MOCK_DRAFT}, under `sessionId` when given. It records
- * what each copy resolved, so a test can tell whether the draft would count each save as landed.
+ * A `commitDraft` that runs the copy on {@link MOCK_DRAFT}, under `sessionId`. It records what each
+ * copy resolved, so a test can tell whether the draft would count each save as landed.
  */
-function recordingCommitDraft(sessionId?: string) {
+function recordingCommitDraft(sessionId = SESSION_ID) {
   const outcomes: DraftCopyResult[] = [];
   const commitDraft = jest.fn(
-    async (copy: (s: DraftProject, session?: string) => Promise<DraftCopyResult>) => {
+    async (copy: (s: DraftProject, session: string) => Promise<DraftCopyResult>) => {
       const copied = await copy(MOCK_DRAFT, sessionId);
       outcomes.push(copied);
       return copied !== false;
@@ -358,9 +361,9 @@ function recordingCommitDraft(sessionId?: string) {
 function heldCommitDraft() {
   let release!: () => void;
   const commitDraft = jest.fn(
-    (copy: (s: DraftProject) => Promise<DraftCopyResult>) =>
+    (copy: (s: DraftProject, session: string) => Promise<DraftCopyResult>) =>
       new Promise<boolean>((resolve) => {
-        release = () => resolve(copy(MOCK_DRAFT).then((copied) => copied !== false));
+        release = () => resolve(copy(MOCK_DRAFT, SESSION_ID).then((copied) => copied !== false));
       }),
   );
   return { commitDraft, release: () => release() };
@@ -793,6 +796,7 @@ describe('ProjectModals', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledTimes(1);
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftAsProject',
+        SESSION_ID,
         'source-proj',
         ['en'],
         undefined,
@@ -805,7 +809,7 @@ describe('ProjectModals', () => {
 
     it('saves as a new project through the session that keeps the draft', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(savedAs(MOCK_PROJECT));
-      const { commitDraft } = recordingCommitDraft('session-1');
+      const { commitDraft } = recordingCommitDraft();
       render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft })} />);
 
       await userEvent.click(screen.getByTestId('saveas-new'));
@@ -813,12 +817,12 @@ describe('ProjectModals', () => {
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveDraftAsProject',
+          SESSION_ID,
           'source-proj',
           ['en'],
           undefined,
           'NewName',
           'NewDesc',
-          'session-1',
         ),
       );
     });
@@ -847,6 +851,7 @@ describe('ProjectModals', () => {
       await act(async () => release());
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftAsProject',
+        SESSION_ID,
         'source-proj',
         ['en'],
         undefined,
@@ -934,6 +939,7 @@ describe('ProjectModals', () => {
       await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftToProject',
+        SESSION_ID,
         'source-proj',
         'proj-1',
         { analysisLanguages: ['en'], targetProjectId: undefined },
@@ -943,7 +949,7 @@ describe('ProjectModals', () => {
 
     it('overwrites a project through the session that keeps the draft', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
-      const { commitDraft } = recordingCommitDraft('session-1');
+      const { commitDraft } = recordingCommitDraft();
       render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft })} />);
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
@@ -951,10 +957,10 @@ describe('ProjectModals', () => {
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveDraftToProject',
+          SESSION_ID,
           'source-proj',
           'proj-1',
           { analysisLanguages: ['en'], targetProjectId: undefined },
-          'session-1',
         ),
       );
     });
@@ -971,6 +977,7 @@ describe('ProjectModals', () => {
       await act(async () => release());
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftToProject',
+        SESSION_ID,
         'source-proj',
         'proj-1',
         { analysisLanguages: ['en'], targetProjectId: undefined },
@@ -1103,6 +1110,7 @@ describe('ProjectModals', () => {
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveDraftToProject',
+          SESSION_ID,
           'source-proj',
           'proj-1',
           { analysisLanguages: ['sw', 'fr'], targetProjectId: 'tgt-9' },

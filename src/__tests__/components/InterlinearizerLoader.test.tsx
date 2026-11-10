@@ -20,7 +20,6 @@ import {
   useState as useReactState,
 } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import { useStore } from 'react-redux';
 import { useAnalysis, useGlossDispatch, usePhraseDispatch } from '../../components/AnalysisStore';
 import { useInterlinearNav, type RecenterRequest } from '../../components/InterlinearNavContext';
 import InterlinearizerLoader, {
@@ -29,16 +28,18 @@ import InterlinearizerLoader, {
 } from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useConcordanceEntries from '../../hooks/useConcordanceEntries';
-import useSourceTextReader, { type UseSourceTextReaderArgs } from '../../hooks/useSourceTextReader';
+import useSourceTextReader from '../../hooks/useSourceTextReader';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
-import useSegmentPages, { type SegmentPages } from '../../hooks/useSegmentPages';
+import type { SegmentPages } from '../../types/segment-pages';
+import { DraftRepository } from '../../services/draftRepository';
+import { ANALYSIS_CHANGED_EVENT, fakeHost } from '../cache/fake-host';
 import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../../hooks/useProjectBookIds';
 import useStaleAnalysisDismissal from '../../hooks/useStaleAnalysisDismissal';
 import type { StaleAnalysesReport } from '../../components/StaleAnalysesReporter';
-import type { DraftCopyResult } from '../../hooks/useDraftProject';
+import type { DraftCopyResult } from '../../types/project-api';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { PT9_MANIFEST_TIMEOUT_MS } from '../../utils/pt9-manifest';
 import type { PhraseMode } from '../../types/phrase-mode';
@@ -55,11 +56,10 @@ import {
   makeWebViewState,
   makeWordToken,
   type ScrollGroupTuple,
-  segmentPagesOf,
+  silentLogger,
 } from '../test-helpers';
 import { makeSourceText, mockKeyAsValueLocalizedStrings } from './test-helpers';
 
-jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
 jest.mock('../../hooks/useConcordanceEntries');
 jest.mock('../../hooks/useSourceTextReader');
 jest.mock('../../hooks/useInterlinearizerBookData');
@@ -67,7 +67,6 @@ jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
 jest.mock('../../hooks/useProjectBookIds');
-jest.mock('../../hooks/useSegmentPages');
 jest.mock('../../hooks/useStaleAnalysisDismissal');
 
 /** What the loader last handed the stale-analyses reporter, `undefined` until it mounts one. */
@@ -236,7 +235,6 @@ type CapturedInterlinearizerProps = {
   formerBoundaries: ReadonlyMap<string, string>;
   unmergeableStarts?: ReadonlySet<string>;
   pages: SegmentPages;
-  asOneStep: (action: () => void) => void;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 let interlinearizerMountCount = 0;
@@ -248,10 +246,6 @@ let interlinearizerMountCount = 0;
 type CapturedStoreProps = {
   /** BCP 47 tag for reading and writing gloss values. */
   analysisLanguage: string;
-  /** Analysis seeded into the store; not reactive after mount. */
-  initialAnalysis?: TextAnalysis;
-  /** Called after each store mutation with the updated analysis and where it was made. */
-  onSave?: (analysis: TextAnalysis, location?: string) => void;
   /** Called with whether any gloss input holds uncommitted text. */
   onPendingEditsChange?: (pending: boolean) => void;
   children: ReactNode;
@@ -269,21 +263,19 @@ jest.mock('../../components/AnalysisStore', () => {
   return {
     ...actual,
     /** Records the props, then renders the real provider unchanged. */
-    AnalysisStoreProvider(props: CapturedStoreProps) {
+    SessionAnalysisProvider(props: CapturedStoreProps) {
       capturedStoreProps = props;
-      return createElement(actual.AnalysisStoreProvider, props);
+      return createElement(actual.SessionAnalysisProvider, props);
     },
   };
 });
 
 /**
  * Whether the view stub should mount {@link StoreProbe}. Off by default, because the probe's hooks
- * throw outside a Redux provider and most tests here neither render one nor care about the store.
+ * throw outside a {@link SessionAnalysisProvider}. Most tests here neither render one nor care about
+ * the store.
  */
 let mountStoreProbe = false;
-
-/** The Redux store the probe is mounted in, captured so a test can compare store identity. */
-let probeStore: unknown;
 
 /** The analysis the store the probe is mounted in holds. */
 let probeAnalysis: TextAnalysis | undefined;
@@ -308,7 +300,6 @@ let probeWriteGloss: ((tokenRef: string, surfaceText: string, value: string) => 
  * book change replaced the store or left it alone. Renders no markup.
  */
 function StoreProbe() {
-  probeStore = useStore();
   probeAnalysis = useAnalysis();
   probeWriteGloss = useGlossDispatch();
   probeCreatePhrase = usePhraseDispatch().createPhrase;
@@ -381,6 +372,68 @@ type MockProject = {
 };
 
 const mockSendCommand = jest.mocked(papi.commands.sendCommand);
+
+/** Answers each command that the fake host does not serve; `undefined` unless a test says else. */
+const otherCommands = jest.fn<Promise<unknown>, unknown[]>();
+
+/** The book the fake host pages, which follows the book a test serves the view. */
+let hostBook: Book = GEN_1_1_BOOK;
+
+/** The fake host that serves the view's session. */
+let host: Awaited<ReturnType<typeof fakeHost>>;
+
+beforeEach(async () => {
+  hostBook = GEN_1_1_BOOK;
+  otherCommands.mockResolvedValue(undefined);
+  host = await fakeHost(
+    async (command, args) => {
+      const answer = await otherCommands(command, ...args);
+      return typeof answer === 'string' ? answer : undefined;
+    },
+    undefined,
+    { book: GEN_1_1_BOOK, textOf: () => hostBook },
+  );
+});
+
+/**
+ * Lets every command the view has sent the fake host finish, and the view render its reply.
+ *
+ * @param action - Run first in the same `act`, so that a reply landing before the flush starts is
+ *   still inside it.
+ */
+async function flushHost(action?: () => unknown): Promise<void> {
+  // Microtasks only, so that a test on fake timers flushes as surely as one on real timers.
+  await act(async () => {
+    await action?.();
+    for (let turn = 0; turn < 200; turn += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await Promise.resolve();
+    }
+  });
+}
+
+/** The commands of the edits the view has sent its session, in order. */
+function editsSent(): unknown[] {
+  return mockSendCommand.mock.calls
+    .filter(([, args]) => typeof args === 'object' && !!args && 'changeId' in args)
+    .map(([command]) => command);
+}
+
+/**
+ * Answers a Save of the session's draft into a project as the host does: marks the stored draft
+ * clean and resolves to `project` as JSON.
+ */
+async function answerSave(project: object, args: unknown[]): Promise<string> {
+  const sessionId = args[1];
+  if (typeof sessionId !== 'string') throw new Error('Expected a Save under a session');
+  await host.sessions.run(sessionId, (session) => session.repository.markClean());
+  return JSON.stringify(project);
+}
+
+/** Stores `draft` as its source's draft, as the session that the view opens finds it. */
+async function seedDraft(draft: DraftProject): Promise<void> {
+  await new DraftRepository(host.storage, draft.sourceProjectId, silentLogger()).startOver(draft);
+}
 
 const testProjectId = 'test-project-id';
 const testWebViewId = 'test-web-view-id';
@@ -616,30 +669,17 @@ function mockBookData(
     reload: () => void;
   }> = {},
 ): void {
-  jest.mocked(useInterlinearizerBookData).mockReturnValue({
+  const data = {
     book: GEN_1_1_BOOK,
     isLoading: false,
     bookError: undefined,
     writingSystem: 'und',
     reload: jest.fn(),
     ...overrides,
-  });
+  };
+  if (data.book) hostBook = data.book;
+  jest.mocked(useInterlinearizerBookData).mockReturnValue(data);
 }
-
-/**
- * Serves the page client's book whole, as the host would with no custom boundaries, unless
- * `overrides` say otherwise.
- */
-function mockSegmentPages(overrides: Partial<ReturnType<typeof useSegmentPages>> = {}): void {
-  jest.mocked(useSegmentPages).mockImplementation(({ verseBook, segmentationVersion }) => ({
-    pages: verseBook && segmentPagesOf(verseBook, segmentationVersion),
-    isLoading: false,
-    error: undefined,
-    ...overrides,
-  }));
-}
-
-beforeEach(() => mockSegmentPages());
 
 /**
  * Configures useOptimisticBooleanSetting to return the given state. Each setting key gets its own
@@ -694,7 +734,6 @@ function analysisWithFreeTranslation(): TextAnalysis {
  * @param interfaceMode - Value for `platform.interfaceMode`; defaults to `'simple'`.
  * @param interfaceLanguage - Value for `platform.interfaceLanguage`; defaults to `[]`.
  * @param isInterfaceModeLoading - Whether `platform.interfaceMode` is still loading.
- * @param isInterfaceLanguageLoading - Whether `platform.interfaceLanguage` is still loading.
  * @throws {Error} When `useSetting` is called with any key other than `platform.interfaceMode` or
  *   `platform.interfaceLanguage` (message: `useSetting mock: unexpected key "<key>"`).
  */
@@ -702,13 +741,12 @@ function mockSettings(
   interfaceMode: 'simple' | 'power' = 'simple',
   interfaceLanguage: string[] = [],
   isInterfaceModeLoading = false,
-  isInterfaceLanguageLoading = false,
 ): void {
   jest.mocked(useSetting).mockImplementation((key: string) => {
     if (key === 'platform.interfaceMode')
       return [interfaceMode, jest.fn(), jest.fn(), isInterfaceModeLoading];
     if (key === 'platform.interfaceLanguage')
-      return [interfaceLanguage, jest.fn(), jest.fn(), isInterfaceLanguageLoading];
+      return [interfaceLanguage, jest.fn(), jest.fn(), false];
     throw new Error(`useSetting mock: unexpected key "${key}"`);
   });
 }
@@ -833,9 +871,6 @@ describe('InterlinearizerLoader', () => {
     mockStaleAnalyses();
     capturedReporterProps = undefined;
     mockLexiconRegistry();
-    // The loader's draft hook calls `interlinearizer.getDraft` on mount; default to a valid empty
-    // draft so the editor renders. Individual tests override with mockResolvedValueOnce.
-    mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
     jest
       .mocked(useData)
       .mockReturnValue(
@@ -851,7 +886,7 @@ describe('InterlinearizerLoader', () => {
 
   it('shows nav controls when interface mode is power', async () => {
     mockSettings('power');
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -860,7 +895,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('hides nav controls when interface mode is simple', async () => {
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -876,7 +911,7 @@ describe('InterlinearizerLoader', () => {
       ]),
     });
 
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
@@ -902,7 +937,7 @@ describe('InterlinearizerLoader', () => {
       ]),
     });
 
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
@@ -920,7 +955,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('keeps a verse-0 reference to a chapter with no verse starts', async () => {
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
@@ -947,7 +982,7 @@ describe('InterlinearizerLoader', () => {
     };
     mockBookData({ book: bookWithSuperscription });
 
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'PSA',
@@ -972,7 +1007,7 @@ describe('InterlinearizerLoader', () => {
       ]),
     });
 
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
@@ -1007,7 +1042,7 @@ describe('InterlinearizerLoader', () => {
     };
     mockBookData({ book: multiSegmentBook });
 
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
@@ -1052,7 +1087,7 @@ describe('InterlinearizerLoader', () => {
     };
     mockBookData({ book: crossChapterBook });
 
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
@@ -1085,7 +1120,7 @@ describe('InterlinearizerLoader', () => {
     };
     mockBookData({ book: gappedBook });
 
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
@@ -1130,7 +1165,7 @@ describe('InterlinearizerLoader', () => {
     };
     mockBookData({ book: mergedSegmentBook });
 
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
@@ -1152,7 +1187,7 @@ describe('InterlinearizerLoader', () => {
     // the loading placeholder and does not render the interlinearizer.
     mockBookData({ book: undefined, isLoading: true });
 
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
@@ -1167,7 +1202,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('passes a verse-level reference through to Interlinearizer unchanged', async () => {
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
@@ -1186,7 +1221,7 @@ describe('InterlinearizerLoader', () => {
 
   it('shows Loading when book data has not arrived', async () => {
     mockBookData({ book: undefined, isLoading: true });
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1197,7 +1232,7 @@ describe('InterlinearizerLoader', () => {
     // The key-as-value stub stands in for PAPI's pre-resolution state, where each key maps to
     // itself — rendering that verbatim would flash the bare key at the user.
     mockBookData({ book: undefined, isLoading: true });
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1207,7 +1242,7 @@ describe('InterlinearizerLoader', () => {
   it('shows the loading text once its localize key resolves', async () => {
     mockKeyAsValueLocalizedStrings({ '%interlinearizer_loading%': 'Loading…' });
     mockBookData({ book: undefined, isLoading: true });
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1216,7 +1251,7 @@ describe('InterlinearizerLoader', () => {
 
   it('shows an error heading and message when bookError is set', async () => {
     mockBookData({ book: undefined, bookError: 'Project not found' });
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1331,97 +1366,14 @@ describe('InterlinearizerLoader', () => {
   });
 
   describe('segment pages', () => {
-    /** A two-verse Genesis whose second verse can merge into its first. */
-    const TWO_VERSE_GENESIS: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      duplicateVerseIds: [],
-      segments: [
-        makeSegment('GEN 1:1', 'Alpha.', [makeWordToken('GEN 1:1:0', 'Alpha')]),
-        makeSegment('GEN 1:2', 'Beta.', [makeWordToken('GEN 1:2:0', 'Beta')]),
-      ],
-    };
+    it("hands the view the session's pages of the loaded book", async () => {
+      await flushHost(async () => {
+        renderLoader();
+      });
 
-    /** The arguments the loader last gave the page client. */
-    function lastPagesArgs() {
-      return jest.mocked(useSegmentPages).mock.lastCall?.[0];
-    }
-
-    it("hands the page client the loaded book and the draft's boundaries in it", async () => {
-      mockSendCommand.mockResolvedValue(
-        JSON.stringify({
-          ...emptyDraft(testProjectId),
-          segmentation: { removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'], addedStarts: [] },
-        }),
+      expect(capturedInterlinearizerProps?.pages.outline.map(({ id }) => id)).toEqual(
+        GEN_1_1_BOOK.segments.map(({ id }) => id),
       );
-      mockBookData({ book: TWO_VERSE_GENESIS });
-      await act(async () => {
-        renderLoader();
-      });
-
-      expect(lastPagesArgs()).toMatchObject({
-        projectId: testProjectId,
-        verseBook: TWO_VERSE_GENESIS,
-        segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
-      });
-    });
-
-    it('holds the book back from the page client while the draft loads', async () => {
-      mockSendCommand.mockReturnValue(new Promise(() => {}));
-      await act(async () => {
-        renderLoader();
-      });
-
-      expect(lastPagesArgs()?.verseBook).toBeUndefined();
-    });
-
-    it('reloads the book when the page client finds its text has changed', async () => {
-      const reload = jest.fn();
-      mockBookData({ reload });
-      await act(async () => {
-        renderLoader();
-      });
-
-      act(() => lastPagesArgs()?.onTextChanged());
-
-      expect(reload).toHaveBeenCalled();
-    });
-
-    it('hands the view the pages the page client serves', async () => {
-      await act(async () => {
-        renderLoader();
-      });
-
-      expect(capturedInterlinearizerProps?.pages).toBe(segmentPagesOf(GEN_1_1_BOOK));
-    });
-
-    it('shows the loading curtain while the pages load', async () => {
-      mockSegmentPages({ isLoading: true });
-      await act(async () => {
-        renderLoader();
-      });
-
-      expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
-      expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
-    });
-
-    it("shows the loading curtain while the pages are another book's", async () => {
-      mockSegmentPages({ pages: segmentPagesOf({ ...GEN_1_1_BOOK, bookRef: 'EXO' }) });
-      await act(async () => {
-        renderLoader();
-      });
-
-      expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
-    });
-
-    it('shows why the pages could not be loaded', async () => {
-      mockSegmentPages({ pages: undefined, error: 'Cannot segment' });
-      await act(async () => {
-        renderLoader();
-      });
-
-      expect(screen.getByText('Cannot segment')).toBeInTheDocument();
     });
   });
 
@@ -1432,7 +1384,7 @@ describe('InterlinearizerLoader', () => {
 
     it('shows the missing-book view instead of the load error', async () => {
       mockBookData({ book: undefined, bookError: 'Book GEN not found' });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -1442,7 +1394,7 @@ describe('InterlinearizerLoader', () => {
 
     it('shows the missing-book view instead of the loading indicator', async () => {
       mockBookData({ book: undefined, isLoading: true });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -1452,7 +1404,7 @@ describe('InterlinearizerLoader', () => {
 
     it('hands the missing-book view the project, the web view, and the interface mode', async () => {
       mockSettings('power');
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -1465,7 +1417,7 @@ describe('InterlinearizerLoader', () => {
 
   it('renders the book when the source project has it', async () => {
     mockProjectBookIds(['GEN', 'PHP']);
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1476,7 +1428,7 @@ describe('InterlinearizerLoader', () => {
   it("limits the book picker to the source project's books", async () => {
     mockSettings('power');
     mockProjectBookIds(['GEN', 'PHP']);
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1489,7 +1441,7 @@ describe('InterlinearizerLoader', () => {
   it("hides the book picker while the source project's books are loading", async () => {
     mockSettings('power');
     mockProjectBookIds(undefined, true);
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1499,7 +1451,7 @@ describe('InterlinearizerLoader', () => {
   it("offers the whole canon when the source project's books could not be listed", async () => {
     mockSettings('power');
     mockProjectBookIds(undefined);
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1510,7 +1462,7 @@ describe('InterlinearizerLoader', () => {
 
   it('passes the checked value from useOptimisticBooleanSetting to ViewOptionsDropdown', async () => {
     mockOptimisticSetting(true);
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1520,7 +1472,7 @@ describe('InterlinearizerLoader', () => {
 
   it('gates rendering until the persisted display settings have loaded', async () => {
     mockOptimisticSetting(false, jest.fn(), true);
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1533,7 +1485,7 @@ describe('InterlinearizerLoader', () => {
 
   it('wires ViewOptionsDropdown continuous scroll to the onChange from useOptimisticBooleanSetting', async () => {
     const onChangeByKey = mockOptimisticSetting();
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1543,7 +1495,7 @@ describe('InterlinearizerLoader', () => {
 
   it('passes the view-option settings to Interlinearizer', async () => {
     mockOptimisticSetting(true);
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1554,7 +1506,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('defaults continuous scroll to off', async () => {
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1562,7 +1514,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('defaults morphology to off in the simple interface mode', async () => {
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1571,7 +1523,7 @@ describe('InterlinearizerLoader', () => {
 
   it('defaults morphology to on in the power interface mode', async () => {
     mockSettings('power');
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1584,7 +1536,7 @@ describe('InterlinearizerLoader', () => {
         return [{ message: 'unavailable', platformErrorVersion: 1 }, jest.fn(), jest.fn(), false];
       return [[], jest.fn(), jest.fn(), false];
     });
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1594,7 +1546,7 @@ describe('InterlinearizerLoader', () => {
   it('gates rendering until the interface mode has loaded', async () => {
     // Morphology defaults from the mode, so a view painted first would flash the wrong default.
     mockSettings('power', [], true);
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1603,7 +1555,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('defaults free translation to off for a draft holding none', async () => {
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1611,10 +1563,8 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('defaults free translation to on for a draft already holding one', async () => {
-    mockSendCommand.mockResolvedValue(
-      JSON.stringify({ ...emptyDraft(testProjectId), analysis: analysisWithFreeTranslation() }),
-    );
-    await act(async () => {
+    await seedDraft({ ...emptyDraft(testProjectId), analysis: analysisWithFreeTranslation() });
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1623,7 +1573,7 @@ describe('InterlinearizerLoader', () => {
 
   it('wires ViewOptionsDropdown show-morphology to onChange from useOptimisticBooleanSetting', async () => {
     const onChangeByKey = mockOptimisticSetting();
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1640,7 +1590,7 @@ describe('InterlinearizerLoader', () => {
       const [value, setValue] = useReactState(false);
       return { value, onChange: setValue, isLoading: false };
     });
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
     expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(false);
@@ -1654,7 +1604,7 @@ describe('InterlinearizerLoader', () => {
     // The dim marks a change still rendering, so a settled view carrying it would read as
     // permanently busy.
     mockOptimisticSetting();
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1663,7 +1613,7 @@ describe('InterlinearizerLoader', () => {
 
   it('wires ViewOptionsDropdown show-free-translation to onChange from useOptimisticBooleanSetting', async () => {
     const onChangeByKey = mockOptimisticSetting();
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1673,7 +1623,7 @@ describe('InterlinearizerLoader', () => {
 
   it('passes continuousScroll=true to Interlinearizer when the setting is true', async () => {
     mockOptimisticSetting(true);
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1681,7 +1631,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('passes continuousScroll=false to Interlinearizer when the setting is false', async () => {
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1692,9 +1642,7 @@ describe('InterlinearizerLoader', () => {
   it('takes analysisLanguage from the draft analysisLanguages, not the active project', async () => {
     // The draft owns the analysis language; a draft configured for French must win even when
     // the active project's summary lists a different language.
-    mockSendCommand.mockResolvedValueOnce(
-      JSON.stringify({ ...emptyDraft(testProjectId), analysisLanguages: ['fr'] }),
-    );
+    await seedDraft({ ...emptyDraft(testProjectId), analysisLanguages: ['fr'] });
     await act(async () =>
       renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
     );
@@ -1705,37 +1653,16 @@ describe('InterlinearizerLoader', () => {
   it('falls back to the first interfaceLanguage tag when the draft has no analysis language', async () => {
     // A brand-new source seeds the draft's analysis language from the platform UI language.
     mockSettings('simple', ['fr', 'en']);
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
     expect(capturedStoreProps?.analysisLanguage).toBe('fr');
   });
 
-  it('waits for interfaceLanguage to load before seeding a draft that has no analysis language', async () => {
-    // While loading, the setting reports its `['und']` default.
-    mockSettings('simple', ['und'], false, true);
-    const view = await act(async () => renderLoader());
-
-    mockSettings('simple', ['en']);
-    await act(async () => {
-      view.rerender(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          webViewId={testWebViewId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-          updateWebViewDefinition={view.updateWebViewDefinition}
-        />,
-      );
-    });
-
-    expect(capturedStoreProps?.analysisLanguage).toBe('en');
-  });
-
   it('passes the platform language to ProjectModals as defaultAnalysisLanguage', async () => {
     mockSettings('simple', ['de']);
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1743,7 +1670,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('falls back to "und" as analysisLanguage when the draft has no language and interfaceLanguage is empty', async () => {
-    await act(async () => {
+    await flushHost(async () => {
       renderLoader();
     });
 
@@ -1834,7 +1761,7 @@ describe('InterlinearizerLoader', () => {
       importError?: Error;
       copyJson?: string;
     } = {}): void {
-      mockSendCommand.mockImplementation(async (...args) => {
+      otherCommands.mockImplementation(async (...args) => {
         if (args[0] === 'interlinearizer.getProject')
           return JSON.stringify({ ...FRESH_IMPORT_SUMMARY, analysis: emptyAnalysis() });
         if (args[0] === 'interlinearizer.getProjectSummary')
@@ -1856,44 +1783,9 @@ describe('InterlinearizerLoader', () => {
       return screen.findByTestId('pt9-import-banner');
     }
 
-    it("hands the page client none of the draft's boundaries", async () => {
-      mockSendCommand.mockImplementation(async (...args) =>
-        JSON.stringify(
-          args[0] === 'interlinearizer.getProject'
-            ? { ...FRESH_IMPORT_SUMMARY, analysis: emptyAnalysis() }
-            : {
-                ...emptyDraft(testProjectId),
-                segmentation: { removedVerseStarts: ['GEN 1:1:0'], addedStarts: [] },
-              },
-        ),
-      );
-      await renderImportView();
-
-      expect(jest.mocked(useSegmentPages).mock.lastCall?.[0].segmentation).toBeUndefined();
-    });
-
-    it('defaults free translation to on for an import already holding one', async () => {
-      // The draft beside it holds none, so only the import's own analysis can turn it on.
-      mockSendCommand.mockImplementation(async (...args) =>
-        JSON.stringify(
-          args[0] === 'interlinearizer.getProject'
-            ? { ...FRESH_IMPORT_SUMMARY, analysis: analysisWithFreeTranslation() }
-            : emptyDraft(testProjectId),
-        ),
-      );
-      await renderImportView();
-
-      await waitFor(() =>
-        expect(lastSettingDefault('interlinearizer.showFreeTranslation')).toBe(true),
-      );
-    });
-
     it('withholds the view options until the import’s analysis arrives', async () => {
-      mockSendCommand.mockImplementation(async (...args) =>
-        args[0] === 'interlinearizer.getProject'
-          ? new Promise<string>(() => {})
-          : JSON.stringify(emptyDraft(testProjectId)),
-      );
+      // The import's session never opens, so its analysis never arrives.
+      mockSendCommand.mockImplementation(() => new Promise(() => {}));
       await renderImportView();
 
       expect(screen.queryByTestId('view-options-dropdown')).not.toBeInTheDocument();
@@ -1926,6 +1818,7 @@ describe('InterlinearizerLoader', () => {
       await act(async () =>
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }) }),
       );
+      await flushHost();
 
       expect(screen.queryByTestId('pt9-import-banner')).not.toBeInTheDocument();
     });
@@ -1947,6 +1840,7 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
       await userEvent.click(screen.getByTestId('tab-toolbar-save-as'));
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+      await flushHost();
 
       expect(mockSendCommand).not.toHaveBeenCalled();
       expect(screen.queryByTestId('save-as-modal')).not.toBeInTheDocument();
@@ -1978,7 +1872,7 @@ describe('InterlinearizerLoader', () => {
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
       });
       expect(screen.getByTestId('pt9-convert-prompt-message')).toBeInTheDocument();
@@ -2000,7 +1894,7 @@ describe('InterlinearizerLoader', () => {
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
       });
       await userEvent.click(
@@ -2019,22 +1913,22 @@ describe('InterlinearizerLoader', () => {
       expect(await screen.findByTestId('pt9-import-banner')).toBeInTheDocument();
     });
 
-    it('persists the empty draft and runs no import on No', async () => {
+    it('stores the empty draft and runs no import on No', async () => {
       mockOfferProbe();
       mockImportCommands();
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
       });
 
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ImportPrompt_no%' }),
       );
+      await flushHost();
 
       expect(screen.queryByTestId('pt9-convert-prompt-message')).not.toBeInTheDocument();
       expect(mockSendCommand).toHaveBeenCalledWith(
-        'interlinearizer.saveDraft',
-        testProjectId,
-        expect.stringContaining('"sourceProjectId"'),
+        'interlinearizer.startDraftOver',
+        expect.objectContaining({ sourceProjectId: testProjectId }),
       );
       expect(mockSendCommand).not.toHaveBeenCalledWith(
         'interlinearizer.importPt9Project',
@@ -2044,8 +1938,9 @@ describe('InterlinearizerLoader', () => {
 
     it('holds the offer while the draft is still loading', async () => {
       mockOfferProbe();
+      // The session never opens, so the draft never loads.
       mockSendCommand.mockImplementation(() => new Promise(() => {}));
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
       });
 
@@ -2055,7 +1950,7 @@ describe('InterlinearizerLoader', () => {
     it('never offers when the probe finds no convertible data', async () => {
       mockOfferProbe({});
       mockImportCommands();
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
       });
 
@@ -2070,12 +1965,12 @@ describe('InterlinearizerLoader', () => {
           getPt9InterlinearManifest: jest.fn(() => new Promise(() => {})),
         });
         mockImportCommands();
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
         });
         expect(screen.queryByTestId('pt9-checking')).not.toBeInTheDocument();
 
-        await act(async () => {
+        await flushHost(async () => {
           jest.advanceTimersByTime(400);
         });
 
@@ -2090,11 +1985,11 @@ describe('InterlinearizerLoader', () => {
       try {
         mockOfferProbe();
         mockImportCommands();
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
         });
 
-        await act(async () => {
+        await flushHost(async () => {
           jest.advanceTimersByTime(400);
         });
 
@@ -2110,7 +2005,7 @@ describe('InterlinearizerLoader', () => {
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
       });
 
@@ -2125,7 +2020,7 @@ describe('InterlinearizerLoader', () => {
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2171,6 +2066,7 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ReadOnlyIntro_copy%' }),
       );
+      await flushHost();
 
       expect(screen.queryByTestId('pt9-read-only-intro-title')).not.toBeInTheDocument();
       expect(screen.getByTestId('copy-to-editable-modal-title')).toBeInTheDocument();
@@ -2182,6 +2078,7 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_pt9ReadOnlyIntro_view%' }),
       );
+      await flushHost();
 
       expect(screen.queryByTestId('pt9-read-only-intro-title')).not.toBeInTheDocument();
       expect(screen.queryByTestId('copy-to-editable-modal-title')).not.toBeInTheDocument();
@@ -2192,7 +2089,7 @@ describe('InterlinearizerLoader', () => {
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2208,7 +2105,7 @@ describe('InterlinearizerLoader', () => {
 
     it('shows the in-modal failure when the import command rejects', async () => {
       mockImportCommands({ importError: new Error('nothing to import') });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2242,7 +2139,7 @@ describe('InterlinearizerLoader', () => {
           "PT9 interlinear data is too large: the project's interlinear files total 60000000 bytes",
         ),
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2284,6 +2181,7 @@ describe('InterlinearizerLoader', () => {
       await renderImportView();
 
       await userEvent.click(screen.getByTestId('pt9-sync-button'));
+      await flushHost();
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
       expect(screen.queryByTestId('pt9-import-report')).not.toBeInTheDocument();
@@ -2337,7 +2235,7 @@ describe('InterlinearizerLoader', () => {
       mockPdpGet.mockResolvedValue({
         getPt9InterlinearManifest: async () => probeOf({ 'Lexicon.xml': 'aaaa1111' }),
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2362,7 +2260,7 @@ describe('InterlinearizerLoader', () => {
       mockPdpGet.mockResolvedValue({
         getPt9InterlinearManifest: async () => probeOf({ 'Lexicon.xml': 'bbbb2222' }),
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2381,14 +2279,14 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('titles the open-path sync as a sync while it runs', async () => {
-      mockSendCommand.mockImplementation(async (...args) => {
+      otherCommands.mockImplementation(async (...args) => {
         if (args[0] === 'interlinearizer.importPt9Project') return new Promise<string>(() => {});
         return JSON.stringify(emptyDraft(testProjectId));
       });
       mockPdpGet.mockResolvedValue({
         getPt9InterlinearManifest: async () => probeOf({ 'Lexicon.xml': 'bbbb2222' }),
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2409,14 +2307,16 @@ describe('InterlinearizerLoader', () => {
         mockPdpGet.mockResolvedValue({
           getPt9InterlinearManifest: jest.fn(() => new Promise(() => {})),
         });
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader();
         });
         fireEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+        await flushHost();
         fireEvent.click(screen.getByTestId('select-modal-open-import'));
+        await flushHost();
         expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'select');
 
-        await act(async () => {
+        await flushHost(async () => {
           jest.advanceTimersByTime(PT9_MANIFEST_TIMEOUT_MS);
         });
 
@@ -2438,7 +2338,7 @@ describe('InterlinearizerLoader', () => {
       mockImportCommands();
       mockPdpGet.mockRejectedValue(new Error('provider unavailable'));
       jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2489,7 +2389,7 @@ describe('InterlinearizerLoader', () => {
       mockPdpGet.mockResolvedValue({
         getPt9InterlinearManifest: async () => probeOf({}),
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2505,7 +2405,7 @@ describe('InterlinearizerLoader', () => {
 
     it('shows the in-modal failure when the import result is not even an object', async () => {
       mockImportCommands({ importResult: 42 });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2519,7 +2419,7 @@ describe('InterlinearizerLoader', () => {
       mockPdpGet.mockResolvedValue({
         getPt9InterlinearManifest: async () => probeOf({ 'Lexicon.xml': 'bbbb2222' }),
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2530,82 +2430,6 @@ describe('InterlinearizerLoader', () => {
         'data-active-project-updated',
         '2026-08-01T00:00:00Z',
       );
-    });
-
-    it('reseeds the view with the analysis a sync fetched, not the one it replaced', async () => {
-      const syncedAnalysis: TextAnalysis = {
-        ...emptyAnalysis(),
-        tokenAnalyses: [
-          { ...FIXTURE_STAMPS, id: 'ta-synced', surfaceText: 'In', gloss: { en: 'in' } },
-        ],
-      };
-      let synced = false;
-      mockSendCommand.mockImplementation(async (...args) => {
-        if (args[0] === 'interlinearizer.getProject')
-          return JSON.stringify(
-            synced
-              ? { ...FRESH_IMPORT_SUMMARY, analysis: syncedAnalysis }
-              : { ...STUB_IMPORT_PROJECT, analysis: emptyAnalysis() },
-          );
-        // The listing still holds the pre-sync summary, as when a sync fails to refresh it.
-        if (args[0] === 'interlinearizer.getProjectSummary')
-          return JSON.stringify(STUB_IMPORT_PROJECT);
-        if (args[0] === 'interlinearizer.importPt9Project') {
-          synced = true;
-          return JSON.stringify({
-            outcome: 'imported',
-            projectId: 'import-1',
-            report: IMPORT_REPORT,
-            summary: FRESH_IMPORT_SUMMARY,
-          });
-        }
-        return JSON.stringify(emptyDraft(testProjectId));
-      });
-      await renderImportView();
-      expect(capturedStoreProps?.initialAnalysis).toEqual(emptyAnalysis());
-
-      await userEvent.click(screen.getByTestId('pt9-sync-button'));
-
-      await waitFor(() => expect(capturedStoreProps?.initialAnalysis).toEqual(syncedAnalysis));
-    });
-
-    it('empties the import view when a refresh brings back no analysis, rather than keeping the pre-sync one', async () => {
-      let synced = false;
-      mockSendCommand.mockImplementation(async (...args) => {
-        // Once synced, the record comes back carrying no analysis at all, so the refresh behind
-        // the sync finds nothing to show.
-        if (args[0] === 'interlinearizer.getProject')
-          return JSON.stringify(
-            synced ? FRESH_IMPORT_SUMMARY : { ...STUB_IMPORT_PROJECT, analysis: emptyAnalysis() },
-          );
-        if (args[0] === 'interlinearizer.getProjectSummary')
-          return JSON.stringify(FRESH_IMPORT_SUMMARY);
-        if (args[0] === 'interlinearizer.importPt9Project') {
-          synced = true;
-          return JSON.stringify({
-            outcome: 'imported',
-            projectId: 'import-1',
-            report: IMPORT_REPORT,
-            summary: FRESH_IMPORT_SUMMARY,
-          });
-        }
-        return JSON.stringify(emptyDraft(testProjectId));
-      });
-      await renderImportView();
-      expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
-
-      await userEvent.click(screen.getByTestId('pt9-sync-button'));
-
-      expect(await screen.findByTestId('pt9-import-load-error')).toHaveTextContent(
-        '%interlinearizer_error_pt9Import_load_failed%',
-      );
-      expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
-      expect(screen.getByTestId('pt9-import-banner')).toBeInTheDocument();
-      // The panel line is the whole message: no toast doubles it with different advice.
-      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalledWith({
-        message: '%interlinearizer_error_load_projects_failed%',
-        severity: 'error',
-      });
     });
 
     it('offers no undo or redo buttons in the import view', async () => {
@@ -2623,8 +2447,8 @@ describe('InterlinearizerLoader', () => {
       });
       mockBookData({ book: ALPHA_BETA_BOOK });
       jest.useFakeTimers();
-      await act(async () => renderLoader());
-      act(() => capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:6'));
+      await flushHost(async () => renderLoader());
+      await flushHost(() => capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:6'));
       act(() => jest.advanceTimersByTime(300));
       fireEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await act(async () => fireEvent.click(screen.getByTestId('select-modal-open-import')));
@@ -2638,8 +2462,7 @@ describe('InterlinearizerLoader', () => {
       jest.useRealTimers();
 
       expect(mockSendCommand).not.toHaveBeenCalledWith(
-        'interlinearizer.saveDraft',
-        expect.anything(),
+        'interlinearizer.undoEdit',
         expect.anything(),
       );
     });
@@ -2649,7 +2472,7 @@ describe('InterlinearizerLoader', () => {
       await renderImportView();
       mockSendCommand.mockClear();
 
-      act(() => {
+      await flushHost(() => {
         capturedInterlinearizerProps?.segmentationDispatch.merge('GEN 1:2:0');
         capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:2');
         capturedInterlinearizerProps?.segmentationDispatch.move('GEN 1:1:2', 'GEN 1:1:4');
@@ -2660,10 +2483,10 @@ describe('InterlinearizerLoader', () => {
 
     it('drops a phrase mode entered on the draft when an import opens', async () => {
       mockImportCommands();
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
-      act(() => {
+      await flushHost(() => {
         capturedInterlinearizerProps?.setPhraseMode({
           kind: 'edit',
           phraseId: 'phrase-1',
@@ -2689,7 +2512,7 @@ describe('InterlinearizerLoader', () => {
       mockImportCommands();
       await renderImportView();
 
-      act(() => {
+      await flushHost(() => {
         capturedInterlinearizerProps?.setPhraseMode({
           kind: 'edit',
           phraseId: 'phrase-1',
@@ -2716,25 +2539,9 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
     });
 
-    it('reports a rejected imported-analysis fetch in the panel and sends no toast', async () => {
-      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
-      mockSendCommand.mockImplementation(async (...args) => {
-        if (args[0] === 'interlinearizer.getProject') throw new Error('storage offline');
-        return JSON.stringify(emptyDraft(testProjectId));
-      });
-      await act(async () =>
-        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }) }),
-      );
-
-      expect(screen.getByTestId('pt9-import-load-error')).toHaveTextContent(
-        '%interlinearizer_error_pt9Import_load_failed%',
-      );
-      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
-    });
-
     it('shows the in-modal failure when the import result carries no valid report', async () => {
       mockImportCommands({ importResult: { outcome: 'imported', projectId: 'import-1' } });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2747,7 +2554,7 @@ describe('InterlinearizerLoader', () => {
       mockImportCommands({
         importResult: { outcome: 'imported', projectId: 'import-1', report: IMPORT_REPORT },
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2755,7 +2562,7 @@ describe('InterlinearizerLoader', () => {
       await screen.findByTestId('pt9-import-report');
 
       jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
-      mockSendCommand.mockImplementation(async (...args) =>
+      otherCommands.mockImplementation(async (...args) =>
         args[0] === 'interlinearizer.getProjectSummary'
           ? undefined
           : JSON.stringify(emptyDraft(testProjectId)),
@@ -2775,7 +2582,7 @@ describe('InterlinearizerLoader', () => {
       jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
       let imported = false;
       let releaseSummary: (() => void) | undefined;
-      mockSendCommand.mockImplementation(async (...args) => {
+      otherCommands.mockImplementation(async (...args) => {
         if (args[0] === 'interlinearizer.getProjectSummary' && imported) {
           // Hold the summary until the test has taken the user off the report.
           await new Promise<void>((resolve) => {
@@ -2793,7 +2600,7 @@ describe('InterlinearizerLoader', () => {
         }
         return JSON.stringify(emptyDraft(testProjectId));
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2808,7 +2615,7 @@ describe('InterlinearizerLoader', () => {
       );
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'select');
 
-      await act(async () => {
+      await flushHost(async () => {
         releaseSummary?.();
       });
 
@@ -2820,7 +2627,7 @@ describe('InterlinearizerLoader', () => {
     it('notifies and stays on the report when the Open fetch rejects', async () => {
       jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
       let imported = false;
-      mockSendCommand.mockImplementation(async (...args) => {
+      otherCommands.mockImplementation(async (...args) => {
         if (args[0] === 'interlinearizer.getProjectSummary' && imported)
           throw new Error('storage offline');
         if (args[0] === 'interlinearizer.importPt9Project') {
@@ -2833,7 +2640,7 @@ describe('InterlinearizerLoader', () => {
         }
         return JSON.stringify(emptyDraft(testProjectId));
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2882,6 +2689,7 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_copyModal_cancel%' }),
       );
+      await flushHost();
 
       expect(screen.queryByTestId('copy-to-editable-modal-title')).not.toBeInTheDocument();
       expect(mockSendCommand).not.toHaveBeenCalledWith(
@@ -2892,36 +2700,8 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
-    it('drops an imported-analysis fetch that lands after unmount', async () => {
-      let resolveFetch: (json: string) => void = () => {};
-      mockSendCommand.mockImplementation(async (...args) => {
-        if (args[0] === 'interlinearizer.getProject')
-          return new Promise((resolve) => {
-            resolveFetch = resolve;
-          });
-        return JSON.stringify(emptyDraft(testProjectId));
-      });
-      let unmount = () => {};
-      await act(async () => {
-        ({ unmount } = renderLoader({
-          useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }),
-        }));
-      });
-      expect(mockSendCommand).toHaveBeenCalledWith(
-        'interlinearizer.getProject',
-        STUB_IMPORT_PROJECT.id,
-      );
-
-      unmount();
-      await act(async () => {
-        resolveFetch(JSON.stringify({ ...FRESH_IMPORT_SUMMARY, analysis: emptyAnalysis() }));
-      });
-      // The ignore flag makes the late result a no-op; finishing without a React update-after-
-      // unmount warning is the observable behavior.
-    });
-
     it('logs and keeps the dialog when the copy command rejects', async () => {
-      mockSendCommand.mockImplementation(async (...args) => {
+      otherCommands.mockImplementation(async (...args) => {
         if (args[0] === 'interlinearizer.getProject')
           return JSON.stringify({ ...FRESH_IMPORT_SUMMARY, analysis: emptyAnalysis() });
         if (args[0] === 'interlinearizer.createEditableCopy') throw new Error('copy failed');
@@ -2939,27 +2719,11 @@ describe('InterlinearizerLoader', () => {
         expect.any(Error),
       );
     });
-
-    it('reports an imported analysis that never loads in the panel and sends no toast', async () => {
-      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
-      // An empty response is the never-written case; the effect treats it like a malformed one.
-      mockSendCommand.mockImplementation(async (...args) =>
-        args[0] === 'interlinearizer.getProject' ? '' : JSON.stringify(emptyDraft(testProjectId)),
-      );
-      await act(async () =>
-        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_IMPORT_PROJECT }) }),
-      );
-
-      expect(screen.getByTestId('pt9-import-load-error')).toHaveTextContent(
-        '%interlinearizer_error_pt9Import_load_failed%',
-      );
-      expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
-    });
   });
 
   describe('modal interactions', () => {
     it('opens the select modal when the project menu selectProject item is clicked', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -2969,41 +2733,44 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('opens the create modal directly when the openNewProjectModal menu item is clicked', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
+      await flushHost();
 
       expect(screen.getByTestId('create-modal')).toBeInTheDocument();
       expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
     });
 
     it('closes the create modal without showing another when close is clicked from menu source', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
       await userEvent.click(screen.getByTestId('create-modal-close'));
+      await flushHost();
 
       expect(screen.queryByTestId('create-modal')).not.toBeInTheDocument();
       expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
     });
 
     it('closes the select modal when its close button is clicked', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await userEvent.click(screen.getByTestId('select-modal-close'));
+      await flushHost();
 
       expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
     });
 
     it('opens the create modal from the select modal create-new button', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -3014,25 +2781,27 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('closes all modals after a project is created from the select modal', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await userEvent.click(screen.getByTestId('select-modal-create-new'));
       await userEvent.click(screen.getByTestId('create-modal-created'));
+      await flushHost();
 
       expect(screen.queryByTestId('create-modal')).not.toBeInTheDocument();
       expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
     });
 
     it('sets the active project and closes the select modal when a project is selected', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await userEvent.click(screen.getByTestId('select-modal-select'));
+      await flushHost();
 
       expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
       // After selection the view-project-info button becomes available, confirming activeProject is set
@@ -3041,7 +2810,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('opens the metadata modal from the openProjectInfoModal menu item when a project is active', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -3054,17 +2823,18 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('does not open the metadata modal from openProjectInfoModal when no project is active', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
+      await flushHost();
 
       expect(screen.queryByTestId('metadata-modal')).not.toBeInTheDocument();
     });
 
     it('dismisses to none when metadata is closed after being opened from the menu', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -3072,13 +2842,14 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('select-modal-select'));
       await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
       await userEvent.click(screen.getByTestId('metadata-modal-close'));
+      await flushHost();
 
       expect(screen.queryByTestId('metadata-modal')).not.toBeInTheDocument();
       expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
     });
 
     it('dismisses to none and clears active project when the active project is deleted from the menu', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -3086,6 +2857,7 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('select-modal-select'));
       await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
       await userEvent.click(screen.getByTestId('metadata-modal-deleted'));
+      await flushHost();
 
       expect(screen.queryByTestId('metadata-modal')).not.toBeInTheDocument();
       // The deleted project was the active one, so the loader should now pass `activeProject:
@@ -3204,7 +2976,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('updates the active project name when its metadata is saved', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -3212,6 +2984,7 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('select-modal-select'));
       await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
       await userEvent.click(screen.getByTestId('metadata-modal-saved'));
+      await flushHost();
 
       expect(screen.queryByTestId('metadata-modal')).not.toBeInTheDocument();
       // Saving renamed the active project; the loader must reflect the new name it reads back from
@@ -3254,7 +3027,7 @@ describe('InterlinearizerLoader', () => {
             { get: () => jest.fn().mockReturnValue([mockWebViewMenu, jest.fn(), false]) },
           ),
         );
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -3297,7 +3070,7 @@ describe('InterlinearizerLoader', () => {
       it('is offered while a lexicon can be linked', async () => {
         serveMenuWithChooserItem();
         mockLexiconRegistry(jest.fn(async () => true));
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader();
         });
 
@@ -3309,7 +3082,7 @@ describe('InterlinearizerLoader', () => {
 
       it('is gone where there is no lexicon to offer, rather than shown doing nothing', async () => {
         serveMenuWithChooserItem();
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader();
         });
 
@@ -3322,11 +3095,12 @@ describe('InterlinearizerLoader', () => {
       it('opens the chooser when it is chosen', async () => {
         const openChooser = jest.fn(async () => true);
         mockLexiconRegistry(openChooser);
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader();
         });
 
         await userEvent.click(screen.getByTestId('tab-toolbar-lexicon-chooser'));
+        await flushHost();
 
         expect(openChooser).toHaveBeenCalled();
         expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
@@ -3335,7 +3109,7 @@ describe('InterlinearizerLoader', () => {
       it('says so when the chooser does not open', async () => {
         mockLexiconRegistry(jest.fn(async () => false));
         jest.mocked(papi.notifications.send).mockRejectedValue(new Error('ui offline'));
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader();
         });
 
@@ -3348,96 +3122,6 @@ describe('InterlinearizerLoader', () => {
           }),
         );
       });
-    });
-  });
-
-  describe('draft loading', () => {
-    it('loads the draft on mount and passes its analysis as initialAnalysis', async () => {
-      const draftAnalysis = emptyAnalysis();
-      draftAnalysis.tokenAnalyses.push({
-        ...FIXTURE_STAMPS,
-        id: 't1',
-        surfaceText: 'In',
-        gloss: { en: 'in' },
-      });
-      mockSendCommand.mockResolvedValueOnce(
-        JSON.stringify({ ...emptyDraft(testProjectId), analysis: draftAnalysis }),
-      );
-      await act(async () => {
-        renderLoader();
-      });
-
-      expect(mockSendCommand).toHaveBeenCalledWith('interlinearizer.getDraft', testProjectId);
-      expect(capturedStoreProps?.initialAnalysis).toEqual(draftAnalysis);
-    });
-
-    it('falls back to an empty draft and logs an error when getDraft rejects', async () => {
-      const error = new Error('network error');
-      mockSendCommand.mockRejectedValueOnce(error);
-      await act(async () => {
-        renderLoader();
-      });
-
-      expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
-        'Interlinearizer: failed to load draft',
-        error,
-      );
-      // The fallback empty draft still renders the editor with an empty analysis.
-      expect(capturedStoreProps?.initialAnalysis).toEqual(emptyAnalysis());
-    });
-
-    it('skips state updates when the component unmounts before getDraft resolves', async () => {
-      let resolveGetDraft: ((value: string) => void) | undefined;
-      mockSendCommand.mockReturnValueOnce(
-        new Promise<string>((resolve) => {
-          resolveGetDraft = resolve;
-        }),
-      );
-
-      const { unmount } = renderLoader();
-
-      unmount();
-      resolveGetDraft?.(JSON.stringify(emptyDraft(testProjectId)));
-      await act(async () => {
-        await Promise.resolve();
-      });
-
-      expect(jest.mocked(logger.error)).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('autosave analysis', () => {
-    it('persists edits to the draft via saveDraft when onSaveAnalysis fires', async () => {
-      await act(async () => {
-        renderLoader();
-      });
-
-      const edited = emptyAnalysis();
-      edited.tokenAnalyses.push({
-        ...FIXTURE_STAMPS,
-        id: 't1',
-        surfaceText: 'In',
-        gloss: { en: 'in' },
-      });
-
-      // Switch to fake timers only for this test so we can advance past the 300ms debounce.
-      jest.useFakeTimers();
-      act(() => {
-        capturedStoreProps?.onSave?.(edited);
-      });
-      act(() => {
-        jest.advanceTimersByTime(300);
-      });
-      jest.useRealTimers();
-
-      const saveDraftCall = mockSendCommand.mock.calls.find(
-        ([command]) => command === 'interlinearizer.saveDraft',
-      );
-      expect(saveDraftCall?.[1]).toBe(testProjectId);
-      const json = saveDraftCall?.[2];
-      const persisted: DraftProject = typeof json === 'string' ? JSON.parse(json) : emptyDraft('x');
-      expect(persisted.analysis).toEqual(edited);
-      expect(persisted.dirty).toBe(true);
     });
   });
 
@@ -3458,27 +3142,6 @@ describe('InterlinearizerLoader', () => {
     };
 
     /**
-     * Reads the segmentation delta back out of the most recent `saveDraft` call.
-     *
-     * @returns The persisted delta, or `undefined` when no draft has been saved or it carried none.
-     */
-    function lastPersistedSegmentation(): DraftProject['segmentation'] {
-      return lastPersistedDraft()?.segmentation;
-    }
-
-    /**
-     * Reads the draft back out of the most recent `saveDraft` call.
-     *
-     * @returns The persisted draft, or `undefined` when none has been saved.
-     */
-    function lastPersistedDraft(): DraftProject | undefined {
-      const calls = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');
-      const last = calls[calls.length - 1];
-      const json = last?.[2];
-      return typeof json === 'string' ? JSON.parse(json) : undefined;
-    }
-
-    /**
      * Returns the segmentation dispatch captured from the rendered interlinearizer, failing the
      * test if none was captured.
      *
@@ -3490,54 +3153,38 @@ describe('InterlinearizerLoader', () => {
       return dispatch;
     }
 
-    it('persists split, merge, and move boundary edits made through the dispatch', async () => {
+    it('sends split, merge, and move boundary edits made through the dispatch to the session', async () => {
       mockBookData({ book: TWO_VERSE_BOOK });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       const dispatch = getSegmentationDispatch();
 
-      jest.useFakeTimers();
-      // Split verse 1 before "beta" — a non-default delta is persisted.
-      act(() => dispatch.split('GEN 1:1:6'));
-      act(() => jest.advanceTimersByTime(300));
-      expect(lastPersistedSegmentation()).toEqual({
-        removedVerseStarts: [],
-        addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
-      });
+      await flushHost(() => dispatch.split('GEN 1:1:6'));
+      await flushHost(() => dispatch.merge('GEN 1:2:0'));
+      await flushHost(() => dispatch.move('GEN 1:2:0', 'GEN 1:1:6'));
 
-      // Merge verse 2 into its predecessor — adds a removed verse start.
-      act(() => dispatch.merge('GEN 1:2:0'));
-      act(() => jest.advanceTimersByTime(300));
-      expect(lastPersistedSegmentation()?.removedVerseStarts).toContain('GEN 1:2:0');
-
-      // Move the verse-2 boundary back onto "beta". "beta" (GEN 1:1:6) already begins a segment from
-      // the split above, so the move removes the (already-removed) verse-2 default start and re-adds
-      // the existing "beta" start: the normalized delta is unchanged — verse 1's split boundary and
-      // verse 2's merged boundary both persist.
-      act(() => dispatch.move('GEN 1:2:0', 'GEN 1:1:6'));
-      act(() => jest.advanceTimersByTime(300));
-      jest.useRealTimers();
-      expect(lastPersistedSegmentation()).toEqual({
-        removedVerseStarts: ['GEN 1:2:0'],
-        addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
-      });
+      expect(editsSent()).toEqual([
+        'interlinearizer.splitSegment',
+        'interlinearizer.mergeSegments',
+        'interlinearizer.moveBoundary',
+      ]);
     });
 
     it('re-renders the interlinearizer with the new segments in place after a boundary edit', async () => {
-      // The resegmented book is derived from the draft's ref-held segmentation, and the auto-save's
-      // `setDirty(true)` no-ops the re-render once the draft is dirty, so the new `book` prop reaches
-      // the interlinearizer only because `autosaveSegmentation` bumps a dedicated version. Assert the
-      // split reaches the rendered `book` (verse 1 becomes two segments) without a remount.
+      // The resegmented book is derived from the draft's ref-held segmentation, so the new `book`
+      // prop reaches the interlinearizer only because a boundary change bumps a dedicated version.
+      // Assert the split reaches the rendered `book` (verse 1 becomes two segments) without a
+      // remount.
       mockBookData({ book: TWO_VERSE_BOOK });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       const dispatch = getSegmentationDispatch();
       expect(capturedInterlinearizerProps?.book.segments).toHaveLength(2);
       const mountsBefore = interlinearizerMountCount;
 
-      act(() => dispatch.split('GEN 1:1:6'));
+      await flushHost(() => dispatch.split('GEN 1:1:6'));
 
       // Verse 1 is now two segments (before/after "beta"), so the book has three segments total, and
       // the interlinearizer was updated in place rather than remounted.
@@ -3545,10 +3192,15 @@ describe('InterlinearizerLoader', () => {
       expect(interlinearizerMountCount).toBe(mountsBefore);
     });
 
-    it('sends the boundary delta on Save and clears the unsaved marker', async () => {
+    it('saves a boundary edit to the active project and clears the unsaved marker', async () => {
       mockBookData({ book: TWO_VERSE_BOOK });
+      otherCommands.mockImplementation(async (...args) =>
+        args[0] === 'interlinearizer.saveDraftToProject'
+          ? answerSave({ ...STUB_ACTIVE_PROJECT, updatedAt: '2026-02-01T00:00:00Z' }, args)
+          : undefined,
+      );
       let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         result = renderLoader({
           useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }),
         });
@@ -3556,7 +3208,7 @@ describe('InterlinearizerLoader', () => {
       const dispatch = getSegmentationDispatch();
 
       // A boundary edit dirties the draft, so the tab marker lights up.
-      act(() => dispatch.merge('GEN 1:2:0'));
+      await flushHost(() => dispatch.merge('GEN 1:2:0'));
       expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({
         title: 'Interlinearizer: WEB ●',
       });
@@ -3564,23 +3216,12 @@ describe('InterlinearizerLoader', () => {
       result?.updateWebViewDefinition.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
-      // Save first writes the pending autosave, which carries the boundary delta, and only then
-      // has the host copy the stored draft into the project.
-      const commands = mockSendCommand.mock.calls.map(([command]) => command);
-      const saveIndex = commands.indexOf('interlinearizer.saveDraftToProject');
-      const flushIndex = commands.slice(0, saveIndex).lastIndexOf('interlinearizer.saveDraft');
-      expect(flushIndex).toBeGreaterThanOrEqual(0);
-      const flushed = mockSendCommand.mock.calls[flushIndex];
-      expect(JSON.parse(String(flushed[2])).segmentation).toEqual({
-        removedVerseStarts: ['GEN 1:2:0'],
-        addedStarts: [],
-      });
-      expect(mockSendCommand.mock.calls[saveIndex]).toEqual([
+      expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftToProject',
+        expect.any(String),
         testProjectId,
         'proj-1',
-      ]);
-      // The draft still held what the save copied, so the unsaved marker cleared.
+      );
       await waitFor(() =>
         expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({
           title: 'Interlinearizer: WEB',
@@ -3588,88 +3229,28 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
-    /** Serves a stored draft carrying `segmentation` from `getDraft`. */
-    function mockDraftWithSegmentation(segmentation: DraftProject['segmentation']): void {
-      mockSendCommand.mockResolvedValue(
-        JSON.stringify({ ...emptyDraft(testProjectId), segmentation }),
-      );
+    /** Stores a draft carrying `segmentation`. */
+    async function mockDraftWithSegmentation(
+      segmentation: DraftProject['segmentation'],
+    ): Promise<void> {
+      await seedDraft({ ...emptyDraft(testProjectId), segmentation });
     }
 
-    it('moves a stored split onto its word when an edit has shifted it, and persists the move', async () => {
-      // Written against "Al beta.", where "beta" began at offset 3.
-      mockDraftWithSegmentation({
-        removedVerseStarts: [],
-        addedStarts: [{ tokenRef: 'GEN 1:1:3', surfaceText: 'beta' }],
-      });
-      mockBookData({ book: TWO_VERSE_BOOK });
-      await act(async () => {
-        renderLoader();
-      });
-
-      expect(capturedInterlinearizerProps?.book.segments.map((s) => s.tokens[0].ref)).toEqual([
-        'GEN 1:1:0',
-        'GEN 1:1:6',
-        'GEN 1:2:0',
-      ]);
-      await waitFor(() =>
-        expect(lastPersistedSegmentation()).toEqual({
-          removedVerseStarts: [],
-          addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
-        }),
-      );
-    });
-
     it('persists nothing when every stored split still names its word', async () => {
-      mockDraftWithSegmentation({
+      await mockDraftWithSegmentation({
         removedVerseStarts: [],
         addedStarts: [{ tokenRef: 'GEN 1:1:6', surfaceText: 'beta' }],
       });
       mockBookData({ book: TWO_VERSE_BOOK });
       jest.useFakeTimers();
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
-      act(() => jest.advanceTimersByTime(300));
+      await flushHost(() => jest.advanceTimersByTime(300));
       jest.useRealTimers();
 
       expect(capturedInterlinearizerProps?.book.segments).toHaveLength(3);
-      expect(mockSendCommand).not.toHaveBeenCalledWith(
-        'interlinearizer.saveDraft',
-        expect.anything(),
-        expect.anything(),
-      );
-    });
-
-    it("re-anchors the draft's analyses to the loaded book, and persists them", async () => {
-      // Written against "Al beta.", where "beta" began at offset 3.
-      const analysis = analysisApprovingAt('GEN 1:1:3', 'beta');
-      mockSendCommand.mockResolvedValue(JSON.stringify({ ...emptyDraft(testProjectId), analysis }));
-      mockBookData({ book: TWO_VERSE_BOOK });
-      await act(async () => {
-        renderLoader();
-      });
-
-      await waitFor(() =>
-        expect(lastPersistedDraft()?.analysis.tokenAnalysisLinks[0].token.tokenRef).toBe(
-          'GEN 1:1:6',
-        ),
-      );
-    });
-
-    it('clears the segmentation field when an edit restores the default segmentation', async () => {
-      mockBookData({ book: TWO_VERSE_BOOK });
-      await act(async () => {
-        renderLoader();
-      });
-      const dispatch = getSegmentationDispatch();
-
-      jest.useFakeTimers();
-      // Merging the book's first token is a no-op, so the result is the default segmentation and the
-      // persisted field is cleared to undefined.
-      act(() => dispatch.merge('GEN 1:1:0'));
-      act(() => jest.advanceTimersByTime(300));
-      jest.useRealTimers();
-      expect(lastPersistedSegmentation()).toBeUndefined();
+      expect(editsSent()).toEqual([]);
     });
   });
 
@@ -3712,11 +3293,10 @@ describe('InterlinearizerLoader', () => {
       return dispatch;
     }
 
-    it('passes an empty formerBoundaries map and segmentationVersion 0 before any boundary edit', async () => {
+    it('passes an empty formerBoundaries map before any boundary edit', async () => {
       await renderBoundaryBook();
 
       expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(0);
-      expect(capturedInterlinearizerProps?.pages.segmentationVersion).toBe(0);
     });
 
     it("passes the verse book's unmergeable starts", async () => {
@@ -3727,13 +3307,16 @@ describe('InterlinearizerLoader', () => {
 
     it('maps a merged word-initial verse start to itself and bumps segmentationVersion', async () => {
       const dispatch = await renderBoundaryBook();
+      const versionBefore = capturedInterlinearizerProps?.pages.segmentationVersion ?? 0;
 
       // Merge verse 3 into verse 2: the verse begins with a word token, so the split anchor (its
       // first word token) and the removed default start are the same ref.
-      act(() => dispatch.merge('GEN 1:3:0'));
+      await flushHost(() => dispatch.merge('GEN 1:3:0'));
 
       expect(capturedInterlinearizerProps?.formerBoundaries.get('GEN 1:3:0')).toBe('GEN 1:3:0');
-      expect(capturedInterlinearizerProps?.pages.segmentationVersion).toBe(1);
+      expect(capturedInterlinearizerProps?.pages.segmentationVersion).toBeGreaterThan(
+        versionBefore,
+      );
     });
 
     it('keys a punct-initial merged verse by its first word token, mapped to the removed start', async () => {
@@ -3741,7 +3324,7 @@ describe('InterlinearizerLoader', () => {
 
       // Merge verse 2 into verse 1: the verse opens with a quote mark, so the boundary slot's word
       // anchor (the first word token) differs from the removed default start (the punct token).
-      act(() => dispatch.merge('GEN 1:2:0'));
+      await flushHost(() => dispatch.merge('GEN 1:2:0'));
 
       expect(capturedInterlinearizerProps?.formerBoundaries.get('GEN 1:2:1')).toBe('GEN 1:2:0');
       expect(capturedInterlinearizerProps?.formerBoundaries.has('GEN 1:2:0')).toBe(false);
@@ -3752,7 +3335,7 @@ describe('InterlinearizerLoader', () => {
 
       // Merge verse 4 (punctuation only) into verse 3: with no word token there is no split anchor
       // to key the former boundary by, so the verse contributes no map entry.
-      act(() => dispatch.merge('GEN 1:4:0'));
+      await flushHost(() => dispatch.merge('GEN 1:4:0'));
 
       expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(0);
     });
@@ -3762,7 +3345,7 @@ describe('InterlinearizerLoader', () => {
 
       // Only verse 3 is merged; the other verses keep their default boundaries and must stay out
       // of the map so their slots do not render former-boundary ticks.
-      act(() => dispatch.merge('GEN 1:3:0'));
+      await flushHost(() => dispatch.merge('GEN 1:3:0'));
 
       expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(1);
       expect(capturedInterlinearizerProps?.formerBoundaries.has('GEN 1:1:0')).toBe(false);
@@ -3786,13 +3369,13 @@ describe('InterlinearizerLoader', () => {
         />
       );
       let view: ReturnType<typeof render> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         view = render(buildUi());
       });
       const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
       if (!dispatch) throw new Error('expected a captured segmentationDispatch');
       // Merge so the draft's delta has a removed verse start.
-      act(() => dispatch.merge('GEN 1:3:0'));
+      await flushHost(() => dispatch.merge('GEN 1:3:0'));
       expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(1);
 
       // The book unloads (e.g. a cross-book swap): with no verse book to resolve refs against, the
@@ -3909,8 +3492,7 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('lost-boundaries-dismiss'));
 
       // The banner is read-only: the anchors themselves stay for a source that reverts.
-      const saves = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');
-      expect(saves).toHaveLength(0);
+      expect(editsSent()).toEqual([]);
     });
   });
 
@@ -4039,7 +3621,7 @@ describe('InterlinearizerLoader', () => {
     it('reports on no book while one is loading', async () => {
       mockBookData({ book: undefined, isLoading: true });
 
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -4054,7 +3636,7 @@ describe('InterlinearizerLoader', () => {
         freeTranslations: [],
       };
 
-      act(() => capturedReporterProps?.onReport(report));
+      await flushHost(() => capturedReporterProps?.onReport(report));
 
       expect(jest.mocked(useStaleAnalysisDismissal)).toHaveBeenLastCalledWith(
         expect.objectContaining({ report }),
@@ -4164,9 +3746,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('opens the catalog on the analyses stale in this book', async () => {
-      mockSendCommand.mockResolvedValueOnce(
-        JSON.stringify({ ...emptyDraft(testProjectId), analysis: STALE_IN_TWO_BOOKS }),
-      );
+      await seedDraft({ ...emptyDraft(testProjectId), analysis: STALE_IN_TWO_BOOKS });
       mockStaleAnalyses({ glossCount: 1 });
       await renderOnLoadedBook();
 
@@ -4178,9 +3758,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('narrows a catalog already open to the analyses stale in this book', async () => {
-      mockSendCommand.mockResolvedValueOnce(
-        JSON.stringify({ ...emptyDraft(testProjectId), analysis: STALE_IN_TWO_BOOKS }),
-      );
+      await seedDraft({ ...emptyDraft(testProjectId), analysis: STALE_IN_TWO_BOOKS });
       mockStaleAnalyses({ glossCount: 1 });
       await renderOnLoadedBook();
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
@@ -4234,6 +3812,7 @@ describe('InterlinearizerLoader', () => {
       expect(probeFocusRequest).toBe('GEN 1:1');
 
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
+      await flushHost();
 
       expect(probeFocusRequest).toBeUndefined();
     });
@@ -4267,7 +3846,7 @@ describe('InterlinearizerLoader', () => {
 
       it('moves on while the word focused before landing there stays focused', async () => {
         await renderWithHeldScrRef(RESUMED_PUNCTUATION_BOOK, 2);
-        act(() => probePublishFocus?.('GEN 1:2:0'));
+        await flushHost(() => probePublishFocus?.('GEN 1:2:0'));
         await stepToNext();
         expect(probeRecenterRequest?.segmentId).toBe('GEN 1:2:9');
 
@@ -4279,7 +3858,7 @@ describe('InterlinearizerLoader', () => {
       it('starts from a word the reader focuses after landing there', async () => {
         await renderWithHeldScrRef(RESUMED_PUNCTUATION_BOOK, 1);
         await stepToNext();
-        act(() => probePublishFocus?.('GEN 1:3:0'));
+        await flushHost(() => probePublishFocus?.('GEN 1:3:0'));
 
         await stepToNext();
 
@@ -4313,6 +3892,7 @@ describe('InterlinearizerLoader', () => {
       await renderOnLoadedBook({ book: THREE_VERSE_BOOK });
 
       await userEvent.click(screen.getByTestId('stale-next-free-translation'));
+      await flushHost();
 
       expect(onChangeByKey.get('interlinearizer.showFreeTranslation')).not.toHaveBeenCalled();
     });
@@ -4328,6 +3908,14 @@ describe('InterlinearizerLoader', () => {
   });
 
   describe('save command', () => {
+    beforeEach(() => {
+      mountStoreProbe = true;
+    });
+
+    afterEach(() => {
+      mountStoreProbe = false;
+    });
+
     it('has the host save the stored draft to the active project, sending no analysis', async () => {
       const draftAnalysis = emptyAnalysis();
       draftAnalysis.tokenAnalyses.push({
@@ -4336,9 +3924,7 @@ describe('InterlinearizerLoader', () => {
         surfaceText: 'In',
         gloss: { en: 'in' },
       });
-      mockSendCommand.mockResolvedValueOnce(
-        JSON.stringify({ ...emptyDraft(testProjectId), analysis: draftAnalysis }),
-      );
+      await seedDraft({ ...emptyDraft(testProjectId), analysis: draftAnalysis });
       await act(async () =>
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
       );
@@ -4349,67 +3935,19 @@ describe('InterlinearizerLoader', () => {
       // Nothing was pending, so the stored draft is already current: Save's first command is the
       // host copy, carrying only ids. The host marks the stored draft clean itself, so no draft
       // write follows.
-      expect(mockSendCommand.mock.calls).toEqual([
-        ['interlinearizer.saveDraftToProject', testProjectId, 'proj-1'],
-      ]);
-    });
-
-    it('writes the pending autosave before the host saves the stored draft', async () => {
-      await act(async () =>
-        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
-      );
-      const edited = emptyAnalysis();
-      edited.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 't1', surfaceText: 'In', gloss: {} });
-      act(() => {
-        capturedStoreProps?.onSave?.(edited);
-      });
-      mockSendCommand.mockClear();
-
-      // Save lands inside the autosave debounce, so the edit has not been written yet.
-      await userEvent.click(screen.getByTestId('tab-toolbar-save'));
-
-      const [flush, save] = mockSendCommand.mock.calls;
-      expect(flush[0]).toBe('interlinearizer.saveDraft');
-      expect(JSON.parse(String(flush[2])).analysis).toEqual(edited);
-      expect(save).toEqual(['interlinearizer.saveDraftToProject', testProjectId, 'proj-1']);
-    });
-
-    it('does not save to the project when the pending autosave fails', async () => {
-      let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
-        result = renderLoader({
-          useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }),
-        });
-      });
-      act(() => {
-        capturedStoreProps?.onSave?.(emptyAnalysis());
-      });
-      // Every draft write fails, the one sent again after the first failure included.
-      const error = new Error('disk full');
-      mockSendCommand.mockImplementation(async (...args) => {
-        if (args[0] === 'interlinearizer.saveDraft') throw error;
-        return JSON.stringify(emptyDraft(testProjectId));
-      });
-
-      await userEvent.click(screen.getByTestId('tab-toolbar-save'));
-
-      expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
-        'Interlinearizer: failed to save draft to project',
-        error,
-      );
       expect(
-        mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraftToProject'),
-      ).toHaveLength(0);
-      // The project was never written, so the draft stays dirty.
-      expect(result?.updateWebViewDefinition).toHaveBeenLastCalledWith({
-        title: 'Interlinearizer: WEB ●',
-      });
+        mockSendCommand.mock.calls.filter(
+          ([command]) => command !== 'interlinearizer.getFullAnalysis',
+        ),
+      ).toEqual([
+        ['interlinearizer.saveDraftToProject', expect.any(String), testProjectId, 'proj-1'],
+      ]);
     });
 
     it('refreshes the cached activeProject updatedAt from the saveDraftToProject response', async () => {
       // saveDraftToProject returns the persisted project's summary carrying the storage-refreshed updatedAt; every
       // other command keeps its default (the empty-draft load) so the editor still mounts.
-      mockSendCommand.mockImplementation(async (...args) =>
+      otherCommands.mockImplementation(async (...args) =>
         args[0] === 'interlinearizer.saveDraftToProject'
           ? JSON.stringify({ ...STUB_ACTIVE_PROJECT, updatedAt: '2026-02-02T00:00:00Z' })
           : JSON.stringify(emptyDraft(testProjectId)),
@@ -4417,6 +3955,7 @@ describe('InterlinearizerLoader', () => {
       await act(async () =>
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
       );
+      await flushHost();
       // The stubbed active project starts with no Modified time cached.
       expect(screen.getByTestId('project-modals')).not.toHaveAttribute(
         'data-active-project-updated',
@@ -4424,8 +3963,8 @@ describe('InterlinearizerLoader', () => {
 
       // Dirty the draft so the save that lands flips dirty back off, forcing the re-render that
       // reflects the newly cached updatedAt down to the ProjectModals stub.
-      act(() => {
-        capturedStoreProps?.onSave?.(emptyAnalysis());
+      await flushHost(() => {
+        probeWriteGloss?.('GEN 1:1:0', 'In', 'edited');
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
@@ -4441,7 +3980,7 @@ describe('InterlinearizerLoader', () => {
       const seeded: MockProject = { ...STUB_ACTIVE_PROJECT, updatedAt: '2026-01-01T00:00:00Z' };
       // saveDraftToProject returns a payload with no `updatedAt` (e.g. an unexpected shape), so there is
       // nothing to fold in; other commands keep the default empty-draft load.
-      mockSendCommand.mockImplementation(async (...args) =>
+      otherCommands.mockImplementation(async (...args) =>
         args[0] === 'interlinearizer.saveDraftToProject'
           ? JSON.stringify({ notAProject: true })
           : JSON.stringify(emptyDraft(testProjectId)),
@@ -4450,8 +3989,8 @@ describe('InterlinearizerLoader', () => {
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: seeded }) }),
       );
 
-      act(() => {
-        capturedStoreProps?.onSave?.(emptyAnalysis());
+      await flushHost(() => {
+        probeWriteGloss?.('GEN 1:1:0', 'In', 'edited');
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
@@ -4466,20 +4005,20 @@ describe('InterlinearizerLoader', () => {
       const seeded: MockProject = { ...STUB_ACTIVE_PROJECT, updatedAt: '2026-01-01T00:00:00Z' };
       // saveDraftToProject resolves to `undefined` (the project no longer exists), so the loader has no
       // response body to parse and the cache is left as-is.
-      mockSendCommand.mockImplementation(async (...args) =>
+      otherCommands.mockImplementation(async (...args) =>
         args[0] === 'interlinearizer.saveDraftToProject'
           ? undefined
           : JSON.stringify(emptyDraft(testProjectId)),
       );
       let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         result = renderLoader({ useWebViewState: makeWebViewState({ activeProject: seeded }) });
       });
       const updateWebViewDefinition = result?.updateWebViewDefinition;
 
       // Dirty the draft so the unsaved marker appears, then attempt the doomed Save.
-      act(() => {
-        capturedStoreProps?.onSave?.(emptyAnalysis());
+      await flushHost(() => {
+        probeWriteGloss?.('GEN 1:1:0', 'In', 'edited');
       });
       expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer: WEB ●' });
 
@@ -4504,7 +4043,7 @@ describe('InterlinearizerLoader', () => {
      */
     async function startHeldSave(): Promise<() => Promise<void>> {
       let finishSave!: (summary: string) => void;
-      mockSendCommand.mockImplementation((...args) =>
+      otherCommands.mockImplementation((...args) =>
         args[0] === 'interlinearizer.saveDraftToProject'
           ? new Promise<string>((resolve) => {
               finishSave = resolve;
@@ -4526,6 +4065,7 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-save-as'));
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
+      await flushHost();
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'none');
       expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument();
@@ -4559,13 +4099,19 @@ describe('InterlinearizerLoader', () => {
 
       await waitFor(() => expect(screen.queryByTestId('saving-indicator')).not.toBeInTheDocument());
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+      await flushHost();
       expect(screen.getByTestId('discard-changes-modal-panel')).toBeInTheDocument();
       expect(jest.mocked(papi.notifications.send)).not.toHaveBeenCalled();
     });
 
     it('marks the draft synced after a successful Save, clearing the tab unsaved marker', async () => {
+      otherCommands.mockImplementation(async (...args) =>
+        args[0] === 'interlinearizer.saveDraftToProject'
+          ? answerSave(STUB_ACTIVE_PROJECT, args)
+          : undefined,
+      );
       let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         result = renderLoader({
           useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }),
         });
@@ -4573,8 +4119,8 @@ describe('InterlinearizerLoader', () => {
       const updateWebViewDefinition = result?.updateWebViewDefinition;
 
       // Dirty the draft via an edit so the marker appears, then Save.
-      act(() => {
-        capturedStoreProps?.onSave?.(emptyAnalysis());
+      await flushHost(() => {
+        probeWriteGloss?.('GEN 1:1:0', 'In', 'edited');
       });
       expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer: WEB ●' });
 
@@ -4588,28 +4134,28 @@ describe('InterlinearizerLoader', () => {
 
     it('shows the tab unsaved marker for in-progress typing before the gloss commits', async () => {
       let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         result = renderLoader();
       });
       const updateWebViewDefinition = result?.updateWebViewDefinition;
 
       // A gloss input begins holding uncommitted text: the marker appears even though no gloss has
       // been written (the persisted draft is still clean).
-      act(() => {
+      await flushHost(() => {
         capturedStoreProps?.onPendingEditsChange?.(true);
       });
       expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer: WEB ●' });
 
       // The edit is reverted or the input unmounts with nothing committed: the marker clears.
       updateWebViewDefinition?.mockClear();
-      act(() => {
+      await flushHost(() => {
         capturedStoreProps?.onPendingEditsChange?.(false);
       });
       expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer: WEB' });
     });
 
     it('reports in-progress typing to ProjectModals as unsaved work so a swap is guarded', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -4622,24 +4168,24 @@ describe('InterlinearizerLoader', () => {
       // A gloss input begins holding uncommitted text. Even though nothing has committed (the draft
       // stays clean), ProjectModals must now treat the draft as having unsaved work so opening or
       // creating a project prompts before discarding the in-progress gloss.
-      act(() => {
+      await flushHost(() => {
         capturedStoreProps?.onPendingEditsChange?.(true);
       });
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-has-unsaved-work', 'true');
     });
 
     it('drops the unsaved-work guard once in-progress typing is abandoned', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
-      act(() => {
+      await flushHost(() => {
         capturedStoreProps?.onPendingEditsChange?.(true);
       });
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-has-unsaved-work', 'true');
 
       // The edit is reverted or the input unmounts with nothing committed: the guard clears.
-      act(() => {
+      await flushHost(() => {
         capturedStoreProps?.onPendingEditsChange?.(false);
       });
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
@@ -4654,7 +4200,7 @@ describe('InterlinearizerLoader', () => {
       );
 
       const error = new Error('save failed');
-      mockSendCommand.mockRejectedValueOnce(error);
+      otherCommands.mockRejectedValueOnce(error);
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
       expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
@@ -4664,7 +4210,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('opens the Save As modal when Save is clicked with no active project', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -4679,7 +4225,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('opens the Save As modal when the openSaveAsModal menu item is clicked', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -4695,7 +4241,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('opens the concordance beside the interlinear view', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -4706,24 +4252,26 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('switches the side panel to the catalog from the concordance', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
 
       await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
+      await flushHost();
 
       expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
       expect(screen.queryByTestId('concordance-panel')).not.toBeInTheDocument();
     });
 
     it('switches the side panel to the concordance from the catalog', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
       await userEvent.click(screen.getByTestId('side-panel-tab-concordance'));
+      await flushHost();
 
       expect(screen.getByTestId('concordance-panel')).toBeInTheDocument();
       expect(screen.queryByTestId('analysis-catalog-panel')).not.toBeInTheDocument();
@@ -4732,15 +4280,13 @@ describe('InterlinearizerLoader', () => {
     it('asks before a menu switch to the concordance drops an unsaved catalog breakdown', async () => {
       const draftAnalysis = emptyAnalysis();
       draftAnalysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 't1', surfaceText: 'In' });
-      mockSendCommand.mockResolvedValueOnce(
-        JSON.stringify({ ...emptyDraft(testProjectId), analysis: draftAnalysis }),
-      );
+      await seedDraft({ ...emptyDraft(testProjectId), analysis: draftAnalysis });
       jest.mocked(useOptimisticBooleanSetting).mockImplementation((_projectId, key) => ({
         value: key === 'interlinearizer.showMorphology',
         onChange: jest.fn(),
         isLoading: false,
       }));
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
@@ -4758,12 +4304,13 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('closes the side panel from the concordance', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
 
       await userEvent.click(screen.getByTestId('concordance-close'));
+      await flushHost();
 
       expect(screen.queryByTestId('concordance-panel')).not.toBeInTheDocument();
       expect(screen.queryByTestId('side-panel-resize')).not.toBeInTheDocument();
@@ -4771,13 +4318,13 @@ describe('InterlinearizerLoader', () => {
 
     it('restores an open concordance from WebView state on remount', async () => {
       const useWebViewState = makeWebViewState();
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState });
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
 
       cleanup();
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState });
       });
 
@@ -4785,7 +4332,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('reads nothing for the concordance until it is first shown', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
@@ -4797,7 +4344,7 @@ describe('InterlinearizerLoader', () => {
 
     it('reads the text of this project, the loaded book live, once the concordance is shown', async () => {
       mockBookData();
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -4814,11 +4361,12 @@ describe('InterlinearizerLoader', () => {
 
     it('builds the concordance as shown once it is shown', async () => {
       mockBookData({ writingSystem: 'hbo' });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
+      await flushHost();
 
       expect(useConcordanceEntries).toHaveBeenLastCalledWith(
         expect.objectContaining({ shown: true, writingSystem: 'hbo' }),
@@ -4836,21 +4384,20 @@ describe('InterlinearizerLoader', () => {
         });
         return text;
       });
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      const viewMounts = interlinearizerMountCount;
 
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
       await userEvent.click(screen.getByTestId('discard-changes-confirm-all'));
 
-      expect(interlinearizerMountCount).toBeGreaterThan(viewMounts);
+      expect(editsSent()).toEqual(['interlinearizer.discardAll']);
       expect(readerMounts).toBe(1);
     });
 
     it('keeps reading the text once the side panel switches away from the concordance', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
@@ -4864,7 +4411,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('marks the concordance hidden once the catalog takes the side panel', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
@@ -4886,16 +4433,14 @@ describe('InterlinearizerLoader', () => {
     });
 
     /** Puts one analysis in the draft, which the catalog needs before it shows its sort control. */
-    function mockDraftWithAnAnalysis(): void {
+    async function mockDraftWithAnAnalysis(): Promise<void> {
       const draftAnalysis = emptyAnalysis();
       draftAnalysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 't1', surfaceText: 'In' });
-      mockSendCommand.mockResolvedValueOnce(
-        JSON.stringify({ ...emptyDraft(testProjectId), analysis: draftAnalysis }),
-      );
+      await seedDraft({ ...emptyDraft(testProjectId), analysis: draftAnalysis });
     }
 
     it('shows no raw keys when the side panel first opens after the loader strings resolve', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await resolveStrings();
@@ -4906,7 +4451,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('shows no raw keys once the side panel switches from the catalog to the concordance', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
@@ -4918,7 +4463,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('shows no raw keys once the side panel switches from the concordance to the catalog', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
@@ -4934,8 +4479,8 @@ describe('InterlinearizerLoader', () => {
         '%LocalizedId.GEN%': 'Genèse',
         '%interlinearizer_analysisCatalog_sort_usageCountInBook%': 'Most used in {book}',
       });
-      mockDraftWithAnAnalysis();
-      await act(async () => {
+      await mockDraftWithAnAnalysis();
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
@@ -4953,8 +4498,8 @@ describe('InterlinearizerLoader', () => {
         '%LocalizedId.GEN%': '%LocalizedId.GEN%',
         '%interlinearizer_analysisCatalog_sort_usageCountInBook%': 'Most used in {book}',
       });
-      mockDraftWithAnAnalysis();
-      await act(async () => {
+      await mockDraftWithAnAnalysis();
+      await flushHost(async () => {
         renderLoader();
       });
       await resolveStrings();
@@ -4969,7 +4514,7 @@ describe('InterlinearizerLoader', () => {
 
   describe('analysis catalog command', () => {
     it('opens the catalog panel beside the interlinear view', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -4982,11 +4527,12 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('keeps the catalog panel out of the wrapper the cross-book fade dims', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
+      await flushHost();
 
       expect(screen.getByTestId('book-fade-wrapper')).not.toContainElement(
         screen.getByTestId('analysis-catalog-panel'),
@@ -4994,26 +4540,27 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('closes the catalog panel from its own close control', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
       await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+      await flushHost();
 
       expect(screen.queryByTestId('analysis-catalog-panel')).not.toBeInTheDocument();
     });
 
     it('restores an open catalog panel from WebView state on remount', async () => {
       const useWebViewState = makeWebViewState();
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState });
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
       // A fresh render against the same state store stands in for the tab being restored.
       cleanup();
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState });
       });
 
@@ -5026,7 +4573,7 @@ describe('InterlinearizerLoader', () => {
       document.documentElement.dir = 'rtl';
       try {
         const useWebViewState = makeWebViewState();
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader({ useWebViewState });
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
@@ -5034,9 +4581,10 @@ describe('InterlinearizerLoader', () => {
         // A step lands somewhere the default is not, so a layout read back on remount can only be
         // a stored one.
         fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'ArrowRight' });
+        await flushHost();
 
         cleanup();
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader({ useWebViewState });
         });
 
@@ -5051,12 +4599,13 @@ describe('InterlinearizerLoader', () => {
       // layout over the panels it still has — a report that, stored, would lose the resize.
       document.documentElement.dir = 'rtl';
       try {
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader();
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
         fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'ArrowRight' });
+        await flushHost();
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
@@ -5076,16 +4625,17 @@ describe('InterlinearizerLoader', () => {
       document.documentElement.dir = 'rtl';
       try {
         const useWebViewState = makeWebViewState();
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader({ useWebViewState });
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
         fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'ArrowRight' });
+        await flushHost();
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
         cleanup();
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader({ useWebViewState });
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
@@ -5101,7 +4651,7 @@ describe('InterlinearizerLoader', () => {
       // still knows only of the view — a throw that takes the WebView down rather than misplacing
       // the panel, hence a presence assertion. The width itself is left to the layout tests above:
       // jsdom measures the group at zero, so it reports no layout to read back here.
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
@@ -5115,12 +4665,13 @@ describe('InterlinearizerLoader', () => {
     it('moves the catalog panel on the press that resized it, not only on the next mount', async () => {
       document.documentElement.dir = 'rtl';
       try {
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader();
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
         fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'ArrowRight' });
+        await flushHost();
 
         // The group reads its defaultLayout only while every panel it names is mounted, so the
         // panel can only have moved by the press itself rather than by the layout reaching state.
@@ -5141,17 +4692,18 @@ describe('InterlinearizerLoader', () => {
       document.documentElement.dir = 'rtl';
       try {
         const useWebViewState = makeWebViewState();
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader({ useWebViewState });
         });
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
 
         fireEvent.keyDown(screen.getByTestId('side-panel-resize'), { key: 'Home' });
+        await flushHost();
 
         // Read back on a remount, which lays the group out from what was stored, so the assertion
         // covers the stored layout rather than only the one on screen.
         cleanup();
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader({ useWebViewState });
         });
 
@@ -5167,7 +4719,7 @@ describe('InterlinearizerLoader', () => {
       // Identity rather than presence: a view that changed place in the tree as the catalog
       // appeared would still be found here, having remounted and lost everything it holds locally
       // — where the segment list was scrolled to, a gloss typed but not yet committed.
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       const viewBeforeOpening = screen.getByTestId('interlinearizer');
@@ -5178,7 +4730,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('keeps the interlinear view mounted as the catalog closes', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
@@ -5191,12 +4743,12 @@ describe('InterlinearizerLoader', () => {
 
     it('leaves the catalog panel closed on remount when it was never opened', async () => {
       const useWebViewState = makeWebViewState();
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState });
       });
 
       cleanup();
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader({ useWebViewState });
       });
 
@@ -5205,16 +4757,8 @@ describe('InterlinearizerLoader', () => {
   });
 
   describe('discard changes command', () => {
-    /** The draft the last `saveDraft` wrote, if any. */
-    function lastSavedDraft(): DraftProject | undefined {
-      const json = mockSendCommand.mock.calls.findLast(
-        ([c]) => c === 'interlinearizer.saveDraft',
-      )?.[2];
-      return typeof json === 'string' ? JSON.parse(json) : undefined;
-    }
-
     it('opens the discard dialog with the active-book flag set when a book is loaded', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -5225,64 +4769,40 @@ describe('InterlinearizerLoader', () => {
         'data-has-active-book',
         'true',
       );
-      expect(
-        mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft'),
-      ).toHaveLength(0);
+      expect(editsSent()).toEqual([]);
     });
 
-    it('discards the current book through the draft after confirming the book scope', async () => {
-      await act(async () => {
+    it('discards the current book through the session after confirming the book scope', async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
       await userEvent.click(screen.getByTestId('discard-changes-confirm-book'));
+      await flushHost();
 
-      // Confirming a book discard replaces the draft (saveDraft) and dismisses the dialog.
-      expect(
-        mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft').length,
-      ).toBeGreaterThan(0);
+      // Confirming a book discard sends the session the book to discard, and dismisses the dialog.
+      expect(editsSent()).toEqual(['interlinearizer.discardBook']);
       expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument();
     });
 
     it('empties the whole draft after confirming the all scope with no active project', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
       await userEvent.click(screen.getByTestId('discard-changes-confirm-all'));
+      await flushHost();
 
-      expect(lastSavedDraft()?.analysis).toEqual(emptyAnalysis());
-      expect(lastSavedDraft()?.dirty).toBe(false);
+      expect(editsSent()).toEqual(['interlinearizer.discardAll']);
       expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument();
     });
 
     describe('with an active project', () => {
-      const saved = analysisApprovingAt('GEN 1:1:0', 'saved');
-
-      /** Serves an unsaved draft, and answers `getProject` for the active project with `read`. */
-      function mockStoredProject(
-        read: () => Promise<string | undefined> = async () =>
-          JSON.stringify({
-            ...STUB_ACTIVE_PROJECT,
-            updatedAt: '2026-01-02T00:00:00Z',
-            analysis: saved,
-          }),
-      ): void {
-        mockSendCommand.mockImplementation(async (...args) => {
-          if (args[0] === 'interlinearizer.getProject') return read();
-          return JSON.stringify({
-            ...emptyDraft(testProjectId),
-            analysis: analysisApprovingAt('GEN 1:1:0', 'unsaved'),
-            dirty: true,
-          });
-        });
-      }
-
       /** Renders the loader with {@link STUB_ACTIVE_PROJECT} active and confirms `scope`. */
       async function discard(scope: 'book' | 'all'): Promise<void> {
-        await act(async () => {
+        await flushHost(async () => {
           renderLoader({
             useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }),
           });
@@ -5291,40 +4811,25 @@ describe('InterlinearizerLoader', () => {
         await userEvent.click(screen.getByTestId(`discard-changes-confirm-${scope}`));
       }
 
-      it("restores the project's saved analysis when discarding the entire draft", async () => {
-        mockStoredProject();
-
+      it('has the session restore the whole draft from the project', async () => {
         await discard('all');
 
-        await waitFor(() => expect(lastSavedDraft()?.analysis).toEqual(saved));
+        expect(editsSent()).toEqual(['interlinearizer.discardAll']);
       });
 
-      it("restores the current book from the project's saved analysis", async () => {
-        mockStoredProject();
-
+      it('has the session restore the current book from the project', async () => {
         await discard('book');
 
-        await waitFor(() => expect(lastSavedDraft()?.analysis).toEqual(saved));
-      });
-
-      it('notifies and leaves the draft untouched when the project cannot be read', async () => {
-        mockStoredProject(async () => {
-          throw new Error('storage offline');
-        });
-
-        await discard('all');
-
-        await waitFor(() =>
-          expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
-            message: '%interlinearizer_error_discardChanges_failed%',
-            severity: 'error',
-          }),
+        expect(mockSendCommand).toHaveBeenCalledWith(
+          'interlinearizer.discardBook',
+          expect.objectContaining({ bookCode: 'GEN' }),
         );
-        expect(lastSavedDraft()).toBeUndefined();
       });
 
-      it('keeps the dialog open and submitting while the project is read', async () => {
-        mockStoredProject(() => new Promise(() => {}));
+      it('keeps the dialog open and submitting while the discard runs', async () => {
+        otherCommands.mockImplementation(async (...args) =>
+          args[0] === 'interlinearizer.discardAll' ? new Promise(() => {}) : undefined,
+        );
 
         await discard('all');
 
@@ -5334,9 +4839,7 @@ describe('InterlinearizerLoader', () => {
         );
       });
 
-      it('dismisses the dialog once the restored content is applied', async () => {
-        mockStoredProject();
-
+      it('dismisses the dialog once the discard is applied', async () => {
         await discard('all');
 
         await waitFor(() =>
@@ -5344,53 +4847,43 @@ describe('InterlinearizerLoader', () => {
         );
       });
 
-      it('dismisses the dialog when the project cannot be read', async () => {
-        mockStoredProject(async () => {
-          throw new Error('storage offline');
+      it('logs a failed discard and dismisses the dialog', async () => {
+        otherCommands.mockImplementation(async (...args) => {
+          if (args[0] === 'interlinearizer.discardAll') throw new Error('storage offline');
+          return undefined;
         });
 
         await discard('all');
 
         await waitFor(() =>
-          expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument(),
+          expect(logger.error).toHaveBeenCalledWith(
+            'Interlinearizer: failed to discard changes',
+            expect.any(Error),
+          ),
         );
-      });
-
-      it('notifies and leaves the draft untouched when the project no longer exists', async () => {
-        mockStoredProject(async () => undefined);
-
-        await discard('all');
-
-        await waitFor(() =>
-          expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
-            message: '%interlinearizer_error_discardChanges_failed%',
-            severity: 'error',
-          }),
-        );
-        expect(lastSavedDraft()).toBeUndefined();
+        expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument();
       });
     });
 
     it('leaves the draft untouched when the discard dialog is canceled', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
       mockSendCommand.mockClear();
       await userEvent.click(screen.getByTestId('discard-changes-modal-cancel'));
+      await flushHost();
 
       expect(screen.queryByTestId('discard-changes-modal-panel')).not.toBeInTheDocument();
-      expect(
-        mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft'),
-      ).toHaveLength(0);
+      expect(editsSent()).toEqual([]);
     });
   });
 
   describe('tab unsaved-changes marker', () => {
     it('reports the plain tab title while the draft is clean', async () => {
       let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         result = renderLoader();
       });
 
@@ -5402,15 +4895,15 @@ describe('InterlinearizerLoader', () => {
       });
     });
 
-    it('appends the unsaved marker to the tab title after an autosave dirties the draft', async () => {
+    it('appends the unsaved marker to the tab title after an edit dirties the draft', async () => {
+      mountStoreProbe = true;
       let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         result = renderLoader();
       });
 
-      act(() => {
-        capturedStoreProps?.onSave?.(emptyAnalysis());
-      });
+      await flushHost(() => probeWriteGloss?.('GEN 1:1:0', 'In', 'in'));
+      mountStoreProbe = false;
 
       expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({
         title: 'Interlinearizer: WEB ●',
@@ -5421,7 +4914,7 @@ describe('InterlinearizerLoader', () => {
   describe('tab source project name', () => {
     it("titles the tab with the source project's short name", async () => {
       let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         result = renderLoader();
       });
 
@@ -5433,7 +4926,7 @@ describe('InterlinearizerLoader', () => {
     it('falls back to the project id when the short name is empty', async () => {
       mockSourceShortName('');
       let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         result = renderLoader();
       });
 
@@ -5454,7 +4947,7 @@ describe('InterlinearizerLoader', () => {
           false,
         ]);
       let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         result = renderLoader();
       });
 
@@ -5473,7 +4966,7 @@ describe('InterlinearizerLoader', () => {
           true,
         ]);
       let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         result = renderLoader();
       });
 
@@ -5483,7 +4976,7 @@ describe('InterlinearizerLoader', () => {
     it('leaves the title alone while the title format is unresolved', async () => {
       mockKeyAsValueLocalizedStrings();
       let result: ReturnType<typeof renderLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         result = renderLoader();
       });
 
@@ -5493,7 +4986,7 @@ describe('InterlinearizerLoader', () => {
 
   describe('phrase mode plumbing', () => {
     it('forwards setPhraseMode through to Interlinearizer', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -5502,14 +4995,14 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('updates the captured phraseMode when setPhraseMode is invoked', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
       const originalTokens: PhraseAnalysisLink['tokens'] = [
         { tokenRef: 'tok-1', surfaceText: 'In' },
       ];
-      act(() => {
+      await flushHost(() => {
         capturedInterlinearizerProps?.setPhraseMode({
           kind: 'edit',
           phraseId: 'phrase-1',
@@ -5525,7 +5018,7 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('resets phraseMode to view when the draft is replaced (discard)', async () => {
-      await act(async () => {
+      await flushHost(async () => {
         renderLoader();
       });
 
@@ -5533,7 +5026,7 @@ describe('InterlinearizerLoader', () => {
       const originalTokens: PhraseAnalysisLink['tokens'] = [
         { tokenRef: 'tok-1', surfaceText: 'In' },
       ];
-      act(() => {
+      await flushHost(() => {
         capturedInterlinearizerProps?.setPhraseMode({
           kind: 'edit',
           phraseId: 'phrase-1',
@@ -5546,7 +5039,9 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
       await userEvent.click(screen.getByTestId('discard-changes-confirm-all'));
 
-      expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
+      await waitFor(() =>
+        expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' }),
+      );
     });
   });
 
@@ -5600,7 +5095,7 @@ describe('InterlinearizerLoader', () => {
 
     it('fades the content out the moment scrRef names a new book', async () => {
       let controls: ReturnType<typeof renderFadeLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
       });
       // Initial GEN load shows no fade.
@@ -5610,12 +5105,13 @@ describe('InterlinearizerLoader', () => {
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       mockBookData({ book: undefined, isLoading: true });
       controls?.rerenderNow();
+      await flushHost();
       expect(fadeOpacity()).toBe('0');
     });
 
     it('drops the curtain instantly (no transition) during the fade-out', async () => {
       let controls: ReturnType<typeof renderFadeLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
       });
       const wrapper = () => screen.getByTestId('book-fade-wrapper');
@@ -5628,13 +5124,14 @@ describe('InterlinearizerLoader', () => {
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       mockBookData({ book: undefined, isLoading: true });
       controls?.rerenderNow();
+      await flushHost();
       expect(fadeOpacity()).toBe('0');
       expect(wrapper().style.transitionDuration).toBe('0ms');
     });
 
     it('shows the Loading curtain (not the old book) during a cross-book swap', async () => {
       let controls: ReturnType<typeof renderFadeLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 5 });
       });
       expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
@@ -5644,12 +5141,14 @@ describe('InterlinearizerLoader', () => {
       // book's views, so nothing of either book is visible until the new one mounts and fades in.
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       controls?.rerenderNow();
+      await flushHost();
       expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
       expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
 
       // Once MAT's book data arrives, Interlinearizer mounts on it and receives the live MAT ref.
       mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });
       controls?.rerenderNow();
+      await flushHost();
       expect(capturedInterlinearizerProps?.scrRef).toEqual({
         book: 'MAT',
         chapterNum: 5,
@@ -5659,7 +5158,7 @@ describe('InterlinearizerLoader', () => {
 
     it('remounts Interlinearizer on a book change but not on a same-book verse change', async () => {
       let controls: ReturnType<typeof renderFadeLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
       });
       expect(interlinearizerMountCount).toBe(1);
@@ -5668,6 +5167,7 @@ describe('InterlinearizerLoader', () => {
       // scroll/focus state and in-component recenter fade carry the within-book navigation.
       controls?.setRef({ book: 'GEN', chapterNum: 1, verseNum: 40 });
       controls?.rerenderNow();
+      await flushHost();
       expect(interlinearizerMountCount).toBe(1);
 
       // A book change must tear down the old instance and mount a fresh one keyed by the new book, so
@@ -5675,12 +5175,13 @@ describe('InterlinearizerLoader', () => {
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });
       controls?.rerenderNow();
+      await flushHost();
       expect(interlinearizerMountCount).toBe(2);
     });
 
     it('reveals the error instead of staying faded when the new book fails to load', async () => {
       let controls: ReturnType<typeof renderFadeLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
       });
       expect(fadeOpacity()).toBe('1');
@@ -5690,6 +5191,7 @@ describe('InterlinearizerLoader', () => {
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       mockBookData({ book: undefined, bookError: 'No text available' });
       controls?.rerenderNow();
+      await flushHost();
       expect(fadeOpacity()).toBe('1');
       expect(screen.getByText('No text available')).toBeInTheDocument();
     });
@@ -5697,20 +5199,21 @@ describe('InterlinearizerLoader', () => {
     it('reveals the missing-book view instead of staying faded', async () => {
       mockProjectBookIds(['GEN']);
       let controls: ReturnType<typeof renderFadeLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
       });
 
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       mockBookData({ book: undefined, isLoading: true });
       controls?.rerenderNow();
+      await flushHost();
       expect(fadeOpacity()).toBe('1');
       expect(screen.getByTestId('book-not-in-project')).toBeInTheDocument();
     });
 
     it('does not fade for a same-book external navigation', async () => {
       let controls: ReturnType<typeof renderFadeLoader> | undefined;
-      await act(async () => {
+      await flushHost(async () => {
         controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
       });
       expect(fadeOpacity()).toBe('1');
@@ -5719,42 +5222,15 @@ describe('InterlinearizerLoader', () => {
       // up (its own in-component fade handles within-book recenters).
       controls?.setRef({ book: 'GEN', chapterNum: 1, verseNum: 40 });
       controls?.rerenderNow();
+      await flushHost();
       expect(fadeOpacity()).toBe('1');
     });
   });
 });
 
-/** LUK counterpart to `GEN_1_1_BOOK`, so a book change has a second book to land on. */
-const LUK_1_1_BOOK: Book = {
-  id: 'LUK',
-  bookRef: 'LUK',
-  textVersion: 'v1',
-  duplicateVerseIds: [],
-  segments: [
-    {
-      id: 'LUK 1:1',
-      startRef: { book: 'LUK', chapter: 1, verse: 1 },
-      endRef: { book: 'LUK', chapter: 1, verse: 1 },
-      baselineText: 'Since many',
-      tokens: [
-        {
-          ref: 'LUK 1:1:0',
-          surfaceText: 'Since',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 5,
-        },
-      ],
-      verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-    },
-  ],
-};
-
 /** Resets the loader's mocks and captures for a test that reads the store through the probe. */
 function prepareStoreProbeTest(): void {
   mountStoreProbe = true;
-  probeStore = undefined;
   probeAnalysis = undefined;
   probeWriteGloss = undefined;
   probeCreatePhrase = undefined;
@@ -5769,7 +5245,6 @@ function prepareStoreProbeTest(): void {
   mockStaleAnalyses();
   mockProjectBookIds(undefined);
   mockUnreadSourceText();
-  mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
   jest
     .mocked(useData)
     .mockReturnValue(
@@ -5786,177 +5261,6 @@ function prepareStoreProbeTest(): void {
   mockSourceShortName('');
 }
 
-describe('analysis store lifetime', () => {
-  beforeEach(prepareStoreProbeTest);
-
-  afterEach(() => {
-    mountStoreProbe = false;
-  });
-
-  it('keeps one analysis store across a book change', async () => {
-    // The store holds the whole draft, not one book, so its lifetime is the draft's. A store rebuilt
-    // per book would also tear down everything mounted inside it — which is where the analysis
-    // catalog lives, and the catalog's whole point is clicking usage after usage across books.
-    let scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
-    const webViewState = makeWebViewState();
-    const element = () => (
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        webViewId={testWebViewId}
-        useWebViewScrollGroupScrRef={() => [scrRef, () => {}, undefined, () => {}, undefined]}
-        useWebViewState={webViewState}
-        updateWebViewDefinition={jest.fn(() => true)}
-      />
-    );
-
-    const { rerender } = render(element());
-    await act(async () => {});
-    const storeBefore = probeStore;
-    expect(storeBefore).toBeDefined();
-
-    // Navigate to another book: the reference moves first, then that book's data arrives.
-    scrRef = { book: 'LUK', chapterNum: 1, verseNum: 1 };
-    mockBookData({ book: LUK_1_1_BOOK });
-    await act(async () => {
-      rerender(element());
-    });
-
-    expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
-    expect(probeStore).toBe(storeBefore);
-  });
-
-  it('shows the store what re-anchoring made of the draft', async () => {
-    mockBookData({
-      book: {
-        id: 'GEN',
-        bookRef: 'GEN',
-        textVersion: 'v1',
-        duplicateVerseIds: [],
-        segments: [
-          makeSegment('GEN 1:1', 'Alpha beta.', [
-            makeWordToken('GEN 1:1:0', 'Alpha'),
-            makeWordToken('GEN 1:1:6', 'beta', 6),
-          ]),
-        ],
-      },
-    });
-    // Written against "Al beta.", where "beta" began at offset 3.
-    const analysis = analysisApprovingAt('GEN 1:1:3', 'beta');
-    mockSendCommand.mockResolvedValue(JSON.stringify({ ...emptyDraft(testProjectId), analysis }));
-
-    await act(async () => renderLoader());
-
-    expect(probeAnalysis?.tokenAnalysisLinks[0].token.tokenRef).toBe('GEN 1:1:6');
-  });
-
-  it('rebuilds the store when the draft is replaced wholesale', async () => {
-    // The store's seed is not reactive, so a replacement (New / Open / Discard) reseeds by remounting
-    // the provider. Hoisting it above the book key must not cost that: a discarded draft whose store
-    // kept the old analysis would show glosses the draft no longer contains.
-    await act(async () => renderLoader());
-    const storeBefore = probeStore;
-
-    act(() => probeWriteGloss?.('GEN 1:1:0', 'In', 'beginning'));
-    await act(async () => {
-      screen.getByTestId('tab-toolbar-discard-changes').click();
-    });
-    await act(async () => {
-      screen.getByTestId('discard-changes-confirm-all').click();
-    });
-
-    expect(probeStore).not.toBe(storeBefore);
-    expect(capturedStoreProps?.initialAnalysis).toEqual(emptyAnalysis());
-  });
-});
-
-describe('whole-text re-anchoring', () => {
-  beforeEach(prepareStoreProbeTest);
-
-  afterEach(() => {
-    mountStoreProbe = false;
-  });
-
-  /** The arguments the loader last handed the reader of the source text. */
-  function readerArgs(): UseSourceTextReaderArgs {
-    const { calls } = jest.mocked(useSourceTextReader).mock;
-    return calls[calls.length - 1][0];
-  }
-
-  /** Loads a draft approving "beta" at `tokenRef`, as written against "Al beta.". */
-  async function renderWithApprovalAt(tokenRef: string): Promise<void> {
-    const analysis = analysisApprovingAt(tokenRef, 'beta');
-    mockSendCommand.mockResolvedValue(JSON.stringify({ ...emptyDraft(testProjectId), analysis }));
-    await act(async () => renderLoader());
-  }
-
-  it('re-anchors the draft to a book the text read hands on', async () => {
-    await renderWithApprovalAt('EXO 1:1:3');
-    const exodus: Book = {
-      id: 'EXO',
-      bookRef: 'EXO',
-      textVersion: 'v1',
-      duplicateVerseIds: [],
-      segments: [
-        makeSegment('EXO 1:1', 'Alpha beta.', [
-          makeWordToken('EXO 1:1:0', 'Alpha'),
-          makeWordToken('EXO 1:1:6', 'beta', 6),
-        ]),
-      ],
-    };
-
-    act(() => readerArgs().onBookRead?.(exodus));
-
-    expect(probeAnalysis?.tokenAnalysisLinks[0].token.tokenRef).toBe('EXO 1:1:6');
-  });
-
-  it('stales the approvals in a book the read text lacks', async () => {
-    await renderWithApprovalAt('EXO 1:1:3');
-
-    act(() => readerArgs().onTextRead?.(['GEN']));
-
-    expect(probeAnalysis?.tokenAnalysisLinks[0].status).toBe('stale');
-  });
-
-  /** Opens the catalog and its filter controls. */
-  async function openCatalogFilters(): Promise<void> {
-    await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-    await userEvent.click(screen.getByTestId('catalog-filters-button'));
-  }
-
-  it('says stale places are found only in opened books until the text is read', async () => {
-    await renderWithApprovalAt('EXO 1:1:3');
-
-    await openCatalogFilters();
-
-    expect(
-      screen.getByRole('checkbox', { name: '%interlinearizer_analysisCatalog_filter_stale%' }),
-    ).toBeInTheDocument();
-  });
-
-  it('says stale places are found in every book once the text is read', async () => {
-    await renderWithApprovalAt('EXO 1:1:3');
-    act(() => readerArgs().onTextRead?.(['GEN', 'EXO']));
-
-    await openCatalogFilters();
-
-    expect(
-      screen.getByRole('checkbox', {
-        name: '%interlinearizer_analysisCatalog_filter_staleEverywhere%',
-      }),
-    ).toBeInTheDocument();
-  });
-
-  it('reads the text again once the draft is replaced', async () => {
-    await renderWithApprovalAt('EXO 1:1:3');
-    const { readKey } = readerArgs();
-
-    await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
-    await userEvent.click(screen.getByTestId('discard-changes-confirm-book'));
-
-    expect(readerArgs().readKey).not.toBe(readKey);
-  });
-});
-
 describe('undo and redo', () => {
   beforeEach(() => {
     prepareStoreProbeTest();
@@ -5970,14 +5274,14 @@ describe('undo and redo', () => {
 
   /** Renders the loader and glosses "Alpha" through the store. */
   async function renderAndGloss(): Promise<void> {
-    await act(async () => renderLoader());
-    act(() => probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha'));
+    await flushHost(async () => renderLoader());
+    await flushHost(() => probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha'));
   }
 
   it('undoes the last edit on Ctrl+Z', async () => {
     await renderAndGloss();
 
-    act(() => {
+    await flushHost(() => {
       fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     });
 
@@ -5987,38 +5291,21 @@ describe('undo and redo', () => {
   it('redoes an undone edit on Ctrl+Y', async () => {
     await renderAndGloss();
 
-    act(() => {
+    await flushHost(() => {
       fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     });
-    act(() => {
+    await flushHost(() => {
       fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
     });
 
     expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
   });
 
-  it("undoes an editor action's analysis and boundary edits as one step", async () => {
-    await act(async () => renderLoader());
-
-    act(() =>
-      capturedInterlinearizerProps?.asOneStep(() => {
-        probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha');
-        capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:6');
-      }),
-    );
-    act(() => {
-      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
-    });
-
-    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
-    expect(capturedInterlinearizerProps?.book.segments).toHaveLength(1);
-  });
-
   it('leaves the draft alone on Ctrl+Z while a dialog is open over it', async () => {
     await renderAndGloss();
     render(<div data-slot="dialog-content" />);
 
-    act(() => {
+    await flushHost(() => {
       fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     });
 
@@ -6029,7 +5316,7 @@ describe('undo and redo', () => {
     await renderAndGloss();
     render(<div data-blocks-undo />);
 
-    act(() => {
+    await flushHost(() => {
       fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     });
 
@@ -6048,9 +5335,9 @@ describe('undo and redo', () => {
 
     it('takes the reader to the verse an undone edit was made in', async () => {
       const setScrRef = await renderWithScrRefSpy();
-      act(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
+      await flushHost(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
 
-      act(() => {
+      await flushHost(() => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
@@ -6059,50 +5346,28 @@ describe('undo and redo', () => {
 
     it('focuses the token an undone edit was made at', async () => {
       await renderWithScrRefSpy();
-      act(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
+      await flushHost(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
 
-      act(() => {
+      await flushHost(() => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
       expect(probeFocusRequest).toBe('GEN 1:5:0');
     });
 
-    it('asks to focus the segment an undone edit was made in', async () => {
-      await renderWithScrRefSpy();
-      act(() => capturedStoreProps?.onSave?.(analysisApprovingAt('GEN 1:5:0', 'word'), 'GEN 1:5'));
-
-      act(() => {
-        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
-      });
-
-      expect(probeFocusRequest).toBe('GEN 1:5');
-    });
-
     it('takes the reader to the verse a redone edit was made in', async () => {
       const setScrRef = await renderWithScrRefSpy();
-      act(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
-      act(() => {
+      await flushHost(() => probeWriteGloss?.('GEN 1:5:0', 'word', 'mot'));
+      await flushHost(() => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
       setScrRef.mockClear();
 
-      act(() => {
+      await flushHost(() => {
         fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
       });
 
       expect(setScrRef).toHaveBeenLastCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 5 });
-    });
-
-    it('leaves the reader in place when the undone edit was made at no one place', async () => {
-      const setScrRef = await renderWithScrRefSpy();
-      act(() => capturedStoreProps?.onSave?.(analysisApprovingAt('GEN 1:5:0', 'word')));
-
-      act(() => {
-        fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
-      });
-
-      expect(setScrRef).not.toHaveBeenCalled();
     });
   });
 
@@ -6124,12 +5389,12 @@ describe('undo and redo', () => {
     }
 
     it('stops editing a phrase an undo removes', async () => {
-      await act(async () => renderLoader());
-      act(() => probeCreatePhrase?.(ALPHA_BETA));
+      await flushHost(async () => renderLoader());
+      await flushHost(() => probeCreatePhrase?.(ALPHA_BETA));
       const phraseId = probeAnalysis?.phraseAnalysisLinks[0]?.id ?? '';
       editPhrase(phraseId);
 
-      act(() => {
+      await flushHost(() => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
@@ -6137,13 +5402,13 @@ describe('undo and redo', () => {
     });
 
     it('keeps editing a phrase the undo leaves in place', async () => {
-      await act(async () => renderLoader());
-      act(() => probeCreatePhrase?.(ALPHA_BETA));
+      await flushHost(async () => renderLoader());
+      await flushHost(() => probeCreatePhrase?.(ALPHA_BETA));
       const phraseId = probeAnalysis?.phraseAnalysisLinks[0]?.id ?? '';
-      act(() => probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha'));
+      await flushHost(() => probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha'));
       editPhrase(phraseId);
 
-      act(() => {
+      await flushHost(() => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
@@ -6158,15 +5423,13 @@ describe('undo and redo', () => {
       await act(async () => {
         screen.getByTestId('tab-toolbar-discard-changes').click();
       });
-      await act(async () => {
-        screen.getByTestId('discard-changes-confirm-all').click();
-      });
+      await flushHost(() => screen.getByTestId('discard-changes-confirm-all').click());
     }
 
     it('announces an undone discard', async () => {
       await renderAndDiscard();
 
-      await act(async () => {
+      await flushHost(async () => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
@@ -6177,11 +5440,11 @@ describe('undo and redo', () => {
 
     it('announces a redone discard', async () => {
       await renderAndDiscard();
-      act(() => {
+      await flushHost(() => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
-      await act(async () => {
+      await flushHost(async () => {
         fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
       });
 
@@ -6209,10 +5472,8 @@ describe('undo and redo', () => {
         await act(async () => {
           screen.getByTestId('tab-toolbar-discard-changes').click();
         });
-        await act(async () => {
-          screen.getByTestId('discard-changes-confirm-book').click();
-        });
-        await act(async () => {
+        await flushHost(() => screen.getByTestId('discard-changes-confirm-book').click());
+        await flushHost(() => {
           fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
         });
       }
@@ -6251,7 +5512,7 @@ describe('undo and redo', () => {
             .mockImplementation(() => new Promise(() => {}));
           await discardBookAndUndo();
 
-          await act(async () => {
+          await flushHost(async () => {
             jest.advanceTimersByTime(BOOK_NAME_TIMEOUT_MS);
           });
 
@@ -6276,10 +5537,10 @@ describe('undo and redo', () => {
           .mockResolvedValue('Mwanzo');
 
         await discardBookAndUndo();
-        await act(async () => {
+        await flushHost(async () => {
           fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
         });
-        await act(async () => {
+        await flushHost(async () => {
           resolveUndoneName('Mwanzo');
         });
 
@@ -6294,19 +5555,17 @@ describe('undo and redo', () => {
     });
 
     it('announces an undone catalog edit', async () => {
-      mockSendCommand.mockResolvedValue(
-        JSON.stringify({
-          ...emptyDraft(testProjectId),
-          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
-        }),
-      );
-      await act(async () => renderLoader());
+      await seedDraft({
+        ...emptyDraft(testProjectId),
+        analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+      });
+      await flushHost(async () => renderLoader());
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
       await userEvent.click(screen.getByTestId('catalog-row-toggle'));
       await userEvent.type(screen.getByTestId('catalog-row-gloss-input'), 'alpha');
       await userEvent.tab();
 
-      await act(async () => {
+      await flushHost(async () => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
@@ -6315,26 +5574,24 @@ describe('undo and redo', () => {
       );
     });
 
-    it('announces an undone deletion of checked catalog rows', async () => {
+    it('announces an undone deletion of one checked catalog row as the deletion of its analysis', async () => {
       // The deletion raises an undo notification, which the undo takes down.
       jest.mocked(papi.notifications.dismiss).mockResolvedValue(undefined);
-      mockSendCommand.mockResolvedValue(
-        JSON.stringify({
-          ...emptyDraft(testProjectId),
-          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
-        }),
-      );
-      await act(async () => renderLoader());
+      await seedDraft({
+        ...emptyDraft(testProjectId),
+        analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+      });
+      await flushHost(async () => renderLoader());
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
       await userEvent.click(screen.getByTestId('catalog-row-check'));
       await userEvent.click(screen.getByTestId('catalog-selection-delete'));
 
-      await act(async () => {
+      await flushHost(async () => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
-        expect.objectContaining({ message: '%interlinearizer_undone_catalogDeleteChecked%' }),
+        expect.objectContaining({ message: '%interlinearizer_undone_catalogDelete%' }),
       );
     });
 
@@ -6343,22 +5600,20 @@ describe('undo and redo', () => {
       // takes down.
       jest.mocked(papi.notifications.dismiss).mockResolvedValue(undefined);
       const analysis = analysisApprovingAt('GEN 1:1:0', 'Alpha');
-      mockSendCommand.mockResolvedValue(
-        JSON.stringify({
-          ...emptyDraft(testProjectId),
-          analysisLanguages: ['en'],
-          analysis: {
-            ...analysis,
-            tokenAnalyses: analysis.tokenAnalyses.map((ta) => ({ ...ta, gloss: { en: 'first' } })),
-          },
-        }),
-      );
-      await act(async () => renderLoader());
+      await seedDraft({
+        ...emptyDraft(testProjectId),
+        analysisLanguages: ['en'],
+        analysis: {
+          ...analysis,
+          tokenAnalyses: analysis.tokenAnalyses.map((ta) => ({ ...ta, gloss: { en: 'first' } })),
+        },
+      });
+      await flushHost(async () => renderLoader());
       await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
       await userEvent.click(screen.getByTestId('catalog-row-check'));
       await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
 
-      await act(async () => {
+      await flushHost(async () => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
@@ -6375,19 +5630,17 @@ describe('undo and redo', () => {
         value: scrollIntoView,
       });
       try {
-        mockSendCommand.mockResolvedValue(
-          JSON.stringify({
-            ...emptyDraft(testProjectId),
-            analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
-          }),
-        );
-        await act(async () => renderLoader());
+        await seedDraft({
+          ...emptyDraft(testProjectId),
+          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+        });
+        await flushHost(async () => renderLoader());
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
         await userEvent.click(screen.getByTestId('catalog-row-toggle'));
         await userEvent.type(screen.getByTestId('catalog-row-gloss-input'), 'alpha');
         await userEvent.tab();
 
-        act(() => {
+        await flushHost(() => {
           fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
         });
 
@@ -6405,6 +5658,7 @@ describe('undo and redo', () => {
         value: scrollIntoView,
       });
       const approvedAt = (analysisId: string, tokenRef: string) => ({
+        id: `tl-${analysisId}`,
         ...FIXTURE_STAMPS,
         analysisId,
         status: 'approved' as const,
@@ -6413,24 +5667,19 @@ describe('undo and redo', () => {
       const rowFor = (analysisId: string) =>
         screen.getAllByTestId('catalog-row').find((row) => row.dataset.analysisId === analysisId);
       try {
-        mockSendCommand.mockResolvedValue(
-          JSON.stringify({
-            ...emptyDraft(testProjectId),
-            analysisLanguages: ['en'],
-            analysis: {
-              ...emptyAnalysis(),
-              tokenAnalyses: [
-                { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'Alpha', gloss: { en: 'first' } },
-                { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'Alpha', gloss: { en: 'second' } },
-              ],
-              tokenAnalysisLinks: [
-                approvedAt('ta-1', 'GEN 1:1:0'),
-                approvedAt('ta-2', 'GEN 2:1:0'),
-              ],
-            },
-          }),
-        );
-        await act(async () => renderLoader());
+        await seedDraft({
+          ...emptyDraft(testProjectId),
+          analysisLanguages: ['en'],
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: [
+              { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'Alpha', gloss: { en: 'first' } },
+              { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'Alpha', gloss: { en: 'second' } },
+            ],
+            tokenAnalysisLinks: [approvedAt('ta-1', 'GEN 1:1:0'), approvedAt('ta-2', 'GEN 2:1:0')],
+          },
+        });
+        await flushHost(async () => renderLoader());
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
         const edited = rowFor('ta-1');
         if (!edited) throw new Error('no catalog row for ta-1');
@@ -6439,12 +5688,12 @@ describe('undo and redo', () => {
         await userEvent.clear(input);
         await userEvent.type(input, 'second');
         await userEvent.tab();
-        act(() => {
+        await flushHost(() => {
           fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
         });
         scrollIntoView.mockClear();
 
-        act(() => {
+        await flushHost(() => {
           fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
         });
 
@@ -6463,23 +5712,21 @@ describe('undo and redo', () => {
         value: scrollIntoView,
       });
       try {
-        mockSendCommand.mockResolvedValue(
-          JSON.stringify({
-            ...emptyDraft(testProjectId),
-            analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
-          }),
-        );
-        await act(async () => renderLoader());
+        await seedDraft({
+          ...emptyDraft(testProjectId),
+          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+        });
+        await flushHost(async () => renderLoader());
         await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
         await userEvent.click(screen.getByTestId('catalog-row-toggle'));
         await userEvent.click(screen.getByTestId('catalog-row-delete'));
         await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
-        act(() => {
+        await flushHost(() => {
           fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
         });
         scrollIntoView.mockClear();
 
-        act(() => {
+        await flushHost(() => {
           fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
         });
 
@@ -6492,7 +5739,7 @@ describe('undo and redo', () => {
     it('announces nothing for a step it can show in place', async () => {
       await renderAndGloss();
 
-      act(() => {
+      await flushHost(() => {
         fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
       });
 
@@ -6504,16 +5751,18 @@ describe('undo and redo', () => {
     /** Stands in for the network event the platform relays a notification's Undo click on. */
     const UNDO_EVENT = () => () => true;
 
-    beforeEach(() => {
-      jest.mocked(papi.network.getNetworkEvent).mockReturnValue(UNDO_EVENT);
+    beforeEach(async () => {
+      jest
+        .mocked(papi.network.getNetworkEvent)
+        .mockImplementation((name: string) =>
+          name === 'interlinearizer.onUndoFromNotification' ? UNDO_EVENT : ANALYSIS_CHANGED_EVENT,
+        );
       jest.mocked(papi.notifications.send).mockResolvedValue('toast-1');
       jest.mocked(papi.notifications.dismiss).mockResolvedValue(undefined);
-      mockSendCommand.mockResolvedValue(
-        JSON.stringify({
-          ...emptyDraft(testProjectId),
-          analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
-        }),
-      );
+      await seedDraft({
+        ...emptyDraft(testProjectId),
+        analysis: analysisApprovingAt('GEN 1:1:0', 'Alpha'),
+      });
     });
 
     /** Renders the loader and deletes the draft's one analysis from the catalog. */
@@ -6559,6 +5808,8 @@ describe('undo and redo', () => {
 
       clickNotificationUndo('toast-1');
 
+      await flushHost();
+
       expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
     });
 
@@ -6568,6 +5819,8 @@ describe('undo and redo', () => {
       jest.mocked(papi.notifications.send).mockClear();
 
       clickNotificationUndo('toast-1');
+
+      await flushHost();
 
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
         expect.objectContaining({ clickCommand: 'interlinearizer.undoFromNotification' }),
@@ -6579,22 +5832,26 @@ describe('undo and redo', () => {
 
       clickNotificationUndo('toast-2');
 
+      await flushHost();
+
       expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
     });
 
     it('takes the notification down once a later step is made', async () => {
       await renderAndDelete();
 
-      act(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
+      await flushHost(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
 
       expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
     });
 
     it('undoes nothing from a notification a later step took down', async () => {
       await renderAndDelete();
-      act(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
+      await flushHost(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
 
       clickNotificationUndo('toast-1');
+
+      await flushHost();
 
       expect(probeAnalysis?.tokenAnalysisLinks.map((l) => l.token.tokenRef)).toEqual(['GEN 1:1:6']);
     });
@@ -6607,9 +5864,9 @@ describe('undo and redo', () => {
         }),
       );
       await renderAndDelete();
-      act(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
+      await flushHost(() => probeWriteGloss?.('GEN 1:1:6', 'beta', 'bêta'));
 
-      await act(async () => deliver('toast-1'));
+      await flushHost(async () => deliver('toast-1'));
 
       expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
     });
@@ -6632,7 +5889,7 @@ describe('undo and redo', () => {
       const { unmount } = await renderAndDelete();
       unmount();
 
-      await act(async () => deliver('toast-1'));
+      await flushHost(async () => deliver('toast-1'));
 
       expect(jest.mocked(papi.notifications.dismiss)).toHaveBeenCalledWith('toast-1');
     });
@@ -6646,14 +5903,15 @@ describe('undo and redo', () => {
           }),
       );
       await renderAndDelete();
-      act(() => screen.getByTestId('tab-toolbar-undo').click());
+      await flushHost(() => screen.getByTestId('tab-toolbar-undo').click());
       await userEvent.click(screen.getByTestId('catalog-row-toggle'));
       await userEvent.click(screen.getByTestId('catalog-row-delete'));
       await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
-      await act(async () => deliveries.at(-1)?.('toast-2'));
-      await act(async () => deliveries[0]('toast-1'));
+      await flushHost(async () => deliveries.at(-1)?.('toast-2'));
+      await flushHost(async () => deliveries[0]('toast-1'));
       clickNotificationUndo('toast-2');
+      await flushHost();
 
       expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
     });
@@ -6661,14 +5919,12 @@ describe('undo and redo', () => {
 
   it('brings discarded glosses back on Ctrl+Z', async () => {
     await renderAndGloss();
-    await act(async () => {
+    await flushHost(async () => {
       screen.getByTestId('tab-toolbar-discard-changes').click();
     });
-    await act(async () => {
-      screen.getByTestId('discard-changes-confirm-all').click();
-    });
+    await flushHost(() => screen.getByTestId('discard-changes-confirm-all').click());
 
-    act(() => {
+    await flushHost(() => {
       fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     });
 
@@ -6678,7 +5934,7 @@ describe('undo and redo', () => {
   it('undoes from the Edit menu', async () => {
     await renderAndGloss();
 
-    act(() => screen.getByTestId('tab-toolbar-undo').click());
+    await flushHost(() => screen.getByTestId('tab-toolbar-undo').click());
 
     expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
   });
@@ -6686,8 +5942,8 @@ describe('undo and redo', () => {
   it('redoes from the Edit menu', async () => {
     await renderAndGloss();
 
-    act(() => screen.getByTestId('tab-toolbar-undo').click());
-    act(() => screen.getByTestId('tab-toolbar-redo').click());
+    await flushHost(() => screen.getByTestId('tab-toolbar-undo').click());
+    await flushHost(() => screen.getByTestId('tab-toolbar-redo').click());
 
     expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
   });
@@ -6695,7 +5951,7 @@ describe('undo and redo', () => {
   it("undoes from the toolbar's undo button", async () => {
     await renderAndGloss();
 
-    act(() => screen.getByRole('button', { name: '%undoButton_tooltip%' }).click());
+    await flushHost(() => screen.getByRole('button', { name: '%undoButton_tooltip%' }).click());
 
     expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
   });
@@ -6703,14 +5959,14 @@ describe('undo and redo', () => {
   it("redoes from the toolbar's redo button", async () => {
     await renderAndGloss();
 
-    act(() => screen.getByRole('button', { name: '%undoButton_tooltip%' }).click());
-    act(() => screen.getByRole('button', { name: '%redoButton_tooltip%' }).click());
+    await flushHost(() => screen.getByRole('button', { name: '%undoButton_tooltip%' }).click());
+    await flushHost(() => screen.getByRole('button', { name: '%redoButton_tooltip%' }).click());
 
     expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
   });
 
   it('disables the toolbar buttons while there is nothing to undo or redo', async () => {
-    await act(async () => renderLoader());
+    await flushHost(async () => renderLoader());
 
     expect(screen.getByRole('button', { name: '%undoButton_tooltip%' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '%redoButton_tooltip%' })).toBeDisabled();
@@ -6719,7 +5975,7 @@ describe('undo and redo', () => {
   // The toolbar lays its end area out in reverse, so the pair must reach it as one child to keep
   // its own order.
   it('hands the toolbar the undo buttons and view options as one row, undo first', async () => {
-    await act(async () => renderLoader());
+    await flushHost(async () => renderLoader());
 
     const undoButton = screen.getByRole('button', { name: '%undoButton_tooltip%' });
     const viewOptions = screen.getByTestId('view-options-dropdown');
@@ -6740,7 +5996,6 @@ describe('undo and redo', () => {
 describe('analysis language switch', () => {
   beforeEach(() => {
     capturedStoreProps = undefined;
-    probeStore = undefined;
     mockBookData();
     mockLexiconRegistry();
     mockOptimisticSetting();
@@ -6763,42 +6018,42 @@ describe('analysis language switch', () => {
 
   const IMPORT_LISTING_TWO = { ...STUB_IMPORT_PROJECT, analysisLanguages: ['swh', 'en'] };
 
-  /** Serves a draft listing `languages`, and {@link IMPORT_LISTING_TWO} for any import loaded. */
-  function mockDraftLanguages(languages: string[]): void {
-    mockSendCommand.mockImplementation(async (...args) =>
+  /** Stores a draft listing `languages`, and serves {@link IMPORT_LISTING_TWO} for any import. */
+  async function mockDraftLanguages(languages: string[]): Promise<void> {
+    otherCommands.mockImplementation(async (...args) =>
       args[0] === 'interlinearizer.getProject'
         ? JSON.stringify({ ...IMPORT_LISTING_TWO, analysis: emptyAnalysis() })
-        : JSON.stringify({ ...emptyDraft(testProjectId), analysisLanguages: languages }),
+        : undefined,
     );
+    await seedDraft({ ...emptyDraft(testProjectId), analysisLanguages: languages });
   }
 
   it('reads glosses in the picked language', async () => {
-    mockDraftLanguages(['en', 'fr']);
-    await act(async () => renderLoader());
+    await mockDraftLanguages(['en', 'fr']);
+    await flushHost(async () => renderLoader());
 
-    await act(async () => {
+    await flushHost(async () => {
       fireEvent.click(screen.getByTestId('analysis-language-fr'));
     });
 
     expect(capturedStoreProps?.analysisLanguage).toBe('fr');
   });
 
-  it('switches language without replacing the store', async () => {
+  it('switches language without remounting the view', async () => {
     // A remount would discard uncommitted gloss edits and the catalog's scroll position.
-    mountStoreProbe = true;
-    mockDraftLanguages(['en', 'fr']);
-    await act(async () => renderLoader());
-    const storeBefore = probeStore;
+    await mockDraftLanguages(['en', 'fr']);
+    await flushHost(async () => renderLoader());
+    const mountsBefore = interlinearizerMountCount;
 
-    await act(async () => {
+    await flushHost(async () => {
       fireEvent.click(screen.getByTestId('analysis-language-fr'));
     });
 
-    expect(probeStore).toBe(storeBefore);
+    expect(interlinearizerMountCount).toBe(mountsBefore);
   });
 
   it('restores the language chosen earlier in the tab', async () => {
-    mockDraftLanguages(['en', 'fr']);
+    await mockDraftLanguages(['en', 'fr']);
     await act(async () =>
       renderLoader({
         useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'fr' } }),
@@ -6809,7 +6064,7 @@ describe('analysis language switch', () => {
   });
 
   it('falls back to the first language when the chosen one is no longer listed', async () => {
-    mockDraftLanguages(['en', 'fr']);
+    await mockDraftLanguages(['en', 'fr']);
     await act(async () =>
       renderLoader({
         useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'de' } }),
@@ -6820,7 +6075,7 @@ describe('analysis language switch', () => {
   });
 
   it("keeps an import's language apart from the draft's", async () => {
-    mockDraftLanguages(['en', 'fr']);
+    await mockDraftLanguages(['en', 'fr']);
     await act(async () =>
       renderLoader({
         useWebViewState: makeWebViewState({
@@ -6834,12 +6089,12 @@ describe('analysis language switch', () => {
   });
 
   it('switches the language of a read-only import', async () => {
-    mockDraftLanguages(['en']);
+    await mockDraftLanguages(['en']);
     await act(async () =>
       renderLoader({ useWebViewState: makeWebViewState({ activeProject: IMPORT_LISTING_TWO }) }),
     );
 
-    await act(async () => {
+    await flushHost(async () => {
       fireEvent.click(await screen.findByTestId('analysis-language-en'));
     });
 

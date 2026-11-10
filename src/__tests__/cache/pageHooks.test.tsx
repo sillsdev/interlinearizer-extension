@@ -6,7 +6,7 @@ import type { TextAnalysis } from 'interlinearizer';
 import { PageClient } from '../../cache/pageClient';
 import { WholeAnalysis } from '../../cache/wholeAnalysis';
 import { PageClientProvider, usePageSelector } from '../../cache/pageHooks';
-import { selectApprovedGlossSenseRef, selectPhraseSenseRef } from '../../store/analysisSlice';
+import { selectApprovedGlossSenseRef, selectPhraseSenseRef } from '../../utils/analysis-selectors';
 import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from '../test-helpers';
 import { glossing, ref, sessionOver } from './session-source';
 

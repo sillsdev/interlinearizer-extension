@@ -11,6 +11,7 @@ import type {
   TokenAnalysisLink,
   VerseStart,
 } from 'interlinearizer';
+import type { PageCaller } from '../cache/pageClient';
 
 /** A segment as a book's outline lists it: where it falls and how much it holds, not its text. */
 export type OutlineSegment = Readonly<{
@@ -123,3 +124,41 @@ export type SegmentPage = Readonly<{
   /** Present only when a session asked for the page. */
   analysis?: PageAnalysis;
 }>;
+
+/**
+ * The loaded book's segment list, as the host segments and serves it. One object per outline: pages
+ * loading into it change none of its fields, only what {@link SegmentPages.segmentAt} answers.
+ */
+export interface SegmentPages {
+  bookRef: string;
+  /** Every segment of the book in document order. */
+  outline: readonly OutlineSegment[];
+  /** The boundary-edit count the outline was segmented at. */
+  segmentationVersion: number;
+  /** The segment at `index` of the outline, `undefined` until its page has loaded. */
+  segmentAt: (index: number) => Segment | undefined;
+  /**
+   * Asks for the segments at outline indexes `[start, end)`, clamped to the outline. The latest
+   * range that each `caller` asked for is reloaded whenever a new outline loads.
+   */
+  load: (start: number, end: number, caller: PageCaller) => void;
+  /** Drops the range that `caller` last asked for, so that later outlines do not reload it. */
+  release: (caller: PageCaller) => void;
+  /** Calls `onChange` whenever pages load, until the returned function is called. */
+  subscribe: (onChange: () => void) => () => void;
+  /** A number that changes whenever pages load. */
+  loadedVersion: () => number;
+}
+
+/** The pages of the open book as they load. */
+export interface SegmentPagesLoad {
+  /**
+   * The pages of the latest outline to load; those of an earlier one while a later one loads, and
+   * `undefined` before any has loaded.
+   */
+  pages: SegmentPages | undefined;
+  /** `true` until the book's outline has loaded or failed to. */
+  isLoading: boolean;
+  /** Why the book's outline could not be loaded, once every retry has failed. */
+  error: string | undefined;
+}

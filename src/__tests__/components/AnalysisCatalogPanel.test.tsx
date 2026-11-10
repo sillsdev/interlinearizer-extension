@@ -1,6 +1,8 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import papi from '@papi/frontend';
+
 import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -12,6 +14,7 @@ import {
   useEffect,
   useState,
   type ComponentProps,
+  type ReactElement,
   type ReactNode,
   type Ref,
 } from 'react';
@@ -19,15 +22,21 @@ import AnalysisCatalogPanel, {
   ANALYSIS_CATALOG_PANEL_STRING_KEYS,
   type AnalysisCatalogPanelHandle,
 } from '../../components/AnalysisCatalogPanel';
-import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
+import { useGlossDispatch } from '../../components/AnalysisStore';
 import { SourceTextContext } from '../../components/SourceTextContext';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import type { SourceText } from '../../hooks/useSourceTextReader';
-import type { StepSummary } from '../../types/edit-step';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
 import type { HeadingPlacement } from '../../utils/analysis-query';
-import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook } from '../test-helpers';
+import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
+import {
+  editsSaved,
+  prepareAnalysis,
+  savedAnalysis,
+  settle,
+  type AnalysisProviderProps,
+} from './analysis-provider';
 import {
   makeSourceText,
   mockKeyAsValueLocalizedStrings,
@@ -36,7 +45,6 @@ import {
 } from './test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
-jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
 jest.mock('../../components/TextReadingStatus');
 
 const NO_HEADINGS: ReadonlyMap<string, HeadingPlacement> = new Map();
@@ -134,13 +142,10 @@ type PanelOptions = Partial<{
   ref: Ref<AnalysisCatalogPanelHandle>;
   onClose: () => void;
   onShowConcordance: () => void;
-  asOneStep: <T>(action: () => T, summary: StepSummary | ((result: T) => StepSummary)) => T;
   announceUndoable: (message: string) => void;
   currentBook: string;
   analysis: TextAnalysis;
   analysisLanguage: string;
-  /** Receives the analysis after every store write, so a test can assert on what was persisted. */
-  onSave: (analysis: TextAnalysis) => void;
   /** Receives whether any edit is in progress, so a test can assert on the unsaved indicator. */
   onPendingEditsChange: (pending: boolean) => void;
   /** Records every reference the panel navigates to, through the host scroll-group hook. */
@@ -160,13 +165,31 @@ type PanelOptions = Partial<{
   /** The source text. Defaults to one not yet read. */
   text: SourceText;
   /** Whether every book has been checked for stale places. Defaults to only the opened ones. */
-  staleCoversDraft: boolean;
   /** Senses of the connected lexicon, keyed by sense id. Omitted, no lexicon is connected. */
   senses: Record<string, ResolvedSense>;
 }>;
 
 /** Reads every token as still carrying the form its analysis was recorded under. */
 const undriftedText = () => 'ἀρχῇ';
+
+/** The text of Genesis that the session pages; the catalog reads the whole draft beside it. */
+const GENESIS = makeVerseBook([{ sid: 'GEN 1:1', text: 'ἐν ἀρχῇ' }]);
+
+/** The analysis provider that the current test's panel renders inside. */
+let AnalysisProvider: (props: AnalysisProviderProps) => ReactNode = () => {
+  throw new Error('no analysis prepared');
+};
+
+/** Prepares the analysis provider over `analysis`, an empty analysis by default. */
+async function prepare(analysis: TextAnalysis = emptyAnalysis()): Promise<void> {
+  AnalysisProvider = await prepareAnalysis(analysis, GENESIS);
+}
+
+/** Renders `ui` once the analysis provider over `analysis` is prepared. */
+async function renderOver(analysis: TextAnalysis | undefined, ui: ReactElement) {
+  await prepare(analysis);
+  return render(ui);
+}
 
 /**
  * Wraps a subject in the seeded analysis store and real navigation provider the panel needs.
@@ -186,11 +209,9 @@ function PanelProviders({
         overrides.setScrRef,
       )}
     >
-      <AnalysisStoreProvider
-        analysisLanguage={overrides.analysisLanguage ?? 'en'}
-        initialAnalysis={overrides.analysis ?? emptyAnalysis()}
+      <AnalysisProvider
+        analysisLanguage={overrides.analysisLanguage}
         onPendingEditsChange={overrides.onPendingEditsChange}
-        onSave={overrides.onSave}
         readOnly={overrides.readOnly}
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
@@ -198,7 +219,7 @@ function PanelProviders({
         <SourceTextContext.Provider value={overrides.text ?? makeSourceText()}>
           {children}
         </SourceTextContext.Provider>
-      </AnalysisStoreProvider>
+      </AnalysisProvider>
     </InterlinearNavProvider>
   );
 }
@@ -210,7 +231,6 @@ function renderPanel(overrides: PanelOptions = {}) {
       <CatalogPanel
         ref={overrides.ref}
         announceUndoable={overrides.announceUndoable}
-        asOneStep={overrides.asOneStep}
         currentBook={overrides.currentBook ?? 'GEN'}
         headingPlacements={NO_HEADINGS}
         liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
@@ -218,13 +238,15 @@ function renderPanel(overrides: PanelOptions = {}) {
         onShowConcordance={overrides.onShowConcordance ?? (() => {})}
         showMorphology={overrides.showMorphology ?? true}
         sourceLanguageTag="el"
-        staleCoversDraft={overrides.staleCoversDraft ?? false}
       />
     </PanelProviders>
   );
   // Without senses the panel is not wrapped, so a test that rerenders through `PanelProviders` keeps
   // the same tree.
-  return render(overrides.senses ? withLexicon(panel, overrides.senses).ui : panel);
+  return renderOver(
+    overrides.analysis,
+    overrides.senses ? withLexicon(panel, overrides.senses).ui : panel,
+  );
 }
 
 /**
@@ -247,7 +269,6 @@ function ReopenableCatalog() {
           onShowConcordance={() => {}}
           showMorphology
           sourceLanguageTag="el"
-          staleCoversDraft={false}
         />
       )}
     </>
@@ -256,7 +277,8 @@ function ReopenableCatalog() {
 
 /** Renders the panel so a test can close and reopen it. */
 function renderReopenablePanel(overrides: PanelOptions = {}) {
-  return render(
+  return renderOver(
+    overrides.analysis,
     <PanelProviders overrides={overrides}>
       <ReopenableCatalog />
     </PanelProviders>,
@@ -277,7 +299,8 @@ function GlossEditProbe() {
 
 /** Renders the panel beside a probe that can edit the analysis it is listing. */
 function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
-  return render(
+  return renderOver(
+    overrides.analysis,
     <PanelProviders overrides={overrides}>
       <GlossEditProbe />
       <CatalogPanel
@@ -288,7 +311,6 @@ function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
         onShowConcordance={overrides.onShowConcordance ?? (() => {})}
         showMorphology={overrides.showMorphology ?? true}
         sourceLanguageTag="el"
-        staleCoversDraft={false}
       />
     </PanelProviders>,
   );
@@ -360,18 +382,12 @@ function mergePromoteFor(analysisId: string): HTMLElement {
   return within(mergeCandidateFor(analysisId)).getByTestId('catalog-merge-promote');
 }
 
-/** A step grouper that runs each action as it comes, recording each step's summary. */
-function spyOnSteps() {
-  const summaries: StepSummary[] = [];
-  const asOneStep = <T,>(
-    action: () => T,
-    summary: StepSummary | ((result: T) => StepSummary),
-  ): T => {
-    const result = action();
-    summaries.push(typeof summary === 'function' ? summary(result) : summary);
-    return result;
-  };
-  return { asOneStep, summaries };
+/** The analysis ids of each gloss clear that the panel sent, in order. */
+function clearedGlossIds(): unknown[] {
+  return jest
+    .mocked(papi.commands.sendCommand)
+    .mock.calls.filter(([command]) => command === 'interlinearizer.clearAnalysisGlosses')
+    .map(([, args]) => (typeof args === 'object' && args ? Reflect.get(args, 'analysisIds') : []));
 }
 
 describe('AnalysisCatalogPanel', () => {
@@ -387,10 +403,10 @@ describe('AnalysisCatalogPanel', () => {
   });
 
   describe('rows', () => {
-    it('says the catalog is empty rather than leaving the panel blank', () => {
+    it('says the catalog is empty rather than leaving the panel blank', async () => {
       // A draft records nothing until the first gloss is entered, so the empty catalog is what most
       // readers open the panel to.
-      renderPanel({ analysis: emptyAnalysis() });
+      await renderPanel({ analysis: emptyAnalysis() });
 
       expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
       expect(screen.getByTestId('analysis-catalog-panel')).toHaveTextContent(
@@ -398,18 +414,18 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    it('announces the empty catalog rather than leaving it to be noticed', () => {
-      renderPanel({ analysis: emptyAnalysis() });
+    it('announces the empty catalog rather than leaving it to be noticed', async () => {
+      await renderPanel({ analysis: emptyAnalysis() });
 
       expect(screen.getByRole('status')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_empty%',
       );
     });
 
-    it('offers no query controls over a draft that has recorded nothing', () => {
+    it('offers no query controls over a draft that has recorded nothing', async () => {
       // Every control would narrow an empty listing, and a filter popover over nothing is an
       // invitation to a dead end.
-      renderPanel({ analysis: emptyAnalysis() });
+      await renderPanel({ analysis: emptyAnalysis() });
 
       expect(screen.queryByTestId('catalog-sort')).not.toBeInTheDocument();
       expect(screen.queryByTestId('catalog-filters-button')).not.toBeInTheDocument();
@@ -418,7 +434,7 @@ describe('AnalysisCatalogPanel', () => {
     it('keeps the query controls when a query rather than the draft emptied the listing', async () => {
       // The controls are the only way back to a listing a query has narrowed away, so the case that
       // looks emptiest is the one that most needs them.
-      renderPanel({
+      await renderPanel({
         analysis: {
           ...emptyAnalysis(),
           tokenAnalyses: [
@@ -437,7 +453,7 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByTestId('catalog-filters-button')).toBeInTheDocument();
     });
 
-    it('renders an analysis with its gloss and its usage counts inside and outside the book', () => {
+    it('renders an analysis with its gloss and its usage counts inside and outside the book', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -449,7 +465,7 @@ describe('AnalysisCatalogPanel', () => {
           link('ta-1', 'EXO 3:14:8'),
         ],
       };
-      renderPanel({ analysis, currentBook: 'GEN' });
+      await renderPanel({ analysis, currentBook: 'GEN' });
 
       const row = within(rowFor('ta-1'));
       expect(row.getByTestId('catalog-row-surface')).toHaveTextContent('λόγος');
@@ -458,7 +474,7 @@ describe('AnalysisCatalogPanel', () => {
       expect(row.getByTestId('catalog-row-usage-count-in-book')).toHaveTextContent('2');
     });
 
-    it('leads with the most-used analysis', () => {
+    it('leads with the most-used analysis', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -471,7 +487,7 @@ describe('AnalysisCatalogPanel', () => {
           link('common', 'GEN 1:3:0'),
         ],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       expect(screen.getAllByTestId('catalog-row').map((row) => row.dataset.analysisId)).toEqual([
         'common',
@@ -479,7 +495,7 @@ describe('AnalysisCatalogPanel', () => {
       ]);
     });
 
-    it('lists the rows under an analysis language Intl cannot parse', () => {
+    it('lists the rows under an analysis language Intl cannot parse', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
@@ -488,18 +504,18 @@ describe('AnalysisCatalogPanel', () => {
 
       // Analysis languages are free text from the project modals, so a hand-typed tag reaches the
       // sort's collator unchecked. Throwing here would take the whole view down with it.
-      renderPanel({ analysis, analysisLanguage: 'en_US' });
+      await renderPanel({ analysis, analysisLanguage: 'en_US' });
 
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-surface')).toHaveTextContent('λόγος');
     });
 
-    it('leaves the row toggle unlabeled so that its own content names it', () => {
+    it('leaves the row toggle unlabeled so that its own content names it', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       // An accessible name on a button overrides everything inside it, so labeling the row would
       // leave every row announced alike and the analysis itself unread.
@@ -508,13 +524,13 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    it('spells out what each usage count means for assistive tech', () => {
+    it('spells out what each usage count means for assistive tech', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis, currentBook: 'GEN' });
+      await renderPanel({ analysis, currentBook: 'GEN' });
 
       // The counts render as bare numerals, and their `title` is not announced on a span.
       const row = within(rowFor('ta-1'));
@@ -526,7 +542,7 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    it('names the book the per-book count is taken against rather than showing its code', () => {
+    it('names the book the per-book count is taken against rather than showing its code', async () => {
       mockKeyAsValueLocalizedStrings({
         '%interlinearizer_analysisCatalog_usageCountInBook%': 'Uses in {book}',
       });
@@ -535,14 +551,14 @@ describe('AnalysisCatalogPanel', () => {
         tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis, currentBook: 'GEN' });
+      await renderPanel({ analysis, currentBook: 'GEN' });
 
       expect(
         within(rowFor('ta-1')).getByTestId('catalog-row-usage-count-in-book'),
       ).toHaveTextContent('Uses in Genesis');
     });
 
-    it('marks an analysis with no gloss in the active language rather than leaving the cell blank', () => {
+    it('marks an analysis with no gloss in the active language rather than leaving the cell blank', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         // A gloss in another language is still no gloss here: the row displays the active one.
@@ -551,13 +567,13 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis, analysisLanguage: 'en' });
+      await renderPanel({ analysis, analysisLanguage: 'en' });
 
       // The mocked hook yields raw keys, standing in for PAPI's async localization window.
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-gloss')).toHaveTextContent('—');
     });
 
-    it('marks an analysis with no gloss using the localized placeholder once it resolves', () => {
+    it('marks an analysis with no gloss using the localized placeholder once it resolves', async () => {
       mockKeyAsValueLocalizedStrings({
         '%interlinearizer_analysisCatalog_noGloss%': '(no gloss)',
       });
@@ -568,14 +584,14 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis, analysisLanguage: 'en' });
+      await renderPanel({ analysis, analysisLanguage: 'en' });
 
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-gloss')).toHaveTextContent(
         '(no gloss)',
       );
     });
 
-    it('offers the surface form and gloss in full, both being truncated to one line', () => {
+    it('offers the surface form and gloss in full, both being truncated to one line', async () => {
       const analysis: TextAnalysis = {
         ...emptyAnalysis(),
         tokenAnalyses: [
@@ -583,7 +599,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       // The tooltip stub projects its content onto the trigger, hover having no jsdom equivalent.
       const row = within(rowFor('ta-1'));
@@ -604,7 +620,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('narrows the list to the analyses a query matches', async () => {
-      renderPanel({ analysis: TWO_WORDS });
+      await renderPanel({ analysis: TWO_WORDS });
 
       await userEvent.type(searchBox(), 'begin');
 
@@ -612,7 +628,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('forgets the query when the panel is closed and reopened', async () => {
-      renderReopenablePanel({ analysis: TWO_WORDS });
+      await renderReopenablePanel({ analysis: TWO_WORDS });
       await userEvent.type(searchBox(), 'begin');
 
       await userEvent.click(screen.getByTestId('analysis-catalog-close'));
@@ -625,7 +641,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('says the query matched nothing rather than that the draft holds nothing', async () => {
-      renderPanel({ analysis: TWO_WORDS });
+      await renderPanel({ analysis: TWO_WORDS });
 
       await userEvent.type(searchBox(), 'ζζζ');
 
@@ -658,7 +674,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('reorders the rows when a different sort is chosen', async () => {
-      renderPanel({ analysis: THREE });
+      await renderPanel({ analysis: THREE });
       expect(listedAnalysisIds()).toEqual(['thrice', 'twice', 'once']);
 
       await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
@@ -666,13 +682,13 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['once', 'twice', 'thrice']);
     });
 
-    it('names the book the per-book sort is taken against rather than showing its code', () => {
+    it('names the book the per-book sort is taken against rather than showing its code', async () => {
       mockKeyAsValueLocalizedStrings({
         '%interlinearizer_analysisCatalog_sort_usageCountInBook%': 'Most used in {book}',
       });
       // The panel is given a book code, so an option reading "Most used in GEN" is the failure the
       // resolved name is asserted against.
-      renderPanel({ analysis: THREE, currentBook: 'GEN' });
+      await renderPanel({ analysis: THREE, currentBook: 'GEN' });
 
       expect(screen.getByTestId('catalog-sort-usageCountInBook')).toHaveTextContent(
         'Most used in Genesis',
@@ -692,7 +708,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('narrows the list to the analyses used in a chosen book', async () => {
-      renderPanel({ analysis: PER_BOOK });
+      await renderPanel({ analysis: PER_BOOK });
       await openFilters();
 
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
@@ -701,7 +717,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('restores the full list when the last book choice is cleared', async () => {
-      renderPanel({ analysis: PER_BOOK });
+      await renderPanel({ analysis: PER_BOOK });
       await openFilters();
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
 
@@ -722,11 +738,13 @@ describe('AnalysisCatalogPanel', () => {
           { ...FIXTURE_STAMPS, id: 'in-exo', surfaceText: 'λόγος', gloss: { en: 'word' } },
         ],
       };
-      renderPanelWithGlossEditing({ analysis });
+      await renderPanelWithGlossEditing({ analysis });
       await openFilters();
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
 
       act(() => editGloss('EXO 3:14:0', 'λόγος', ''));
+
+      await settle();
 
       // The books facet is down to one choice and offers none of its own, so the selection it was
       // narrowing by is spent rather than left on screen to be cleared by hand.
@@ -741,11 +759,13 @@ describe('AnalysisCatalogPanel', () => {
           { ...FIXTURE_STAMPS, id: 'in-exo', surfaceText: 'λόγος', gloss: { en: 'word' } },
         ],
       };
-      renderPanelWithGlossEditing({ analysis });
+      await renderPanelWithGlossEditing({ analysis });
       await openFilters();
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
 
       act(() => editGloss('EXO 3:14:0', 'λόγος', ''));
+
+      await settle();
 
       // Releasing the filter has to widen the list on its own, or the reader is left with an empty
       // list and no way back to the draft.
@@ -766,7 +786,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('named', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(screen.getByRole('option', { name: '(none)' }));
@@ -797,7 +817,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('plain', 'GEN 1:1:0'), link('marked', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       // The value recorded verbatim keeps this spelling, so this is the option a single marking
@@ -819,7 +839,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('padded', 'GEN 1:1:0'), link('verb', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(screen.getByRole('option', { name: 'noun' }));
@@ -842,7 +862,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('plain', 'GEN 1:1:0'), link('padded', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(screen.getByRole('option', { name: 'noun (recorded value)' }));
@@ -864,7 +884,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('blank', 'GEN 1:1:0'), link('spaces', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(screen.getByRole('option', { name: '(empty) (recorded value)' }));
@@ -889,7 +909,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('named', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(screen.getByRole('option', { name: '(none) (2)' }));
@@ -919,7 +939,7 @@ describe('AnalysisCatalogPanel', () => {
           link('three-spaces', 'GEN 1:4:0'),
         ],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(screen.getByRole('option', { name: '(empty) (3)' }));
@@ -932,7 +952,7 @@ describe('AnalysisCatalogPanel', () => {
       mockKeyAsValueLocalizedStrings({
         '%interlinearizer_analysisCatalog_filter_missingGloss%': 'Missing gloss in {language}',
       });
-      renderPanel({ analysis: PER_BOOK, analysisLanguage: 'fr' });
+      await renderPanel({ analysis: PER_BOOK, analysisLanguage: 'fr' });
 
       await openFilters();
 
@@ -953,7 +973,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('noun', 'GEN 1:1:0'), link('verb', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(screen.getByRole('option', { name: 'verb' }));
@@ -970,7 +990,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('tagged', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       // Carrying no value is a choice of its own, which is what lets a reader ask which analyses
@@ -993,7 +1013,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('sure', 'GEN 1:1:0'), link('unsure', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       // Confidence is a closed vocabulary, so unlike a part of speech it is offered under a
@@ -1021,7 +1041,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('nom', 'GEN 1:1:0'), link('gen', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       // A feature's name and values are both free text out of the data, so each named feature
@@ -1040,7 +1060,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('blank', 'GEN 1:1:0'), link('gen', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       // Feature values are free text, so one may be the empty string, which the control can
@@ -1071,7 +1091,7 @@ describe('AnalysisCatalogPanel', () => {
     // facet's control off screen. Holding the choice would narrow the list to nothing with no
     // control left to widen it back by.
     it('releases a book filter once an edit leaves that facet with nothing to offer', async () => {
-      renderPanelWithGlossEditing({ analysis: TWO_BOOKS, analysisLanguage: 'en' });
+      await renderPanelWithGlossEditing({ analysis: TWO_BOOKS, analysisLanguage: 'en' });
       await openFilters();
       const books = within(screen.getByTestId('catalog-filter-books'));
       await userEvent.click(books.getByRole('option', { name: 'EXO' }));
@@ -1079,6 +1099,7 @@ describe('AnalysisCatalogPanel', () => {
 
       // Clearing its only gloss empties the payload, which drops the analysis and its link.
       act(() => editGloss('EXO 1:1:0', 'ἦν', ''));
+      await settle();
 
       expect(listedAnalysisIds()).toEqual(['in-gen']);
     });
@@ -1086,28 +1107,32 @@ describe('AnalysisCatalogPanel', () => {
     // A withdrawn choice is spent, not merely unused: held, it would come back with its facet and
     // narrow the listing by a filter the reader had already watched release.
     it('leaves a released book filter released once the edge that withdrew it is undone', async () => {
-      renderPanelWithGlossEditing({ analysis: TWO_BOOKS, analysisLanguage: 'en' });
+      await renderPanelWithGlossEditing({ analysis: TWO_BOOKS, analysisLanguage: 'en' });
       await openFilters();
       const books = within(screen.getByTestId('catalog-filter-books'));
       await userEvent.click(books.getByRole('option', { name: 'EXO' }));
       act(() => editGloss('EXO 1:1:0', 'ἦν', ''));
+      await settle();
       expect(listedAnalysisIds()).toEqual(['in-gen']);
 
       // Glossing it again analyzes the token afresh — a new payload under a new id, so the restored
       // row is matched on count rather than named — and raises the books facet that offers EXO.
       act(() => editGloss('EXO 1:1:0', 'ἦν', 'was'));
+      await settle();
 
       expect(listedAnalysisIds()).toHaveLength(2);
       expect(listedAnalysisIds()).toContain('in-gen');
     });
 
     it('stops counting a filter the facets have withdrawn as active', async () => {
-      renderPanelWithGlossEditing({ analysis: TWO_BOOKS, analysisLanguage: 'en' });
+      await renderPanelWithGlossEditing({ analysis: TWO_BOOKS, analysisLanguage: 'en' });
       await openFilters();
       const books = within(screen.getByTestId('catalog-filter-books'));
       await userEvent.click(books.getByRole('option', { name: 'EXO' }));
 
       act(() => editGloss('EXO 1:1:0', 'ἦν', ''));
+
+      await settle();
 
       expect(screen.getByTestId('catalog-filters-button')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_filters%',
@@ -1128,7 +1153,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('named', 'GEN 1:1:0'), link('untagged', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       // The untagged choice keeps the plain label and the value reading the same is marked as a
@@ -1150,7 +1175,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await openFilters();
 
@@ -1161,7 +1186,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('offers no choices for the fields nothing has recorded', async () => {
-      renderPanel({ analysis: PER_BOOK });
+      await renderPanel({ analysis: PER_BOOK });
 
       await openFilters();
 
@@ -1184,7 +1209,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('glossed', 'GEN 1:1:0'), link('elsewhere', 'GEN 1:2:0')],
       };
-      renderPanel({ analysis, analysisLanguage: 'en' });
+      await renderPanel({ analysis, analysisLanguage: 'en' });
       await openFilters();
 
       await userEvent.click(
@@ -1212,7 +1237,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('narrows the list to the analyses carrying a morpheme breakdown', async () => {
-      renderPanel({ analysis: PER_BREAKDOWN });
+      await renderPanel({ analysis: PER_BREAKDOWN });
       await openFilters();
 
       await userEvent.click(screen.getByTestId('catalog-filter-morphemes-has'));
@@ -1221,7 +1246,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('narrows the list to the analyses carrying no morpheme breakdown', async () => {
-      renderPanel({ analysis: PER_BREAKDOWN });
+      await renderPanel({ analysis: PER_BREAKDOWN });
       await openFilters();
 
       await userEvent.click(screen.getByTestId('catalog-filter-morphemes-lacks'));
@@ -1230,7 +1255,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('restores the full list when the breakdown filter is set back to either', async () => {
-      renderPanel({ analysis: PER_BREAKDOWN });
+      await renderPanel({ analysis: PER_BREAKDOWN });
       await openFilters();
       await userEvent.click(screen.getByTestId('catalog-filter-morphemes-has'));
 
@@ -1241,7 +1266,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('offers no breakdown filter to a project that does not break words into morphemes', async () => {
-      renderPanel({ analysis: PER_BREAKDOWN, showMorphology: false });
+      await renderPanel({ analysis: PER_BREAKDOWN, showMorphology: false });
 
       await openFilters();
 
@@ -1251,7 +1276,7 @@ describe('AnalysisCatalogPanel', () => {
     it('keeps the breakdown filter while it narrows the list, morphology off', async () => {
       // Turning the setting off behind a filter already set would otherwise leave the list narrowed
       // with no control on screen to clear it by.
-      const { rerender } = renderPanel({ analysis: PER_BREAKDOWN });
+      const { rerender } = await renderPanel({ analysis: PER_BREAKDOWN });
       await openFilters();
       await userEvent.click(screen.getByTestId('catalog-filter-morphemes-has'));
 
@@ -1265,7 +1290,6 @@ describe('AnalysisCatalogPanel', () => {
             onShowConcordance={() => {}}
             showMorphology={false}
             sourceLanguageTag="el"
-            staleCoversDraft={false}
           />
         </PanelProviders>,
       );
@@ -1285,7 +1309,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('used', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(
@@ -1303,7 +1327,7 @@ describe('AnalysisCatalogPanel', () => {
       mockKeyAsValueLocalizedStrings({
         '%interlinearizer_analysisCatalog_filtersActive%': 'Filters ({count})',
       });
-      renderPanel({ analysis: PER_BOOK });
+      await renderPanel({ analysis: PER_BOOK });
       await openFilters();
 
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
@@ -1317,7 +1341,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('names the filter control alone while nothing is narrowing the list', async () => {
-      renderPanel({ analysis: PER_BOOK });
+      await renderPanel({ analysis: PER_BOOK });
 
       await openFilters();
 
@@ -1355,8 +1379,8 @@ describe('AnalysisCatalogPanel', () => {
       });
     }
 
-    it('mounts only part of a long list', () => {
-      renderPanel({ analysis: MANY });
+    it('mounts only part of a long list', async () => {
+      await renderPanel({ analysis: MANY });
 
       // A draft accumulates analyses without bound, and every row carries its own expander and
       // usage list, so the whole listing is never in the document at once.
@@ -1365,8 +1389,8 @@ describe('AnalysisCatalogPanel', () => {
       expect(mounted).toBeLessThan(100);
     });
 
-    it('extends the window when the end of the list comes into view', () => {
-      renderPanel({ analysis: MANY });
+    it('extends the window when the end of the list comes into view', async () => {
+      await renderPanel({ analysis: MANY });
       const before = screen.getAllByTestId('catalog-row').length;
 
       reachListEnd();
@@ -1375,7 +1399,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('starts the window over when the query changes', async () => {
-      renderPanel({ analysis: MANY });
+      await renderPanel({ analysis: MANY });
       reachListEnd();
       const grown = screen.getAllByTestId('catalog-row').length;
 
@@ -1386,7 +1410,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('returns the list to its top when the query changes', async () => {
-      renderPanel({ analysis: MANY });
+      await renderPanel({ analysis: MANY });
       const list = rowList();
       list.scrollTop = 500;
 
@@ -1398,18 +1422,20 @@ describe('AnalysisCatalogPanel', () => {
       expect(list.scrollTop).toBe(0);
     });
 
-    it('leaves the scroll where it is when the analysis changes under an unchanged query', () => {
-      renderPanelWithGlossEditing({ analysis: MANY });
+    it('leaves the scroll where it is when the analysis changes under an unchanged query', async () => {
+      await renderPanelWithGlossEditing({ analysis: MANY });
       const list = rowList();
       list.scrollTop = 500;
 
       act(() => editGloss('GEN 1:1:0', 'word0', 'beginning'));
 
+      await settle();
+
       expect(list.scrollTop).toBe(500);
     });
 
-    it('starts the window over when the book changes', () => {
-      const { rerender } = renderPanel({ analysis: MANY, currentBook: 'GEN' });
+    it('starts the window over when the book changes', async () => {
+      const { rerender } = await renderPanel({ analysis: MANY, currentBook: 'GEN' });
       reachListEnd();
       const grown = screen.getAllByTestId('catalog-row').length;
 
@@ -1423,7 +1449,6 @@ describe('AnalysisCatalogPanel', () => {
             onShowConcordance={() => {}}
             showMorphology
             sourceLanguageTag="el"
-            staleCoversDraft={false}
           />
         </PanelProviders>,
       );
@@ -1431,10 +1456,10 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
     });
 
-    it('returns the list to its top when the book changes', () => {
+    it('returns the list to its top when the book changes', async () => {
       // The per-book count each row is ranked and labeled by is taken against the book on screen,
       // so moving to another one is a new listing however the reader left the query.
-      const { rerender } = renderPanel({ analysis: MANY, currentBook: 'GEN' });
+      const { rerender } = await renderPanel({ analysis: MANY, currentBook: 'GEN' });
       const list = rowList();
       list.scrollTop = 500;
 
@@ -1448,7 +1473,6 @@ describe('AnalysisCatalogPanel', () => {
             onShowConcordance={() => {}}
             showMorphology
             sourceLanguageTag="el"
-            staleCoversDraft={false}
           />
         </PanelProviders>,
       );
@@ -1468,14 +1492,13 @@ describe('AnalysisCatalogPanel', () => {
             onShowConcordance={() => {}}
             showMorphology
             sourceLanguageTag="el"
-            staleCoversDraft={false}
           />
         </PanelProviders>
       );
     }
 
-    it('leaves the scroll where it is when the analysis language changes under a usage sort', () => {
-      const { rerender } = render(panelIn('en'));
+    it('leaves the scroll where it is when the analysis language changes under a usage sort', async () => {
+      const { rerender } = await renderOver(MANY, panelIn('en'));
       const list = rowList();
       list.scrollTop = 500;
 
@@ -1485,7 +1508,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('returns the list to its top when the analysis language changes under a gloss sort', async () => {
-      const { rerender } = render(panelIn('en'));
+      const { rerender } = await renderOver(MANY, panelIn('en'));
       await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
       const list = rowList();
       list.scrollTop = 500;
@@ -1496,7 +1519,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('returns the list to its top when the analysis language changes under the missing-gloss filter', async () => {
-      const { rerender } = render(panelIn('en'));
+      const { rerender } = await renderOver(MANY, panelIn('en'));
       await openFilters();
       await userEvent.click(
         screen.getByRole('checkbox', {
@@ -1511,15 +1534,17 @@ describe('AnalysisCatalogPanel', () => {
       expect(list.scrollTop).toBe(0);
     });
 
-    it('keeps the window where it is when the analysis changes under an unchanged query', () => {
+    it('keeps the window where it is when the analysis changes under an unchanged query', async () => {
       // A gloss approved in the view beside an open catalog rebuilds every row without narrowing
       // anything, and collapsing a deeply scrolled list back to its first chunk on that would throw
       // the reader to the end of it.
-      renderPanelWithGlossEditing({ analysis: MANY });
+      await renderPanelWithGlossEditing({ analysis: MANY });
       reachListEnd();
       const grown = screen.getAllByTestId('catalog-row').length;
 
       act(() => editGloss('GEN 1:1:0', 'word0', 'beginning'));
+
+      await settle();
 
       expect(screen.getAllByTestId('catalog-row').length).toBe(grown);
     });
@@ -1556,14 +1581,14 @@ describe('AnalysisCatalogPanel', () => {
       tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
     };
 
-    it('keeps the breakdown out of the list until the row is expanded', () => {
-      renderPanel({ analysis: ANALYZED });
+    it('keeps the breakdown out of the list until the row is expanded', async () => {
+      await renderPanel({ analysis: ANALYZED });
 
       expect(within(rowFor('ta-1')).queryByTestId('catalog-row-detail')).not.toBeInTheDocument();
     });
 
     it('reveals the morpheme breakdown when the row is expanded', async () => {
-      renderPanel({ analysis: ANALYZED });
+      await renderPanel({ analysis: ANALYZED });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -1592,7 +1617,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -1605,7 +1630,7 @@ describe('AnalysisCatalogPanel', () => {
         tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'EXO 3:14:8')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -1621,7 +1646,7 @@ describe('AnalysisCatalogPanel', () => {
         ...emptyAnalysis(),
         tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -1642,7 +1667,7 @@ describe('AnalysisCatalogPanel', () => {
       };
 
       it('caps the inline list', async () => {
-        renderPanel({ analysis: MANY_USAGES });
+        await renderPanel({ analysis: MANY_USAGES });
 
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -1650,7 +1675,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('reveals the rest from the expander', async () => {
-        renderPanel({ analysis: MANY_USAGES });
+        await renderPanel({ analysis: MANY_USAGES });
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
@@ -1662,7 +1687,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('returns to the inline cap once the row is collapsed', async () => {
-        renderPanel({ analysis: MANY_USAGES });
+        await renderPanel({ analysis: MANY_USAGES });
         const toggle = within(rowFor('ta-1')).getByTestId('catalog-row-toggle');
         await userEvent.click(toggle);
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
@@ -1675,7 +1700,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('offers no way to show fewer while the list is capped', async () => {
-        renderPanel({ analysis: MANY_USAGES });
+        await renderPanel({ analysis: MANY_USAGES });
 
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -1685,7 +1710,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('returns to the inline cap from the show-fewer link', async () => {
-        renderPanel({ analysis: MANY_USAGES });
+        await renderPanel({ analysis: MANY_USAGES });
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
 
@@ -1696,7 +1721,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('moves focus to the show-all link once show-fewer unmounts', async () => {
-        renderPanel({ analysis: MANY_USAGES });
+        await renderPanel({ analysis: MANY_USAGES });
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usages-show-all'));
 
@@ -1706,7 +1731,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('leaves focus alone when the list first opens capped', async () => {
-        renderPanel({ analysis: MANY_USAGES });
+        await renderPanel({ analysis: MANY_USAGES });
         const toggle = within(rowFor('ta-1')).getByTestId('catalog-row-toggle');
 
         await userEvent.click(toggle);
@@ -1736,7 +1761,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('navigates to the verse the usage names', async () => {
       const setScrRef = jest.fn();
-      renderPanel({ analysis: TWO_BOOKS, setScrRef });
+      await renderPanel({ analysis: TWO_BOOKS, setScrRef });
 
       await clickUsage('GEN 1:1:0');
 
@@ -1746,7 +1771,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('asks for the clicked token to be focused, not merely its verse', async () => {
-      renderPanel({ analysis: TWO_BOOKS });
+      await renderPanel({ analysis: TWO_BOOKS });
 
       await clickUsage('GEN 1:1:0');
 
@@ -1757,7 +1782,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('navigates to another book when the usage is outside the one on screen', async () => {
       const setScrRef = jest.fn();
-      renderPanel({ analysis: TWO_BOOKS, setScrRef });
+      await renderPanel({ analysis: TWO_BOOKS, setScrRef });
 
       await clickUsage('EXO 3:14:8');
 
@@ -1767,7 +1792,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('holds the focus request for another book until that book is on screen', async () => {
-      const { rerender } = renderPanel({ analysis: TWO_BOOKS, mountedBook: 'GEN' });
+      const { rerender } = await renderPanel({ analysis: TWO_BOOKS, mountedBook: 'GEN' });
 
       await clickUsage('EXO 3:14:8');
 
@@ -1793,7 +1818,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('abandons the focus request when the reader navigates past the book it names', async () => {
-      const { rerender } = renderPanel({ analysis: TWO_BOOKS, mountedBook: 'GEN' });
+      const { rerender } = await renderPanel({ analysis: TWO_BOOKS, mountedBook: 'GEN' });
 
       await clickUsage('EXO 3:14:8');
 
@@ -1833,7 +1858,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('leaves the panel open and the clicked row selected', async () => {
-      renderPanel({ analysis: TWO_BOOKS });
+      await renderPanel({ analysis: TWO_BOOKS });
 
       await clickUsage('EXO 3:14:8');
 
@@ -1842,7 +1867,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('keeps the jumped-from row selected through a search that still matches it', async () => {
-      renderPanel({ analysis: TWO_BOOKS });
+      await renderPanel({ analysis: TWO_BOOKS });
       await clickUsage('GEN 1:1:0');
 
       await userEvent.type(searchBox(), 'λογ');
@@ -1860,7 +1885,7 @@ describe('AnalysisCatalogPanel', () => {
           { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ' },
         ],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await clickUsage('GEN 1:1:0');
 
@@ -1893,14 +1918,14 @@ describe('AnalysisCatalogPanel', () => {
       return within(rowFor('ta-1')).getByTestId('catalog-stale-location');
     }
 
-    it('counts the places an analysis went stale at', () => {
-      renderPanel({ analysis: PARTLY_STALE });
+    it('counts the places an analysis went stale at', async () => {
+      await renderPanel({ analysis: PARTLY_STALE });
 
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-stale-count')).toHaveTextContent('1');
     });
 
-    it('shows no stale count for an analysis with none', () => {
-      renderPanel({
+    it('shows no stale count for an analysis with none', async () => {
+      await renderPanel({
         analysis: { ...PARTLY_STALE, tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')] },
       });
 
@@ -1910,7 +1935,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('lists a stale place by its verse, apart from the usages', async () => {
-      renderPanel({ analysis: PARTLY_STALE });
+      await renderPanel({ analysis: PARTLY_STALE });
 
       await expandRow();
 
@@ -1926,7 +1951,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('does not call an analysis used nowhere when it went stale somewhere', async () => {
-      renderPanel({ analysis: ONLY_STALE });
+      await renderPanel({ analysis: ONLY_STALE });
 
       await expandRow();
 
@@ -1937,7 +1962,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it("navigates to a stale place's verse", async () => {
       const setScrRef = jest.fn();
-      renderPanel({ analysis: ONLY_STALE, setScrRef });
+      await renderPanel({ analysis: ONLY_STALE, setScrRef });
       await expandRow();
 
       await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-jump'));
@@ -1949,7 +1974,7 @@ describe('AnalysisCatalogPanel', () => {
 
     // The place's offset may belong to a different word since the text changed.
     it('asks to focus no token when jumping to a stale place', async () => {
-      renderPanel({ analysis: ONLY_STALE });
+      await renderPanel({ analysis: ONLY_STALE });
       await expandRow();
 
       await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-jump'));
@@ -1963,7 +1988,7 @@ describe('AnalysisCatalogPanel', () => {
         tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
         tokenAnalysisLinks: [link('ta-1', 'EXO 1:1:0'), link('ta-1', 'EXO 2:3:0', 'stale')],
       };
-      const { rerender } = renderPanel({ analysis, mountedBook: 'GEN' });
+      const { rerender } = await renderPanel({ analysis, mountedBook: 'GEN' });
       await expandRow();
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-usage'));
 
@@ -1985,29 +2010,28 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('drops a discarded stale place from what is saved', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: PARTLY_STALE, onSave });
+      await renderPanel({ analysis: PARTLY_STALE });
       await expandRow();
 
       await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-discard'));
 
-      const [saved] = onSave.mock.lastCall ?? [];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved?.tokenAnalysisLinks).toEqual([link('ta-1', 'GEN 1:1:0')]);
     });
 
     it('moves the analysis onto the focused word', async () => {
-      const onSave = jest.fn();
-      renderPanel({
+      await renderPanel({
         analysis: ONLY_STALE,
         focusedTokenRef: 'GEN 1:2:0',
         liveSurfaceText: () => 'λόγος',
-        onSave,
       });
       await expandRow();
 
       await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-apply'));
 
-      const [saved] = onSave.mock.lastCall ?? [];
+      await settle();
+      const saved = await savedAnalysis();
       expect(
         saved?.tokenAnalysisLinks.map((l: TokenAnalysisLink) => [l.token.tokenRef, l.status]),
       ).toEqual([['GEN 1:2:0', 'approved']]);
@@ -2022,7 +2046,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('live', 'GEN 1:1:0'), link('stale', 'GEN 1:2:0', 'stale')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(
@@ -2043,9 +2067,9 @@ describe('AnalysisCatalogPanel', () => {
         tokenAnalysisLinks: [link('live', 'GEN 1:1:0'), link('stale', 'GEN 1:2:0', 'stale')],
       };
 
-      it('keeps only the rows the filters it is handed keep', () => {
+      it('keeps only the rows the filters it is handed keep', async () => {
         const ref = createRef<AnalysisCatalogPanelHandle>();
-        renderPanel({ ref, analysis: LIVE_AND_STALE });
+        await renderPanel({ ref, analysis: LIVE_AND_STALE });
 
         act(() => ref.current?.filterTo({ stale: true }));
 
@@ -2061,7 +2085,7 @@ describe('AnalysisCatalogPanel', () => {
             { ...FIXTURE_STAMPS, id: 'stale', surfaceText: 'ἦν', gloss: { en: 'was' } },
           ],
         };
-        renderPanel({ ref, analysis, analysisLanguage: 'en' });
+        await renderPanel({ ref, analysis, analysisLanguage: 'en' });
         await openFilters();
         await userEvent.click(
           screen.getByRole('checkbox', {
@@ -2076,7 +2100,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('clears a search that would hide those rows', async () => {
         const ref = createRef<AnalysisCatalogPanelHandle>();
-        renderPanel({ ref, analysis: LIVE_AND_STALE });
+        await renderPanel({ ref, analysis: LIVE_AND_STALE });
         await userEvent.type(searchBox(), 'λόγος');
 
         act(() => ref.current?.filterTo({ stale: true }));
@@ -2087,7 +2111,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('asks for the text to be read when filtering for them', async () => {
       const request = jest.fn();
-      renderPanel({ analysis: ONLY_STALE, text: makeSourceText({ request }) });
+      await renderPanel({ analysis: ONLY_STALE, text: makeSourceText({ request }) });
       await openFilters();
 
       await userEvent.click(
@@ -2097,23 +2121,12 @@ describe('AnalysisCatalogPanel', () => {
       expect(request).toHaveBeenCalled();
     });
 
-    it('says the stale filter finds them only in opened books until every book is checked', async () => {
-      renderPanel({ analysis: ONLY_STALE });
+    it('names the stale filter plainly', async () => {
+      await renderPanel({ analysis: ONLY_STALE });
       await openFilters();
 
       expect(
         screen.getByRole('checkbox', { name: '%interlinearizer_analysisCatalog_filter_stale%' }),
-      ).toBeInTheDocument();
-    });
-
-    it('names the stale filter plainly once every book is checked', async () => {
-      renderPanel({ analysis: ONLY_STALE, staleCoversDraft: true });
-      await openFilters();
-
-      expect(
-        screen.getByRole('checkbox', {
-          name: '%interlinearizer_analysisCatalog_filter_staleEverywhere%',
-        }),
       ).toBeInTheDocument();
     });
 
@@ -2127,7 +2140,7 @@ describe('AnalysisCatalogPanel', () => {
       }
 
       it('asks before discarding the last place of the analysis it is keyed to', async () => {
-        renderPanel({ analysis: ONLY_STALE });
+        await renderPanel({ analysis: ONLY_STALE });
         await expandRow();
         await typeUnsavedBreakdown();
 
@@ -2140,7 +2153,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('keeps the draft and the place when the discard is declined', async () => {
-        renderPanel({ analysis: ONLY_STALE });
+        await renderPanel({ analysis: ONLY_STALE });
         await expandRow();
         await typeUnsavedBreakdown();
         await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-discard'));
@@ -2154,21 +2167,21 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('discards the place once the draft is given up', async () => {
-        const onSave = jest.fn();
-        renderPanel({ analysis: ONLY_STALE, onSave });
+        await renderPanel({ analysis: ONLY_STALE });
         await expandRow();
         await typeUnsavedBreakdown();
         await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-discard'));
 
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
 
-        const [saved] = onSave.mock.lastCall ?? [];
+        await settle();
+        const saved = await savedAnalysis();
         expect(saved?.tokenAnalyses).toEqual([]);
         expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
       });
 
       it('discards without asking when the analysis stays applied elsewhere', async () => {
-        renderPanel({ analysis: PARTLY_STALE });
+        await renderPanel({ analysis: PARTLY_STALE });
         await expandRow();
         await typeUnsavedBreakdown();
 
@@ -2181,7 +2194,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('asks before a reapply copies the analysis under another spelling', async () => {
-        renderPanel({
+        await renderPanel({
           analysis: ONLY_STALE,
           focusedTokenRef: 'GEN 1:2:0',
           liveSurfaceText: () => 'λόγου',
@@ -2207,7 +2220,11 @@ describe('AnalysisCatalogPanel', () => {
             link('ta-2', 'GEN 1:2:0', 'approved', 'λόγος'),
           ],
         };
-        renderPanel({ analysis, focusedTokenRef: 'GEN 1:2:0', liveSurfaceText: () => 'λόγος' });
+        await renderPanel({
+          analysis,
+          focusedTokenRef: 'GEN 1:2:0',
+          liveSurfaceText: () => 'λόγος',
+        });
         await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
         await typeUnsavedBreakdown('ta-2');
         await expandRow();
@@ -2221,7 +2238,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('drops an untouched editor with its analysis without reporting it stranded', async () => {
-        renderPanel({ analysis: ONLY_STALE });
+        await renderPanel({ analysis: ONLY_STALE });
         await expandRow();
         await openBreakdown(rowFor('ta-1'));
 
@@ -2236,7 +2253,7 @@ describe('AnalysisCatalogPanel', () => {
 
   it('dismisses the panel from the close control', async () => {
     const onClose = jest.fn();
-    renderPanel({ onClose });
+    await renderPanel({ onClose });
 
     await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
@@ -2266,7 +2283,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('asks for the text to be read when filtering for them', async () => {
       const request = jest.fn();
-      renderPanel({ analysis, text: makeSourceText({ request }) });
+      await renderPanel({ analysis, text: makeSourceText({ request }) });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
@@ -2274,10 +2291,10 @@ describe('AnalysisCatalogPanel', () => {
       expect(request).toHaveBeenCalled();
     });
 
-    it('asks for the text to be read when narrowed to them from outside', () => {
+    it('asks for the text to be read when narrowed to them from outside', async () => {
       const request = jest.fn();
       const ref = createRef<AnalysisCatalogPanelHandle>();
-      renderPanel({ ref, analysis, text: makeSourceText({ request }) });
+      await renderPanel({ ref, analysis, text: makeSourceText({ request }) });
 
       act(() => ref.current?.filterTo({ notInText: true }));
 
@@ -2289,7 +2306,7 @@ describe('AnalysisCatalogPanel', () => {
         status: 'ready',
         textForms: new Set([normalizeSurfaceForm('λόγος')]),
       });
-      renderPanel({ analysis, text });
+      await renderPanel({ analysis, text });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
@@ -2298,7 +2315,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('shows how far reading the text has got while filtering for them', async () => {
-      renderPanel({ analysis, text: makeSourceText({ status: 'loading' }) });
+      await renderPanel({ analysis, text: makeSourceText({ status: 'loading' }) });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
@@ -2308,7 +2325,10 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('says so when a book could not be read', async () => {
-      renderPanel({ analysis, text: makeSourceText({ status: 'ready', failedBookIds: ['GEN'] }) });
+      await renderPanel({
+        analysis,
+        text: makeSourceText({ status: 'ready', failedBookIds: ['GEN'] }),
+      });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
@@ -2317,8 +2337,8 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument();
     });
 
-    it('marks an analysis whose form the text lacks once it is read', () => {
-      renderPanel({
+    it('marks an analysis whose form the text lacks once it is read', async () => {
+      await renderPanel({
         analysis,
         text: makeSourceText({
           status: 'ready',
@@ -2329,8 +2349,8 @@ describe('AnalysisCatalogPanel', () => {
       expect(within(rowFor('gone')).getByTestId('catalog-row-not-in-text')).toBeInTheDocument();
     });
 
-    it('does not mark an analysis whose form the text holds', () => {
-      renderPanel({
+    it('does not mark an analysis whose form the text holds', async () => {
+      await renderPanel({
         analysis,
         text: makeSourceText({
           status: 'ready',
@@ -2343,8 +2363,8 @@ describe('AnalysisCatalogPanel', () => {
       ).not.toBeInTheDocument();
     });
 
-    it('marks no analysis while the text is unread', () => {
-      renderPanel({ analysis });
+    it('marks no analysis while the text is unread', async () => {
+      await renderPanel({ analysis });
 
       expect(screen.queryByTestId('catalog-row-not-in-text')).not.toBeInTheDocument();
     });
@@ -2367,7 +2387,7 @@ describe('AnalysisCatalogPanel', () => {
     }
 
     it('names how many uses an edit here rewrites', async () => {
-      renderPanel({ analysis: SHARED });
+      await renderPanel({ analysis: SHARED });
 
       await expandRow('ta-1');
 
@@ -2381,7 +2401,7 @@ describe('AnalysisCatalogPanel', () => {
         ...SHARED,
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await expandRow('ta-1');
 
@@ -2392,7 +2412,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('omits the note for an analysis nothing uses', async () => {
       const analysis: TextAnalysis = { ...SHARED, tokenAnalysisLinks: [] };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await expandRow('ta-1');
 
@@ -2402,7 +2422,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('marks the gloss input as holding nothing uncommitted', async () => {
-      renderPanel({ analysis: SHARED });
+      await renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
 
@@ -2413,7 +2433,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('marks the gloss input as holding uncommitted text once typed into', async () => {
-      renderPanel({ analysis: SHARED });
+      await renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
       const input = within(row).getByTestId('catalog-row-gloss-input');
@@ -2423,8 +2443,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('rewrites the gloss for every token linked to the analysis', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: SHARED, onSave });
+      await renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
       const input = within(row).getByTestId('catalog-row-gloss-input');
@@ -2433,15 +2452,15 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.tab();
 
       // One payload holding both links, so the single write reached both tokens without forking.
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses).toHaveLength(1);
       expect(saved.tokenAnalyses[0].gloss).toEqual({ en: 'message' });
       expect(saved.tokenAnalysisLinks.map((l) => l.analysisId)).toEqual(['ta-1', 'ta-1']);
     });
 
     it('rewrites the morpheme breakdown for every token linked to the analysis', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: SHARED, onSave });
+      await renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
       await openBreakdown(row);
@@ -2450,7 +2469,8 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.type(input, 'λογ ος');
       await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses).toHaveLength(1);
       expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογ', 'ος']);
       expect(saved.tokenAnalysisLinks.map((l) => l.analysisId)).toEqual(['ta-1', 'ta-1']);
@@ -2472,7 +2492,7 @@ describe('AnalysisCatalogPanel', () => {
       };
 
       it('shows the breakdown in stale styling', async () => {
-        renderPanel({ analysis: STALE_BREAKDOWN });
+        await renderPanel({ analysis: STALE_BREAKDOWN });
 
         const row = await expandRow('ta-1');
 
@@ -2482,7 +2502,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('shows the breakdown of a read-only analysis in stale styling', async () => {
-        renderPanel({ analysis: STALE_BREAKDOWN, readOnly: true });
+        await renderPanel({ analysis: STALE_BREAKDOWN, readOnly: true });
 
         const row = await expandRow('ta-1');
 
@@ -2492,40 +2512,35 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('keeps the breakdown for every token when it is saved unedited', async () => {
-        const onSave = jest.fn();
-        renderPanel({ analysis: STALE_BREAKDOWN, onSave });
+        await renderPanel({ analysis: STALE_BREAKDOWN });
 
         const row = await expandRow('ta-1');
         await openBreakdown(row);
         await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
 
-        const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+        await settle();
+        const saved = await savedAnalysis();
         expect(saved.tokenAnalyses[0]).not.toHaveProperty('morphemesStale');
         expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογγ', 'ος']);
       });
 
-      it('summarizes keeping the breakdown as an edit to its analysis', async () => {
-        const { asOneStep, summaries } = spyOnSteps();
-        renderPanel({ analysis: STALE_BREAKDOWN, asOneStep });
+      it('keeps the breakdown through the session, naming its analysis', async () => {
+        await renderPanel({ analysis: STALE_BREAKDOWN });
 
         const row = await expandRow('ta-1');
         await openBreakdown(row);
         await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
+        await settle();
 
-        expect(summaries).toStrictEqual([
-          {
-            kind: 'catalogEdit',
-            form: SHARED.tokenAnalyses[0].surfaceText,
-            analysisId: 'ta-1',
-            survivingAnalysisId: 'ta-1',
-          },
-        ]);
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.confirmAnalysisMorphemes',
+          expect.objectContaining({ analysisId: 'ta-1' }),
+        );
       });
     });
 
     it('leaves the breakdown alone when the editor is canceled', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: SHARED, onSave });
+      await renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
       await openBreakdown(row);
@@ -2535,7 +2550,8 @@ describe('AnalysisCatalogPanel', () => {
       );
       await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-cancel'));
 
-      expect(onSave).not.toHaveBeenCalled();
+      await settle();
+      expect(editsSaved()).toBe(0);
     });
 
     /** A record with a breakdown whose morphemes carry no glosses of their own. */
@@ -2577,31 +2593,30 @@ describe('AnalysisCatalogPanel', () => {
     }
 
     it('confirms before clearing a breakdown whose morphemes carry glosses', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+      await renderPanel({ analysis: GLOSSED_MORPHEMES });
 
       await clearBreakdown();
 
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-editor')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_confirmResetPrompt%',
       );
-      expect(onSave).not.toHaveBeenCalled();
+      await settle();
+      expect(editsSaved()).toBe(0);
     });
 
     it('clears the breakdown once the reset is confirmed', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+      await renderPanel({ analysis: GLOSSED_MORPHEMES });
 
       await clearBreakdown();
       await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-reset-confirm-action'));
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses[0].morphemes).toBeUndefined();
     });
 
     it('abandons the reset on Escape, keeping the breakdown', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+      await renderPanel({ analysis: GLOSSED_MORPHEMES });
 
       await clearBreakdown();
       await userEvent.type(
@@ -2614,29 +2629,30 @@ describe('AnalysisCatalogPanel', () => {
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-editor')).not.toHaveTextContent(
         '%interlinearizer_analysisCatalog_confirmResetPrompt%',
       );
-      expect(onSave).not.toHaveBeenCalled();
+      await settle();
+      expect(editsSaved()).toBe(0);
     });
 
     it('keeps the breakdown when the reset is declined', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+      await renderPanel({ analysis: GLOSSED_MORPHEMES });
 
       await clearBreakdown();
       await userEvent.click(
         within(rowFor('ta-1')).getByTestId('morpheme-breakdown-confirm-cancel'),
       );
 
-      expect(onSave).not.toHaveBeenCalled();
+      await settle();
+      expect(editsSaved()).toBe(0);
       expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toBeInTheDocument();
     });
 
     it('clears a breakdown carrying no morpheme glosses without asking', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: SEGMENTED_NO_GLOSSES, onSave });
+      await renderPanel({ analysis: SEGMENTED_NO_GLOSSES });
 
       await clearBreakdown();
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses[0].morphemes).toBeUndefined();
     });
 
@@ -2651,54 +2667,54 @@ describe('AnalysisCatalogPanel', () => {
     }
 
     it('confirms before a re-split that strands a glossed morpheme', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+      await renderPanel({ analysis: GLOSSED_MORPHEMES });
 
       await resplitBreakdown('λογος');
 
       expect(within(rowFor('ta-1')).getByTestId('morpheme-split-confirm')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_confirmResplitPrompt%',
       );
-      expect(onSave).not.toHaveBeenCalled();
+      await settle();
+      expect(editsSaved()).toBe(0);
     });
 
     it('re-splits once the loss is confirmed', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+      await renderPanel({ analysis: GLOSSED_MORPHEMES });
 
       await resplitBreakdown('λογος');
       await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-split-confirm-action'));
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογος']);
     });
 
     it('keeps the breakdown when the re-split is declined', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+      await renderPanel({ analysis: GLOSSED_MORPHEMES });
 
       await resplitBreakdown('λογος');
       await userEvent.click(
         within(rowFor('ta-1')).getByTestId('morpheme-breakdown-confirm-cancel'),
       );
 
-      expect(onSave).not.toHaveBeenCalled();
+      await settle();
+      expect(editsSaved()).toBe(0);
       expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue('λογος');
     });
 
     it('re-splits without asking when every glossed morpheme survives', async () => {
       // Only the unglossed "ος" is dropped, and bare segmentation is cheap to retype.
-      const onSave = jest.fn();
-      renderPanel({ analysis: GLOSSED_MORPHEMES, onSave });
+      await renderPanel({ analysis: GLOSSED_MORPHEMES });
 
       await resplitBreakdown('λογ');
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογ']);
     });
 
     it('keeps a breakdown draft across collapsing the row', async () => {
-      renderPanel({ analysis: SHARED });
+      await renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
       await openBreakdown(row);
@@ -2713,7 +2729,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('keeps a breakdown draft across a search that stops listing the row', async () => {
-      renderPanel({ analysis: SHARED });
+      await renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
       await openBreakdown(row);
@@ -2731,7 +2747,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('reports a held breakdown draft while its row is unmounted', async () => {
       const onPendingEditsChange = jest.fn();
-      renderPanel({ analysis: SHARED, onPendingEditsChange });
+      await renderPanel({ analysis: SHARED, onPendingEditsChange });
 
       const row = await expandRow('ta-1');
       await openBreakdown(row);
@@ -2753,7 +2769,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('asks before closing over a breakdown draft', async () => {
         const onClose = jest.fn();
-        renderPanel({ analysis: SHARED, onClose });
+        await renderPanel({ analysis: SHARED, onClose });
         await typeUnsavedBreakdown();
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
@@ -2764,7 +2780,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('asks before switching to the concordance over a breakdown draft', async () => {
         const onShowConcordance = jest.fn();
-        renderPanel({ analysis: SHARED, onShowConcordance });
+        await renderPanel({ analysis: SHARED, onShowConcordance });
         await typeUnsavedBreakdown();
 
         await userEvent.click(screen.getByTestId('side-panel-tab-concordance'));
@@ -2778,7 +2794,7 @@ describe('AnalysisCatalogPanel', () => {
       it('switches to the concordance once the discard is confirmed', async () => {
         const onShowConcordance = jest.fn();
         const onClose = jest.fn();
-        renderPanel({ analysis: SHARED, onShowConcordance, onClose });
+        await renderPanel({ analysis: SHARED, onShowConcordance, onClose });
         await typeUnsavedBreakdown();
         await userEvent.click(screen.getByTestId('side-panel-tab-concordance'));
 
@@ -2790,7 +2806,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('keeps the draft in hand when the close is declined', async () => {
         const onClose = jest.fn();
-        renderPanel({ analysis: SHARED, onClose });
+        await renderPanel({ analysis: SHARED, onClose });
         await typeUnsavedBreakdown();
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
@@ -2804,7 +2820,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('closes without asking once the breakdown is saved', async () => {
         const onClose = jest.fn();
-        renderPanel({ analysis: SHARED, onClose });
+        await renderPanel({ analysis: SHARED, onClose });
         await typeUnsavedBreakdown();
         await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
 
@@ -2816,7 +2832,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('switches to the concordance without asking when no breakdown is unsaved', async () => {
         const onShowConcordance = jest.fn();
-        renderPanel({ analysis: SHARED, onShowConcordance });
+        await renderPanel({ analysis: SHARED, onShowConcordance });
 
         await userEvent.click(screen.getByTestId('side-panel-tab-concordance'));
 
@@ -2826,7 +2842,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('closes without asking when the draft only re-states the current breakdown', async () => {
         const onClose = jest.fn();
-        renderPanel({ analysis: SHARED, onClose });
+        await renderPanel({ analysis: SHARED, onClose });
         // The editor pre-fills the whole word, which is not typed work.
         const row = await expandRow('ta-1');
         await openBreakdown(row);
@@ -2839,7 +2855,7 @@ describe('AnalysisCatalogPanel', () => {
       // An import can record the unsegmented state as one morpheme repeating the whole word.
       it('closes without asking over an untouched breakdown of one morpheme spanning the word', async () => {
         const onClose = jest.fn();
-        renderPanel({
+        await renderPanel({
           analysis: {
             ...SHARED,
             tokenAnalyses: [
@@ -2864,7 +2880,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('withdraws the question when the draft is canceled beneath it', async () => {
         const onClose = jest.fn();
-        renderPanel({ analysis: SHARED, onClose });
+        await renderPanel({ analysis: SHARED, onClose });
         await typeUnsavedBreakdown();
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
@@ -2894,7 +2910,7 @@ describe('AnalysisCatalogPanel', () => {
        * panel rendered beside a probe standing in for the interlinear view.
        */
       async function typeStrandableBreakdown(overrides: PanelOptions = {}) {
-        const rendered = renderPanelWithGlossEditing({ analysis: SOLE_USE, ...overrides });
+        const rendered = await renderPanelWithGlossEditing({ analysis: SOLE_USE, ...overrides });
         const row = await expandRow('ta-1');
         await openBreakdown(row);
         const input = within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input');
@@ -2911,6 +2927,8 @@ describe('AnalysisCatalogPanel', () => {
 
         act(() => editGloss('GEN 1:1:0', 'λόγος', ''));
 
+        await settle();
+
         // The form is all that is left to recognize the lost draft by, its record being gone.
         expect(screen.getByTestId('catalog-stranded-draft-notice')).toHaveTextContent(
           'An edit removed λόγος.',
@@ -2920,6 +2938,7 @@ describe('AnalysisCatalogPanel', () => {
       it('dismisses the report on request', async () => {
         await typeStrandableBreakdown();
         act(() => editGloss('GEN 1:1:0', 'λόγος', ''));
+        await settle();
 
         await userEvent.click(screen.getByTestId('catalog-stranded-draft-notice-dismiss'));
 
@@ -2934,6 +2953,8 @@ describe('AnalysisCatalogPanel', () => {
 
         act(() => editGloss('GEN 1:1:0', 'λόγος', ''));
 
+        await settle();
+
         expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
       });
 
@@ -2941,6 +2962,8 @@ describe('AnalysisCatalogPanel', () => {
         await typeStrandableBreakdown();
 
         act(() => editGloss('GEN 2:1:0', 'ἦν', 'was'));
+
+        await settle();
 
         expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
         expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue(
@@ -2959,21 +2982,20 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('commits a gloss edit on Enter', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: SHARED, onSave });
+      await renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
       const input = within(row).getByTestId('catalog-row-gloss-input');
       await userEvent.clear(input);
       await userEvent.type(input, 'message{Enter}');
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses[0].gloss).toEqual({ en: 'message' });
     });
 
     it('reverts a gloss edit on Escape', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: SHARED, onSave });
+      await renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
       const input = within(row).getByTestId('catalog-row-gloss-input');
@@ -2983,12 +3005,12 @@ describe('AnalysisCatalogPanel', () => {
       // Reverted to the committed text, so the blur that follows has nothing left to write.
       expect(input).toHaveAttribute('value', 'word');
       await userEvent.tab();
-      expect(onSave).not.toHaveBeenCalled();
+      await settle();
+      expect(editsSaved()).toBe(0);
     });
 
     it('commits a breakdown edit on Enter', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: SHARED, onSave });
+      await renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
       await openBreakdown(row);
@@ -2996,13 +3018,13 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.clear(input);
       await userEvent.type(input, 'λογ ος{Enter}');
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λογ', 'ος']);
     });
 
     it('abandons a breakdown edit on Escape', async () => {
-      const onSave = jest.fn();
-      renderPanel({ analysis: SHARED, onSave });
+      await renderPanel({ analysis: SHARED });
 
       const row = await expandRow('ta-1');
       await openBreakdown(row);
@@ -3011,7 +3033,8 @@ describe('AnalysisCatalogPanel', () => {
         'λογ ος{Escape}',
       );
 
-      expect(onSave).not.toHaveBeenCalled();
+      await settle();
+      expect(editsSaved()).toBe(0);
       expect(
         within(rowFor('ta-1')).queryByTestId('morpheme-breakdown-input'),
       ).not.toBeInTheDocument();
@@ -3027,8 +3050,7 @@ describe('AnalysisCatalogPanel', () => {
           },
         ],
       };
-      const onSave = jest.fn();
-      renderPanel({ analysis, onSave });
+      await renderPanel({ analysis });
 
       const row = await expandRow('ta-1');
       await openBreakdown(row);
@@ -3037,7 +3059,8 @@ describe('AnalysisCatalogPanel', () => {
 
       // An empty field is one with nothing typed in it yet, not a request for the unsegmented
       // state — which has its own control, so the save refuses rather than guessing between them.
-      expect(onSave).not.toHaveBeenCalled();
+      await settle();
+      expect(editsSaved()).toBe(0);
       expect(within(rowFor('ta-1')).getByTestId('morpheme-empty-hint')).toBeInTheDocument();
     });
 
@@ -3054,8 +3077,7 @@ describe('AnalysisCatalogPanel', () => {
           },
         ],
       };
-      const onSave = jest.fn();
-      renderPanel({ analysis, onSave });
+      await renderPanel({ analysis });
 
       const row = await expandRow('ta-1');
       await openBreakdown(row);
@@ -3065,7 +3087,8 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.type(input, 'λόγος');
       await userEvent.click(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-save'));
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toEqual(['λόγος']);
     });
 
@@ -3079,8 +3102,7 @@ describe('AnalysisCatalogPanel', () => {
           },
         ],
       };
-      const onSave = jest.fn();
-      renderPanel({ analysis, onSave });
+      await renderPanel({ analysis });
 
       const row = await expandRow('ta-1');
       await userEvent.type(
@@ -3089,7 +3111,8 @@ describe('AnalysisCatalogPanel', () => {
       );
       await userEvent.tab();
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses[0].morphemes?.[0].gloss).toEqual({ en: 'word-stem' });
     });
 
@@ -3107,7 +3130,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('reports a gloss held uncommitted, so the unsaved indicator lights while typing', async () => {
         const onPendingEditsChange = jest.fn();
-        renderPanel({ analysis: SHARED, onPendingEditsChange });
+        await renderPanel({ analysis: SHARED, onPendingEditsChange });
 
         const row = await expandRow('ta-1');
         await userEvent.type(within(row).getByTestId('catalog-row-gloss-input'), '!');
@@ -3117,7 +3140,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('stops reporting a gloss once it commits on blur', async () => {
         const onPendingEditsChange = jest.fn();
-        renderPanel({ analysis: SHARED, onPendingEditsChange });
+        await renderPanel({ analysis: SHARED, onPendingEditsChange });
 
         const row = await expandRow('ta-1');
         await userEvent.type(within(row).getByTestId('catalog-row-gloss-input'), '!');
@@ -3127,30 +3150,30 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('sends a focused gloss before closing on a request that blurs nothing', async () => {
-        const onSave = jest.fn();
         const onClose = jest.fn();
-        renderPanel({ analysis: SHARED, onSave, onClose });
+        await renderPanel({ analysis: SHARED, onClose });
         const row = await expandRow('ta-1');
         await userEvent.type(within(row).getByTestId('catalog-row-gloss-input'), '!');
 
         fireEvent.click(screen.getByTestId('analysis-catalog-close'));
 
-        const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+        await settle();
+        const saved = await savedAnalysis();
         expect(saved.tokenAnalyses[0].gloss).toEqual({ en: 'word!' });
         expect(onClose).toHaveBeenCalled();
       });
 
       it('sends a focused gloss before switching to the concordance from outside', async () => {
-        const onSave = jest.fn();
         const onShowConcordance = jest.fn();
         const ref = createRef<AnalysisCatalogPanelHandle>();
-        renderPanel({ ref, analysis: SHARED, onSave, onShowConcordance });
+        await renderPanel({ ref, analysis: SHARED, onShowConcordance });
         const row = await expandRow('ta-1');
         await userEvent.type(within(row).getByTestId('catalog-row-gloss-input'), '!');
 
         act(() => ref.current?.requestShowConcordance());
 
-        const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+        await settle();
+        const saved = await savedAnalysis();
         expect(saved.tokenAnalyses[0].gloss).toEqual({ en: 'word!' });
         expect(onShowConcordance).toHaveBeenCalled();
       });
@@ -3159,7 +3182,7 @@ describe('AnalysisCatalogPanel', () => {
         const outside = document.createElement('input');
         document.body.append(outside);
         const ref = createRef<AnalysisCatalogPanelHandle>();
-        renderPanel({ ref, analysis: SHARED });
+        await renderPanel({ ref, analysis: SHARED });
         outside.focus();
 
         act(() => ref.current?.requestShowConcordance());
@@ -3170,7 +3193,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('reports a breakdown held uncommitted', async () => {
         const onPendingEditsChange = jest.fn();
-        renderPanel({ analysis: SEGMENTED, onPendingEditsChange });
+        await renderPanel({ analysis: SEGMENTED, onPendingEditsChange });
 
         const row = await expandRow('ta-1');
         await openBreakdown(row);
@@ -3181,7 +3204,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('stops reporting a breakdown once it is canceled', async () => {
         const onPendingEditsChange = jest.fn();
-        renderPanel({ analysis: SEGMENTED, onPendingEditsChange });
+        await renderPanel({ analysis: SEGMENTED, onPendingEditsChange });
 
         const row = await expandRow('ta-1');
         await openBreakdown(row);
@@ -3194,7 +3217,7 @@ describe('AnalysisCatalogPanel', () => {
       // The editor pre-fills the whole word on an unsegmented row, which is not typed work.
       it('reports nothing for a breakdown draft the reader has not touched', async () => {
         const onPendingEditsChange = jest.fn();
-        renderPanel({ analysis: SHARED, onPendingEditsChange });
+        await renderPanel({ analysis: SHARED, onPendingEditsChange });
 
         const row = await expandRow('ta-1');
         await openBreakdown(row);
@@ -3232,7 +3255,7 @@ describe('AnalysisCatalogPanel', () => {
 
     /** Expands `ta-1` and returns its detail, where the edit controls would be. */
     async function expandReadOnlyRow(): Promise<HTMLElement> {
-      renderPanel({ analysis: READ_ONLY, readOnly: true });
+      await renderPanel({ analysis: READ_ONLY, readOnly: true });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       return rowFor('ta-1');
     }
@@ -3282,7 +3305,7 @@ describe('AnalysisCatalogPanel', () => {
         tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis: unsegmented, readOnly: true });
+      await renderPanel({ analysis: unsegmented, readOnly: true });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -3297,7 +3320,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis: unsegmented, analysisLanguage: 'en', readOnly: true });
+      await renderPanel({ analysis: unsegmented, analysisLanguage: 'en', readOnly: true });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -3319,7 +3342,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis: unglossed, readOnly: true });
+      await renderPanel({ analysis: unglossed, readOnly: true });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -3357,7 +3380,7 @@ describe('AnalysisCatalogPanel', () => {
 
       /** Expands `ta-1` under a lexicon holding both senses and returns its detail. */
       async function expandLinkedRow(): Promise<HTMLElement> {
-        renderPanel({
+        await renderPanel({
           analysis: LINKED,
           readOnly: true,
           senses: { 's-word': { gloss: { en: 'word' } }, 's-stem': { gloss: { en: 'speak' } } },
@@ -3418,8 +3441,8 @@ describe('AnalysisCatalogPanel', () => {
       tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
     };
 
-    it('marks a collapsed linked row without listing its sense', () => {
-      const { unmount } = renderPanel({
+    it('marks a collapsed linked row without listing its sense', async () => {
+      const { unmount } = await renderPanel({
         analysis: LINKED,
         senses: { 's-word': { gloss: { en: 'word' } } },
       });
@@ -3432,7 +3455,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it("lists a linked row's sense once the row is expanded", async () => {
-      renderPanel({ analysis: LINKED, senses: { 's-word': { gloss: { en: 'word' } } } });
+      await renderPanel({ analysis: LINKED, senses: { 's-word': { gloss: { en: 'word' } } } });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -3442,7 +3465,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('leaves the gloss inputs to what is typed where only the senses gloss', async () => {
-      renderPanel({
+      await renderPanel({
         analysis: {
           ...emptyAnalysis(),
           tokenAnalyses: [
@@ -3508,7 +3531,7 @@ describe('AnalysisCatalogPanel', () => {
     }
 
     it('drops the edited row and moves its usages onto the surviving one', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
 
       await editIntoEquality();
 
@@ -3517,7 +3540,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('announces where the edited row went', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
 
       await editIntoEquality();
 
@@ -3547,7 +3570,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'));
@@ -3568,7 +3591,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'));
@@ -3590,7 +3613,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:1:0', 'candidate')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'));
@@ -3610,7 +3633,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-2', 'GEN 1:3:4'), link('ta-2', 'GEN 2:7:2')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await editIntoEquality();
 
@@ -3621,7 +3644,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('leaves no notice when an edit collapses nothing', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       const input = within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input');
@@ -3647,7 +3670,7 @@ describe('AnalysisCatalogPanel', () => {
           link('ta-3', 'GEN 2:7:2'),
         ],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await editIntoEquality();
       expect(screen.getByTestId('catalog-merge-notice')).toBeInTheDocument();
 
@@ -3661,7 +3684,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('dismisses the notice from its own control', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
       await editIntoEquality();
 
       await userEvent.click(screen.getByTestId('catalog-merge-notice-dismiss'));
@@ -3671,7 +3694,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('takes the notice down once a row is revealed', async () => {
       const ref = createRef<AnalysisCatalogPanelHandle>();
-      renderPanel({ ref, analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ ref, analysis: TWO_HOMOGRAPHS });
       await editIntoEquality();
 
       act(() => ref.current?.revealRow('ta-2'));
@@ -3696,7 +3719,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
       expect(listedAnalysisIds()).not.toContain('ta-dst');
@@ -3714,7 +3737,7 @@ describe('AnalysisCatalogPanel', () => {
     // The notice outlives the listing it was raised against, so a search narrowing the survivor
     // away leaves it naming a row that is nowhere to be mounted.
     it('holds the notice when a search excludes the survivor', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
       await editIntoEquality();
 
       await userEvent.type(searchBox(), 'zzz');
@@ -3735,7 +3758,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('offers the merge control to a row with pool peers', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -3748,7 +3771,7 @@ describe('AnalysisCatalogPanel', () => {
         tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
@@ -3756,7 +3779,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('moves every usage onto the chosen target', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -3768,7 +3791,6 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('keeps the survivor stale when the merge settles on its stale breakdown', async () => {
-      const onSave = jest.fn();
       const analysis: TextAnalysis = {
         ...TWO_HOMOGRAPHS,
         tokenAnalyses: [
@@ -3783,19 +3805,20 @@ describe('AnalysisCatalogPanel', () => {
           TWO_HOMOGRAPHS.tokenAnalyses[1],
         ],
       };
-      renderPanel({ analysis, onSave });
+      await renderPanel({ analysis });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
       await userEvent.click(mergeCheckFor('ta-2'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses).toEqual([expect.objectContaining({ morphemesStale: true })]);
     });
 
     it('names the surface form both sides share', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -3809,7 +3832,7 @@ describe('AnalysisCatalogPanel', () => {
     // The stub renders tooltip content as the trigger's `title`, clipping being unmeasurable here.
 
     it('starts the row the panel was opened from as the surviving analysis', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -3819,7 +3842,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('leaves every other analysis out so the merge is not defaulted into', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -3837,7 +3860,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -3846,7 +3869,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('makes a promoted analysis the one the rest are merged into', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
@@ -3858,7 +3881,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('refuses to merge while nothing but the survivor is selected', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -3867,7 +3890,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('offers the merge once another analysis is selected', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
@@ -3885,7 +3908,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
@@ -3928,7 +3951,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
       };
-      renderPanel({ analysis, analysisLanguage: 'en' });
+      await renderPanel({ analysis, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -3968,7 +3991,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
       };
-      renderPanel({ analysis, analysisLanguage: 'en' });
+      await renderPanel({ analysis, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -3979,7 +4002,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('says so outright on a target that carries no breakdown', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -3992,7 +4015,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('leaves both analyses alone when the picker is canceled', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -4018,7 +4041,7 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
       };
-      renderPanel({ analysis });
+      await renderPanel({ analysis });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -4031,7 +4054,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('refuses to merge until a target is chosen', async () => {
-      renderPanel({ analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -4059,7 +4082,7 @@ describe('AnalysisCatalogPanel', () => {
           link('ta-3', 'GEN 2:7:2'),
         ],
       };
-      renderPanel({ announceUndoable, analysis, analysisLanguage: 'en' });
+      await renderPanel({ announceUndoable, analysis, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
       await userEvent.click(mergeCheckFor('ta-2'));
@@ -4081,7 +4104,7 @@ describe('AnalysisCatalogPanel', () => {
         '%interlinearizer_analysisCatalog_merged%': '{gloss}, {count} uses',
       });
       const announceUndoable = jest.fn();
-      renderPanel({ announceUndoable, analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ announceUndoable, analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
       await userEvent.click(mergeCheckFor('ta-2'));
@@ -4097,7 +4120,7 @@ describe('AnalysisCatalogPanel', () => {
         '%interlinearizer_analysisCatalog_merged%': '{gloss}, {count} uses',
       });
       const announceUndoable = jest.fn();
-      renderPanel({
+      await renderPanel({
         announceUndoable,
         analysis: {
           ...TWO_HOMOGRAPHS,
@@ -4118,7 +4141,7 @@ describe('AnalysisCatalogPanel', () => {
         '%interlinearizer_analysisCatalog_mergedEmpty%': '{form} emptied, {count} uses',
       });
       const announceUndoable = jest.fn();
-      renderPanel({ announceUndoable, analysis: TWO_HOMOGRAPHS });
+      await renderPanel({ announceUndoable, analysis: TWO_HOMOGRAPHS });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
       await userEvent.click(mergeCheckFor('ta-2'));
@@ -4142,7 +4165,7 @@ describe('AnalysisCatalogPanel', () => {
       }
 
       it('asks before merging away the analysis a breakdown draft is keyed to', async () => {
-        renderPanel({ analysis: TWO_HOMOGRAPHS });
+        await renderPanel({ analysis: TWO_HOMOGRAPHS });
         await typeUnsavedBreakdown();
 
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
@@ -4152,7 +4175,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('keeps the draft and both analyses when the discard is declined', async () => {
-        renderPanel({ analysis: TWO_HOMOGRAPHS });
+        await renderPanel({ analysis: TWO_HOMOGRAPHS });
         await typeUnsavedBreakdown();
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
@@ -4163,7 +4186,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('opens the merge picker once the draft is given up', async () => {
-        renderPanel({ analysis: TWO_HOMOGRAPHS });
+        await renderPanel({ analysis: TWO_HOMOGRAPHS });
         await typeUnsavedBreakdown();
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
@@ -4183,7 +4206,7 @@ describe('AnalysisCatalogPanel', () => {
           ],
           tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
         };
-        renderPanel({ analysis });
+        await renderPanel({ analysis });
         await typeUnsavedBreakdown();
 
         // Opened from ta-2, which carries no draft, then made to fold in ta-1, which does.
@@ -4205,7 +4228,7 @@ describe('AnalysisCatalogPanel', () => {
           ],
           tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
         };
-        renderPanel({ analysis });
+        await renderPanel({ analysis });
         await typeUnsavedBreakdown();
         await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
         await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-merge'));
@@ -4244,7 +4267,7 @@ describe('AnalysisCatalogPanel', () => {
       // One agreement is a decision about the draft it named, not about every other draft the same
       // merge would spend.
       it('asks once per draft when a merge would spend more than one', async () => {
-        renderPanel({ analysis: THREE_HOMOGRAPHS });
+        await renderPanel({ analysis: THREE_HOMOGRAPHS });
         await confirmMergeOfBothDrafts();
 
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
@@ -4254,7 +4277,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('merges once every draft it would spend has been given up', async () => {
-        renderPanel({ analysis: THREE_HOMOGRAPHS });
+        await renderPanel({ analysis: THREE_HOMOGRAPHS });
         await confirmMergeOfBothDrafts();
 
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
@@ -4272,7 +4295,7 @@ describe('AnalysisCatalogPanel', () => {
           ],
           tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
         };
-        renderPanel({ analysis });
+        await renderPanel({ analysis });
         await typeUnsavedBreakdown();
         await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-toggle'));
         await userEvent.click(within(rowFor('ta-2')).getByTestId('catalog-row-merge'));
@@ -4287,7 +4310,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('stops warning about a draft whose analysis the merge took with it', async () => {
         const onClose = jest.fn();
-        renderPanel({ analysis: TWO_HOMOGRAPHS, onClose });
+        await renderPanel({ analysis: TWO_HOMOGRAPHS, onClose });
         await typeUnsavedBreakdown();
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
@@ -4311,242 +4334,29 @@ describe('AnalysisCatalogPanel', () => {
         ],
         tokenAnalysisLinks: [...TWO_HOMOGRAPHS.tokenAnalysisLinks, link('ta-3', 'GEN 1:5:2')],
       };
-      renderPanelWithGlossEditing({ analysis, analysisLanguage: 'en' });
+      await renderPanelWithGlossEditing({ analysis, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
       await userEvent.click(mergeCheckFor('ta-2'));
 
       // Emptying its gloss removes the record, taking it out of the panel's candidates.
       act(() => editGloss('GEN 1:3:4', 'word', ''));
+      await settle();
 
       expect(screen.getByTestId('catalog-merge-confirm')).toBeDisabled();
     });
 
     // A record left alone in its form has no homograph to merge with, so nothing to choose.
     it('closes the picker once an edit leaves the opened row its form alone', async () => {
-      renderPanelWithGlossEditing({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
+      await renderPanelWithGlossEditing({ analysis: TWO_HOMOGRAPHS, analysisLanguage: 'en' });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
 
       act(() => editGloss('GEN 1:3:4', 'word', ''));
 
+      await settle();
+
       expect(screen.queryByTestId('catalog-merge-title')).not.toBeInTheDocument();
-      expect(listedAnalysisIds()).toEqual(['ta-1']);
-    });
-  });
-
-  describe('undo steps', () => {
-    it('summarizes a gloss edit as an edit to its analysis', async () => {
-      const { asOneStep, summaries } = spyOnSteps();
-      renderPanel({
-        asOneStep,
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
-          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
-        },
-      });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-
-      await userEvent.type(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'), 'word');
-      await userEvent.tab();
-
-      expect(summaries).toContainEqual({
-        kind: 'catalogEdit',
-        form: 'λόγος',
-        analysisId: 'ta-1',
-        survivingAnalysisId: 'ta-1',
-      });
-    });
-
-    it('names the analysis an edit collapsed its row onto as the survivor', async () => {
-      const { asOneStep, summaries } = spyOnSteps();
-      renderPanel({
-        asOneStep,
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [
-            { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
-            { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
-          ],
-          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
-        },
-      });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-      const input = within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input');
-
-      await userEvent.clear(input);
-      await userEvent.type(input, 'beginning');
-      await userEvent.tab();
-
-      expect(summaries).toContainEqual({
-        kind: 'catalogEdit',
-        form: 'ἀρχῇ',
-        analysisId: 'ta-1',
-        survivingAnalysisId: 'ta-2',
-      });
-    });
-
-    it('names no survivor for an edit that empties its record away', async () => {
-      const { asOneStep, summaries } = spyOnSteps();
-      renderPanel({
-        asOneStep,
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [
-            { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
-          ],
-          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
-        },
-      });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-
-      await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'));
-      await userEvent.tab();
-
-      expect(summaries).toContainEqual({ kind: 'catalogEdit', form: 'λόγος', analysisId: 'ta-1' });
-    });
-
-    it('summarizes a merge as a merge into its analysis', async () => {
-      const { asOneStep, summaries } = spyOnSteps();
-      renderPanel({
-        asOneStep,
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [
-            { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
-            { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
-          ],
-          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-2', 'GEN 1:3:4')],
-        },
-      });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-      await userEvent.click(mergeCheckFor('ta-2'));
-      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
-
-      expect(summaries).toContainEqual({
-        kind: 'catalogMerge',
-        form: 'ἀρχῇ',
-        analysisId: 'ta-1',
-        survivingAnalysisId: 'ta-1',
-      });
-    });
-
-    it('names the analysis a converging merge left standing as the survivor', async () => {
-      const { asOneStep, summaries } = spyOnSteps();
-      renderPanel({
-        asOneStep,
-        analysisLanguage: 'en',
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [
-            { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
-            { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
-            { ...FIXTURE_STAMPS, id: 'ta-3', surfaceText: 'ἀρχῇ', gloss: { en: 'origin' } },
-          ],
-          tokenAnalysisLinks: [
-            link('ta-1', 'GEN 1:1:0'),
-            link('ta-2', 'GEN 1:3:4'),
-            link('ta-3', 'GEN 2:7:2'),
-          ],
-        },
-      });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-merge'));
-      await userEvent.click(mergeCheckFor('ta-2'));
-      const gloss = screen.getByTestId('catalog-merge-content-gloss');
-
-      await userEvent.clear(gloss);
-      await userEvent.type(gloss, 'origin');
-      await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
-
-      expect(summaries).toContainEqual({
-        kind: 'catalogMerge',
-        form: 'ἀρχῇ',
-        analysisId: 'ta-1',
-        survivingAnalysisId: 'ta-3',
-      });
-    });
-
-    it('summarizes a deletion as deleting its analysis', async () => {
-      const { asOneStep, summaries } = spyOnSteps();
-      renderPanel({
-        asOneStep,
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
-          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
-        },
-      });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
-      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
-
-      expect(summaries).toContainEqual({
-        kind: 'catalogDelete',
-        form: 'λόγος',
-        analysisId: 'ta-1',
-        count: 1,
-      });
-    });
-
-    it('summarizes deleting an unused analysis without a use count', async () => {
-      const { asOneStep, summaries } = spyOnSteps();
-      renderPanel({
-        asOneStep,
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
-        },
-      });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
-      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
-
-      expect(summaries).toContainEqual({
-        kind: 'catalogDeleteUnused',
-        form: 'λόγος',
-        analysisId: 'ta-1',
-      });
-    });
-
-    it('asks before deleting, naming the analysis', async () => {
-      mockKeyAsValueLocalizedStrings({
-        '%interlinearizer_analysisCatalog_deleteConfirmPrompt%': 'Delete {form}?',
-      });
-      renderPanel({
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
-        },
-      });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
-
-      expect(screen.getByTestId('catalog-delete-confirm-prompt')).toHaveTextContent(
-        'Delete λόγος?',
-      );
-      expect(listedAnalysisIds()).toEqual(['ta-1']);
-    });
-
-    it('deletes nothing when the confirmation is canceled', async () => {
-      renderPanel({
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
-        },
-      });
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
-
-      await userEvent.click(screen.getByTestId('catalog-delete-confirm-cancel'));
-
-      expect(screen.queryByTestId('catalog-delete-confirm-title')).not.toBeInTheDocument();
       expect(listedAnalysisIds()).toEqual(['ta-1']);
     });
   });
@@ -4554,7 +4364,7 @@ describe('AnalysisCatalogPanel', () => {
   describe('revealing a row', () => {
     it('mounts a row asked for that the window would otherwise leave off', async () => {
       const ref = createRef<AnalysisCatalogPanelHandle>();
-      renderPanel({
+      await renderPanel({
         ref,
         analysis: {
           ...emptyAnalysis(),
@@ -4577,7 +4387,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('stops holding a revealed row mounted once the listing changes', async () => {
       const ref = createRef<AnalysisCatalogPanelHandle>();
-      renderPanel({
+      await renderPanel({
         ref,
         analysis: {
           ...emptyAnalysis(),
@@ -4618,8 +4428,44 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
     }
 
+    it('asks before deleting, naming the analysis', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_deleteConfirmPrompt%': 'Delete {form}?',
+      });
+      await renderPanel({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+      expect(screen.getByTestId('catalog-delete-confirm-prompt')).toHaveTextContent(
+        'Delete λόγος?',
+      );
+      expect(listedAnalysisIds()).toEqual(['ta-1']);
+    });
+
+    it('deletes nothing when the confirmation is canceled', async () => {
+      await renderPanel({
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος' }],
+        },
+      });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm-cancel'));
+
+      expect(screen.queryByTestId('catalog-delete-confirm-title')).not.toBeInTheDocument();
+      expect(listedAnalysisIds()).toEqual(['ta-1']);
+    });
+
     it('states that the uses are left blank when no homograph survives', async () => {
-      renderPanel({ announceUndoable, analysis: LONE });
+      await renderPanel({ announceUndoable, analysis: LONE });
 
       await deleteRow('ta-1');
 
@@ -4641,7 +4487,7 @@ describe('AnalysisCatalogPanel', () => {
           link('ta-2', 'GEN 2:7:2'),
         ],
       };
-      renderPanel({ announceUndoable, analysis });
+      await renderPanel({ announceUndoable, analysis });
 
       await deleteRow('ta-1');
 
@@ -4667,7 +4513,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('describes rather than names the fallback when a use has drifted off its analyzed form', async () => {
-      renderPanel({
+      await renderPanel({
         announceUndoable,
         analysis: TWO_HOMOGRAPHS,
         // Analyzed as "ἀρχῇ", but the baseline beneath it now reads otherwise.
@@ -4682,7 +4528,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('describes rather than names the fallback when a use sits in an unloaded book', async () => {
-      renderPanel({
+      await renderPanel({
         announceUndoable,
         analysis: TWO_HOMOGRAPHS,
         liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? undefined : 'ἀρχῇ'),
@@ -4697,7 +4543,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('states that nothing else changes when the analysis is used nowhere', async () => {
       const analysis: TextAnalysis = { ...LONE, tokenAnalysisLinks: [] };
-      renderPanel({ announceUndoable, analysis });
+      await renderPanel({ announceUndoable, analysis });
 
       await deleteRow('ta-1');
 
@@ -4708,7 +4554,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('says nothing about unapplied assignments when there are none', async () => {
       const analysis: TextAnalysis = { ...LONE, tokenAnalysisLinks: [] };
-      renderPanel({ announceUndoable, analysis });
+      await renderPanel({ announceUndoable, analysis });
 
       await deleteRow('ta-1');
 
@@ -4724,7 +4570,7 @@ describe('AnalysisCatalogPanel', () => {
         ...LONE,
         tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0', 'candidate')],
       };
-      renderPanel({ announceUndoable, analysis });
+      await renderPanel({ announceUndoable, analysis });
 
       await deleteRow('ta-1');
 
@@ -4757,7 +4603,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('describes a fallback that carries no gloss rather than naming it', async () => {
-      renderPanel({ announceUndoable, analysis: UNGLOSSED_FALLBACK });
+      await renderPanel({ announceUndoable, analysis: UNGLOSSED_FALLBACK });
 
       await deleteRow('ta-1');
 
@@ -4767,12 +4613,12 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('removes the analysis and its links at once', async () => {
-      const onSave = jest.fn();
-      renderPanel({ announceUndoable, analysis: LONE, onSave });
+      await renderPanel({ announceUndoable, analysis: LONE });
 
       await deleteRow('ta-1');
 
-      const saved: TextAnalysis = onSave.mock.calls.at(-1)[0];
+      await settle();
+      const saved = await savedAnalysis();
       expect(saved.tokenAnalyses).toEqual([]);
       expect(saved.tokenAnalysisLinks).toEqual([]);
     });
@@ -4789,7 +4635,7 @@ describe('AnalysisCatalogPanel', () => {
 
       // The delete confirmation already agreed to lose the analysis, its draft included.
       it('deletes without asking again about the draft', async () => {
-        renderPanel({ announceUndoable, analysis: LONE });
+        await renderPanel({ announceUndoable, analysis: LONE });
         await typeUnsavedBreakdown('ta-1');
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
 
@@ -4800,21 +4646,21 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('keeps the draft and the analysis when the deletion is canceled', async () => {
-        const onSave = jest.fn();
-        renderPanel({ announceUndoable, analysis: LONE, onSave });
+        await renderPanel({ announceUndoable, analysis: LONE });
         await typeUnsavedBreakdown('ta-1');
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
 
         await userEvent.click(screen.getByTestId('catalog-delete-confirm-cancel'));
 
-        expect(onSave).not.toHaveBeenCalled();
+        await settle();
+        expect(editsSaved()).toBe(0);
         expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue(
           'λογ ος',
         );
       });
 
       it('deletes without asking about a draft that re-states the current breakdown', async () => {
-        renderPanel({ announceUndoable, analysis: LONE });
+        await renderPanel({ announceUndoable, analysis: LONE });
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
         await openBreakdown(rowFor('ta-1'));
 
@@ -4827,7 +4673,7 @@ describe('AnalysisCatalogPanel', () => {
 
       it('stops warning about a draft whose analysis the deletion took with it', async () => {
         const onClose = jest.fn();
-        renderPanel({ announceUndoable, analysis: LONE, onClose });
+        await renderPanel({ announceUndoable, analysis: LONE, onClose });
         await typeUnsavedBreakdown('ta-1');
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
         await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
@@ -4871,7 +4717,7 @@ describe('AnalysisCatalogPanel', () => {
       mockKeyAsValueLocalizedStrings({
         '%interlinearizer_analysisCatalog_checkedSummary%': '{count} checked, {usageCount} uses',
       });
-      renderPanel({
+      await renderPanel({
         analysis: {
           ...THREE_FORMS,
           tokenAnalysisLinks: [...THREE_FORMS.tokenAnalysisLinks, link('ta-1', 'GEN 1:2:0')],
@@ -4889,7 +4735,7 @@ describe('AnalysisCatalogPanel', () => {
       mockKeyAsValueLocalizedStrings({
         '%interlinearizer_analysisCatalog_checkedSummary%': '{count} checked, {usageCount} uses',
       });
-      renderPanel({
+      await renderPanel({
         analysis: {
           ...THREE_FORMS,
           tokenAnalysisLinks: [...THREE_FORMS.tokenAnalysisLinks, link('ta-3', 'GEN 1:1:0')],
@@ -4908,7 +4754,7 @@ describe('AnalysisCatalogPanel', () => {
         '%interlinearizer_analysisCatalog_checkedSummary%': '{count} checked',
       });
       // More rows than the list first mounts, so some are listed without being in the document.
-      renderPanel({
+      await renderPanel({
         analysis: {
           ...emptyAnalysis(),
           tokenAnalyses: Array.from({ length: 60 }, (_unused, index) => ({
@@ -4924,8 +4770,8 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByTestId('catalog-selection-summary')).toHaveTextContent('60 checked');
     });
 
-    it('offers nothing to check on a read-only analysis', () => {
-      renderPanel({ analysis: THREE_FORMS, readOnly: true });
+    it('offers nothing to check on a read-only analysis', async () => {
+      await renderPanel({ analysis: THREE_FORMS, readOnly: true });
 
       expect(screen.queryByTestId('catalog-row-check')).not.toBeInTheDocument();
       expect(screen.queryByTestId('catalog-check-all')).not.toBeInTheDocument();
@@ -4943,7 +4789,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('clears the gloss on every checked row, leaving the rest', async () => {
-      renderPanel({ analysis: THREE_BROKEN_DOWN });
+      await renderPanel({ analysis: THREE_BROKEN_DOWN });
 
       await select('ta-1', 'ta-3');
       await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
@@ -4955,20 +4801,18 @@ describe('AnalysisCatalogPanel', () => {
       expect(within(rowFor('ta-3')).getByTestId('catalog-row-gloss')).not.toHaveTextContent('God');
     });
 
-    it("clears the checked rows' glosses as one undo step, counting their rows", async () => {
-      const { asOneStep, summaries } = spyOnSteps();
-      renderPanel({ asOneStep, analysis: THREE_BROKEN_DOWN });
+    it("clears the checked rows' glosses in one edit", async () => {
+      await renderPanel({ analysis: THREE_BROKEN_DOWN });
 
       await select('ta-1', 'ta-3');
       await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+      await settle();
 
-      expect(summaries).toEqual([{ kind: 'catalogClearGlossChecked', count: 2 }]);
+      expect(clearedGlossIds()).toEqual([['ta-1', 'ta-3']]);
     });
 
-    it('clears and counts only the checked rows that have a gloss', async () => {
-      const { asOneStep, summaries } = spyOnSteps();
-      renderPanel({
-        asOneStep,
+    it('clears only the checked rows that have a gloss', async () => {
+      await renderPanel({
         analysis: {
           ...THREE_BROKEN_DOWN,
           tokenAnalyses: THREE_BROKEN_DOWN.tokenAnalyses.map((ta) =>
@@ -4979,12 +4823,13 @@ describe('AnalysisCatalogPanel', () => {
 
       await select('ta-1', 'ta-3');
       await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
+      await settle();
 
-      expect(summaries).toEqual([{ kind: 'catalogClearGlossChecked', count: 1 }]);
+      expect(clearedGlossIds()).toEqual([['ta-1']]);
     });
 
     it('withholds Clear gloss while no checked row has a gloss', async () => {
-      renderPanel({
+      await renderPanel({
         analysis: {
           ...THREE_BROKEN_DOWN,
           tokenAnalyses: THREE_BROKEN_DOWN.tokenAnalyses.map((ta) => ({ ...ta, gloss: undefined })),
@@ -5015,7 +4860,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('opens the merge on the checked rows, the most used of them surviving', async () => {
-      renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
+      await renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
 
       await select('ta-1', 'ta-2');
       await userEvent.click(screen.getByTestId('catalog-selection-merge'));
@@ -5026,7 +4871,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('offers no merge of checked rows that span forms', async () => {
-      renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
+      await renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
 
       await select('ta-1', 'ta-2', 'ta-4');
 
@@ -5034,7 +4879,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('offers no merge of a single checked row', async () => {
-      renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
+      await renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
 
       await select('ta-1');
 
@@ -5081,7 +4926,7 @@ describe('AnalysisCatalogPanel', () => {
 
     describe('deleting over an unsaved breakdown', () => {
       it('asks before deleting checked rows when one holds an unsaved breakdown', async () => {
-        renderPanel({ analysis: THREE_FORMS });
+        await renderPanel({ analysis: THREE_FORMS });
         await typeUnsavedBreakdown('ta-3');
         await select('ta-1', 'ta-3');
 
@@ -5092,7 +4937,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('deletes the checked rows once the draft is given up', async () => {
-        renderPanel({ analysis: THREE_FORMS });
+        await renderPanel({ analysis: THREE_FORMS });
         await typeUnsavedBreakdown('ta-3');
         await select('ta-1', 'ta-3');
         await userEvent.click(screen.getByTestId('catalog-selection-delete'));
@@ -5103,7 +4948,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('reports no draft stranded by deleting the row it re-stated the breakdown of', async () => {
-        renderPanel({ analysis: THREE_FORMS });
+        await renderPanel({ analysis: THREE_FORMS });
         await userEvent.click(within(rowFor('ta-3')).getByTestId('catalog-row-toggle'));
         await openBreakdown(rowFor('ta-3'));
         await select('ta-1', 'ta-3');
@@ -5118,7 +4963,7 @@ describe('AnalysisCatalogPanel', () => {
 
     describe('clearing glosses over an unsaved breakdown', () => {
       it('asks before clearing a gloss that leaves a drafted row with nothing', async () => {
-        renderPanel({ analysis: THREE_FORMS });
+        await renderPanel({ analysis: THREE_FORMS });
         await typeUnsavedBreakdown('ta-3');
         await select('ta-1', 'ta-3');
 
@@ -5131,7 +4976,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('clears the glosses once the draft is given up', async () => {
-        renderPanel({ analysis: THREE_FORMS });
+        await renderPanel({ analysis: THREE_FORMS });
         await typeUnsavedBreakdown('ta-3');
         await select('ta-1', 'ta-3');
         await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
@@ -5143,7 +4988,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('asks before clearing a gloss that folds a drafted row into an identical one', async () => {
-        renderPanel({ analysis: oneFoldingRecord() });
+        await renderPanel({ analysis: oneFoldingRecord() });
         await typeUnsavedBreakdown('ta-1');
         await select('ta-1');
 
@@ -5161,7 +5006,7 @@ describe('AnalysisCatalogPanel', () => {
           surfaceText: 'ἀρχῇ',
           gloss: { en: 'start' },
         });
-        renderPanelWithGlossEditing({
+        await renderPanelWithGlossEditing({
           analysis: {
             ...base,
             tokenAnalyses: base.tokenAnalyses.map((ta) =>
@@ -5175,6 +5020,7 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
         // Leaves `ta-2` what clearing `ta-1` would make it, so the clear now folds `ta-1` away.
         act(() => editGloss('GEN 1:3:4', 'ἀρχῇ', ''));
+        await settle();
 
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
 
@@ -5185,7 +5031,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('keeps a draft without asking when its row survives the clear', async () => {
-        renderPanel({ analysis: THREE_BROKEN_DOWN });
+        await renderPanel({ analysis: THREE_BROKEN_DOWN });
         await typeUnsavedBreakdown('ta-3');
         await select('ta-1', 'ta-3');
 
@@ -5198,7 +5044,7 @@ describe('AnalysisCatalogPanel', () => {
       });
 
       it('reports no draft stranded by clearing the row it re-stated the breakdown of', async () => {
-        renderPanel({ analysis: THREE_FORMS });
+        await renderPanel({ analysis: THREE_FORMS });
         await userEvent.click(within(rowFor('ta-3')).getByTestId('catalog-row-toggle'));
         await openBreakdown(rowFor('ta-3'));
         await select('ta-1', 'ta-3');
@@ -5212,7 +5058,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('takes down a merge notice when deleting the checked rows', async () => {
-      renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
+      await renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       const input = within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input');
       await userEvent.clear(input);
@@ -5226,7 +5072,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it("takes down a merge notice when clearing the checked rows' glosses", async () => {
-      renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
+      await renderPanel({ analysis: HOMOGRAPHS_AND_ONE_OTHER });
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       const input = within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input');
       await userEvent.clear(input);
@@ -5245,7 +5091,7 @@ describe('AnalysisCatalogPanel', () => {
           '{count} cleared, {deletedCount} deleted, {usageCount} uses',
       });
       const announceUndoable = jest.fn();
-      renderPanel({
+      await renderPanel({
         announceUndoable,
         analysis: {
           ...THREE_BROKEN_DOWN,
@@ -5269,7 +5115,7 @@ describe('AnalysisCatalogPanel', () => {
           '{count} cleared, {mergedCount} merged',
       });
       const announceUndoable = jest.fn();
-      renderPanel({ announceUndoable, analysis: oneFoldingRecord() });
+      await renderPanel({ announceUndoable, analysis: oneFoldingRecord() });
 
       await select('ta-1');
       await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
@@ -5283,7 +5129,7 @@ describe('AnalysisCatalogPanel', () => {
           '{count} cleared, {deletedCount} deleted, {usageCount} uses, {mergedCount} merged',
       });
       const announceUndoable = jest.fn();
-      renderPanel({
+      await renderPanel({
         announceUndoable,
         analysis: oneFoldingRecord({
           ...FIXTURE_STAMPS,
@@ -5301,7 +5147,7 @@ describe('AnalysisCatalogPanel', () => {
 
     it('announces nothing for a gloss clear that removed no analysis', async () => {
       const announceUndoable = jest.fn();
-      renderPanel({ announceUndoable, analysis: THREE_BROKEN_DOWN });
+      await renderPanel({ announceUndoable, analysis: THREE_BROKEN_DOWN });
 
       await select('ta-1', 'ta-3');
       await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
@@ -5310,7 +5156,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('lets go of a checked row a search stops listing, for good', async () => {
-      renderPanel({ analysis: THREE_FORMS });
+      await renderPanel({ analysis: THREE_FORMS });
       await select('ta-1', 'ta-3');
 
       await userEvent.type(searchBox(), 'θεός');
@@ -5321,7 +5167,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('deletes every selected row, leaving the rest', async () => {
-      renderPanel({ analysis: THREE_FORMS });
+      await renderPanel({ analysis: THREE_FORMS });
 
       await select('ta-1', 'ta-3');
       await userEvent.click(screen.getByTestId('catalog-selection-delete'));
@@ -5329,19 +5175,22 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['ta-2']);
     });
 
-    it('deletes the checked rows as one undo step, counting their rows and uses', async () => {
-      const { asOneStep, summaries } = spyOnSteps();
-      renderPanel({ asOneStep, analysis: THREE_FORMS });
+    it('deletes the checked rows in one edit', async () => {
+      await renderPanel({ analysis: THREE_FORMS });
 
       await select('ta-1', 'ta-3');
       await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+      await settle();
 
-      expect(summaries).toEqual([{ kind: 'catalogDeleteChecked', count: 2, usageCount: 2 }]);
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.deleteAnalyses',
+        expect.objectContaining({ analysisIds: ['ta-1', 'ta-3'] }),
+      );
     });
 
     it('announces the deletion of the checked rows', async () => {
       const announceUndoable = jest.fn();
-      renderPanel({ announceUndoable, analysis: THREE_FORMS });
+      await renderPanel({ announceUndoable, analysis: THREE_FORMS });
 
       await select('ta-1', 'ta-3');
       await userEvent.click(screen.getByTestId('catalog-selection-delete'));

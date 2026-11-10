@@ -42,8 +42,8 @@ export default function useLostBoundaryDismissal({
   isImportView,
   useWebViewState,
 }: LostBoundaryDismissalOptions): LostBoundaryDismissal {
-  // Keying on the draft itself would re-run the search after every gloss auto-save, which replaces
-  // its identity without touching the boundaries.
+  // Keying on the draft itself would re-run the search after every gloss edit, which replaces its
+  // identity without touching the boundaries.
   const lostBoundaries = useMemo(
     () => (verseBook && !isImportView ? findLostBoundaries(verseBook, segmentation) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track segmentation, a ref value

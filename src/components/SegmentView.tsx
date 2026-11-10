@@ -680,8 +680,8 @@ function SegmentChipView({
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
 
-  /** Bridges an {@link ArcOverlay} split-button click into the phrase-store split dispatch. */
-  const handleArcSplit = useArcSplitHandler(tokenDocOrder);
+  /** Bridges an {@link ArcOverlay} split-button click into the session's phrase split command. */
+  const handleArcSplit = useArcSplitHandler();
 
   /**
    * Forwards a token-chip click (identified by the group's first-token ref) to the parent as a

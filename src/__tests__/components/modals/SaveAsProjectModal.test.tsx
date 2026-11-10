@@ -531,7 +531,7 @@ describe('SaveAsProjectModal', () => {
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
 
-    // An autosave landing behind the open modal would otherwise leave a live Save button over a
+    // An edit landing behind the open modal would otherwise leave a live Save button over a
     // write that has nothing left to persist.
     rerender(
       <SaveAsProjectModal

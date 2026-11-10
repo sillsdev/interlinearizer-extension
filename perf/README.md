@@ -11,9 +11,9 @@ Measures the extension rather than tests it: the data layer in Node, and the ext
 - `npm run perf:summary` renders the newest results of each kind as markdown tables.
 - `npm run perf:shape -- <dataset>...` compares the shape of analyses; see [Dataset shape](#dataset-shape).
 - `npm run perf:indexes -- [tier]...` applies random edits and undoes to each tier in Node, then checks that the derived indexes match ones built afresh, that each stored shard matches the draft, and that lookups match a scan of the stored records. It exits nonzero on any difference.
-- `npm run perf:pages -- [tier]...` seeds each tier with free translations of verses its books lack, then checks in Node that every session page and outline holds what the WebView's store holds for it. It runs random commands, undos and redos in a session, checking that each change's `onAnalysisChanged` names what its `ChangeSet` reached. A page client also follows those changes. Some of its refetches are sent before a change and absorbed after it. After each change, the client must hold what the session serves. It also times the first page a freshly opened draft serves, which builds the derived indexes. It exits nonzero on any difference.
+- `npm run perf:pages -- [tier]...` seeds each tier with free translations of verses its books lack, then checks in Node that every session page and outline holds what the selectors derive from the whole analysis for it. It runs random commands, undos and redos in a session, checking that each change's `onAnalysisChanged` names what its `ChangeSet` reached. A page client also follows those changes. Some of its refetches are sent before a change and absorbed after it. After each change, the client must hold what the session serves. It also times the first page a freshly opened draft serves, which builds the derived indexes. It exits nonzero on any difference.
 
-`PERF_TIERS` (comma-separated tier names) and `PERF_RUNS` (10 by default) narrow a run. `PERF_SKIP_SESSION_READS=true` keeps host-path sessions from reading the whole text even once the harness asks them to, to isolate that read's cost; the result file records it. The `large` tier's draft exceeds one websocket message, so only the Node benchmarks can measure it.
+`PERF_TIERS` (comma-separated tier names) and `PERF_RUNS` (10 by default) narrow a run. `PERF_SKIP_SESSION_READS=true` keeps sessions from reading the whole text even once the harness asks them to, to isolate that read's cost; the result file records it. The `large` tier's draft exceeds one websocket message, so only the Node benchmarks can measure it.
 
 Results land in `perf/results/` as JSON, each recording the machine, its load average, and both commits. Before committing one, suffix its name with the issue it was measured for and why, such as `-407-baseline`; `perf:summary` reads the time from the file, not its name.
 
@@ -30,7 +30,7 @@ A dataset is a tier name, or a `draft:<sourceProjectId>` or `project:<id>` key i
 - Global setup builds the extension for production (`E2E_BUILD_SCRIPT=build:production`).
 - The run gets empty extension storage, so listing projects reads only what the run seeds. Your own storage waits in `user-data.perf-backup` beside it and comes back on teardown.
 
-The run writes each tier's draft and saved projects straight into the app's extension storage from Node. It goes through the extension's draft repository, so seeding needs no command that carries a whole draft. A dev core keeps running meanwhile, so the run seeds only once the view has closed and its last autosave has landed.
+The run writes each tier's draft and saved projects straight into the app's extension storage from Node. It goes through the extension's draft repository, so seeding needs no command that carries a whole draft. A dev core keeps running meanwhile, so the run seeds only once the view has closed.
 
 Quit Platform.Bible first. A perf run refuses to start while any instance holds its ports, since that app may own the storage a run sets aside.
 

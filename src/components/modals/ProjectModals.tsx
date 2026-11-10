@@ -2,7 +2,7 @@ import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
 import type { DraftProject } from 'interlinearizer';
 import { useCallback, useEffect, useState } from 'react';
-import type { DraftCopyResult, NewDraftConfig } from '../../hooks/useDraftProject';
+import type { DraftCopyResult, NewDraftConfig } from '../../types/project-api';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
@@ -51,15 +51,15 @@ type PendingReplace =
  * @param props.detachFromProject - Records that the active project, the draft's Save target, was
  *   deleted.
  * @param props.commitDraft - Runs a Save As through the draft: once the stored draft is current,
- *   runs the given copy with the draft snapshot and, on the host path, the session's id. Marks the
- *   draft synced when the copy reports it landed whole. Resolves whether the copy landed, or
- *   `false` when no save could run.
+ *   runs the given copy with the draft snapshot and the session's id. Marks the draft synced when
+ *   the copy reports it landed whole. Resolves whether the copy landed, or `false` when no save
+ *   could run.
  * @param props.loadFromProject - Loads the analysis and config of the project with the given id
- *   into the draft (the "Open" flow). Rejects when the project can't be read; on the host path,
- *   also when the draft can't be stored.
+ *   into the draft (the "Open" flow). Rejects when the project can't be read or the draft can't be
+ *   stored.
  * @param props.newDraft - Seeds the draft with empty analysis and the given config; called before
- *   the New flow's backend round-trip so the editor is ready regardless of whether persistence
- *   succeeds. On the host path, settles once the draft is stored, and rejects when it can't be.
+ *   the New flow creates its project. Settles once the draft is stored, and rejects when it can't
+ *   be.
  * @param props.modal - Which modal is currently open.
  * @param props.onImportPt9 - Called when the user chooses "Import from Paratext 9" in the select
  *   modal; the caller owns the import run and its modal.
@@ -101,7 +101,7 @@ export default function ProjectModals({
   getDraftSnapshot: () => DraftProject | undefined;
   detachFromProject: () => void;
   commitDraft: (
-    copy: (snapshot: DraftProject, sessionId?: string) => Promise<DraftCopyResult>,
+    copy: (snapshot: DraftProject, sessionId: string) => Promise<DraftCopyResult>,
   ) => Promise<boolean>;
   loadFromProject: (projectId: string) => Settles<void>;
   newDraft: (config: NewDraftConfig) => Settles<void>;
@@ -241,10 +241,9 @@ export default function ProjectModals({
    * draft from it so Save targets the newly created project. This is the "New" flow: the project is
    * persisted immediately so it shows up in "Select Interlinear Project" right away.
    *
-   * `newDraft` is called before the backend round-trip so the editor is ready regardless of whether
-   * persistence succeeds. On the host path it settles once the draft is stored, and the project is
-   * created only after; a draft that can't be stored creates none. This is safe: when
-   * `hasUnsavedWork` is `false` the draft is either already committed to the active project or
+   * `newDraft` is called before the project is created. It settles once the draft is stored, and
+   * the project is created only after, so a draft that can't be stored creates none. This is safe:
+   * when `hasUnsavedWork` is `false` the draft is either already committed to the active project or
    * empty (nothing to lose); when `hasUnsavedWork` is `true` the {@link DiscardDraftConfirm} dialog
    * has already obtained consent to discard.
    *
@@ -412,25 +411,15 @@ export default function ProjectModals({
       try {
         const saved = await commitDraft(async (snapshot, sessionId) => {
           const { analysisLanguages, targetProjectId } = snapshot;
-          const createdJson =
-            sessionId === undefined
-              ? await papi.commands.sendCommand(
-                  'interlinearizer.saveDraftAsProject',
-                  projectId,
-                  analysisLanguages,
-                  targetProjectId,
-                  name,
-                  description,
-                )
-              : await papi.commands.sendCommand(
-                  'interlinearizer.saveDraftAsProject',
-                  projectId,
-                  analysisLanguages,
-                  targetProjectId,
-                  name,
-                  description,
-                  sessionId,
-                );
+          const createdJson = await papi.commands.sendCommand(
+            'interlinearizer.saveDraftAsProject',
+            sessionId,
+            projectId,
+            analysisLanguages,
+            targetProjectId,
+            name,
+            description,
+          );
           const created: unknown = JSON.parse(createdJson);
           if (!isSavedAsProject(created)) {
             await papi.notifications
@@ -466,21 +455,13 @@ export default function ProjectModals({
             analysisLanguages: snapshot.analysisLanguages,
             targetProjectId: snapshot.targetProjectId,
           };
-          const savedJson =
-            sessionId === undefined
-              ? await papi.commands.sendCommand(
-                  'interlinearizer.saveDraftToProject',
-                  projectId,
-                  project.id,
-                  config,
-                )
-              : await papi.commands.sendCommand(
-                  'interlinearizer.saveDraftToProject',
-                  projectId,
-                  project.id,
-                  config,
-                  sessionId,
-                );
+          const savedJson = await papi.commands.sendCommand(
+            'interlinearizer.saveDraftToProject',
+            sessionId,
+            projectId,
+            project.id,
+            config,
+          );
           // `undefined` means the project no longer exists, so nothing was persisted.
           if (!savedJson) {
             await papi.notifications

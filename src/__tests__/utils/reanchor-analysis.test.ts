@@ -218,6 +218,22 @@ describe('reanchorAnalysisToBook', () => {
     });
   });
 
+  it('stales both twins when their links share an analysis but not a confidence', () => {
+    // Written against "Wug blicket wug", at 0 and 12.
+    const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'Wug blicket wig' }]);
+    const analysis = analysisWithTokenLinks([
+      { ...makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug' }), confidence: 'high' },
+      { ...makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'wug' }), confidence: 'low' },
+    ]);
+
+    const result = reanchor(analysis, book);
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'stale',
+      token: { tokenRef: 'GEN 1:1:0' },
+    });
+  });
+
   it('stales both same-analysis twins when only one of them sits in a phrase', () => {
     // Written against "Wug blicket wug", at 0 and 12.
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'Wug blicket wig' }]);

@@ -608,7 +608,7 @@ function reanchorOnce(
   const linksByKey = new Map<string, string[]>();
   analysis.tokenAnalysisLinks.forEach((link) => {
     const key = snapshotKey(link.token);
-    const signature = JSON.stringify([link.analysisId, link.status]);
+    const signature = JSON.stringify([link.analysisId, link.status, link.confidence]);
     linksByKey.set(key, [...(linksByKey.get(key) ?? []), signature]);
   });
   const kinByKey = new Map(

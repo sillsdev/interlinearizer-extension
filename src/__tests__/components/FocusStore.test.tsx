@@ -374,6 +374,19 @@ describe('FocusProvider publishing', () => {
     expect(harness.read().nav.publishedFocus.get()).toBe('GEN 1:1:1');
   });
 
+  it('publishes a seeded focus that an anchor keeps', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+    act(() => harness.read().actions.focusToken('GEN 1:1:1', 'seed'));
+
+    act(() =>
+      harness.read().actions.selectSegment({ book: 'GEN', chapter: 1, verse: 1 }, 'GEN 1:1:0', {
+        anchor: true,
+      }),
+    );
+
+    expect(harness.read().nav.publishedFocus.get()).toBe('GEN 1:1:1');
+  });
+
   it('publishes a claimed request', () => {
     const harness = renderFocus(makeBook(), GEN_1_1);
 
@@ -444,6 +457,32 @@ describe('FocusProvider selectSegment', () => {
 
     expect(harness.read().tokenRef).toBe('GEN 1:1:1');
     expect(harness.setScrRefSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps a focus already in the segment that an anchor names', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+    act(() => harness.read().actions.focusToken('GEN 1:1:1', 'strip'));
+
+    act(() =>
+      harness.read().actions.selectSegment({ book: 'GEN', chapter: 1, verse: 1 }, 'GEN 1:1:0', {
+        anchor: true,
+      }),
+    );
+
+    expect(harness.read().tokenRef).toBe('GEN 1:1:1');
+  });
+
+  it('focuses an anchor whose segment does not hold the focus', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1);
+
+    act(() =>
+      harness.read().actions.selectSegment({ book: 'GEN', chapter: 1, verse: 2 }, 'GEN 1:2:0', {
+        anchor: true,
+      }),
+    );
+
+    expect(harness.read()).toMatchObject({ tokenRef: 'GEN 1:2:0', origin: 'list' });
+    expect(harness.setScrRefSpy).toHaveBeenCalledWith(GEN_1_2);
   });
 
   it('leaves the focus alone when the whole segment was selected', () => {

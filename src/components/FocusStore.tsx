@@ -64,6 +64,15 @@ export interface FocusStore {
   write: (tokenRef: string | undefined, origin: FocusOrigin) => void;
 }
 
+/** Options for {@link FocusActions.selectSegment}. */
+export type SelectSegmentOptions = Readonly<{
+  /**
+   * Whether the token stands in for its whole segment rather than naming a clicked token, so that a
+   * focus already in that segment stays where the reader left it.
+   */
+  anchor?: boolean;
+}>;
+
 /** The write paths that own how focus moves; identities are stable for the provider's lifetime. */
 export interface FocusActions {
   /**
@@ -80,9 +89,10 @@ export interface FocusActions {
    * Updates the active scripture reference and, when `tokenRef` names a clicked token rather than a
    * whole segment, focuses it. Skips the write to PAPI when the clicked verse is already the
    * current one, avoiding a gratuitous echo round-trip. A verse-0 segment (a chapter
-   * superscription) writes like any other verse.
+   * superscription) writes like any other verse. An `anchor` call whose segment already holds the
+   * focus moves neither the reference nor the focus.
    */
-  selectSegment: (ref: ScriptureRef, tokenRef?: string) => void;
+  selectSegment: (ref: ScriptureRef, tokenRef?: string, options?: SelectSegmentOptions) => void;
 }
 
 /** What {@link FocusStoreProvider} carries; stable, so reading it never re-renders a consumer. */
@@ -269,7 +279,15 @@ export function FocusProvider({
         if (segmentContainsVerse(seg, current)) return;
         navigateRef.current(toSerializedVerseRef(seg.startRef), 'internal');
       },
-      selectSegment: (ref, tokenRef) => {
+      selectSegment: (ref, tokenRef, options) => {
+        if (options?.anchor && tokenRef) {
+          const focused = store.getFocus().tokenRef;
+          const segIdOf = (token: string) => tokenSegmentMapRef.current.get(token);
+          if (focused !== undefined && segIdOf(focused) === segIdOf(tokenRef)) {
+            markChosen();
+            return;
+          }
+        }
         const { current } = scrRefRef;
         if (!isSameVerse(ref, current)) {
           navigateRef.current(toSerializedVerseRef(ref), 'internal');

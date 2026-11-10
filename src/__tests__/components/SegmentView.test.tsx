@@ -447,7 +447,262 @@ describe('SegmentView', () => {
 
     // Passes the first word token so the parent can both highlight the segment and navigate its verse.
     expect(handleSelect).toHaveBeenCalledTimes(1);
-    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
+    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0', {
+      anchor: true,
+    });
+  });
+
+  describe('baseline-text word clicks', () => {
+    /** A two-verse segment whose second verse, 22, starts at Gamma. */
+    const SUPERSCRIPT_CLICK_SEGMENT: Segment = {
+      ...MERGED_BASELINE_SEGMENT,
+      tokens: [
+        makeWordToken('w-alpha', 'Alpha'),
+        makeWordToken('w-beta', 'beta', 6),
+        makePunctToken('p-1', '.', 10),
+        makeWordToken('w-gamma', 'Gamma', 12),
+        makeWordToken('w-delta', 'delta', 18),
+        makePunctToken('p-2', '.', 23),
+      ],
+      verseStarts: [
+        { charStart: 0, number: '1', chapter: 1 },
+        { charStart: 12, number: '22', chapter: 1 },
+      ],
+    };
+
+    /** Makes the caret hit-test report `offset` within the first text node reading `text`. */
+    function stubCaretAt(container: HTMLElement, text: string, offset: number): void {
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node && node.textContent !== text) node = walker.nextNode();
+      if (!node) throw new Error(`no text node reads "${text}"`);
+      stubCaretAtNode(node, offset);
+    }
+
+    /** Makes the caret hit-test report `offset` within `offsetNode`. */
+    function stubCaretAtNode(offsetNode: Node, offset: number): void {
+      Object.defineProperty(document, 'caretPositionFromPoint', {
+        configurable: true,
+        // eslint-disable-next-line no-null/no-null -- the DOM API reports no rectangle as null
+        value: () => ({ offsetNode, offset, getClientRect: () => null }),
+      });
+    }
+
+    afterEach(() => {
+      Reflect.deleteProperty(document, 'caretPositionFromPoint');
+      document.getSelection()?.removeAllRanges();
+    });
+
+    it('selects the word that was clicked', () => {
+      const handleSelect = jest.fn();
+      render(
+        <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />,
+        withEmptyAnalysis,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, 'the', 1);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-1');
+    });
+
+    it('does not count a verse superscript toward the clicked offset', () => {
+      const handleSelect = jest.fn();
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={SUPERSCRIPT_CLICK_SEGMENT}
+          onSelect={handleSelect}
+        />,
+        withEmptyAnalysis,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, 'Gamma', 4);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 22 }, 'w-gamma');
+    });
+
+    it('selects the first word after a clicked verse number', () => {
+      const handleSelect = jest.fn();
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={SUPERSCRIPT_CLICK_SEGMENT}
+          onSelect={handleSelect}
+        />,
+        withEmptyAnalysis,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, '22', 1);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 22 }, 'w-gamma');
+    });
+
+    it('selects the last word for a caret on an element past every word', () => {
+      const handleSelect = jest.fn();
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={SUPERSCRIPT_CLICK_SEGMENT}
+          onSelect={handleSelect}
+        />,
+        withEmptyAnalysis,
+      );
+      const box = screen.getByTestId('segment-container');
+      const baselineTextEl = screen.getByText('22').closest('sup')?.parentElement;
+      if (!baselineTextEl) throw new Error('no baseline text element');
+      stubCaretAtNode(baselineTextEl, baselineTextEl.childNodes.length);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 22 }, 'w-delta');
+    });
+
+    it('leaves the focus alone for the click that ends a drag-selection', () => {
+      const handleSelect = jest.fn();
+      render(
+        <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />,
+        withEmptyAnalysis,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, 'the', 1);
+      document.getSelection()?.selectAllChildren(box);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).not.toHaveBeenCalled();
+    });
+
+    it('selects the verse of a clicked word in a merged segment', () => {
+      const handleSelect = jest.fn();
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={MERGED_CHIP_SEGMENT}
+          onSelect={handleSelect}
+        />,
+        withEmptyAnalysis,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, 'Gamma', 2);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 }, 'GEN 1:2:0');
+    });
+
+    it('selects the start verse for a word clicked in a heading', () => {
+      const handleSelect = jest.fn();
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={HEADING_SEGMENT}
+          onSelect={handleSelect}
+        />,
+        withEmptyAnalysis,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, 'Heading', 1);
+
+      fireEvent.click(box);
+
+      const headingWord = HEADING_SEGMENT.tokens.find((t) => t.surfaceText === 'Heading');
+      expect(handleSelect).toHaveBeenCalledWith(
+        { book: 'GEN', chapter: 1, verse: 1 },
+        headingWord?.ref,
+      );
+    });
+
+    it('selects the word before a click that lands between words', () => {
+      const handleSelect = jest.fn();
+      const segment = makeSegment('GEN 1:1', 'Alpha, beta', [
+        makeWordToken('w-alpha', 'Alpha'),
+        makePunctToken('p-comma', ',', 5),
+        makeWordToken('w-beta', 'beta', 7),
+      ]);
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={segment}
+          onSelect={handleSelect}
+        />,
+        withEmptyAnalysis,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, ',', 0);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'w-alpha');
+    });
+
+    it('selects the first word for a click ahead of every word', () => {
+      const handleSelect = jest.fn();
+      const segment = makeSegment('GEN 1:1', '"Alpha beta', [
+        makePunctToken('p-quote', '"'),
+        makeWordToken('w-alpha', 'Alpha', 1),
+        makeWordToken('w-beta', 'beta', 7),
+      ]);
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={segment}
+          onSelect={handleSelect}
+        />,
+        withEmptyAnalysis,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, '"', 0);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'w-alpha');
+    });
+
+    it('selects the first word of a clicked verse number whose verse starts with punctuation', () => {
+      const handleSelect = jest.fn();
+      const segment: Segment = {
+        ...MERGED_BASELINE_SEGMENT,
+        baselineText: 'End. "Hello',
+        tokens: [
+          makeWordToken('w-end', 'End'),
+          makePunctToken('p-period', '.', 3),
+          makePunctToken('p-quote', '"', 5),
+          makeWordToken('w-hello', 'Hello', 6),
+        ],
+        verseStarts: [
+          { charStart: 0, number: '1', chapter: 1 },
+          { charStart: 5, number: '2', chapter: 1 },
+        ],
+      };
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={segment}
+          onSelect={handleSelect}
+        />,
+        withEmptyAnalysis,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, '2', 1);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 }, 'w-hello');
+    });
   });
 
   it('renders a free-translation input below the plain text in baseline-text mode', () => {
@@ -498,7 +753,9 @@ describe('SegmentView', () => {
     await userEvent.click(screen.getByTestId('segment-free-translation-input'));
 
     expect(handleSelect).toHaveBeenCalledTimes(1);
-    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
+    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0', {
+      anchor: true,
+    });
   });
 
   it('calls onSelect with the verse ref and token id when a word token is clicked', async () => {
@@ -666,7 +923,9 @@ describe('SegmentView', () => {
       fireEvent.click(screen.getByTestId('baseline-split-gap'), { altKey: false });
       expect(dispatch.split).not.toHaveBeenCalled();
       // The plain click still routes to the segment-select handler.
-      expect(onSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
+      expect(onSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0', {
+        anchor: true,
+      });
     });
 
     it('dispatches the former-boundary ref and anchors the gap at its token on a former boundary', () => {
@@ -1029,7 +1288,9 @@ describe('SegmentView', () => {
     await userEvent.click(screen.getByTestId('segment-container'));
 
     expect(handleSelect).toHaveBeenCalledTimes(1);
-    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
+    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0', {
+      anchor: true,
+    });
   });
 
   it('does nothing on background click when the segment has no word token', async () => {
@@ -1199,7 +1460,9 @@ describe('SegmentView', () => {
 
     await userEvent.click(screen.getByTestId('segment-free-translation-input'));
 
-    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
+    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0', {
+      anchor: true,
+    });
   });
 
   it('does not select on free-translation focus when the segment has no word token', async () => {

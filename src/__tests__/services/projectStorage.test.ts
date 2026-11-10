@@ -1989,7 +1989,7 @@ describe('projectStorage', () => {
       await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: false } });
     });
 
-    it('shares what saveDraft knows of storage, rewriting only the edited book', async () => {
+    it('shares what the stored draft knows of storage, rewriting only the edited book', async () => {
       const draft = makeDraftSpanningBooks('src-proj', 'GEN', 'JHN');
       await storeDraft(token, 'src-proj', draft);
       __mockWriteUserData.mockClear();
@@ -2001,7 +2001,7 @@ describe('projectStorage', () => {
       expect(writtenKeys()).not.toContain('draft:src-proj:analysis:JHN');
     });
 
-    it('applies changes to the draft saveDraft saved', async () => {
+    it('applies changes to the stored draft', async () => {
       await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
 
       await openDraftRepository(token, 'src-proj').apply({
@@ -2062,7 +2062,7 @@ describe('projectStorage', () => {
         (r: AnalysisRepository) => r.getScope().then(({ analysisLanguages }) => analysisLanguages),
         0,
       ],
-    ])('answers %s from the draft saveDraft saved', async (_name, lookup, count) => {
+    ])('answers %s from the stored draft', async (_name, lookup, count) => {
       await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
 
       await expect(lookup(openDraftRepository(token, 'src-proj'))).resolves.toHaveLength(count);

@@ -137,6 +137,13 @@ describe('writeGloss', () => {
               gloss: { en: 'at' },
             },
           ]);
+          expect(result.tokenAnalysisLinks).toStrictEqual([
+            {
+              ...link('tl-in', 'new-analysis', TOKEN, 'In'),
+              updatedAt: NOW,
+            },
+            link('tl-other', 'ta-in', OTHER_TOKEN, 'in'),
+          ]);
         },
       },
     ],

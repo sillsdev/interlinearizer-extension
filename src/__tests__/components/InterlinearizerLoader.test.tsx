@@ -246,8 +246,6 @@ let interlinearizerMountCount = 0;
 type CapturedStoreProps = {
   /** BCP 47 tag for reading and writing gloss values. */
   analysisLanguage: string;
-  /** Analysis seeded into the store; not reactive after mount. */
-  /** Called after each store mutation with the updated analysis and where it was made. */
   /** Called with whether any gloss input holds uncommitted text. */
   onPendingEditsChange?: (pending: boolean) => void;
   children: ReactNode;
@@ -274,7 +272,8 @@ jest.mock('../../components/AnalysisStore', () => {
 
 /**
  * Whether the view stub should mount {@link StoreProbe}. Off by default, because the probe's hooks
- * throw outside a Redux provider and most tests here neither render one nor care about the store.
+ * throw outside a {@link SessionAnalysisProvider}. Most tests here neither render one nor care about
+ * the store.
  */
 let mountStoreProbe = false;
 

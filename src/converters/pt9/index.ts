@@ -11,10 +11,11 @@ export type { Pt9ConversionInput, Pt9ConversionResult } from './convertPt9Projec
 
 export type { Pt9LexiconResolver } from './lexiconResolver';
 
-export { isPt9ImportReport, isPt9UnreadableFileList } from './report';
+export { isPt9ImportReport, isPt9UnreadableFileList, PT9_CLUSTER_DROP_REASONS } from './report';
 export type {
   Pt9BarePayloadReport,
   Pt9BookReport,
+  Pt9ClusterDrop,
   Pt9ClusterDropReason,
   Pt9ImportReport,
   Pt9LanguageReport,

@@ -96,12 +96,14 @@ describe('buildLanguageBookAnalyses', () => {
       clusterDrops: {
         verseNotFound: 0,
         formMismatch: 0,
+        parseFormMismatch: 0,
         frontMatter: 0,
         lemmaOrOther: 0,
         duplicateCluster: 0,
         unparseableLexemeId: 0,
         blankMorphemeForm: 0,
       },
+      drops: [],
       ambiguousAnchors: 0,
       punctuationEntriesIgnored: 1,
     });
@@ -186,6 +188,102 @@ describe('buildLanguageBookAnalyses', () => {
     expect(build.bookReport.versesNotFound).toBe(1);
     expect(build.bookReport.clusterDrops.verseNotFound).toBe(1);
     expect(build.bookReport.punctuationEntriesIgnored).toBe(1);
+  });
+
+  it('lists a cluster that matches no word of its verse', () => {
+    const { senses } = emptyPt9ImportReport();
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        {
+          reference: 'GEN 1:1',
+          clusters: [wordCluster(0, 5, 'hello'), wordCluster(6, 5, 'other')],
+          punctuations: [],
+        },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book: makeVerseBook([{ sid: 'GEN 1:1', text: 'hello world' }]),
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.bookReport.drops).toStrictEqual([
+      { verseRef: 'GEN 1:1', reason: 'formMismatch', lexemeIds: ['Word:other'] },
+    ]);
+  });
+
+  it("counts a parse whose forms don't spell its kept word apart from a form mismatch", () => {
+    const { senses } = emptyPt9ImportReport();
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        {
+          reference: 'GEN 1:1',
+          clusters: [wordCluster(0, 5, 'hello'), parseCluster(0, 5, 'run', 'ing')],
+          punctuations: [],
+        },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book: makeVerseBook([{ sid: 'GEN 1:1', text: 'hello' }]),
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.records[0].word?.keyId).toBe('Word:hello');
+    expect(build.bookReport.clusterDrops.formMismatch).toBe(0);
+    expect(build.bookReport.clusterDrops.parseFormMismatch).toBe(1);
+    expect(build.bookReport.drops).toStrictEqual([
+      { verseRef: 'GEN 1:1', reason: 'parseFormMismatch', lexemeIds: ['Stem:run', 'Suffix:ing'] },
+    ]);
+  });
+
+  it('leaves a lexeme without an id out of its dropped cluster', () => {
+    const { senses } = emptyPt9ImportReport();
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        {
+          reference: 'GEN 1:1',
+          clusters: [mkCluster(0, 5, [['Stem:hel'], [undefined]])],
+          punctuations: [],
+        },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book: makeVerseBook([{ sid: 'GEN 1:1', text: 'hello' }]),
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.bookReport.drops).toStrictEqual([
+      { verseRef: 'GEN 1:1', reason: 'unparseableLexemeId', lexemeIds: ['Stem:hel'] },
+    ]);
+  });
+
+  it("lists each cluster of a verse that isn't found, with its verse and lexeme ids", () => {
+    const { senses } = emptyPt9ImportReport();
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        {
+          reference: 'GEN 1:9',
+          clusters: [wordCluster(0, 5, 'ghost'), parseCluster(0, 5, 'gho', 'st')],
+          punctuations: [],
+        },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book: makeVerseBook([{ sid: 'GEN 1:1', text: 'hello' }]),
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.bookReport.drops).toStrictEqual([
+      { verseRef: 'GEN 1:9', reason: 'verseNotFound', lexemeIds: ['Word:ghost'] },
+      { verseRef: 'GEN 1:9', reason: 'verseNotFound', lexemeIds: ['Stem:gho', 'Suffix:st'] },
+    ]);
   });
 
   it('anchors a verse key onto the verse and the heading filed under it', () => {
@@ -311,6 +409,28 @@ describe('buildLanguageBookAnalyses', () => {
     expect(build.bookReport.versesNotFound).toBe(1);
     expect(build.bookReport.versesHashed).toBe(1);
     expect(build.bookReport.clusterDrops.verseNotFound).toBe(1);
+  });
+
+  it("counts a missing book's clusters without listing them", () => {
+    const { senses } = emptyPt9ImportReport();
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        {
+          reference: 'GEN 1:1',
+          clusters: [wordCluster(0, 5, 'hello'), wordCluster(6, 5, 'world')],
+          punctuations: [],
+        },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book: undefined,
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.bookReport.clusterDrops.verseNotFound).toBe(2);
+    expect(build.bookReport.drops).toStrictEqual([]);
   });
 
   it('builds phrase records with the verse status and Excluded rejection', () => {

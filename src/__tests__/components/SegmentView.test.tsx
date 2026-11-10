@@ -497,7 +497,7 @@ describe('SegmentView', () => {
       const handleSelect = jest.fn();
       render(
         <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />,
-        withAnalysisStore,
+        withEmptyAnalysis,
       );
       const box = screen.getByTestId('segment-container');
       stubCaretAt(box, 'the', 1);
@@ -516,7 +516,7 @@ describe('SegmentView', () => {
           segment={SUPERSCRIPT_CLICK_SEGMENT}
           onSelect={handleSelect}
         />,
-        withAnalysisStore,
+        withEmptyAnalysis,
       );
       const box = screen.getByTestId('segment-container');
       stubCaretAt(box, 'Gamma', 4);
@@ -535,7 +535,7 @@ describe('SegmentView', () => {
           segment={SUPERSCRIPT_CLICK_SEGMENT}
           onSelect={handleSelect}
         />,
-        withAnalysisStore,
+        withEmptyAnalysis,
       );
       const box = screen.getByTestId('segment-container');
       stubCaretAt(box, '22', 1);
@@ -554,7 +554,7 @@ describe('SegmentView', () => {
           segment={SUPERSCRIPT_CLICK_SEGMENT}
           onSelect={handleSelect}
         />,
-        withAnalysisStore,
+        withEmptyAnalysis,
       );
       const box = screen.getByTestId('segment-container');
       const baselineTextEl = screen.getByText('22').closest('sup')?.parentElement;
@@ -570,7 +570,7 @@ describe('SegmentView', () => {
       const handleSelect = jest.fn();
       render(
         <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />,
-        withAnalysisStore,
+        withEmptyAnalysis,
       );
       const box = screen.getByTestId('segment-container');
       stubCaretAt(box, 'the', 1);
@@ -590,7 +590,7 @@ describe('SegmentView', () => {
           segment={MERGED_CHIP_SEGMENT}
           onSelect={handleSelect}
         />,
-        withAnalysisStore,
+        withEmptyAnalysis,
       );
       const box = screen.getByTestId('segment-container');
       stubCaretAt(box, 'Gamma', 2);
@@ -609,7 +609,7 @@ describe('SegmentView', () => {
           segment={HEADING_SEGMENT}
           onSelect={handleSelect}
         />,
-        withAnalysisStore,
+        withEmptyAnalysis,
       );
       const box = screen.getByTestId('segment-container');
       stubCaretAt(box, 'Heading', 1);
@@ -637,7 +637,7 @@ describe('SegmentView', () => {
           segment={segment}
           onSelect={handleSelect}
         />,
-        withAnalysisStore,
+        withEmptyAnalysis,
       );
       const box = screen.getByTestId('segment-container');
       stubCaretAt(box, ',', 0);
@@ -661,7 +661,7 @@ describe('SegmentView', () => {
           segment={segment}
           onSelect={handleSelect}
         />,
-        withAnalysisStore,
+        withEmptyAnalysis,
       );
       const box = screen.getByTestId('segment-container');
       stubCaretAt(box, '"', 0);
@@ -694,7 +694,7 @@ describe('SegmentView', () => {
           segment={segment}
           onSelect={handleSelect}
         />,
-        withAnalysisStore,
+        withEmptyAnalysis,
       );
       const box = screen.getByTestId('segment-container');
       stubCaretAt(box, '2', 1);

@@ -11,6 +11,12 @@ import { readPt9InterlinearData, type Pt9InterlinearReadFile } from './pt9DataRe
 import * as projectStorage from './projectStorage';
 import { summarizeProject } from './projectSummaries';
 
+/**
+ * Matches the message of core's `MissingBookException`, which `getBookUSJ` throws for a book the
+ * project lacks.
+ */
+const MISSING_BOOK_ERROR = /Book number \d+ not found in project/;
+
 /** The outcome of one import run, returned to the caller as the command's JSON payload. */
 export interface Pt9ImportResult {
   /**
@@ -175,7 +181,12 @@ export async function importPt9Project(
   const books: Book[] = (
     await Promise.all(
       bookIds.map(async (bookId): Promise<Book[]> => {
-        const usj = await usjPdp.getBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 });
+        const usj = await usjPdp
+          .getBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 })
+          .catch((error: unknown) => {
+            if (error instanceof Error && MISSING_BOOK_ERROR.test(error.message)) return undefined;
+            throw error;
+          });
         if (!usj) {
           logger.warn(
             `Interlinearizer: project ${sourceProjectId} has no USJ for book ${bookId}; its interlinear data is skipped`,

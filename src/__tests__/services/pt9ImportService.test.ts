@@ -145,6 +145,7 @@ function mockPdps({
   data = (selector?: { paths?: string[] }) =>
     Promise.resolve(selectFromFixture(readFixtureData(), selector?.paths)),
   usj = MAT_USJ,
+  usjFailure,
   languageTag = 'en',
   shortName = async () => 'SRC',
 }: {
@@ -155,6 +156,8 @@ function mockPdps({
   /** Produces the parsed payload; reject to simulate a platform-side read or parse failure. */
   data?: (selector?: { paths?: string[] }) => Promise<Pt9InterlinearProjectData>;
   usj?: unknown;
+  /** An error that every book's USJ read rejects with, overriding `usj`. */
+  usjFailure?: Error;
   languageTag?: unknown;
   /** The source project's `platform.name`; reject to simulate an unreadable setting. */
   shortName?: () => Promise<string>;
@@ -166,7 +169,11 @@ function mockPdps({
         getPt9InterlinearData: jest.fn().mockImplementation(data),
       });
     if (projectInterface === 'platformScripture.USJ_Book')
-      return Promise.resolve({ getBookUSJ: jest.fn().mockResolvedValue(usj) });
+      return Promise.resolve({
+        getBookUSJ: usjFailure
+          ? jest.fn().mockRejectedValue(usjFailure)
+          : jest.fn().mockResolvedValue(usj),
+      });
     return Promise.resolve({
       getSetting: jest.fn((key: string) =>
         key === 'platform.name' ? shortName() : Promise.resolve(languageTag),
@@ -511,6 +518,28 @@ describe('importPt9Project', () => {
     expect(result.outcome).toBe('imported');
     expect(result.report?.languages[0].books[0].bookFound).toBe(false);
     expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('no USJ for book MAT'));
+  });
+
+  it('skips a book the platform reports missing and reports it missing', async () => {
+    mockPdps({
+      usjFailure: new Error(
+        'JSON-RPC Request error (-32000): Book number 40 not found in project src-project.',
+      ),
+    });
+
+    const result = await importPt9Project(token, 'src-project');
+
+    expect(result.outcome).toBe('imported');
+    expect(result.report?.languages[0].books[0].bookFound).toBe(false);
+    expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('no USJ for book MAT'));
+  });
+
+  it('fails the import when a book read fails for another reason', async () => {
+    mockPdps({ usjFailure: new Error('Scripture text is locked') });
+
+    await expect(importPt9Project(token, 'src-project')).rejects.toThrow(
+      'Scripture text is locked',
+    );
   });
 
   it('imports a book that repeats a verse marker, logging the skipped SID', async () => {

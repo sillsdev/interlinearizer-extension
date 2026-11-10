@@ -4402,12 +4402,10 @@ describe('main', () => {
 
     it('marks the draft unsaved when an undo leads back to content it saved that is not empty, once its project is deleted', async () => {
       const repository = await seedDraft(glossedIn);
-      jest
-        .mocked(projectStorage.saveDraftToProject)
-        .mockResolvedValue({
-          ...makeStubProject('proj-1'),
-          analysis: { ...emptyAnalysis(), ...glossedIn },
-        });
+      jest.mocked(projectStorage.saveDraftToProject).mockResolvedValue({
+        ...makeStubProject('proj-1'),
+        analysis: { ...emptyAnalysis(), ...glossedIn },
+      });
       const { openSession, writeGloss, saveDraftToProject, detachFromProject, undoEdit } =
         await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));

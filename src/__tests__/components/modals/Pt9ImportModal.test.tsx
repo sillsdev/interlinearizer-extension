@@ -1,11 +1,15 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { MAX_SHOWN_DROPS, Pt9ImportModal } from '../../../components/modals/Pt9ImportModal';
+import {
+  COPY_FEEDBACK_MS,
+  MAX_SHOWN_DROPS,
+  Pt9ImportModal,
+} from '../../../components/modals/Pt9ImportModal';
 import type { Pt9ClusterDrop, Pt9ImportReport } from '../../../converters/pt9';
 
 const LOCALIZED: Record<string, string> = {
@@ -29,6 +33,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_moreDrops%': '{count} more not shown',
   '%interlinearizer_pt9ImportModal_copyDrops%': 'Copy all',
   '%interlinearizer_pt9ImportModal_dropsCopied%': 'Copied',
+  '%interlinearizer_pt9ImportModal_copyFailed%': "Couldn't copy",
   '%interlinearizer_pt9ImportModal_dropLine%': '{verseRef} ({language}) {lexemeIds} — {reason}',
   '%interlinearizer_pt9ImportModal_reason_lemmaOrOther%': 'unused legacy data',
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%': 'duplicate data',
@@ -330,7 +335,7 @@ describe('Pt9ImportModal', () => {
     expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
   });
 
-  it('logs a failed copy and leaves the button offering to copy', async () => {
+  it('logs a failed copy and says so on the button', async () => {
     const user = userEvent.setup();
     jest.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
     const report = makeReport();
@@ -351,7 +356,65 @@ describe('Pt9ImportModal', () => {
     await user.click(await screen.findByRole('button', { name: 'Copy all' }));
 
     await waitFor(() => expect(logger.error).toHaveBeenCalled());
-    expect(screen.getByRole('button', { name: 'Copy all' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Couldn't copy" })).toBeInTheDocument();
+  });
+
+  it('offers to copy again once the feedback has passed', async () => {
+    jest.useFakeTimers();
+    try {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const report = makeReport();
+      report.languages[0].books[0].drops = [
+        { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+      ];
+      render(
+        <Pt9ImportModal
+          phase={{ kind: 'report', report }}
+          mode="import"
+          sourceShortName="SRC"
+          onOpen={jest.fn()}
+          onClose={jest.fn()}
+        />,
+      );
+      await user.click(screen.getByText('Show what was not imported'));
+      await user.click(await screen.findByRole('button', { name: 'Copy all' }));
+      await screen.findByRole('button', { name: 'Copied' });
+
+      act(() => jest.advanceTimersByTime(COPY_FEEDBACK_MS));
+
+      expect(screen.getByRole('button', { name: 'Copy all' })).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('offers to copy again when the list is reopened', async () => {
+    const user = userEvent.setup();
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    const summary = screen.getByText('Show what was not imported');
+    await user.click(summary);
+    await user.click(await screen.findByRole('button', { name: 'Copy all' }));
+    await screen.findByRole('button', { name: 'Copied' });
+
+    await user.click(summary);
+    await waitFor(() =>
+      expect(screen.queryByTestId('pt9-import-drop-lines')).not.toBeInTheDocument(),
+    );
+    await user.click(summary);
+
+    expect(await screen.findByRole('button', { name: 'Copy all' })).toBeInTheDocument();
   });
 
   it('notes no hidden lines when every drop is shown', async () => {

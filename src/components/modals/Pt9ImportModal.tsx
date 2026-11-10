@@ -1,7 +1,7 @@
 import { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import {
   PT9_CLUSTER_DROP_REASONS,
@@ -39,6 +39,7 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_pt9ImportModal_moreDrops%',
   '%interlinearizer_pt9ImportModal_copyDrops%',
   '%interlinearizer_pt9ImportModal_dropsCopied%',
+  '%interlinearizer_pt9ImportModal_copyFailed%',
   '%interlinearizer_pt9ImportModal_dropLine%',
   '%interlinearizer_pt9ImportModal_missingBooks%',
   '%interlinearizer_pt9ImportModal_filesTooLarge%',
@@ -189,6 +190,16 @@ function foldReport(report: Pt9ImportReport): ReportTotals {
  */
 export const MAX_SHOWN_DROPS = 100;
 
+/** How long, in milliseconds, the Copy all button shows the last copy's outcome. */
+export const COPY_FEEDBACK_MS = 2000;
+
+/** The Copy all button's label for each copy outcome; `idle` covers no copy and expired feedback. */
+const COPY_LABEL_KEYS: Record<'copied' | 'failed' | 'idle', `%${string}%`> = {
+  copied: '%interlinearizer_pt9ImportModal_dropsCopied%',
+  failed: '%interlinearizer_pt9ImportModal_copyFailed%',
+  idle: '%interlinearizer_pt9ImportModal_copyDrops%',
+};
+
 /**
  * A collapsed list of the dropped clusters, one line each, with a button that copies every line.
  * Lines are built only while the list is open.
@@ -201,7 +212,12 @@ function DroppedClusterList({
   localizedStrings: LanguageStrings;
 }>) {
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copyOutcome, setCopyOutcome] = useState<'copied' | 'failed'>();
+  useEffect(() => {
+    if (copyOutcome === undefined) return undefined;
+    const timer = setTimeout(() => setCopyOutcome(undefined), COPY_FEEDBACK_MS);
+    return () => clearTimeout(timer);
+  }, [copyOutcome]);
   const describe = (drop: ReportTotals['droppedClusters'][number]) =>
     formatReplacementString(localizedStrings['%interlinearizer_pt9ImportModal_dropLine%'], {
       verseRef: drop.verseRef,
@@ -213,9 +229,10 @@ function DroppedClusterList({
   const copyAll = async () => {
     try {
       await navigator.clipboard.writeText(droppedClusters.map(describe).join('\n'));
-      setCopied(true);
+      setCopyOutcome('copied');
     } catch (e) {
       logger.error('Interlinearizer: failed to copy the clusters a Paratext 9 import dropped', e);
+      setCopyOutcome('failed');
     }
   };
   return (
@@ -223,7 +240,10 @@ function DroppedClusterList({
       className="tw:text-sm"
       data-testid="pt9-import-drops"
       open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
+      onToggle={(event) => {
+        setOpen(event.currentTarget.open);
+        setCopyOutcome(undefined);
+      }}
     >
       <summary className="tw:cursor-pointer">
         {localizedStrings['%interlinearizer_pt9ImportModal_showDrops%']}
@@ -245,9 +265,7 @@ function DroppedClusterList({
             </p>
           )}
           <Button className="tw:self-start" size="sm" variant="secondary" onClick={copyAll}>
-            {copied
-              ? localizedStrings['%interlinearizer_pt9ImportModal_dropsCopied%']
-              : localizedStrings['%interlinearizer_pt9ImportModal_copyDrops%']}
+            {localizedStrings[COPY_LABEL_KEYS[copyOutcome ?? 'idle']]}
           </Button>
         </div>
       )}
@@ -295,8 +313,6 @@ export function Pt9ImportModal({
   onClose: () => void;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(PT9_IMPORT_MODAL_STRING_KEYS);
-  const report = phase.kind === 'report' ? phase.report : undefined;
-  const totals = useMemo(() => report && foldReport(report), [report]);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
@@ -384,8 +400,35 @@ export function Pt9ImportModal({
     );
   }
 
-  // Every phase left here is a report, so `totals` is set.
-  /* v8 ignore next */ if (!totals) return undefined;
+  return (
+    <Pt9ImportReportView
+      report={phase.report}
+      mode={mode}
+      title={title}
+      localizedStrings={localizedStrings}
+      onOpen={onOpen}
+      onClose={onClose}
+    />
+  );
+}
+
+/** The report summary that a finished run shows, with the actions that `mode` offers. */
+function Pt9ImportReportView({
+  report,
+  mode,
+  title,
+  localizedStrings,
+  onOpen,
+  onClose,
+}: Readonly<{
+  report: Pt9ImportReport;
+  mode: 'import' | 'offer' | 'sync';
+  title: string;
+  localizedStrings: LanguageStrings;
+  onOpen?: () => void;
+  onClose: () => void;
+}>) {
+  const totals = useMemo(() => foldReport(report), [report]);
   const dropTotal = totals.drops.reduce((sum, drop) => sum + drop.count, 0);
   const reasonLines = totals.drops.map(
     (drop) =>
@@ -456,8 +499,8 @@ export function Pt9ImportModal({
           </p>
         )}
         <LeftOutFileLines
-          filesTooLarge={phase.report.filesTooLargeToRead}
-          filesNeverLoaded={phase.report.filesPt9NeverLoads}
+          filesTooLarge={report.filesTooLargeToRead}
+          filesNeverLoaded={report.filesPt9NeverLoads}
           localizedStrings={localizedStrings}
         />
       </div>

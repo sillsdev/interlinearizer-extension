@@ -128,7 +128,9 @@ export function buildLanguageBookAnalyses(args: {
     const filedFrontMatter = verse.reference === frontMatterVerseId ? frontMatter : [];
     if (segments.length === 0 && filedFrontMatter.length === 0) {
       bookReport.versesNotFound += 1;
-      verse.clusters.forEach((cluster) => recordDrop('verseNotFound', cluster));
+      // A book with no text is reported whole, so listing each of its clusters would add nothing.
+      if (book === undefined) bookReport.clusterDrops.verseNotFound += verse.clusters.length;
+      else verse.clusters.forEach((cluster) => recordDrop('verseNotFound', cluster));
       return;
     }
 

@@ -47,7 +47,10 @@ export interface Pt9BookReport {
   /** Phrase clusters that anchored and produced a phrase record. */
   phrasesConverted: number;
   clusterDrops: Record<Pt9ClusterDropReason, number>;
-  /** Each dropped cluster, grouped by verse in the book's verse order. */
+  /**
+   * Each dropped cluster, grouped by verse in the book's verse order. Empty for a book the project
+   * has no text for; `clusterDrops` still counts that book's drops.
+   */
   drops: Pt9ClusterDrop[];
   /** Anchors chosen among several candidate tokens rather than matched uniquely. */
   ambiguousAnchors: number;
@@ -169,16 +172,17 @@ export interface Pt9UnreadableFile {
 
 /** A `clusterDrops` record with every reason at zero. */
 export function emptyClusterDrops(): Record<Pt9ClusterDropReason, number> {
-  return {
-    verseNotFound: 0,
-    formMismatch: 0,
-    parseFormMismatch: 0,
-    frontMatter: 0,
-    lemmaOrOther: 0,
-    duplicateCluster: 0,
-    unparseableLexemeId: 0,
-    blankMorphemeForm: 0,
-  };
+  const drops = Object.fromEntries(PT9_CLUSTER_DROP_REASONS.map((reason) => [reason, 0]));
+  /* v8 ignore next -- the entries above name every reason */
+  if (!countsEveryReason(drops)) throw new Error('A cluster drop reason has no count');
+  return drops;
+}
+
+/** Whether `counts` holds a count for every {@link Pt9ClusterDropReason}. */
+function countsEveryReason(
+  counts: Record<string, number>,
+): counts is Record<Pt9ClusterDropReason, number> {
+  return PT9_CLUSTER_DROP_REASONS.every((reason) => reason in counts);
 }
 
 /** A book report with every count at zero. */

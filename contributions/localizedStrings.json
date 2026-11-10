@@ -401,6 +401,7 @@
       "%interlinearizer_pt9ImportModal_moreDrops%": "{count} more not shown; Copy all copies every line",
       "%interlinearizer_pt9ImportModal_copyDrops%": "Copy all",
       "%interlinearizer_pt9ImportModal_dropsCopied%": "Copied",
+      "%interlinearizer_pt9ImportModal_copyFailed%": "Couldn't copy",
       "%interlinearizer_pt9ImportModal_dropLine%": "{verseRef} ({language}) {lexemeIds} — {reason}",
       "%interlinearizer_pt9ImportModal_missingBooks%": "Books with no text in this project: {books}",
       "%interlinearizer_pt9ImportModal_filesTooLarge%": "Larger than the {limit} one read can carry, so left out: {files}",

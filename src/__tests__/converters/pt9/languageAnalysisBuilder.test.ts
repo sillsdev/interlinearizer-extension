@@ -411,6 +411,28 @@ describe('buildLanguageBookAnalyses', () => {
     expect(build.bookReport.clusterDrops.verseNotFound).toBe(1);
   });
 
+  it("counts a missing book's clusters without listing them", () => {
+    const { senses } = emptyPt9ImportReport();
+    const build = buildLanguageBookAnalyses({
+      interlinear: interlinearOf([
+        {
+          reference: 'GEN 1:1',
+          clusters: [wordCluster(0, 5, 'hello'), wordCluster(6, 5, 'world')],
+          punctuations: [],
+        },
+      ]),
+      rawLanguage: 'en',
+      bookId: 'GEN',
+      tag: 'en',
+      book: undefined,
+      glossSource: createPt9GlossSource(LEXICON),
+      senses,
+    });
+
+    expect(build.bookReport.clusterDrops.verseNotFound).toBe(2);
+    expect(build.bookReport.drops).toStrictEqual([]);
+  });
+
   it('builds phrase records with the verse status and Excluded rejection', () => {
     const { senses } = emptyPt9ImportReport();
     const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'in the beginning in the' }]);

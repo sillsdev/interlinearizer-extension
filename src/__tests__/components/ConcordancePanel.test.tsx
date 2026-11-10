@@ -76,7 +76,7 @@ function makeText(overrides: Partial<SourceText> = {}): SourceText {
   });
 }
 
-/** Builds a stand-in reading of each of `bookIds`; the summary reads only how many there are. */
+/** Builds a stand-in reading for each of `bookIds`, with no occurrences or spellings. */
 function readingsOf(...bookIds: string[]): ReadonlyMap<string, BookConcordance> {
   return new Map(
     bookIds.map((book) => [

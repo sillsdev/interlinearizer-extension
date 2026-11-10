@@ -10,12 +10,7 @@ import { getWritingSystem } from './bookService';
 import { readPt9InterlinearData, type Pt9InterlinearReadFile } from './pt9DataReader';
 import * as projectStorage from './projectStorage';
 import { summarizeProject } from './projectSummaries';
-
-/**
- * Matches the message of core's `MissingBookException`, which `getBookUSJ` throws for a book the
- * project lacks.
- */
-const MISSING_BOOK_ERROR = /Book number \d+ not found in project/;
+import { presentBookIds } from '../utils/books-present';
 
 /** The outcome of one import run, returned to the caller as the command's JSON payload. */
 export interface Pt9ImportResult {
@@ -176,17 +171,19 @@ export async function importPt9Project(
   const bookIds = [
     ...new Set(data.books.flatMap((book) => (book.bookId === undefined ? [] : [book.bookId]))),
   ];
-  const writingSystem = await getWritingSystem(sourceProjectId);
+  const basePdp = await papi.projectDataProviders.get('platform.base', sourceProjectId);
+  const [booksPresent, writingSystem] = await Promise.all([
+    basePdp.getSetting('platformScripture.booksPresent'),
+    getWritingSystem(sourceProjectId),
+  ]);
+  const presentBooks = new Set(presentBookIds(booksPresent));
   const usjPdp = await papi.projectDataProviders.get('platformScripture.USJ_Book', sourceProjectId);
   const books: Book[] = (
     await Promise.all(
       bookIds.map(async (bookId): Promise<Book[]> => {
-        const usj = await usjPdp
-          .getBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 })
-          .catch((error: unknown) => {
-            if (error instanceof Error && MISSING_BOOK_ERROR.test(error.message)) return undefined;
-            throw error;
-          });
+        const usj = presentBooks.has(bookId)
+          ? await usjPdp.getBookUSJ({ book: bookId, chapterNum: 1, verseNum: 1 })
+          : undefined;
         if (!usj) {
           logger.warn(
             `Interlinearizer: project ${sourceProjectId} has no USJ for book ${bookId}; its interlinear data is skipped`,

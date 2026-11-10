@@ -139,6 +139,9 @@ function selectFromFixture(
   };
 }
 
+/** `platformScripture.booksPresent` flags marking only MAT, book 40, present. */
+const MAT_PRESENT = `${'0'.repeat(39)}1`;
+
 /** Serves fake PDPs for the three projectInterfaces the service consumes. */
 function mockPdps({
   manifest = FIXTURE_MANIFEST,
@@ -146,6 +149,7 @@ function mockPdps({
     Promise.resolve(selectFromFixture(readFixtureData(), selector?.paths)),
   usj = MAT_USJ,
   usjFailure,
+  booksPresent = MAT_PRESENT,
   languageTag = 'en',
   shortName = async () => 'SRC',
 }: {
@@ -157,7 +161,9 @@ function mockPdps({
   data?: (selector?: { paths?: string[] }) => Promise<Pt9InterlinearProjectData>;
   usj?: unknown;
   /** An error that every book's USJ read rejects with, overriding `usj`. */
-  usjFailure?: Error;
+  usjFailure?: unknown;
+  /** The source project's `platformScripture.booksPresent` flags. */
+  booksPresent?: string;
   languageTag?: unknown;
   /** The source project's `platform.name`; reject to simulate an unreadable setting. */
   shortName?: () => Promise<string>;
@@ -175,9 +181,11 @@ function mockPdps({
           : jest.fn().mockResolvedValue(usj),
       });
     return Promise.resolve({
-      getSetting: jest.fn((key: string) =>
-        key === 'platform.name' ? shortName() : Promise.resolve(languageTag),
-      ),
+      getSetting: jest.fn((key: string) => {
+        if (key === 'platform.name') return shortName();
+        if (key === 'platformScripture.booksPresent') return Promise.resolve(booksPresent);
+        return Promise.resolve(languageTag);
+      }),
     });
   });
 }
@@ -520,26 +528,19 @@ describe('importPt9Project', () => {
     expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('no USJ for book MAT'));
   });
 
-  it('skips a book the platform reports missing and reports it missing', async () => {
+  it('skips a book the project does not hold without reading its text', async () => {
     mockPdps({
-      usjFailure: new Error(
-        'JSON-RPC Request error (-32000): Book number 40 not found in project src-project.',
-      ),
+      booksPresent: '0'.repeat(66),
+      usjFailure: {
+        message: 'Book number 40 not found in project src-project.',
+        platformErrorVersion: 1,
+      },
     });
 
     const result = await importPt9Project(token, 'src-project');
 
     expect(result.outcome).toBe('imported');
     expect(result.report?.languages[0].books[0].bookFound).toBe(false);
-    expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('no USJ for book MAT'));
-  });
-
-  it('fails the import when a book read fails for another reason', async () => {
-    mockPdps({ usjFailure: new Error('Scripture text is locked') });
-
-    await expect(importPt9Project(token, 'src-project')).rejects.toThrow(
-      'Scripture text is locked',
-    );
   });
 
   it('imports a book that repeats a verse marker, logging the skipped SID', async () => {

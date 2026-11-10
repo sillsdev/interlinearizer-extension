@@ -39,9 +39,9 @@ A book the project no longer has is treated as holding no text, so every approva
 Token and phrase links carry a `TokenSnapshot` (`tokenRef` plus the `surfaceText` it was written against). Approved, candidate, and stale links are the evidence the alignment weighs; rejected and suggested links align afterward, among themselves, against the tokens those leave unclaimed, so a verdict never decides which occurrence an approval names. For each verse independently:
 
 1. Collect the snapshots that point into the verse, deduplicated by ref and normalized form, in offset order.
-2. A snapshot whose own ref still names a token of the same normalized form has not moved; keep it, and withhold both from the alignment below. A form the verse now holds fewer of than were stored is the exception, since a surviving twin may have shifted onto that ref. A stale link's ref may predate an earlier edit, so it never unsettles an approved or candidate link here: only those count and order against each other.
+2. A snapshot whose own ref still names a token of the same normalized form has not moved; keep it, and withhold both from the alignment below. A form the verse now holds fewer of than were stored is the exception, since a surviving twin may have shifted onto that ref. Interchangeable copies are exempt from that exception: every copy carries the same links and no phrase names any of them, so it makes no difference which one the edit removed. A stale link's ref may predate an earlier edit, so it never unsettles an approved or candidate link here: only those count and order against each other.
 3. Align the remaining stored forms against the verse's remaining tokens by longest common subsequence, comparing forms through `normalizeSurfaceForm`, so case and Unicode normalization alone never orphan a link. Matching is positional, so the second `"the"` lands on the second surviving `"the"`. The alignment repeats with each round's placements withheld until a round places nothing new, so a word moved past its neighbors still places.
-4. Place a form only when the pairing is forced: every stored occurrence found a counterpart, and the verse holds exactly as many of that form as were stored. Otherwise leave it unplaced.
+4. Place a form only when the pairing is forced: every stored occurrence found a counterpart, and the verse holds exactly as many of that form as were stored, or, for interchangeable copies, no more. Otherwise leave it unplaced.
 
 Verses are independent because a token never migrates between verses, and a verse whose own text is untouched must not shift because a neighbor changed.
 
@@ -61,7 +61,7 @@ Segment analyses (free translations) have no offsets to heal, so they are checke
 
 ## Known limits
 
-- **A deleted word with an unglossed twin.** A form stored once whose occurrence was deleted, leaving an identical unglossed word elsewhere in the verse, looks exactly like the gloss shifting onto that twin. A snapshot cannot tell the two apart.
+- **A deleted word with an unglossed twin.** When the glossed occurrences of a form stored once, or as interchangeable copies, are deleted and an identical unglossed word stays in the verse, the result looks exactly like the glosses shifting onto that twin. A snapshot cannot tell the two apart. In "wug wug wug" with the first two glossed alike, deleting those two keeps one approval on the remaining `wug`, which was never glossed.
 - **An insertion that shifts an unglossed twin onto a glossed word's ref.** In "bank x bank" with the second `bank` glossed at 7, inserting seven characters at the front moves the first `bank` onto 7, so rule 2 keeps the gloss there, on the wrong word, silently. From a snapshot this is indistinguishable from the gloss staying put.
 - **Words that moved between verses** go stale rather than following.
 - **Alignment endpoints** (`AlignmentLink`) are not re-anchored. No feature writes them yet, so they need handling when one does.

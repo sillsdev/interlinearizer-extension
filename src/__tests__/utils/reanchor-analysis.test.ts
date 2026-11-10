@@ -180,9 +180,46 @@ describe('reanchorAnalysisToBook', () => {
 
     const result = reanchor(analysis, book);
 
+    // Which of the two links keeps the approval is unspecified.
     const approved = result.tokenAnalysisLinks.filter((l) => l.status === 'approved');
     expect(approved.map((l) => l.token.tokenRef)).toEqual(['GEN 1:1:8']);
     expect(result.tokenAnalysisLinks.map((l) => l.status).sort()).toEqual(['approved', 'stale']);
+  });
+
+  it('keeps one approval when one pass deletes two of three same-analysis copies', () => {
+    // Written against "wug wug wug", at 0, 4 and 8.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug' }),
+      makeTokenLink('ta-dig', 'GEN 1:1:4', { surfaceText: 'wug' }),
+      makeTokenLink('ta-dig', 'GEN 1:1:8', { surfaceText: 'wug' }),
+    ]);
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'wug' }]));
+
+    expect(
+      result.tokenAnalysisLinks.flatMap((l) => (l.status === 'approved' ? [l.token.tokenRef] : [])),
+    ).toEqual(['GEN 1:1:0']);
+    expect(result.tokenAnalysisLinks.map((l) => l.status).sort()).toEqual([
+      'approved',
+      'stale',
+      'stale',
+    ]);
+  });
+
+  it('keeps an approval on an unglossed twin when the glossed same-analysis copies are deleted', () => {
+    // Written against "wug wug wug", with only the first two glossed. A snapshot cannot tell the
+    // third copy from them.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug' }),
+      makeTokenLink('ta-dig', 'GEN 1:1:4', { surfaceText: 'wug' }),
+    ]);
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'wug' }]));
+
+    expect(result.tokenAnalysisLinks.map((l) => [l.status, l.token.tokenRef])).toEqual([
+      ['approved', 'GEN 1:1:0'],
+      ['stale', 'GEN 1:1:4'],
+    ]);
   });
 
   it('keeps one approval through two deletions of same-analysis copies', () => {

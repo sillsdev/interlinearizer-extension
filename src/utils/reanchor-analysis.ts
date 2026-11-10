@@ -56,9 +56,9 @@ function countByValue(values: string[]): Map<string, number> {
  * A form in `interchangeable` stays placeable when the verse lost occurrences of it, because any of
  * its stored copies may take a survivor. A spare occurrence still makes it unplaceable.
  *
- * One ambiguity survives, being unresolvable from a {@link TokenSnapshot}: a form stored once whose
- * occurrence was deleted, leaving one unglossed twin, presents exactly as that gloss shifted along
- * by an edit.
+ * One ambiguity survives, being unresolvable from a {@link TokenSnapshot}. A form whose glossed
+ * occurrences were deleted, leaving an unglossed twin, presents exactly as those glosses shifted
+ * along by an edit. That holds for a form stored once or as interchangeable copies.
  *
  * @param stored - The stored forms, in document order.
  * @param current - The verse's current forms, in document order.
@@ -160,15 +160,16 @@ function alignForms(
   const a = stored.map(normalizeSurfaceForm);
   const b = tokens.map((t) => normalizeSurfaceForm(t.surfaceText));
 
-  const kinByForm = new Map<string, string | undefined>();
-  a.forEach((form, index) =>
-    kinByForm.set(
-      form,
-      kinByForm.has(form) && kinByForm.get(form) !== kin[index] ? undefined : kin[index],
-    ),
-  );
+  const kinByForm = new Map<string, Set<string | undefined>>();
+  a.forEach((form, index) => {
+    const formKin = kinByForm.get(form) ?? new Set<string | undefined>();
+    formKin.add(kin[index]);
+    kinByForm.set(form, formKin);
+  });
   const interchangeable = new Set(
-    [...kinByForm].flatMap(([form, formKin]) => (formKin === undefined ? [] : [form])),
+    [...kinByForm].flatMap(([form, formKin]) =>
+      formKin.size === 1 && !formKin.has(undefined) ? [form] : [],
+    ),
   );
 
   // A stored position whose own ref still names a token of its form has not moved, whatever the

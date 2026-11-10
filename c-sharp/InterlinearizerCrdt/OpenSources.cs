@@ -170,9 +170,10 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
     /// <summary>
     /// The one spelling of a source's id that its lock, its scope, and its database file go by.
     /// Platform.Bible compares project ids ignoring case, so the id is upper-cased, as its
-    /// <c>normalizeProjectId</c> does. It does not limit an id's characters, so this allows only
-    /// those that name the same file on every platform: ASCII letters, digits, <c>_</c>, and
-    /// <c>-</c>. Over ASCII alone, upper-casing here gives what upper-casing in JavaScript does.
+    /// <c>normalizeProjectId</c> does. Platform.Bible does not limit an id's characters, so this
+    /// allows only those that name the same file on every platform: ASCII letters, digits,
+    /// <c>_</c>, and <c>-</c>. Over ASCII alone, upper-casing here gives what upper-casing in
+    /// JavaScript does.
     /// </summary>
     /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
     private static string Key(string sourceProjectId)

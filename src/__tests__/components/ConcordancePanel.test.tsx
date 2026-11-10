@@ -14,7 +14,12 @@ import { ConcordanceEntriesContext, SourceTextContext } from '../../components/S
 import type { SourceText } from '../../hooks/useSourceTextReader';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { renderWithAnalysis } from './analysis-provider';
-import { buildConcordanceEntries, indexBook, type ConcordanceEntry } from '../../utils/concordance';
+import {
+  buildConcordanceEntries,
+  indexBook,
+  type BookConcordance,
+  type ConcordanceEntry,
+} from '../../utils/concordance';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
 import { makeSourceText } from './test-helpers';
 
@@ -69,6 +74,16 @@ function makeText(overrides: Partial<SourceText> = {}): SourceText {
     readings: new Map(),
     ...overrides,
   });
+}
+
+/** Builds a stand-in reading of each of `bookIds`; the summary reads only how many there are. */
+function readingsOf(...bookIds: string[]): ReadonlyMap<string, BookConcordance> {
+  return new Map(
+    bookIds.map((book) => [
+      book,
+      { book, textVersion: 'v1', occurrencesByForm: new Map(), spellingCountsByForm: new Map() },
+    ]),
+  );
 }
 
 /** Builds an approved link from `tokenRef` to the analysis. */
@@ -180,9 +195,14 @@ describe('ConcordancePanel', () => {
     );
   });
 
-  /** A reading of `bookCount` books where `failedBookIds` failed. */
-  function partialText(bookCount: number, failedBookIds: string[]): SourceText {
-    return makeText({ booksRead: bookCount, bookCount, failedBookIds });
+  /** A reading of the books of `bookIds` where `failedBookIds` failed. */
+  function partialText(bookIds: string[], failedBookIds: string[]): SourceText {
+    return makeText({
+      booksRead: bookIds.length,
+      bookCount: bookIds.length,
+      failedBookIds,
+      readings: readingsOf(...bookIds.filter((id) => !failedBookIds.includes(id))),
+    });
   }
 
   /** The panel's strings with templates for the reading summary. */
@@ -192,10 +212,22 @@ describe('ConcordancePanel', () => {
   });
 
   it('says how many books were read once every book is read', async () => {
-    await renderPanel({ localizedStrings: SUMMARY_STRINGS });
+    await renderPanel({
+      text: makeText({ readings: readingsOf('GEN', 'EXO') }),
+      localizedStrings: SUMMARY_STRINGS,
+    });
 
     expect(screen.getByTestId('concordance-books-read')).toHaveTextContent('Read 2');
     expect(screen.queryByTestId('concordance-unread-books')).not.toBeInTheDocument();
+  });
+
+  it('leaves a book with no text out of the books read', async () => {
+    await renderPanel({
+      text: makeText({ readings: readingsOf('GEN') }),
+      localizedStrings: SUMMARY_STRINGS,
+    });
+
+    expect(screen.getByTestId('concordance-books-read')).toHaveTextContent('Read 1');
   });
 
   it('shows no reading summary while the text is still being read', async () => {
@@ -205,7 +237,10 @@ describe('ConcordancePanel', () => {
   });
 
   it('names the books that failed to read beside what was read', async () => {
-    await renderPanel({ text: partialText(4, ['MRK', 'JHN']), localizedStrings: SUMMARY_STRINGS });
+    await renderPanel({
+      text: partialText(['MAT', 'MRK', 'LUK', 'JHN'], ['MRK', 'JHN']),
+      localizedStrings: SUMMARY_STRINGS,
+    });
 
     expect(screen.getByTestId('concordance-books-read')).toHaveTextContent('Read 2');
     expect(screen.getByTestId('concordance-unread-books')).toHaveTextContent('Unread: MRK, JHN');

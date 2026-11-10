@@ -8,7 +8,7 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type { DraftProject, DraftStart, ProjectConfig } from 'interlinearizer';
+import type { DraftProject, DraftStart, InterlinearProject, ProjectConfig } from 'interlinearizer';
 import type { CommandHandlers, NetworkEvents } from 'papi-shared-types';
 import {
   formatReplacementString,
@@ -18,7 +18,12 @@ import {
 } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
+import {
+  AnalysisSessions,
+  isEmptyDraft,
+  type OpenedSession,
+  type Session,
+} from './services/analysisSessions';
 import * as bookService from './services/bookService';
 import { startCSharpHost } from './services/csharpHost';
 import {
@@ -577,20 +582,24 @@ async function reportUnreadableBooks(
 }
 
 /**
- * Runs `save` in the session's turn. When `whole` says that the result holds the whole draft, the
- * session's history then marks the draft saved. A failed mark is only logged, because the project
- * holds the saved content either way.
+ * Runs `save` in the session's turn. When `savedWhole` gives the project that the result saved the
+ * whole draft to, the session's history then marks the draft saved. A save of an empty draft stays
+ * saved even once that project is deleted.
+ *
+ * A failed mark is only logged, because the project holds the saved content either way.
  *
  * @throws If the session is not open, or whatever `save` throws.
  */
 async function savingInSession<T>(
   sessionId: string,
   save: () => Promise<T>,
-  whole: (result: T) => boolean,
+  savedWhole: (result: T) => InterlinearProject | undefined,
 ): Promise<T> {
   return sessions.run(sessionId, async ({ history }) => {
     const result = await save();
-    if (whole(result)) {
+    const project = savedWhole(result);
+    if (project) {
+      if (isEmptyDraft(project)) history.noteEmpty();
       try {
         await history.markClean();
       } catch (e) {
@@ -635,7 +644,7 @@ async function saveDraftToProject(
             interlinearProjectId,
             config,
           ),
-        (project) => project !== undefined,
+        (project) => project,
       );
       return saved ? JSON.stringify(toProjectSummary(saved)) : undefined;
     });
@@ -691,7 +700,7 @@ async function saveDraftAsProject(
             name,
             description,
           ),
-        ({ omittedBooks }) => omittedBooks.length === 0,
+        ({ project, omittedBooks }) => (omittedBooks.length === 0 ? project : undefined),
       );
       await reportUnreadableBooks(
         created.omittedBooks,

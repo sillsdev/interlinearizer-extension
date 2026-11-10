@@ -4378,6 +4378,48 @@ describe('main', () => {
       await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: true } });
     });
 
+    it('marks the draft saved when an undo leads back to an emptied draft it saved, once its project is deleted', async () => {
+      const repository = await seedDraft(glossedIn);
+      jest.mocked(projectStorage.saveDraftToProject).mockResolvedValue(makeStubProject('proj-1'));
+      const {
+        openSession,
+        deleteAnalyses,
+        writeGloss,
+        saveDraftToProject,
+        detachFromProject,
+        undoEdit,
+      } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await deleteAnalyses({ sessionId, analysisIds: ['ta-in'] });
+      await saveDraftToProject(sessionId, 'src-project', 'proj-1');
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'au' });
+
+      await detachFromProject({ sessionId });
+      await undoEdit({ sessionId });
+
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: false } });
+    });
+
+    it('marks the draft unsaved when an undo leads back to content it saved that is not empty, once its project is deleted', async () => {
+      const repository = await seedDraft(glossedIn);
+      jest
+        .mocked(projectStorage.saveDraftToProject)
+        .mockResolvedValue({
+          ...makeStubProject('proj-1'),
+          analysis: { ...emptyAnalysis(), ...glossedIn },
+        });
+      const { openSession, writeGloss, saveDraftToProject, detachFromProject, undoEdit } =
+        await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      await saveDraftToProject(sessionId, 'src-project', 'proj-1');
+      await writeGloss({ sessionId, tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'au' });
+
+      await detachFromProject({ sessionId });
+      await undoEdit({ sessionId });
+
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty: true } });
+    });
+
     it('logs the error and rethrows when a session cannot be detached', async () => {
       const { detachFromProject } = await activateSessionCommands();
 

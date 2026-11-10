@@ -166,7 +166,10 @@ async function describeApplied(
 }
 
 /** Whether `draft` holds no analysis and no boundary edits. */
-function isEmptyDraft({ analysis, segmentation }: DraftProject): boolean {
+export function isEmptyDraft({
+  analysis,
+  segmentation,
+}: Pick<DraftProject, 'analysis' | 'segmentation'>): boolean {
   return (
     Object.values(analysis).every((records) => records.length === 0) && isEmptyDelta(segmentation)
   );
@@ -692,8 +695,8 @@ export class AnalysisSessions {
    * marked unsaved.
    *
    * An empty draft has nothing to lose, so its saved states are the exception. The current state
-   * stays saved when the draft is empty, as does the state the session opened on when that was
-   * empty.
+   * stays saved when the draft is empty, as does each empty state that the session opened on or
+   * saved.
    *
    * @throws {ReadOnlyAnalysisError} If the session is read-only.
    * @throws {Error} If the session is not open.

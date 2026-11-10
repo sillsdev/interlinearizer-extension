@@ -67,6 +67,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 - **Services**: they come from one DI container built in `Program`. There is no scope per request, because the JSON-RPC layer offers none.
   - `OpenSources` opens one DI scope per source project and keeps it until the source is closed, as FieldWorks Lite does. The first command on a source opens it.
   - Each scope sits over the source's own SQLite database, named after the source in the container's `SourcesDirectory`. Nothing else names the file, so a source always opens the same database.
+  - A source's id may hold only ASCII letters, digits, `_`, and `-`, so it names the same file on every platform. The host upper-cases it, since Platform.Bible compares project ids ignoring case, and refuses any other id.
   - A handler takes the source and interlinear project ids and resolves the project's `AnalysisRepository` from the source's scope. A project the database does not store has no repository.
   - Commands on one source share its scope's `InterlinearizerCrdtDbContext`, and EF Core does not allow overlapping operations on one context. So the host runs each command on a source, `closeSource` included, under that source's lock in `OpenSources.Exclusive`, and callers may overlap them.
 - **Client id**: the host keeps a per-installation client id, which Harmony tells devices apart by, in its data directory: `--data-dir` names it, defaulting to a per-user folder.

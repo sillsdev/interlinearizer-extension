@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, readdirSync, rmSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import type { TokenAnalysis } from 'interlinearizer';
@@ -63,11 +63,12 @@ describe('the host over one source', () => {
       command('listProjects', { sourceProjectId: 'source-folder' }),
     ).resolves.toStrictEqual([]);
 
-    expect(existsSync(path.join(dataDirectory, 'sources', 'source-folder.sqlite'))).toBe(true);
+    expect(readdirSync(path.join(dataDirectory, 'sources'))).toContain('SOURCE-FOLDER.sqlite');
   });
 
-  it('refuses a source whose id cannot name a file', async () => {
+  it('refuses a source whose id cannot name a file on every platform', async () => {
     await expect(command('listProjects', { sourceProjectId: 'a/b' })).rejects.toThrow('cannot');
+    await expect(command('listProjects', { sourceProjectId: 'a\\b' })).rejects.toThrow('cannot');
     await expect(command('listProjects', { sourceProjectId: '' })).rejects.toThrow('cannot');
   });
 

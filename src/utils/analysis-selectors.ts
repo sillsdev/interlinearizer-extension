@@ -8,7 +8,6 @@ import type {
   TokenAnalysisLink,
 } from 'interlinearizer';
 import { morphemeCarriesAnnotation } from './analysis-identity';
-import { buildCatalogRows, type HeadingPlacement } from './analysis-query';
 import type { StaleFreeTranslation } from './stale-free-translations';
 import { preferredLinkByKey } from './pick-rules';
 import {
@@ -210,33 +209,6 @@ export const selectPoolIndex = createSelector(
   selectAnalysisById,
   selectApprovedTokenCountByAnalysisId,
   buildPoolIndex,
-);
-
-/**
- * Memoized selector building the Analysis Catalog's rows — one per distinct token analysis, with
- * its usage counts and locations — against the book named as the second argument, placing heading
- * usages by the optional third. Only a change to the analysis it reads, to the named book, or to
- * the placements rebuilds the rows, so searching and sorting the result never does.
- *
- * Rows are cached per book code and placements asked for rather than in a single slot, so two
- * components reading different books do not thrash. The canon bounds how many books there can be,
- * and an entry for a placements map goes once nothing else holds that map.
- */
-export const selectCatalogRows = createSelector(
-  selectTokenAnalyses,
-  selectTokenAnalysisLinks,
-  selectAnalysisLanguage,
-  (_state: AnalysisState, currentBook: string) => currentBook,
-  (
-    _state: AnalysisState,
-    _currentBook: string,
-    headingPlacements?: ReadonlyMap<string, HeadingPlacement>,
-  ) => headingPlacements,
-  (tokenAnalyses, tokenAnalysisLinks, analysisLanguage, currentBook, headingPlacements) =>
-    buildCatalogRows(
-      { tokenAnalyses, tokenAnalysisLinks },
-      { analysisLanguage, currentBook, headingPlacements },
-    ),
 );
 
 /**

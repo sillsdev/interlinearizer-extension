@@ -36,6 +36,7 @@ import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
 import { readBookOutline, readSegmentPage } from './services/sessionPages';
+import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
@@ -1225,6 +1226,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getProject: (interlinearProjectId) =>
       projectStorage.getProject(executionToken, interlinearProjectId),
   });
+  const catalog = sessionCatalogHandlers({
+    sessions: activeSessions,
+    logger,
+    getOpenVerseBook: bookService.getOpenVerseBook,
+    isFormInText: bookService.isFormInText,
+  });
   const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book, edited) =>
     activeSessions
       .reanchorBook(sourceProjectId, book, edited)
@@ -1244,6 +1251,17 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           e,
         ),
       ),
+  );
+  const textReadProgressUnsubscriber = bookService.onTextReadProgress(
+    (sourceProjectId, formsChanged) =>
+      activeSessions
+        .reportTextReadProgress(sourceProjectId, formsChanged)
+        .catch((e) =>
+          logger.warn(
+            `Interlinearizer: could not report how far the text of project ${sourceProjectId} is read`,
+            e,
+          ),
+        ),
   );
   const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
     activeSessions
@@ -1278,6 +1296,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
     bookReadUnsubscriber,
     textReadUnsubscriber,
+    textReadProgressUnsubscriber,
     bookTextUnsubscriber,
   );
 
@@ -2444,6 +2463,100 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   });
 
+  const catalogRegistrations: UnsubscriberAsync[] = [];
+
+  /** Registers the catalog query `commandName`, served by its handler in `catalog`. */
+  async function registerCatalogQuery(
+    commandName: keyof typeof catalog,
+    method: MethodDocumentationWithoutName,
+  ): Promise<void> {
+    catalogRegistrations.push(
+      await papi.commands.registerCommand(commandName, catalog[commandName], { method }),
+    );
+  }
+
+  const currentBookParam = {
+    name: 'currentBook',
+    required: true,
+    summary: 'Book code the per-book usage count is taken against',
+    schema: { type: 'string' },
+  } as const;
+
+  const catalogRowsResult = {
+    name: 'return value',
+    summary: "JSON-stringified CatalogRow[], each row's books listed",
+    schema: { type: 'string' },
+  } as const;
+
+  await registerCatalogQuery('interlinearizer.getCatalogRows', {
+    summary: "Serve one page of a session's analysis catalog, with the filter choices to offer",
+    params: sessionArgs({
+      name: 'request',
+      required: true,
+      summary: 'CatalogRowsRequest naming the search, sort, filters, page and current book',
+      schema: { type: 'object' },
+    }),
+    result: {
+      name: 'return value',
+      summary: "JSON-stringified CatalogPage, each row's books listed",
+      schema: { type: 'string' },
+    },
+  });
+
+  await registerCatalogQuery('interlinearizer.getSelectionSummary', {
+    summary:
+      "Summarize the selected analyses of a session's draft: their use count, the glossed ones, and the merge they allow",
+    params: sessionArgs({
+      name: 'analysisIds',
+      required: true,
+      summary: 'IDs of the selected token analyses, in listing order',
+      schema: { type: 'array', items: { type: 'string' } },
+    }),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified SelectionSummary',
+      schema: { type: 'string' },
+    },
+  });
+
+  await registerCatalogQuery('interlinearizer.countUsages', {
+    summary: "Count the distinct tokens in a session's draft that approve any of the analyses",
+    params: sessionArgs({
+      name: 'analysisIds',
+      required: true,
+      summary: 'IDs of the token analyses',
+      schema: { type: 'array', items: { type: 'string' } },
+    }),
+    result: { name: 'return value', summary: 'How many tokens', schema: { type: 'number' } },
+  });
+
+  await registerCatalogQuery('interlinearizer.getCatalogRowsByIds', {
+    summary: "Serve the catalog rows of the named analyses in a session's draft, in that order",
+    params: sessionArgs(currentBookParam, {
+      name: 'analysisIds',
+      required: true,
+      summary: 'IDs of the token analyses; an unstored one is left out',
+      schema: { type: 'array', items: { type: 'string' } },
+    }),
+    result: catalogRowsResult,
+  });
+
+  await registerCatalogQuery('interlinearizer.getHomographRows', {
+    summary:
+      "Serve the catalog rows in a session's draft sharing an analysis's normalized surface form, most used first",
+    params: sessionArgs(currentBookParam, {
+      name: 'analysisId',
+      required: true,
+      summary: 'ID of the token analysis',
+      schema: { type: 'string' },
+    }),
+    result: {
+      name: 'return value',
+      summary: `JSON-stringified CatalogRow[], each row's books listed; "[]" when no analysis carries the id`,
+      schema: { type: 'string' },
+    },
+  });
+
   const checkIndexesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.checkIndexes',
     checkIndexes,
@@ -2878,6 +2991,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   context.registrations.add(
     ...editRegistrations,
+    ...catalogRegistrations,
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
     continuousScrollValidatorRegistration,

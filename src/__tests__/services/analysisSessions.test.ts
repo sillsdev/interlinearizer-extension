@@ -1349,6 +1349,43 @@ describe('AnalysisSessions', () => {
       expect(host.reportChange).not.toHaveBeenCalled();
     });
 
+    describe('progress of the whole-text read', () => {
+      it('names the read status, carrying no changes to apply', async () => {
+        const { host, sessions, sessionId } = await sessionHolding();
+
+        await sessions.reportTextReadProgress(SOURCE, false);
+
+        expect(host.reportChange).toHaveBeenCalledWith({
+          sessionId,
+          changeId: expect.any(String),
+          passChanges: [],
+          books: [],
+          analysisIds: [],
+          forms: [],
+          queries: ['getTextReadStatus'],
+        });
+      });
+
+      it('names the catalog too when the forms in the text may have changed', async () => {
+        const { host, sessions } = await sessionHolding();
+
+        await sessions.reportTextReadProgress(SOURCE, true);
+
+        expect(host.reportChange.mock.calls[0][0].queries).toEqual([
+          'getTextReadStatus',
+          'getCatalogRows',
+        ]);
+      });
+
+      it('reports nothing for a source with no session open', async () => {
+        const { host, sessions } = makeSessions();
+
+        await sessions.reportTextReadProgress(SOURCE, true);
+
+        expect(host.reportChange).not.toHaveBeenCalled();
+      });
+    });
+
     describe('an edit to a book of the text', () => {
       const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta' }]);
       const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and beta' }]);

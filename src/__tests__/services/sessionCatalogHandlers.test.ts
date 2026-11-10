@@ -1,0 +1,223 @@
+/// <reference types="jest" />
+
+import type { TextAnalysis } from 'interlinearizer';
+import {
+  sessionCatalogHandlers,
+  type CatalogRowsRequest,
+} from '../../services/sessionCatalogHandlers';
+import { FIXTURE_STAMPS } from '../test-helpers';
+import { BOOK, GLOSSED, glossing, sessionOver } from '../cache/session-source';
+
+/** A request for the first page of every row, sorted by surface form, against Genesis. */
+function makeRequest(overrides: Partial<CatalogRowsRequest> = {}): CatalogRowsRequest {
+  return {
+    currentBook: 'GEN',
+    search: '',
+    sort: 'surfaceText',
+    filters: {},
+    sourceLanguageTag: 'en',
+    offset: 0,
+    count: 50,
+    ...overrides,
+  };
+}
+
+/**
+ * The catalog handlers over a session of a draft holding `analysis`, {@link GLOSSED} by default, on
+ * a source whose text holds every form unless `isFormInText` says otherwise.
+ */
+async function handlersOver({
+  analysis = GLOSSED,
+  isFormInText = () => true,
+}: {
+  analysis?: Partial<TextAnalysis>;
+  isFormInText?: (sourceProjectId: string, form: string) => boolean | undefined;
+} = {}) {
+  const { sessions, sessionId, edit } = await sessionOver(analysis);
+  const handlers = sessionCatalogHandlers({
+    sessions,
+    logger: { error: jest.fn() },
+    getOpenVerseBook: async () => BOOK,
+    isFormInText,
+  });
+  return { handlers, sessionId, edit };
+}
+
+describe('getCatalogRows', () => {
+  it("serves a page of the session's catalog as JSON, each row's books as a list", async () => {
+    const { handlers, sessionId } = await handlersOver();
+
+    const json = await handlers['interlinearizer.getCatalogRows']({
+      sessionId,
+      request: makeRequest(),
+    });
+
+    expect(JSON.parse(json).rows).toEqual([
+      expect.objectContaining({
+        analysisId: 'ta-god',
+        gloss: 'God',
+        usageCount: 1,
+        books: ['GEN'],
+      }),
+    ]);
+  });
+
+  it("keeps a row whose form the session's source text lacks under the not-in-text filter", async () => {
+    const { handlers, sessionId } = await handlersOver({
+      isFormInText: (source, form) => (source === 'src' ? form !== 'god' : true),
+    });
+
+    const json = await handlers['interlinearizer.getCatalogRows']({
+      sessionId,
+      request: makeRequest({ filters: { notInText: true } }),
+    });
+
+    expect(JSON.parse(json).keptIds).toEqual(['ta-god']);
+  });
+
+  it('keeps no row under the not-in-text filter while the text is still being read', async () => {
+    const { handlers, sessionId } = await handlersOver({ isFormInText: () => undefined });
+
+    const json = await handlers['interlinearizer.getCatalogRows']({
+      sessionId,
+      request: makeRequest({ filters: { notInText: true } }),
+    });
+
+    expect(JSON.parse(json).keptIds).toEqual([]);
+  });
+
+  it('serves the catalog when the source has no text for the current book', async () => {
+    const { sessions, sessionId } = await sessionOver();
+    const handlers = sessionCatalogHandlers({
+      sessions,
+      logger: { error: jest.fn() },
+      getOpenVerseBook: async () => undefined,
+      isFormInText: () => true,
+    });
+
+    const json = await handlers['interlinearizer.getCatalogRows']({
+      sessionId,
+      request: makeRequest({ currentBook: 'EXO' }),
+    });
+
+    expect(JSON.parse(json).keptIds).toEqual(['ta-god']);
+  });
+
+  it('serves what an edit in the session left', async () => {
+    const { handlers, sessionId, edit } = await handlersOver();
+    await edit('gloss', glossing('beginning', 'start'));
+
+    const json = await handlers['interlinearizer.getCatalogRows']({
+      sessionId,
+      request: makeRequest(),
+    });
+
+    expect(JSON.parse(json).keptIds).toEqual(['ta-start', 'ta-god']);
+  });
+});
+
+describe('countUsages', () => {
+  it('counts the distinct tokens in the session that approve any of the analyses', async () => {
+    const { handlers, sessionId, edit } = await handlersOver();
+    await edit('gloss', glossing('beginning', 'start'));
+
+    await expect(
+      handlers['interlinearizer.countUsages']({ sessionId, analysisIds: ['ta-god', 'ta-start'] }),
+    ).resolves.toBe(2);
+  });
+});
+
+describe('getCatalogRowsByIds', () => {
+  it("serves the rows of the named analyses in the session's draft, each row's books as a list", async () => {
+    const { handlers, sessionId } = await handlersOver();
+
+    const json = await handlers['interlinearizer.getCatalogRowsByIds']({
+      sessionId,
+      currentBook: 'GEN',
+      analysisIds: ['ta-gone', 'ta-god'],
+    });
+
+    expect(JSON.parse(json)).toEqual([
+      expect.objectContaining({ analysisId: 'ta-god', books: ['GEN'] }),
+    ]);
+  });
+});
+
+describe('getHomographRows', () => {
+  it("serves the rows sharing the analysis's form in the session's draft", async () => {
+    const { handlers, sessionId } = await handlersOver({
+      analysis: {
+        ...GLOSSED,
+        tokenAnalyses: [
+          ...(GLOSSED.tokenAnalyses ?? []),
+          { id: 'ta-deity', ...FIXTURE_STAMPS, surfaceText: 'god', gloss: { en: 'deity' } },
+        ],
+      },
+    });
+
+    const json = await handlers['interlinearizer.getHomographRows']({
+      sessionId,
+      currentBook: 'GEN',
+      analysisId: 'ta-god',
+    });
+
+    expect(JSON.parse(json).map((row: { analysisId: string }) => row.analysisId)).toEqual([
+      'ta-god',
+      'ta-deity',
+    ]);
+  });
+});
+
+describe('getSelectionSummary', () => {
+  it("summarizes the selected analyses of the session's draft", async () => {
+    const { handlers, sessionId } = await handlersOver();
+
+    const json = await handlers['interlinearizer.getSelectionSummary']({
+      sessionId,
+      analysisIds: ['ta-god'],
+    });
+
+    expect(JSON.parse(json)).toEqual({ usageCount: 1, glossedIds: ['ta-god'] });
+  });
+});
+
+describe('a session not open', () => {
+  it('logs and rethrows each query asked of it', async () => {
+    const { sessions } = await sessionOver();
+    const logger = { error: jest.fn() };
+    const handlers = sessionCatalogHandlers({
+      sessions,
+      logger,
+      getOpenVerseBook: async () => BOOK,
+      isFormInText: () => true,
+    });
+    const sessionId = 'no-such-session';
+
+    await expect(
+      handlers['interlinearizer.getCatalogRows']({ sessionId, request: makeRequest() }),
+    ).rejects.toThrow();
+    await expect(
+      handlers['interlinearizer.countUsages']({ sessionId, analysisIds: [] }),
+    ).rejects.toThrow();
+    await expect(
+      handlers['interlinearizer.getCatalogRowsByIds']({
+        sessionId,
+        currentBook: 'GEN',
+        analysisIds: [],
+      }),
+    ).rejects.toThrow();
+    await expect(
+      handlers['interlinearizer.getHomographRows']({
+        sessionId,
+        currentBook: 'GEN',
+        analysisId: 'ta-god',
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      handlers['interlinearizer.getSelectionSummary']({ sessionId, analysisIds: [] }),
+    ).rejects.toThrow();
+
+    expect(logger.error).toHaveBeenCalledTimes(5);
+  });
+});

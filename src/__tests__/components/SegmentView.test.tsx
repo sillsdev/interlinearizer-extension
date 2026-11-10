@@ -448,6 +448,122 @@ describe('SegmentView', () => {
     expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
   });
 
+  describe('baseline-text word clicks', () => {
+    /** Makes the caret hit-test report `offset` within the first text node reading `text`. */
+    function stubCaretAt(container: HTMLElement, text: string, offset: number): void {
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node && node.textContent !== text) node = walker.nextNode();
+      if (!node) throw new Error(`no text node reads "${text}"`);
+      const offsetNode = node;
+      Object.defineProperty(document, 'caretPositionFromPoint', {
+        configurable: true,
+        // eslint-disable-next-line no-null/no-null -- the DOM API reports no rectangle as null
+        value: () => ({ offsetNode, offset, getClientRect: () => null }),
+      });
+    }
+
+    afterEach(() => {
+      Reflect.deleteProperty(document, 'caretPositionFromPoint');
+    });
+
+    it('selects the word that was clicked', () => {
+      const handleSelect = jest.fn();
+      render(
+        <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />,
+        withAnalysisStore,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, 'the', 1);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-1');
+    });
+
+    it('does not count a verse superscript toward the clicked offset', () => {
+      const handleSelect = jest.fn();
+      const segment: Segment = {
+        ...MERGED_BASELINE_SEGMENT,
+        tokens: [
+          makeWordToken('w-alpha', 'Alpha'),
+          makeWordToken('w-beta', 'beta', 6),
+          makePunctToken('p-1', '.', 10),
+          makeWordToken('w-gamma', 'Gamma', 12),
+          makeWordToken('w-delta', 'delta', 18),
+          makePunctToken('p-2', '.', 23),
+        ],
+        verseStarts: [
+          { charStart: 0, number: '1', chapter: 1 },
+          { charStart: 12, number: '22', chapter: 1 },
+        ],
+      };
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={segment}
+          onSelect={handleSelect}
+        />,
+        withAnalysisStore,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, 'Gamma', 4);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'w-gamma');
+    });
+
+    it('selects the word before a click that lands between words', () => {
+      const handleSelect = jest.fn();
+      const segment = makeSegment('GEN 1:1', 'Alpha, beta', [
+        makeWordToken('w-alpha', 'Alpha'),
+        makePunctToken('p-comma', ',', 5),
+        makeWordToken('w-beta', 'beta', 7),
+      ]);
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={segment}
+          onSelect={handleSelect}
+        />,
+        withAnalysisStore,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, ',', 0);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'w-alpha');
+    });
+
+    it('selects the first word for a click ahead of every word', () => {
+      const handleSelect = jest.fn();
+      const segment = makeSegment('GEN 1:1', '"Alpha beta', [
+        makePunctToken('p-quote', '"'),
+        makeWordToken('w-alpha', 'Alpha', 1),
+        makeWordToken('w-beta', 'beta', 7),
+      ]);
+      render(
+        <SegmentView
+          {...requiredProps()}
+          displayMode="baseline-text"
+          segment={segment}
+          onSelect={handleSelect}
+        />,
+        withAnalysisStore,
+      );
+      const box = screen.getByTestId('segment-container');
+      stubCaretAt(box, '"', 0);
+
+      fireEvent.click(box);
+
+      expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'w-alpha');
+    });
+  });
+
   it('renders a free-translation input below the plain text in baseline-text mode', () => {
     render(
       <SegmentView

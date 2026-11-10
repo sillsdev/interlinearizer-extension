@@ -138,6 +138,32 @@ function buildBaselinePieces(
 }
 
 /**
+ * The word under a click on the baseline text rendered in `baselineTextEl`, or the last word before
+ * it when the click lands between words. Undefined when the click precedes every word or hits no
+ * baseline text.
+ */
+function wordTokenRefAtClick(
+  event: MouseEvent,
+  baselineTextEl: HTMLElement,
+  segment: Segment,
+): string | undefined {
+  const caret = document.caretPositionFromPoint(event.clientX, event.clientY);
+  if (!caret || !baselineTextEl.contains(caret.offsetNode)) return undefined;
+  // Superscript labels are not part of `baselineText`, so their text is skipped in the count.
+  const walker = document.createTreeWalker(baselineTextEl, NodeFilter.SHOW_TEXT, (node) =>
+    node.parentElement?.closest('sup') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+  );
+  let charOffset = 0;
+  for (let node = walker.nextNode(); node !== caret.offsetNode; node = walker.nextNode()) {
+    /* v8 ignore next 2 -- defensive: the caret always lands in counted text, which is never null */
+    if (!node) return undefined;
+    charOffset += node.textContent?.length ?? 0;
+  }
+  charOffset += caret.offset;
+  return segment.tokens.findLast((t) => t.type === 'word' && t.charStart <= charOffset)?.ref;
+}
+
+/**
  * The segment card's own classes. Both states carry a real border so activating a segment only
  * recolors it — never adds or removes one, which would change the segment's height by 2px and shift
  * every segment below it.
@@ -400,10 +426,10 @@ type SegmentViewProps = Readonly<{
   isActive: boolean;
   /**
    * Called when the segment or one of its word tokens is selected. In `baseline-text` mode the
-   * whole segment is clickable and selecting it passes the segment's first word token (so the
-   * segment gains focus and the active highlight); in `token-chip` mode only word tokens trigger
-   * this and `tokenRef` is the clicked token. `tokenRef` is omitted only when the segment has no
-   * word token to anchor on.
+   * whole segment is clickable. A click there passes the word clicked, the word before a click
+   * between words, or else the segment's first word token. In `token-chip` mode only word tokens
+   * trigger this, and `tokenRef` is the clicked token. `tokenRef` is omitted only when the segment
+   * has no word token to anchor on.
    */
   onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
   /** The segment to render. */
@@ -541,19 +567,21 @@ function SegmentBaselineView({
   }, [firstWordTokenRef, onSelect, ref]);
 
   /**
-   * Selects this segment when its baseline-text body is clicked, focusing its first word token so
-   * the segment gains focus (and the active highlight) even when it is verse 0 — a superscription
-   * that cannot be written back to the host as the active verse, and so would otherwise never
-   * become active from a bare-ref select. Clicks inside the free-translation input or its review
-   * buttons are ignored: the input already selects this segment on focus, and reviewing a stale
-   * translation is no request to select its verse.
+   * Selects this segment when its baseline-text body is clicked, focusing the clicked word, the
+   * word before a click between words, or else the first word token. A word token is passed so the
+   * segment gains focus (and the active highlight) even when it is verse 0 — a superscription that
+   * cannot be written back to the host as the active verse, and so would otherwise never become
+   * active from a bare-ref select. Clicks inside the free-translation input or its review buttons
+   * are ignored: the input already selects this segment on focus, and reviewing a stale translation
+   * is no request to select its verse.
    */
   const handleBaselineClick = useCallback(
     (event: MouseEvent) => {
       if (event.target instanceof Element && event.target.closest('input, button')) return;
-      onSelect(ref, firstWordTokenRef);
+      const clickedWordRef = baselineTextEl && wordTokenRefAtClick(event, baselineTextEl, segment);
+      onSelect(ref, clickedWordRef ?? firstWordTokenRef);
     },
-    [firstWordTokenRef, onSelect, ref],
+    [baselineTextEl, firstWordTokenRef, onSelect, ref, segment],
   );
 
   // Baseline-text mode renders a clickable div, not a button, so the free-translation input can

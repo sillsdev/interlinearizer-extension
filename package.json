@@ -76,7 +76,7 @@
   "devDependencies": {
     "@dreamsicle.io/stylelint-config-tailwindcss": "^1.2.2",
     "@fontsource-variable/ibm-plex-sans": "^5.2.8",
-    "@playwright/test": "^1.64.1",
+    "@playwright/test": "^1.65.0",
     "@stylistic/eslint-plugin-ts": "^2.13.0",
     "@swc/core": "1.13.3",
     "@tailwindcss/postcss": "^4.3.0",
@@ -139,7 +139,7 @@
     "webpack": "^5.105.2",
     "webpack-cli": "^5.1.4",
     "webpack-merge": "^6.0.1",
-    "ws": "^8.22.0",
+    "ws": "^8.22.1",
     "zip-build": "^1.8.0"
   },
   "overrides": {

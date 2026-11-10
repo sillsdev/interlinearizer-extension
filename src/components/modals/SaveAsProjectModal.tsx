@@ -111,8 +111,8 @@ function SaveAsNewForm({
  * caller via {@link onSaveNew} / {@link onOverwrite}.
  *
  * Writing to the project the draft is already open against is an ordinary save rather than a
- * clobber, so that row is presented as a save and needs no confirmation; when the draft holds
- * nothing unsaved, that same write would change nothing and is not offered at all.
+ * clobber, so that row's Overwrite needs no confirmation. When the draft holds nothing unsaved,
+ * that write would change nothing, so the row offers no Overwrite at all.
  *
  * @param props.sourceProjectId - Source project whose existing interlinear projects to list as
  *   overwrite targets. Paratext 9 imports are left out because they are read-only.

@@ -30,6 +30,7 @@ import { resolveSplitAnchor } from '../utils/split-anchor';
 import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
 import { firstVerseNumber } from '../utils/verse-ref';
 import { AltHoverTooltip } from './AltHoverTooltip';
+import type { FocusActions, SelectSegmentOptions } from './FocusStore';
 import { useAnalysisReadOnly, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
 import { LinkLabelProvider, PhraseStripProvider } from './PhraseStripContext';
@@ -47,6 +48,9 @@ import type { StaleFreeTranslation } from '../utils/stale-free-translations';
  *   fallback or debug display.
  */
 export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
+
+/** Marks a first word passed to `onSelect` for its whole segment rather than for a click on it. */
+const ANCHOR: SelectSegmentOptions = { anchor: true };
 
 /** Localized string keys this view reads from its `localizedStrings` prop. */
 export const SEGMENT_STRING_KEYS = [
@@ -140,8 +144,9 @@ function buildBaselinePieces(
 
 /**
  * The word under a click on the baseline text rendered in `baselineTextEl`, or the last word before
- * it when the click lands between words. Undefined when the click precedes every word or hits no
- * baseline text.
+ * it when the click lands between words. A click on a verse number counts as a click at the start
+ * of the text that follows it. Undefined when the click precedes every word or hits no baseline
+ * text.
  */
 function wordTokenAtClick(
   event: MouseEvent,
@@ -154,13 +159,20 @@ function wordTokenAtClick(
   const walker = document.createTreeWalker(baselineTextEl, NodeFilter.SHOW_TEXT, (node) =>
     node.parentElement?.closest('sup') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
   );
+  // A caret in a superscript or on an element matches no counted text node, so the count stops at
+  // the first counted text after the caret.
+  const caretPoint = document.createRange();
+  caretPoint.setStart(caret.offsetNode, caret.offset);
   let charOffset = 0;
-  for (let node = walker.nextNode(); node !== caret.offsetNode; node = walker.nextNode()) {
-    /* v8 ignore next 2 -- defensive: the caret always lands in counted text, which is never null */
-    if (!node) return undefined;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node === caret.offsetNode) {
+      charOffset += caret.offset;
+      break;
+    }
+    if (caretPoint.comparePoint(node, 0) > 0) break;
+    /* v8 ignore next -- a text node's content is never null */
     charOffset += node.textContent?.length ?? 0;
   }
-  charOffset += caret.offset;
   return segment.tokens.findLast((t) => t.type === 'word' && t.charStart <= charOffset);
 }
 
@@ -440,9 +452,10 @@ type SegmentViewProps = Readonly<{
    * whole segment is clickable. A click there passes the word clicked, the word before a click
    * between words, or else the segment's first word token. In `token-chip` mode only word tokens
    * trigger this, and `tokenRef` is the clicked token. `tokenRef` is omitted only when the segment
-   * has no word token to anchor on.
+   * has no word token to anchor on. When the first word stands in for the whole segment, rather
+   * than for a click on it, the call sets `anchor`.
    */
-  onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
+  onSelect: FocusActions['selectSegment'];
   /** The segment to render. */
   segment: Segment;
   /**
@@ -574,7 +587,7 @@ function SegmentBaselineView({
   );
 
   const handleFreeTranslationFocus = useCallback(() => {
-    if (firstWordTokenRef !== undefined) onSelect(ref, firstWordTokenRef);
+    if (firstWordTokenRef !== undefined) onSelect(ref, firstWordTokenRef, ANCHOR);
   }, [firstWordTokenRef, onSelect, ref]);
 
   /**
@@ -584,14 +597,16 @@ function SegmentBaselineView({
    * even when it is verse 0 — a superscription that cannot be written back to the host as the
    * active verse, and so would otherwise never become active from a bare-ref select. Clicks inside
    * the free-translation input or its review buttons are ignored: the input already selects this
-   * segment on focus, and reviewing a stale translation is no request to select its verse.
+   * segment on focus, and reviewing a stale translation is no request to select its verse. The
+   * click that ends a drag-selection is ignored too, so the selection survives.
    */
   const handleBaselineClick = useCallback(
     (event: MouseEvent) => {
       if (event.target instanceof Element && event.target.closest('input, button')) return;
+      if (document.getSelection()?.isCollapsed === false) return;
       const clickedWord = baselineTextEl && wordTokenAtClick(event, baselineTextEl, segment);
       if (clickedWord) onSelect(verseRefOfToken(segment, clickedWord), clickedWord.ref);
-      else onSelect(ref, firstWordTokenRef);
+      else onSelect(ref, firstWordTokenRef, ANCHOR);
     },
     [baselineTextEl, firstWordTokenRef, onSelect, ref, segment],
   );
@@ -942,7 +957,7 @@ function SegmentChipView({
       ) {
         return;
       }
-      onSelect(ref, firstWordTokenRef);
+      onSelect(ref, firstWordTokenRef, ANCHOR);
     },
     [firstWordTokenRef, onSelect, ref],
   );
@@ -953,7 +968,7 @@ function SegmentChipView({
    * anchor the selection on.
    */
   const handleFreeTranslationFocus = useCallback(() => {
-    if (firstWordTokenRef !== undefined) onSelect(ref, firstWordTokenRef);
+    if (firstWordTokenRef !== undefined) onSelect(ref, firstWordTokenRef, ANCHOR);
   }, [firstWordTokenRef, onSelect, ref]);
 
   const {

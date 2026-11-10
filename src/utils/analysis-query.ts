@@ -274,9 +274,8 @@ function collapseLineEndings(text: string): string {
 
 /**
  * The folded text each analysis is searched by, held against the record it was folded from, so a
- * write re-folds the one analysis it replaced. A record edited in place rather than replaced would
- * keep the fold it arrived with: the store's own records are frozen and throw on such an edit, so
- * the fragility is confined to records assembled outside it.
+ * write re-folds the one analysis it replaced. A record edited in place keeps its old fold, so
+ * callers must replace a record rather than edit it. Nothing enforces this.
  */
 const searchTextByAnalysis = new WeakMap<TokenAnalysis, string>();
 

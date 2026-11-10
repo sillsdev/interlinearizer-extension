@@ -4,7 +4,7 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useEvent } from 'platform-bible-react';
 import useSessionProject from '../../hooks/useSessionProject';
-import { fakeHost, relayChange, relayTextRead, STORED_PROJECT } from '../cache/fake-host';
+import { fakeHost, relayChange, replyProjectMissing, STORED_PROJECT } from '../cache/fake-host';
 import { glossing, ref } from '../cache/session-source';
 import { makeVerseBook, tokenRefOf } from '../test-helpers';
 
@@ -12,17 +12,25 @@ const SCR_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
 type ViewProps = Partial<Record<'saveTargetId' | 'importProjectId' | 'importVersion', string>>;
 
-/** Renders the hook over the source `src`, saving to `saveTargetId` or viewing `importProjectId`. */
-function renderProject(saveTargetId?: string, importProjectId?: string) {
+/**
+ * Renders the hook over the source `src`, saving to `saveTargetId` or viewing `importProjectId`,
+ * and calling `onProjectMissing` when its session opens on a missing project.
+ */
+function renderProject(
+  saveTargetId?: string,
+  importProjectId?: string,
+  onProjectMissing?: () => void,
+) {
   const initialProps: ViewProps = { saveTargetId, importProjectId };
   return renderHook(
     (props: ViewProps) =>
-      useSessionProject('src', 'en', {
+      useSessionProject('src', {
         saveTargetId: props.saveTargetId,
         importProjectId: props.importProjectId,
         importVersion: props.importVersion,
         bookId: 'GEN',
         scrRef: SCR_REF,
+        onProjectMissing,
       }),
     { initialProps },
   );
@@ -123,7 +131,7 @@ describe('useSessionProject', () => {
     let renders = 0;
     const { result } = renderHook(() => {
       renders += 1;
-      return useSessionProject('src', 'en', {
+      return useSessionProject('src', {
         saveTargetId: undefined,
         importProjectId: undefined,
         importVersion: undefined,
@@ -304,12 +312,6 @@ describe('useSessionProject history', () => {
 
     expect(step).toStrictEqual({ location: ref('earth') });
     expect(result.current).toMatchObject({ canUndo: true, canRedo: false });
-  });
-
-  it('runs an action grouped as one step at once, the session recording each edit', async () => {
-    const { result } = await renderLoaded();
-
-    expect(result.current.asOneStep(() => 3)).toBe(3);
   });
 
   it("reads the draft as the session's latest read of it stands", async () => {
@@ -540,6 +542,64 @@ describe('useSessionProject starting over', () => {
     await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
   });
 
+  it('tells the view once its session opens on a project the source does not have', async () => {
+    await fakeHost();
+    replyProjectMissing('gone');
+    const onProjectMissing = jest.fn();
+
+    const { result } = renderProject('gone', undefined, onProjectMissing);
+
+    await waitFor(() => expect(result.current.session).toBeDefined());
+    expect(onProjectMissing).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks no session to save to a missing project while the view still names it', async () => {
+    await fakeHost();
+    replyProjectMissing('gone');
+
+    const { result } = renderProject('gone', undefined, jest.fn());
+
+    await waitFor(() => expect(result.current.session).toBeDefined());
+    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+      'interlinearizer.setSaveTarget',
+      expect.anything(),
+    );
+  });
+
+  it('tells the view nothing once its session opens on a project the source has', async () => {
+    await fakeHost();
+    const onProjectMissing = jest.fn();
+
+    const { result } = renderProject('proj-1', undefined, onProjectMissing);
+
+    await waitFor(() => expect(result.current.session).toBeDefined());
+    expect(onProjectMissing).not.toHaveBeenCalled();
+  });
+
+  it('saves to the project the view names by the time a session on a missing project opens', async () => {
+    await fakeHost();
+    let open = () => {};
+    replyProjectMissing(
+      'gone',
+      new Promise((resolve) => {
+        open = resolve;
+      }),
+    );
+    const onProjectMissing = jest.fn();
+    const { result, rerender } = renderProject('gone', undefined, onProjectMissing);
+
+    rerender({ saveTargetId: 'proj-2' });
+    await act(async () => open());
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.setSaveTarget', {
+        sessionId: result.current.session?.sessionId,
+        interlinearProjectId: 'proj-2',
+      }),
+    );
+    expect(onProjectMissing).not.toHaveBeenCalled();
+  });
+
   it('retargets its session, keeping it open, when the project the draft saves to changes', async () => {
     await fakeHost();
     const { result, rerender } = renderProject();
@@ -588,7 +648,7 @@ describe('useSessionProject starting over', () => {
     await waitFor(() =>
       expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.openSession', {
         sourceProjectId: 'src',
-        interlinearProjectId: 'import-1',
+        importProjectId: 'import-1',
       }),
     );
   });
@@ -608,7 +668,7 @@ describe('useSessionProject starting over', () => {
     );
     expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.openSession', {
       sourceProjectId: 'src',
-      interlinearProjectId: 'import-1',
+      importProjectId: 'import-1',
     });
     await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
   });
@@ -747,7 +807,7 @@ describe('useSessionProject edits sent to the session', () => {
     expect(fullReads()).toBe(reads + 1);
   });
 
-  it('leaves the draft as it was when a discard fails', async () => {
+  it('leaves the draft as it was and rethrows when a discard fails', async () => {
     await fakeHost(async (command) => {
       if (command === 'interlinearizer.discardAll') throw new Error('refused');
       return undefined;
@@ -758,15 +818,11 @@ describe('useSessionProject edits sent to the session', () => {
     const reads = fullReads();
 
     await act(async () => {
-      await result.current.discardAll();
+      await expect(result.current.discardAll()).rejects.toThrow('refused');
     });
 
     expect(result.current.draftVersion).toBe(version);
     expect(fullReads()).toBe(reads);
-    expect(logger.error).toHaveBeenCalledWith(
-      'Interlinearizer: failed to discard changes',
-      expect.any(Error),
-    );
   });
 
   it('logs a draft it cannot read again after a discard', async () => {
@@ -858,29 +914,23 @@ describe('useSessionProject whole-text read', () => {
     return { host, ...rendered };
   }
 
-  /** As {@link renderUnrequested}, with the text requested once the session has opened. */
-  async function renderReading(status: object) {
-    const rendered = await renderUnrequested(status);
-    act(() => rendered.result.current.session?.requestTextRead());
-    return rendered;
-  }
-
-  /** Whether the view has asked how far the whole-text read has got. */
+  /** Whether the view has asked how far the whole-text read has got, which starts the read. */
   const hasAskedForStatus = () =>
     jest
       .mocked(papi.commands.sendCommand)
       .mock.calls.some(([command]) => command === 'interlinearizer.getTextReadStatus');
 
-  it('asks nothing of the read when the session opens', async () => {
-    const { result } = await renderUnrequested({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+  const READ = { booksRead: 2, bookCount: 2, failedBookIds: [] };
+
+  it('starts no read when the session opens', async () => {
+    const { result } = await renderUnrequested(READ);
     await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
 
     expect(hasAskedForStatus()).toBe(false);
-    expect(result.current.session?.staleCoversDraft).toBe(false);
   });
 
-  it('asks nothing of the read on a reported change before the text is requested', async () => {
-    const { result } = await renderUnrequested({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+  it('starts no read on a reported change before the text is requested', async () => {
+    const { result } = await renderUnrequested(READ);
     await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
 
     relayChange({
@@ -895,149 +945,68 @@ describe('useSessionProject whole-text read', () => {
     expect(hasAskedForStatus()).toBe(false);
   });
 
-  it("asks nothing of the read on the source's finished read before the text is requested", async () => {
-    const { result } = await renderUnrequested({ booksRead: 2, bookCount: 2, failedBookIds: [] });
-    await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
-
-    relayTextRead({ sourceProjectId: 'src' });
-
-    expect(hasAskedForStatus()).toBe(false);
-  });
-
-  it('asks how far the read has got once the text is requested', async () => {
-    const { result } = await renderUnrequested({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+  it("starts the session's read once the text is requested", async () => {
+    const { result } = await renderUnrequested(READ);
 
     act(() => result.current.session?.requestTextRead());
-
-    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
-    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.getTextReadStatus', {
-      sessionId: result.current.session?.sessionId,
-    });
-  });
-
-  it('covers the whole draft once every book is read', async () => {
-    const { result } = await renderReading({ booksRead: 2, bookCount: 2, failedBookIds: [] });
-
-    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
-  });
-
-  it('does not cover the whole draft while books are unread', async () => {
-    const { result } = await renderReading({ booksRead: 1, bookCount: 2, failedBookIds: [] });
 
     await waitFor(() =>
       expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.getTextReadStatus', {
         sessionId: result.current.session?.sessionId,
       }),
     );
-    expect(result.current.session?.staleCoversDraft).toBe(false);
   });
 
-  it('does not cover the whole draft when a book failed to read', async () => {
-    const { result } = await renderReading({ booksRead: 2, bookCount: 2, failedBookIds: ['EXO'] });
-
-    await waitFor(() =>
-      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-        'interlinearizer.getTextReadStatus',
-        expect.anything(),
-      ),
-    );
-    expect(result.current.session?.staleCoversDraft).toBe(false);
-  });
-
-  it('asks again how far the read has got once the source has been read', async () => {
-    const status = { booksRead: 1, bookCount: 2, failedBookIds: [] };
-    const { result } = await renderReading(status);
-    await waitFor(() =>
-      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-        'interlinearizer.getTextReadStatus',
-        expect.anything(),
-      ),
-    );
-    status.booksRead = 2;
-
-    relayTextRead({ sourceProjectId: 'src' });
-
-    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
-  });
-
-  it('does not render again for a read status that has not changed', async () => {
-    const status = { booksRead: 2, bookCount: 2, failedBookIds: [] };
-    await fakeHost(async (command) =>
-      command === 'interlinearizer.getTextReadStatus' ? JSON.stringify(status) : undefined,
-    );
-    let renders = 0;
-    const { result } = renderHook(() => {
-      renders += 1;
-      return useSessionProject('src', 'en', {
-        saveTargetId: undefined,
-        importVersion: undefined,
-        importProjectId: undefined,
-        bookId: 'GEN',
-        scrRef: SCR_REF,
-      });
+  it('logs a read that could not be started', async () => {
+    await fakeHost(async (command) => {
+      if (command === 'interlinearizer.getTextReadStatus') throw new Error('offline');
+      return undefined;
     });
-    await waitFor(() => expect(result.current.session?.client).toBeDefined());
+    const { result } = renderProject();
+    await waitFor(() => expect(result.current.session).toBeDefined());
+
     act(() => result.current.session?.requestTextRead());
-    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
-    const asked = () =>
-      jest
-        .mocked(papi.commands.sendCommand)
-        .mock.calls.filter(([command]) => command === 'interlinearizer.getTextReadStatus').length;
-    const before = { renders, asked: asked() };
 
-    await act(async () => relayTextRead({ sourceProjectId: 'src' }));
-
-    await waitFor(() => expect(asked()).toBe(before.asked + 1));
-    expect(renders).toBe(before.renders);
-  });
-
-  it("ignores another source's finished read", async () => {
-    await renderReading({ booksRead: 1, bookCount: 2, failedBookIds: [] });
     await waitFor(() =>
-      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-        'interlinearizer.getTextReadStatus',
-        expect.anything(),
+      expect(logger.warn).toHaveBeenCalledWith(
+        "Interlinearizer: could not start reading the session's text",
+        expect.any(Error),
       ),
     );
-    jest.mocked(papi.commands.sendCommand).mockClear();
-
-    relayTextRead({ sourceProjectId: 'other' });
-
-    expect(papi.commands.sendCommand).not.toHaveBeenCalled();
   });
 
-  it("does not count an earlier session's read toward a fresh session", async () => {
-    let answered = false;
+  it('asks again when the text is next requested after a read could not be started', async () => {
+    let attempts = 0;
     await fakeHost(async (command) => {
       if (command !== 'interlinearizer.getTextReadStatus') return undefined;
-      if (answered) return new Promise<string>(() => {});
-      answered = true;
-      return JSON.stringify({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+      attempts += 1;
+      if (attempts === 1) throw new Error('offline');
+      return JSON.stringify(READ);
     });
     const { result } = renderProject();
     await waitFor(() => expect(result.current.session).toBeDefined());
     act(() => result.current.session?.requestTextRead());
-    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
-    const { sessionId } = result.current.session ?? {};
+    await waitFor(() => expect(logger.warn).toHaveBeenCalled());
 
-    await act(async () => result.current.newDraft({ analysisLanguages: ['fr'] }));
+    act(() => result.current.session?.requestTextRead());
 
-    await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
-    expect(result.current.session?.staleCoversDraft).toBe(false);
+    await waitFor(() => expect(attempts).toBe(2));
   });
 
-  it("asks a fresh session's read about the text requested of an earlier session", async () => {
-    const { result } = await renderReading({ booksRead: 2, bookCount: 2, failedBookIds: [] });
-    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
+  it("starts a fresh session's read when the text was requested of an earlier session", async () => {
+    const { result } = await renderUnrequested(READ);
+    act(() => result.current.session?.requestTextRead());
+    await waitFor(() => expect(hasAskedForStatus()).toBe(true));
     const { sessionId } = result.current.session ?? {};
 
     await act(async () => result.current.newDraft({ analysisLanguages: ['fr'] }));
 
     await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
-    await waitFor(() => expect(result.current.session?.staleCoversDraft).toBe(true));
-    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.getTextReadStatus', {
-      sessionId: result.current.session?.sessionId,
-    });
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.getTextReadStatus', {
+        sessionId: result.current.session?.sessionId,
+      }),
+    );
   });
 });
 

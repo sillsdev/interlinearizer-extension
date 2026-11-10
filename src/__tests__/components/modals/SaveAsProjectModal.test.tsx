@@ -529,7 +529,7 @@ describe('SaveAsProjectModal', () => {
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Overwrite' })).toBeInTheDocument();
 
-    // An autosave landing behind the open modal would otherwise leave a live Overwrite button over a
+    // An edit landing behind the open modal would otherwise leave a live Overwrite button over a
     // write that has nothing left to persist.
     rerender(
       <SaveAsProjectModal

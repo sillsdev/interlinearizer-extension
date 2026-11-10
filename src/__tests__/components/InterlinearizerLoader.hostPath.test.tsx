@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import papi from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import { useData, useProjectSetting, useSetting } from '@papi/frontend/react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useGloss, useGlossDispatch } from '../../components/AnalysisStore';
@@ -13,15 +13,13 @@ import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../../hooks/useProjectBookIds';
-import useSegmentPages from '../../hooks/useSegmentPages';
 import useSourceTextReader from '../../hooks/useSourceTextReader';
 import useStaleAnalysisDismissal from '../../hooks/useStaleAnalysisDismissal';
-import { fakeHost, STORED_PROJECT } from '../cache/fake-host';
+import { fakeHost, replyProjectMissing, STORED_PROJECT } from '../cache/fake-host';
 import { BOOK, ref } from '../cache/session-source';
 import { makeScrollGroupHook, makeWebViewState } from '../test-helpers';
 import { makeSourceText, mockKeyAsValueLocalizedStrings } from './test-helpers';
 
-jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => true }));
 jest.mock('../../hooks/useConcordanceEntries');
 jest.mock('../../hooks/useSourceTextReader');
 jest.mock('../../hooks/useInterlinearizerBookData');
@@ -29,21 +27,15 @@ jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
 jest.mock('../../hooks/useProjectBookIds');
-jest.mock('../../hooks/useSegmentPages');
 jest.mock('../../hooks/useStaleAnalysisDismissal');
 jest.mock('../../components/StaleAnalysesReporter', () => ({
   __esModule: true,
   default: () => undefined,
 }));
-let capturedStaleCoversDraft: boolean | undefined;
-
 jest.mock('../../components/AnalysisCatalogPanel', () => ({
   __esModule: true,
   ANALYSIS_CATALOG_PANEL_STRING_KEYS: [],
-  default: ({ staleCoversDraft }: { staleCoversDraft: boolean }) => {
-    capturedStaleCoversDraft = staleCoversDraft;
-    return <div data-testid="analysis-catalog-panel" />;
-  },
+  default: () => <div data-testid="analysis-catalog-panel" />,
 }));
 jest.mock('../../components/ContinuousView', () => ({
   __esModule: true,
@@ -54,17 +46,23 @@ let capturedBoundaries: SegmentationDispatch | undefined;
 
 jest.mock('../../components/modals/ProjectModals', () => ({
   __esModule: true,
-  /** Offers Open, New and a Paratext 9 import as buttons, in place of the project dialogs. */
+  /**
+   * Offers Open, New and a Paratext 9 import as buttons, in place of the project dialogs, and shows
+   * the active project's id.
+   */
   default: ({
+    activeProject,
     loadFromProject,
     newDraft,
     onImportPt9,
   }: {
+    activeProject: { id: string } | undefined;
     loadFromProject: (projectId: string) => Promise<void>;
     newDraft: (config: { analysisLanguages: string[] }) => Promise<void>;
     onImportPt9: () => void;
   }) => (
     <div>
+      <span data-testid="active-project">{activeProject?.id}</span>
       <button type="button" data-testid="open-project" onClick={() => loadFromProject('proj-de')}>
         Open
       </button>
@@ -124,11 +122,6 @@ function mockLoaderHooks(): void {
     writingSystem: 'und',
     reload: jest.fn(),
   });
-  jest.mocked(useSegmentPages).mockReturnValue({
-    pages: undefined,
-    isLoading: false,
-    error: undefined,
-  });
   jest.mocked(useProjectBookIds).mockReturnValue({ bookIds: ['GEN'], isLoading: false });
   jest
     .mocked(useOptimisticBooleanSetting)
@@ -184,13 +177,19 @@ const ACTIVE_PROJECT = {
  * Renders the loader on the source `src` and waits for its session's view to show.
  *
  * @param state - What the WebView's stored state starts with.
- * @param others - Answers the commands that the fake host does not serve.
+ * @param host - What the fake host answers.
+ * @param host.others - Answers the commands that the fake host does not serve.
+ * @param host.missingProjectId - A project that the host replies the source does not have.
  */
 async function renderLoaded(
   state: Record<string, unknown> = {},
-  others: Parameters<typeof fakeHost>[0] = async () => undefined,
+  {
+    others,
+    missingProjectId,
+  }: Readonly<{ others?: Parameters<typeof fakeHost>[0]; missingProjectId?: string }> = {},
 ) {
   const host = await fakeHost(others);
+  if (missingProjectId) replyProjectMissing(missingProjectId);
   jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
   render(
     <InterlinearizerLoader
@@ -210,7 +209,7 @@ beforeEach(() => {
   mockLoaderHooks();
 });
 
-describe('InterlinearizerLoader on the host path', () => {
+describe('InterlinearizerLoader', () => {
   it("shows the session's analysis of the loaded book", async () => {
     await renderLoaded();
 
@@ -218,7 +217,6 @@ describe('InterlinearizerLoader on the host path', () => {
     expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.openSession', {
       sourceProjectId: 'src',
     });
-    expect(useSegmentPages).not.toHaveBeenCalledWith(expect.objectContaining({ verseBook: BOOK }));
   });
 
   it('writes a gloss through the session and shows it from the reply', async () => {
@@ -248,13 +246,18 @@ describe('InterlinearizerLoader on the host path', () => {
   it('hands the view boundary edits that the session makes', async () => {
     await renderLoaded();
 
-    await act(async () => capturedBoundaries?.merge(ref('And')));
+    // The reply lands inside the same act, many microtasks after the command is sent.
+    await act(async () => {
+      capturedBoundaries?.merge(ref('And'));
+      for (let turn = 0; turn < 200; turn += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await Promise.resolve();
+      }
+    });
 
-    await waitFor(() =>
-      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-        'interlinearizer.mergeSegments',
-        expect.objectContaining({ secondSegmentStartRef: ref('And') }),
-      ),
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+      'interlinearizer.mergeSegments',
+      expect.objectContaining({ secondSegmentStartRef: ref('And') }),
     );
   });
 
@@ -268,7 +271,7 @@ describe('InterlinearizerLoader on the host path', () => {
   });
 });
 
-describe('InterlinearizerLoader saving on the host path', () => {
+describe('InterlinearizerLoader saving', () => {
   it('saves the draft to the active project through its session', async () => {
     await renderLoaded({ activeProject: ACTIVE_PROJECT });
 
@@ -277,16 +280,23 @@ describe('InterlinearizerLoader saving on the host path', () => {
     await waitFor(() =>
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftToProject',
+        expect.any(String),
         'src',
         'proj-1',
-        undefined,
-        expect.any(String),
       ),
     );
   });
 });
 
-describe('InterlinearizerLoader starting over on the host path', () => {
+describe('InterlinearizerLoader opening on a missing project', () => {
+  it('forgets the active project once its session finds the source has no such project', async () => {
+    await renderLoaded({ activeProject: ACTIVE_PROJECT }, { missingProjectId: 'proj-1' });
+
+    await waitFor(() => expect(screen.getByTestId('active-project')).toBeEmptyDOMElement());
+  });
+});
+
+describe('InterlinearizerLoader starting over', () => {
   it('opens a project by sending the host its id, reading no project', async () => {
     await renderLoaded();
 
@@ -319,7 +329,7 @@ describe('InterlinearizerLoader starting over on the host path', () => {
   });
 });
 
-describe('InterlinearizerLoader discarding on the host path', () => {
+describe('InterlinearizerLoader discarding', () => {
   it("discards the draft through its session, leaving the saved project's content to the host", async () => {
     await renderLoaded({ activeProject: ACTIVE_PROJECT });
 
@@ -337,9 +347,32 @@ describe('InterlinearizerLoader discarding on the host path', () => {
       expect.anything(),
     );
   });
+  it('tells the user when the session fails the discard, and closes the dialog', async () => {
+    await renderLoaded({ activeProject: ACTIVE_PROJECT });
+    const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+    jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+      if (call[0] === 'interlinearizer.discardAll') throw new Error('not stored');
+      return serve?.(...call);
+    });
+
+    fireEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
+    fireEvent.click(screen.getByTestId('discard-all'));
+
+    await waitFor(() =>
+      expect(papi.notifications.send).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_discardChanges_unexpected%',
+        severity: 'error',
+      }),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      'Interlinearizer: failed to discard changes',
+      expect.any(Error),
+    );
+    await waitFor(() => expect(screen.queryByTestId('discard-all')).not.toBeInTheDocument());
+  });
 });
 
-describe('InterlinearizerLoader opening a Paratext 9 import on the host path', () => {
+describe('InterlinearizerLoader opening a Paratext 9 import', () => {
   const IMPORT_SUMMARY = {
     ...ACTIVE_PROJECT,
     id: 'import-1',
@@ -347,16 +380,22 @@ describe('InterlinearizerLoader opening a Paratext 9 import on the host path', (
   };
 
   it("opens the report's import from its summary, reading no project", async () => {
-    await renderLoaded({}, async (command) => {
-      if (command === 'interlinearizer.importPt9Project')
-        return JSON.stringify({
-          outcome: 'imported',
-          projectId: IMPORT_SUMMARY.id,
-          report: emptyPt9ImportReport(),
-        });
-      if (command === 'interlinearizer.getProjectSummary') return JSON.stringify(IMPORT_SUMMARY);
-      return undefined;
-    });
+    await renderLoaded(
+      {},
+      {
+        others: async (command) => {
+          if (command === 'interlinearizer.importPt9Project')
+            return JSON.stringify({
+              outcome: 'imported',
+              projectId: IMPORT_SUMMARY.id,
+              report: emptyPt9ImportReport(),
+            });
+          if (command === 'interlinearizer.getProjectSummary')
+            return JSON.stringify(IMPORT_SUMMARY);
+          return undefined;
+        },
+      },
+    );
 
     fireEvent.click(screen.getByTestId('import-pt9'));
     fireEvent.click(
@@ -375,7 +414,7 @@ describe('InterlinearizerLoader opening a Paratext 9 import on the host path', (
   });
 });
 
-describe('InterlinearizerLoader stale filter on the host path', () => {
+describe('InterlinearizerLoader stale filter', () => {
   /** The latest wanted-text listener that the loader handed the source-text reader. */
   const latestOnWanted = () => jest.mocked(useSourceTextReader).mock.lastCall?.[0].onWanted;
 
@@ -398,7 +437,7 @@ describe('InterlinearizerLoader stale filter on the host path', () => {
     );
   });
 
-  it("covers the whole draft once the session's whole-text read has read every book", async () => {
+  it("starts the session's whole-text read once the text is wanted", async () => {
     jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
     await fakeHost(async (command) =>
       command === 'interlinearizer.getTextReadStatus'
@@ -418,11 +457,16 @@ describe('InterlinearizerLoader stale filter on the host path', () => {
     await waitFor(() => expect(latestOnWanted()).toBeDefined());
     act(() => latestOnWanted()?.());
 
-    await waitFor(() => expect(capturedStaleCoversDraft).toBe(true));
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.objectContaining({ sessionId: expect.any(String) }),
+      ),
+    );
   });
 });
 
-describe('InterlinearizerLoader on the host path with no book', () => {
+describe('InterlinearizerLoader with no book loaded', () => {
   it("asks the session for no outline of a book whose text didn't load", async () => {
     await fakeHost();
     jest.mocked(useInterlinearizerBookData).mockReturnValue({

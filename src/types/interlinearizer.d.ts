@@ -11,18 +11,13 @@ declare module 'papi-shared-types' {
      */
     'interlinearizer.onUndoFromNotification': { notificationId: string | number };
     /**
-     * Emitted once the whole-text read of a source project has read every book with none failing.
-     * Emitted again whenever the set of its books that hold text changes, so that a view asks again
-     * how far the read has got.
-     */
-    'interlinearizer.onTextRead': { sourceProjectId: string };
-    /**
      * Emitted when what a view shows of a source project's analysis or text changes, so that the
      * view refetches what the change touched.
      *
      * Addressed by source project, the event names a Scripture edit in a book the extension
-     * watches. Those books are the source's open book (the one last outlined) and every book its
-     * whole-text read has read. Edits to other books emit nothing.
+     * watches, so that the view reads the book's text again. Those books are the source's open book
+     * (the one last outlined) and every book its whole-text read has read. Edits to other books
+     * emit nothing.
      *
      * Addressed by session, the event names what each change to the session's analysis touched,
      * re-anchoring included. A Scripture edit is named as a book touched whole.
@@ -32,7 +27,7 @@ declare module 'papi-shared-types' {
           sourceProjectId: string;
           /** Unique to this change. */
           changeId: string;
-          /** A Scripture edit, naming the book to refetch whole. */
+          /** A Scripture edit, naming the book to read again. */
           scriptureEdit: { bookId: string };
         }
       | import('interlinearizer').SessionAnalysisChange;
@@ -236,16 +231,16 @@ declare module 'papi-shared-types' {
     /**
      * Copies the source project's stored draft, its analysis and custom segment boundaries, into an
      * existing interlinearizer project. Called from the WebView on Save and on Save As onto an
-     * existing project. The copy reads the stored draft after the WebView's pending autosave, or
-     * after the session's earlier edits, so no analysis crosses the bus.
+     * existing project. The copy reads the stored draft after the session's earlier edits, so no
+     * analysis crosses the bus.
      *
+     * @param sessionId - The session editing the draft. The copy runs in the session's turn, and
+     *   the session's history marks the draft saved.
      * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
      * @param interlinearProjectId - UUID of the interlinearizer project to save into.
      * @param config - The configuration to set on the project in the same write, so Save As onto an
      *   existing project makes its declared configuration match the glosses it now holds; omit to
      *   leave the configuration unchanged, as Save does.
-     * @param sessionId - The session editing the draft, if any. The copy then runs in the session's
-     *   turn, and the session's history marks the draft saved.
      * @returns The saved project's `InterlinearProjectSummary` (with its refreshed `updatedAt`) as
      *   a JSON string, or `undefined` if no project with the given ID exists. The WebView uses the
      *   refreshed `updatedAt` to keep the cached Modified time current after a Save.
@@ -255,51 +250,37 @@ declare module 'papi-shared-types' {
      *   second notification.
      */
     'interlinearizer.saveDraftToProject': (
+      sessionId: string,
       sourceProjectId: string,
       interlinearProjectId: string,
       config?: import('interlinearizer').ProjectConfig,
-      sessionId?: string,
     ) => Promise<string | undefined>;
 
     /**
      * Creates an interlinearizer project holding a copy of the source project's stored draft, its
      * analysis and custom segment boundaries. Called from the WebView on Save As to a new project.
-     * The copy reads the stored draft after the WebView's pending autosave, or after the session's
-     * earlier edits.
+     * The copy reads the stored draft after the session's earlier edits.
      *
+     * @param sessionId - The session editing the draft. The copy runs in the session's turn, and
+     *   the session's history marks the draft saved when no book is left out.
      * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
      * @param analysisLanguages - BCP 47 tags for the new project's analysis languages.
      * @param targetProjectId - Optional Platform.Bible project ID of the target text.
      * @param name - Optional user-facing name for the project.
      * @param description - Optional user-facing description for the project.
-     * @param sessionId - The session editing the draft, if any. The copy then runs in the session's
-     *   turn, and the session's history marks the draft saved when no book is left out.
      * @returns The created project's summary and the books it left out, as a JSON `SavedAsProject`.
      * @throws If `sessionId` names no open session, if the stored draft itself cannot be read, or
      *   if storage fails. Error is logged and an error notification is sent before rethrowing so
      *   callers do not need to send a second notification.
      */
     'interlinearizer.saveDraftAsProject': (
+      sessionId: string,
       sourceProjectId: string,
       analysisLanguages: string[],
       targetProjectId?: string,
       name?: string,
       description?: string,
-      sessionId?: string,
     ) => Promise<string>;
-
-    /**
-     * Returns the draft working buffer for the given source project, serialized as a JSON string.
-     * Creates a fresh empty draft when none has been written. The WebView loads this on mount to
-     * seed the editor. The draft is decoupled from saved projects and never appears in the project
-     * picker.
-     *
-     * @param sourceProjectId - Platform.Bible source project ID whose draft to fetch.
-     * @throws {SyntaxError} If the stored draft contains invalid JSON.
-     * @throws If `papi.storage.readUserData` rejects for a reason other than the draft not
-     *   existing.
-     */
-    'interlinearizer.getDraft': (sourceProjectId: string) => Promise<string>;
 
     /**
      * Returns a book of the source project tokenized under the project's language tag.
@@ -314,74 +295,45 @@ declare module 'papi-shared-types' {
     ) => Promise<string | undefined>;
 
     /**
-     * Outlines a book of the source project, segmented by the boundaries `segmentationJson` names
-     * (a JSON `SegmentationDelta`), or one segment per verse when it is omitted. Addressed by
-     * session, it outlines the session's source as the session's draft segments it, taking no
-     * `segmentationJson`, and counts each segment's orphaned free-translation cards. Before a
-     * session's first outline of a book, the session re-anchors its draft to the book's text.
+     * Outlines a book of the session's source as the session's draft segments it, counting each
+     * segment's orphaned free-translation cards. Before the session's first outline of a book, the
+     * session re-anchors its draft to the book's text.
      *
      * @returns The `BookOutline` as a JSON string, or `undefined` when the project has no text for
      *   the book.
-     * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
-     *   `SegmentationDelta` or is given with a session. Also if the session is not open, or its
-     *   analysis cannot be read (logged before rethrowing).
+     * @throws If the book cannot be read or segmented, the session is not open, or its analysis
+     *   cannot be read (logged before rethrowing).
      */
     'interlinearizer.getBookOutline': (
-      address: string | { sessionId: string },
+      address: { sessionId: string },
       bookId: string,
-      segmentationJson?: string,
     ) => Promise<string | undefined>;
 
     /**
-     * Serves the segments at indexes `[start, end)` of the book's outline for the same address and
-     * `segmentationJson`; the range is clamped to the outline. Addressed by session, it also serves
-     * the analysis the session's draft holds for them.
+     * Serves the segments at indexes `[start, end)` of the book's outline, with the analysis the
+     * session's draft holds for them; the range is clamped to the outline.
      *
      * @returns The `SegmentPage` as a JSON string, or `undefined` when the project has no text for
      *   the book.
-     * @throws If the book cannot be read or segmented, or `segmentationJson` is not a JSON
-     *   `SegmentationDelta` or is given with a session. Also if the session is not open, or its
-     *   analysis cannot be read (logged before rethrowing).
+     * @throws If the book cannot be read or segmented, the session is not open, or its analysis
+     *   cannot be read (logged before rethrowing).
      */
     'interlinearizer.getSegments': (
-      address: string | { sessionId: string },
+      address: { sessionId: string },
       bookId: string,
       start: number,
       end: number,
-      segmentationJson?: string,
     ) => Promise<string | undefined>;
 
     /**
-     * Reports how far reading the whole text of the source project, or of a session's source, has
-     * got, starting the read when the project or the session has none.
+     * Reports how far reading the whole text of the session's source has got, starting the
+     * session's read when it has none.
      *
      * @returns Once the text's books are known, the `TextReadStatus` as a JSON string.
-     * @throws If the books or the provider of their text cannot be got; the next call tries again.
-     *   Also if the session is not open.
+     * @throws If the books or the provider of their text cannot be got, or the session is not open;
+     *   the next call tries again.
      */
-    'interlinearizer.getTextReadStatus': (
-      address: string | { sessionId: string },
-    ) => Promise<string>;
-
-    /**
-     * Persists the draft working buffer for the given source project. Called from the WebView after
-     * every edit (auto-save) and whenever the draft is reset (New), opened from a project, or has
-     * its changes discarded. Analysis for a book whose stored analysis could not be read is left
-     * out of the write, and the user is told which books.
-     *
-     * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
-     * @param draftJson - JSON-stringified `DraftProject` to persist.
-     * @param discardUnreadable - Whether the draft was started over (New, Open), so stored analysis
-     *   that could not be read is discarded rather than kept.
-     * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
-     *   notification is sent before rethrowing so callers do not need to send a second
-     *   notification.
-     */
-    'interlinearizer.saveDraft': (
-      sourceProjectId: string,
-      draftJson: string,
-      discardUnreadable?: boolean,
-    ) => Promise<void>;
+    'interlinearizer.getTextReadStatus': (address: { sessionId: string }) => Promise<string>;
 
     /**
      * Starts the source project's draft over from `from`, closing the source's session first. A
@@ -398,17 +350,22 @@ declare module 'papi-shared-types' {
     }) => Promise<void>;
 
     /**
-     * Opens a session read-only on `interlinearProjectId` when it names a Paratext 9 import,
-     * otherwise on the source project's draft, which saves to `interlinearProjectId` when given.
-     * Closes the source's earlier session, if any.
+     * Opens a session read-only on the Paratext 9 import `importProjectId` when given, otherwise on
+     * the source project's draft, which saves to `interlinearProjectId` when given. When the source
+     * has no project of the id named, the session opens on the draft, which then saves to no
+     * project. A draft that holds analysis is then marked unsaved, unless the missing project was
+     * an import. Closes the source's earlier session, if any. Warns the user of each book whose
+     * stored analysis could not be read.
      *
-     * @returns A JSON string of `{ sessionId, readOnly, hasFreeTranslations }`.
-     * @throws If the source project has no such interlinear project, or its analysis cannot be
-     *   loaded (logged before rethrowing).
+     * @returns A JSON string of an `OpenedSession`.
+     * @throws If both ids are given, an id names a project of the wrong kind, or finding the
+     *   project, loading the analysis, or marking the draft unsaved fails (logged before
+     *   rethrowing).
      */
     'interlinearizer.openSession': (args: {
       sourceProjectId: string;
       interlinearProjectId?: string;
+      importProjectId?: string;
     }) => Promise<string>;
 
     /**
@@ -1025,18 +982,18 @@ declare module 'papi-shared-types' {
 
     /**
      * Turns on or off skipping the whole-text read that a session starts once a feature needs the
-     * whole text, so the harness can time the host path without it. While on, a session's
+     * whole text, so the harness can time the view without it. While on, a session's
      * `getTextReadStatus` reports a read that never finishes. Off until turned on.
      */
     'interlinearizer.setSkipSessionReads': (skip: boolean) => Promise<void>;
 
     /**
-     * Starts the whole-text read of the session open on `sourceProjectId`, as a feature needing the
-     * whole text would, so the performance harness can time edits made while it runs.
+     * Names the session open on `sourceProjectId`, so the performance harness can address the
+     * view's session.
      *
-     * @throws {Error} If the source has no session open.
+     * @returns The session id, or `undefined` when the source has no session open.
      */
-    'interlinearizer.startSessionTextRead': (sourceProjectId: string) => Promise<void>;
+    'interlinearizer.sessionIdFor': (sourceProjectId: string) => Promise<string | undefined>;
 
     /**
      * Takes the timing entries the extension host recorded since the last reading.
@@ -2455,9 +2412,10 @@ declare module 'interlinearizer' {
       };
 
   /**
-   * The always-present, auto-saved working buffer for a single source project. Decoupled from the
-   * user's saved {@link InterlinearProject}s: it is stored under its own `draft:{sourceProjectId}`
-   * key, is never listed among the project summaries, and is never shown in the project picker.
+   * The always-present working buffer for a single source project, which each edit is stored to.
+   * Decoupled from the user's saved {@link InterlinearProject}s: it is stored under its own
+   * `draft:{sourceProjectId}` key, is never listed among the project summaries, and is never shown
+   * in the project picker.
    *
    * The draft is the runtime source of truth for the analysis being edited. Every gloss / phrase
    * write is persisted here (so work is never lost), independent of the active project. The active
@@ -2494,7 +2452,7 @@ declare module 'interlinearizer' {
     /** Description typed in the "New" dialog, retained only to prefill the Save As dialog. */
     suggestedDescription?: string;
 
-    /** The live analysis being edited and auto-saved. Empty for a fresh draft. */
+    /** The live analysis being edited. Empty for a fresh draft. */
     analysis: TextAnalysis;
 
     /**

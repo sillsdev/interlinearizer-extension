@@ -7,7 +7,7 @@ import type { AssignmentStatus, Token, TokenSnapshot } from 'interlinearizer';
 import type { ResolvedSense } from 'interlinearizer/lexicon';
 import { TooltipProvider } from 'platform-bible-react';
 import * as AnalysisStore from '../../components/AnalysisStore';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
+import type * as AnalysisStoreMock from '../../components/__mocks__/AnalysisStore';
 import { LexiconSensesProvider } from '../../components/LexiconSenses';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
 import { emptyAnalysis } from '../../types/empty-factories';
@@ -23,6 +23,11 @@ import {
 } from './test-helpers';
 
 jest.mock('../../components/AnalysisStore');
+
+// The manual mock's provider, which seeds glosses for the mocked hooks to read.
+const { MockAnalysisProvider } = jest.requireMock<typeof AnalysisStoreMock>(
+  '../../components/AnalysisStore',
+);
 
 beforeEach(() => {
   mockKeyAsValueLocalizedStrings();
@@ -150,18 +155,18 @@ describe('InertTokenChip', () => {
 describe('TokenChip', () => {
   it('renders the surface text', () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     expect(screen.getByText('hello')).toBeInTheDocument();
   });
 
   it('applies a border class to the outer container', () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     const outer = screen.getByText('hello').closest('span')?.parentElement;
     expect(outer?.className).toContain('tw:border');
@@ -169,9 +174,9 @@ describe('TokenChip', () => {
 
   it('applies a destructive border when isSplitFree is true', () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} isSplitFree />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     const label = screen.getByText('hello').closest('label');
     expect(label?.className).toContain('tw:border-destructive');
@@ -179,9 +184,9 @@ describe('TokenChip', () => {
 
   it('does not apply a destructive border when isSplitFree is false', () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} isSplitFree={false} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     const label = screen.getByText('hello').closest('label');
     expect(label?.className).not.toContain('tw:border-destructive');
@@ -190,9 +195,9 @@ describe('TokenChip', () => {
 
   it('renders a gloss input', () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     expect(
       screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
@@ -201,9 +206,9 @@ describe('TokenChip', () => {
 
   it('marks its gloss input as holding nothing uncommitted', () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     expect(
       screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
@@ -212,9 +217,9 @@ describe('TokenChip', () => {
 
   it('marks its gloss input as holding uncommitted text once typed into', async () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     const input = screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' });
     await userEvent.type(input, 'in');
@@ -248,9 +253,9 @@ describe('TokenChip', () => {
       phraseAnalysisLinks: [],
     };
     render(
-      <AnalysisStoreProvider initialAnalysis={initialAnalysis} analysisLanguage="und">
+      <MockAnalysisProvider initialAnalysis={initialAnalysis} analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     expect(
       screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
@@ -259,9 +264,9 @@ describe('TokenChip', () => {
 
   it('shows an empty string in the input when no gloss has been set', () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     expect(
       screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
@@ -271,9 +276,9 @@ describe('TokenChip', () => {
   it('calls the store onGlossChange spy once on blur with the final value', async () => {
     const spy = jest.fn();
     render(
-      <AnalysisStoreProvider analysisLanguage="und" onGlossChange={spy}>
+      <MockAnalysisProvider analysisLanguage="und" onGlossChange={spy}>
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     await userEvent.type(
       screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
@@ -288,9 +293,9 @@ describe('TokenChip', () => {
   it('does not call the store onGlossChange spy when blurring without typing', async () => {
     const spy = jest.fn();
     render(
-      <AnalysisStoreProvider analysisLanguage="und" onGlossChange={spy}>
+      <MockAnalysisProvider analysisLanguage="und" onGlossChange={spy}>
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     await userEvent.click(
       screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
@@ -302,9 +307,9 @@ describe('TokenChip', () => {
   it('calls onFocus when the input is focused', async () => {
     const handleFocus = jest.fn();
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} onFocus={handleFocus} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     await userEvent.click(
       screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
@@ -315,9 +320,9 @@ describe('TokenChip', () => {
   it('does not call onFocus when disabled', async () => {
     const handleFocus = jest.fn();
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} disabled onFocus={handleFocus} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     await userEvent.click(
       screen.getByRole('textbox', { name: '%interlinearizer_tokenChip_glossLabel%' }),
@@ -328,9 +333,9 @@ describe('TokenChip', () => {
   it('focuses the gloss input without native scrolling on a surface-text mouse-down', () => {
     const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     // Clicking the word hits the label, whose native activation would forward focus to the input
@@ -349,9 +354,9 @@ describe('TokenChip', () => {
   it('leaves a mouse-down on the gloss input itself to the input handler', () => {
     const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     // The input's own handler focuses once with preventScroll; the label handler (which the event
@@ -366,9 +371,9 @@ describe('TokenChip', () => {
 
   it('leaves the gloss input mouse-down default intact so the click can place the caret', () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     // jsdom has no caret, so this can only guard the cancellation, not the placement it protects.
@@ -382,9 +387,9 @@ describe('TokenChip', () => {
   it('does not intercept a surface-text mouse-down when disabled', () => {
     const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} disabled />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     const defaultAllowed = fireEvent.mouseDown(screen.getByText('hello'));
@@ -395,11 +400,11 @@ describe('TokenChip', () => {
 
   it('renders remove button when onRemove is provided', () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TooltipProvider>
           <TokenChip {...requiredProps()} onRemove={jest.fn()} />
         </TooltipProvider>
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     expect(
       screen.getByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
@@ -411,7 +416,7 @@ describe('TokenChip', () => {
     // `title`. The template quotes the token so the word reads as distinct from the surrounding
     // wording.
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TooltipProvider>
           <TokenChip
             {...requiredProps()}
@@ -419,7 +424,7 @@ describe('TokenChip', () => {
             onRemove={jest.fn()}
           />
         </TooltipProvider>
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     expect(screen.getByRole('button', { name: 'Remove "hello" from phrase' })).toHaveAttribute(
       'title',
@@ -429,9 +434,9 @@ describe('TokenChip', () => {
 
   it('does not render remove button when onRemove is not provided', () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     expect(
       screen.queryByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
@@ -441,11 +446,11 @@ describe('TokenChip', () => {
   it('calls onRemove when the remove button is clicked', async () => {
     const onRemove = jest.fn();
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TooltipProvider>
           <TokenChip {...requiredProps()} onRemove={onRemove} />
         </TooltipProvider>
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     await userEvent.click(
       screen.getByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
@@ -455,11 +460,11 @@ describe('TokenChip', () => {
 
   it('applies destructive border on the remove button when hovered', async () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TooltipProvider>
           <TokenChip {...requiredProps()} onRemove={jest.fn()} />
         </TooltipProvider>
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     const removeBtn = screen.getByRole('button', {
       name: '%interlinearizer_tokenChip_removeFromPhrase%',
@@ -470,11 +475,11 @@ describe('TokenChip', () => {
 
   it('removes destructive border when pointer leaves the remove button', async () => {
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TooltipProvider>
           <TokenChip {...requiredProps()} onRemove={jest.fn()} />
         </TooltipProvider>
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     const removeBtn = screen.getByRole('button', {
       name: '%interlinearizer_tokenChip_removeFromPhrase%',
@@ -487,21 +492,21 @@ describe('TokenChip', () => {
   it('clears remove-hover state when onRemove changes from a function to undefined', async () => {
     const onRemove = jest.fn();
     const { rerender } = render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TooltipProvider>
           <TokenChip {...requiredProps()} onRemove={onRemove} />
         </TooltipProvider>
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     await userEvent.hover(
       screen.getByRole('button', { name: '%interlinearizer_tokenChip_removeFromPhrase%' }),
     );
     rerender(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TooltipProvider>
           <TokenChip {...requiredProps()} onRemove={undefined} />
         </TooltipProvider>
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
     const label = screen.getByText('hello').closest('label');
     expect(label?.className).not.toContain('tw:border-destructive');
@@ -510,9 +515,9 @@ describe('TokenChip', () => {
   describe('morphology UI', () => {
     it('does not render morpheme row when showMorphology is false', () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology={false} />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       expect(
         screen.queryByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -521,9 +526,9 @@ describe('TokenChip', () => {
 
     it('renders a "define" button when showMorphology is true and no morphemes exist', () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       expect(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -534,9 +539,9 @@ describe('TokenChip', () => {
     // one's height rather than the height itself.
     it('gives the unanalyzed morphology slot the shared box metrics', () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       const spacer = screen.getByTestId('morphology-slot-spacer');
       expect(spacer.parentElement).toHaveClass('tw:morphology-slot');
@@ -544,27 +549,27 @@ describe('TokenChip', () => {
 
     it('reserves a second row in the unanalyzed morphology slot', () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       expect(screen.getByTestId('morphology-slot-spacer')).toBeInTheDocument();
     });
 
     it('hides the reserved second row from assistive tech', () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       expect(screen.getByTestId('morphology-slot-spacer')).toHaveAttribute('aria-hidden', 'true');
     });
 
     it('shows surface text on the define button for unanalyzed tokens', () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       const btn = screen.getByRole('button', {
         name: '%interlinearizer_tokenChip_defineMorphemes%',
@@ -574,9 +579,9 @@ describe('TokenChip', () => {
 
     it('opens the popover when the define button is clicked', async () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
       await userEvent.click(
@@ -587,9 +592,9 @@ describe('TokenChip', () => {
 
     it('does not open the popover when disabled', async () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology disabled />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -603,9 +608,9 @@ describe('TokenChip', () => {
       // treats as unfocused.
       const handleFocus = jest.fn();
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology onFocus={handleFocus} />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -616,9 +621,9 @@ describe('TokenChip', () => {
     it('does not report focus from the define button when disabled', async () => {
       const handleFocus = jest.fn();
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology disabled onFocus={handleFocus} />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -632,9 +637,9 @@ describe('TokenChip', () => {
         { id: 'm-2', form: '-lo', writingSystem: 'und' },
       ]);
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       expect(screen.getByTestId('morpheme-box')).toBeInTheDocument();
       expect(
@@ -647,9 +652,9 @@ describe('TokenChip', () => {
         .spyOn(AnalysisStore, 'useMorphemes')
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       expect(screen.getByTestId('morpheme-box')).toHaveAttribute('data-morpheme-box-open', 'false');
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
@@ -661,9 +666,9 @@ describe('TokenChip', () => {
         .spyOn(AnalysisStore, 'useMorphemes')
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
       expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
@@ -675,9 +680,9 @@ describe('TokenChip', () => {
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
       const handleFocus = jest.fn();
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology onFocus={handleFocus} />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
       expect(handleFocus).toHaveBeenCalledTimes(1);
@@ -691,9 +696,9 @@ describe('TokenChip', () => {
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
       const handleFocus = jest.fn();
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology onFocus={handleFocus} />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(screen.getByRole('textbox', { name: 'mock-morpheme-gloss' }));
       expect(handleFocus).toHaveBeenCalledTimes(1);
@@ -704,9 +709,9 @@ describe('TokenChip', () => {
       jest.spyOn(AnalysisStore, 'useMorphemeBreakdownDispatch').mockReturnValue(mockDispatch);
 
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -720,9 +725,9 @@ describe('TokenChip', () => {
       jest.spyOn(AnalysisStore, 'useMorphemeBreakdownDispatch').mockReturnValue(mockDispatch);
 
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -739,9 +744,9 @@ describe('TokenChip', () => {
       jest.spyOn(AnalysisStore, 'useMorphemeDeleteDispatch').mockReturnValue(mockDispatch);
 
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
       await userEvent.click(screen.getByRole('button', { name: 'mock-reset' }));
@@ -750,9 +755,9 @@ describe('TokenChip', () => {
 
     it('passes no onReset to the popover when the token has no breakdown', async () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -765,9 +770,9 @@ describe('TokenChip', () => {
       jest.spyOn(AnalysisStore, 'useMorphemeResetLosesAnnotation').mockReturnValue(true);
 
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -782,9 +787,9 @@ describe('TokenChip', () => {
       jest.spyOn(AnalysisStore, 'useMorphemeResetLosesAnnotation').mockReturnValue(false);
 
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -802,9 +807,9 @@ describe('TokenChip', () => {
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
 
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
       expect(screen.getByTestId('morpheme-popover')).toHaveAttribute(
@@ -822,9 +827,9 @@ describe('TokenChip', () => {
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
 
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
       expect(screen.getByTestId('morpheme-popover')).not.toHaveAttribute('data-resplit-morphemes');
@@ -837,9 +842,9 @@ describe('TokenChip', () => {
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
 
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
 
       expect(screen.getByTestId('morpheme-box')).toHaveAttribute('data-stale', 'true');
@@ -854,9 +859,9 @@ describe('TokenChip', () => {
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
 
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
       await userEvent.click(screen.getByRole('button', { name: 'mock-confirm' }));
@@ -870,9 +875,9 @@ describe('TokenChip', () => {
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
 
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
 
@@ -884,9 +889,9 @@ describe('TokenChip', () => {
         .spyOn(AnalysisStore, 'useMorphemes')
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
 
       // The morpheme box (with its gloss inputs) sits before the main gloss input inside the label;
@@ -901,9 +906,9 @@ describe('TokenChip', () => {
     it('leaves a mouse-down on the morpheme button to the button itself', () => {
       const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
 
       // The button opens the popover via its own click handler; the label handler must not focus
@@ -918,9 +923,9 @@ describe('TokenChip', () => {
 
     it('does not reopen the popover when showMorphology is toggled off and back on', async () => {
       const { rerender } = render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -929,23 +934,23 @@ describe('TokenChip', () => {
       // Toggling morphology off unmounts the popover tree; the open state must not survive and
       // resurrect the popover when morphology comes back.
       rerender(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology={false} />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       rerender(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
     });
 
     it('closes the popover when the chip becomes disabled', async () => {
       const { rerender } = render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -954,18 +959,18 @@ describe('TokenChip', () => {
       // The popover content renders on `popoverOpen` alone, not gated on `disabled`; a chip whose
       // popover is open while it transitions to disabled would otherwise stay editable.
       rerender(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology disabled />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
     });
 
     it('closes the popover via onClose', async () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
       await userEvent.click(
         screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
@@ -987,9 +992,9 @@ describe('TokenChip linked to a lexicon sense', () => {
 
   it('fills the gloss field from the sense where the token stores no gloss', async () => {
     const { ui } = withLexicon(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
       SENSES,
     );
     render(ui);
@@ -1011,9 +1016,9 @@ describe('TokenChip linked to a lexicon sense', () => {
     ]);
     render(
       <LexiconSensesProvider registry={registry}>
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} />
-        </AnalysisStoreProvider>
+        </MockAnalysisProvider>
       </LexiconSensesProvider>,
     );
     await userEvent.type(screen.getByRole('textbox'), 'river');
@@ -1026,9 +1031,9 @@ describe('TokenChip linked to a lexicon sense', () => {
   it('writes nothing on blur when the sense gloss is left as shown', async () => {
     const onGlossChange = jest.fn();
     const { ui } = withLexicon(
-      <AnalysisStoreProvider analysisLanguage="und" onGlossChange={onGlossChange}>
+      <MockAnalysisProvider analysisLanguage="und" onGlossChange={onGlossChange}>
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
       SENSES,
     );
     render(ui);
@@ -1043,9 +1048,9 @@ describe('TokenChip linked to a lexicon sense', () => {
   it('writes nothing when the sense gloss is emptied, and shows it again on blur', async () => {
     const onGlossChange = jest.fn();
     const { ui } = withLexicon(
-      <AnalysisStoreProvider analysisLanguage="und" onGlossChange={onGlossChange}>
+      <MockAnalysisProvider analysisLanguage="und" onGlossChange={onGlossChange}>
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
       SENSES,
     );
     render(ui);
@@ -1067,9 +1072,9 @@ describe('TokenChip linked to a lexicon sense', () => {
       glossSenseRef: testSenseRef('s-1'),
     });
     const { ui } = withLexicon(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
       SENSES,
     );
     render(ui);
@@ -1107,9 +1112,9 @@ describe('TokenChip read-only', () => {
   it('renders the committed gloss as plain text instead of an input', () => {
     setMockAnalysisReadOnly(true);
     render(
-      <AnalysisStoreProvider initialAnalysis={APPROVED_ANALYSIS} analysisLanguage="und">
+      <MockAnalysisProvider initialAnalysis={APPROVED_ANALYSIS} analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     expect(screen.getByTestId('readonly-gloss')).toHaveTextContent('in');
@@ -1120,9 +1125,9 @@ describe('TokenChip read-only', () => {
   it('keeps a line of height for a token with no gloss', () => {
     setMockAnalysisReadOnly(true);
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     expect(screen.getByTestId('readonly-gloss')).toHaveClass('tw:min-h-lh');
@@ -1131,9 +1136,9 @@ describe('TokenChip read-only', () => {
   it('renders an approved gloss in the approved color', () => {
     setMockAnalysisReadOnly(true);
     render(
-      <AnalysisStoreProvider initialAnalysis={APPROVED_ANALYSIS} analysisLanguage="und">
+      <MockAnalysisProvider initialAnalysis={APPROVED_ANALYSIS} analysisLanguage="und">
         <TokenChip {...requiredProps()} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     expect(screen.getByTestId('readonly-gloss')).toHaveClass(STATUS_TEXT_COLOR_CLASS.approved);
@@ -1158,9 +1163,9 @@ describe('TokenChip read-only', () => {
 
     it("renders the record's gloss", () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
 
       expect(screen.getByTestId('readonly-gloss')).toHaveTextContent('greeting');
@@ -1168,9 +1173,9 @@ describe('TokenChip read-only', () => {
 
     it('renders the gloss in the suggested color', () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
 
       expect(screen.getByTestId('readonly-gloss')).toHaveClass(STATUS_TEXT_COLOR_CLASS.suggested);
@@ -1178,9 +1183,9 @@ describe('TokenChip read-only', () => {
 
     it('renders nothing for a record with no gloss in the analysis language', () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="fr">
+        <MockAnalysisProvider analysisLanguage="fr">
           <TokenChip {...requiredProps()} />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
 
       expect(screen.getByTestId('readonly-gloss')).toBeEmptyDOMElement();
@@ -1188,9 +1193,9 @@ describe('TokenChip read-only', () => {
 
     it("shows the record's breakdown", () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
 
       expect(screen.getByTestId('morpheme-box')).toHaveAttribute('data-forms', 'hel lo');
@@ -1198,9 +1203,9 @@ describe('TokenChip read-only', () => {
 
     it('marks the breakdown unapproved', () => {
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
 
       expect(screen.getByTestId('morpheme-box')).toHaveAttribute('data-unapproved', 'true');
@@ -1211,9 +1216,9 @@ describe('TokenChip read-only', () => {
         .spyOn(AnalysisStore, 'useUnapprovedTokenAnalysis')
         .mockReturnValue({ ...UNAPPROVED, morphemes: undefined });
       render(
-        <AnalysisStoreProvider analysisLanguage="und">
+        <MockAnalysisProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
+        </MockAnalysisProvider>,
       );
 
       expect(screen.getByTestId('readonly-morphology-slot-spacer')).toBeInTheDocument();
@@ -1223,9 +1228,9 @@ describe('TokenChip read-only', () => {
   it('hides the morphology editing affordances for an unanalyzed token', () => {
     setMockAnalysisReadOnly(true);
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} showMorphology />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     expect(screen.queryByTestId('morpheme-box')).not.toBeInTheDocument();
@@ -1239,9 +1244,9 @@ describe('TokenChip read-only', () => {
   it('keeps a slot of the shared box metrics for an unanalyzed token', () => {
     setMockAnalysisReadOnly(true);
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} showMorphology />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     expect(screen.getByTestId('readonly-morphology-slot-spacer').parentElement).toHaveClass(
@@ -1252,9 +1257,9 @@ describe('TokenChip read-only', () => {
   it('hides the unanalyzed token slot from assistive tech', () => {
     setMockAnalysisReadOnly(true);
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} showMorphology />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     expect(screen.getByTestId('readonly-morphology-slot-spacer').parentElement).toHaveAttribute(
@@ -1266,9 +1271,9 @@ describe('TokenChip read-only', () => {
   it('omits the unanalyzed token slot when showMorphology is off', () => {
     setMockAnalysisReadOnly(true);
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} showMorphology={false} />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     expect(screen.queryByTestId('readonly-morphology-slot-spacer')).not.toBeInTheDocument();
@@ -1280,9 +1285,9 @@ describe('TokenChip read-only', () => {
       .spyOn(AnalysisStore, 'useMorphemes')
       .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
+      <MockAnalysisProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} showMorphology />
-      </AnalysisStoreProvider>,
+      </MockAnalysisProvider>,
     );
 
     expect(screen.queryByTestId('readonly-morphology-slot-spacer')).not.toBeInTheDocument();

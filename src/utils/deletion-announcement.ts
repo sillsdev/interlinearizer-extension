@@ -1,5 +1,5 @@
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import type { AnalysisDeletionOutcome } from '../store/analysisSlice';
+import type { AnalysisDeletionOutcome } from './analysis-selectors';
 
 /** Localized string keys a deletion announcement is built from. */
 export const DELETION_ANNOUNCEMENT_STRING_KEYS = [

@@ -26,10 +26,11 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
     /// Runs <paramref name="work"/> once no other work run through this on the same source is
     /// running. Work on one source is not reentrant: it must not call this for that source.
     /// </summary>
+    /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
     /// <exception cref="ObjectDisposedException">If this is disposed before the work starts.</exception>
     public async Task<T> Exclusive<T>(string sourceProjectId, Func<Task<T>> work)
     {
-        var sourceLock = _locks.GetOrAdd(sourceProjectId, _ => new SemaphoreSlim(1, 1));
+        var sourceLock = _locks.GetOrAdd(Key(sourceProjectId), _ => new SemaphoreSlim(1, 1));
         await sourceLock.WaitAsync();
         try
         {
@@ -50,16 +51,12 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
             return true;
         });
 
-    /// <summary>The file the database of <paramref name="sourceProjectId"/> is kept in, named after it.</summary>
+    /// <summary>
+    /// The file the database of <paramref name="sourceProjectId"/> is kept in, named after the id
+    /// in upper case.
+    /// </summary>
     /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
-    public string DbPath(string sourceProjectId)
-    {
-        if (sourceProjectId.Length == 0 || sourceProjectId != Path.GetFileName(sourceProjectId) || sourceProjectId.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-        {
-            throw new ArgumentException($"A source project id names its database file, which '{sourceProjectId}' cannot", nameof(sourceProjectId));
-        }
-        return Path.Combine(directory.Path, sourceProjectId + ".sqlite");
-    }
+    public string DbPath(string sourceProjectId) => Path.Combine(directory.Path, Key(sourceProjectId) + ".sqlite");
 
     /// <summary>
     /// Opens <paramref name="sourceProjectId"/> over its database, created with its folder when
@@ -70,15 +67,15 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
     /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
     public async Task<IServiceProvider> Open(string sourceProjectId)
     {
-        var dbPath = DbPath(sourceProjectId);
-        var scope = _scopes.GetOrAdd(sourceProjectId, _ => new Lazy<Task<AsyncServiceScope>>(() => OpenScope(sourceProjectId, dbPath)));
+        var key = Key(sourceProjectId);
+        var scope = _scopes.GetOrAdd(key, _ => new Lazy<Task<AsyncServiceScope>>(() => OpenScope(key)));
         try
         {
             return (await scope.Value).ServiceProvider;
         }
         catch
         {
-            _scopes.TryRemove(new KeyValuePair<string, Lazy<Task<AsyncServiceScope>>>(sourceProjectId, scope));
+            _scopes.TryRemove(new KeyValuePair<string, Lazy<Task<AsyncServiceScope>>>(key, scope));
             throw;
         }
     }
@@ -87,10 +84,11 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
     /// The services of an open source. Call only from work that <see cref="Exclusive"/> runs for
     /// <paramref name="sourceProjectId"/>.
     /// </summary>
+    /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
     /// <exception cref="InvalidOperationException">If the source is not open.</exception>
     public async Task<IServiceProvider> Get(string sourceProjectId)
     {
-        if (!_scopes.TryGetValue(sourceProjectId, out var scope)) throw new InvalidOperationException($"Source {sourceProjectId} is not open");
+        if (!_scopes.TryGetValue(Key(sourceProjectId), out var scope)) throw new InvalidOperationException($"Source {sourceProjectId} is not open");
         return (await scope.Value).ServiceProvider;
     }
 
@@ -102,7 +100,8 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
     /// </summary>
     /// <exception cref="InvalidOperationException">If the source is not open.</exception>
     /// <exception cref="ArgumentException">
-    /// If the project id is not a GUID, or no project is stored under it.
+    /// If the source's id cannot name a file, the project id is not a GUID, or no project is
+    /// stored under it.
     /// </exception>
     public async Task<AnalysisRepository> Repository(string sourceProjectId, string projectId)
     {
@@ -121,18 +120,21 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
     /// <see cref="Exclusive"/> runs for <paramref name="sourceProjectId"/>, and use what it returns
     /// only within that work.
     /// </summary>
+    /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
     /// <exception cref="InvalidOperationException">If the source is not open.</exception>
     public async Task<InterlinearProjects> Projects(string sourceProjectId) => Projects(await Get(sourceProjectId));
 
-    public bool IsOpen(string sourceProjectId) => _scopes.ContainsKey(sourceProjectId);
+    /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
+    public bool IsOpen(string sourceProjectId) => _scopes.ContainsKey(Key(sourceProjectId));
 
     /// <summary>
     /// Closes a source, disposing its scope. Closing one not open does nothing. Call only from work
     /// that <see cref="Exclusive"/> runs for <paramref name="sourceProjectId"/>.
     /// </summary>
+    /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
     public async Task Close(string sourceProjectId)
     {
-        if (!_scopes.TryRemove(sourceProjectId, out var scope)) return;
+        if (!_scopes.TryRemove(Key(sourceProjectId), out var scope)) return;
         await (await scope.Value).DisposeAsync();
     }
 
@@ -165,12 +167,30 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
         services.GetRequiredService<InterlinearizerCrdtDbContext>(),
         services.GetRequiredService<ClientIdentity>());
 
-    private async Task<AsyncServiceScope> OpenScope(string sourceProjectId, string dbPath)
+    /// <summary>
+    /// The one spelling of a source's id that its lock, its scope, and its database file go by.
+    /// Platform.Bible compares project ids ignoring case, so the id is upper-cased, as its
+    /// <c>normalizeProjectId</c> does. Platform.Bible does not limit an id's characters, so this
+    /// allows only those that name the same file on every platform: ASCII letters, digits,
+    /// <c>_</c>, and <c>-</c>. Over ASCII alone, upper-casing here gives what upper-casing in
+    /// JavaScript does.
+    /// </summary>
+    /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
+    private static string Key(string sourceProjectId)
+    {
+        if (sourceProjectId.Length == 0 || !sourceProjectId.All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-'))
+        {
+            throw new ArgumentException($"A source project id names its database file, which '{sourceProjectId}' cannot: it may hold only ASCII letters, digits, '_', and '-'", nameof(sourceProjectId));
+        }
+        return sourceProjectId.ToUpperInvariant();
+    }
+
+    private async Task<AsyncServiceScope> OpenScope(string key)
     {
         var scope = rootServices.CreateAsyncScope();
         try
         {
-            scope.ServiceProvider.GetRequiredService<CurrentSource>().Set(sourceProjectId, dbPath);
+            scope.ServiceProvider.GetRequiredService<CurrentSource>().Set(key, DbPath(key));
             Directory.CreateDirectory(directory.Path);
             await scope.ServiceProvider.GetRequiredService<InterlinearizerCrdtDbContext>().Database.MigrateAsync();
             return scope;

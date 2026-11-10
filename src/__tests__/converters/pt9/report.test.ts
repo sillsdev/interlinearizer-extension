@@ -28,6 +28,7 @@ function makeReport() {
               unparseableLexemeId: 0,
               blankMorphemeForm: 0,
             },
+            drops: [{ verseRef: 'MAT 1:1', reason: 'formMismatch', lexemeIds: ['Word:hello'] }],
             ambiguousAnchors: 0,
             punctuationEntriesIgnored: 0,
           },
@@ -117,6 +118,35 @@ describe('isPt9ImportReport', () => {
     const book: Record<string, unknown> = {
       ...report.languages[0].books[0],
       clusterDrops: { verseNotFound: 'many' },
+    };
+    expect(
+      isPt9ImportReport({ ...report, languages: [{ ...report.languages[0], books: [book] }] }),
+    ).toBe(false);
+  });
+
+  it('rejects a book without a drop list', () => {
+    const report = makeReport();
+    const book: Record<string, unknown> = { ...report.languages[0].books[0], drops: undefined };
+    expect(
+      isPt9ImportReport({ ...report, languages: [{ ...report.languages[0], books: [book] }] }),
+    ).toBe(false);
+  });
+
+  it('rejects a drop whose lexeme ids are not strings', () => {
+    const report = makeReport();
+    const book: Record<string, unknown> = {
+      ...report.languages[0].books[0],
+      drops: [{ verseRef: 'MAT 1:1', reason: 'formMismatch', lexemeIds: [3] }],
+    };
+    expect(
+      isPt9ImportReport({ ...report, languages: [{ ...report.languages[0], books: [book] }] }),
+    ).toBe(false);
+  });
+  it('rejects a drop whose reason is not a drop reason', () => {
+    const report = makeReport();
+    const book: Record<string, unknown> = {
+      ...report.languages[0].books[0],
+      drops: [{ verseRef: 'MAT 1:1', reason: 'formMismtach', lexemeIds: ['Word:hello'] }],
     };
     expect(
       isPt9ImportReport({ ...report, languages: [{ ...report.languages[0], books: [book] }] }),

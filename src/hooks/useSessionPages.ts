@@ -4,9 +4,8 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { NetworkEvents } from 'papi-shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageClient } from '../cache/pageClient';
-import type { BookOutline } from '../types/segment-pages';
+import type { BookOutline, SegmentPages, SegmentPagesLoad } from '../types/segment-pages';
 import useLatestRef from './useLatestRef';
-import type { SegmentPages, UseSegmentPagesResult } from './useSegmentPages';
 import { EXTEND_CHUNK, INITIAL_WINDOW_HALF, findAnchorIndex } from './useSegmentWindow';
 
 /** Arguments for {@link useSessionPages}. */
@@ -23,7 +22,7 @@ export interface UseSessionPagesArgs {
 }
 
 /** Return value of {@link useSessionPages}. */
-export type UseSessionPagesResult = UseSegmentPagesResult & {
+export type UseSessionPagesResult = SegmentPagesLoad & {
   /**
    * Holds the book's pages and their analysis, and sends the session's edits; `undefined` until the
    * book's first pages load.

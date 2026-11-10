@@ -63,10 +63,6 @@ export class CSharpRepository implements AnalysisRepository {
     return this.notStored('exportForCopy');
   }
 
-  replaceAll(): Promise<string[]> {
-    return this.notStored('replaceAll');
-  }
-
   markClean(): Promise<void> {
     return this.notStored('markClean');
   }

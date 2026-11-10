@@ -7,19 +7,19 @@ import type { ReactNode } from 'react';
 import { PageClient } from '../../cache/pageClient';
 import { PageClientProvider } from '../../cache/pageHooks';
 import {
-  useAnalysisRowCommands,
-  useApproveAnalysisCommand,
-  useConfirmMorphemesCommand,
+  useAnalysisRowDispatch,
+  useApproveAnalysisDispatch,
+  useConfirmMorphemesDispatch,
   useGlossCommand,
-  useMorphemeBreakdownCommand,
-  useMorphemeDeleteCommand,
-  useMorphemeGlossCommand,
-  usePhraseCommands,
-  usePhraseGlossCommand,
-  useSegmentFreeTranslationCommand,
-  useStaleFreeTranslationCommands,
+  useMorphemeBreakdownDispatch,
+  useMorphemeDeleteDispatch,
+  useMorphemeGlossDispatch,
+  usePhraseDispatch,
+  usePhraseGlossDispatch,
+  useSegmentFreeTranslationDispatch,
+  useStaleFreeTranslationDispatch,
   useRemovalPreviews,
-  useStaleLocationCommands,
+  useStaleLocationDispatch,
 } from '../../cache/sessionEdits';
 import { WholeAnalysis } from '../../cache/wholeAnalysis';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
@@ -57,126 +57,126 @@ const EDITS: [string, () => () => void, string, Record<string, unknown>][] = [
     { tokenRef: 'GEN 1:1:0', surfaceText: 'In', value: 'au' },
   ],
   [
-    'useApproveAnalysisCommand',
+    'useApproveAnalysisDispatch',
     () => {
-      const approve = useApproveAnalysisCommand();
+      const approve = useApproveAnalysisDispatch();
       return () => approve('GEN 1:1:0', 'In', 'ta-in');
     },
     'interlinearizer.approveAnalysisForToken',
     { tokenRef: 'GEN 1:1:0', surfaceText: 'In', analysisId: 'ta-in' },
   ],
   [
-    'useConfirmMorphemesCommand at a token',
+    'useConfirmMorphemesDispatch at a token',
     () => {
-      const confirm = useConfirmMorphemesCommand();
+      const confirm = useConfirmMorphemesDispatch();
       return () => confirm('ta-in', 'GEN 1:1:0');
     },
     'interlinearizer.confirmAnalysisMorphemes',
     { analysisId: 'ta-in', tokenRef: 'GEN 1:1:0' },
   ],
   [
-    'useConfirmMorphemesCommand at no token',
+    'useConfirmMorphemesDispatch at no token',
     () => {
-      const confirm = useConfirmMorphemesCommand();
+      const confirm = useConfirmMorphemesDispatch();
       return () => confirm('ta-in');
     },
     'interlinearizer.confirmAnalysisMorphemes',
     { analysisId: 'ta-in' },
   ],
   [
-    'useMorphemeBreakdownCommand',
+    'useMorphemeBreakdownDispatch',
     () => {
-      const write = useMorphemeBreakdownCommand();
+      const write = useMorphemeBreakdownDispatch();
       return () => write('GEN 1:1:0', 'In', ['I', 'n'], 'en');
     },
     'interlinearizer.writeMorphemes',
     { tokenRef: 'GEN 1:1:0', surfaceText: 'In', forms: ['I', 'n'], writingSystem: 'en' },
   ],
   [
-    'useMorphemeDeleteCommand',
+    'useMorphemeDeleteDispatch',
     () => {
-      const remove = useMorphemeDeleteCommand();
+      const remove = useMorphemeDeleteDispatch();
       return () => remove('GEN 1:1:0');
     },
     'interlinearizer.deleteMorphemes',
     { tokenRef: 'GEN 1:1:0' },
   ],
   [
-    'useMorphemeGlossCommand',
+    'useMorphemeGlossDispatch',
     () => {
-      const write = useMorphemeGlossCommand();
+      const write = useMorphemeGlossDispatch();
       return () => write('GEN 1:1:0', 'm-1', 'in');
     },
     'interlinearizer.writeMorphemeGloss',
     { tokenRef: 'GEN 1:1:0', morphemeId: 'm-1', value: 'in' },
   ],
   [
-    'usePhraseGlossCommand',
+    'usePhraseGlossDispatch',
     () => {
-      const write = usePhraseGlossCommand();
+      const write = usePhraseGlossDispatch();
       return () => write('pl-1', 'in the');
     },
     'interlinearizer.writePhraseGloss',
     { phraseId: 'pl-1', value: 'in the' },
   ],
   [
-    'usePhraseCommands.createPhrase',
+    'usePhraseDispatch.createPhrase',
     () => {
-      const { createPhrase } = usePhraseCommands();
+      const { createPhrase } = usePhraseDispatch();
       return () => createPhrase(SNAPSHOTS);
     },
     'interlinearizer.createPhrase',
     { tokens: SNAPSHOTS },
   ],
   [
-    'usePhraseCommands.updatePhrase',
+    'usePhraseDispatch.updatePhrase',
     () => {
-      const { updatePhrase } = usePhraseCommands();
+      const { updatePhrase } = usePhraseDispatch();
       return () => updatePhrase('pl-1', SNAPSHOTS);
     },
     'interlinearizer.updatePhrase',
     { phraseId: 'pl-1', tokens: SNAPSHOTS },
   ],
   [
-    'usePhraseCommands.deletePhrase',
+    'usePhraseDispatch.deletePhrase',
     () => {
-      const { deletePhrase } = usePhraseCommands();
+      const { deletePhrase } = usePhraseDispatch();
       return () => deletePhrase('pl-1');
     },
     'interlinearizer.deletePhrase',
     { phraseId: 'pl-1' },
   ],
   [
-    'usePhraseCommands.mergePhrases absorbing a phrase',
+    'usePhraseDispatch.mergePhrases absorbing a phrase',
     () => {
-      const { mergePhrases } = usePhraseCommands();
+      const { mergePhrases } = usePhraseDispatch();
       return () => mergePhrases('pl-1', SNAPSHOTS, 'pl-2');
     },
     'interlinearizer.mergePhrases',
     { targetPhraseId: 'pl-1', tokens: SNAPSHOTS, absorbedPhraseId: 'pl-2' },
   ],
   [
-    'usePhraseCommands.mergePhrases absorbing a free token',
+    'usePhraseDispatch.mergePhrases absorbing a free token',
     () => {
-      const { mergePhrases } = usePhraseCommands();
+      const { mergePhrases } = usePhraseDispatch();
       return () => mergePhrases('pl-1', SNAPSHOTS, undefined);
     },
     'interlinearizer.mergePhrases',
     { targetPhraseId: 'pl-1', tokens: SNAPSHOTS },
   ],
   [
-    'usePhraseCommands.splitPhrase',
+    'usePhraseDispatch.splitPhrase',
     () => {
-      const { splitPhrase } = usePhraseCommands();
+      const { splitPhrase } = usePhraseDispatch();
       return () => splitPhrase(makePhraseLink('pl-1', ['GEN 1:1:0', 'GEN 1:1:2']), 'GEN 1:1:0');
     },
     'interlinearizer.splitPhrase',
     { phraseId: 'pl-1', splitAfterTokenRef: 'GEN 1:1:0' },
   ],
   [
-    'useSegmentFreeTranslationCommand adopting a stale one',
+    'useSegmentFreeTranslationDispatch adopting a stale one',
     () => {
-      const write = useSegmentFreeTranslationCommand();
+      const write = useSegmentFreeTranslationDispatch();
       return () => write('GEN 1:1', 'In the', 'At first', 'sa-old');
     },
     'interlinearizer.writeSegmentFreeTranslation',
@@ -188,45 +188,45 @@ const EDITS: [string, () => () => void, string, Record<string, unknown>][] = [
     },
   ],
   [
-    'useSegmentFreeTranslationCommand adopting none',
+    'useSegmentFreeTranslationDispatch adopting none',
     () => {
-      const write = useSegmentFreeTranslationCommand();
+      const write = useSegmentFreeTranslationDispatch();
       return () => write('GEN 1:1', 'In the', 'At first');
     },
     'interlinearizer.writeSegmentFreeTranslation',
     { segmentId: 'GEN 1:1', surfaceText: 'In the', value: 'At first' },
   ],
   [
-    'useStaleFreeTranslationCommands.keep',
+    'useStaleFreeTranslationDispatch.keep',
     () => {
-      const { keep } = useStaleFreeTranslationCommands();
+      const { keep } = useStaleFreeTranslationDispatch();
       return () => keep('sa-old', 'GEN 1:1', 'In the');
     },
     'interlinearizer.keepStaleFreeTranslation',
     { analysisId: 'sa-old', segmentId: 'GEN 1:1', surfaceText: 'In the' },
   ],
   [
-    'useStaleFreeTranslationCommands.discard',
+    'useStaleFreeTranslationDispatch.discard',
     () => {
-      const { discard } = useStaleFreeTranslationCommands();
+      const { discard } = useStaleFreeTranslationDispatch();
       return () => discard('sa-old');
     },
     'interlinearizer.discardStaleFreeTranslation',
     { analysisId: 'sa-old' },
   ],
   [
-    'useStaleLocationCommands.discard',
+    'useStaleLocationDispatch.discard',
     () => {
-      const { discard } = useStaleLocationCommands();
+      const { discard } = useStaleLocationDispatch();
       return () => discard('ta-in', 'GEN 1:1:0');
     },
     'interlinearizer.discardStaleAnalysis',
     { analysisId: 'ta-in', tokenRef: 'GEN 1:1:0' },
   ],
   [
-    'useStaleLocationCommands.reapply',
+    'useStaleLocationDispatch.reapply',
     () => {
-      const { reapply } = useStaleLocationCommands();
+      const { reapply } = useStaleLocationDispatch();
       return () => reapply('ta-in', 'GEN 1:1:0', 'GEN 1:2:0', 'And');
     },
     'interlinearizer.reapplyStaleAnalysis',
@@ -255,7 +255,7 @@ describe('session edit hooks', () => {
   it('logs an edit the session refuses', async () => {
     jest.mocked(papi.commands.sendCommand).mockRejectedValue(new Error('read-only'));
     const { wrapper } = await sessionWrapper();
-    const { result } = renderHook(() => useMorphemeDeleteCommand(), { wrapper });
+    const { result } = renderHook(() => useMorphemeDeleteDispatch(), { wrapper });
 
     await act(async () => {
       result.current('GEN 1:1:0');
@@ -316,11 +316,11 @@ async function catalogWrapper(after: TextAnalysis) {
   return { wrapper };
 }
 
-describe('useAnalysisRowCommands', () => {
+describe('useAnalysisRowDispatch', () => {
   it('reads an edit that leaves its record standing as made in place', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(catalogReply('ta-in'));
     const { wrapper } = await catalogWrapper(wholeHolding('ta-in'));
-    const { result } = renderHook(() => useAnalysisRowCommands(), { wrapper });
+    const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await expect(result.current.writeGloss('ta-in', 'at')).resolves.toStrictEqual({
       kind: 'edited',
@@ -336,7 +336,7 @@ describe('useAnalysisRowCommands', () => {
   it('reads an edit the session applied nothing for as made in place', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
     const { wrapper } = await catalogWrapper(wholeHolding('ta-in'));
-    const { result } = renderHook(() => useAnalysisRowCommands(), { wrapper });
+    const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await expect(result.current.writeMorphemes('ta-in', ['I', 'n'], 'en')).resolves.toStrictEqual({
       kind: 'edited',
@@ -350,7 +350,7 @@ describe('useAnalysisRowCommands', () => {
   it("reads a collapse into a sibling as a merge, with the survivor's gloss and uses", async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(catalogReply('ta-other'));
     const { wrapper } = await catalogWrapper(wholeHolding('ta-other'));
-    const { result } = renderHook(() => useAnalysisRowCommands(), { wrapper });
+    const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await expect(result.current.writeMorphemeGloss('ta-in', 'm-1', 'at')).resolves.toStrictEqual({
       kind: 'merged',
@@ -367,7 +367,7 @@ describe('useAnalysisRowCommands', () => {
   it('reads an edit that left its record empty as a removal', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(catalogReply(undefined));
     const { wrapper } = await catalogWrapper(emptyAnalysis());
-    const { result } = renderHook(() => useAnalysisRowCommands(), { wrapper });
+    const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await expect(result.current.writeGloss('ta-in', '')).resolves.toStrictEqual({
       kind: 'removed',
@@ -377,7 +377,7 @@ describe('useAnalysisRowCommands', () => {
   it('reads where a merge left its survivor', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(catalogReply('ta-in'));
     const { wrapper } = await catalogWrapper(wholeHolding('ta-in'));
-    const { result } = renderHook(() => useAnalysisRowCommands(), { wrapper });
+    const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
     const content = { gloss: 'at', morphemes: [] };
 
     await expect(result.current.mergeAll('ta-in', ['ta-2'], content)).resolves.toStrictEqual({
@@ -398,7 +398,7 @@ describe('useAnalysisRowCommands', () => {
       .mocked(papi.commands.sendCommand)
       .mockResolvedValue(catalogReply(undefined, { emptiedAnalysisIds: ['ta-in'] }));
     const { wrapper } = await catalogWrapper(emptyAnalysis());
-    const { result } = renderHook(() => useAnalysisRowCommands(), { wrapper });
+    const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await expect(result.current.clearGlosses(['ta-in', 'ta-2'])).resolves.toStrictEqual(['ta-in']);
     expect(papi.commands.sendCommand).toHaveBeenCalledWith(
@@ -410,7 +410,7 @@ describe('useAnalysisRowCommands', () => {
   it('names no records for a gloss clear the session applied nothing for', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
     const { wrapper } = await catalogWrapper(emptyAnalysis());
-    const { result } = renderHook(() => useAnalysisRowCommands(), { wrapper });
+    const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await expect(result.current.clearGlosses(['ta-in'])).resolves.toStrictEqual([]);
   });
@@ -418,7 +418,7 @@ describe('useAnalysisRowCommands', () => {
   it('deletes records through the session', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
     const { wrapper } = await catalogWrapper(emptyAnalysis());
-    const { result } = renderHook(() => useAnalysisRowCommands(), { wrapper });
+    const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await result.current.deleteAnalyses(['ta-in']);
 
@@ -431,7 +431,7 @@ describe('useAnalysisRowCommands', () => {
   it('logs and rejects an edit the session refuses', async () => {
     jest.mocked(papi.commands.sendCommand).mockRejectedValue(new Error('refused'));
     const { wrapper } = await catalogWrapper(emptyAnalysis());
-    const { result } = renderHook(() => useAnalysisRowCommands(), { wrapper });
+    const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await expect(result.current.deleteAnalyses(['ta-in'])).rejects.toThrow('refused');
     expect(logger.error).toHaveBeenCalledWith(

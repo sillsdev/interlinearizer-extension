@@ -14,13 +14,18 @@ public class OpenSourcesTests : IAsyncDisposable
         Directory.CreateDirectory(_directory);
         _services = new ServiceCollection()
             .AddSingleton(new ClientIdentity(Guid.NewGuid()))
-            .AddSingleton(new SourcesDirectory(Path.Combine(_directory, "sources")))
+            .AddSingleton(new SourcesDirectory(SourcesFolder))
             .AddInterlinearizerCrdt()
             .BuildServiceProvider();
         _sources = _services.GetRequiredService<OpenSources>();
     }
 
-    private string DbPath(string name) => Path.Combine(_directory, "sources", name + ".sqlite");
+    private string SourcesFolder => Path.Combine(_directory, "sources");
+
+    private string DbPath(string name) => Path.Combine(SourcesFolder, name.ToUpperInvariant() + ".sqlite");
+
+    /// <summary>The names of the database files in the sources folder, as the file system spells them.</summary>
+    private string[] DatabaseFiles() => [.. new DirectoryInfo(SourcesFolder).GetFiles("*.sqlite").Select(f => f.Name)];
 
     private const string S1 = "source-1";
     private const string S2 = "source-2";
@@ -49,12 +54,69 @@ public class OpenSourcesTests : IAsyncDisposable
     }
 
     [Test]
+    [Arguments("0123456789ABCDEF0123456789ABCDEF01234567")]
+    [Arguments("0123456789abcdef0123456789abcdef01234567-slingshot-draft")]
+    [Arguments("source_1")]
+    public async Task OpeningASourceNamesItsDatabaseAfterItsIdInUpperCase(string sourceProjectId)
+    {
+        await _sources.Open(sourceProjectId);
+
+        await Assert.That(DatabaseFiles()).IsEquivalentTo([sourceProjectId.ToUpperInvariant() + ".sqlite"]);
+    }
+
+    [Test]
     [Arguments("")]
     [Arguments("a/b")]
-    public async Task OpeningASourceWhoseIdCannotNameAFileThrows(string sourceProjectId)
+    [Arguments("a\\b")]
+    [Arguments("..")]
+    [Arguments("a.b")]
+    [Arguments("a:b")]
+    [Arguments("a b")]
+    [Arguments("\u00e9")]
+    public async Task ASourceWhoseIdCannotNameAFileOnEveryPlatformIsRefused(string sourceProjectId)
     {
+        var workRan = false;
+
         await Assert.That(async () => await _sources.Open(sourceProjectId)).Throws<ArgumentException>();
-        await Assert.That(_sources.IsOpen(sourceProjectId)).IsFalse();
+        await Assert.That(async () => await _sources.Exclusive(sourceProjectId, () =>
+        {
+            workRan = true;
+            return Task.CompletedTask;
+        })).Throws<ArgumentException>();
+
+        await Assert.That(workRan).IsFalse();
+        await Assert.That(Directory.Exists(SourcesFolder)).IsFalse();
+    }
+
+    [Test]
+    public async Task EverySpellingOfASourcesIdReachesTheOneSource()
+    {
+        await OpenWithProjects("abc-1", P1);
+
+        await Assert.That(_sources.IsOpen("ABC-1")).IsTrue();
+        await Assert.That(await _sources.Open("Abc-1")).IsSameReferenceAs(await _sources.Get("abc-1"));
+        await Assert.That((await (await _sources.Projects("ABC-1")).List()).Select(p => p.Id)).IsEquivalentTo([Guid.Parse(P1)]);
+        await Assert.That(DatabaseFiles()).IsEquivalentTo(["ABC-1.sqlite"]);
+    }
+
+    [Test]
+    public async Task ExclusiveWorkOnAnotherSpellingOfASourcesIdWaits()
+    {
+        var release = new TaskCompletionSource();
+        var first = _sources.Exclusive("abc-1", () => release.Task);
+        var secondStarted = false;
+        var second = _sources.Exclusive("ABC-1", () =>
+        {
+            secondStarted = true;
+            return Task.CompletedTask;
+        });
+
+        await Assert.That(secondStarted).IsFalse();
+        release.SetResult();
+        await first;
+        await second;
+
+        await Assert.That(secondStarted).IsTrue();
     }
 
     [Test]

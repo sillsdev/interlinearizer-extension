@@ -2,7 +2,7 @@ import type { Segment } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { loadedRun, stripTarget } from '../utils/strip-range';
 import type { PageCaller } from '../cache/pageClient';
-import type { SegmentPages } from './useSegmentPages';
+import type { SegmentPages } from '../types/segment-pages';
 import useLatestRef from './useLatestRef';
 
 /** Segments asked for past each end of the strip's target, so a page loads before it is reached. */

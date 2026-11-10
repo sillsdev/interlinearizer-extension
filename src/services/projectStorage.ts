@@ -11,7 +11,6 @@ import type {
   AnalysisRepository,
   DraftExport,
   KeyValueStorage,
-  ReplaceAllOptions,
 } from '../types/analysis-repository';
 import { UnreadableBooksError } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
@@ -56,9 +55,9 @@ let pendingCleanupQueue: Promise<unknown> = Promise.resolve();
 const projectQueues = new Map<string, Promise<unknown>>();
 
 /**
- * Per-source draft serialization queues. Keyed by `sourceProjectId`; serializes writes to a single
- * draft record so a WebView's rapid auto-saves cannot interleave at await boundaries and persist
- * out of order.
+ * Per-source draft serialization queues. Keyed by `sourceProjectId`; serializes the calls on a
+ * single draft so a session's rapid edits cannot interleave at await boundaries and persist out of
+ * order.
  */
 const draftQueues = new Map<string, Promise<unknown>>();
 
@@ -481,7 +480,7 @@ export async function createProject(
  * @throws {Error} If the stored draft or the stored project summaries were written by a newer
  *   build, or the summaries are corrupt.
  * @throws {Error} If the stored draft itself is unreadable; no project is created.
- * @throws If a storage read or write rejects as in {@link getDraft} and {@link createProject}.
+ * @throws If a storage read or write rejects as in {@link createProject}.
  */
 export async function saveDraftAsNewProject(
   token: ExecutionToken,
@@ -497,7 +496,6 @@ export async function saveDraftAsNewProject(
     (delta, bookCode) => removeBookFromSegmentation(delta, bookCode),
     draft.segmentation,
   );
-  reportAnalysisViolations(logger, analysis, `draft of ${sourceProjectId} on save as`);
   const project = buildNewProject(
     sourceProjectId,
     analysisLanguages,
@@ -877,9 +875,6 @@ export async function updateAnalysis(
     if (raw === undefined) return undefined;
     const project = perfTime('updateAnalysis:parse', () => parseProject(raw, id));
     if (project.pt9Import) throw pt9ImportReadOnlyError(id);
-    perfTime('updateAnalysis:parse', () =>
-      reportAnalysisViolations(logger, analysis, `project ${id} on save`),
-    );
     const updated: InterlinearProject = {
       ...project,
       modelVersion: CURRENT_MODEL_VERSION,
@@ -927,7 +922,7 @@ export async function updateAnalysis(
  * @throws {Error} If the stored draft or project was written by a newer build; nothing is written.
  * @throws {Error} If the stored draft itself is unreadable; nothing is written.
  * @throws {Error} If the project is a Paratext 9 import, as in {@link updateAnalysis}.
- * @throws If a storage read or write rejects as in {@link getDraft} and {@link updateAnalysis}.
+ * @throws If a storage read or write rejects as in {@link updateAnalysis}.
  */
 export async function saveDraftToProject(
   token: ExecutionToken,
@@ -1052,7 +1047,7 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
 }
 
 /**
- * Whether a draft is stored for the source project. Unlike {@link getDraft}, never synthesizes an
+ * Whether a draft is stored for the source project. Unlike reading the draft, never synthesizes an
  * empty draft, so a caller can tell a never-opened source from an opened-but-unedited one.
  */
 export async function hasDraft(token: ExecutionToken, sourceProjectId: string): Promise<boolean> {
@@ -1065,39 +1060,6 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
       throw e;
     }
   });
-}
-
-/**
- * Reads the draft working buffer for a source project, returning a fresh empty draft when none has
- * been written yet (ENOENT), when the stored draft fails validation, or when it belongs to a
- * different source project — the invalid draft is logged and silently discarded. Drafts are never
- * listed among the project summaries, so they stay out of {@link getProjectSummariesForSource} and
- * never appear in the project picker.
- *
- * A draft written by a newer build is refused rather than discarded, leaving it intact for the
- * build that can read it; {@link saveDraft} refuses to overwrite that same record.
- *
- * A read concurrent with an auto-save for the same source returns one or the other whole, never a
- * mixture of the two.
- *
- * A book whose shard is missing or unusable loads as empty and is named among the unreadable books.
- * {@link saveDraft} then leaves that shard and its manifest entry alone rather than treating the
- * book as wiped, until a save starts the draft over. A shard holding a link with no id is unusable,
- * and a draft storing its analysis inline with such a link loads as a fresh empty draft; either is
- * logged.
- *
- * A save interrupted before its envelope landed leaves shards the stored manifest does not name. A
- * book first analyzed in that save still reopens with its work rather than empty.
- *
- * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
- * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
- * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
- */
-export async function getDraft(
-  token: ExecutionToken,
-  sourceProjectId: string,
-): Promise<DraftExport> {
-  return openDraftRepository(token, sourceProjectId).exportAll();
 }
 
 /**
@@ -1143,50 +1105,9 @@ async function markCopiedDraftClean(
 }
 
 /**
- * Writes the draft working buffer for a source project, replacing any existing draft. Writes are
- * serialized per source project, so a WebView's rapid auto-saves cannot persist out of order. The
- * caller owns the whole envelope — including the `dirty` flag — apart from the
- * {@link CURRENT_MODEL_VERSION} stamp, so nothing of the stored record survives the write. A draft
- * written by a newer build is the exception: it is left as it stands rather than overwritten.
- *
- * The analysis spans several records and no storage transaction spans them, so an interrupted save
- * can leave books from two saves. It never leaves a book listed whose shard is gone. What did reach
- * storage is tallied as it lands, so the save that follows a failed one rewrites only the books
- * still missing it.
- *
- * Recovery does not depend on this process staying up: a shard the envelope never came to name is
- * still found on reopen, and a deletion that fails is retried by a later save even across a
- * restart. A book dropped from the analysis leaves no shard behind whether or not this process
- * loaded the draft.
- *
- * A save that fails leaves no write of its own in flight, so the next one never overlaps it.
- *
- * A book whose stored analysis could not be read is kept as stored: a draft that loaded it empty
- * does not wipe it, and analysis the draft carries for it is left out rather than written over what
- * was lost. Starting the draft over, through `options`, writes such books like any other.
- *
- * @returns The books whose analysis in the draft was left out for that reason; empty when the draft
- *   was saved whole.
- * @throws {Error} If the stored draft was written by a newer build; nothing is written.
- * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason; nothing is written.
- * @throws If `papi.storage.writeUserData` rejects. Once the draft has landed, a wiped book's shard
- *   that could not be deleted, or a shard journal that could not be updated, is no failure of the
- *   save: each is logged, and a later save retries it.
- */
-export async function saveDraft(
-  token: ExecutionToken,
-  sourceProjectId: string,
-  draft: DraftProject,
-  options?: ReplaceAllOptions,
-): Promise<string[]> {
-  // Invariant violations go unreported here: this runs on every edit, so one would log per keystroke.
-  return openDraftRepository(token, sourceProjectId).replaceAll(draft, options);
-}
-
-/**
- * Starts the source project's draft over as `draft`, saving it as {@link saveDraft} does. Stored
- * analysis that could not be read is discarded, so those books are written or wiped like any other.
- * Waits for every draft call already made for that source.
+ * Starts the source project's draft over as `draft`, as {@link DraftRepository.startOver} does.
+ * Stored analysis that could not be read is discarded, so those books are written or wiped like any
+ * other. Waits for every draft call already made for that source.
  *
  * @throws {Error} If the stored draft was written by a newer build; nothing is written.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason; nothing is written.
@@ -1240,7 +1161,6 @@ export function openDraftRepository(
     capabilities: { readOnly: false },
     exportAll: () => queued((repository) => repository.exportAll()),
     exportForCopy: () => queued((repository) => repository.exportForCopy()),
-    replaceAll: (draft, options) => counted((repository) => repository.replaceAll(draft, options)),
     markClean: () => queued((repository) => repository.markClean()),
     apply: (changes, options) => counted((repository) => repository.apply(changes, options)),
     getWholeDraft: () => queued((repository) => repository.getWholeDraft()),

@@ -617,8 +617,12 @@ async function rereadTextBook(
   if (!wasFailed || !isFailed) reportEdit(sourceProjectId, bookId);
 }
 
-/** Lists the source project's books in canonical order, with the tag their text is written in. */
-async function listBooks(
+/**
+ * Lists the source project's books in canonical order, with the tag their text is written in.
+ *
+ * @throws If the project's book list or language tag cannot be read.
+ */
+export async function listBooks(
   sourceProjectId: string,
 ): Promise<{ bookIds: string[]; writingSystem: string }> {
   const basePdp = await papi.projectDataProviders.get('platform.base', sourceProjectId);

@@ -6,11 +6,10 @@ import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { convertPt9Project, Pt9ImportReport, Pt9UnreadableFile } from '../converters/pt9';
-import { getWritingSystem } from './bookService';
+import { listBooks } from './bookService';
 import { readPt9InterlinearData, type Pt9InterlinearReadFile } from './pt9DataReader';
 import * as projectStorage from './projectStorage';
 import { summarizeProject } from './projectSummaries';
-import { presentBookIds } from '../utils/books-present';
 
 /** The outcome of one import run, returned to the caller as the command's JSON payload. */
 export interface Pt9ImportResult {
@@ -171,12 +170,8 @@ export async function importPt9Project(
   const bookIds = [
     ...new Set(data.books.flatMap((book) => (book.bookId === undefined ? [] : [book.bookId]))),
   ];
-  const basePdp = await papi.projectDataProviders.get('platform.base', sourceProjectId);
-  const [booksPresent, writingSystem] = await Promise.all([
-    basePdp.getSetting('platformScripture.booksPresent'),
-    getWritingSystem(sourceProjectId),
-  ]);
-  const presentBooks = new Set(presentBookIds(booksPresent));
+  const { bookIds: presentBookIds, writingSystem } = await listBooks(sourceProjectId);
+  const presentBooks = new Set(presentBookIds);
   const usjPdp = await papi.projectDataProviders.get('platformScripture.USJ_Book', sourceProjectId);
   const books: Book[] = (
     await Promise.all(

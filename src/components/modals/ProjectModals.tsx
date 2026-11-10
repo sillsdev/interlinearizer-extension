@@ -239,7 +239,7 @@ export default function ProjectModals({
   /**
    * Creates a new project in storage with the given config and an empty analysis, then seeds the
    * draft from it so Save targets the newly created project. This is the "New" flow: the project is
-   * persisted immediately so it shows up in "Select Interlinear Project" right away.
+   * persisted immediately so it shows up in the Select interlinear dialog right away.
    *
    * `newDraft` is called before the backend round-trip so the editor is ready regardless of whether
    * persistence succeeds. On the host path it settles once the draft is stored, and the project is

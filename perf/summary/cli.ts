@@ -49,8 +49,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     "With the view open, the book changes to Jude and back; the times are for the return. Book change to rendered includes fetching the book's text.",
   'app.edit':
     'One gloss typed and committed with Tab, then the autosave that commit sets off. `gloss-settle` ends once the view shows the gloss and, when the Tab moves the focus, that move. The host path times it the same way.',
-  'app.picker':
-    'The Select Interlinear Project dialog opens, listing every saved project for the source.',
+  'app.picker': 'The Select interlinear dialog opens, listing every saved project for the source.',
   'app.save': 'Save from the Project menu writes the analysis to the project it came from.',
   'app.concordance':
     "The concordance opens in a fresh view, which reads and indexes every book of the source and re-anchors the draft to each book it analyzes beyond the open one. Only large-loadable's draft spans more than the open book, so only its read includes re-anchoring.",

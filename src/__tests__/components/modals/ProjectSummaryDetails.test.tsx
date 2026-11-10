@@ -9,7 +9,7 @@ const NAMED_PROJECT = makeProjectSummary({ analysisLanguages: ['en', 'fr'], name
 
 const LABELS = {
   activeBadgeLabel: 'Active',
-  analysisCountTemplate: '{count} analyses',
+  analysisCountTemplate: 'Analyses: {count}',
   booksMoreTemplate: '+{count} more',
   modifiedPrefix: 'Modified',
   unnamedLabel: 'Unnamed',
@@ -41,14 +41,14 @@ describe('ProjectSummaryDetails', () => {
     const project = makeProjectSummary({ books: ['GEN', 'EXO'], analysisCount: 412 });
     render(<ProjectSummaryDetails {...LABELS} isActive={false} project={project} />);
 
-    expect(screen.getByText('GEN, EXO · 412 analyses')).toBeInTheDocument();
+    expect(screen.getByText('GEN, EXO · Analyses: 412')).toBeInTheDocument();
   });
 
   it('describes an untouched project as holding no analyses, so an empty row still says so', () => {
     const project = makeProjectSummary({ books: [], analysisCount: 0 });
     render(<ProjectSummaryDetails {...LABELS} isActive={false} project={project} />);
 
-    expect(screen.getByText('0 analyses')).toBeInTheDocument();
+    expect(screen.getByText('Analyses: 0')).toBeInTheDocument();
   });
 
   it('chips a Paratext 9 import read-only ahead of its language tags', () => {

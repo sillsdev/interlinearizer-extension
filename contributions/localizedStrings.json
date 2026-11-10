@@ -288,7 +288,7 @@
       "%interlinearizer_modal_select_delete%": "Delete",
       "%interlinearizer_modal_select_active_badge%": "Active",
       "%interlinearizer_modal_select_modified_prefix%": "Modified",
-      "%interlinearizer_modal_select_analysis_count%": "{count} analyses",
+      "%interlinearizer_modal_select_analysis_count%": "Analyses: {count}",
       "%interlinearizer_modal_select_books_more%": "+{count} more",
       "%interlinearizer_modal_select_create_new%": "Create New",
       "%interlinearizer_modal_select_cancel%": "Cancel",

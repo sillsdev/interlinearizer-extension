@@ -5,6 +5,7 @@ import path from 'path';
 import { readDraftJson, readManifest } from '../../../perf/dataset/store';
 import { TIERS, type TierSpec } from '../../../perf/dataset/tiers';
 import { provenance, writeResults } from '../../../perf/results';
+import { readCaptureMeta } from '../../../perf/usj-cache';
 import { addSavedProject, readDraft, writeDraft } from '../../../perf/storage';
 import type { TextReadStatus } from '../../../src/types/text-read-status';
 import { expect, test } from '../../fixtures/cdp.fixture';
@@ -523,7 +524,7 @@ async function measureTier(
   createdProjects: string[],
   result: Record<string, unknown>,
 ): Promise<void> {
-  const manifest = readManifest(tier.name);
+  const manifest = readManifest(tier.name, readCaptureMeta());
   const draftJson = readDraftJson(tier.name);
   const draftWire = wireBytes(draftJson);
   const wire: Record<string, number> = { draft: draftWire };

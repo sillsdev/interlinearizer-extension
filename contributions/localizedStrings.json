@@ -50,6 +50,7 @@
       "%interlinearizer_concordance_empty%": "The source text has no words to list.",
       "%interlinearizer_concordance_booksRead%": "Successfully read {count} book(s)",
       "%interlinearizer_concordance_unreadBooks%": "Unable to read: {books}",
+      "%interlinearizer_concordance_retry%": "Try again",
       "%interlinearizer_concordance_occurrenceCount%": "Occurrences in the whole text",
       "%interlinearizer_concordance_occurrenceCountInBook%": "Occurrences in {book}",
       "%interlinearizer_concordance_status_analyzed%": "Analyzed",

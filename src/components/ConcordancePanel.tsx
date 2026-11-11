@@ -7,7 +7,7 @@ import ConcordanceRowView, { CONCORDANCE_ROW_STRING_KEYS } from './ConcordanceRo
 import { useInterlinearNav } from './InterlinearNavContext';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
 import TextReadingStatus, { TEXT_READING_STRING_KEYS } from './TextReadingStatus';
-import { useConcordanceView, useTextReadStatus } from '../cache/catalogHooks';
+import { useConcordanceView, useRetryTextRead, useTextReadStatus } from '../cache/catalogHooks';
 import useRowWindow from '../hooks/useRowWindow';
 import type { ConcordanceOccurrence } from '../utils/concordance';
 
@@ -20,6 +20,7 @@ export const CONCORDANCE_PANEL_STRING_KEYS = [
   '%interlinearizer_concordance_empty%',
   '%interlinearizer_concordance_booksRead%',
   '%interlinearizer_concordance_unreadBooks%',
+  '%interlinearizer_concordance_retry%',
   '%interlinearizer_concordance_occurrenceCountInBook%',
   ...SIDE_PANEL_TAB_STRING_KEYS,
   ...CONCORDANCE_ROW_STRING_KEYS,
@@ -28,6 +29,9 @@ export const CONCORDANCE_PANEL_STRING_KEYS = [
 
 /** How many rows are asked of the host before the list has been scrolled. */
 const INITIAL_FETCH_COUNT = 40;
+
+/** How far past the rows that have arrived the window may grow while it waits for more. */
+const FETCH_AHEAD_COUNT = 40;
 
 /** Props for {@link ConcordancePanel}. */
 type ConcordancePanelProps = Readonly<{
@@ -67,7 +71,13 @@ export default function ConcordancePanel({
   const [fetchCount, setFetchCount] = useState(INITIAL_FETCH_COUNT);
   const view = useConcordanceView(currentBook, fetchCount);
   const total = view?.total ?? 0;
-  const slots = useMemo(() => Array.from({ length: total }, (_unused, index) => index), [total]);
+  // Capped past the rows that have arrived. Otherwise a sentinel left in reach while they are
+  // asked for would grow the window, and the count asked for, to the whole concordance.
+  const slotCount = Math.min(total, (view?.rows.length ?? 0) + FETCH_AHEAD_COUNT);
+  const slots = useMemo(
+    () => Array.from({ length: slotCount }, (_unused, index) => index),
+    [slotCount],
+  );
   const { windowRows: windowSlots, scrollRef, sentinelRef } = useRowWindow(slots);
   if (windowSlots.length > fetchCount) setFetchCount(windowSlots.length);
   const windowRows = useMemo(
@@ -110,11 +120,14 @@ export default function ConcordancePanel({
     [navigate, requestFocusToken],
   );
 
+  const retryTextRead = useRetryTextRead();
+
   const failedBookIds =
     readStatus === undefined || readStatus === 'error' ? [] : readStatus.failedBookIds;
 
   let body: ReactNode;
-  if (!view) {
+  // The failed books may hold words, so an empty list then means the read failed.
+  if (!view || (total === 0 && failedBookIds.length > 0)) {
     body = (
       <TextReadingStatus
         idPrefix="concordance"
@@ -190,11 +203,22 @@ export default function ConcordancePanel({
               )}
             </p>
             {failedBookIds.length > 0 && (
-              <p data-testid="concordance-unread-books">
-                {formatReplacementString(
-                  localizedStrings['%interlinearizer_concordance_unreadBooks%'],
-                  { books: failedBookIds.join(', ') },
-                )}
+              <p className="tw:flex tw:items-center tw:gap-2">
+                <span data-testid="concordance-unread-books">
+                  {formatReplacementString(
+                    localizedStrings['%interlinearizer_concordance_unreadBooks%'],
+                    { books: failedBookIds.join(', ') },
+                  )}
+                </span>
+                <Button
+                  className="tw:h-auto tw:p-0 tw:text-xs"
+                  data-testid="concordance-retry"
+                  onClick={retryTextRead}
+                  size="sm"
+                  variant="link"
+                >
+                  {localizedStrings['%interlinearizer_concordance_retry%']}
+                </Button>
               </p>
             )}
           </div>

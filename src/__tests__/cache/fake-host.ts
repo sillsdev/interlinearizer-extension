@@ -51,6 +51,8 @@ export type FakeText = Readonly<{
   isFormInText: (form: string) => boolean | undefined;
   /** The occurrences of each book of the text, `undefined` until it is read, and by default. */
   concordanceBooks?: () => BookConcordance[] | undefined;
+  /** Stands in for reading the failed books again, doing nothing by default. */
+  retry?: () => void;
 }>;
 
 /** A text of one book whose whole-text read has not yet read it. */
@@ -248,6 +250,9 @@ export async function fakeHost(
       }
       case 'interlinearizer.getTextReadStatus':
         return (await others(String(command), [first, ...rest])) ?? JSON.stringify(text.status());
+      case 'interlinearizer.retryTextRead':
+        text.retry?.();
+        return undefined;
       case 'interlinearizer.getCatalogRows':
       case 'interlinearizer.getSelectionSummary':
       case 'interlinearizer.countUsages':

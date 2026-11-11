@@ -22,6 +22,7 @@ import {
   onBookTextChanged,
   onTextRead,
   onTextReadProgress,
+  retryFailedBooks,
   startTextRead,
   stopTextRead,
 } from '../../services/bookService';
@@ -2216,6 +2217,85 @@ describe('getConcordanceBooks', () => {
     await settle();
 
     expect(getConcordanceBooks('src')?.map((b) => b.book)).toEqual(['GEN']);
+  });
+
+  it('answers with the same books until a book is read again', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '11';
+    readStatus();
+    await settle();
+    const books = getConcordanceBooks('src');
+
+    expect(getConcordanceBooks('src')).toBe(books);
+    subscriptionsTo(project, 'GEN').at(-1)?.deliver(usj('GEN', 'v2'));
+    await settle();
+    expect(getConcordanceBooks('src')).not.toBe(books);
+  });
+});
+
+describe('retryFailedBooks', () => {
+  beforeEach(() => {
+    tokenizeToWords();
+  });
+
+  it('reads a failed book again, and none of the books that read', async () => {
+    let failing = true;
+    const project = serveProject((bookId) =>
+      bookId === 'EXO' && failing ? platformError('busy') : usj(bookId),
+    );
+    project.booksPresent = '11';
+    readStatus();
+    await settle();
+
+    failing = false;
+    const retried = retryFailedBooks('src');
+    await settle();
+    await retried;
+
+    expect(await readStatus()).toEqual({ booksRead: 2, bookCount: 2, failedBookIds: [] });
+    expect(subscriptionsTo(project, 'GEN')).toHaveLength(1);
+    expect(getConcordanceBooks('src')?.map((b) => b.book)).toEqual(['GEN', 'EXO']);
+  });
+
+  it('reads again a book whose subscription failed, then tells the text-read listeners', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    project.subscribeError = new Error('busy');
+    readStatus();
+    await settle();
+    const listener = jest.fn();
+    const unsubscribe = onTextRead(listener);
+
+    project.subscribeError = undefined;
+    const retried = retryFailedBooks('src');
+    await settle();
+    await retried;
+
+    expect(listener).toHaveBeenCalledWith('src', ['GEN']);
+    unsubscribe();
+  });
+
+  it('reads nothing again when no book has failed', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    await retryFailedBooks('src');
+
+    expect(project.subscriptions).toHaveLength(1);
+  });
+
+  it('reads nothing while the text is still being read', async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    await retryFailedBooks('src');
+
+    expect(project.subscriptions).toHaveLength(1);
+    await finishReading(project);
   });
 });
 

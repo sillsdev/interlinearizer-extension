@@ -280,6 +280,29 @@ describe('previewDeletion', () => {
     );
   });
 
+  it('is certain when an approving token is gone from a book it read', async () => {
+    const { sessions, sessionId } = await sessionOver({
+      tokenAnalyses: [
+        { id: 'ta-god', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'God' } },
+      ],
+      tokenAnalysisLinks: [makeTokenLink('ta-god', 'EXO 1:1:99', { surfaceText: 'God' })],
+    });
+    const handlers = sessionCatalogHandlers({
+      sessions,
+      logger: { error: jest.fn() },
+      getOpenVerseBook: async () => BOOK,
+      getVerseBook: async () => EXODUS,
+      isFormInText: () => true,
+    });
+
+    const json = await handlers['interlinearizer.previewDeletion']({
+      sessionId,
+      analysisId: 'ta-god',
+    });
+
+    expect(JSON.parse(json)).toEqual({ kind: 'blank', usageCount: 1, unappliedCount: 0 });
+  });
+
   it('answers null for an id no analysis carries', async () => {
     const { handlers, sessionId } = await handlersOver();
 

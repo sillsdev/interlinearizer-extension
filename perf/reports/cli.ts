@@ -107,11 +107,10 @@ function settledTo(draftJson: string, book: Book): string {
   const draft: DraftProject = JSON.parse(draftJson);
   const changes = reanchorChangesForBook(draft, book);
   if (!changes) return draftJson;
-  applyChangeSet(draft, changes);
-  return JSON.stringify(draft);
+  return JSON.stringify(applyChangeSet(draft, changes).draft);
 }
 
-/** Times the steps of one pass over `book`, as `reanchorStoredBook` runs them. */
+/** Times reading a book's linked analysis and computing and applying its re-anchor changes. */
 async function timePassSteps(repository: DraftRepository, book: Book) {
   // A session builds its indexes on open, so the first lookup's index build is not part of a pass.
   await repository.findLinksInBooks([book.bookRef]);

@@ -114,9 +114,9 @@ export function getRowsByIds(
 }
 
 /**
- * Builds the rows of every analysis whose surface form matches the analysis's own, most used first.
- * Forms match once normalized as the suggestion pool buckets them. Returns `[]` when no analysis
- * carries the id.
+ * Builds the rows of every analysis whose surface form matches that of the analysis `analysisId`
+ * names, most used first. Forms match once normalized as the suggestion pool buckets them.
+ * Returns `[]` when no analysis carries the id.
  */
 export function getHomographRows(
   analysis: Pick<TextAnalysis, 'tokenAnalyses' | 'tokenAnalysisLinks'>,

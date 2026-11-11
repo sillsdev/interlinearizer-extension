@@ -121,8 +121,8 @@ export type GlossRetry = Readonly<{
   restored: (field: GlossField) => void;
   /**
    * Drops each kept draft that no field can show again: one whose analysis or morpheme is not among
-   * `rows`, or whose gloss there differs from the value the draft was typed over. Only drafts whose
-   * analysis `askedIds` names are judged; the rest are kept.
+   * `rows`, or whose gloss there differs from the value the draft was typed over. Only drafts for
+   * analyses in `askedIds` can be dropped; the rest are kept.
    */
   prune: (rows: readonly CatalogRow[], askedIds: ReadonlySet<string>) => void;
   /** The analyses a draft is kept for, each named once. */

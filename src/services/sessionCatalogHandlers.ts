@@ -112,7 +112,7 @@ export function sessionCatalogHandlers({
 
   /**
    * Serves the rows of the analyses in a session's draft that `analysisIds` names, in that order,
-   * leaving out any id unstored.
+   * leaving out unstored ids.
    *
    * @returns A JSON string of the rows, each row's books listed.
    * @throws If the session is not open or its analysis cannot be read. The error is logged before

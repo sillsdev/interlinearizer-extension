@@ -25,8 +25,8 @@ function fromWire<T extends CatalogRow>(
 }
 
 /**
- * How many changes to the session that the caller has heard name `query`, re-rendering the caller
- * with each.
+ * How many of the session's reported changes have named `query` since the caller mounted. Each one
+ * re-renders the caller.
  */
 function useNamedChanges(query: AnalysisQuery): number {
   const { sessionId } = usePageSession();
@@ -56,8 +56,8 @@ function useNamedChanges(query: AnalysisQuery): number {
  * Fetches with `fetch` for each `key`, and again whenever a change to the session names `query`.
  * Logs a failed fetch as one of `what`.
  *
- * @returns The latest answer for `key`; `undefined` while `key` is `undefined`, until the first
- *   answer for `key` arrives, and after a fetch fails.
+ * @returns The latest answer for `key`; `undefined` while `key` is `undefined`, and until an answer
+ *   for `key` arrives.
  */
 function useNamedFetch<T>(
   query: AnalysisQuery,
@@ -95,10 +95,12 @@ export type CatalogView = Readonly<{
 }>;
 
 /**
- * The first `count` rows of the session's catalog that `request` keeps, with the ids of all of
- * them, fetched again whenever `request` is a different value or a change names the catalog. Keeps
- * the last page while the next is fetched, so a changed query leaves the list on screen until its
- * rows arrive.
+ * The first `count` rows of the session's catalog that `request` keeps, with the ids of every kept
+ * row. The page is fetched again whenever `request` or `count` changes, or a change names the
+ * catalog.
+ *
+ * The last page stays while the next is fetched, so a changed query leaves the list on screen until
+ * its rows arrive.
  */
 export function useCatalogView(
   request: Omit<CatalogRowsRequest, 'offset' | 'count'>,

@@ -664,6 +664,60 @@ describe('PageClient', () => {
     expect(getSegments).not.toHaveBeenCalled();
   });
 
+  it('reads the outline once for a change reaching both stale glosses and stale translations', async () => {
+    const { client, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+
+    client.hear({
+      changeId: 'a',
+      books: [
+        {
+          bookId: BOOK.bookRef,
+          ranges: [{ start: 1, end: 2 }],
+          staleGlosses: true,
+          staleTranslations: true,
+        },
+      ],
+      analysisIds: [],
+      forms: [],
+      queries: ['getStaleSummary'],
+    });
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads the outline once after a reply reaching both stale glosses and stale translations', async () => {
+    const { client, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+
+    await client.send(async (changeId) => ({
+      ...emptyReply(changeId),
+      staleGlossBooks: [BOOK.bookRef],
+      staleTranslationBooks: [BOOK.bookRef],
+    }));
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads the outline once after a reply moving boundaries and reaching stale glosses', async () => {
+    const { client, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+
+    await client.send(async (changeId) => ({
+      ...emptyReply(changeId),
+      staleGlossBooks: [BOOK.bookRef],
+      resegmentedBooks: [BOOK.bookRef],
+    }));
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(2);
+  });
+
   it('reads no outline after a reply reaching stale glosses only in another book', async () => {
     const { client, getOutline } = await clientOver();
     client.load(0, 3, 'list');

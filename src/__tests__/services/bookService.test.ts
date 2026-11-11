@@ -2275,6 +2275,26 @@ describe('retryFailedBooks', () => {
     unsubscribe();
   });
 
+  it('reads a few failed books again at a time', async () => {
+    const project = serveProject();
+    project.booksPresent = '111111';
+    project.subscribeError = new Error('busy');
+    readStatus();
+    await settle();
+
+    project.subscribeError = undefined;
+    const retried = retryFailedBooks('src');
+    await settle();
+    const started = project.subscriptions.length;
+    project.subscriptions[0].deliver(usj(project.subscriptions[0].bookId));
+    await settle();
+
+    expect(started).toBeLessThan(6);
+    expect(project.subscriptions).toHaveLength(started + 1);
+    await finishReading(project);
+    await retried;
+  });
+
   it('reads nothing again when no book has failed', async () => {
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '1';

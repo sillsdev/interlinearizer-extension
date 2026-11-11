@@ -56,6 +56,7 @@ const emptyReply = (changeId: string): CommandReply => ({
   poolAnalyses: [],
   resegmentedBooks: [],
   staleTranslationBooks: [],
+  staleGlossBooks: [],
   canUndo: false,
   canRedo: false,
 });
@@ -626,6 +627,52 @@ describe('PageClient', () => {
 
     expect(getOutline).toHaveBeenCalledTimes(1);
     expect(getSegments).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes fresh stale flags and fetches only the pages named for a change reaching stale glosses', async () => {
+    const { client, getSegments, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+    getSegments.mockClear();
+
+    client.hear({
+      changeId: 'a',
+      books: [{ bookId: BOOK.bookRef, ranges: [{ start: 1, end: 2 }], staleGlosses: true }],
+      analysisIds: [],
+      forms: [],
+      queries: ['getStaleSummary'],
+    });
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(2);
+    expect(getSegments).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes fresh stale flags, fetching no page, after a reply reaching stale glosses in the book', async () => {
+    const { client, getSegments, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+    getSegments.mockClear();
+
+    await client.send(async (changeId) => ({
+      ...emptyReply(changeId),
+      staleGlossBooks: [BOOK.bookRef],
+    }));
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(2);
+    expect(getSegments).not.toHaveBeenCalled();
+  });
+
+  it('reads no outline after a reply reaching stale glosses only in another book', async () => {
+    const { client, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+
+    await client.send(async (changeId) => ({ ...emptyReply(changeId), staleGlossBooks: ['EXO'] }));
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(1);
   });
 
   it('takes the whole outline when fresh counts come with the book cut otherwise', async () => {

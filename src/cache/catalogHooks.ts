@@ -9,6 +9,7 @@ import {
   type SelectionSummary,
 } from '../services/catalogPages';
 import type { CatalogRowsRequest } from '../services/sessionCatalogHandlers';
+import type { StaleSummary } from '../types/segment-pages';
 import type { TextReadStatus } from '../types/text-read-status';
 import type { CatalogFacets, CatalogRow } from '../utils/analysis-query';
 import type { AnalysisDeletionOutcome } from '../utils/analysis-selectors';
@@ -293,6 +294,24 @@ export function useDeletionPreview(analysisId: string): DeletionPreviewState {
   if (answer === 'missing') return { status: 'missing' };
   if (answer) return { status: 'ready', outcome: answer };
   return failed ? { status: 'failed', retry } : { status: 'loading' };
+}
+
+/** The stale analyses that the session's draft holds in `bookId`; `undefined` until they arrive. */
+export function useStaleSummary(bookId: string): StaleSummary | undefined {
+  const { sessionId } = usePageSession();
+  return useNamedFetch(
+    'getStaleSummary',
+    'the stale summary',
+    `${sessionId} ${bookId}`,
+    async () => {
+      const json = await papi.commands.sendCommand('interlinearizer.getStaleSummary', {
+        sessionId,
+        bookId,
+      });
+      /* v8 ignore next -- defensive: the notice asks only of a book whose text has loaded */
+      return json === undefined ? undefined : JSON.parse(json);
+    },
+  );
 }
 
 /** One-off catalog reads, for a count or a row an edit needs before it is sent. */

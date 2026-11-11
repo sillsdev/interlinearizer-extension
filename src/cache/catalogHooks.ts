@@ -53,6 +53,60 @@ function useNamedChanges(query: AnalysisQuery): number {
   return count;
 }
 
+/** What {@link useNamedFetchState} holds for its key. */
+type NamedFetchState<T> = Readonly<{
+  /** The latest answer for the key; `undefined` until one arrives. */
+  answer: T | undefined;
+  /** Whether the latest fetch failed while no answer for the key is held. */
+  failed: boolean;
+  /** Fetches again for the key. */
+  retry: () => void;
+}>;
+
+/**
+ * Fetches with `fetch` for each `key`, and again whenever a change to the session names `query` or
+ * the caller retries. Logs a failed fetch as one of `what`.
+ *
+ * A failed fetch leaves the last answer for `key` in place. Nothing is fetched while `key` is
+ * `undefined`.
+ */
+function useNamedFetchState<T>(
+  query: AnalysisQuery,
+  what: string,
+  key: string | undefined,
+  fetch: () => Promise<T>,
+): NamedFetchState<T> {
+  const changes = useNamedChanges(query);
+  const fetchRef = useLatestRef(fetch);
+  const [answer, setAnswer] = useState<Readonly<{ key: string; value: T }> | undefined>(undefined);
+  const [failedKey, setFailedKey] = useState<string | undefined>(undefined);
+  const [retries, setRetries] = useState(0);
+  useEffect(() => {
+    if (key === undefined) return undefined;
+    let isCurrent = true;
+    (async () => {
+      try {
+        const value = await fetchRef.current();
+        if (!isCurrent) return;
+        setAnswer({ key, value });
+        setFailedKey(undefined);
+      } catch (e) {
+        logger.warn(`Interlinearizer: could not fetch ${what}`, e);
+        if (isCurrent) setFailedKey(key);
+      }
+    })();
+    return () => {
+      isCurrent = false;
+    };
+  }, [key, changes, retries, what, fetchRef]);
+  const retry = useCallback(() => {
+    setFailedKey(undefined);
+    setRetries((was) => was + 1);
+  }, []);
+  const current = answer && answer.key === key ? answer.value : undefined;
+  return { answer: current, failed: current === undefined && failedKey === key, retry };
+}
+
 /**
  * Fetches with `fetch` for each `key`, and again whenever a change to the session names `query`.
  * Logs a failed fetch as one of `what`.
@@ -66,25 +120,7 @@ function useNamedFetch<T>(
   key: string | undefined,
   fetch: () => Promise<T>,
 ): T | undefined {
-  const changes = useNamedChanges(query);
-  const fetchRef = useLatestRef(fetch);
-  const [answer, setAnswer] = useState<Readonly<{ key: string; value: T }> | undefined>(undefined);
-  useEffect(() => {
-    if (key === undefined) return undefined;
-    let isCurrent = true;
-    (async () => {
-      try {
-        const value = await fetchRef.current();
-        if (isCurrent) setAnswer({ key, value });
-      } catch (e) {
-        logger.warn(`Interlinearizer: could not fetch ${what}`, e);
-      }
-    })();
-    return () => {
-      isCurrent = false;
-    };
-  }, [key, changes, what, fetchRef]);
-  return answer && answer.key === key ? answer.value : undefined;
+  return useNamedFetchState(query, what, key, fetch).answer;
 }
 
 /** A page of the session's catalog, as the panel reads it. */
@@ -227,29 +263,36 @@ export function useSelectionSummary(analysisIds: readonly string[]): SelectionSu
   );
 }
 
+/** What the host has said so far about deleting an analysis. */
+export type DeletionPreviewState =
+  | Readonly<{ status: 'loading' }>
+  /** The host could not say; `retry` asks again. */
+  | Readonly<{ status: 'failed'; retry: () => void }>
+  /** No analysis carries the id. */
+  | Readonly<{ status: 'missing' }>
+  | Readonly<{ status: 'ready'; outcome: AnalysisDeletionOutcome }>;
+
 /**
- * What deleting the analysis `analysisId` names would do; `undefined` while `analysisId` is
- * `undefined`, until the outcome arrives, and for an analysis no longer stored.
+ * What deleting the analysis `analysisId` names would do, fetched again whenever a change to the
+ * session names the catalog.
  */
-export function useDeletionPreview(
-  analysisId: string | undefined,
-): AnalysisDeletionOutcome | undefined {
+export function useDeletionPreview(analysisId: string): DeletionPreviewState {
   const { sessionId, analysisLanguage } = usePageSession();
-  const key = analysisId === undefined ? undefined : JSON.stringify([analysisLanguage, analysisId]);
-  const outcome = useNamedFetch<AnalysisDeletionOutcome | null>(
+  const { answer, failed, retry } = useNamedFetchState<AnalysisDeletionOutcome | 'missing'>(
     'getCatalogRows',
     'the deletion preview',
-    key,
+    JSON.stringify([analysisLanguage, analysisId]),
     async () =>
       JSON.parse(
         await papi.commands.sendCommand('interlinearizer.previewDeletion', {
           sessionId,
-          /* v8 ignore next -- fetched only under a key, which an id gives */
-          analysisId: analysisId ?? '',
+          analysisId,
         }),
-      ),
+      ) ?? 'missing',
   );
-  return outcome ?? undefined;
+  if (answer === 'missing') return { status: 'missing' };
+  if (answer) return { status: 'ready', outcome: answer };
+  return failed ? { status: 'failed', retry } : { status: 'loading' };
 }
 
 /** One-off catalog reads, for a count or a row an edit needs before it is sent. */

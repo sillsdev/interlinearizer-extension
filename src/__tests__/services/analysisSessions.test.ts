@@ -733,12 +733,25 @@ describe('AnalysisSessions', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        staleGlossBooks: [],
         canUndo: false,
         canRedo: false,
       });
 
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
       await expect(stored(storage)).resolves.toMatchObject({ dirty: false });
+    });
+
+    it('replies with the books in which it put or removed a stale token link', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const reply = await sessions.edit(sessionId, 'stale', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('a'));
+        buffer.create('tokenAnalysisLinks', makeTokenLink('a', 'GEN 1:1:0', { status: 'stale' }));
+      });
+
+      expect(reply.staleGlossBooks).toStrictEqual(['GEN']);
     });
 
     it('gives the command the session it runs on', async () => {

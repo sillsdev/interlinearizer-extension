@@ -336,8 +336,13 @@ export class PageClient {
     if (!reply) return reply;
     if (!heard) this.rememberApplied(changeId);
     perfTime('reply-apply', () => {
-      this.refetch(this.held.apply(reply));
-      if (reply.staleGlossBooks.includes(this.held.outline.bookRef))
+      const refetch = this.held.apply(reply);
+      this.refetch(refetch);
+      // A placement or outline refetch already reads the stale flags.
+      if (
+        (refetch === 'none' || refetch === 'pages') &&
+        reply.staleGlossBooks.includes(this.held.outline.bookRef)
+      )
         this.readOutlineAgain('counts');
       this.changed();
       this.replyListeners.forEach((listener) => listener(reply));
@@ -439,11 +444,11 @@ export class PageClient {
       this.refetch('outline');
       return;
     }
-    if (book?.staleGlosses) this.readOutlineAgain('counts');
     if (book?.staleTranslations) {
       this.refetch('placement');
       return;
     }
+    if (book?.staleGlosses) this.readOutlineAgain('counts');
     const indexes = [
       ...(book?.ranges ?? []).flatMap(({ start, end }) =>
         Array.from({ length: end - start }, (_unused, i) => start + i),

@@ -57,7 +57,7 @@ function useNamedChanges(query: AnalysisQuery): number {
  * Logs a failed fetch as one of `what`.
  *
  * @returns The latest answer for `key`; `undefined` while `key` is `undefined`, and until an answer
- *   for `key` arrives.
+ *   for `key` arrives. A failed fetch leaves the last answer for `key` in place.
  */
 function useNamedFetch<T>(
   query: AnalysisQuery,

@@ -114,6 +114,7 @@ describe('getCatalogRows', () => {
       getOpenVerseBook: async () => {
         throw new Error('unreadable');
       },
+      getVerseBook: async () => BOOK,
       isFormInText: () => true,
     });
 
@@ -240,6 +241,43 @@ describe('previewDeletion', () => {
       fallbackGloss: 'Deity',
       unappliedCount: 0,
     });
+  });
+
+  it('leaves the fallback uncertain, logging the failure, when its book cannot be read', async () => {
+    const { sessions, sessionId } = await sessionOver({
+      tokenAnalyses: [
+        { id: 'ta-god', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'God' } },
+        { id: 'ta-deity', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'Deity' } },
+      ],
+      tokenAnalysisLinks: [
+        makeTokenLink('ta-god', tokenRefOf(EXODUS, 'God'), { surfaceText: 'God' }),
+        makeTokenLink('ta-deity', ref('God'), { surfaceText: 'God' }),
+      ],
+    });
+    const logger = { error: jest.fn() };
+    const handlers = sessionCatalogHandlers({
+      sessions,
+      logger,
+      getOpenVerseBook: async () => BOOK,
+      getVerseBook: async (_source, bookId) => {
+        if (bookId === 'EXO') throw new Error('unreadable');
+        return BOOK;
+      },
+      isFormInText: () => true,
+    });
+
+    const json = await handlers['interlinearizer.previewDeletion']({
+      sessionId,
+      analysisId: 'ta-god',
+    });
+
+    expect(JSON.parse(json)).toEqual(
+      expect.objectContaining({ kind: 'fallback', uncertain: true }),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      'Interlinearizer: could not read EXO to preview a deletion',
+      expect.any(Error),
+    );
   });
 
   it('answers null for an id no analysis carries', async () => {

@@ -277,6 +277,7 @@ function catalogReply(survivingAnalysisId: string | undefined, extra: object = {
     poolAnalyses: [],
     resegmentedBooks: [],
     staleTranslationBooks: [],
+    staleGlossBooks: [],
     canUndo: false,
     canRedo: false,
     step: {

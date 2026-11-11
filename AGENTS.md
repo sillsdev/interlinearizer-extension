@@ -162,18 +162,19 @@ An edit, undo, or redo replies with a `CommandReply`, which carries:
 - the `ChangeSet` it applied;
 - the books whose boundaries it moved;
 - the books where it put or removed a stale free translation that the view places;
+- the books where it put or removed a stale token link;
 - for an undo or redo, whether it left the draft unsaved;
 - the pool buckets of the forms it touched, which [sessionPages](src/services/sessionPages.ts) reads.
 
 A command sent again under a `changeId` the session has applied gets its first reply and applies nothing. Each undo step carries the place it was made at, or a summary of a step made at no one place, as [editSteps](src/services/editSteps.ts) derives them; an undo or redo hands its step back.
 
-Each change a session applies, re-anchor passes included, is described by [describeChange](src/services/analysisChanges.ts) and goes out as the session form of `onAnalysisChanged`. That event carries the change's segment ranges by book, a flag on each book where the change put or removed a stale free translation, analysis ids, touched forms, and cross-book queries. A report of re-anchor passes also carries the change sets they applied, which the view applies to its whole-draft copy; any other report it hears makes it fetch that copy again. A book the host keeps no tokenized copy of is named whole.
+Each change a session applies, re-anchor passes included, is described by [describeChange](src/services/analysisChanges.ts) and goes out as the session form of `onAnalysisChanged`. That event carries the change's segment ranges by book, a flag on each book where the change put or removed a stale free translation and another where it put or removed a stale token link, analysis ids, touched forms, and cross-book queries. A report of re-anchor passes also carries the change sets they applied, which the view applies to its whole-draft copy; any other report it hears makes it fetch that copy again. A book the host keeps no tokenized copy of is named whole.
 
 #### The WebView's sessions
 
 [useSessionProject](src/hooks/useSessionProject.ts) keeps the draft in a session, and the analysis hooks read pages through a `PageClient` and send each edit as a session command.
 
-`getBookOutline`, `getSegments`, and `getTextReadStatus` take a `{ sessionId }` address. They segment the text by the draft's boundaries, and the pages add the analysis that `sessionPages` reads. Each page also spans each phrase it touches with every member token, wherever it sits. The source-project form of `onAnalysisChanged` names a Scripture edit, so that the view reads the book's text again; it goes once 5d removes `getTokenizedBook`.
+`getBookOutline`, `getSegments`, and `getTextReadStatus` take a `{ sessionId }` address. They segment the text by the draft's boundaries, and the pages add the analysis that `sessionPages` reads. The outline counts each segment's orphaned free-translation cards and flags the segments that show a stale gloss or free translation. When a reply or a reported change flags the book for either, the client reads those counts and flags again rather than the whole outline. Each page also spans each phrase it touches with every member token, wherever it sits. The source-project form of `onAnalysisChanged` names a Scripture edit, so that the view reads the book's text again; it goes once 5d removes `getTokenizedBook`.
 
 [RecordCache](src/cache/recordCache.ts) holds one book's pages and their records, and a [PageClient](src/cache/pageClient.ts) fills it from a session. The client:
 
@@ -201,6 +202,8 @@ Each command family's outcome tests run inputs through the command and check wha
 The handlers that turn each command's arguments into a call on its family live in [sessionEditHandlers](src/services/sessionEditHandlers.ts). `main.ts` registers them, and the test host in [fake-host](src/__tests__/cache/fake-host.ts) serves the WebView's edits through them.
 
 The analysis catalog is served by [sessionCatalogHandlers](src/services/sessionCatalogHandlers.ts): `getCatalogRows` (a page by offset, the ids of every row it keeps, and the filter facets), `getSelectionSummary`, `countUsages`, `getCatalogRowsByIds`, `getHomographRows` and `previewDeletion`. Each reads the session's whole draft, and [catalogPages](src/services/catalogPages.ts) derives the answers. `previewDeletion` also reads the text of each book where a token approves the analysis, so its outcome is `uncertain` only where a book's text cannot be read. "Word not in the text" comes from the whole-text read's form index. The panel reads these queries through [catalogHooks](src/cache/catalogHooks.ts), which fetch again whenever a reported change names the query. JSON writes the untagged filter choice, `undefined`, as `null`, so both ends pass filters and facets through `restoreUntagged`. The fake host serves the catalog queries too, along with a whole-text read that each test configures.
+
+`getStaleSummary` lists the stale gloss places and stale free translations of one book, segmented by the draft's boundaries. [sessionPages](src/services/sessionPages.ts) derives it beside the outline. The stale notice reads it through `useStaleSummary` in catalogHooks, which fetches again whenever a reported change names the query. A change names it when it puts or removes a stale link, changes a payload a stale link names, or moves boundaries, since moving them can move where a stale translation shows.
 
 ### Components
 

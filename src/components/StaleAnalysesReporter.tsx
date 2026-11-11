@@ -1,7 +1,5 @@
-import type { Book } from 'interlinearizer';
 import { useEffect, useMemo, useRef } from 'react';
-import { bookOfRef } from '../utils/analysis-book';
-import { usePlacedStaleFreeTranslations, useStaleTokenLinks } from './AnalysisStore';
+import { useStaleSummary } from '../cache/catalogHooks';
 
 /** The stale analyses a loaded book holds, each named by a key that holds while it stays stale. */
 export type StaleAnalysesReport = Readonly<{
@@ -30,46 +28,39 @@ function sameReport(a: StaleAnalysesReport | undefined, b: StaleAnalysesReport):
 }
 
 /**
- * Reports the stale analyses `book` holds to a surface outside the analysis store — on mount, on
- * each change, and as `undefined` on unmount. Renders nothing.
+ * Reports the stale analyses that the session's draft holds in book `bookRef` to a surface outside
+ * the analysis store: once the host's summary arrives, on each change, and as `undefined` on
+ * unmount. Renders nothing.
  */
 export default function StaleAnalysesReporter({
-  book,
+  bookRef,
   onReport,
 }: Readonly<{
-  book: Book;
+  bookRef: string;
   onReport: (report: StaleAnalysesReport | undefined) => void;
 }>) {
-  const staleTokenLinks = useStaleTokenLinks();
-  const placedFreeTranslations = usePlacedStaleFreeTranslations(book);
+  const summary = useStaleSummary(bookRef);
 
-  const report = useMemo<StaleAnalysesReport>(
-    () => ({
-      bookRef: book.bookRef,
-      glosses: [
-        ...new Set(
-          staleTokenLinks
-            .filter((link) => bookOfRef(link.token.tokenRef) === book.bookRef)
-            .map((link) => `gloss ${link.analysisId} ${link.token.tokenRef}`),
+  const report = useMemo<StaleAnalysesReport | undefined>(
+    () =>
+      summary && {
+        bookRef,
+        glosses: summary.glosses.map(
+          ({ analysisId, tokenRef }) => `gloss ${analysisId} ${tokenRef}`,
         ),
-      ],
-      freeTranslations: book.segments.flatMap(({ id: segmentId }, index) => {
-        const { bySegment, orphanedAfter, orphanedAhead } = placedFreeTranslations;
-        return [
-          ...(index === 0 ? orphanedAhead : []),
-          ...(bySegment.get(segmentId) ?? []),
-          ...(orphanedAfter.get(segmentId) ?? []),
-        ].map((t) => ({ key: `freeTranslation ${t.analysisId}`, segmentId }));
-      }),
-    }),
-    [book.bookRef, book.segments, staleTokenLinks, placedFreeTranslations],
+        freeTranslations: summary.freeTranslations.map(({ analysisId, segmentId }) => ({
+          key: `freeTranslation ${analysisId}`,
+          segmentId,
+        })),
+      },
+    [bookRef, summary],
   );
 
-  // Every analysis edit rebuilds the stale links, and reporting each rebuild would re-render the
-  // receiving surface for edits that staled nothing.
+  // Every change that names the summary fetches it again. Reporting an unchanged answer would
+  // re-render the receiving surface for nothing.
   const reportedRef = useRef<StaleAnalysesReport | undefined>(undefined);
   useEffect(() => {
-    if (sameReport(reportedRef.current, report)) return;
+    if (!report || sameReport(reportedRef.current, report)) return;
     reportedRef.current = report;
     onReport(report);
   }, [report, onReport]);

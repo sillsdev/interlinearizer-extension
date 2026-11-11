@@ -47,7 +47,7 @@ import useStaleAnalysisDismissal from '../hooks/useStaleAnalysisDismissal';
 import useWritingSystem from '../hooks/useWritingSystem';
 import type { OutlineSegment } from '../types/segment-pages';
 import { heldSurfaceText } from '../utils/page-indexes';
-import { perfTrack } from '../utils/perf-marks';
+import { perfMark, perfTrack } from '../utils/perf-marks';
 import { isInterlinearProjectSummary } from '../types/type-guards';
 import { isPt9ImportReport, isPt9UnreadableFileList } from '../converters/pt9';
 import { toProjectSummary } from '../types/interlinear-project-summary';
@@ -500,6 +500,8 @@ function InterlinearizerLoaderInner({
     const timer = setTimeout(() => setShowPt9Checking(true), PT9_CHECKING_DELAY_MS);
     return () => clearTimeout(timer);
   }, [offerPt9Import, offerProbe]);
+
+  useLayoutEffect(() => perfMark('book-change', { book: scrRef.book }), [scrRef.book]);
 
   const writingSystem = useWritingSystem(projectId);
   const { bookIds: projectBookIds, isLoading: isProjectBookIdsLoading } =

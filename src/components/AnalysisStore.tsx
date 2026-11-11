@@ -23,7 +23,6 @@ import { perfMarksEnabled, perfMeasureFromFirst } from '../utils/perf-marks';
 import {
   selectAnalysis,
   selectAnalysisLanguage,
-  selectAnalysisDeletionOutcome,
   selectApprovedGloss,
   selectApprovedGlossSenseRef,
   selectApprovedMorphemes,
@@ -42,7 +41,6 @@ import {
   selectStaleMorphemesAnalysisId,
   selectStaleTokenLinks,
   selectUnapprovedTokenAnalysis,
-  type AnalysisDeletionOutcome,
   type AnalysisState,
 } from '../utils/analysis-selectors';
 import useLatestRef from '../hooks/useLatestRef';
@@ -56,7 +54,6 @@ import {
   useRepliesApplied,
   usePageSelector,
   useWholeSelector as useSessionWholeSelector,
-  useWholeStateGetter as useSessionWholeStateGetter,
 } from '../cache/pageHooks';
 import { useGlossCommand, useRemovalPreviews } from '../cache/sessionEdits';
 import {
@@ -466,7 +463,7 @@ export type AnalysisRowDispatch = {
   ) => Settles<AnalysisEditOutcome>;
   /**
    * Removes the records and every link to them, leaving their tokens on whatever the suggestion
-   * pool still offers. See {@link useAnalysisDeletionOutcome} for what deleting one will cost.
+   * pool still offers.
    */
   deleteAnalyses: (analysisIds: readonly string[]) => Settles<void>;
   /**
@@ -541,33 +538,6 @@ export function useGlossClearReclaims(): (
   analysisIds: readonly string[],
 ) => Settles<readonly string[]> {
   return useRemovalPreviews().clearGlosses;
-}
-
-/**
- * Returns a stable getter for what deleting a record would do to the tokens that approve it — left
- * blank, or falling back to a surviving homograph — so the deletion's announcement can name the
- * concrete consequence. Returns `undefined` for an id that resolves to no record.
- *
- * A getter rather than a subscription: the outcome is read once, just before the delete, and
- * subscribing every row to it would recompute the suggestion pool per row on every store change.
- *
- * The getter is given the live-text lookup per call, so it reads the book as it stands at the
- * moment of the delete.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export function useAnalysisDeletionOutcome(): (
-  analysisId: string,
-  liveSurfaceText: (tokenRef: string) => string | undefined,
-) => AnalysisDeletionOutcome | undefined {
-  useRequiredCallbacks('useAnalysisDeletionOutcome');
-  const getState = useSessionWholeStateGetter();
-
-  return useCallback(
-    (analysisId: string, liveSurfaceText: (tokenRef: string) => string | undefined) =>
-      selectAnalysisDeletionOutcome(getState(), analysisId, liveSurfaceText),
-    [getState],
-  );
 }
 
 /**

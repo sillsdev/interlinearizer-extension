@@ -1030,6 +1030,19 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Reports what deleting a token analysis in a session's draft would do to the tokens that
+     * approve it, whichever book they sit in.
+     *
+     * @returns A JSON string of the `AnalysisDeletionOutcome`; `"null"` when no analysis carries
+     *   the id.
+     * @throws If the session is not open, or its analysis or the text of a book it reaches cannot
+     *   be read (logged before rethrowing).
+     */
+    'interlinearizer.previewDeletion': (
+      args: import('interlinearizer').SessionCommandArgs & { analysisId: string },
+    ) => Promise<string>;
+
+    /**
      * Served by the interlinearizer's C# host rather than the extension, to show the two can talk.
      *
      * @returns The message, echoed back, with the .NET runtime version and process id that

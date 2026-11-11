@@ -58,8 +58,8 @@ function useNamedChanges(query: AnalysisQuery): number {
  * Fetches with `fetch` for each `key`, and again whenever a change to the session names `query`.
  * Logs a failed fetch as one of `what`.
  *
- * @returns The latest answer for `key`; `undefined` while `key` is `undefined`, until the first
- *   answer for `key` arrives, and after a fetch fails.
+ * @returns The latest answer for `key`; `undefined` while `key` is `undefined`, and until the first
+ *   answer for `key` arrives. A failed fetch leaves the last answer for `key` in place.
  */
 function useNamedFetch<T>(
   query: AnalysisQuery,

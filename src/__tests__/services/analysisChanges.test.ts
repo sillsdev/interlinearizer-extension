@@ -279,6 +279,50 @@ describe('describeChange', () => {
       expect(change.books.some(({ staleTranslations }) => staleTranslations)).toBe(false);
     });
 
+    it('is named when the change moved boundaries, which can move where a stale translation shows', async () => {
+      const scope = emptyDraft('src');
+      const merged = { removedVerseStarts: [ref('God')], addedStarts: [] };
+      const changes: ChangeSet = {
+        intent: 'mergeSegments',
+        scope: { ...scope, segmentation: merged },
+      };
+      const inverse: ChangeSet = { intent: 'mergeSegments', scope };
+
+      const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
+
+      expect(change.queries).toContain('getStaleSummary');
+    });
+
+    it('flags the book of a stale token link that the change put or removed', async () => {
+      const link = makeTokenLink('ta', ref('God'));
+      const changes: ChangeSet = {
+        intent: 'x',
+        tokenAnalysisLinks: { puts: [{ ...link, status: 'stale' }], deletes: [] },
+      };
+      const inverse: ChangeSet = { intent: 'x', tokenAnalysisLinks: { puts: [link], deletes: [] } };
+
+      const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
+
+      expect(change.books).toStrictEqual([
+        expect.objectContaining({ bookId: 'GEN', staleGlosses: true }),
+      ]);
+    });
+
+    it('leaves the book unflagged for glosses when no stale token link changed', async () => {
+      const link = makeTokenLink('ta', ref('God'));
+      const changes: ChangeSet = { intent: 'x', tokenAnalysisLinks: { puts: [link], deletes: [] } };
+      const inverse: ChangeSet = {
+        intent: 'x',
+        tokenAnalysisLinks: { puts: [], deletes: [link.id] },
+      };
+
+      const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
+
+      expect(change.books).toStrictEqual([
+        expect.not.objectContaining({ staleGlosses: expect.anything() }),
+      ]);
+    });
+
     it('is named when a payload a stale link names changes', async () => {
       const segmentPayload = { id: 'sa', ...FIXTURE_STAMPS, surfaceText: 'God created' };
       const repository = await repositoryOver({

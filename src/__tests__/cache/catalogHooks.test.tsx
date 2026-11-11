@@ -10,6 +10,7 @@ import {
   useDeletionPreview,
   useHomographRows,
   useSelectionSummary,
+  useStaleSummary,
   useTextReadStatus,
 } from '../../cache/catalogHooks';
 import { emptyAnalysis } from '../../types/empty-factories';
@@ -32,9 +33,9 @@ const REQUEST = {
   sourceLanguageTag: 'en',
 };
 
-/** A wrapper giving the hooks a session over {@link ANALYSIS} that a fake host serves. */
-async function wrapperOver(text = readText([])) {
-  const Provider = await prepareAnalysis(ANALYSIS, BOOK, text);
+/** A wrapper giving the hooks a session over `analysis` that a fake host serves. */
+async function wrapperOver(text = readText([]), analysis: TextAnalysis = ANALYSIS) {
+  const Provider = await prepareAnalysis(analysis, BOOK, text);
   return function Wrapper({ children }: Readonly<{ children: ReactNode }>) {
     return <Provider>{children}</Provider>;
   };
@@ -393,5 +394,52 @@ describe('a change of analysis language', () => {
     await settle();
 
     expect(timesSent('interlinearizer.previewDeletion')).toBe(2);
+  });
+});
+
+describe('useStaleSummary', () => {
+  const STALE: TextAnalysis = {
+    ...ANALYSIS,
+    tokenAnalysisLinks: [
+      makeTokenLink('ta-god', ref('God'), { surfaceText: 'God', id: 'tl-god', status: 'stale' }),
+    ],
+  };
+
+  it("summarizes the book's stale analyses", async () => {
+    const wrapper = await wrapperOver(undefined, STALE);
+
+    const { result } = renderHook(() => useStaleSummary('GEN'), { wrapper });
+
+    await waitFor(() =>
+      expect(result.current).toStrictEqual({
+        glosses: [{ analysisId: 'ta-god', tokenRef: ref('God') }],
+        freeTranslations: [],
+      }),
+    );
+  });
+
+  it('fetches again when a change to the session names the stale summary', async () => {
+    const wrapper = await wrapperOver(undefined, STALE);
+    renderHook(() => useStaleSummary('GEN'), { wrapper });
+    await settle();
+    const before = timesSent('interlinearizer.getStaleSummary');
+
+    relayChange(changeNaming(sessionIdOf('interlinearizer.getStaleSummary'), ['getStaleSummary']));
+    await settle();
+
+    expect(timesSent('interlinearizer.getStaleSummary')).toBe(before + 1);
+  });
+
+  it('logs a summary that could not be fetched', async () => {
+    const wrapper = await wrapperOver(undefined, STALE);
+    failing('interlinearizer.getStaleSummary');
+
+    renderHook(() => useStaleSummary('GEN'), { wrapper });
+    await settle();
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interlinearizer: could not fetch the stale summary',
+      expect.any(Error),
+    );
   });
 });

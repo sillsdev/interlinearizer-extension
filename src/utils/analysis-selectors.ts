@@ -248,8 +248,8 @@ export interface AnalysisDeletionOutcome {
  *
  * Judges each affected token's fallback as the renderer will: its own surviving unapproved records
  * first, then the pool's match for its text as it now stands less any analysis it rejected, read
- * through `liveSurfaceText` — which covers the loaded book alone, giving `undefined` for a ref in
- * any other.
+ * through `liveSurfaceText`. A ref that `liveSurfaceText` gives `undefined` for leaves the outcome
+ * `uncertain`.
  */
 export function selectAnalysisDeletionOutcome(
   state: AnalysisState,

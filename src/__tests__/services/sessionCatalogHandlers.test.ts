@@ -5,8 +5,8 @@ import {
   sessionCatalogHandlers,
   type CatalogRowsRequest,
 } from '../../services/sessionCatalogHandlers';
-import { FIXTURE_STAMPS } from '../test-helpers';
-import { BOOK, GLOSSED, glossing, sessionOver } from '../cache/session-source';
+import { FIXTURE_STAMPS, makeTokenLink, makeVerseBook, tokenRefOf } from '../test-helpers';
+import { BOOK, GLOSSED, glossing, ref, sessionOver } from '../cache/session-source';
 
 /** A request for the first page of every row, sorted by surface form, against Genesis. */
 function makeRequest(overrides: Partial<CatalogRowsRequest> = {}): CatalogRowsRequest {
@@ -38,6 +38,7 @@ async function handlersOver({
     sessions,
     logger: { error: jest.fn() },
     getOpenVerseBook: async () => BOOK,
+    getVerseBook: async () => BOOK,
     isFormInText,
   });
   return { handlers, sessionId, edit };
@@ -92,6 +93,7 @@ describe('getCatalogRows', () => {
       sessions,
       logger: { error: jest.fn() },
       getOpenVerseBook: async () => undefined,
+      getVerseBook: async () => undefined,
       isFormInText: () => true,
     });
 
@@ -205,6 +207,50 @@ describe('getSelectionSummary', () => {
   });
 });
 
+describe('previewDeletion', () => {
+  const EXODUS = makeVerseBook([{ sid: 'EXO 1:1', text: 'God spoke' }]);
+
+  it('names the fallback of a token in a book other than the open one', async () => {
+    const { sessions, sessionId } = await sessionOver({
+      tokenAnalyses: [
+        { id: 'ta-god', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'God' } },
+        { id: 'ta-deity', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'Deity' } },
+      ],
+      tokenAnalysisLinks: [
+        makeTokenLink('ta-god', tokenRefOf(EXODUS, 'God'), { surfaceText: 'God' }),
+        makeTokenLink('ta-deity', ref('God'), { surfaceText: 'God' }),
+      ],
+    });
+    const handlers = sessionCatalogHandlers({
+      sessions,
+      logger: { error: jest.fn() },
+      getOpenVerseBook: async () => BOOK,
+      getVerseBook: async (_source, bookId) => (bookId === 'EXO' ? EXODUS : BOOK),
+      isFormInText: () => true,
+    });
+
+    const json = await handlers['interlinearizer.previewDeletion']({
+      sessionId,
+      analysisId: 'ta-god',
+    });
+
+    expect(JSON.parse(json)).toEqual({
+      kind: 'fallback',
+      usageCount: 1,
+      fallbackGloss: 'Deity',
+      unappliedCount: 0,
+    });
+  });
+
+  it('answers null for an id no analysis carries', async () => {
+    const { handlers, sessionId } = await handlersOver();
+
+    await expect(
+      handlers['interlinearizer.previewDeletion']({ sessionId, analysisId: 'ta-gone' }),
+    ).resolves.toBe('null');
+  });
+});
+
 describe('a session not open', () => {
   it('logs and rethrows each query asked of it', async () => {
     const { sessions } = await sessionOver();
@@ -213,6 +259,7 @@ describe('a session not open', () => {
       sessions,
       logger,
       getOpenVerseBook: async () => BOOK,
+      getVerseBook: async () => BOOK,
       isFormInText: () => true,
     });
     const sessionId = 'no-such-session';
@@ -241,7 +288,10 @@ describe('a session not open', () => {
     await expect(
       handlers['interlinearizer.getSelectionSummary']({ sessionId, analysisIds: [] }),
     ).rejects.toThrow();
+    await expect(
+      handlers['interlinearizer.previewDeletion']({ sessionId, analysisId: 'ta-god' }),
+    ).rejects.toThrow();
 
-    expect(logger.error).toHaveBeenCalledTimes(5);
+    expect(logger.error).toHaveBeenCalledTimes(6);
   });
 });

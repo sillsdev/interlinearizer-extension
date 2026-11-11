@@ -1375,6 +1375,15 @@ describe('AnalysisCatalogPanel', () => {
       return list;
     }
 
+    /** How many rows the panel last asked the host for. */
+    function lastCatalogRowsCount(): unknown {
+      const args = jest
+        .mocked(papi.commands.sendCommand)
+        .mock.calls.findLast(([command]) => command === 'interlinearizer.getCatalogRows')?.[1];
+      const request = typeof args === 'object' && args ? Reflect.get(args, 'request') : undefined;
+      return typeof request === 'object' && request ? Reflect.get(request, 'count') : undefined;
+    }
+
     /** Reports the end of the list as having come into view, then waits for the rows it brings. */
     async function reachListEnd(): Promise<void> {
       act(() => {
@@ -1411,6 +1420,17 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.type(searchBox(), 'word');
 
       expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
+    });
+
+    it('asks the host for no more than the reset window once the query changes', async () => {
+      await renderPanel({ analysis: MANY });
+      const firstCount = lastCatalogRowsCount();
+      await reachListEnd();
+
+      await userEvent.type(searchBox(), 'word');
+      await settle();
+
+      expect(lastCatalogRowsCount()).toBe(firstCount);
     });
 
     it('returns the list to its top when the query changes', async () => {
@@ -5242,6 +5262,23 @@ describe('AnalysisCatalogPanel', () => {
       expect(announceUndoable).toHaveBeenCalledWith(
         '%interlinearizer_analysisCatalog_deletedChecked%',
       );
+    });
+
+    it('deletes the checked rows unannounced when their uses could not be counted', async () => {
+      const announceUndoable = jest.fn();
+      await renderPanel({ announceUndoable, analysis: THREE_FORMS });
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.countUsages') throw new Error('offline');
+        return serve?.(...call);
+      });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+      await settle();
+
+      expect(listedAnalysisIds()).toEqual(['ta-2']);
+      expect(announceUndoable).not.toHaveBeenCalled();
     });
   });
 });

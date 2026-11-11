@@ -78,14 +78,22 @@ const INITIAL_FETCH_COUNT = 40;
 /** Tells no one about an edit, having no history to undo it from. */
 const ANNOUNCE_NOTHING = () => {};
 
-/** Calls `then` with the count once it arrives, logging a count that could not be had. */
-async function afterCounting(counted: Promise<number>, then: (count: number) => void) {
-  try {
-    then(await counted);
-    /* v8 ignore next 3 -- logging only */
-  } catch (e) {
-    logger.warn('Interlinearizer: could not count the uses an edit reached', e);
-  }
+/**
+ * `read`, for an edit to use once the edit settles, resolving `undefined` if the read fails.
+ *
+ * Logs the failure as soon as it lands, because an edit that fails never awaits its read.
+ */
+function readForEdit<T>(read: Promise<T>): Promise<T | undefined> {
+  return read.catch((e) => {
+    logger.warn('Interlinearizer: could not read the uses an edit reached', e);
+    return undefined;
+  });
+}
+
+/** Calls `then` with the count once it arrives, unless it could not be had. */
+async function afterCounting(counted: Promise<number | undefined>, then: (count: number) => void) {
+  const count = await counted;
+  if (count !== undefined) then(count);
 }
 
 /** Calls `then` with the deletion outcome once `previewed` settles, logging a failure. */
@@ -265,6 +273,9 @@ export default function AnalysisCatalogPanel({
   /** How many rows the host is asked for: at least as many as the window has mounted. */
   const [fetchCount, setFetchCount] = useState(INITIAL_FETCH_COUNT);
 
+  /** The listing that {@link fetchCount} grew against, so a new one can be recognized as new. */
+  const [fetchedListing, setFetchedListing] = useState<unknown>(undefined);
+
   /**
    * The filter choices the latest page offered, or `undefined` until a page arrives. Until then the
    * reader's filters stand as chosen.
@@ -413,7 +424,11 @@ export default function AnalysisCatalogPanel({
    * rather than rendering whole.
    */
   const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing, revealedRowIndex);
-  if (windowRows.length > fetchCount) setFetchCount(windowRows.length);
+  // Reset with the window, so a new listing is not fetched at the size an earlier one scrolled to.
+  if (listing !== fetchedListing) {
+    setFetchedListing(listing);
+    setFetchCount(INITIAL_FETCH_COUNT);
+  } else if (windowRows.length > fetchCount) setFetchCount(windowRows.length);
 
   const { navigate, requestFocusToken, cancelFocusRequest } = useInterlinearNav();
 
@@ -483,7 +498,7 @@ export default function AnalysisCatalogPanel({
 
   /** Announces the message an edit's use count completes, once that count arrives. */
   const announceCounted = useCallback(
-    (counted: Promise<number>, message: (usageCount: number) => string) =>
+    (counted: Promise<number | undefined>, message: (usageCount: number) => string) =>
       afterCounting(counted, (usageCount) => announceUndoable(message(usageCount))),
     [announceUndoable],
   );
@@ -817,7 +832,7 @@ export default function AnalysisCatalogPanel({
     (analysisIds: readonly string[]) => {
       const count = analysisIds.length;
       // Counted before the records go, which takes their uses with them.
-      const counted = reads.countUsages(analysisIds);
+      const counted = readForEdit(reads.countUsages(analysisIds));
       // Cleared before the records go, so their removal is not reported back as stranding them.
       analysisIds.forEach(discardBreakdownDraft);
       runRowEdit(
@@ -856,7 +871,7 @@ export default function AnalysisCatalogPanel({
       const count = analysisIds.length;
       setMergeNotice(undefined);
       // Read before the clear, which deletes some of these records and their uses with them.
-      const reclaimedRows = reads.rowsByIds(reclaimedIds);
+      const reclaimedRows = readForEdit(reads.rowsByIds(reclaimedIds));
       runRowEdit(
         () => rowDispatch.clearGlosses(analysisIds),
         (deletedIds) => {
@@ -864,7 +879,9 @@ export default function AnalysisCatalogPanel({
           const mergedCount = reclaimedIds.filter((id) => !deletedIds.includes(id)).length;
           if (deletedCount === 0 && mergedCount === 0) return;
           announceCounted(
-            reclaimedRows.then((reclaimed) => distinctUsageCount(reclaimed, new Set(deletedIds))),
+            reclaimedRows.then(
+              (reclaimed) => reclaimed && distinctUsageCount(reclaimed, new Set(deletedIds)),
+            ),
             (usageCount) =>
               formatReplacementString(
                 localizedStrings[clearedGlossKey(deletedCount, mergedCount)],
@@ -922,7 +939,7 @@ export default function AnalysisCatalogPanel({
 
       setMergeRequest(undefined);
       // Counted before the merge, which can remove every record it names.
-      const counted = reads.countUsages([survivorAnalysisId, ...mergedAnalysisIds]);
+      const counted = readForEdit(reads.countUsages([survivorAnalysisId, ...mergedAnalysisIds]));
 
       runRowEdit(
         () =>

@@ -232,6 +232,20 @@ describe('useSelectionSummary', () => {
     );
   });
 
+  it('keeps the last summary when fetching it again fails', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useSelectionSummary(['ta-god']), { wrapper });
+    await waitFor(() => expect(result.current).toBeDefined());
+    failing('interlinearizer.getSelectionSummary');
+
+    relayChange(
+      changeNaming(sessionIdOf('interlinearizer.getSelectionSummary'), ['getCatalogRows']),
+    );
+    await settle();
+
+    expect(result.current).toStrictEqual({ usageCount: 1, glossedIds: ['ta-god'] });
+  });
+
   it('logs a summary that could not be fetched', async () => {
     const wrapper = await wrapperOver();
     failing('interlinearizer.getSelectionSummary');

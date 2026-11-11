@@ -757,10 +757,10 @@ async function sessionBoundaries(session: Session, bookId: string): Promise<stri
 }
 
 /**
- * Outlines a book of a session's source, segmented by the draft's boundaries, counting each
- * segment's orphaned free-translation cards. Before the outline, the draft is re-anchored to the
- * book's text unless the session last re-anchored the book to the same text. A failed re-anchor is
- * logged.
+ * Outlines a book of a session's source, segmented by the draft's boundaries. The outline counts
+ * each segment's orphaned free-translation cards and flags the segments that show a stale gloss or
+ * free translation. Before the outline, the draft is re-anchored to the book's text unless the
+ * session last re-anchored the book to the same text. A failed re-anchor is logged.
  *
  * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or segmented, the session is not open, or its analysis cannot

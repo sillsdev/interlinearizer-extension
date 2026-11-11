@@ -204,13 +204,16 @@ export function sessionCatalogHandlers({
             .map((link) => bookOfRef(link.token.tokenRef)),
         );
         const liveText = new Map<string, string>();
+        const readBooks = new Set<string>();
         await Promise.all(
           [...bookIds].map(async (bookId) => {
             const book = await getVerseBook(session.scope.sourceProjectId, bookId).catch((e) => {
               logger.error(`Interlinearizer: could not read ${bookId} to preview a deletion`, e);
               return undefined;
             });
-            book?.segments.forEach((segment) =>
+            if (!book) return;
+            readBooks.add(bookId);
+            book.segments.forEach((segment) =>
               segment.tokens.forEach((token) => liveText.set(token.ref, token.surfaceText)),
             );
           }),
@@ -219,6 +222,7 @@ export function sessionCatalogHandlers({
           { analysis, analysisLanguage: session.analysisLanguage },
           analysisId,
           (tokenRef) => liveText.get(tokenRef),
+          (tokenRef) => readBooks.has(bookOfRef(tokenRef)),
         );
         return outcome ? JSON.stringify(outcome) : 'null';
       });

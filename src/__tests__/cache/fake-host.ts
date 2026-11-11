@@ -173,7 +173,7 @@ export async function fakeHost(
     .mockImplementation((name: string) =>
       name === 'interlinearizer.onAnalysisChanged' ? ANALYSIS_CHANGED_EVENT : () => () => true,
     );
-  const serve = async (...call: unknown[]) => {
+  const serve = async (...call: unknown[]): Promise<string | number | void> => {
     const [command, first, ...rest] = call;
     const intercepted = intercept(String(command));
     if (intercepted) return intercepted;
@@ -215,7 +215,10 @@ export async function fakeHost(
       case 'interlinearizer.countUsages':
       case 'interlinearizer.getCatalogRowsByIds':
       case 'interlinearizer.getHomographRows': {
-        const handler: (args: unknown) => Promise<unknown> = Reflect.get(catalog, String(command));
+        const handler: (args: unknown) => Promise<string | number> = Reflect.get(
+          catalog,
+          String(command),
+        );
         return handler(first);
       }
       case 'interlinearizer.undoEdit': {

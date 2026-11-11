@@ -292,9 +292,6 @@ export default function AnalysisCatalogPanel({
   /** The ids of the rows the listing keeps, in the shape the selection and the window take. */
   const rows = useMemo(() => keptIds.map((analysisId) => ({ analysisId })), [keptIds]);
 
-  /** The rows the host has sent, by id. */
-  const sentRows = useMemo(() => new Map(view?.rows.map((row) => [row.analysisId, row])), [view]);
-
   /** Whether every book of the text has been read, none failing. */
   const isTextRead =
     readStatus !== undefined &&
@@ -369,9 +366,14 @@ export default function AnalysisCatalogPanel({
     undefined,
   );
 
+  /** The rows the host has sent, by id. */
+  const sentRows = useMemo(() => new Map(view?.rows.map((row) => [row.analysisId, row])), [view]);
+
+  // The request holds until the host sends its row, because a row past the fetched page mounts only
+  // once the larger page arrives.
   useEffect(() => {
-    if (rowToReveal) setRowToReveal(undefined);
-  }, [rowToReveal]);
+    if (rowToReveal && sentRows.has(rowToReveal.analysisId)) setRowToReveal(undefined);
+  }, [rowToReveal, sentRows]);
 
   /** Raises a merge notice, taking the reader to the row it names. */
   const showMergeNotice = useCallback((notice: MergeNotice) => {

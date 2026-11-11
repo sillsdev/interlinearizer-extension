@@ -26,6 +26,7 @@ import InterlinearizerLoader, {
   BOOK_NAME_TIMEOUT_MS,
   UNDO_NOTIFICATION_DURATION_MS,
 } from '../../components/InterlinearizerLoader';
+import * as perfMarks from '../../utils/perf-marks';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import type { SegmentPages } from '../../types/segment-pages';
 import { DraftRepository } from '../../services/draftRepository';
@@ -919,6 +920,16 @@ describe('InterlinearizerLoader', () => {
 
     expect(screen.queryByTestId('scripture-nav-controls')).not.toBeInTheDocument();
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+  });
+
+  it('marks the change to each book it shows, for the render timing to start from', async () => {
+    const perfMark = jest.spyOn(perfMarks, 'perfMark').mockImplementation(() => {});
+
+    await flushHost(async () => {
+      renderLoader();
+    });
+
+    expect(perfMark).toHaveBeenCalledWith('book-change', { book: 'GEN' });
   });
 
   it('resolves a verse-0 reference to verse 1 when the book has no verse-0 segment', async () => {

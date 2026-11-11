@@ -248,13 +248,15 @@ export interface AnalysisDeletionOutcome {
  *
  * Judges each affected token's fallback as the renderer will: its own surviving unapproved records
  * first, then the pool's match for its text as it now stands less any analysis it rejected, read
- * through `liveSurfaceText`. A ref that `liveSurfaceText` gives `undefined` for leaves the outcome
- * `uncertain`.
+ * through `liveSurfaceText`. A ref with no live text is skipped when `isReadable` accepts it,
+ * because the text that was read no longer holds that token. Any other ref with no live text leaves
+ * the outcome `uncertain`.
  */
 export function selectAnalysisDeletionOutcome(
   state: AnalysisState,
   analysisId: string,
   liveSurfaceText: (tokenRef: string) => string | undefined,
+  isReadable: (tokenRef: string) => boolean,
 ): AnalysisDeletionOutcome | undefined {
   const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
   if (!analysis) return undefined;
@@ -304,6 +306,7 @@ export function selectAnalysisDeletionOutcome(
     }
     const live = liveSurfaceText(tokenRef);
     if (live === undefined) {
+      if (isReadable(tokenRef)) return;
       unreadable = true;
       return;
     }

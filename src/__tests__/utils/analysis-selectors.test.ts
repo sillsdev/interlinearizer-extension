@@ -1274,6 +1274,9 @@ describe('analysis-keyed reducers', () => {
     /** Reads every fixture token as still carrying the form its analysis was recorded under. */
     const undrifted = () => 'word';
 
+    /** Treats no token's text as read, so any ref without live text leaves the outcome uncertain. */
+    const unread = () => false;
+
     /** Reads `tokenRef` as belonging to a book this view has not loaded. */
     const unloaded = (tokenRef: string) => (ref: string) => (ref === tokenRef ? undefined : 'word');
 
@@ -1284,6 +1287,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-shared',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 2, unappliedCount: 0 });
@@ -1293,8 +1297,26 @@ describe('analysis-keyed reducers', () => {
       const store = makeSharedStore();
 
       expect(
-        selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', unloaded('tok-2')),
+        selectAnalysisDeletionOutcome(
+          store.getState().analysis,
+          'ta-shared',
+          unloaded('tok-2'),
+          unread,
+        ),
       ).toEqual({ kind: 'fallback', usageCount: 2, unappliedCount: 0, uncertain: true });
+    });
+
+    it('skips a use whose token its text no longer holds', () => {
+      const store = makeSharedStore();
+      const gone = (ref: string) => (ref === 'tok-2' ? undefined : 'word');
+
+      expect(
+        selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', gone, () => true),
+      ).toEqual({
+        kind: 'blank',
+        usageCount: 2,
+        unappliedCount: 0,
+      });
     });
 
     it('does not fall back to an analysis the token rejected', () => {
@@ -1309,7 +1331,7 @@ describe('analysis-keyed reducers', () => {
         ],
       ).analysis;
 
-      expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => 'logos')).toEqual({
+      expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => 'logos', unread)).toEqual({
         kind: 'blank',
         usageCount: 1,
         unappliedCount: 0,
@@ -1337,7 +1359,7 @@ describe('analysis-keyed reducers', () => {
           ],
         ).analysis;
 
-        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing, unread)).toEqual({
           kind: 'fallback',
           usageCount: 1,
           unappliedCount: 0,
@@ -1351,12 +1373,14 @@ describe('analysis-keyed reducers', () => {
           [makeLink(finance, 'tok-1', 'approved'), makeLink(riverbank, 'tok-1', 'candidate')],
         ).analysis;
 
-        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => undefined)).toEqual({
-          kind: 'fallback',
-          usageCount: 1,
-          unappliedCount: 0,
-          fallbackGloss: 'riverbank',
-        });
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => undefined, unread)).toEqual(
+          {
+            kind: 'fallback',
+            usageCount: 1,
+            unappliedCount: 0,
+            fallbackGloss: 'riverbank',
+          },
+        );
       });
 
       it('names no gloss when another affected token would be left with none', () => {
@@ -1369,7 +1393,7 @@ describe('analysis-keyed reducers', () => {
           ],
         ).analysis;
 
-        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing, unread)).toEqual({
           kind: 'fallback',
           usageCount: 2,
           unappliedCount: 0,
@@ -1383,7 +1407,7 @@ describe('analysis-keyed reducers', () => {
           [makeLink(finance, 'tok-1', 'approved'), makeLink(finance, 'tok-1', 'candidate')],
         ).analysis;
 
-        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing, unread)).toEqual({
           kind: 'blank',
           usageCount: 1,
           unappliedCount: 1,
@@ -1395,7 +1419,7 @@ describe('analysis-keyed reducers', () => {
       const store = makeSharedStore();
 
       expect(
-        selectAnalysisDeletionOutcome(store.getState().analysis, 'nope', undrifted),
+        selectAnalysisDeletionOutcome(store.getState().analysis, 'nope', undrifted, unread),
       ).toBeUndefined();
     });
 
@@ -1431,6 +1455,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-unused',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
@@ -1481,6 +1506,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-unused',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
@@ -1520,6 +1546,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-shared',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 2, unappliedCount: 0 });
@@ -1553,6 +1580,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-mixed',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 4 });
@@ -1580,7 +1608,12 @@ describe('analysis-keyed reducers', () => {
         },
       });
 
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-dup', undrifted);
+      const outcome = selectAnalysisDeletionOutcome(
+        store.getState().analysis,
+        'ta-dup',
+        undrifted,
+        unread,
+      );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
     });
@@ -1620,6 +1653,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-both',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 1, unappliedCount: 1 });

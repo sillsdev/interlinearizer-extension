@@ -70,6 +70,7 @@ function main(): void {
       seed: DATASET_SEED,
       sourceProjectId: meta.projectId,
       coreCommit: meta.coreCommit,
+      capturedAt: meta.capturedAt,
       books: bookCodes,
       counts: {
         segments: books.reduce((n, b) => n + b.segments.length, 0),

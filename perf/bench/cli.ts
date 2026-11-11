@@ -63,7 +63,7 @@ function mostLinkedTokenAnalysis(analysis: TextAnalysis) {
 async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record<string, unknown>> {
   const tierName = tier.name;
   const meta = readCaptureMeta();
-  const manifest = readManifest(tierName);
+  const manifest = readManifest(tierName, meta);
   const viewBookCode = tier.viewBook;
   const usj = readUsj(meta, viewBookCode);
   const draftJson = readDraftJson(tierName);

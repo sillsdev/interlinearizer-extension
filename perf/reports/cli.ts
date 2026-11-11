@@ -57,17 +57,23 @@ function sessionHost(
   };
 }
 
-/** `usj` with `edit` applied to each of its nonblank text strings, up to `limit` of them. */
+/**
+ * `usj` with `edit` applied to each nonblank text string after its first verse, outside notes, up
+ * to `limit` of them.
+ */
 function editUsj(usj: UsjDocument, edit: (text: string) => string, limit = Infinity): UsjDocument {
   let edited = 0;
+  let inVerses = false;
   const walk = (node: unknown): unknown => {
     if (typeof node === 'string') {
-      if (edited >= limit || node.trim().length === 0) return node;
+      if (!inVerses || edited >= limit || node.trim().length === 0) return node;
       edited += 1;
       return edit(node);
     }
     if (Array.isArray(node)) return node.map(walk);
     if (node && typeof node === 'object') {
+      if ('type' in node && node.type === 'verse') inVerses = true;
+      if ('type' in node && node.type === 'note') return node;
       return Object.fromEntries(
         Object.entries(node).map(([key, value]) => [key, key === 'content' ? walk(value) : value]),
       );
@@ -80,14 +86,29 @@ function editUsj(usj: UsjDocument, edit: (text: string) => string, limit = Infin
 const alterFirstWord = (text: string) => text.replace(/\p{L}+/u, (word) => `${word}x`);
 const alterEveryWord = (text: string) => text.replace(/\p{L}+/gu, (word) => `${word}x`);
 
-/** The edits measured, each named and paired with the edited text of `bookCode`. */
-function edits(meta: UsjCaptureMeta, bookCode: string): [string, Book][] {
+/** The unedited text of `bookCode`, then each measured edit of that text under its name. */
+function texts(meta: UsjCaptureMeta, bookCode: string): [Book, [string, Book][]] {
   const usj = readUsj(meta, bookCode);
   const tag = meta.languageTag || 'und';
   return [
-    ['one word', tokenizeBook(extractBookFromUsj(editUsj(usj, alterFirstWord, 1), tag))],
-    ['every word', tokenizeBook(extractBookFromUsj(editUsj(usj, alterEveryWord), tag))],
+    tokenizeBook(extractBookFromUsj(usj, tag)),
+    [
+      ['one word', tokenizeBook(extractBookFromUsj(editUsj(usj, alterFirstWord, 1), tag))],
+      ['every word', tokenizeBook(extractBookFromUsj(editUsj(usj, alterEveryWord), tag))],
+    ],
   ];
+}
+
+/**
+ * `draftJson` re-anchored to the unedited `book`. A pass over an edit of `book` then changes only
+ * what the edit reaches.
+ */
+function settledTo(draftJson: string, book: Book): string {
+  const draft: DraftProject = JSON.parse(draftJson);
+  const changes = reanchorChangesForBook(draft, book);
+  if (!changes) return draftJson;
+  applyChangeSet(draft, changes);
+  return JSON.stringify(draft);
 }
 
 /** Times the steps of one pass over `book`, as `reanchorStoredBook` runs them. */
@@ -207,9 +228,11 @@ async function linksByBook(draftJson: string): Promise<[string, number][]> {
 const mb = (bytes: number) => `${(bytes / 2 ** 20).toFixed(2)} MiB`;
 
 async function measureTier(tierName: string, meta: UsjCaptureMeta) {
-  const manifest = readManifest(tierName);
-  const draftJson = readDraftJson(tierName);
-  const [[heaviest, links]] = await linksByBook(draftJson);
+  const manifest = readManifest(tierName, meta);
+  const generated = readDraftJson(tierName);
+  const [[heaviest, links]] = await linksByBook(generated);
+  const [unedited, edits] = texts(meta, heaviest);
+  const draftJson = settledTo(generated, unedited);
   console.log(
     `${tierName}: draft ${mb(Buffer.byteLength(draftJson))}, ${heaviest} has ${links} links`,
   );
@@ -222,7 +245,7 @@ async function measureTier(tierName: string, meta: UsjCaptureMeta) {
     (sessions, source) => sessions.reanchorMissingBooks(source, textBooks),
   );
   // eslint-disable-next-line no-restricted-syntax -- runs go one at a time so timings don't overlap
-  for (const [name, edited] of edits(meta, heaviest)) {
+  for (const [name, edited] of edits) {
     // eslint-disable-next-line no-await-in-loop -- runs go one at a time so timings don't overlap
     scenarios[`edit, ${name}`] = await measureScenario(
       draftJson,

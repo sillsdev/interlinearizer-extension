@@ -951,7 +951,7 @@ async function timeFirstRequest(
 
 async function checkTier(tier: TierSpec): Promise<boolean> {
   const meta = readCaptureMeta();
-  const manifest = readManifest(tier.name);
+  const manifest = readManifest(tier.name, meta);
   const books = loadBooks(meta, manifest.books);
   const draft: DraftProject = JSON.parse(readDraftJson(tier.name));
   seedOrphans(draft, books);

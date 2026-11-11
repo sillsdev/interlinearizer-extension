@@ -436,9 +436,9 @@ export function onTextRead(listener: TextReadListener): () => boolean {
 }
 
 /**
- * Calls `listener` each time a source project's whole-text read files a book, read or failed, and
- * once it has filed every book, until the returned function is called. When an edit makes the read
- * read a book again, the book is filed again.
+ * Calls `listener` each time a source project's whole-text read files a book, whether read or
+ * failed, and again once every book is filed. A book that an edit sends back to the read is filed
+ * again. Calling the returned function stops the calls.
  */
 export function onTextReadProgress(listener: TextReadProgressListener): () => boolean {
   textReadProgressListeners.add(listener);

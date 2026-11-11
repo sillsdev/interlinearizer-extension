@@ -275,8 +275,8 @@ export default function AnalysisCatalogPanel({
   if (filters !== chosenFilters) setFilters(filters);
 
   /**
-   * What the host is asked to list. Turns over with the analysis language too, which the host reads
-   * each row's gloss in.
+   * What the host is asked to list. It changes with the analysis language too, because the host
+   * reads each row's gloss in that language.
    */
   const request = useMemo(
     () => ({ currentBook, search, sort, filters, sourceLanguageTag }),
@@ -334,9 +334,9 @@ export default function AnalysisCatalogPanel({
   }, [analysisLanguage, interfaceLanguages]);
 
   /**
-   * The analysis language, held only where it decides the listing's rows or their order: elsewhere
-   * its collation reorders only homographs the sort key ties, which stay adjacent, so the scroll
-   * stands though they may trade places beneath it.
+   * The analysis language where it decides the listing's rows or their order, and `undefined`
+   * elsewhere. Elsewhere its collation can reorder only homographs that tie on the sort key. Those
+   * stay adjacent, so the scroll position holds even when they trade places.
    */
   const listingGlossLanguage =
     sort === 'gloss' || filters.missingGloss ? analysisLanguage : undefined;
@@ -369,8 +369,8 @@ export default function AnalysisCatalogPanel({
   /** The rows the host has sent, by id. */
   const sentRows = useMemo(() => new Map(view?.rows.map((row) => [row.analysisId, row])), [view]);
 
-  // The request holds until the host sends its row, because a row past the fetched page mounts only
-  // once the larger page arrives.
+  // The reveal request holds until the host sends its row, because a row past the fetched page
+  // mounts only once the larger page arrives.
   useEffect(() => {
     if (rowToReveal && sentRows.has(rowToReveal.analysisId)) setRowToReveal(undefined);
   }, [rowToReveal, sentRows]);
@@ -450,7 +450,7 @@ export default function AnalysisCatalogPanel({
 
   const { checkedIds, setChecked, setAllChecked } = useRowSelection(rows);
 
-  /** The checked rows' ids, in listing order, which a merge of them breaks a tie in use by. */
+  /** The checked rows' ids in listing order, which picks a merge's survivor when uses tie. */
   const orderedCheckedIds = useMemo(
     () => keptIds.filter((analysisId) => checkedIds.has(analysisId)),
     [keptIds, checkedIds],

@@ -6,11 +6,13 @@ import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import * as tokenCommands from '../../services/commands/tokenCommands';
 import { DraftRepository } from '../../services/draftRepository';
 import { sessionCatalogHandlers } from '../../services/sessionCatalogHandlers';
+import { sessionConcordanceHandlers } from '../../services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from '../../services/sessionEditHandlers';
 import { readBookOutline, readSegmentPage, readStaleSummary } from '../../services/sessionPages';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import type { TextReadStatus } from '../../types/text-read-status';
+import { indexBook, type BookConcordance } from '../../utils/concordance';
 import { silentLogger } from '../test-helpers';
 import { BOOK, NOW, sessionOver } from './session-source';
 
@@ -46,6 +48,8 @@ export type FakeText = Readonly<{
   status: () => TextReadStatus;
   /** Whether the text holds a normalized form, `undefined` until it is read. */
   isFormInText: (form: string) => boolean | undefined;
+  /** The occurrences of each book of the text, `undefined` until it is read, and by default. */
+  concordanceBooks?: () => BookConcordance[] | undefined;
 }>;
 
 /** A text of one book whose whole-text read has not yet read it. */
@@ -56,11 +60,15 @@ export function unreadText(): FakeText {
   };
 }
 
-/** A text of one book, read, holding exactly `forms`. */
-export function readText(forms: readonly string[]): FakeText {
+/**
+ * A text of one book, read, holding exactly `forms`, whose concordance indexes `books`, none by
+ * default.
+ */
+export function readText(forms: readonly string[], books: readonly Book[] = []): FakeText {
   return {
     status: () => ({ booksRead: 1, bookCount: 1, failedBookIds: [] }),
     isFormInText: (form) => forms.includes(form),
+    concordanceBooks: () => books.map(indexBook),
   };
 }
 
@@ -122,9 +130,10 @@ export function relayChange(change: unknown): void {
  * answers gets that answer instead. A command that the host does not serve resolves to what
  * `others` returns, `undefined` by default. An edit that `others` leaves unanswered runs through
  * the host's own handlers, except `writeGloss`, whose record ids come from the gloss value it
- * writes. The catalog queries run through the host's own handlers. `getTextReadStatus` answers from
- * `others` first, then from `text`, which stands for the whole-text read and is unread by default.
- * Every change that a session reports is relayed to the views.
+ * writes. The catalog and concordance queries run through the host's own handlers.
+ * `getTextReadStatus` answers from `others` first, then from `text`, which stands for the
+ * whole-text read and is unread by default. Every change that a session reports is relayed to the
+ * views.
  */
 export async function fakeHost(
   others: (command: string, args: unknown[]) => Promise<string | undefined> = async () => undefined,
@@ -163,6 +172,12 @@ export async function fakeHost(
     getVerseBook: async (_sourceProjectId, bookId) =>
       bookId === textOf().bookRef ? textOf() : undefined,
     isFormInText: (_sourceProjectId, form) => text.isFormInText(form),
+  });
+  const concordance = sessionConcordanceHandlers({
+    sessions,
+    logger: { error: () => {} },
+    getConcordanceBooks: () => text.concordanceBooks?.(),
+    getWritingSystem: async () => 'en',
   });
   const segmented = async (sessionId: string) => {
     const { segmentation } = await sessions.run(sessionId, (session) =>
@@ -229,6 +244,13 @@ export async function fakeHost(
       case 'interlinearizer.previewDeletion': {
         const handler: (args: unknown) => Promise<string | number> = Reflect.get(
           catalog,
+          String(command),
+        );
+        return handler(first);
+      }
+      case 'interlinearizer.getConcordance': {
+        const handler: (args: unknown) => Promise<string> = Reflect.get(
+          concordance,
           String(command),
         );
         return handler(first);

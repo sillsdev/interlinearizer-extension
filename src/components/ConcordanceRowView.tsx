@@ -1,4 +1,3 @@
-import type { TokenAnalysis } from 'interlinearizer';
 import { ChevronDown, ChevronRight, Circle, CircleCheck, CircleDashed } from 'lucide-react';
 import {
   Button,
@@ -9,14 +8,12 @@ import {
 } from 'platform-bible-react';
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useMemo, useState } from 'react';
+import { useConcordanceOccurrences } from '../cache/catalogHooks';
+import type { ConcordanceRowSummary } from '../services/sessionConcordanceHandlers';
 import {
-  approvedAnalysisOf,
   contextLine,
-  tallyAnalyses,
-  type ApprovedAnalyses,
   type ConcordanceAnalysisTally,
   type ConcordanceOccurrence,
-  type ConcordanceRow,
   type ConcordanceStatus,
 } from '../utils/concordance';
 import { useDisplayedGloss } from './LexiconSenses';
@@ -65,7 +62,7 @@ const STATUS_ICONS = {
 
 /** Props for {@link ConcordanceRowView}. */
 type ConcordanceRowViewProps = Readonly<{
-  row: ConcordanceRow;
+  row: ConcordanceRowSummary;
   /** Finished label for `row.occurrenceCountInBook`, naming the book that count was taken in. */
   occurrenceCountInBookLabel: string;
   /** Whether this is the row the view was last jumped from. */
@@ -74,9 +71,6 @@ type ConcordanceRowViewProps = Readonly<{
   onOccurrenceSelect: (form: string, occurrence: ConcordanceOccurrence) => void;
   /** Resolved localizations covering at least {@link CONCORDANCE_ROW_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
-  approvedByToken: ApprovedAnalyses;
-  /** Every token analysis on record, by id. */
-  analysesById: ReadonlyMap<string, TokenAnalysis>;
   /** BCP 47 tag the glosses are read in. */
   analysisLanguage: string;
   /** BCP 47 tag of the source text, so the form and its context render as that language. */
@@ -152,12 +146,10 @@ function ConcordanceRowView({
   isSelected,
   onOccurrenceSelect,
   localizedStrings,
-  approvedByToken,
-  analysesById,
   analysisLanguage,
   sourceLanguageTag,
 }: ConcordanceRowViewProps) {
-  const { entry, status } = row;
+  const { status } = row;
   const [isExpanded, setIsExpanded] = useState(false);
 
   const [shownCount, setShownCount] = useState(INLINE_OCCURRENCE_LIMIT);
@@ -169,10 +161,8 @@ function ConcordanceRowView({
     setShownCount(INLINE_OCCURRENCE_LIMIT);
   }, []);
 
-  const tallies = useMemo(
-    () => (isExpanded ? tallyAnalyses(entry, approvedByToken, analysesById, analysisLanguage) : []),
-    [isExpanded, entry, approvedByToken, analysesById, analysisLanguage],
-  );
+  const detail = useConcordanceOccurrences(isExpanded ? row.form : undefined, shownCount);
+  const tallies = useMemo(() => detail?.tallies ?? [], [detail]);
   const tallyByAnalysisId = useMemo(
     () => new Map(tallies.map((t) => [t.analysisId, t])),
     [tallies],
@@ -183,13 +173,12 @@ function ConcordanceRowView({
   const occurrenceCountLabel = localizedStrings['%interlinearizer_concordance_occurrenceCount%'];
   const statusLabel = localizedStrings[STATUS_LABEL_KEYS[status]];
   const StatusIcon = STATUS_ICONS[status];
-  const unanalyzedCount = entry.occurrences.length - row.analyzedCount;
+  const unanalyzedCount = row.occurrenceCount - row.analyzedCount;
 
-  const visibleOccurrences = entry.occurrences.slice(0, shownCount);
-  const nextPageCount = Math.min(
-    OCCURRENCE_PAGE_SIZE,
-    entry.occurrences.length - visibleOccurrences.length,
-  );
+  const visibleOccurrences = detail?.occurrences ?? [];
+  const nextPageCount = detail
+    ? Math.min(OCCURRENCE_PAGE_SIZE, detail.total - visibleOccurrences.length)
+    : 0;
 
   const formTooltip = useTruncationTooltip<HTMLSpanElement>();
 
@@ -198,7 +187,7 @@ function ConcordanceRowView({
       className={`tw:flex tw:flex-col tw:border-b tw:border-border ${
         isSelected ? 'tw:bg-accent/50' : ''
       }`}
-      data-form={entry.form}
+      data-form={row.form}
       data-selected={String(isSelected)}
       data-testid="concordance-row"
     >
@@ -240,14 +229,14 @@ function ConcordanceRowView({
               onPointerEnter={formTooltip.onPointerEnter}
               onPointerLeave={formTooltip.onPointerLeave}
             >
-              {entry.displayText}
+              {row.displayText}
             </span>
           </TooltipTrigger>
-          <TooltipContent>{entry.displayText}</TooltipContent>
+          <TooltipContent>{row.displayText}</TooltipContent>
         </Tooltip>
         <LocalizedTooltip label={occurrenceCountLabel}>
           <span className="tw:text-xs tw:tabular-nums" data-testid="concordance-row-count">
-            {entry.occurrences.length}
+            {row.occurrenceCount}
             <span className="tw:sr-only">{` ${occurrenceCountLabel}`}</span>
           </span>
         </LocalizedTooltip>
@@ -284,7 +273,7 @@ function ConcordanceRowView({
 
           <ul className="tw:flex tw:flex-col">
             {visibleOccurrences.map((occurrence) => {
-              const analysisId = approvedAnalysisOf(approvedByToken, entry, occurrence);
+              const { analysisId } = occurrence;
               const tally =
                 analysisId === undefined ? undefined : tallyByAnalysisId.get(analysisId);
               return (
@@ -293,7 +282,7 @@ function ConcordanceRowView({
                     className="tw:flex tw:h-auto tw:w-full tw:items-baseline tw:justify-start tw:gap-2 tw:px-1 tw:py-0.5 tw:text-xs tw:font-normal"
                     data-testid="concordance-occurrence"
                     data-token-ref={occurrence.tokenRef}
-                    onClick={() => onOccurrenceSelect(entry.form, occurrence)}
+                    onClick={() => onOccurrenceSelect(row.form, occurrence)}
                     variant="ghost"
                   >
                     <span className="tw:shrink-0 tw:text-muted-foreground">

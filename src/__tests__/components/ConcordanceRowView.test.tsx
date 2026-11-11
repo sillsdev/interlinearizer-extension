@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { ResolvedSense } from 'interlinearizer/lexicon';
@@ -9,6 +9,7 @@ import { Collator } from 'platform-bible-utils';
 import ConcordanceRowView, {
   CONCORDANCE_ROW_STRING_KEYS,
 } from '../../components/ConcordanceRowView';
+import { emptyAnalysis } from '../../types/empty-factories';
 import {
   approvedAnalysisByToken,
   buildConcordanceEntries,
@@ -16,6 +17,8 @@ import {
   indexBook,
   type ConcordanceOccurrence,
 } from '../../utils/concordance';
+import { readText } from '../cache/fake-host';
+import { renderWithAnalysis, settle } from './analysis-provider';
 import { FIXTURE_STAMPS, makeVerseBook } from '../test-helpers';
 import { testSenseRef, withLexicon, withTooltipProvider } from './test-helpers';
 
@@ -49,24 +52,37 @@ type RowOptions = Partial<{
   senses: Record<string, ResolvedSense>;
 }>;
 
-/** Renders the row for the form "light" in the given text. */
-function renderRow(options: RowOptions = {}) {
-  const verses = options.verses ?? [{ sid: 'GEN 1:3', text: 'Let there be light' }];
-  const entries = buildConcordanceEntries([indexBook(makeVerseBook(verses))], new Collator('en'));
-  const analysesById = new Map((options.analyses ?? []).map((a) => [a.id, a]));
-  const approvedByToken = approvedAnalysisByToken(options.links ?? [], analysesById);
-  const row = deriveConcordanceRows(entries, approvedByToken, options.currentBook ?? 'GEN').find(
-    (r) => r.entry.form === 'light',
-  );
-  if (!row) throw new Error('the text has no "light" to list');
-  return render(
+/**
+ * Renders the row for the form "light" in the given text, its occurrences served by a fake host
+ * over a draft holding `analyses` and `links`.
+ */
+async function renderRow(options: RowOptions = {}) {
+  const book = makeVerseBook(options.verses ?? [{ sid: 'GEN 1:3', text: 'Let there be light' }]);
+  const entries = buildConcordanceEntries([indexBook(book)], new Collator('en'));
+  const analyses = options.analyses ?? [];
+  const links = options.links ?? [];
+  const approvedByToken = approvedAnalysisByToken(links, new Map(analyses.map((a) => [a.id, a])));
+  const derived = deriveConcordanceRows(
+    entries,
+    approvedByToken,
+    options.currentBook ?? 'GEN',
+  ).find((r) => r.entry.form === 'light');
+  if (!derived) throw new Error('the text has no "light" to list');
+  const { entry, occurrenceCountInBook, analyzedCount, status } = derived;
+  const row = {
+    form: entry.form,
+    displayText: entry.displayText,
+    occurrenceCount: entry.occurrences.length,
+    occurrenceCountInBook,
+    analyzedCount,
+    status,
+  };
+  return renderWithAnalysis(
     withLexicon(
       withTooltipProvider(
         <ul>
           <ConcordanceRowView
-            analysesById={analysesById}
             analysisLanguage="en"
-            approvedByToken={approvedByToken}
             isSelected={options.isSelected ?? false}
             localizedStrings={options.localizedStrings ?? localizedStrings}
             occurrenceCountInBookLabel="in Genesis"
@@ -78,6 +94,11 @@ function renderRow(options: RowOptions = {}) {
       ),
       options.senses,
     ).ui,
+    {
+      analysis: { ...emptyAnalysis(), tokenAnalyses: analyses, tokenAnalysisLinks: links },
+      book,
+      text: readText([], [book]),
+    },
   );
 }
 
@@ -88,28 +109,36 @@ const LIGHT_VERSES = [
   { sid: 'GEN 1:5', text: 'light' },
 ];
 
+/** Expands or collapses the row, then waits for the occurrences it fetches. */
 async function expand(): Promise<void> {
   await userEvent.click(screen.getByTestId('concordance-row-toggle'));
+  await settle();
+}
+
+/** Lists the next page of occurrences, then waits for them. */
+async function showMore(): Promise<void> {
+  await userEvent.click(screen.getByTestId('concordance-occurrences-show-more'));
+  await settle();
 }
 
 describe('ConcordanceRowView', () => {
-  it('shows the form by its display spelling, in the source language', () => {
-    renderRow({ verses: [{ sid: 'GEN 1:1', text: 'Light light' }] });
+  it('shows the form by its display spelling, in the source language', async () => {
+    await renderRow({ verses: [{ sid: 'GEN 1:1', text: 'Light light' }] });
 
     const form = screen.getByTestId('concordance-row-form');
     expect(form).toHaveTextContent('Light');
     expect(form).toHaveAttribute('lang', 'hbo');
   });
 
-  it('shows how often the form occurs in the whole text and in the current book', () => {
-    renderRow({ verses: LIGHT_VERSES });
+  it('shows how often the form occurs in the whole text and in the current book', async () => {
+    await renderRow({ verses: LIGHT_VERSES });
 
     expect(screen.getByTestId('concordance-row-count')).toHaveTextContent('3');
     expect(screen.getByTestId('concordance-row-count-in-book')).toHaveTextContent('3');
   });
 
-  it('spells out what each count means for assistive tech', () => {
-    renderRow({ verses: LIGHT_VERSES });
+  it('spells out what each count means for assistive tech', async () => {
+    await renderRow({ verses: LIGHT_VERSES });
 
     expect(screen.getByTestId('concordance-row-count')).toHaveTextContent(
       '%interlinearizer_concordance_occurrenceCount%',
@@ -117,8 +146,8 @@ describe('ConcordanceRowView', () => {
     expect(screen.getByTestId('concordance-row-count-in-book')).toHaveTextContent('in Genesis');
   });
 
-  it('names the status and each count on hover', () => {
-    renderRow({
+  it('names the status and each count on hover', async () => {
+    await renderRow({
       verses: LIGHT_VERSES,
       localizedStrings: {
         ...localizedStrings,
@@ -139,8 +168,8 @@ describe('ConcordanceRowView', () => {
     ['analyzed', ['GEN 1:3:0', 'GEN 1:4:0', 'GEN 1:5:0'], 'circle-check-icon'],
     ['partlyAnalyzed', ['GEN 1:3:0'], 'circle-dashed-icon'],
     ['unanalyzed', [], 'circle-icon'],
-  ])('marks a %s form with its own icon and label', (status, refs, icon) => {
-    renderRow({
+  ])('marks a %s form with its own icon and label', async (status, refs, icon) => {
+    await renderRow({
       verses: LIGHT_VERSES,
       links: refs.map((ref) => link('a1', ref)),
       analyses: [analysis('a1')],
@@ -152,21 +181,21 @@ describe('ConcordanceRowView', () => {
     expect(marker).toHaveTextContent(`%interlinearizer_concordance_status_${status}%`);
   });
 
-  it('marks the row the view was last jumped from', () => {
-    renderRow({ isSelected: true });
+  it('marks the row the view was last jumped from', async () => {
+    await renderRow({ isSelected: true });
 
     expect(screen.getByTestId('concordance-row')).toHaveAttribute('data-selected', 'true');
   });
 
-  it('keeps the occurrences hidden until the row is expanded', () => {
-    renderRow();
+  it('keeps the occurrences hidden until the row is expanded', async () => {
+    await renderRow();
 
     expect(screen.queryByTestId('concordance-row-detail')).not.toBeInTheDocument();
   });
 
   describe('expanded', () => {
     it('lists each analysis with how many occurrences it covers, most used first', async () => {
-      renderRow({
+      await renderRow({
         verses: LIGHT_VERSES,
         links: [link('lamp', 'GEN 1:3:0'), link('light', 'GEN 1:4:0'), link('light', 'GEN 1:5:0')],
         analyses: [analysis('lamp', 'lamp'), analysis('light', 'light')],
@@ -181,7 +210,7 @@ describe('ConcordanceRowView', () => {
     });
 
     it('lists an analysis with no gloss as unglossed', async () => {
-      renderRow({ links: [link('a1', 'GEN 1:3:13')], analyses: [analysis('a1')] });
+      await renderRow({ links: [link('a1', 'GEN 1:3:13')], analyses: [analysis('a1')] });
 
       await expand();
 
@@ -191,7 +220,7 @@ describe('ConcordanceRowView', () => {
     });
 
     it('counts the occurrences no analysis covers', async () => {
-      renderRow({
+      await renderRow({
         verses: LIGHT_VERSES,
         links: [link('a1', 'GEN 1:3:0')],
         analyses: [analysis('a1', 'light')],
@@ -205,7 +234,7 @@ describe('ConcordanceRowView', () => {
     });
 
     it('omits the unanalyzed count when every occurrence is analyzed', async () => {
-      renderRow({ links: [link('a1', 'GEN 1:3:13')], analyses: [analysis('a1', 'light')] });
+      await renderRow({ links: [link('a1', 'GEN 1:3:13')], analyses: [analysis('a1', 'light')] });
 
       await expand();
 
@@ -213,7 +242,7 @@ describe('ConcordanceRowView', () => {
     });
 
     it('lists each occurrence by reference within its verse, the form marked', async () => {
-      renderRow();
+      await renderRow();
 
       await expand();
 
@@ -227,7 +256,7 @@ describe('ConcordanceRowView', () => {
 
     it('marks where a long verse was cut short', async () => {
       const filler = 'and the evening and the morning were the first day of all';
-      renderRow({ verses: [{ sid: 'GEN 1:5', text: `${filler} light light ${filler}` }] });
+      await renderRow({ verses: [{ sid: 'GEN 1:5', text: `${filler} light light ${filler}` }] });
 
       await expand();
 
@@ -237,7 +266,7 @@ describe('ConcordanceRowView', () => {
     });
 
     it('reads a line break in the verse as a space', async () => {
-      renderRow({ verses: [{ sid: 'GEN 1:3', text: 'there\nwas light' }] });
+      await renderRow({ verses: [{ sid: 'GEN 1:3', text: 'there\nwas light' }] });
 
       await expand();
 
@@ -245,7 +274,7 @@ describe('ConcordanceRowView', () => {
     });
 
     it('shows the gloss an analyzed occurrence carries', async () => {
-      renderRow({ links: [link('a1', 'GEN 1:3:13')], analyses: [analysis('a1', 'light')] });
+      await renderRow({ links: [link('a1', 'GEN 1:3:13')], analyses: [analysis('a1', 'light')] });
 
       await expand();
 
@@ -253,7 +282,7 @@ describe('ConcordanceRowView', () => {
     });
 
     it('shows an analyzed occurrence with no gloss as unglossed', async () => {
-      renderRow({ links: [link('a1', 'GEN 1:3:13')], analyses: [analysis('a1')] });
+      await renderRow({ links: [link('a1', 'GEN 1:3:13')], analyses: [analysis('a1')] });
 
       await expand();
 
@@ -263,7 +292,7 @@ describe('ConcordanceRowView', () => {
     });
 
     it("shows the lexicon sense's gloss for an analysis that stores none", async () => {
-      renderRow({
+      await renderRow({
         links: [link('a1', 'GEN 1:3:13')],
         analyses: [{ ...analysis('a1'), glossSenseRef: testSenseRef('s-light') }],
         senses: { 's-light': { gloss: { en: 'brightness' } } },
@@ -278,7 +307,7 @@ describe('ConcordanceRowView', () => {
     });
 
     it('marks an unanalyzed occurrence', async () => {
-      renderRow();
+      await renderRow();
 
       await expand();
 
@@ -289,7 +318,7 @@ describe('ConcordanceRowView', () => {
 
     it('reports the occurrence a reader picks', async () => {
       const onOccurrenceSelect = jest.fn();
-      renderRow({ onOccurrenceSelect });
+      await renderRow({ onOccurrenceSelect });
 
       await expand();
       await userEvent.click(screen.getByTestId('concordance-occurrence'));
@@ -310,7 +339,7 @@ describe('ConcordanceRowView', () => {
       }
 
       it('lists only the first occurrences, offering more behind an expander', async () => {
-        renderRow({ verses: manyVerses(20) });
+        await renderRow({ verses: manyVerses(20) });
 
         await expand();
 
@@ -321,21 +350,21 @@ describe('ConcordanceRowView', () => {
       });
 
       it('lists the rest once the expander is used, when they fit in one more page', async () => {
-        renderRow({ verses: manyVerses(20) });
+        await renderRow({ verses: manyVerses(20) });
 
         await expand();
-        await userEvent.click(screen.getByTestId('concordance-occurrences-show-more'));
+        await showMore();
 
         expect(screen.getAllByTestId('concordance-occurrence')).toHaveLength(20);
         expect(screen.queryByTestId('concordance-occurrences-show-more')).not.toBeInTheDocument();
       });
 
       it('lists one more page at a time when the rest do not fit in one', async () => {
-        renderRow({ verses: manyVerses(300) });
+        await renderRow({ verses: manyVerses(300) });
 
         await expand();
         const before = screen.getAllByTestId('concordance-occurrence').length;
-        await userEvent.click(screen.getByTestId('concordance-occurrences-show-more'));
+        await showMore();
 
         const after = screen.getAllByTestId('concordance-occurrence').length;
         expect(after).toBeGreaterThan(before);
@@ -344,10 +373,10 @@ describe('ConcordanceRowView', () => {
       });
 
       it('returns to the first occurrences when collapsed and expanded again', async () => {
-        renderRow({ verses: manyVerses(20) });
+        await renderRow({ verses: manyVerses(20) });
 
         await expand();
-        await userEvent.click(screen.getByTestId('concordance-occurrences-show-more'));
+        await showMore();
         await expand();
         await expand();
 

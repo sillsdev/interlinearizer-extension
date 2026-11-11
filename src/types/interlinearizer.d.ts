@@ -978,6 +978,22 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Serves one page of a session's concordance: of the forms of its source's whole text, the most
+     * frequent first, or of one form's occurrences, either joined to the draft's approved
+     * analyses.
+     *
+     * @returns A JSON string of the `ConcordancePage`, or of the `ConcordanceOccurrencePage` when
+     *   the request names a form; `"null"` until the whole text has been read.
+     * @throws If the session is not open, or its analysis or its source's language tag cannot be
+     *   read (logged before rethrowing).
+     */
+    'interlinearizer.getConcordance': (
+      args: import('interlinearizer').SessionCommandArgs & {
+        request: import('../services/sessionConcordanceHandlers').ConcordanceRequest;
+      },
+    ) => Promise<string>;
+
+    /**
      * Serves one page of a session's analysis catalog, its usages placed among the current book's
      * headings, or among none when that book cannot be read.
      *

@@ -256,6 +256,16 @@ async function fetchRowsByIds(
   return rows.map(fromWire);
 }
 
+/** A callback that reads again each book of the session's text whose latest read failed. */
+export function useRetryTextRead(): () => void {
+  const { sessionId } = usePageSession();
+  return useCallback(() => {
+    papi.commands.sendCommand('interlinearizer.retryTextRead', { sessionId }).catch((e) => {
+      logger.warn("Interlinearizer: could not read the session's text again", e);
+    });
+  }, [sessionId]);
+}
+
 /**
  * The rows of the analyses `analysisIds` names, by id, leaving out analyses no longer stored;
  * `undefined` until the rows for these ids arrive.

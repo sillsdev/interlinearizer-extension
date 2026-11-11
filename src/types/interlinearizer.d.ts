@@ -349,6 +349,15 @@ declare module 'papi-shared-types' {
     'interlinearizer.getTextReadStatus': (address: { sessionId: string }) => Promise<string>;
 
     /**
+     * Reads again each book of the session source's whole text whose latest read failed. Does
+     * nothing until every book has been read once. A change names `getTextReadStatus` as each book
+     * is filed.
+     *
+     * @throws If the session is not open.
+     */
+    'interlinearizer.retryTextRead': (address: { sessionId: string }) => Promise<void>;
+
+    /**
      * Starts the source project's draft over from `from`, closing the source's session first. A
      * session opened afterward has nothing to undo. Stored analysis that could not be read is
      * discarded.

@@ -84,6 +84,11 @@ interface TextRead {
   forms: FormIndex;
   /** The occurrences of each book whose latest read found text, by book id. */
   concordances: Map<string, BookConcordance>;
+  /**
+   * {@link concordances} in canonical order, kept until they change so that the same books keep the
+   * same array.
+   */
+  orderedConcordances?: readonly BookConcordance[];
   /** Stops watching each book the read has started, by book id. */
   watches: Map<string, () => Promise<void>>;
 }
@@ -605,6 +610,7 @@ async function readTextBook(
   // A later read of the book reads newer text, so this one files only a book none has filed.
   if (read.watches.get(bookId) !== stop && read.readBookIds.has(bookId)) return false;
   const wasAnswering = textBookIdsOf(read) !== undefined;
+  read.orderedConcordances = undefined;
   if (delivered) {
     read.forms.setBook(bookId, delivered.forms);
     read.failedBookIds.delete(bookId);
@@ -754,16 +760,36 @@ export function isFormInText(sourceProjectId: string, form: string): boolean | u
 
 /**
  * The occurrences of each book of the source project's text, in canonical order, leaving out books
- * that hold no text and books whose latest read failed.
+ * that hold no text and books whose latest read failed. Answers with the same array until a book's
+ * occurrences change or the read ends.
  *
  * @returns `undefined` until every book has been read.
  */
-export function getConcordanceBooks(sourceProjectId: string): BookConcordance[] | undefined {
+export function getConcordanceBooks(
+  sourceProjectId: string,
+): readonly BookConcordance[] | undefined {
   const read = textReads.get(sourceProjectId);
   if (!read?.isRead) return undefined;
-  return [...read.concordances.values()].sort(
+  read.orderedConcordances ??= [...read.concordances.values()].sort(
     (a, b) => Canon.bookIdToNumber(a.book) - Canon.bookIdToNumber(b.book),
   );
+  return read.orderedConcordances;
+}
+
+/**
+ * Reads again each book whose latest read of the source project's whole text failed, so that a
+ * failure that has passed need not wait for an edit to the book. Does nothing until every book has
+ * been read once.
+ *
+ * @returns Once each of those books has been read again.
+ */
+export async function retryFailedBooks(sourceProjectId: string): Promise<void> {
+  const read = textReads.get(sourceProjectId);
+  if (!read?.isRead || read.failedBookIds.size === 0) return;
+  await Promise.all(
+    [...read.failedBookIds].map((bookId) => readTextBook(sourceProjectId, read, bookId, false)),
+  );
+  if (textReads.get(sourceProjectId) === read) reportTextRead(sourceProjectId, read);
 }
 
 /**

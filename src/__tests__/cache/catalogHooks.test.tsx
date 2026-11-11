@@ -10,6 +10,7 @@ import {
   useConcordanceOccurrences,
   useConcordanceView,
   useHomographRows,
+  useRetryTextRead,
   useSelectionSummary,
   useStaleSummary,
   useTextReadStatus,
@@ -211,6 +212,34 @@ describe('useTextReadStatus', () => {
     const { result } = renderHook(() => useTextReadStatus(true), { wrapper });
 
     await waitFor(() => expect(result.current).toBe('error'));
+  });
+});
+
+describe('useRetryTextRead', () => {
+  it("asks the session to read its text's failed books again", async () => {
+    const retry = jest.fn();
+    const wrapper = await wrapperOver({ ...readText([]), retry });
+    const { result } = renderHook(() => useRetryTextRead(), { wrapper });
+
+    result.current();
+    await settle();
+
+    expect(retry).toHaveBeenCalled();
+  });
+
+  it('logs a retry that the session refuses', async () => {
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.retryTextRead');
+    const { result } = renderHook(() => useRetryTextRead(), { wrapper });
+
+    result.current();
+    await settle();
+
+    expect(warn).toHaveBeenCalledWith(
+      "Interlinearizer: could not read the session's text again",
+      expect.any(Error),
+    );
   });
 });
 

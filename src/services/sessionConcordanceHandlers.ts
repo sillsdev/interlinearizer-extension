@@ -93,34 +93,25 @@ export function sessionConcordanceHandlers({
   getWritingSystem,
 }: SessionConcordanceHost) {
   /**
-   * The entries last built, kept while the same books are asked of again: a page is asked for each
-   * time the list grows, and merging every book again for each would repeat the costliest step.
+   * The entries merged from each array of books, with the tag they were collated by. A page is
+   * asked for each time the list grows, and merging every book again for each would repeat the
+   * costliest step. An entry lasts only as long as its array, which lasts as long as its read.
    */
-  let built:
-    | Readonly<{
-        sourceProjectId: string;
-        writingSystem: string;
-        books: readonly BookConcordance[];
-        entries: readonly ConcordanceEntry[];
-      }>
-    | undefined;
+  const built = new WeakMap<
+    readonly BookConcordance[],
+    Readonly<{ writingSystem: string; entries: readonly ConcordanceEntry[] }>
+  >();
 
-  /** The entries of `books`, built afresh unless they are the books {@link built} holds. */
+  /** The entries of `books`, built afresh unless {@link built} holds them under `writingSystem`. */
   function entriesOf(
-    sourceProjectId: string,
     writingSystem: string,
     books: readonly BookConcordance[],
   ): readonly ConcordanceEntry[] {
-    if (
-      built?.sourceProjectId !== sourceProjectId ||
-      built.writingSystem !== writingSystem ||
-      built.books.length !== books.length ||
-      built.books.some((book, index) => book !== books[index])
-    ) {
-      const entries = buildConcordanceEntries(books, collatorForTag(writingSystem));
-      built = { sourceProjectId, writingSystem, books, entries };
-    }
-    return built.entries;
+    const kept = built.get(books);
+    if (kept?.writingSystem === writingSystem) return kept.entries;
+    const entries = buildConcordanceEntries(books, collatorForTag(writingSystem));
+    built.set(books, { writingSystem, entries });
+    return entries;
   }
 
   /**
@@ -142,7 +133,7 @@ export function sessionConcordanceHandlers({
         const books = getConcordanceBooks(sourceProjectId);
         if (!books) return 'null';
         const writingSystem = await getWritingSystem(sourceProjectId);
-        const entries = entriesOf(sourceProjectId, writingSystem, books);
+        const entries = entriesOf(writingSystem, books);
         const { analysis } = await session.repository.getWholeDraft();
         const analysesById = new Map(analysis.tokenAnalyses.map((ta) => [ta.id, ta]));
         const approved = approvedAnalysisByToken(analysis.tokenAnalysisLinks, analysesById);

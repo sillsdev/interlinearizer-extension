@@ -1,0 +1,358 @@
+{
+  "kind": "reports",
+  "commit": "3ace5aa1918321b432c3c97ac690379831ea42b8",
+  "dirty": false,
+  "coreCommit": "fcaa6d03b2faa63f4e84322584da7673fed22e99",
+  "recordedAt": "2026-11-11T17:42:30.854Z",
+  "machine": {
+    "cpu": "Intel(R) Core(TM) i5-8350U CPU @ 1.70GHz",
+    "cores": 8,
+    "memoryGb": 42,
+    "os": "Linux 7.3.3-1-cachyos",
+    "node": "v22.22.0",
+    "loadAverage": [1.83, 2.41, 2.58]
+  },
+  "runs": 5,
+  "tiers": {
+    "large-loadable": {
+      "missing book": {
+        "bytes": 3375976,
+        "passes": 1,
+        "records": 13006,
+        "times": {
+          "readBooks": {
+            "runs": 5,
+            "medianMs": 43.756,
+            "p90Ms": 46.082,
+            "minMs": 35.196,
+            "maxMs": 46.082
+          },
+          "reanchorInTurn": {
+            "runs": 5,
+            "medianMs": 181.223,
+            "p90Ms": 189.172,
+            "minMs": 149.54,
+            "maxMs": 189.172
+          },
+          "changesOfPass": {
+            "runs": 5,
+            "medianMs": 168.445,
+            "p90Ms": 175.44,
+            "minMs": 138.994,
+            "maxMs": 175.44
+          },
+          "pass": {
+            "runs": 5,
+            "medianMs": 595.196,
+            "p90Ms": 601.569,
+            "minMs": 442.434,
+            "maxMs": 601.569
+          },
+          "serialize": {
+            "runs": 5,
+            "medianMs": 16.97,
+            "p90Ms": 27.343,
+            "minMs": 11.023,
+            "maxMs": 27.343
+          },
+          "parse": {
+            "runs": 5,
+            "medianMs": 22.875,
+            "p90Ms": 30.067,
+            "minMs": 14.801,
+            "maxMs": 30.067
+          },
+          "apply": {
+            "runs": 5,
+            "medianMs": 125.871,
+            "p90Ms": 130.196,
+            "minMs": 113.665,
+            "maxMs": 130.196
+          }
+        }
+      },
+      "edit, one word": {
+        "bytes": 9176,
+        "passes": 1,
+        "records": 26,
+        "times": {
+          "readBooks": {
+            "runs": 5,
+            "medianMs": 41.374,
+            "p90Ms": 45.808,
+            "minMs": 39.373,
+            "maxMs": 45.808
+          },
+          "reanchorInTurn": {
+            "runs": 5,
+            "medianMs": 588.853,
+            "p90Ms": 700.936,
+            "minMs": 563.927,
+            "maxMs": 700.936
+          },
+          "changesOfPass": {
+            "runs": 5,
+            "medianMs": 588.757,
+            "p90Ms": 700.831,
+            "minMs": 563.825,
+            "maxMs": 700.831
+          },
+          "pass": {
+            "runs": 5,
+            "medianMs": 748.648,
+            "p90Ms": 786.018,
+            "minMs": 739.294,
+            "maxMs": 786.018
+          },
+          "serialize": {
+            "runs": 5,
+            "medianMs": 0.057,
+            "p90Ms": 0.063,
+            "minMs": 0.054,
+            "maxMs": 0.063
+          },
+          "parse": {
+            "runs": 5,
+            "medianMs": 0.086,
+            "p90Ms": 0.093,
+            "minMs": 0.08,
+            "maxMs": 0.093
+          },
+          "apply": {
+            "runs": 5,
+            "medianMs": 2.023,
+            "p90Ms": 3.484,
+            "minMs": 1.757,
+            "maxMs": 3.484
+          }
+        }
+      },
+      "edit, every word": {
+        "bytes": 3375954,
+        "passes": 1,
+        "records": 13006,
+        "times": {
+          "readBooks": {
+            "runs": 5,
+            "medianMs": 44.668,
+            "p90Ms": 47.252,
+            "minMs": 41.075,
+            "maxMs": 47.252
+          },
+          "reanchorInTurn": {
+            "runs": 5,
+            "medianMs": 477.669,
+            "p90Ms": 543.75,
+            "minMs": 456.116,
+            "maxMs": 543.75
+          },
+          "changesOfPass": {
+            "runs": 5,
+            "medianMs": 464.174,
+            "p90Ms": 525.401,
+            "minMs": 440.456,
+            "maxMs": 525.401
+          },
+          "pass": {
+            "runs": 5,
+            "medianMs": 967.151,
+            "p90Ms": 980.041,
+            "minMs": 939.784,
+            "maxMs": 980.041
+          },
+          "serialize": {
+            "runs": 5,
+            "medianMs": 18.485,
+            "p90Ms": 22.521,
+            "minMs": 14.817,
+            "maxMs": 22.521
+          },
+          "parse": {
+            "runs": 5,
+            "medianMs": 26.121,
+            "p90Ms": 26.837,
+            "minMs": 24.517,
+            "maxMs": 26.837
+          },
+          "apply": {
+            "runs": 5,
+            "medianMs": 124.692,
+            "p90Ms": 127.758,
+            "minMs": 119.477,
+            "maxMs": 127.758
+          }
+        }
+      }
+    },
+    "large": {
+      "missing book": {
+        "bytes": 5448154,
+        "passes": 1,
+        "records": 21148,
+        "times": {
+          "readBooks": {
+            "runs": 5,
+            "medianMs": 85.123,
+            "p90Ms": 90.532,
+            "minMs": 76.52,
+            "maxMs": 90.532
+          },
+          "reanchorInTurn": {
+            "runs": 5,
+            "medianMs": 316.296,
+            "p90Ms": 349.84,
+            "minMs": 313.246,
+            "maxMs": 349.84
+          },
+          "changesOfPass": {
+            "runs": 5,
+            "medianMs": 285.717,
+            "p90Ms": 311.078,
+            "minMs": 283.562,
+            "maxMs": 311.078
+          },
+          "pass": {
+            "runs": 5,
+            "medianMs": 1042.453,
+            "p90Ms": 1061.51,
+            "minMs": 1036.87,
+            "maxMs": 1061.51
+          },
+          "serialize": {
+            "runs": 5,
+            "medianMs": 28.442,
+            "p90Ms": 29.872,
+            "minMs": 26.109,
+            "maxMs": 29.872
+          },
+          "parse": {
+            "runs": 5,
+            "medianMs": 40.682,
+            "p90Ms": 42.43,
+            "minMs": 39.912,
+            "maxMs": 42.43
+          },
+          "apply": {
+            "runs": 5,
+            "medianMs": 220.545,
+            "p90Ms": 223.641,
+            "minMs": 208.749,
+            "maxMs": 223.641
+          }
+        }
+      },
+      "edit, one word": {
+        "bytes": 10868,
+        "passes": 1,
+        "records": 31,
+        "times": {
+          "readBooks": {
+            "runs": 5,
+            "medianMs": 86.208,
+            "p90Ms": 88.769,
+            "minMs": 84.415,
+            "maxMs": 88.769
+          },
+          "reanchorInTurn": {
+            "runs": 5,
+            "medianMs": 811.883,
+            "p90Ms": 826.897,
+            "minMs": 798.361,
+            "maxMs": 826.897
+          },
+          "changesOfPass": {
+            "runs": 5,
+            "medianMs": 811.712,
+            "p90Ms": 826.7,
+            "minMs": 798.238,
+            "maxMs": 826.7
+          },
+          "pass": {
+            "runs": 5,
+            "medianMs": 1095.092,
+            "p90Ms": 1143.649,
+            "minMs": 1079.582,
+            "maxMs": 1143.649
+          },
+          "serialize": {
+            "runs": 5,
+            "medianMs": 0.071,
+            "p90Ms": 0.136,
+            "minMs": 0.062,
+            "maxMs": 0.136
+          },
+          "parse": {
+            "runs": 5,
+            "medianMs": 0.1,
+            "p90Ms": 0.156,
+            "minMs": 0.097,
+            "maxMs": 0.156
+          },
+          "apply": {
+            "runs": 5,
+            "medianMs": 3.451,
+            "p90Ms": 4.57,
+            "minMs": 2.954,
+            "maxMs": 4.57
+          }
+        }
+      },
+      "edit, every word": {
+        "bytes": 5448135,
+        "passes": 1,
+        "records": 21148,
+        "times": {
+          "readBooks": {
+            "runs": 5,
+            "medianMs": 84.084,
+            "p90Ms": 86.145,
+            "minMs": 83.015,
+            "maxMs": 86.145
+          },
+          "reanchorInTurn": {
+            "runs": 5,
+            "medianMs": 683.834,
+            "p90Ms": 693.826,
+            "minMs": 668.699,
+            "maxMs": 693.826
+          },
+          "changesOfPass": {
+            "runs": 5,
+            "medianMs": 649.517,
+            "p90Ms": 661.276,
+            "minMs": 641.546,
+            "maxMs": 661.276
+          },
+          "pass": {
+            "runs": 5,
+            "medianMs": 1461.614,
+            "p90Ms": 1487.835,
+            "minMs": 1428.951,
+            "maxMs": 1487.835
+          },
+          "serialize": {
+            "runs": 5,
+            "medianMs": 28.305,
+            "p90Ms": 29.525,
+            "minMs": 26.358,
+            "maxMs": 29.525
+          },
+          "parse": {
+            "runs": 5,
+            "medianMs": 40.351,
+            "p90Ms": 44.63,
+            "minMs": 38.413,
+            "maxMs": 44.63
+          },
+          "apply": {
+            "runs": 5,
+            "medianMs": 213.768,
+            "p90Ms": 233.002,
+            "minMs": 208.926,
+            "maxMs": 233.002
+          }
+        }
+      }
+    }
+  }
+}

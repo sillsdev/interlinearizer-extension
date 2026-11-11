@@ -1,6 +1,6 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
-import type { DraftProject } from 'interlinearizer';
+import type { DraftEnvelope } from 'interlinearizer';
 import { useCallback, useEffect, useState } from 'react';
 import type { DraftCopyResult, NewDraftConfig } from '../../types/project-api';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
@@ -47,7 +47,7 @@ type PendingReplace =
  *   When true, New / Open are gated behind the discard confirmation so neither kind of unsaved work
  *   is silently lost by the draft-replacing swap. When false, Save As reports the active project as
  *   having nothing to save rather than offering a write that would change nothing.
- * @param props.getDraftSnapshot - Returns the latest draft envelope (analysis + config).
+ * @param props.getDraftSnapshot - Returns the latest draft envelope.
  * @param props.detachFromProject - Records that the active project, the draft's Save target, was
  *   deleted.
  * @param props.commitDraft - Runs a Save As through the draft: once the stored draft is current,
@@ -98,10 +98,10 @@ export default function ProjectModals({
   activeProject: InterlinearProjectSummary | undefined;
   defaultAnalysisLanguage?: string;
   hasUnsavedWork: boolean;
-  getDraftSnapshot: () => DraftProject | undefined;
+  getDraftSnapshot: () => DraftEnvelope | undefined;
   detachFromProject: () => void;
   commitDraft: (
-    copy: (snapshot: DraftProject, sessionId: string) => Promise<DraftCopyResult>,
+    copy: (snapshot: DraftEnvelope, sessionId: string) => Promise<DraftCopyResult>,
   ) => Promise<boolean>;
   loadFromProject: (projectId: string) => Settles<void>;
   newDraft: (config: NewDraftConfig) => Settles<void>;

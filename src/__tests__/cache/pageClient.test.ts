@@ -146,6 +146,50 @@ describe('PageClient', () => {
     expect(client.heldAnalysis().tokenAnalyses.map(({ id }) => id)).toContain('ta-land');
   });
 
+  it('serves each run of the segments it holds as one page', async () => {
+    const { client, fetchPage } = await clientOver();
+    client.load(0, 1, 'list');
+    client.load(2, 3, 'strip');
+    await client.settled();
+
+    expect(client.heldPages().map(comparable)).toStrictEqual(
+      [await fetchPage(0, 1), await fetchPage(2, 3)].map(comparable),
+    );
+  });
+
+  it('gives the same held pages until what it holds changes', async () => {
+    const { client, edit } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+    const before = client.heldPages();
+
+    expect(client.heldPages()).toBe(before);
+    await client.send((changeId) => edit('writeGloss', glossing('earth', 'land'), changeId));
+    expect(client.heldPages()).not.toBe(before);
+  });
+
+  it('places no stale free translations before the outline loads', () => {
+    const client = new PageClient({
+      getOutline: async () => undefined,
+      getSegments: async () => undefined,
+    });
+
+    expect(client.heldPlacement()).toStrictEqual({
+      bySegment: {},
+      orphanedAfter: {},
+      orphanedAhead: [],
+    });
+  });
+
+  it('holds no pages before the outline loads', () => {
+    const client = new PageClient({
+      getOutline: async () => undefined,
+      getSegments: async () => undefined,
+    });
+
+    expect(client.heldPages()).toStrictEqual([]);
+  });
+
   it('holds an empty analysis before the outline loads', () => {
     const client = new PageClient({
       getOutline: async () => undefined,

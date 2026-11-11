@@ -21,11 +21,7 @@ export function useNamedChanges(query: AnalysisQuery): number {
     event,
     useCallback(
       (change: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
-        if (
-          'sessionId' in change &&
-          change.sessionId === sessionId &&
-          change.queries.includes(query)
-        )
+        if (change.sessionId === sessionId && change.queries.includes(query))
           setCount((was) => was + 1);
       },
       [sessionId, query],

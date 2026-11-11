@@ -2,7 +2,6 @@ import { act, render } from '@testing-library/react';
 import type { Book, TextAnalysis } from 'interlinearizer';
 import type { ReactElement, ReactNode } from 'react';
 import { PageClient } from '../../cache/pageClient';
-import { WholeAnalysis } from '../../cache/wholeAnalysis';
 import { SessionAnalysisProvider } from '../../components/AnalysisStore';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { fakeHost, hostSettled, type FakeText } from '../cache/fake-host';
@@ -66,27 +65,19 @@ export async function prepareAnalysis(
     { getOutline: () => host.fetchOutline(), getSegments: host.fetchPage },
     { retryDelaysMs: [0], wait: async () => {} },
   );
-  const whole = new WholeAnalysis(readDraft);
   let saves = 0;
   // Fed as the session hook feeds them in the app.
   host.onChange((change) => {
     saves += 1;
     client.hear(change);
   });
-  client.subscribeReplies((reply) => whole.take(reply.changes, reply.dirty));
-  client.subscribeHeard(({ passChanges }) => {
-    if (!passChanges) whole.refresh();
-    else passChanges.forEach((changes) => whole.take(changes, 'kept'));
-  });
   await client.open();
   client.load(0, host.outline.segments.length, 'list');
   await client.settled();
-  await whole.refresh();
   last = {
     settle: () =>
       act(async () => {
         await client.settled();
-        await whole.refresh();
         await hostSettled();
       }),
     savedAnalysis: async () => (await readDraft()).analysis,
@@ -100,7 +91,6 @@ export async function prepareAnalysis(
     return (
       <SessionAnalysisProvider
         client={client}
-        whole={whole}
         sessionId={host.sessionId}
         analysisLanguage={analysisLanguage}
         {...props}

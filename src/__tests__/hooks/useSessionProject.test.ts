@@ -6,7 +6,7 @@ import { useEvent } from 'platform-bible-react';
 import useSessionProject from '../../hooks/useSessionProject';
 import { fakeHost, relayChange, replyProjectMissing, STORED_PROJECT } from '../cache/fake-host';
 import { glossing, ref } from '../cache/session-source';
-import { makeVerseBook, tokenRefOf } from '../test-helpers';
+import { makeVerseBook } from '../test-helpers';
 
 const SCR_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
@@ -36,11 +36,11 @@ function renderProject(
   );
 }
 
-/** How often the WebView has read a session's whole draft. */
-function fullReads(): number {
+/** How often the WebView has read a session's draft envelope. */
+function envelopeReads(): number {
   return jest
     .mocked(papi.commands.sendCommand)
-    .mock.calls.filter(([command]) => command === 'interlinearizer.getFullAnalysis').length;
+    .mock.calls.filter(([command]) => command === 'interlinearizer.getDraftEnvelope').length;
 }
 
 /** Renders the hook and waits until its session's draft and pages have loaded. */
@@ -115,15 +115,21 @@ describe('useSessionProject', () => {
     );
   });
 
-  it('applies its own edit to the draft without reading the whole draft again', async () => {
+  it('marks the draft unsaved for its own edit without reading the draft again', async () => {
     const { result } = await renderCurrent();
-    const reads = fullReads();
+    const reads = envelopeReads();
 
     await glossEarth(result, 'land');
 
     expect(result.current.dirty).toBe(true);
-    expect(result.current.draft?.analysis.tokenAnalyses.map(({ id }) => id)).toContain('ta-land');
-    expect(fullReads()).toBe(reads);
+    expect(envelopeReads()).toBe(reads);
+  });
+
+  it("reads the draft's envelope without its analysis or boundaries", async () => {
+    const { result } = await renderLoaded();
+
+    expect(result.current.draft).not.toHaveProperty('analysis');
+    expect(result.current.draft).not.toHaveProperty('segmentation');
   });
 
   it("does not render again for an edit that leaves the draft's envelope as it was", async () => {
@@ -148,16 +154,6 @@ describe('useSessionProject', () => {
     expect(renders).toBe(before);
   });
 
-  it('reads the latest analysis at its next render', async () => {
-    const { result, rerender } = await renderCurrent();
-    await glossEarth(result, 'land');
-    await glossEarth(result, 'ground');
-
-    rerender({});
-
-    expect(JSON.stringify(result.current.draft?.analysis.tokenAnalyses)).toContain('ground');
-  });
-
   it('reads the draft again once the session reports a change it did not send', async () => {
     const { result, host } = await renderCurrent();
 
@@ -169,51 +165,42 @@ describe('useSessionProject', () => {
       );
     });
 
-    await waitFor(() =>
-      expect(result.current.draft?.analysis.tokenAnalyses.map(({ id }) => id)).toContain('ta-land'),
-    );
+    await waitFor(() => expect(result.current.dirty).toBe(true));
   });
 
-  it('applies a re-anchor pass the session reports without reading the draft again', async () => {
+  it('leaves the draft saved, reading nothing again, for a re-anchor pass the session reports', async () => {
     const { result, host } = await renderCurrent();
     const edited = makeVerseBook([
       { sid: 'GEN 1:1', text: 'In the very beginning God' },
       { sid: 'GEN 1:2', text: 'And the earth' },
       { sid: 'GEN 1:3', text: 'And God said' },
     ]);
-    const reads = fullReads();
+    const reads = envelopeReads();
 
     await act(async () => {
       await host.sessions.reanchorBook('src', edited);
     });
 
-    const links = result.current.session?.whole.current.tokenAnalysisLinks;
-    expect(links?.find(({ id }) => id === 'tl-god')?.token.tokenRef).toBe(
-      tokenRefOf(edited, 'God'),
-    );
-    expect(result.current.session?.whole.draft?.dirty).toBe(false);
-    expect(fullReads()).toBe(reads);
+    expect(result.current.dirty).toBe(false);
+    expect(envelopeReads()).toBe(reads);
   });
 
-  it('applies the passes of a Scripture edit the session reports without reading the draft again', async () => {
+  it('reads nothing again for the passes of a Scripture edit the session reports', async () => {
     const { result, host } = await renderCurrent();
     const edited = makeVerseBook([
       { sid: 'GEN 1:1', text: 'In the very beginning God' },
       { sid: 'GEN 1:2', text: 'And the earth' },
       { sid: 'GEN 1:3', text: 'And God said' },
     ]);
-    const reads = fullReads();
+    const reads = envelopeReads();
 
     await act(async () => {
       await host.sessions.reanchorBook('src', edited, true);
       await host.sessions.reportScriptureEdit('src', 'GEN');
     });
 
-    const links = result.current.session?.whole.current.tokenAnalysisLinks;
-    expect(links?.find(({ id }) => id === 'tl-god')?.token.tokenRef).toBe(
-      tokenRefOf(edited, 'God'),
-    );
-    expect(fullReads()).toBe(reads);
+    expect(result.current.dirty).toBe(false);
+    expect(envelopeReads()).toBe(reads);
   });
 });
 
@@ -269,17 +256,14 @@ describe('useSessionProject history', () => {
   it('shows an undo back to the saved draft as saved, without reading the draft again', async () => {
     const { result } = await renderCurrent();
     await glossEarth(result, 'land');
-    const reads = fullReads();
+    const reads = envelopeReads();
 
     await act(async () => {
       await result.current.undo();
     });
 
     expect(result.current.dirty).toBe(false);
-    expect(result.current.draft?.analysis.tokenAnalyses.map(({ id }) => id)).not.toContain(
-      'ta-land',
-    );
-    expect(fullReads()).toBe(reads);
+    expect(envelopeReads()).toBe(reads);
   });
 
   it('shows a redo away from the saved draft as unsaved, without reading the draft again', async () => {
@@ -288,15 +272,14 @@ describe('useSessionProject history', () => {
     await act(async () => {
       await result.current.undo();
     });
-    const reads = fullReads();
+    const reads = envelopeReads();
 
     await act(async () => {
       await result.current.redo();
     });
 
     expect(result.current.dirty).toBe(true);
-    expect(result.current.draft?.analysis.tokenAnalyses.map(({ id }) => id)).toContain('ta-land');
-    expect(fullReads()).toBe(reads);
+    expect(envelopeReads()).toBe(reads);
   });
 
   it('redoes an undone edit through the session', async () => {
@@ -457,7 +440,7 @@ describe('useSessionProject starting over', () => {
 
     await waitFor(() => expect(result.current.session?.sessionId).not.toBe(sessionId));
     await waitFor(() => expect(result.current.draft?.analysisLanguages).toStrictEqual(['fr']));
-    expect(result.current.draft?.analysis.tokenAnalyses).toStrictEqual([]);
+    expect(result.current.dirty).toBe(false);
     expect(result.current.draftVersion).toBeGreaterThan(version);
     expect(result.current.canUndo).toBe(false);
   });
@@ -722,7 +705,7 @@ describe('useSessionProject starting over', () => {
   it('closes, without logging, a session whose draft fails to load after the view moved on', async () => {
     let failLoad: () => void = () => {};
     await fakeHost(undefined, (command) =>
-      command === 'interlinearizer.getFullAnalysis'
+      command === 'interlinearizer.getDraftEnvelope'
         ? new Promise((_resolve, reject) => {
             failLoad = () => reject(new Error('session closed'));
           })
@@ -731,7 +714,7 @@ describe('useSessionProject starting over', () => {
     const { unmount } = renderProject();
     await waitFor(() =>
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-        'interlinearizer.getFullAnalysis',
+        'interlinearizer.getDraftEnvelope',
         expect.anything(),
       ),
     );
@@ -799,13 +782,13 @@ describe('useSessionProject edits sent to the session', () => {
 
   it('reads the draft again after a discard, which may leave it saved', async () => {
     const { result } = await renderAnswering();
-    const reads = fullReads();
+    const reads = envelopeReads();
 
     await act(async () => {
       await result.current.discardAll();
     });
 
-    expect(fullReads()).toBe(reads + 1);
+    expect(envelopeReads()).toBe(reads + 1);
   });
 
   it('leaves the draft as it was and rethrows when a discard fails', async () => {
@@ -816,14 +799,14 @@ describe('useSessionProject edits sent to the session', () => {
     const { result } = renderProject();
     await waitFor(() => expect(result.current.session?.client).toBeDefined());
     const version = result.current.draftVersion;
-    const reads = fullReads();
+    const reads = envelopeReads();
 
     await act(async () => {
       await expect(result.current.discardAll()).rejects.toThrow('refused');
     });
 
     expect(result.current.draftVersion).toBe(version);
-    expect(fullReads()).toBe(reads);
+    expect(envelopeReads()).toBe(reads);
   });
 
   it('logs a draft it cannot read again after a discard', async () => {
@@ -950,7 +933,7 @@ describe('useSessionProject whole-text read', () => {
 describe('useSessionProject boundaries', () => {
   it('counts a change of the draft boundaries as a new segmentation', async () => {
     const { result, host } = await renderLoaded();
-    const before = result.current.segmentationVersion;
+    const before = result.current.session?.pages.pages?.segmentationVersion ?? 0;
 
     await act(async () => {
       await result.current.session?.client?.send(async (changeId) =>
@@ -975,6 +958,8 @@ describe('useSessionProject boundaries', () => {
       );
     });
 
-    await waitFor(() => expect(result.current.segmentationVersion).toBe(before + 1));
+    await waitFor(() =>
+      expect(result.current.session?.pages.pages?.segmentationVersion).toBe(before + 1),
+    );
   });
 });

@@ -1,10 +1,10 @@
 import papi, { logger } from '@papi/frontend';
-import type { DraftProject, DraftStart, SessionEditArgs } from 'interlinearizer';
+import type { DraftEnvelope, DraftStart, SessionEditArgs } from 'interlinearizer';
 import type { NetworkEvents } from 'papi-shared-types';
 import { useEvent } from 'platform-bible-react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { HeardChange } from '../cache/pageClient';
-import { WholeAnalysis } from '../cache/wholeAnalysis';
+import { DraftEnvelopeStore } from '../cache/draftEnvelope';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { CommandReply } from '../types/command-reply';
 import type { EditStep } from '../types/edit-step';
@@ -23,23 +23,13 @@ type OpenedSession = Readonly<{
   readOnly: boolean;
   hasFreeTranslations: boolean;
   projectMissing: boolean;
-  whole: WholeAnalysis;
+  envelope: DraftEnvelopeStore;
 }>;
 
-const NO_WHOLE = new WholeAnalysis(async () => {
+const NO_ENVELOPE = new DraftEnvelopeStore(async () => {
   /* v8 ignore next -- a stand-in that no read is asked of, used until a session opens */
   throw new Error('Interlinearizer: no session is open');
 });
-
-/** Whether `a` and `b` hold equal fields, their analysis aside. */
-function sameEnvelope(a: DraftProject, b: DraftProject): boolean {
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  keys.delete('analysis');
-  return [...keys].every((key) => {
-    const [was, is] = [Reflect.get(a, key), Reflect.get(b, key)];
-    return Object.is(was, is) || JSON.stringify(was) === JSON.stringify(is);
-  });
-}
 
 /**
  * Keeps the draft of `sourceProjectId` in a session on the host. The session saves to
@@ -95,7 +85,7 @@ export default function useSessionProject(
     let sessionId: string | undefined;
     const opening = (async () => {
       try {
-        const reply: Omit<OpenedSession, 'whole'> = JSON.parse(
+        const reply: Omit<OpenedSession, 'envelope'> = JSON.parse(
           await papi.commands.sendCommand('interlinearizer.openSession', {
             sourceProjectId,
             ...(saveTarget !== undefined && { interlinearProjectId: saveTarget }),
@@ -104,15 +94,15 @@ export default function useSessionProject(
         );
         ({ sessionId } = reply);
         const address = { sessionId };
-        const whole = new WholeAnalysis(async () =>
-          JSON.parse(await papi.commands.sendCommand('interlinearizer.getFullAnalysis', address)),
+        const envelope = new DraftEnvelopeStore(async () =>
+          JSON.parse(await papi.commands.sendCommand('interlinearizer.getDraftEnvelope', address)),
         );
-        if (isCurrent) await whole.refresh();
+        if (isCurrent) await envelope.refresh();
         if (!isCurrent) return reply.sessionId;
         targetRef.current = interlinearProjectId;
         if (reply.projectMissing && namedProjectRef.current === interlinearProjectId)
           onProjectMissingRef.current?.();
-        setOpened({ ...reply, whole });
+        setOpened({ ...reply, envelope });
         setHasFreeTranslations(reply.hasFreeTranslations);
         noteHistory({ canUndo: false, canRedo: false });
         setDraftVersion((version) => version + 1);
@@ -149,7 +139,7 @@ export default function useSessionProject(
   ]);
 
   const sessionId = opened?.sessionId;
-  const whole = opened?.whole ?? NO_WHOLE;
+  const envelope = opened?.envelope ?? NO_ENVELOPE;
 
   // A draft's session follows the project that the draft saves to, keeping what there is to undo.
   useEffect(() => {
@@ -171,41 +161,34 @@ export default function useSessionProject(
     targetRef.current = undefined;
     try {
       await papi.commands.sendCommand('interlinearizer.detachFromProject', { sessionId });
-      await whole.refresh();
+      await envelope.refresh();
     } catch (e) {
       logger.error('Interlinearizer: failed to detach the draft from its project', e);
     }
-  }, [sessionId, whole]);
-  // Re-renders only when the draft's envelope changes; its analysis is read at render.
-  const envelope = useRef<DraftProject | undefined>(undefined);
-  useSyncExternalStore(
-    useCallback((listener: () => void) => whole.subscribe(listener), [whole]),
-    () => {
-      const next = whole.draft;
-      if (!envelope.current || !next || !sameEnvelope(envelope.current, next))
-        envelope.current = next;
-      return envelope.current;
-    },
+  }, [sessionId, envelope]);
+  const draft = useSyncExternalStore(
+    useCallback((listener: () => void) => envelope.subscribe(listener), [envelope]),
+    () => envelope.envelope,
   );
-  const { draft } = whole;
   const pages = useSessionPages({ sessionId, bookId, scrRef });
   const { client } = pages;
 
-  /** Fetches the whole draft again, logging a failure. */
-  const refreshWhole = useCallback(() => {
-    whole.refresh().catch((e) => logger.warn('Interlinearizer: could not read the draft again', e));
-  }, [whole]);
+  /** Fetches the draft's envelope again, logging a failure. */
+  const refreshEnvelope = useCallback(() => {
+    envelope
+      .refresh()
+      .catch((e) => logger.warn('Interlinearizer: could not read the draft again', e));
+  }, [envelope]);
 
   /**
-   * Applies a reported change's re-anchor passes to the whole draft. Fetches the draft again for a
-   * change that carries none.
+   * Fetches the draft's envelope again for a reported change, unless the change leaves the draft as
+   * saved as it was.
    */
   const takeHeard = useCallback(
-    ({ passChanges }: HeardChange) => {
-      if (!passChanges) refreshWhole();
-      else passChanges.forEach((changes) => whole.take(changes, 'kept'));
+    ({ keepsUnsavedMark }: HeardChange) => {
+      if (!keepsUnsavedMark) refreshEnvelope();
     },
-    [whole, refreshWhole],
+    [refreshEnvelope],
   );
 
   const analysisChangedEvent = useMemo(
@@ -216,7 +199,7 @@ export default function useSessionProject(
     analysisChangedEvent,
     useCallback(
       (change: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
-        if (!('sessionId' in change) || change.sessionId !== sessionId) return;
+        if (change.sessionId !== sessionId) return;
         // With pages loaded, the client tells which changes its replies left out.
         if (!client) takeHeard(change);
       },
@@ -226,17 +209,17 @@ export default function useSessionProject(
   useEffect(() => client?.subscribeHeard(takeHeard), [client, takeHeard]);
 
   /**
-   * Applies a reply's changes to the whole draft, with the reply's unsaved mark, and notes what the
-   * reply says is left to undo and redo, telling each history listener.
+   * Marks the draft as a reply's changes leave it, and notes what the reply says is left to undo
+   * and redo, telling each history listener.
    */
   const takeReply = useCallback(
     (reply: CommandReply) => {
-      whole.take(reply.changes, reply.dirty);
+      envelope.take(reply.changes, reply.dirty);
       noteHistory({ canUndo: reply.canUndo, canRedo: reply.canRedo });
       if ('hasFreeTranslations' in reply && typeof reply.hasFreeTranslations === 'boolean')
         setHasFreeTranslations(reply.hasFreeTranslations);
     },
-    [whole, noteHistory],
+    [envelope, noteHistory],
   );
   useEffect(() => client?.subscribeReplies(takeReply), [client, takeReply]);
 
@@ -338,20 +321,20 @@ export default function useSessionProject(
   );
 
   const commitDraft = useCallback(
-    async (copy: (snapshot: DraftProject, sessionId: string) => Promise<DraftCopyResult>) => {
-      const snapshot = whole.draft;
-      /* v8 ignore next -- the whole draft is read only once the session has opened */
+    async (copy: (snapshot: DraftEnvelope, sessionId: string) => Promise<DraftCopyResult>) => {
+      const snapshot = envelope.envelope;
+      /* v8 ignore next -- the envelope is read only once the session has opened */
       if (!snapshot || isSaving || sessionId === undefined) return false;
       setIsSaving(true);
       try {
         const copied = await copy(snapshot, sessionId);
-        await whole.refresh();
+        await envelope.refresh();
         return copied !== false;
       } finally {
         setIsSaving(false);
       }
     },
-    [whole, isSaving, sessionId],
+    [envelope, isSaving, sessionId],
   );
 
   /**
@@ -364,10 +347,10 @@ export default function useSessionProject(
       /* v8 ignore next -- a discard's command always replies */
       if (!(await sendEditOrThrow(call))) return;
       // The reply leaves out how the discard left the draft's unsaved mark.
-      refreshWhole();
+      refreshEnvelope();
       setDraftVersion((version) => version + 1);
     },
-    [sendEditOrThrow, refreshWhole],
+    [sendEditOrThrow, refreshEnvelope],
   );
 
   const boundaries = useMemo<SegmentationDispatch>(
@@ -405,7 +388,7 @@ export default function useSessionProject(
     [sessionId],
   );
 
-  const getDraftSnapshot = useCallback(() => whole.draft, [whole]);
+  const getDraftSnapshot = useCallback(() => envelope.envelope, [envelope]);
   const discardBook = useCallback(
     (bookCode: string) =>
       discard((args) =>
@@ -425,17 +408,10 @@ export default function useSessionProject(
   const undo = useCallback(() => move('interlinearizer.undoEdit'), [move]);
   const redo = useCallback(() => move('interlinearizer.redoEdit'), [move]);
 
-  // The segmentation version, bumped whenever the draft's boundaries change.
-  const segmentationKey = JSON.stringify(draft?.segmentation ?? {});
-  const segmentation = useRef({ key: segmentationKey, version: 0 });
-  if (segmentation.current.key !== segmentationKey)
-    segmentation.current = { key: segmentationKey, version: segmentation.current.version + 1 };
-
   return {
     isDraftLoading: !opened || !draft,
     draft,
     draftVersion,
-    segmentationVersion: segmentation.current.version,
     dirty: draft?.dirty ?? false,
     getDraftSnapshot,
     isSaving,
@@ -454,7 +430,6 @@ export default function useSessionProject(
     session: opened && {
       sessionId: opened.sessionId,
       readOnly: opened.readOnly,
-      whole,
       pages,
       client,
       hasFreeTranslations,

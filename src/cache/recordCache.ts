@@ -307,6 +307,16 @@ export class RecordCache {
     };
   }
 
+  /** The stale free translations placed among the held pages, each named by its payload's id. */
+  heldPlacement(): PlacedFreeTranslations {
+    return placedAmong(
+      this.placement,
+      [...this.segments.values()].map(({ id }) => id),
+      this.segments.has(0),
+      (id) => id,
+    );
+  }
+
   /**
    * Serves the segments at outline indexes `[start, end)` with their analysis, as the host would
    * page them. Returns `undefined` unless every one of those segments is held.

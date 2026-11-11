@@ -19,7 +19,14 @@ import {
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import { isWordToken } from '../../types/type-guards';
 import * as perfMarks from '../../utils/perf-marks';
-import { makeSegment, makeVerseBook, makeWordToken, type ScrollGroupTuple } from '../test-helpers';
+import type { SegmentPages } from '../../types/segment-pages';
+import {
+  makeSegment,
+  makeVerseBook,
+  makeWordToken,
+  segmentPagesOf,
+  type ScrollGroupTuple,
+} from '../test-helpers';
 
 /**
  * A two-verse GEN book whose first verse holds two word tokens, so a focus can sit on a non-first
@@ -41,19 +48,33 @@ function makeBook(): Book {
   };
 }
 
-/** The lookups {@link FocusProvider} resolves a focus against, derived from `book`. */
-function buildLookups(book: Book) {
+/**
+ * The lookups {@link FocusProvider} resolves a focus against, derived from the first `held` segments
+ * of `book`, every one by default.
+ */
+function buildLookups(book: Book, held = book.segments.length) {
   const segmentById = new Map<string, Segment>();
   const tokenSegmentMap = new Map<string, string>();
   const wordTokenByRef = new Map<string, Token & { type: 'word' }>();
-  book.segments.forEach((seg) => {
+  book.segments.slice(0, held).forEach((seg) => {
     segmentById.set(seg.id, seg);
     seg.tokens.forEach((t) => {
       tokenSegmentMap.set(t.ref, seg.id);
       if (isWordToken(t)) wordTokenByRef.set(t.ref, t);
     });
   });
-  return { segmentById, tokenSegmentMap, wordTokenByRef };
+  return {
+    segmentById,
+    tokenSegmentMap,
+    wordTokenByRef,
+    outlineSegmentById: new Map(book.segments.map((seg) => [seg.id, seg])),
+  };
+}
+
+/** `book`'s pages, holding its first `held` segments, every one by default. */
+function pagesOf(book: Book, held = book.segments.length): SegmentPages {
+  const pages = segmentPagesOf(book);
+  return { ...pages, segmentAt: (index) => (index < held ? book.segments[index] : undefined) };
 }
 
 /**
@@ -61,8 +82,14 @@ function buildLookups(book: Book) {
  * surfaces plus a `setBook` / `setScrRef` pair for restaging the inputs the resolution rules
  * classify on.
  */
-function renderFocus(initialBook: Book, initialScrRef: SerializedVerseRef) {
+function renderFocus(
+  initialBook: Book,
+  initialScrRef: SerializedVerseRef,
+  initialHeld = initialBook.segments.length,
+) {
   let book = initialBook;
+  let held = initialHeld;
+  let pages = pagesOf(book, held);
   let hostScrRef = initialScrRef;
   const setScrRefSpy = jest.fn((next: SerializedVerseRef) => {
     hostScrRef = next;
@@ -88,7 +115,7 @@ function renderFocus(initialBook: Book, initialScrRef: SerializedVerseRef) {
   function Tree() {
     nav = useInterlinearNav();
     return (
-      <FocusProvider book={book} scrRef={hostScrRef} {...buildLookups(book)}>
+      <FocusProvider pages={pages} scrRef={hostScrRef} indexes={buildLookups(book, held)}>
         <Probe />
       </FocusProvider>
     );
@@ -110,6 +137,19 @@ function renderFocus(initialBook: Book, initialScrRef: SerializedVerseRef) {
     unmount: view.unmount,
     setBook: (next: Book) => {
       book = next;
+      held = next.segments.length;
+      pages = pagesOf(book, held);
+      view.rerender(
+        <InterlinearNavProvider useWebViewScrollGroupScrRef={scrollGroupHook}>
+          <Tree />
+        </InterlinearNavProvider>,
+      );
+    },
+    /** Loads every segment of the book, as a page landing does, keeping the same pages. */
+    holdAll: () => {
+      held = book.segments.length;
+      const loaded = pagesOf(book, held);
+      pages = { ...pages, segmentAt: loaded.segmentAt };
       view.rerender(
         <InterlinearNavProvider useWebViewScrollGroupScrRef={scrollGroupHook}>
           <Tree />
@@ -300,7 +340,11 @@ describe('FocusProvider seeding from a child', () => {
       <InterlinearNavProvider
         useWebViewScrollGroupScrRef={() => [GEN_1_1, () => {}, undefined, () => {}, undefined]}
       >
-        <FocusProvider book={noWordToken} scrRef={GEN_1_1} {...buildLookups(noWordToken)}>
+        <FocusProvider
+          pages={pagesOf(noWordToken)}
+          scrRef={GEN_1_1}
+          indexes={buildLookups(noWordToken)}
+        >
           <SeedingChild />
         </FocusProvider>
       </InterlinearNavProvider>,
@@ -619,6 +663,38 @@ describe('FocusProvider resolution rules', () => {
     expect(harness.read()).toMatchObject({ tokenRef: 'GEN 1:2:0', origin: 'reseed' });
   });
 
+  it('waits for the page of a requested token to load, then claims the request', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1, 1);
+
+    act(() => {
+      harness.read().nav.requestFocusToken('GEN 1:2:0');
+      harness.read().nav.navigate(GEN_1_2, 'internal');
+    });
+    harness.holdAll();
+
+    expect(jest.mocked(logger.warn)).not.toHaveBeenCalled();
+    expect(harness.read()).toMatchObject({ tokenRef: 'GEN 1:2:0', origin: 'request' });
+  });
+
+  it('reseeds to a verse whose page loads after the navigation to it', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1, 1);
+
+    harness.setScrRef(GEN_1_2);
+    harness.holdAll();
+
+    expect(harness.read()).toMatchObject({ tokenRef: 'GEN 1:2:0', origin: 'reseed' });
+  });
+
+  it('warns and drops a request naming a verse the outline does not hold', () => {
+    const harness = renderFocus(makeBook(), GEN_1_1, 1);
+
+    act(() => harness.read().nav.requestFocusToken('GEN 1:7:0'));
+
+    expect(jest.mocked(logger.warn)).toHaveBeenCalledWith(
+      'Interlinearizer: focus request "GEN 1:7:0" matched no word token',
+    );
+  });
+
   it('claims a request naming the verse already on screen', () => {
     // The request count is the only signal such a request gives, since nothing else about
     // navigation changes.
@@ -670,7 +746,7 @@ describe('FocusProvider resolution rules', () => {
     function Tree({ mounted }: Readonly<{ mounted: boolean }>) {
       ({ requestFocusToken } = useInterlinearNav());
       return mounted ? (
-        <FocusProvider book={book} scrRef={GEN_1_1} {...buildLookups(book)}>
+        <FocusProvider pages={pagesOf(book)} scrRef={GEN_1_1} indexes={buildLookups(book)}>
           <Probe />
         </FocusProvider>
       ) : undefined;

@@ -26,15 +26,10 @@ export type HostCall = { measure: string; command: string; phasePrefixes: string
 
 /** The host commands the scenarios time. */
 export const HOST_CALLS = {
-  getTokenizedBook: {
-    measure: 'book-fetch',
-    command: 'getTokenizedBook',
-    phasePrefixes: ['getTokenizedBook'],
-  },
   getBookOutline: {
     measure: 'outline-fetch',
     command: 'getBookOutline',
-    phasePrefixes: ['getBookOutline'],
+    phasePrefixes: ['getBookOutline', 'readBook'],
   },
   writeGloss: {
     measure: 'edit-command',

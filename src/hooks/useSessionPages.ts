@@ -4,7 +4,12 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { NetworkEvents } from 'papi-shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageClient } from '../cache/pageClient';
-import type { BookOutline, SegmentPages, SegmentPagesLoad } from '../types/segment-pages';
+import type {
+  BookOutline,
+  OutlineBoundaries,
+  SegmentPages,
+  SegmentPagesLoad,
+} from '../types/segment-pages';
 import useLatestRef from './useLatestRef';
 import { EXTEND_CHUNK, INITIAL_WINDOW_HALF, findAnchorIndex } from './useSegmentWindow';
 
@@ -30,13 +35,24 @@ export type UseSessionPagesResult = SegmentPagesLoad & {
   client: PageClient | undefined;
 };
 
+/** The boundaries of an outline that a session did not ask for, which no view reads. */
+const NO_BOUNDARIES: OutlineBoundaries = {
+  formerBoundaries: {},
+  unmergeableStarts: [],
+  lostBoundaries: [],
+};
+
 /** The segment list that `client` serves for `outline`, the `version`th outline published from it. */
 function segmentPagesOf(client: PageClient, outline: BookOutline, version: number): SegmentPages {
   return {
     bookRef: outline.bookRef,
     outline: outline.segments,
     segmentationVersion: version,
+    /* v8 ignore next -- a session's outline always names its boundaries */
+    boundaries: outline.boundaries ?? NO_BOUNDARIES,
+    duplicateVerseIds: outline.duplicateVerseIds,
     segmentAt: (index) => client.segmentAt(index),
+    heldPages: () => client.heldPages(),
     load: (start, end, caller) => client.load(start, end, caller),
     release: (caller) => client.release(caller),
     subscribe: (onChange) => client.subscribe(onChange),
@@ -149,8 +165,7 @@ export default function useSessionPages({
     analysisChangedEvent,
     useCallback(
       (change: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
-        if ('sessionId' in change && change.sessionId === sessionId)
-          activeClientRef.current?.hear(change);
+        if (change.sessionId === sessionId) activeClientRef.current?.hear(change);
       },
       [sessionId],
     ),

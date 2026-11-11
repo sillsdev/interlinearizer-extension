@@ -19,6 +19,7 @@ import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { buildBookOutline } from '../utils/book-outline';
+import { outlineBoundaries } from '../utils/segmentation';
 import { touched } from '../utils/change-set';
 import {
   orphanedCardCountAt,
@@ -178,15 +179,18 @@ function spansOf(
 /**
  * Outlines a book, counting the orphaned free-translation cards that the view shows beside each
  * segment and flagging the segments where it shows a stale analysis. Each count takes in the cards
- * after its segment; the first also takes in those ahead of it.
+ * after its segment; the first also takes in those ahead of it. The outline also says what the
+ * book's boundary controls need to know of the draft's boundaries.
  *
  * @param repository - The draft whose stale analyses are counted and flagged.
  * @param book - The book, segmented by the draft's boundaries.
+ * @param verseBook - The same book, one segment per verse.
  * @throws Whatever the repository's lookups throw.
  */
 export async function readBookOutline(
   repository: AnalysisRepository,
   book: Book,
+  verseBook: Book,
 ): Promise<BookOutline> {
   const { summary, placed } = await readStale(repository, book);
   const { tokenSegmentMap } = bookIndexesOf(book.segments);
@@ -197,6 +201,7 @@ export async function readBookOutline(
   const outline = buildBookOutline(book, book.segments);
   return {
     ...outline,
+    boundaries: outlineBoundaries(verseBook, (await repository.getScope()).segmentation),
     segments: outline.segments.map((segment, index) => ({
       ...segment,
       orphanedCardCount: orphanedCardCountAt(placed, segment.id, index),

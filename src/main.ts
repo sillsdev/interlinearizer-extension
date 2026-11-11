@@ -39,6 +39,7 @@ import { readBookOutline, readSegmentPage, readStaleSummary } from './services/s
 import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
 import { sessionConcordanceHandlers } from './services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
+import { envelopeOf } from './utils/draft-envelope';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
 import type { TextReadStatus } from './types/text-read-status';
@@ -726,29 +727,6 @@ async function saveDraftAsProject(
   }
 }
 
-/**
- * Returns a book of the source project tokenized under the project's language tag.
- *
- * @returns The tokenized `Book` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or tokenized. The error is logged before rethrowing.
- */
-async function getTokenizedBook(
-  sourceProjectId: string,
-  bookId: string,
-): Promise<string | undefined> {
-  try {
-    return await perfTimeAsync('getTokenizedBook', () =>
-      bookService.getTokenizedBook(sourceProjectId, bookId),
-    );
-  } catch (e) {
-    logger.error(
-      `Interlinearizer: failed to tokenize book ${bookId} of project ${sourceProjectId}`,
-      e,
-    );
-    throw e;
-  }
-}
-
 /** The session that a page or text-read command reads. */
 type SessionAddress = Readonly<{ sessionId: string }>;
 
@@ -784,8 +762,9 @@ async function getBookOutline(
           bookId,
           await sessionBoundaries(session, bookId),
         );
-        if (!book) return undefined;
-        const outline = await readBookOutline(session.repository, book);
+        const verseBook = await bookService.getOpenVerseBook(session.scope.sourceProjectId, bookId);
+        if (!book || !verseBook) return undefined;
+        const outline = await readBookOutline(session.repository, book, verseBook);
         return perfTime('getBookOutline:serialize', () => JSON.stringify(outline));
       });
     });
@@ -1144,28 +1123,27 @@ async function checkIndexes({
 }
 
 /**
- * Reads a session's whole draft, its scope and analysis, as the session's repository holds it. A
- * bridge until the WebView reads only pages. When the draft lists no analysis language, the reply
- * lists the session's; the session's first edit stores it.
+ * Reads a session's draft envelope: the draft without its analysis or boundaries. When the draft
+ * lists no analysis language, the reply lists the session's; the session's first edit stores it.
  *
- * @returns A JSON string of the `DraftProject`.
- * @throws If the session is not open, or its analysis cannot be loaded. The error is logged before
+ * @returns A JSON string of the `DraftEnvelope`.
+ * @throws If the session is not open, or its draft cannot be loaded. The error is logged before
  *   rethrowing.
  */
-async function getFullAnalysis({
+async function getDraftEnvelope({
   sessionId,
-}: ArgsOf<'interlinearizer.getFullAnalysis'>): Promise<string> {
+}: ArgsOf<'interlinearizer.getDraftEnvelope'>): Promise<string> {
   try {
     return JSON.stringify(
       await sessions.run(sessionId, async ({ repository, analysisLanguage }) => {
-        const draft = await repository.getWholeDraft();
-        return draft.analysisLanguages.length > 0
-          ? draft
-          : { ...draft, analysisLanguages: [analysisLanguage] };
+        const envelope = envelopeOf(await repository.getWholeDraft());
+        return envelope.analysisLanguages.length > 0
+          ? envelope
+          : { ...envelope, analysisLanguages: [analysisLanguage] };
       }),
     );
   } catch (e) {
-    logger.error(`Interlinearizer: failed to read the whole draft of session ${sessionId}`, e);
+    logger.error(`Interlinearizer: failed to read the draft envelope of session ${sessionId}`, e);
     throw e;
   }
 }
@@ -1327,9 +1305,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           `Interlinearizer: could not report the edit to ${bookId} of project ${sourceProjectId}`,
           e,
         ),
-      )
-      .then(() =>
-        emitter.emit({ sourceProjectId, changeId: crypto.randomUUID(), scriptureEdit: { bookId } }),
       ),
   );
   context.registrations.add(
@@ -1638,35 +1613,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary: 'JSON-stringified InterlinearProjectSummary[] for the given source',
-          schema: { type: 'string' },
-        },
-      },
-    },
-  );
-
-  const getTokenizedBookCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getTokenizedBook',
-    getTokenizedBook,
-    {
-      method: {
-        summary: "Return a source project's book tokenized, as a JSON string",
-        params: [
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Platform.Bible source project ID whose book to tokenize',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'bookId',
-            required: true,
-            summary: 'Book code, such as GEN',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified Book, or undefined when the project has no text for the book',
           schema: { type: 'string' },
         },
       },
@@ -2554,6 +2500,22 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   });
 
+  await registerEdit('interlinearizer.previewBreakdownEdit', {
+    summary:
+      'Read what a breakdown edit at a token would do to the payload that the token approves',
+    params: sessionArgs({
+      name: 'tokenRef',
+      required: true,
+      summary: 'Token.ref of the token whose breakdown would be edited',
+      schema: { type: 'string' },
+    }),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified BreakdownPreview',
+      schema: { type: 'string' },
+    },
+  });
+
   const catalogRegistrations: UnsubscriberAsync[] = [];
 
   /** Registers the catalog query `commandName`, served by its handler in `catalog`. */
@@ -2707,16 +2669,16 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const getFullAnalysisCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getFullAnalysis',
-    getFullAnalysis,
+  const getDraftEnvelopeCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getDraftEnvelope',
+    getDraftEnvelope,
     {
       method: {
-        summary: "Read a session's whole draft; a bridge until the WebView reads only pages",
+        summary: "Read a session's draft without its analysis or boundaries",
         params: sessionArgs(),
         result: {
           name: 'return value',
-          summary: 'JSON-stringified DraftProject',
+          summary: 'JSON-stringified DraftEnvelope',
           schema: { type: 'string' },
         },
       },
@@ -3136,7 +3098,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     saveDraftAsProjectCommandRegistration,
     getProjectsForSourceCommandRegistration,
     getProjectSummaryCommandRegistration,
-    getTokenizedBookCommandRegistration,
     getBookOutlineCommandRegistration,
     getSegmentsCommandRegistration,
     getStaleSummaryCommandRegistration,
@@ -3151,7 +3112,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     undoEditCommandRegistration,
     redoEditCommandRegistration,
     checkIndexesCommandRegistration,
-    getFullAnalysisCommandRegistration,
+    getDraftEnvelopeCommandRegistration,
     setPerfMarksCommandRegistration,
     setSkipSessionReadsCommandRegistration,
     sessionIdForCommandRegistration,

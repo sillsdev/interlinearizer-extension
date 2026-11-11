@@ -30,6 +30,13 @@ export type OutlineSegment = Readonly<{
    * asked for the outline.
    */
   orphanedCardCount?: number;
+  /** Whether a token of the segment holds a stale analysis. Present only when a session asked. */
+  hasStaleGloss?: boolean;
+  /**
+   * Whether the view shows a stale free translation at the segment, on an orphaned card or not.
+   * Present only when a session asked.
+   */
+  hasStaleFreeTranslation?: boolean;
 }>;
 
 /** Every segment of a book in document order, segmented by the boundaries the request named. */
@@ -38,6 +45,20 @@ export type BookOutline = Readonly<{
   /** The `textVersion` of the book the outline was built from. */
   textVersion: string;
   segments: readonly OutlineSegment[];
+}>;
+
+/** A place in a book where a token's analysis went stale. */
+export type StaleGlossPlace = Readonly<{ analysisId: string; tokenRef: string }>;
+
+/** The stale analyses that a book holds. */
+export type StaleSummary = Readonly<{
+  /** Each place, once, in document order; a place whose token the book no longer holds comes last. */
+  glosses: readonly StaleGlossPlace[];
+  /**
+   * Each stale free translation, with the segment showing it or, for one whose verse is gone, the
+   * segment it is shown beside, in the order the view shows them.
+   */
+  freeTranslations: readonly Readonly<{ analysisId: string; segmentId: string }>[];
 }>;
 
 /** One payload of a pool bucket, with how many tokens approve it. */

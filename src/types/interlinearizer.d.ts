@@ -310,6 +310,19 @@ declare module 'papi-shared-types' {
     ) => Promise<string | undefined>;
 
     /**
+     * Summarizes the stale analyses that a book holds, segmented by the session's draft.
+     *
+     * @returns The `StaleSummary` as a JSON string, or `undefined` when the project has no text for
+     *   the book.
+     * @throws If the book cannot be read or segmented, the session is not open, or its analysis
+     *   cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getStaleSummary': (args: {
+      sessionId: string;
+      bookId: string;
+    }) => Promise<string | undefined>;
+
+    /**
      * Serves the segments at indexes `[start, end)` of the book's outline, with the analysis the
      * session's draft holds for them; the range is clamped to the outline.
      *
@@ -2451,6 +2464,11 @@ declare module 'interlinearizer' {
      * can move orphaned cards anywhere in the book.
      */
     staleTranslations?: true;
+    /**
+     * Present when the change put or removed a stale token link in the book. Such a change can
+     * change the stale flags of the book's outline.
+     */
+    staleGlosses?: true;
   };
 
   /** What one change to a session's analysis touched. */

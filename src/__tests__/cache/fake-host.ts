@@ -8,7 +8,7 @@ import * as tokenCommands from '../../services/commands/tokenCommands';
 import { DraftRepository } from '../../services/draftRepository';
 import { sessionCatalogHandlers } from '../../services/sessionCatalogHandlers';
 import { sessionEditHandlers } from '../../services/sessionEditHandlers';
-import { readBookOutline, readSegmentPage } from '../../services/sessionPages';
+import { readBookOutline, readSegmentPage, readStaleSummary } from '../../services/sessionPages';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import type { TextReadStatus } from '../../types/text-read-status';
@@ -209,6 +209,15 @@ export async function fakeHost(
         return JSON.stringify(
           await sessions.run(sessionId, (session) =>
             readBookOutline(session.repository, segmentedBook),
+          ),
+        );
+      }
+      case 'interlinearizer.getStaleSummary': {
+        const sessionId = field(first, 'sessionId');
+        const segmentedBook = await segmented(sessionId);
+        return JSON.stringify(
+          await sessions.run(sessionId, (session) =>
+            readStaleSummary(session.repository, segmentedBook),
           ),
         );
       }

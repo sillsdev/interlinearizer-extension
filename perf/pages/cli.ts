@@ -33,7 +33,11 @@ import * as phraseCommands from '../../src/services/commands/phraseCommands';
 import * as staleCommands from '../../src/services/commands/staleCommands';
 import * as tokenCommands from '../../src/services/commands/tokenCommands';
 import { DraftRepository } from '../../src/services/draftRepository';
-import { readBookOutline, readSegmentPage } from '../../src/services/sessionPages';
+import {
+  readBookOutline,
+  readSegmentPage,
+  readStaleSummary,
+} from '../../src/services/sessionPages';
 import { selectPoolIndex, selectStaleFreeTranslations } from '../../src/utils/analysis-selectors';
 import type {
   ChangeSet,
@@ -249,6 +253,45 @@ function expectedPages(analysis: TextAnalysis, book: Book) {
 }
 
 /**
+ * What the selectors derive from the whole analysis for the stale notice and the outline's stale
+ * flags of `book`. Gloss keys are sorted; free-translation keys keep document order.
+ */
+function expectedStale(analysis: TextAnalysis, book: Book) {
+  const stored = new Set(analysis.tokenAnalyses.map(({ id }) => id));
+  const staleGlosses = analysis.tokenAnalysisLinks.filter(
+    (link) =>
+      link.status === 'stale' &&
+      stored.has(link.analysisId) &&
+      bookOfRef(link.token.tokenRef) === book.bookRef,
+  );
+  const placed = placeStaleFreeTranslations(
+    selectStaleFreeTranslations({ analysis, analysisLanguage: 'en' }),
+    book,
+  );
+  const freeTranslations = book.segments.flatMap(({ id: segmentId }, index) =>
+    [
+      ...(index === 0 ? placed.orphanedAhead : []),
+      ...(placed.bySegment.get(segmentId) ?? []),
+      ...(placed.orphanedAfter.get(segmentId) ?? []),
+    ].map((t) => `freeTranslation ${t.analysisId} at ${segmentId}`),
+  );
+  const { tokenSegmentMap } = bookIndexesOf(book.segments);
+  const glossSegments = new Set(
+    staleGlosses.map(({ token }) => tokenSegmentMap.get(token.tokenRef)),
+  );
+  const translationSegments = new Set(
+    freeTranslations.map((key) => key.slice(key.lastIndexOf(' at ') + 4)),
+  );
+  return {
+    glosses: [
+      ...new Set(staleGlosses.map((l) => `gloss ${l.analysisId} ${l.token.tokenRef}`)),
+    ].sort(),
+    freeTranslations,
+    flags: book.segments.map(({ id }) => [glossSegments.has(id), translationSegments.has(id)]),
+  };
+}
+
+/**
  * Compares each page and the outline of every book with what the selectors derive for them from the
  * whole analysis.
  *
@@ -275,6 +318,25 @@ async function checkPages(
       JSON.stringify(counts.map((_c, i) => expectedFor(0, 0).orphanedCardCount(i)))
     )
       mismatches.push(`${book.bookRef} outline orphaned cards`);
+    const stale = expectedStale(analysis, book);
+    if (
+      JSON.stringify(outline.segments.map((s) => [s.hasStaleGloss, s.hasStaleFreeTranslation])) !==
+      JSON.stringify(stale.flags)
+    )
+      mismatches.push(`${book.bookRef} outline stale flags`);
+    // eslint-disable-next-line no-await-in-loop -- one book's reads at a time
+    const summary = await readStaleSummary(repository, book);
+    if (
+      JSON.stringify(summary.glosses.map((g) => `gloss ${g.analysisId} ${g.tokenRef}`).sort()) !==
+      JSON.stringify(stale.glosses)
+    )
+      mismatches.push(`${book.bookRef} stale summary glosses`);
+    if (
+      JSON.stringify(
+        summary.freeTranslations.map((t) => `freeTranslation ${t.analysisId} at ${t.segmentId}`),
+      ) !== JSON.stringify(stale.freeTranslations)
+    )
+      mismatches.push(`${book.bookRef} stale summary free translations`);
     for (let start = 0; start < book.segments.length; start += PAGE_SIZE) {
       // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
       const page: SegmentPage = await readSegmentPage(repository, book, start, start + PAGE_SIZE);
@@ -559,13 +621,20 @@ function expectedChange(
   const staleBooks = new Set(
     segmentLinks.filter((l) => l.status === 'stale').map((l) => bookOfRef(l.segmentId)),
   );
+  const staleGlossBooks = new Set(
+    tokenLinks.filter((l) => l.status === 'stale').map((l) => bookOfRef(l.token.tokenRef)),
+  );
   const changedBooks: ChangedBook[] = [...new Set([...whole, ...indexes.keys()])]
     .sort()
     .map((bookId) => {
       const set = indexes.get(bookId);
       const book: ChangedBook =
         whole.has(bookId) || !set ? { bookId } : { bookId, ranges: rangesOf(set) };
-      return staleBooks.has(bookId) ? { ...book, staleTranslations: true } : book;
+      return {
+        ...book,
+        ...(staleBooks.has(bookId) && { staleTranslations: true }),
+        ...(staleGlossBooks.has(bookId) && { staleGlosses: true }),
+      };
     });
   const payloadsAfter = new Map(is.tokenAnalyses.map((p) => [p.id, p]));
   const forms = new Set(
@@ -586,7 +655,8 @@ function expectedChange(
   if (tokenPayloads.length + tokenLinks.length > 0)
     queries.push('getCatalogRows', 'getConcordance');
   const stalePayload = [...tokenPayloads, ...segmentPayloads].some(({ id }) => staleIds.has(id));
-  if (links.some(({ status }) => status === 'stale') || stalePayload)
+  const resegmented = booksResegmentedBetween(before.segmentation, after.segmentation).length > 0;
+  if (resegmented || links.some(({ status }) => status === 'stale') || stalePayload)
     queries.push('getStaleSummary');
   return {
     books: changedBooks,

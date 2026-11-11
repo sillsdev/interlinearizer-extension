@@ -6,6 +6,7 @@ import {
   readBookOutline,
   readPoolBuckets,
   readSegmentPage,
+  readStaleSummary,
   readTouchedPoolBuckets,
 } from '../../services/sessionPages';
 import type { ChangeSet } from '../../types/analysis-repository';
@@ -165,6 +166,102 @@ describe('readBookOutline', () => {
       'GEN 1:3',
     ]);
     expect(outline.segments.map((segment) => segment.orphanedCardCount)).toStrictEqual([1, 0, 2]);
+  });
+});
+
+describe('readBookOutline stale flags', () => {
+  it('flags each segment holding a stale gloss of a stored payload', async () => {
+    const repository = await repositoryOver({
+      tokenAnalyses: [payload('ta-god', 'God')],
+      tokenAnalysisLinks: [
+        makeTokenLink('ta-god', ref('God'), { status: 'stale' }),
+        makeTokenLink('ta-god', ref('light')),
+        makeTokenLink('ta-gone', ref('In'), { status: 'stale' }),
+      ],
+    });
+
+    const outline = await readBookOutline(repository, book);
+
+    expect(outline.segments.map((segment) => segment.hasStaleGloss)).toStrictEqual([
+      false,
+      true,
+      false,
+    ]);
+  });
+
+  it('flags each segment showing a stale free translation, an orphaned card included', async () => {
+    const translations = ['GEN 1:0', 'GEN 1:5'].map(staleTranslation);
+    const repository = await repositoryOver({
+      segmentAnalyses: translations.flatMap((t) => t.segmentAnalyses ?? []),
+      segmentAnalysisLinks: translations.flatMap((t) => t.segmentAnalysisLinks ?? []),
+    });
+
+    const outline = await readBookOutline(repository, book);
+
+    expect(outline.segments.map((segment) => segment.hasStaleFreeTranslation)).toStrictEqual([
+      true,
+      false,
+      true,
+    ]);
+  });
+});
+
+describe('readStaleSummary', () => {
+  it("lists each place in the book where a stored payload's link went stale, once", async () => {
+    const stale: { status: 'stale' } = { status: 'stale' };
+    const repository = await repositoryOver({
+      tokenAnalyses: [payload('ta-god', 'God'), payload('ta-light', 'light')],
+      tokenAnalysisLinks: [
+        makeTokenLink('ta-god', ref('God'), { ...stale, id: 'tl-1' }),
+        makeTokenLink('ta-god', ref('God'), { ...stale, id: 'tl-2' }),
+        makeTokenLink('ta-light', ref('light'), stale),
+        makeTokenLink('ta-light', ref('the')),
+        makeTokenLink('ta-gone', ref('created'), stale),
+        makeTokenLink('ta-god', 'EXO 1:1:0', stale),
+      ],
+    });
+
+    const summary = await readStaleSummary(repository, book);
+
+    expect(summary.glosses).toStrictEqual([
+      { analysisId: 'ta-god', tokenRef: ref('God') },
+      { analysisId: 'ta-light', tokenRef: ref('light') },
+    ]);
+  });
+
+  it('lists a place whose token the book no longer holds after those it holds', async () => {
+    const stale: { status: 'stale' } = { status: 'stale' };
+    const repository = await repositoryOver({
+      tokenAnalyses: [payload('ta-gone', 'lost'), payload('ta-god', 'God')],
+      tokenAnalysisLinks: [
+        makeTokenLink('ta-gone', 'GEN 1:9:0', stale),
+        makeTokenLink('ta-god', ref('God'), stale),
+      ],
+    });
+
+    const summary = await readStaleSummary(repository, book);
+
+    expect(summary.glosses).toStrictEqual([
+      { analysisId: 'ta-god', tokenRef: ref('God') },
+      { analysisId: 'ta-gone', tokenRef: 'GEN 1:9:0' },
+    ]);
+  });
+
+  it('lists each stale free translation with the segment showing it or shown beside, in document order', async () => {
+    const translations = ['GEN 1:5', ref('created'), 'GEN 1:2', 'GEN 1:0'].map(staleTranslation);
+    const repository = await repositoryOver({
+      segmentAnalyses: translations.flatMap((t) => t.segmentAnalyses ?? []),
+      segmentAnalysisLinks: translations.flatMap((t) => t.segmentAnalysisLinks ?? []),
+    });
+
+    const summary = await readStaleSummary(repository, book);
+
+    expect(summary.freeTranslations).toStrictEqual([
+      { analysisId: 'sa GEN 1:0', segmentId: 'GEN 1:1' },
+      { analysisId: 'sa GEN 1:2', segmentId: 'GEN 1:2' },
+      { analysisId: `sa ${ref('created')}`, segmentId: 'GEN 1:2' },
+      { analysisId: 'sa GEN 1:5', segmentId: 'GEN 1:3' },
+    ]);
   });
 });
 

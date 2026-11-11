@@ -234,6 +234,38 @@ describe('ConcordancePanel', () => {
     expect(screen.getAllByTestId('concordance-row')).not.toHaveLength(0);
   });
 
+  it('reads the failed books again from its retry control', async () => {
+    const retry = jest.fn();
+    await renderPanel({
+      text: {
+        ...textOf({
+          books: [GENESIS],
+          status: { booksRead: 2, bookCount: 2, failedBookIds: ['EXO'] },
+        }),
+        retry,
+      },
+    });
+
+    await userEvent.click(screen.getByTestId('concordance-retry'));
+
+    expect(retry).toHaveBeenCalled();
+  });
+
+  it('offers no retry once every book has been read', async () => {
+    await renderPanel();
+
+    expect(screen.queryByTestId('concordance-retry')).not.toBeInTheDocument();
+  });
+
+  it('says the text could not be read, not that it has no words, when every book failed', async () => {
+    await renderPanel({
+      text: textOf({ books: [], status: { booksRead: 1, bookCount: 1, failedBookIds: ['GEN'] } }),
+    });
+
+    expect(screen.getByTestId('text-reading-status')).toBeInTheDocument();
+    expect(screen.queryByTestId('concordance-empty')).not.toBeInTheDocument();
+  });
+
   it('lists every form of the text, most frequent first', async () => {
     await renderPanel();
 
@@ -364,6 +396,21 @@ describe('ConcordancePanel', () => {
       await settle();
 
       expect(screen.getAllByTestId('concordance-row').length).toBeGreaterThan(before);
+    });
+
+    it('grows no further than a chunk past the rows that have arrived', async () => {
+      await renderPanel({ text: textOf({ books: [MANY] }) });
+      const before = screen.getAllByTestId('concordance-row').length;
+
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('concordance-rows-sentinel'), true);
+      });
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('concordance-rows-sentinel'), true);
+      });
+      await settle();
+
+      expect(screen.getAllByTestId('concordance-row')).toHaveLength(before * 2);
     });
   });
 });

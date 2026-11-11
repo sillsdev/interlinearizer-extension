@@ -2,6 +2,7 @@
 
 import type { TextAnalysis } from 'interlinearizer';
 import { sessionConcordanceHandlers } from '../../services/sessionConcordanceHandlers';
+import * as concordance from '../../utils/concordance';
 import { indexBook, type BookConcordance } from '../../utils/concordance';
 import { BOOK, GLOSSED, sessionOver } from '../cache/session-source';
 import { makeVerseBook } from '../test-helpers';
@@ -13,9 +14,11 @@ import { makeVerseBook } from '../test-helpers';
 async function handlersOver({
   analysis = GLOSSED,
   books = [indexBook(BOOK)],
+  writingSystem = () => 'en',
 }: {
   analysis?: Partial<TextAnalysis>;
   books?: BookConcordance[] | 'unread' | (() => BookConcordance[]);
+  writingSystem?: () => string;
 } = {}) {
   const { sessions, sessionId, edit } = await sessionOver(analysis);
   const logger = { error: jest.fn() };
@@ -26,7 +29,7 @@ async function handlersOver({
       if (books === 'unread') return undefined;
       return typeof books === 'function' ? books() : books;
     },
-    getWritingSystem: async () => 'en',
+    getWritingSystem: async () => writingSystem(),
   });
   return { handlers, sessionId, edit, logger };
 }
@@ -148,5 +151,29 @@ describe('getConcordance', () => {
     const json = await handlers['interlinearizer.getConcordance']({ sessionId, request });
 
     expect(JSON.parse(json).rows.map((row: { form: string }) => row.form)).toEqual(['light']);
+  });
+
+  it('merges the same books once across pages', async () => {
+    const build = jest.spyOn(concordance, 'buildConcordanceEntries');
+    const { handlers, sessionId } = await handlersOver();
+    const request = { currentBook: 'GEN', offset: 0, count: 1 };
+    await handlers['interlinearizer.getConcordance']({ sessionId, request });
+
+    await handlers['interlinearizer.getConcordance']({ sessionId, request });
+
+    expect(build).toHaveBeenCalledTimes(1);
+  });
+
+  it('merges the same books again under a new language tag', async () => {
+    const build = jest.spyOn(concordance, 'buildConcordanceEntries');
+    let tag = 'en';
+    const { handlers, sessionId } = await handlersOver({ writingSystem: () => tag });
+    const request = { currentBook: 'GEN', offset: 0, count: 1 };
+    await handlers['interlinearizer.getConcordance']({ sessionId, request });
+
+    tag = 'tr';
+    await handlers['interlinearizer.getConcordance']({ sessionId, request });
+
+    expect(build).toHaveBeenCalledTimes(2);
   });
 });

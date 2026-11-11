@@ -889,6 +889,24 @@ async function getTextReadStatus({ sessionId }: SessionAddress): Promise<string>
 }
 
 /**
+ * Reads again each book of a session source's whole text whose latest read failed.
+ *
+ * @throws If the session is not open. The error is logged before rethrowing.
+ */
+async function retryTextRead({ sessionId }: SessionAddress): Promise<void> {
+  try {
+    const sourceProjectId = await sessions.run(
+      sessionId,
+      async ({ scope }) => scope.sourceProjectId,
+    );
+    await bookService.retryFailedBooks(sourceProjectId);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to read the text of session ${sessionId} again`, e);
+    throw e;
+  }
+}
+
+/**
  * Builds the draft that starting over from `from` writes for the source project: a copy of a stored
  * project's analysis and configuration, or an empty draft with a New dialog's configuration.
  *
@@ -1741,6 +1759,18 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           summary: 'JSON-stringified TextReadStatus',
           schema: { type: 'string' },
         },
+      },
+    },
+  );
+
+  const retryTextReadCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.retryTextRead',
+    retryTextRead,
+    {
+      method: {
+        summary: "Read again each book of a session's whole source text whose latest read failed",
+        params: [sessionAddressParam],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
     },
   );
@@ -3111,6 +3141,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getSegmentsCommandRegistration,
     getStaleSummaryCommandRegistration,
     getTextReadStatusCommandRegistration,
+    retryTextReadCommandRegistration,
     startDraftOverCommandRegistration,
     openSessionCommandRegistration,
     closeSessionCommandRegistration,

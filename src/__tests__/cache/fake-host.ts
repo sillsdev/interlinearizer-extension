@@ -160,6 +160,8 @@ export async function fakeHost(
     logger: { error: () => {} },
     getOpenVerseBook: async (_sourceProjectId, bookId) =>
       bookId === textOf().bookRef ? textOf() : undefined,
+    getVerseBook: async (_sourceProjectId, bookId) =>
+      bookId === textOf().bookRef ? textOf() : undefined,
     isFormInText: (_sourceProjectId, form) => text.isFormInText(form),
   });
   const segmented = async (sessionId: string) => {
@@ -214,7 +216,8 @@ export async function fakeHost(
       case 'interlinearizer.getSelectionSummary':
       case 'interlinearizer.countUsages':
       case 'interlinearizer.getCatalogRowsByIds':
-      case 'interlinearizer.getHomographRows': {
+      case 'interlinearizer.getHomographRows':
+      case 'interlinearizer.previewDeletion': {
         const handler: (args: unknown) => Promise<string | number> = Reflect.get(
           catalog,
           String(command),

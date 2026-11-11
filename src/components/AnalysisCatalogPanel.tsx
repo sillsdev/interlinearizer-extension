@@ -17,7 +17,6 @@ import {
   type Ref,
 } from 'react';
 import {
-  useAnalysisDeletionOutcome,
   useAnalysisLanguage,
   useAnalysisReadOnly,
   useAnalysisRowDispatch,
@@ -28,6 +27,7 @@ import {
   useStaleLocationReclaims,
 } from './AnalysisStore';
 import type { AnalysisEditOutcome } from '../utils/edit-outcome';
+import type { AnalysisDeletionOutcome } from '../utils/analysis-selectors';
 import { breakdownDraftForms, createGlossRetry } from './CatalogRowEditor';
 import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
@@ -85,6 +85,21 @@ async function afterCounting(counted: Promise<number>, then: (count: number) => 
     /* v8 ignore next 3 -- logging only */
   } catch (e) {
     logger.warn('Interlinearizer: could not count the uses an edit reached', e);
+  }
+}
+
+/** Calls `then` with the deletion outcome once `previewed` settles, logging a failure. */
+async function afterPreviewing(
+  previewed: Promise<AnalysisDeletionOutcome | undefined>,
+  then: (outcome: AnalysisDeletionOutcome) => void,
+) {
+  try {
+    const outcome = await previewed;
+    /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
+    if (outcome) then(outcome);
+    /* v8 ignore next 3 -- logging only */
+  } catch (e) {
+    logger.warn('Interlinearizer: could not preview what a deletion reached', e);
   }
 }
 
@@ -445,7 +460,6 @@ export default function AnalysisCatalogPanel({
 
   const rowDispatch = useAnalysisRowDispatch();
   const confirmMorphemes = useConfirmMorphemesDispatch();
-  const readDeletionOutcome = useAnalysisDeletionOutcome();
   const readOnly = useAnalysisReadOnly();
 
   const { checkedIds, setChecked, setAllChecked } = useRowSelection(rows);
@@ -769,9 +783,8 @@ export default function AnalysisCatalogPanel({
   /** Deletes the analysis `analysisId` names, announcing what the deletion did. */
   const deleteAnalysis = useCallback(
     (analysisId: string) => {
-      const outcome = readDeletionOutcome(analysisId, liveSurfaceText);
-      /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
-      if (!outcome) return;
+      // Previewed before the record goes, because the deletion takes its uses with it.
+      const previewed = reads.previewDeletion(analysisId);
       const form = surfaceTextOf(analysisId);
       // Cleared before the record goes, so this removal is not reported back to the reader who
       // asked for it.
@@ -782,16 +795,17 @@ export default function AnalysisCatalogPanel({
           // A deleted row cannot be the one a merge notice points at, and leaving the notice up
           // would send the reader to a row that is no longer there.
           setMergeNotice(undefined);
-          announceUndoable(deletionAnnouncement(form, outcome, localizedStrings));
+          afterPreviewing(previewed, (outcome) =>
+            announceUndoable(deletionAnnouncement(form, outcome, localizedStrings)),
+          );
         },
       );
     },
     [
       announceUndoable,
       discardBreakdownDraft,
-      liveSurfaceText,
       localizedStrings,
-      readDeletionOutcome,
+      reads,
       rowDispatch,
       runRowEdit,
       surfaceTextOf,

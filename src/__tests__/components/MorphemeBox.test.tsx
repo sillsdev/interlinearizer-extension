@@ -679,6 +679,76 @@ describe('row labels', () => {
   });
 });
 
+describe('a caller-rendered lexicon link row', () => {
+  const renderSenseLink = (morpheme: MorphemeAnalysis) => (
+    <button type="button">link {morpheme.form}</button>
+  );
+
+  it.each([
+    ['an editable', false],
+    ['a read-only', true],
+  ])('places each morpheme link under its gloss in %s box', (_name, readOnly) => {
+    renderBox({ readOnly, renderSenseLink, rowLabels: { forms: 'F', glosses: 'G' } });
+
+    expect(screen.getByText('link hel')).toHaveStyle({ gridColumn: '2', gridRow: '3' });
+    expect(screen.getByText('link -lo')).toHaveStyle({ gridColumn: '3', gridRow: '3' });
+  });
+
+  it('places the links in the first columns where the rows are unlabeled', () => {
+    renderBox({ renderSenseLink });
+
+    expect(screen.getByText('link hel')).toHaveStyle({ gridColumn: '1', gridRow: '3' });
+  });
+
+  it('keeps the style the caller put on its element', () => {
+    renderBox({
+      renderSenseLink: (morpheme) => <span style={{ color: 'red' }}>link {morpheme.form}</span>,
+    });
+
+    expect(screen.getByText('link hel')).toHaveStyle({ color: 'rgb(255, 0, 0)', gridRow: '3' });
+  });
+
+  it('labels the row alongside the cells it names', () => {
+    renderBox({
+      renderSenseLink,
+      rowLabels: { forms: 'F', glosses: 'G', senseLinks: 'Lexicon' },
+    });
+
+    const label = screen.getByTestId('morpheme-gloss-sense-links-row-label');
+    expect(label).toHaveTextContent('Lexicon');
+    expect(label).toHaveStyle({ gridColumn: '1', gridRow: '3' });
+  });
+
+  it('leaves the row unlabeled where the caller gives no label', () => {
+    renderBox({ renderSenseLink, rowLabels: { forms: 'F', glosses: 'G' } });
+
+    expect(screen.queryByTestId('morpheme-gloss-sense-links-row-label')).not.toBeInTheDocument();
+  });
+
+  it("replaces the box's own lexicon mark", async () => {
+    const { ui } = withLexicon(
+      <Popover>
+        <MorphemeBox
+          analysisLanguage="en"
+          disabled={false}
+          morphemes={[
+            { id: 'm-1', form: 'hel', writingSystem: 'en', senseRef: testSenseRef('s-hel') },
+          ]}
+          popoverOpen={false}
+          readOnly
+          renderSenseLink={renderSenseLink}
+          token={WORD_TOKEN}
+        />
+      </Popover>,
+      { 's-hel': { gloss: { en: 'greet' } } },
+    );
+    const { container } = render(withTooltipProvider(ui));
+
+    await screen.findByText('greet');
+    expect(container.querySelector('[data-testid="morpheme-lexicon-mark"]')).toBeNull();
+  });
+});
+
 describe('morphemes linked to a lexicon sense', () => {
   const LINKED: MorphemeAnalysis[] = [
     { id: 'm-1', form: 'hel', writingSystem: 'en', senseRef: testSenseRef('s-hel') },

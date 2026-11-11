@@ -1,3 +1,4 @@
+import type { SenseCandidate } from 'interlinearizer/lexicon';
 import { ChevronDown, ChevronRight, SearchX, TriangleAlert } from 'lucide-react';
 import {
   Button,
@@ -10,8 +11,9 @@ import {
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import type { CatalogRow } from '../utils/analysis-query';
 import { resolvedOrEmpty } from '../utils/localized-strings';
-import { SENSE_LINK_MARK_STRING_KEYS, SenseLinkMark } from './CatalogSenseLinks';
-import { useLinkedGloss } from './LexiconSenses';
+import { useAnalysisReadOnly } from './AnalysisStore';
+import CatalogSenseControl, { SENSE_CONTROL_STRING_KEYS } from './CatalogSenseControl';
+import { useDisplayedGloss } from './LexiconSenses';
 import LocalizedTooltip from './LocalizedTooltip';
 
 /** Localized string keys a row header renders. */
@@ -21,7 +23,7 @@ export const ROW_HEADER_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_usageCount%',
   '%interlinearizer_analysisCatalog_staleCount%',
   '%interlinearizer_analysisCatalog_notInText%',
-  ...SENSE_LINK_MARK_STRING_KEYS,
+  ...SENSE_CONTROL_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link CatalogRowHeader}. */
@@ -45,14 +47,21 @@ type CatalogRowHeaderProps = Readonly<{
    * analysis, which no bulk action applies to.
    */
   onCheckedChange?: (analysisId: string, checked: boolean) => void;
+  /** Links the analysis to the picked lexicon sense, replacing any link. */
+  onLinkSense: (candidate: SenseCandidate) => void;
+  /** Drops the analysis's sense link; `keepGloss` is the sense gloss to keep as its typed gloss. */
+  onUnlinkSense: (keepGloss?: string) => void;
+  /** Writes the linked sense's gloss as the analysis's typed gloss. */
+  onAdoptSenseGloss: (senseGloss: string) => void;
   /** Resolved localizations covering at least {@link ROW_HEADER_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
 }>;
 
 /**
  * The line a catalog row always shows: its check box, and the toggle naming the analysis by its
- * surface form, gloss, and usage counts. A gloss whose analysis links to a lexicon sense is marked.
- * Where the analysis stores no gloss, the sense's gloss is shown in its place.
+ * surface form, gloss, and usage counts. Beside the surface form sits the control for the
+ * analysis's lexicon sense link. Where the analysis stores no gloss, the linked sense's gloss is
+ * shown in its place.
  */
 export default function CatalogRowHeader({
   row,
@@ -63,17 +72,25 @@ export default function CatalogRowHeader({
   isNotInText,
   isChecked,
   onCheckedChange,
+  onLinkSense,
+  onUnlinkSense,
+  onAdoptSenseGloss,
   localizedStrings,
 }: CatalogRowHeaderProps) {
+  const readOnly = useAnalysisReadOnly();
   const usageCountLabel = localizedStrings['%interlinearizer_analysisCatalog_usageCount%'];
   const staleCountLabel = localizedStrings['%interlinearizer_analysisCatalog_staleCount%'];
   const notInTextLabel = localizedStrings['%interlinearizer_analysisCatalog_notInText%'];
 
-  const link = useLinkedGloss(row.gloss, row.glossSenseRef, analysisLanguage);
+  const { text: displayedGloss } = useDisplayedGloss(
+    row.gloss,
+    row.glossSenseRef,
+    analysisLanguage,
+  );
   // This is visible cell text, so blanking an unresolved key would empty the gloss column. The em
   // dash reads as "no gloss" in any language and stands in until the lookup lands.
   const glossLabel =
-    link.text ||
+    displayedGloss ||
     resolvedOrEmpty(localizedStrings['%interlinearizer_analysisCatalog_noGloss%']) ||
     '—';
 
@@ -96,11 +113,28 @@ export default function CatalogRowHeader({
             { form: row.surfaceText, gloss: glossLabel },
           )}
           checked={isChecked}
-          className="tw:col-start-1 tw:me-2"
+          className="tw:col-start-1 tw:row-start-1 tw:me-2"
           data-testid="catalog-row-check"
           onCheckedChange={(checked: boolean) => onCheckedChange(row.analysisId, checked)}
         />
       )}
+      {/*
+        A sibling of the toggle rather than a child: a button may not hold a button, and a click
+        here must not expand the row. It sits in the column that the toggle's grid leaves empty
+        after the surface form, stacked above the toggle.
+      */}
+      <CatalogSenseControl
+        analysisLanguage={analysisLanguage}
+        className="tw:col-start-4 tw:row-start-1 tw:relative tw:z-10 tw:self-center"
+        form={row.surfaceText}
+        gloss={row.gloss}
+        localizedStrings={localizedStrings}
+        onAdopt={onAdoptSenseGloss}
+        onLink={onLinkSense}
+        onUnlink={onUnlinkSense}
+        readOnly={readOnly}
+        senseRef={row.glossSenseRef}
+      />
       {/*
         Carries no `aria-label`: a name on a button overrides its content, so one here would
         announce every row alike and suppress the analysis each lists.
@@ -109,7 +143,7 @@ export default function CatalogRowHeader({
         aria-expanded={isExpanded}
         // Overrides the platform button's own box: this is a row of the list, not a control
         // sitting in one.
-        className="tw:col-[2/-1] tw:grid tw:grid-cols-subgrid tw:h-auto tw:items-baseline tw:gap-0 tw:rounded-none tw:px-0 tw:py-2 tw:text-start tw:font-normal tw:hover:bg-transparent tw:dark:hover:bg-transparent tw:aria-expanded:bg-transparent"
+        className="tw:col-[2/-1] tw:row-start-1 tw:grid tw:grid-cols-subgrid tw:h-auto tw:items-baseline tw:gap-0 tw:rounded-none tw:px-0 tw:py-2 tw:text-start tw:font-normal tw:hover:bg-transparent tw:dark:hover:bg-transparent tw:aria-expanded:bg-transparent"
         data-testid="catalog-row-toggle"
         onClick={onToggle}
         type="button"
@@ -134,7 +168,8 @@ export default function CatalogRowHeader({
           </TooltipTrigger>
           <TooltipContent>{row.surfaceText}</TooltipContent>
         </Tooltip>
-        <span className="tw:ms-2 tw:flex tw:min-w-0 tw:items-baseline tw:gap-1">
+        {/* Starts after the column the sense control above the toggle occupies. */}
+        <span className="tw:col-start-4 tw:ms-2 tw:flex tw:min-w-0 tw:items-baseline tw:gap-1">
           <Tooltip open={glossTooltip.open}>
             <TooltipTrigger asChild>
               <span
@@ -149,7 +184,6 @@ export default function CatalogRowHeader({
             </TooltipTrigger>
             <TooltipContent>{glossLabel}</TooltipContent>
           </Tooltip>
-          {row.glossSenseRef && <SenseLinkMark link={link} localizedStrings={localizedStrings} />}
         </span>
         <LocalizedTooltip label={usageCountLabel}>
           <span

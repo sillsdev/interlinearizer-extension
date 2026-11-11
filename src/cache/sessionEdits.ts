@@ -1,8 +1,10 @@
 import papi, { logger } from '@papi/frontend';
 import type {
+  EntryRef,
   MergedContent,
   PhraseAnalysisLink,
   RemovalPreviewRequest,
+  SenseRef,
   SessionEditArgs,
   TokenSnapshot,
 } from 'interlinearizer';
@@ -377,6 +379,25 @@ export function useAnalysisRowDispatch(): {
     morphemeId: string,
     value: string,
   ) => Promise<AnalysisEditOutcome>;
+  linkSense: (analysisId: string, senseRef: SenseRef) => Promise<AnalysisEditOutcome>;
+  unlinkSense: (analysisId: string, keepGloss?: string) => Promise<AnalysisEditOutcome>;
+  linkMorphemeSense: (
+    analysisId: string,
+    morphemeId: string,
+    entryRef: EntryRef,
+    senseRef: SenseRef,
+  ) => Promise<AnalysisEditOutcome>;
+  unlinkMorphemeSense: (
+    analysisId: string,
+    morphemeId: string,
+    keepGloss?: string,
+  ) => Promise<AnalysisEditOutcome>;
+  adoptSenseGloss: (analysisId: string, value: string) => Promise<AnalysisEditOutcome>;
+  adoptMorphemeSenseGloss: (
+    analysisId: string,
+    morphemeId: string,
+    value: string,
+  ) => Promise<AnalysisEditOutcome>;
   deleteAnalyses: (analysisIds: readonly string[]) => Promise<void>;
   mergeAll: (
     survivorAnalysisId: string,
@@ -442,6 +463,76 @@ export function useAnalysisRowDispatch(): {
         outcomeOf(
           await send('writeAnalysisMorphemeGloss', (args) =>
             papi.commands.sendCommand('interlinearizer.writeAnalysisMorphemeGloss', {
+              ...args,
+              analysisId,
+              morphemeId,
+              value,
+            }),
+          ),
+          analysisId,
+        ),
+      linkSense: async (analysisId, senseRef) =>
+        outcomeOf(
+          await send('linkAnalysisSense', (args) =>
+            papi.commands.sendCommand('interlinearizer.linkAnalysisSense', {
+              ...args,
+              analysisId,
+              senseRef,
+            }),
+          ),
+          analysisId,
+        ),
+      unlinkSense: async (analysisId, keepGloss) =>
+        outcomeOf(
+          await send('unlinkAnalysisSense', (args) =>
+            papi.commands.sendCommand('interlinearizer.unlinkAnalysisSense', {
+              ...args,
+              analysisId,
+              keepGloss,
+            }),
+          ),
+          analysisId,
+        ),
+      linkMorphemeSense: async (analysisId, morphemeId, entryRef, senseRef) =>
+        outcomeOf(
+          await send('linkAnalysisMorphemeSense', (args) =>
+            papi.commands.sendCommand('interlinearizer.linkAnalysisMorphemeSense', {
+              ...args,
+              analysisId,
+              morphemeId,
+              entryRef,
+              senseRef,
+            }),
+          ),
+          analysisId,
+        ),
+      unlinkMorphemeSense: async (analysisId, morphemeId, keepGloss) =>
+        outcomeOf(
+          await send('unlinkAnalysisMorphemeSense', (args) =>
+            papi.commands.sendCommand('interlinearizer.unlinkAnalysisMorphemeSense', {
+              ...args,
+              analysisId,
+              morphemeId,
+              keepGloss,
+            }),
+          ),
+          analysisId,
+        ),
+      adoptSenseGloss: async (analysisId, value) =>
+        outcomeOf(
+          await send('adoptAnalysisSenseGloss', (args) =>
+            papi.commands.sendCommand('interlinearizer.adoptAnalysisSenseGloss', {
+              ...args,
+              analysisId,
+              value,
+            }),
+          ),
+          analysisId,
+        ),
+      adoptMorphemeSenseGloss: async (analysisId, morphemeId, value) =>
+        outcomeOf(
+          await send('adoptAnalysisMorphemeSenseGloss', (args) =>
+            papi.commands.sendCommand('interlinearizer.adoptAnalysisMorphemeSenseGloss', {
               ...args,
               analysisId,
               morphemeId,

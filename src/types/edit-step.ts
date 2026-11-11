@@ -9,7 +9,15 @@ type CatalogStepSummary = {
 
 /** What an undo step made at no one place tells the reader it was, once undone or redone. */
 type StepSummary = Readonly<
-  | (CatalogStepSummary & { kind: 'catalogEdit' | 'catalogMerge' | 'catalogDeleteUnused' })
+  | (CatalogStepSummary & {
+      kind:
+        | 'catalogEdit'
+        | 'catalogMerge'
+        | 'catalogDeleteUnused'
+        | 'catalogLinkSense'
+        | 'catalogUnlinkSense'
+        | 'catalogAdoptGloss';
+    })
   | (CatalogStepSummary & {
       kind: 'catalogDelete';
       /** How many uses the deleted analysis had, never zero. */

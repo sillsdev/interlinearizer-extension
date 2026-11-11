@@ -1,3 +1,4 @@
+import type { SenseCandidate } from 'interlinearizer/lexicon';
 import { Button } from 'platform-bible-react';
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
 import { memo, useCallback, useRef, useState } from 'react';
@@ -7,7 +8,6 @@ import CatalogRowEditor, {
   ROW_EDITOR_STRING_KEYS,
 } from './CatalogRowEditor';
 import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from './CatalogRowHeader';
-import CatalogSenseLinks, { SENSE_LINKS_STRING_KEYS } from './CatalogSenseLinks';
 import CatalogStaleLocations, { STALE_LOCATION_STRING_KEYS } from './CatalogStaleLocations';
 import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
 import type { Settles } from '../utils/settles';
@@ -24,7 +24,6 @@ export const ROW_STRING_KEYS = [
   ...ROW_HEADER_STRING_KEYS,
   ...ROW_EDITOR_STRING_KEYS,
   ...STALE_LOCATION_STRING_KEYS,
-  ...SENSE_LINKS_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -89,6 +88,18 @@ type CatalogRowViewProps = Readonly<{
     morphemeId: string,
     value: string,
   ) => Settles<unknown>;
+  /** Links this row's analysis to the picked lexicon sense, replacing any link. */
+  onLinkSense: (analysisId: string, candidate: SenseCandidate) => void;
+  /** Drops this row's sense link; `keepGloss` is the sense gloss to keep as its typed gloss. */
+  onUnlinkSense: (analysisId: string, keepGloss?: string) => void;
+  /** Writes the sense this row links to as its typed gloss. */
+  onAdoptSenseGloss: (analysisId: string, senseGloss: string) => void;
+  /** Links one of this row's morphemes to the picked lexicon sense, replacing any link. */
+  onLinkMorphemeSense: (analysisId: string, morphemeId: string, candidate: SenseCandidate) => void;
+  /** Drops a morpheme's sense link; `keepGloss` is the sense gloss to keep as its typed gloss. */
+  onUnlinkMorphemeSense: (analysisId: string, morphemeId: string, keepGloss?: string) => void;
+  /** Writes the sense a morpheme links to as its typed gloss. */
+  onAdoptMorphemeSenseGloss: (analysisId: string, morphemeId: string, senseGloss: string) => void;
   /**
    * Opens the merge picker for this row. Absent when the analysis shares its form with no other
    * record, which is how the merge control is withheld from a row with nothing to merge with.
@@ -148,6 +159,12 @@ function CatalogRowView({
   onMorphemesCommit,
   onMorphemesConfirm,
   onMorphemeGlossCommit,
+  onLinkSense,
+  onUnlinkSense,
+  onAdoptSenseGloss,
+  onLinkMorphemeSense,
+  onUnlinkMorphemeSense,
+  onAdoptMorphemeSenseGloss,
   onMergeRequest,
   onDeleteRequest,
   revealRequest,
@@ -202,6 +219,33 @@ function CatalogRowView({
   const handleMorphemeGlossCommit = useCallback(
     (morphemeId: string, value: string) => onMorphemeGlossCommit(analysisId, morphemeId, value),
     [analysisId, onMorphemeGlossCommit],
+  );
+  const handleLinkSense = useCallback(
+    (candidate: SenseCandidate) => onLinkSense(analysisId, candidate),
+    [analysisId, onLinkSense],
+  );
+  const handleUnlinkSense = useCallback(
+    (keepGloss?: string) => onUnlinkSense(analysisId, keepGloss),
+    [analysisId, onUnlinkSense],
+  );
+  const handleAdoptSenseGloss = useCallback(
+    (senseGloss: string) => onAdoptSenseGloss(analysisId, senseGloss),
+    [analysisId, onAdoptSenseGloss],
+  );
+  const handleLinkMorphemeSense = useCallback(
+    (morphemeId: string, candidate: SenseCandidate) =>
+      onLinkMorphemeSense(analysisId, morphemeId, candidate),
+    [analysisId, onLinkMorphemeSense],
+  );
+  const handleUnlinkMorphemeSense = useCallback(
+    (morphemeId: string, keepGloss?: string) =>
+      onUnlinkMorphemeSense(analysisId, morphemeId, keepGloss),
+    [analysisId, onUnlinkMorphemeSense],
+  );
+  const handleAdoptMorphemeSenseGloss = useCallback(
+    (morphemeId: string, senseGloss: string) =>
+      onAdoptMorphemeSenseGloss(analysisId, morphemeId, senseGloss),
+    [analysisId, onAdoptMorphemeSenseGloss],
   );
   const handleMergeRequest = useCallback(
     () => onMergeRequest?.(analysisId),
@@ -261,8 +305,11 @@ function CatalogRowView({
         isExpanded={isExpanded}
         isNotInText={isNotInText}
         localizedStrings={localizedStrings}
+        onAdoptSenseGloss={handleAdoptSenseGloss}
         onCheckedChange={onCheckedChange}
+        onLinkSense={handleLinkSense}
         onToggle={handleToggle}
+        onUnlinkSense={handleUnlinkSense}
         row={row}
         usageCountInBookLabel={usageCountInBookLabel}
       />
@@ -283,23 +330,16 @@ function CatalogRowView({
             morphemes={row.morphemes}
             morphemesStale={row.morphemesStale}
             showMorphology={showMorphology}
+            onAdoptMorphemeSenseGloss={handleAdoptMorphemeSenseGloss}
             onBreakdownDraftChange={handleBreakdownDraftChange}
             onGlossCommit={handleGlossCommit}
+            onLinkMorphemeSense={handleLinkMorphemeSense}
             onMorphemeGlossCommit={handleMorphemeGlossCommit}
             onMorphemesCommit={handleMorphemesCommit}
             onMorphemesConfirm={handleMorphemesConfirm}
+            onUnlinkMorphemeSense={handleUnlinkMorphemeSense}
             surfaceText={row.surfaceText}
             usageCount={row.usageCount}
-          />
-
-          <CatalogSenseLinks
-            analysisLanguage={analysisLanguage}
-            gloss={row.gloss}
-            glossSenseRef={row.glossSenseRef}
-            localizedStrings={localizedStrings}
-            morphemes={row.morphemes}
-            showMorphology={showMorphology}
-            surfaceText={row.surfaceText}
           />
 
           {row.usages.length === 0 && row.staleLocations.length === 0 && (

@@ -1,4 +1,5 @@
 import { useSetting } from '@papi/frontend/react';
+import type { SenseCandidate } from 'interlinearizer/lexicon';
 import { X } from 'lucide-react';
 import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
 import {
@@ -670,6 +671,65 @@ export default function AnalysisCatalogPanel({
     [reportEditOutcome, rowDispatch, runRowEdit, surfaceTextOf],
   );
 
+  /**
+   * Runs a sense-link edit on the row `analysisId`, reporting a collapse into an identical row as
+   * any other row edit does.
+   */
+  const runSenseEdit = useCallback(
+    (analysisId: string, edit: () => Settles<AnalysisEditOutcome>) => {
+      const form = surfaceTextOf(analysisId);
+      runRowEdit(edit, (outcome) => reportEditOutcome(outcome, form));
+    },
+    [reportEditOutcome, runRowEdit, surfaceTextOf],
+  );
+
+  const handleLinkSense = useCallback(
+    (analysisId: string, candidate: SenseCandidate) =>
+      runSenseEdit(analysisId, () => rowDispatch.linkSense(analysisId, candidate.senseRef)),
+    [rowDispatch, runSenseEdit],
+  );
+
+  const handleUnlinkSense = useCallback(
+    (analysisId: string, keepGloss?: string) =>
+      runSenseEdit(analysisId, () => rowDispatch.unlinkSense(analysisId, keepGloss)),
+    [rowDispatch, runSenseEdit],
+  );
+
+  const handleAdoptSenseGloss = useCallback(
+    (analysisId: string, senseGloss: string) =>
+      runSenseEdit(analysisId, () => rowDispatch.adoptSenseGloss(analysisId, senseGloss)),
+    [rowDispatch, runSenseEdit],
+  );
+
+  const handleLinkMorphemeSense = useCallback(
+    (analysisId: string, morphemeId: string, candidate: SenseCandidate) =>
+      runSenseEdit(analysisId, () =>
+        rowDispatch.linkMorphemeSense(
+          analysisId,
+          morphemeId,
+          candidate.entryRef,
+          candidate.senseRef,
+        ),
+      ),
+    [rowDispatch, runSenseEdit],
+  );
+
+  const handleUnlinkMorphemeSense = useCallback(
+    (analysisId: string, morphemeId: string, keepGloss?: string) =>
+      runSenseEdit(analysisId, () =>
+        rowDispatch.unlinkMorphemeSense(analysisId, morphemeId, keepGloss),
+      ),
+    [rowDispatch, runSenseEdit],
+  );
+
+  const handleAdoptMorphemeSenseGloss = useCallback(
+    (analysisId: string, morphemeId: string, senseGloss: string) =>
+      runSenseEdit(analysisId, () =>
+        rowDispatch.adoptMorphemeSenseGloss(analysisId, morphemeId, senseGloss),
+      ),
+    [rowDispatch, runSenseEdit],
+  );
+
   const handleMorphemesConfirm = useCallback(
     (analysisId: string) => confirmMorphemes(analysisId),
     [confirmMorphemes],
@@ -1127,13 +1187,19 @@ export default function AnalysisCatalogPanel({
                   // No discard prompt follows: the row's delete confirmation already covers the
                   // analysis's unsaved breakdown.
                   onDeleteRequest={deleteAnalysis}
+                  onAdoptMorphemeSenseGloss={handleAdoptMorphemeSenseGloss}
+                  onAdoptSenseGloss={handleAdoptSenseGloss}
                   onGlossCommit={handleGlossCommit}
+                  onLinkMorphemeSense={handleLinkMorphemeSense}
+                  onLinkSense={handleLinkSense}
                   onMergeRequest={
                     idsWithMergePeers.has(row.analysisId) ? handleMergeRequest : undefined
                   }
                   onMorphemeGlossCommit={handleMorphemeGlossCommit}
                   onMorphemesCommit={handleMorphemesCommit}
                   onMorphemesConfirm={handleMorphemesConfirm}
+                  onUnlinkMorphemeSense={handleUnlinkMorphemeSense}
+                  onUnlinkSense={handleUnlinkSense}
                   onStaleDiscard={handleStaleDiscard}
                   onStaleReapply={handleStaleReapply}
                   onStaleSelect={handleStaleSelect}

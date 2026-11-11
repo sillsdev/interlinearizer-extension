@@ -6,9 +6,11 @@ import type { ReactNode } from 'react';
 import {
   LexiconSensesProvider,
   useDisplayedGloss,
+  useLexiconSearch,
   useLinkedGloss,
 } from '../../components/LexiconSenses';
-import { stubLexiconRegistry, testSenseRef } from './test-helpers';
+import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
+import { stubLexiconRegistry, TEST_LEXICON_AUTHORITY, testSenseRef } from './test-helpers';
 
 const SENSES = {
   's-1': { gloss: { en: 'water', fr: 'eau' } },
@@ -167,7 +169,115 @@ describe('useLinkedGloss', () => {
       fromLexicon: false,
       senseGloss: '',
       differs: false,
+      lexiconAnswered: false,
     });
     expect(resolveSense).not.toHaveBeenCalled();
+  });
+
+  it('reports the lexicon as answered once it has the sense', async () => {
+    const { result } = renderLinkedGloss('', testSenseRef('s-1'));
+
+    expect(result.current.lexiconAnswered).toBe(false);
+    await waitFor(() => expect(result.current.lexiconAnswered).toBe(true));
+  });
+
+  it('reports the lexicon as answered when it has no such sense', async () => {
+    const { result } = renderLinkedGloss('', testSenseRef('gone'));
+
+    await waitFor(() => expect(result.current.lexiconAnswered).toBe(true));
+  });
+
+  it('reports no answer for a foreign link', async () => {
+    const { result, resolveSense } = renderLinkedGloss('', {
+      authority: 'elsewhere',
+      senseId: 's-1',
+    });
+
+    await waitFor(() => expect(result.current.text).toBe(''));
+    expect(result.current.lexiconAnswered).toBe(false);
+    expect(resolveSense).not.toHaveBeenCalled();
+  });
+
+  it('reports no answer when the look-up fails', async () => {
+    const resolveSense = jest.fn().mockRejectedValue(new Error('unreachable'));
+    const registry = createLexiconRegistry([
+      { ...nullLexiconResolver, authorities: [TEST_LEXICON_AUTHORITY], resolveSense },
+    ]);
+    const wrapper = ({ children }: Readonly<{ children: ReactNode }>) => (
+      <LexiconSensesProvider registry={registry}>{children}</LexiconSensesProvider>
+    );
+    const { result } = renderHook(() => useLinkedGloss('', testSenseRef('s-1'), 'en'), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(resolveSense).toHaveBeenCalled());
+    await act(async () => {
+      await resolveSense.mock.results[0].value.catch(() => {});
+    });
+    expect(result.current.lexiconAnswered).toBe(false);
+  });
+
+  it('reports no answer outside any lexicon', async () => {
+    const { result } = renderHook(() => useLinkedGloss('', testSenseRef('s-1'), 'en'));
+
+    expect(result.current.lexiconAnswered).toBe(false);
+  });
+});
+
+describe('useLexiconSearch', () => {
+  const CANDIDATE = {
+    gloss: { en: 'water' },
+    entryRef: { authority: TEST_LEXICON_AUTHORITY, entryId: 'e-1' },
+    senseRef: testSenseRef('s-1'),
+  };
+
+  /** A wrapper connecting the lexicons `resolvers`. */
+  function connecting(...resolvers: Parameters<typeof createLexiconRegistry>[0]) {
+    const registry = createLexiconRegistry(resolvers);
+    return function Wrapper({ children }: Readonly<{ children: ReactNode }>) {
+      return <LexiconSensesProvider registry={registry}>{children}</LexiconSensesProvider>;
+    };
+  }
+
+  it('is unavailable outside any lexicon', () => {
+    const { result } = renderHook(() => useLexiconSearch());
+
+    expect(result.current).toBeUndefined();
+  });
+
+  it('is unavailable when no connected lexicon can search', () => {
+    const { result } = renderHook(() => useLexiconSearch(), {
+      wrapper: connecting(nullLexiconResolver),
+    });
+
+    expect(result.current).toBeUndefined();
+  });
+
+  it('searches through the first lexicon that can', async () => {
+    const searchByForm = jest.fn(async () => [CANDIDATE]);
+    const { result } = renderHook(() => useLexiconSearch(), {
+      wrapper: connecting(nullLexiconResolver, {
+        ...nullLexiconResolver,
+        capabilities: { ...nullLexiconResolver.capabilities, search: true },
+        searchByForm,
+      }),
+    });
+
+    await expect(result.current?.('wat')).resolves.toEqual([CANDIDATE]);
+    expect(searchByForm).toHaveBeenCalledWith('wat');
+  });
+
+  it('keeps one function across renders while the lexicons stay the same', () => {
+    const { result, rerender } = renderHook(() => useLexiconSearch(), {
+      wrapper: connecting({
+        ...nullLexiconResolver,
+        capabilities: { ...nullLexiconResolver.capabilities, search: true },
+      }),
+    });
+    const first = result.current;
+
+    rerender();
+
+    expect(result.current).toBe(first);
   });
 });

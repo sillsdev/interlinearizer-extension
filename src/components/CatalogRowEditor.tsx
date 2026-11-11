@@ -1,7 +1,8 @@
 import type { MorphemeAnalysis, SenseRef } from 'interlinearizer';
+import type { SenseCandidate } from 'interlinearizer/lexicon';
 import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import type { CatalogRow } from '../utils/analysis-query';
 import { multiStringText } from '../utils/multi-string';
@@ -9,7 +10,8 @@ import { resolvedOrEmpty } from '../utils/localized-strings';
 import type { Settles } from '../utils/settles';
 import { useAnalysisReadOnly, useReportGlossEditing } from './AnalysisStore';
 import useLatestRef from '../hooks/useLatestRef';
-import { useDisplayedGloss } from './LexiconSenses';
+import CatalogSenseControl, { SENSE_CONTROL_STRING_KEYS } from './CatalogSenseControl';
+import { useLexiconSearch, useLinkedGloss } from './LexiconSenses';
 import { ModalShell } from './modals/ModalShell';
 import { BoxAlignedField, MorphemeBox, ROW_LABEL_CLASS } from './MorphemeBox';
 import { MorphemeBreakdownPopover, type MorphemeEditorLabels } from './MorphemeEditor';
@@ -30,6 +32,7 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_confirmResplitAction%',
   '%interlinearizer_analysisCatalog_morphemeGloss%',
   '%interlinearizer_analysisCatalog_morphemeNoGloss%',
+  '%interlinearizer_analysisCatalog_morphemeSenseLinks%',
   '%interlinearizer_analysisCatalog_noGloss%',
   '%interlinearizer_analysisCatalog_appliesToAll%',
   '%interlinearizer_analysisCatalog_merge%',
@@ -37,6 +40,7 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_deleteConfirmTitle%',
   '%interlinearizer_analysisCatalog_deleteConfirmPrompt%',
   '%interlinearizer_analysisCatalog_deleteConfirmCancel%',
+  ...SENSE_CONTROL_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link CatalogRowEditor}. */
@@ -47,8 +51,8 @@ type CatalogRowEditorProps = Readonly<{
   /** The analysis's gloss in the active language, `''` when it has none. */
   gloss: string;
   /**
-   * The sense the analysis links to, whose gloss a read-only row shows where the analysis stores
-   * none.
+   * The sense the analysis links to. Its gloss is the gloss field's placeholder, and a read-only
+   * row shows it where the analysis stores none.
    */
   glossSenseRef?: SenseRef;
   /** How many tokens this analysis is applied to, which every edit here rewrites at once. */
@@ -74,6 +78,12 @@ type CatalogRowEditorProps = Readonly<{
    * leaves the edit unsent, for the field to send again.
    */
   onMorphemeGlossCommit: (morphemeId: string, value: string) => Settles<unknown>;
+  /** Links one morpheme to the picked lexicon sense, replacing any link. */
+  onLinkMorphemeSense: (morphemeId: string, candidate: SenseCandidate) => void;
+  /** Drops one morpheme's sense link; `keepGloss` is the sense gloss to keep as its typed gloss. */
+  onUnlinkMorphemeSense: (morphemeId: string, keepGloss?: string) => void;
+  /** Writes the sense one morpheme links to as its typed gloss. */
+  onAdoptMorphemeSenseGloss: (morphemeId: string, senseGloss: string) => void;
   /**
    * The breakdown draft, or `undefined` while the breakdown editor is closed. Held by the caller,
    * which outlives this editor's own mounting.
@@ -255,17 +265,23 @@ function CommitOnBlurInput({
   committedValue,
   id,
   onCommit,
+  placeholder,
   retry,
   retryField,
+  style,
   testId,
 }: Readonly<{
   ariaLabel?: string;
   committedValue: string;
   id?: string;
   onCommit: (value: string) => Settles<unknown>;
+  /** Shown while the field is empty. */
+  placeholder?: string;
   retry: GlossRetry;
   /** The gloss this input edits, under which `retry` keeps its draft. */
   retryField: GlossField;
+  /** Inline style for the field, such as its grid placement. */
+  style?: CSSProperties;
   testId: string;
 }>) {
   const { language, analysisId, morphemeId } = retryField;
@@ -355,6 +371,8 @@ function CommitOnBlurInput({
           setDraft(committedValue);
         }
       }}
+      placeholder={placeholder}
+      style={style}
       type="text"
       value={draft}
     />
@@ -362,9 +380,56 @@ function CommitOnBlurInput({
 }
 
 /**
+ * One morpheme's gloss field, whose placeholder is the gloss of the lexicon sense the morpheme
+ * links to.
+ */
+function MorphemeGlossField({
+  morpheme,
+  analysisId,
+  analysisLanguage,
+  localizedStrings,
+  onCommit,
+  retry,
+  style,
+}: Readonly<{
+  morpheme: MorphemeAnalysis;
+  analysisId: string;
+  analysisLanguage: string;
+  localizedStrings: LanguageStrings;
+  onCommit: (value: string) => Settles<unknown>;
+  retry: GlossRetry;
+  /** Grid placement, which the breakdown box gives the field it renders. */
+  style?: CSSProperties;
+}>) {
+  const typed = morpheme.gloss?.[analysisLanguage] ?? '';
+  const { senseGloss } = useLinkedGloss(typed, morpheme.senseRef, analysisLanguage);
+  return (
+    <CommitOnBlurInput
+      ariaLabel={
+        resolvedOrEmpty(
+          formatReplacementString(
+            localizedStrings['%interlinearizer_analysisCatalog_morphemeGloss%'],
+            { form: morpheme.form },
+          ),
+        ) || undefined
+      }
+      committedValue={typed}
+      key={`${analysisLanguage}/${analysisId}-${morpheme.id}`}
+      onCommit={onCommit}
+      placeholder={senseGloss || undefined}
+      retry={retry}
+      retryField={{ language: analysisLanguage, analysisId, morphemeId: morpheme.id }}
+      style={style}
+      testId="catalog-row-morpheme-gloss-input"
+    />
+  );
+}
+
+/**
  * The editable half of an expanded catalog row: the analysis's gloss, its morpheme breakdown and
- * each morpheme's gloss. The controls acting on the analysis as a whole are
- * {@link CatalogRowActions}.
+ * each morpheme's gloss. A gloss field shows the gloss of its linked lexicon sense as a
+ * placeholder, and each morpheme's link control sits under its gloss in the breakdown box. The
+ * controls acting on the analysis as a whole are {@link CatalogRowActions}.
  *
  * Every write here is keyed by the analysis rather than by a token, so it changes what the record
  * says everywhere it is used — which the note above the fields says outright once more than one
@@ -392,6 +457,9 @@ export default function CatalogRowEditor({
   onMorphemesCommit,
   onMorphemesConfirm,
   onMorphemeGlossCommit,
+  onLinkMorphemeSense,
+  onUnlinkMorphemeSense,
+  onAdoptMorphemeSenseGloss,
   breakdownDraft,
   onBreakdownDraftChange,
   glossRetry,
@@ -399,11 +467,13 @@ export default function CatalogRowEditor({
 }: CatalogRowEditorProps) {
   const glossFieldId = useId();
   const readOnly = useAnalysisReadOnly();
-  // Only the read-only line shows the sense's gloss. The input shows what is typed, because editing
-  // it would otherwise leave unclear whether the sense's gloss was adopted.
-  const { text: displayedGloss } = useDisplayedGloss(
+  const canSearch = useLexiconSearch() !== undefined;
+  // The input holds only the typed gloss, so the sense's gloss is offered as its placeholder:
+  // filling the input with it would leave unclear whether the sense's gloss was adopted. The
+  // read-only line has no input to keep apart, and shows whichever gloss applies.
+  const { text: displayedGloss, senseGloss } = useLinkedGloss(
     gloss,
-    readOnly ? glossSenseRef : undefined,
+    glossSenseRef,
     analysisLanguage,
   );
 
@@ -430,6 +500,28 @@ export default function CatalogRowEditor({
       localizedStrings['%interlinearizer_analysisCatalog_confirmResplitAction%'],
     staleHint: localizedStrings['%interlinearizer_analysisCatalog_editMorphemesStaleHint%'],
   };
+
+  // The label names a row with something in it: a link to show, or one that can be made.
+  const senseLinksLabel =
+    morphemes.some((m) => m.senseRef) ||
+    (!readOnly && canSearch && morphemes.some((m) => m.form !== ''))
+      ? localizedStrings['%interlinearizer_analysisCatalog_morphemeSenseLinks%']
+      : undefined;
+
+  /** The control for one morpheme's lexicon link, which the breakdown box places under its gloss. */
+  const renderSenseLink = (morpheme: MorphemeAnalysis) => (
+    <CatalogSenseControl
+      analysisLanguage={analysisLanguage}
+      form={morpheme.form}
+      gloss={morpheme.gloss?.[analysisLanguage] ?? ''}
+      localizedStrings={localizedStrings}
+      onAdopt={(value) => onAdoptMorphemeSenseGloss(morpheme.id, value)}
+      onLink={(candidate) => onLinkMorphemeSense(morpheme.id, candidate)}
+      onUnlink={(keepGloss) => onUnlinkMorphemeSense(morpheme.id, keepGloss)}
+      readOnly={readOnly}
+      senseRef={morpheme.senseRef}
+    />
+  );
 
   // A read-only analysis shows what the record says and nothing that would rewrite it, the note
   // about an edit reaching every use included.
@@ -459,18 +551,18 @@ export default function CatalogRowEditor({
                 analysisLanguage={analysisLanguage}
                 disabled
                 glossTestId="readonly-catalog-morpheme-gloss"
-                // The row's "Lexicon senses" list marks each morpheme's link.
-                markLexiconGlosses={false}
                 morphemeTestId="catalog-row-morpheme"
                 morphemes={morphemes}
                 noGlossLabel={localizedStrings['%interlinearizer_analysisCatalog_morphemeNoGloss%']}
                 popoverOpen={false}
                 readOnly
+                renderSenseLink={renderSenseLink}
                 stale={morphemesStale}
                 rowLabels={{
                   forms: localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%'],
                   glosses:
                     localizedStrings['%interlinearizer_analysisCatalog_mergeMorphemeGlosses%'],
+                  senseLinks: senseLinksLabel,
                 }}
                 surfaceText={surfaceText}
               />
@@ -500,6 +592,7 @@ export default function CatalogRowEditor({
           id={glossFieldId}
           key={`${analysisLanguage}/${analysisId}-gloss`}
           onCommit={onGlossCommit}
+          placeholder={senseGloss || undefined}
           retry={glossRetry}
           retryField={{ language: analysisLanguage, analysisId }}
           testId="catalog-row-gloss-input"
@@ -545,27 +638,21 @@ export default function CatalogRowEditor({
                 onEditBreakdown={() => onBreakdownDraftChange(morphemeForms)}
                 popoverOpen={breakdownDraft !== undefined}
                 renderGloss={(morpheme) => (
-                  <CommitOnBlurInput
-                    ariaLabel={
-                      resolvedOrEmpty(
-                        formatReplacementString(
-                          localizedStrings['%interlinearizer_analysisCatalog_morphemeGloss%'],
-                          { form: morpheme.form },
-                        ),
-                      ) || undefined
-                    }
-                    committedValue={morpheme.gloss?.[analysisLanguage] ?? ''}
-                    key={`${analysisLanguage}/${analysisId}-${morpheme.id}`}
+                  <MorphemeGlossField
+                    analysisId={analysisId}
+                    analysisLanguage={analysisLanguage}
+                    localizedStrings={localizedStrings}
+                    morpheme={morpheme}
                     onCommit={(value) => onMorphemeGlossCommit(morpheme.id, value)}
                     retry={glossRetry}
-                    retryField={{ language: analysisLanguage, analysisId, morphemeId: morpheme.id }}
-                    testId="catalog-row-morpheme-gloss-input"
                   />
                 )}
+                renderSenseLink={renderSenseLink}
                 rowLabels={{
                   forms: localizedStrings['%interlinearizer_analysisCatalog_editMorphemes%'],
                   glosses:
                     localizedStrings['%interlinearizer_analysisCatalog_mergeMorphemeGlosses%'],
+                  senseLinks: senseLinksLabel,
                 }}
                 surfaceText={surfaceText}
               />

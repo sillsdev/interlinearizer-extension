@@ -7,8 +7,13 @@ import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
-import type { ResolvedSense } from 'interlinearizer/lexicon';
+import type {
+  AssignmentStatus,
+  MorphemeAnalysis,
+  TextAnalysis,
+  TokenAnalysisLink,
+} from 'interlinearizer';
+import type { ResolvedSense, SenseCandidate } from 'interlinearizer/lexicon';
 import {
   createRef,
   useEffect,
@@ -40,6 +45,7 @@ import {
 import {
   makeSourceText,
   mockKeyAsValueLocalizedStrings,
+  TEST_LEXICON_AUTHORITY,
   testSenseRef,
   withLexicon,
 } from './test-helpers';
@@ -167,6 +173,8 @@ type PanelOptions = Partial<{
   /** Whether every book has been checked for stale places. Defaults to only the opened ones. */
   /** Senses of the connected lexicon, keyed by sense id. Omitted, no lexicon is connected. */
   senses: Record<string, ResolvedSense>;
+  /** Searches the connected lexicon for the senses of a form. Omitted, the lexicon cannot search. */
+  search: (form: string) => Promise<SenseCandidate[]>;
 }>;
 
 /** Reads every token as still carrying the form its analysis was recorded under. */
@@ -245,7 +253,7 @@ function renderPanel(overrides: PanelOptions = {}) {
   // the same tree.
   return renderOver(
     overrides.analysis,
-    overrides.senses ? withLexicon(panel, overrides.senses).ui : panel,
+    overrides.senses ? withLexicon(panel, overrides.senses, overrides.search).ui : panel,
   );
 }
 
@@ -3397,7 +3405,7 @@ describe('AnalysisCatalogPanel', () => {
         );
       });
 
-      it("leaves marking a morpheme's link to the list of senses", async () => {
+      it("marks a morpheme's link under its gloss, without opening anything", async () => {
         const row = await expandLinkedRow();
 
         await waitFor(() =>
@@ -3406,11 +3414,12 @@ describe('AnalysisCatalogPanel', () => {
           ),
         );
         expect(within(row).queryByTestId('morpheme-lexicon-mark')).not.toBeInTheDocument();
+        expect(within(row).queryByTestId('catalog-sense-control')).not.toBeInTheDocument();
+        // The word's mark in the header, and the morpheme's under its gloss.
+        expect(within(row).getAllByTestId('catalog-sense-link')).toHaveLength(2);
         expect(
-          within(row)
-            .getAllByTestId('catalog-sense-line')
-            .map((line) => line.textContent),
-        ).toContainEqual(expect.stringContaining('λογ'));
+          within(row).getByTestId('readonly-catalog-morpheme-gloss-sense-links-row-label'),
+        ).toHaveTextContent('%interlinearizer_analysisCatalog_morphemeSenseLinks%');
       });
     });
 
@@ -3427,82 +3436,334 @@ describe('AnalysisCatalogPanel', () => {
   });
 
   describe('lexicon links', () => {
-    const LINKED: TextAnalysis = {
-      ...emptyAnalysis(),
-      tokenAnalyses: [
-        {
-          ...FIXTURE_STAMPS,
-          id: 'ta-1',
-          surfaceText: 'λόγος',
-          gloss: { en: 'word' },
-          glossSenseRef: testSenseRef('s-word'),
-        },
-      ],
-      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+    const SENSES = {
+      's-word': { gloss: { en: 'word' } },
+      's-stem': { gloss: { en: 'speak' } },
+      's-new': { gloss: { en: 'reason' } },
     };
 
-    it('marks a collapsed linked row without listing its sense', async () => {
+    /** A search hit for the sense `senseId`. */
+    function candidate(senseId: string): SenseCandidate {
+      return {
+        gloss: { en: senseId },
+        entryRef: { authority: TEST_LEXICON_AUTHORITY, entryId: `e-${senseId}` },
+        senseRef: testSenseRef(senseId),
+      };
+    }
+
+    const search = async () => [candidate('s-new')];
+
+    /** An analysis of one word, with whatever a case sets beyond its form. */
+    function wordAnalysis(
+      overrides: Partial<TextAnalysis['tokenAnalyses'][number]> = {},
+    ): TextAnalysis['tokenAnalyses'][number] {
+      return { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', ...overrides };
+    }
+
+    /** A one-word draft holding `analysis`. */
+    function draftOf(...analyses: TextAnalysis['tokenAnalyses']): TextAnalysis {
+      return {
+        ...emptyAnalysis(),
+        tokenAnalyses: analyses,
+        tokenAnalysisLinks: analyses.map((a, i) =>
+          link(a.id, `GEN 1:1:${i}`, 'approved', a.surfaceText),
+        ),
+      };
+    }
+
+    /** The stem of `λόγος`, as a morpheme carrying `overrides`. */
+    function stem(overrides: Partial<MorphemeAnalysis> = {}): MorphemeAnalysis {
+      return { ...FIXTURE_STAMPS, id: 'm-1', form: 'λογ', writingSystem: 'el', ...overrides };
+    }
+
+    /** Opens the control in `scope` and chooses the action named `key`. */
+    async function chooseAction(scope: HTMLElement, key: string): Promise<void> {
+      await userEvent.click(await within(scope).findByTestId('catalog-sense-control'));
+      await userEvent.click(screen.getByText(`%interlinearizer_analysisCatalog_${key}%`));
+    }
+
+    /** Opens the control in `scope`, searches, and picks the one sense found. */
+    async function linkFrom(scope: HTMLElement): Promise<void> {
+      await chooseAction(scope, 'senseLinkAction');
+      await userEvent.click(await screen.findByTestId('catalog-sense-candidate'));
+      await settle();
+    }
+
+    /** The detail of the expanded row `ta-1`. */
+    async function expandRow(): Promise<HTMLElement> {
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      return within(rowFor('ta-1')).getByTestId('catalog-row-detail');
+    }
+
+    it('offers the control beside the surface form of a linked row', async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ gloss: { en: 'word' }, glossSenseRef: testSenseRef('s-word') }),
+        ),
+        senses: SENSES,
+      });
+
+      const control = await within(rowFor('ta-1')).findByTestId('catalog-sense-control');
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-toggle')).not.toContainElement(
+        control,
+      );
+    });
+
+    it('shows the mark alone on a read-only row, which it opens nothing from', async () => {
       const { unmount } = await renderPanel({
-        analysis: LINKED,
-        senses: { 's-word': { gloss: { en: 'word' } } },
+        analysis: draftOf(
+          wordAnalysis({ gloss: { en: 'word' }, glossSenseRef: testSenseRef('s-word') }),
+        ),
+        readOnly: true,
+        senses: SENSES,
+        search,
       });
 
       expect(within(rowFor('ta-1')).getByTestId('catalog-sense-link')).toBeInTheDocument();
-      expect(within(rowFor('ta-1')).queryByTestId('catalog-sense-links')).not.toBeInTheDocument();
+      expect(within(rowFor('ta-1')).queryByTestId('catalog-sense-control')).not.toBeInTheDocument();
       // Nothing marks the lookup landing, because the sense resolves to the gloss already shown.
       // Closing the panel keeps the lookup from landing after the test.
       unmount();
     });
 
-    it("lists a linked row's sense once the row is expanded", async () => {
-      await renderPanel({ analysis: LINKED, senses: { 's-word': { gloss: { en: 'word' } } } });
+    it("offers the senses' glosses as placeholders for the gloss inputs, leaving them empty", async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({
+            glossSenseRef: testSenseRef('s-word'),
+            morphemes: [stem({ senseRef: testSenseRef('s-stem') })],
+          }),
+        ),
+        senses: SENSES,
+      });
 
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      const detail = await expandRow();
 
-      expect(await within(rowFor('ta-1')).findByTestId('catalog-sense-gloss')).toHaveTextContent(
-        'word',
+      const wordInput = within(detail).getByTestId('catalog-row-gloss-input');
+      const stemInput = within(detail).getByTestId('catalog-row-morpheme-gloss-input');
+      await waitFor(() => expect(wordInput).toHaveAttribute('placeholder', 'word'));
+      await waitFor(() => expect(stemInput).toHaveAttribute('placeholder', 'speak'));
+      expect(wordInput).toHaveValue('');
+      expect(stemInput).toHaveValue('');
+    });
+
+    it('shows the sense gloss in the header where nothing is typed', async () => {
+      await renderPanel({
+        analysis: draftOf(wordAnalysis({ glossSenseRef: testSenseRef('s-word') })),
+        senses: SENSES,
+      });
+
+      await waitFor(() =>
+        expect(within(rowFor('ta-1')).getByTestId('catalog-row-gloss')).toHaveTextContent('word'),
       );
     });
 
-    it('leaves the gloss inputs to what is typed where only the senses gloss', async () => {
+    it('links a word to a sense found by searching its form', async () => {
+      await renderPanel({ analysis: draftOf(wordAnalysis()), senses: SENSES, search });
+
+      await linkFrom(rowFor('ta-1'));
+
+      expect((await savedAnalysis()).tokenAnalyses[0].glossSenseRef).toEqual(testSenseRef('s-new'));
+    });
+
+    it('links a morpheme, with its entry, to a sense found by searching its form', async () => {
       await renderPanel({
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [
-            {
-              ...FIXTURE_STAMPS,
-              id: 'ta-1',
-              surfaceText: 'λόγος',
-              glossSenseRef: testSenseRef('s-word'),
-              morphemes: [
-                {
-                  ...FIXTURE_STAMPS,
-                  id: 'm-1',
-                  form: 'λογ',
-                  writingSystem: 'el',
-                  senseRef: testSenseRef('s-stem'),
-                },
-              ],
-            },
-          ],
-          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
-        },
-        senses: { 's-word': { gloss: { en: 'word' } }, 's-stem': { gloss: { en: 'speak' } } },
+        analysis: draftOf(wordAnalysis({ morphemes: [stem()] })),
+        senses: SENSES,
+        search,
+      });
+      const detail = await expandRow();
+
+      await linkFrom(detail);
+
+      const [morpheme] = (await savedAnalysis()).tokenAnalyses[0].morphemes ?? [];
+      expect(morpheme.senseRef).toEqual(testSenseRef('s-new'));
+      expect(morpheme.entryRef).toEqual(candidate('s-new').entryRef);
+    });
+
+    it('changes the sense a word links to', async () => {
+      await renderPanel({
+        analysis: draftOf(wordAnalysis({ glossSenseRef: testSenseRef('s-word') })),
+        senses: SENSES,
+        search,
       });
 
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await chooseAction(rowFor('ta-1'), 'senseChangeAction');
+      await userEvent.click(await screen.findByTestId('catalog-sense-candidate'));
+      await settle();
 
-      const row = rowFor('ta-1');
-      // Both senses resolved, so empty inputs below are not just a lookup still in flight.
-      await waitFor(() =>
-        expect(
-          within(row)
-            .getAllByTestId('catalog-sense-gloss')
-            .map((gloss) => gloss.textContent),
-        ).toEqual(expect.arrayContaining(['word', 'speak'])),
-      );
-      expect(within(row).getByTestId('catalog-row-gloss-input')).toHaveValue('');
-      expect(within(row).getByTestId('catalog-row-morpheme-gloss-input')).toHaveValue('');
+      expect((await savedAnalysis()).tokenAnalyses[0].glossSenseRef).toEqual(testSenseRef('s-new'));
+    });
+
+    it("adopts the sense's gloss as the gloss of a word with none typed, keeping the link", async () => {
+      await renderPanel({
+        analysis: draftOf(wordAnalysis({ glossSenseRef: testSenseRef('s-word') })),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseAdoptGloss');
+      await settle();
+
+      const [saved] = (await savedAnalysis()).tokenAnalyses;
+      expect(saved.gloss).toEqual({ en: 'word' });
+      expect(saved.glossSenseRef).toEqual(testSenseRef('s-word'));
+    });
+
+    it('adopts the sense gloss over a typed gloss that differs', async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ gloss: { en: 'utterance' }, glossSenseRef: testSenseRef('s-word') }),
+        ),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseAdoptGloss');
+      await settle();
+
+      expect((await savedAnalysis()).tokenAnalyses[0].gloss).toEqual({ en: 'word' });
+    });
+
+    it("adopts a morpheme's sense gloss as its gloss", async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ morphemes: [stem({ senseRef: testSenseRef('s-stem') })] }),
+        ),
+        senses: SENSES,
+      });
+      const detail = await expandRow();
+
+      await chooseAction(detail, 'senseAdoptGloss');
+      await settle();
+
+      const [morpheme] = (await savedAnalysis()).tokenAnalyses[0].morphemes ?? [];
+      expect(morpheme.gloss).toEqual({ en: 'speak' });
+      expect(morpheme.senseRef).toEqual(testSenseRef('s-stem'));
+    });
+
+    it("keeps the sense's gloss when the word is unlinked and the reader chooses to", async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({
+            gloss: { en: 'word' },
+            glossSenseRef: testSenseRef('s-word'),
+            morphemes: [stem()],
+          }),
+        ),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseUnlink');
+      await settle();
+
+      const [saved] = (await savedAnalysis()).tokenAnalyses;
+      expect(saved.glossSenseRef).toBeUndefined();
+      expect(saved.gloss).toEqual({ en: 'word' });
+    });
+
+    it('asks before unlinking a word glossed only by its sense, and keeps the gloss on request', async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ glossSenseRef: testSenseRef('s-word'), morphemes: [stem()] }),
+        ),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseUnlink');
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseKeepGloss%'));
+      await settle();
+
+      const [saved] = (await savedAnalysis()).tokenAnalyses;
+      expect(saved.glossSenseRef).toBeUndefined();
+      expect(saved.gloss).toEqual({ en: 'word' });
+    });
+
+    it('unlinks a word glossed only by its sense and drops the gloss on request', async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ glossSenseRef: testSenseRef('s-word'), morphemes: [stem()] }),
+        ),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseUnlink');
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseRemoveGloss%'));
+      await settle();
+
+      const [saved] = (await savedAnalysis()).tokenAnalyses;
+      expect(saved.glossSenseRef).toBeUndefined();
+      expect(saved.gloss).toBeUndefined();
+    });
+
+    it('removes a row that held nothing but its link when it is unlinked', async () => {
+      await renderPanel({
+        analysis: draftOf(wordAnalysis({ glossSenseRef: testSenseRef('s-word') })),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseUnlink');
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseRemoveGloss%'));
+      await settle();
+
+      expect((await savedAnalysis()).tokenAnalyses).toEqual([]);
+      expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument();
+    });
+
+    it("unlinks a morpheme, keeping its sense's gloss on request", async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ morphemes: [stem({ senseRef: testSenseRef('s-stem') })] }),
+        ),
+        senses: SENSES,
+      });
+      const detail = await expandRow();
+
+      await chooseAction(detail, 'senseUnlink');
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseKeepGloss%'));
+      await settle();
+
+      const [morpheme] = (await savedAnalysis()).tokenAnalyses[0].morphemes ?? [];
+      expect(morpheme.senseRef).toBeUndefined();
+      expect(morpheme.gloss).toEqual({ en: 'speak' });
+    });
+
+    describe('when the edit makes the row identical to another', () => {
+      /** Two words that differ only in whether each links to `s-word` as its stem sense. */
+      function twins(linked: string) {
+        const withLink = { gloss: { en: 'word' }, glossSenseRef: testSenseRef('s-word') };
+        const without = { gloss: { en: 'word' } };
+        return draftOf(
+          wordAnalysis(linked === 'first' ? withLink : without),
+          wordAnalysis({ id: 'ta-2', ...(linked === 'first' ? without : withLink) }),
+        );
+      }
+
+      it('folds a row into its twin on linking, and says so', async () => {
+        await renderPanel({
+          analysis: twins('second'),
+          senses: SENSES,
+          search: async () => [candidate('s-word')],
+        });
+
+        await linkFrom(rowFor('ta-1'));
+
+        expect(listedAnalysisIds()).toHaveLength(1);
+        expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_merged%',
+        );
+      });
+
+      it('folds a row into its twin on unlinking, and says so', async () => {
+        await renderPanel({ analysis: twins('first'), senses: SENSES });
+
+        await chooseAction(rowFor('ta-1'), 'senseUnlink');
+        await settle();
+
+        expect(listedAnalysisIds()).toHaveLength(1);
+        expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_merged%',
+        );
+      });
     });
   });
 

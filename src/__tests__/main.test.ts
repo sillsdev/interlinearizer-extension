@@ -2427,6 +2427,24 @@ describe('main', () => {
         writeAnalysisMorphemeGloss: handler<
           CommandHandlers['interlinearizer.writeAnalysisMorphemeGloss']
         >('interlinearizer.writeAnalysisMorphemeGloss'),
+        linkAnalysisSense: handler<CommandHandlers['interlinearizer.linkAnalysisSense']>(
+          'interlinearizer.linkAnalysisSense',
+        ),
+        unlinkAnalysisSense: handler<CommandHandlers['interlinearizer.unlinkAnalysisSense']>(
+          'interlinearizer.unlinkAnalysisSense',
+        ),
+        linkAnalysisMorphemeSense: handler<
+          CommandHandlers['interlinearizer.linkAnalysisMorphemeSense']
+        >('interlinearizer.linkAnalysisMorphemeSense'),
+        unlinkAnalysisMorphemeSense: handler<
+          CommandHandlers['interlinearizer.unlinkAnalysisMorphemeSense']
+        >('interlinearizer.unlinkAnalysisMorphemeSense'),
+        adoptAnalysisSenseGloss: handler<
+          CommandHandlers['interlinearizer.adoptAnalysisSenseGloss']
+        >('interlinearizer.adoptAnalysisSenseGloss'),
+        adoptAnalysisMorphemeSenseGloss: handler<
+          CommandHandlers['interlinearizer.adoptAnalysisMorphemeSenseGloss']
+        >('interlinearizer.adoptAnalysisMorphemeSenseGloss'),
         deleteAnalyses: handler<CommandHandlers['interlinearizer.deleteAnalyses']>(
           'interlinearizer.deleteAnalyses',
         ),
@@ -4245,6 +4263,165 @@ describe('main', () => {
       expect(changes).toMatchObject({
         intent: 'writeAnalysisMorphemeGloss',
         tokenAnalyses: { puts: [{ morphemes: [{ id: 'm-in', gloss: { fr: 'dans' } }] }] },
+      });
+    });
+
+    describe('lexicon sense links', () => {
+      const SENSE = { authority: 'x-test', senseId: 'sense-in' };
+      const ENTRY = { authority: 'x-test', entryId: 'entry-in' };
+      const linked = {
+        tokenAnalyses: [
+          {
+            id: 'ta-in',
+            ...FIXTURE_STAMPS,
+            surfaceText: 'In',
+            gloss: { en: 'at' },
+            glossSenseRef: SENSE,
+            morphemes: [
+              {
+                id: 'm-in',
+                form: 'In',
+                writingSystem: 'qaa',
+                gloss: { fr: 'dans' },
+                entryRef: ENTRY,
+                senseRef: SENSE,
+              },
+            ],
+          },
+        ],
+        tokenAnalysisLinks: glossedIn.tokenAnalysisLinks,
+      };
+
+      it('links an analysis to a sense, recording a link step', async () => {
+        await seedDraft(glossedIn);
+        const { openSession, linkAnalysisSense } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        const { changes, step } = JSON.parse(
+          await linkAnalysisSense({ sessionId, analysisId: 'ta-in', senseRef: SENSE }),
+        );
+
+        expect(changes).toMatchObject({
+          intent: 'linkAnalysisSense',
+          tokenAnalyses: { puts: [{ id: 'ta-in', gloss: { en: 'at' }, glossSenseRef: SENSE }] },
+        });
+        expect(step.summary).toStrictEqual({
+          kind: 'catalogLinkSense',
+          form: 'In',
+          analysisId: 'ta-in',
+          survivingAnalysisId: 'ta-in',
+        });
+      });
+
+      it("unlinks an analysis, keeping a gloss in the session's language", async () => {
+        await seedDraft(linked);
+        const { openSession, setAnalysisLanguage, unlinkAnalysisSense } =
+          await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await setAnalysisLanguage({ sessionId, analysisLanguage: 'fr' });
+
+        const { changes, step } = JSON.parse(
+          await unlinkAnalysisSense({ sessionId, analysisId: 'ta-in', keepGloss: 'dans' }),
+        );
+
+        expect(changes.tokenAnalyses.puts).toStrictEqual([
+          expect.objectContaining({ gloss: { en: 'at', fr: 'dans' } }),
+        ]);
+        expect(changes.tokenAnalyses.puts[0]).not.toHaveProperty('glossSenseRef');
+        expect(step.summary.kind).toBe('catalogUnlinkSense');
+      });
+
+      it('links a morpheme to a sense, recording a link step', async () => {
+        await seedDraft(glossedIn);
+        const { openSession, linkAnalysisMorphemeSense } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        const { changes, step } = JSON.parse(
+          await linkAnalysisMorphemeSense({
+            sessionId,
+            analysisId: 'ta-in',
+            morphemeId: 'm-in',
+            entryRef: ENTRY,
+            senseRef: SENSE,
+          }),
+        );
+
+        expect(changes).toMatchObject({
+          intent: 'linkAnalysisMorphemeSense',
+          tokenAnalyses: {
+            puts: [{ morphemes: [{ id: 'm-in', entryRef: ENTRY, senseRef: SENSE }] }],
+          },
+        });
+        expect(step.summary.kind).toBe('catalogLinkSense');
+      });
+
+      it("unlinks a morpheme, keeping a gloss in the session's language", async () => {
+        await seedDraft(linked);
+        const { openSession, setAnalysisLanguage, unlinkAnalysisMorphemeSense } =
+          await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await setAnalysisLanguage({ sessionId, analysisLanguage: 'en' });
+
+        const { changes, step } = JSON.parse(
+          await unlinkAnalysisMorphemeSense({
+            sessionId,
+            analysisId: 'ta-in',
+            morphemeId: 'm-in',
+            keepGloss: 'in',
+          }),
+        );
+
+        expect(changes.tokenAnalyses.puts[0].morphemes).toStrictEqual([
+          { id: 'm-in', form: 'In', writingSystem: 'qaa', gloss: { fr: 'dans', en: 'in' } },
+        ]);
+        expect(step.summary.kind).toBe('catalogUnlinkSense');
+      });
+
+      it("adopts a sense's gloss on an analysis, keeping the link", async () => {
+        await seedDraft(linked);
+        const { openSession, adoptAnalysisSenseGloss } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        const { changes, step } = JSON.parse(
+          await adoptAnalysisSenseGloss({ sessionId, analysisId: 'ta-in', value: 'in' }),
+        );
+
+        expect(changes.tokenAnalyses.puts).toStrictEqual([
+          expect.objectContaining({ gloss: { en: 'in' }, glossSenseRef: SENSE }),
+        ]);
+        expect(step.summary.kind).toBe('catalogAdoptGloss');
+      });
+
+      it("adopts a sense's gloss on a morpheme, keeping the links", async () => {
+        await seedDraft(linked);
+        const { openSession, adoptAnalysisMorphemeSenseGloss } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        const { changes, step } = JSON.parse(
+          await adoptAnalysisMorphemeSenseGloss({
+            sessionId,
+            analysisId: 'ta-in',
+            morphemeId: 'm-in',
+            value: 'in',
+          }),
+        );
+
+        expect(changes.tokenAnalyses.puts[0].morphemes[0]).toMatchObject({
+          gloss: { en: 'in', fr: 'dans' },
+          entryRef: ENTRY,
+          senseRef: SENSE,
+        });
+        expect(step.summary.kind).toBe('catalogAdoptGloss');
+      });
+
+      it('rejects adopting a blank gloss', async () => {
+        await seedDraft(linked);
+        const { openSession, adoptAnalysisSenseGloss } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        await expect(
+          adoptAnalysisSenseGloss({ sessionId, analysisId: 'ta-in', value: '' }),
+        ).rejects.toThrow('must not be blank');
       });
     });
 

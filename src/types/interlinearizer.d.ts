@@ -693,6 +693,111 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Links a token analysis to a lexicon sense, for every token linked to it, replacing any sense
+     * it had. The typed gloss is untouched. An analysis made identical to another payload is folded
+     * into that payload.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.linkAnalysisSense': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        senseRef: import('interlinearizer').SenseRef;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Drops a token analysis's lexicon sense link, for every token linked to it. A non-blank
+     * `keepGloss` is first written as the gloss in the session's analysis language. An analysis
+     * left empty goes with its links. One made identical to another payload is folded into that
+     * payload. Nothing is applied when the analysis isn't stored or has no sense link.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.unlinkAnalysisSense': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        keepGloss?: string;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Links one morpheme of a token analysis to a lexicon sense, for every token linked to it. A
+     * link to a different entry also drops the morpheme's allomorph and grammar references.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.linkAnalysisMorphemeSense': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        morphemeId: string;
+        entryRef: import('interlinearizer').EntryRef;
+        senseRef: import('interlinearizer').SenseRef;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Drops every lexicon reference of one morpheme of a token analysis, for every token linked to
+     * it. A non-blank `keepGloss` is first written as the morpheme's gloss in the session's
+     * analysis language. Nothing is applied when the morpheme isn't stored or has no sense link.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.unlinkAnalysisMorphemeSense': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        morphemeId: string;
+        keepGloss?: string;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Writes a linked sense's gloss, as the caller resolved it, as the gloss of a token analysis in
+     * the session's analysis language, replacing any typed gloss. The sense link stays.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If `value` is blank, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
+     */
+    'interlinearizer.adoptAnalysisSenseGloss': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        value: string;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Writes a linked sense's gloss, as the caller resolved it, as the gloss of one morpheme of a
+     * token analysis in the session's analysis language, replacing any typed gloss. The sense link
+     * stays.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If `value` is blank, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
+     */
+    'interlinearizer.adoptAnalysisMorphemeSenseGloss': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        morphemeId: string;
+        value: string;
+      },
+    ) => Promise<string>;
+
+    /**
      * Removes token analyses with every token link to them.
      *
      * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets

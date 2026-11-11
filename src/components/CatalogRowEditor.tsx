@@ -2,8 +2,10 @@ import type { MorphemeAnalysis, SenseRef } from 'interlinearizer';
 import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useDeletionPreview } from '../cache/catalogHooks';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import type { CatalogRow } from '../utils/analysis-query';
+import { DELETION_PREVIEW_STRING_KEYS, deletionPreview } from '../utils/deletion-announcement';
 import { multiStringText } from '../utils/multi-string';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import type { Settles } from '../utils/settles';
@@ -37,6 +39,7 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_deleteConfirmTitle%',
   '%interlinearizer_analysisCatalog_deleteConfirmPrompt%',
   '%interlinearizer_analysisCatalog_deleteConfirmCancel%',
+  ...DELETION_PREVIEW_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link CatalogRowEditor}. */
@@ -602,17 +605,34 @@ export default function CatalogRowEditor({
   );
 }
 
+/** States what deleting the analysis `analysisId` names would do, once the host says. */
+function DeletionPreview({
+  analysisId,
+  localizedStrings,
+}: Readonly<{ analysisId: string; localizedStrings: LanguageStrings }>) {
+  const outcome = useDeletionPreview(analysisId);
+  if (!outcome) return undefined;
+  return (
+    <p className="tw:mb-4 tw:text-sm" data-testid="catalog-delete-confirm-outcome">
+      {deletionPreview(outcome, localizedStrings)}
+    </p>
+  );
+}
+
 /**
  * The controls that act on a whole analysis rather than on one of its fields.
  *
  * Renders nothing for a read-only analysis, which neither control applies to.
  */
 export function CatalogRowActions({
+  analysisId,
   surfaceText,
   onMergeRequest,
   onDeleteRequest,
   localizedStrings,
 }: Readonly<{
+  /** Id of the analysis the controls act on. */
+  analysisId: string;
   /** Surface form the delete confirmation names the analysis by. */
   surfaceText: string;
   /** Opens the merge picker. Absent when the analysis shares its form with no other record. */
@@ -668,6 +688,7 @@ export function CatalogRowActions({
               { form: surfaceText },
             )}
           </p>
+          <DeletionPreview analysisId={analysisId} localizedStrings={localizedStrings} />
           <div className="tw:modal-actions">
             <Button
               data-testid="catalog-delete-confirm-cancel"

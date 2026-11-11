@@ -4571,6 +4571,20 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
+    it('states in the confirmation what the deletion would do', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_deleteConfirmFallback%': '{count} uses go to {gloss}.',
+      });
+      await renderDeleting({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+      expect(await screen.findByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+        '2 uses go to beginning.',
+      );
+    });
+
     it('describes rather than names the fallback when a use has drifted off its analyzed form', async () => {
       await renderDeleting({
         analysis: TWO_HOMOGRAPHS,

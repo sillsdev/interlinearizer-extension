@@ -225,6 +225,31 @@ export function useSelectionSummary(analysisIds: readonly string[]): SelectionSu
   );
 }
 
+/**
+ * What deleting the analysis `analysisId` names would do; `undefined` while `analysisId` is
+ * `undefined`, until the outcome arrives, and for an analysis no longer stored.
+ */
+export function useDeletionPreview(
+  analysisId: string | undefined,
+): AnalysisDeletionOutcome | undefined {
+  const { sessionId, analysisLanguage } = usePageSession();
+  const key = analysisId === undefined ? undefined : JSON.stringify([analysisLanguage, analysisId]);
+  const outcome = useNamedFetch<AnalysisDeletionOutcome | null>(
+    'getCatalogRows',
+    'the deletion preview',
+    key,
+    async () =>
+      JSON.parse(
+        await papi.commands.sendCommand('interlinearizer.previewDeletion', {
+          sessionId,
+          /* v8 ignore next -- fetched only under a key, which an id gives */
+          analysisId: analysisId ?? '',
+        }),
+      ),
+  );
+  return outcome ?? undefined;
+}
+
 /** One-off catalog reads, for a count or a row an edit needs before it is sent. */
 export function useCatalogReads(currentBook: string) {
   const { sessionId } = usePageSession();

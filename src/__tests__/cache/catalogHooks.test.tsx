@@ -4,7 +4,13 @@ import papi, { logger } from '@papi/frontend';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { TextAnalysis } from 'interlinearizer';
 import { useMemo, type ReactNode } from 'react';
-import { useCatalogView, useSelectionSummary, useTextReadStatus } from '../../cache/catalogHooks';
+import {
+  useCatalogRowsByIds,
+  useCatalogView,
+  useHomographRows,
+  useSelectionSummary,
+  useTextReadStatus,
+} from '../../cache/catalogHooks';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { prepareAnalysis, settle } from '../components/analysis-provider';
 import { FIXTURE_STAMPS, makeTokenLink } from '../test-helpers';
@@ -31,6 +37,25 @@ async function wrapperOver(text = readText([])) {
   return function Wrapper({ children }: Readonly<{ children: ReactNode }>) {
     return <Provider>{children}</Provider>;
   };
+}
+
+/**
+ * A wrapper like {@link wrapperOver}'s, whose analysis language is what `language.current` holds
+ * when the hook renders.
+ */
+async function languageWrapperOver(language: { current: string }) {
+  const Provider = await prepareAnalysis(ANALYSIS, BOOK, readText([]));
+  return function Wrapper({ children }: Readonly<{ children: ReactNode }>) {
+    return <Provider analysisLanguage={language.current}>{children}</Provider>;
+  };
+}
+
+/** Sets the language of the session that the view last sent `command` under, as the view does. */
+async function setLanguage(command: string, analysisLanguage: string): Promise<void> {
+  await papi.commands.sendCommand('interlinearizer.setAnalysisLanguage', {
+    sessionId: sessionIdOf(command),
+    analysisLanguage,
+  });
 }
 
 /** How many times the view has sent `command`. */
@@ -218,5 +243,46 @@ describe('useSelectionSummary', () => {
       'Interlinearizer: could not fetch the selection summary',
       expect.any(Error),
     );
+  });
+});
+
+describe('a change of analysis language', () => {
+  it('summarizes the selection again in the new language', async () => {
+    const language = { current: 'en' };
+    const wrapper = await languageWrapperOver(language);
+    const { result, rerender } = renderHook(() => useSelectionSummary(['ta-god']), { wrapper });
+    await waitFor(() => expect(result.current?.glossedIds).toStrictEqual(['ta-god']));
+
+    await setLanguage('interlinearizer.getSelectionSummary', 'fr');
+    language.current = 'fr';
+    rerender();
+
+    await waitFor(() => expect(result.current?.glossedIds).toStrictEqual([]));
+  });
+
+  it('fetches the rows by id again', async () => {
+    const language = { current: 'en' };
+    const wrapper = await languageWrapperOver(language);
+    const { rerender } = renderHook(() => useCatalogRowsByIds(['ta-god'], 'GEN'), { wrapper });
+    await settle();
+
+    language.current = 'fr';
+    rerender();
+    await settle();
+
+    expect(timesSent('interlinearizer.getCatalogRowsByIds')).toBe(2);
+  });
+
+  it('fetches the homographs again', async () => {
+    const language = { current: 'en' };
+    const wrapper = await languageWrapperOver(language);
+    const { rerender } = renderHook(() => useHomographRows('ta-god', 'GEN'), { wrapper });
+    await settle();
+
+    language.current = 'fr';
+    rerender();
+    await settle();
+
+    expect(timesSent('interlinearizer.getHomographRows')).toBe(2);
   });
 });

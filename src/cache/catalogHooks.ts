@@ -169,8 +169,8 @@ export function useCatalogRowsByIds(
   analysisIds: readonly string[],
   currentBook: string,
 ): ReadonlyMap<string, CatalogRow> | undefined {
-  const { sessionId } = usePageSession();
-  const key = JSON.stringify([currentBook, analysisIds]);
+  const { sessionId, analysisLanguage } = usePageSession();
+  const key = JSON.stringify([analysisLanguage, currentBook, analysisIds]);
   return useNamedFetch('getCatalogRows', 'catalog rows', key, async () => {
     const json = await papi.commands.sendCommand('interlinearizer.getCatalogRowsByIds', {
       sessionId,
@@ -190,8 +190,11 @@ export function useHomographRows(
   analysisId: string | undefined,
   currentBook: string,
 ): readonly CatalogRow[] | undefined {
-  const { sessionId } = usePageSession();
-  const key = analysisId === undefined ? undefined : JSON.stringify([currentBook, analysisId]);
+  const { sessionId, analysisLanguage } = usePageSession();
+  const key =
+    analysisId === undefined
+      ? undefined
+      : JSON.stringify([analysisLanguage, currentBook, analysisId]);
   return useNamedFetch('getCatalogRows', 'homographs', key, async () => {
     const json = await papi.commands.sendCommand('interlinearizer.getHomographRows', {
       sessionId,
@@ -209,8 +212,9 @@ export function useHomographRows(
  * until it arrives.
  */
 export function useSelectionSummary(analysisIds: readonly string[]): SelectionSummary | undefined {
-  const { sessionId } = usePageSession();
-  const key = analysisIds.length === 0 ? undefined : JSON.stringify(analysisIds);
+  const { sessionId, analysisLanguage } = usePageSession();
+  const key =
+    analysisIds.length === 0 ? undefined : JSON.stringify([analysisLanguage, analysisIds]);
   return useNamedFetch('getCatalogRows', 'the selection summary', key, async () =>
     JSON.parse(
       await papi.commands.sendCommand('interlinearizer.getSelectionSummary', {

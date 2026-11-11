@@ -48,9 +48,15 @@ export function sessionCatalogHandlers({
   getVerseBook,
   isFormInText,
 }: SessionCatalogHost) {
-  /** The scope a session's rows are derived in, their usages placed among the book's headings. */
+  /**
+   * The scope a session's rows are derived in, their usages placed among the book's headings, or
+   * among none when the book cannot be read.
+   */
   async function scopeOf(session: Session, currentBook: string): Promise<CatalogScope> {
-    const book = await getOpenVerseBook(session.scope.sourceProjectId, currentBook);
+    const book = await getOpenVerseBook(session.scope.sourceProjectId, currentBook).catch((e) => {
+      logger.error(`Interlinearizer: could not read ${currentBook} to place its headings`, e);
+      return undefined;
+    });
     return {
       analysisLanguage: session.analysisLanguage,
       currentBook,
@@ -59,11 +65,12 @@ export function sessionCatalogHandlers({
   }
 
   /**
-   * Serves one page of a session's catalog, its usages placed among the current book's headings.
+   * Serves one page of a session's catalog, its usages placed among the current book's headings, or
+   * among none when that book cannot be read.
    *
    * @returns A JSON string of the `CatalogPage`, each row's books listed.
-   * @throws If the session is not open, or its analysis or the current book cannot be read. The
-   *   error is logged before rethrowing.
+   * @throws If the session is not open or its analysis cannot be read. The error is logged before
+   *   rethrowing.
    */
   async function getCatalogRows({
     sessionId,
@@ -112,8 +119,8 @@ export function sessionCatalogHandlers({
    * leaving out any id unstored.
    *
    * @returns A JSON string of the rows, each row's books listed.
-   * @throws If the session is not open, or its analysis or the current book cannot be read. The
-   *   error is logged before rethrowing.
+   * @throws If the session is not open or its analysis cannot be read. The error is logged before
+   *   rethrowing.
    */
   async function getCatalogRowsByIds({
     sessionId,
@@ -138,8 +145,8 @@ export function sessionCatalogHandlers({
    *
    * @returns A JSON string of the rows, each row's books listed; `"[]"` when no analysis carries
    *   the id.
-   * @throws If the session is not open, or its analysis or the current book cannot be read. The
-   *   error is logged before rethrowing.
+   * @throws If the session is not open or its analysis cannot be read. The error is logged before
+   *   rethrowing.
    */
   async function getHomographRows({
     sessionId,
@@ -183,12 +190,13 @@ export function sessionCatalogHandlers({
 
   /**
    * Reports what deleting a token analysis in a session's draft would do to the tokens that approve
-   * it, whichever book they sit in.
+   * it, whichever book they sit in. An outcome that turns on a token whose book cannot be read is
+   * `uncertain`.
    *
    * @returns A JSON string of the `AnalysisDeletionOutcome`; `"null"` when no analysis carries the
    *   id.
-   * @throws If the session is not open, or its analysis or the text of a book it reaches cannot be
-   *   read. The error is logged before rethrowing.
+   * @throws If the session is not open or its analysis cannot be read. The error is logged before
+   *   rethrowing.
    */
   async function previewDeletion({
     sessionId,
@@ -205,7 +213,10 @@ export function sessionCatalogHandlers({
         const liveText = new Map<string, string>();
         await Promise.all(
           [...bookIds].map(async (bookId) => {
-            const book = await getVerseBook(session.scope.sourceProjectId, bookId);
+            const book = await getVerseBook(session.scope.sourceProjectId, bookId).catch((e) => {
+              logger.error(`Interlinearizer: could not read ${bookId} to preview a deletion`, e);
+              return undefined;
+            });
             book?.segments.forEach((segment) =>
               segment.tokens.forEach((token) => liveText.set(token.ref, token.surfaceText)),
             );

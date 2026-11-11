@@ -105,6 +105,31 @@ describe('getCatalogRows', () => {
     expect(JSON.parse(json).keptIds).toEqual(['ta-god']);
   });
 
+  it('serves the catalog, logging the failure, when the current book cannot be read', async () => {
+    const { sessions, sessionId } = await sessionOver();
+    const logger = { error: jest.fn() };
+    const handlers = sessionCatalogHandlers({
+      sessions,
+      logger,
+      getOpenVerseBook: async () => {
+        throw new Error('unreadable');
+      },
+      getVerseBook: async () => BOOK,
+      isFormInText: () => true,
+    });
+
+    const json = await handlers['interlinearizer.getCatalogRows']({
+      sessionId,
+      request: makeRequest(),
+    });
+
+    expect(JSON.parse(json).keptIds).toEqual(['ta-god']);
+    expect(logger.error).toHaveBeenCalledWith(
+      'Interlinearizer: could not read GEN to place its headings',
+      expect.any(Error),
+    );
+  });
+
   it('serves what an edit in the session left', async () => {
     const { handlers, sessionId, edit } = await handlersOver();
     await edit('gloss', glossing('beginning', 'start'));
@@ -216,6 +241,43 @@ describe('previewDeletion', () => {
       fallbackGloss: 'Deity',
       unappliedCount: 0,
     });
+  });
+
+  it('leaves the fallback uncertain, logging the failure, when its book cannot be read', async () => {
+    const { sessions, sessionId } = await sessionOver({
+      tokenAnalyses: [
+        { id: 'ta-god', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'God' } },
+        { id: 'ta-deity', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'Deity' } },
+      ],
+      tokenAnalysisLinks: [
+        makeTokenLink('ta-god', tokenRefOf(EXODUS, 'God'), { surfaceText: 'God' }),
+        makeTokenLink('ta-deity', ref('God'), { surfaceText: 'God' }),
+      ],
+    });
+    const logger = { error: jest.fn() };
+    const handlers = sessionCatalogHandlers({
+      sessions,
+      logger,
+      getOpenVerseBook: async () => BOOK,
+      getVerseBook: async (_source, bookId) => {
+        if (bookId === 'EXO') throw new Error('unreadable');
+        return BOOK;
+      },
+      isFormInText: () => true,
+    });
+
+    const json = await handlers['interlinearizer.previewDeletion']({
+      sessionId,
+      analysisId: 'ta-god',
+    });
+
+    expect(JSON.parse(json)).toEqual(
+      expect.objectContaining({ kind: 'fallback', uncertain: true }),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      'Interlinearizer: could not read EXO to preview a deletion',
+      expect.any(Error),
+    );
   });
 
   it('answers null for an id no analysis carries', async () => {

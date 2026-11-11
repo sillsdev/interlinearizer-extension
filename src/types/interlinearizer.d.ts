@@ -966,11 +966,10 @@ declare module 'papi-shared-types' {
 
     /**
      * Serves one page of a session's analysis catalog, its usages placed among the current book's
-     * headings.
+     * headings, or among none when that book cannot be read.
      *
      * @returns A JSON string of the `CatalogPage`, each row's books listed.
-     * @throws If the session is not open, or its analysis or the current book cannot be read
-     *   (logged before rethrowing).
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
      */
     'interlinearizer.getCatalogRows': (
       args: import('interlinearizer').SessionCommandArgs & {
@@ -1003,8 +1002,7 @@ declare module 'papi-shared-types' {
      * that order, leaving out unstored ids.
      *
      * @returns A JSON string of the rows, each row's books listed.
-     * @throws If the session is not open, or its analysis or the current book cannot be read
-     *   (logged before rethrowing).
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
      */
     'interlinearizer.getCatalogRowsByIds': (
       args: import('interlinearizer').SessionCommandArgs & {
@@ -1019,8 +1017,7 @@ declare module 'papi-shared-types' {
      *
      * @returns A JSON string of the rows, each row's books listed; `"[]"` when no analysis carries
      *   the id.
-     * @throws If the session is not open, or its analysis or the current book cannot be read
-     *   (logged before rethrowing).
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
      */
     'interlinearizer.getHomographRows': (
       args: import('interlinearizer').SessionCommandArgs & {
@@ -1031,12 +1028,12 @@ declare module 'papi-shared-types' {
 
     /**
      * Reports what deleting a token analysis in a session's draft would do to the tokens that
-     * approve it, whichever book they sit in.
+     * approve it, whichever book they sit in. An outcome that turns on a token whose book cannot be
+     * read is `uncertain`.
      *
      * @returns A JSON string of the `AnalysisDeletionOutcome`; `"null"` when no analysis carries
      *   the id.
-     * @throws If the session is not open, or its analysis or the text of a book it reaches cannot
-     *   be read (logged before rethrowing).
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
      */
     'interlinearizer.previewDeletion': (
       args: import('interlinearizer').SessionCommandArgs & { analysisId: string },

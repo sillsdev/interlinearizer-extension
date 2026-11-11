@@ -692,8 +692,8 @@ async function measureTier(
   result.save = saves.summary();
   await recordMemory('afterSave');
 
-  // Concordance: indexing every book of the source, in a fresh WebView each run since a WebView
-  // keeps the index it built.
+  // Concordance: from opening the panel to its first page, in a fresh view each run, because the
+  // host keeps the whole-text read until the view closes.
   const concordance = new Samples();
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop
@@ -709,7 +709,7 @@ async function measureTier(
     concordance.add(
       // eslint-disable-next-line no-await-in-loop
       await waitForMeasure(view, 'concordance-entries'),
-      ['concordance-read', 'concordance-entries'],
+      ['concordance-entries'],
     );
   }
   result.concordance = concordance.summary();

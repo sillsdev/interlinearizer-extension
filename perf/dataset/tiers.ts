@@ -13,8 +13,6 @@ export interface TierSpec {
   competingShare: number;
   /** Share of glossed word tokens that start an approved phrase. */
   phraseShare: number;
-  /** Share of phrases that run on into the next segment. */
-  crossSegmentPhraseShare: number;
   /** Share of segments carrying a free translation. */
   freeTranslationShare: number;
   /** Share of token payloads carrying a morpheme breakdown. */
@@ -27,7 +25,6 @@ const SHAPE = {
   staleShare: 0.03,
   competingShare: 0.1,
   phraseShare: 0.02,
-  crossSegmentPhraseShare: 0.1,
   freeTranslationShare: 0.3,
   morphemeShare: 0.2,
   savedProjects: 5,

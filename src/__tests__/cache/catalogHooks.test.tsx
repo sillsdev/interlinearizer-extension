@@ -7,6 +7,7 @@ import { useMemo, type ReactNode } from 'react';
 import {
   useCatalogRowsByIds,
   useCatalogView,
+  useDeletionPreview,
   useHomographRows,
   useSelectionSummary,
   useTextReadStatus,
@@ -280,6 +281,49 @@ describe('useSelectionSummary', () => {
   });
 });
 
+describe('useDeletionPreview', () => {
+  it('asks nothing without an analysis', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useDeletionPreview(undefined), { wrapper });
+    await settle();
+
+    expect(result.current).toBeUndefined();
+    expect(timesSent('interlinearizer.previewDeletion')).toBe(0);
+  });
+
+  it('states what deleting the analysis would do', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+
+    await waitFor(() =>
+      expect(result.current).toStrictEqual({ kind: 'blank', usageCount: 1, unappliedCount: 0 }),
+    );
+  });
+
+  it('answers nothing for an analysis no longer stored', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useDeletionPreview('ta-gone'), { wrapper });
+    await settle();
+
+    expect(timesSent('interlinearizer.previewDeletion')).toBe(1);
+    expect(result.current).toBeUndefined();
+  });
+
+  it('fetches again when a change to the session names the catalog', async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    await settle();
+
+    relayChange(changeNaming(sessionIdOf('interlinearizer.previewDeletion'), ['getCatalogRows']));
+    await settle();
+
+    expect(timesSent('interlinearizer.previewDeletion')).toBe(2);
+  });
+});
+
 describe('a change of analysis language', () => {
   it('fetches the catalog page again in the new language', async () => {
     const wrapper = await wrapperOver();
@@ -331,5 +375,18 @@ describe('a change of analysis language', () => {
     await setLanguage('interlinearizer.getHomographRows', 'fr');
 
     await waitFor(() => expect(result.current?.[0]?.gloss).toBe(''));
+  });
+
+  it('previews the deletion again', async () => {
+    const language = { current: 'en' };
+    const wrapper = await languageWrapperOver(language);
+    const { rerender } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    await settle();
+
+    language.current = 'fr';
+    rerender();
+    await settle();
+
+    expect(timesSent('interlinearizer.previewDeletion')).toBe(2);
   });
 });

@@ -681,6 +681,25 @@ export async function listBooks(
   return { bookIds: presentBookIds(booksPresent), writingSystem };
 }
 
+/**
+ * Reads each of `bookIds` of `read`'s text, at most {@link READ_CONCURRENCY} at a time, stopping
+ * once the read ends.
+ */
+async function readTextBooks(
+  sourceProjectId: string,
+  read: TextRead,
+  bookIds: readonly string[],
+): Promise<void> {
+  const unread = [...bookIds];
+  const readNext = async (): Promise<void> => {
+    const bookId = unread.shift();
+    if (bookId === undefined || textReads.get(sourceProjectId) !== read) return;
+    await readTextBook(sourceProjectId, read, bookId, false);
+    await readNext();
+  };
+  await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
+}
+
 /** Reads each book of `read`'s text once the books are listed. Resolves once the read ends. */
 async function readText(sourceProjectId: string, read: TextRead): Promise<void> {
   const isCurrent = () => textReads.get(sourceProjectId) === read;
@@ -691,14 +710,7 @@ async function readText(sourceProjectId: string, read: TextRead): Promise<void> 
   });
   if (!listed || !isCurrent()) return;
   read.writingSystem = listed.writingSystem;
-  const unread = [...listed.bookIds];
-  const readNext = async (): Promise<void> => {
-    const bookId = unread.shift();
-    if (bookId === undefined || !isCurrent()) return;
-    await readTextBook(sourceProjectId, read, bookId, false);
-    await readNext();
-  };
-  await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
+  await readTextBooks(sourceProjectId, read, listed.bookIds);
   if (!isCurrent()) return;
   read.isRead = true;
   reportProgress(sourceProjectId, read, false);
@@ -786,9 +798,7 @@ export function getConcordanceBooks(
 export async function retryFailedBooks(sourceProjectId: string): Promise<void> {
   const read = textReads.get(sourceProjectId);
   if (!read?.isRead || read.failedBookIds.size === 0) return;
-  await Promise.all(
-    [...read.failedBookIds].map((bookId) => readTextBook(sourceProjectId, read, bookId, false)),
-  );
+  await readTextBooks(sourceProjectId, read, [...read.failedBookIds]);
   if (textReads.get(sourceProjectId) === read) reportTextRead(sourceProjectId, read);
 }
 

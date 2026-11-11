@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { DATASETS_DIR } from '../paths';
+import type { UsjCaptureMeta } from '../usj-cache';
 import type { TierSpec } from './tiers';
 
 /** What a generated dataset holds, recorded beside it so results can be read against its size. */
@@ -10,6 +11,8 @@ export interface DatasetManifest {
   sourceProjectId: string;
   /** Paranext-core commit whose USJ the dataset was generated from. */
   coreCommit: string;
+  /** When the dataset's capture was taken; no two captures share it. */
+  capturedAt: string;
   books: string[];
   counts: {
     segments: number;
@@ -40,9 +43,20 @@ export function writeDataset(manifest: DatasetManifest, draftJson: string): void
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, undefined, 2));
 }
 
-/** Reads a generated tier's manifest. */
-export function readManifest(tier: string): DatasetManifest {
-  return JSON.parse(fs.readFileSync(path.join(tierDir(tier), 'manifest.json'), 'utf-8'));
+/**
+ * Reads a generated tier's manifest.
+ *
+ * @throws If the tier was generated from a capture other than `capture`.
+ */
+export function readManifest(tier: string, capture: UsjCaptureMeta): DatasetManifest {
+  const manifest: DatasetManifest = JSON.parse(
+    fs.readFileSync(path.join(tierDir(tier), 'manifest.json'), 'utf-8'),
+  );
+  if (manifest.capturedAt !== capture.capturedAt)
+    throw new Error(
+      `Tier ${tier} was generated from another capture than the cached one. Run \`npm run perf:datasets\`.`,
+    );
+  return manifest;
 }
 
 /** The draft exactly as generated, unparsed, so a caller measuring serialization starts from text. */

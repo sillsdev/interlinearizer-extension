@@ -103,6 +103,30 @@ describe('getCatalogRows', () => {
     expect(JSON.parse(json).keptIds).toEqual(['ta-god']);
   });
 
+  it('serves the catalog, logging the failure, when the current book cannot be read', async () => {
+    const { sessions, sessionId } = await sessionOver();
+    const logger = { error: jest.fn() };
+    const handlers = sessionCatalogHandlers({
+      sessions,
+      logger,
+      getOpenVerseBook: async () => {
+        throw new Error('unreadable');
+      },
+      isFormInText: () => true,
+    });
+
+    const json = await handlers['interlinearizer.getCatalogRows']({
+      sessionId,
+      request: makeRequest(),
+    });
+
+    expect(JSON.parse(json).keptIds).toEqual(['ta-god']);
+    expect(logger.error).toHaveBeenCalledWith(
+      'Interlinearizer: could not read GEN to place its headings',
+      expect.any(Error),
+    );
+  });
+
   it('serves what an edit in the session left', async () => {
     const { handlers, sessionId, edit } = await handlersOver();
     await edit('gloss', glossing('beginning', 'start'));

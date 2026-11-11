@@ -10,11 +10,19 @@ const localizedStrings = {
 };
 
 describe('TextReadingStatus', () => {
+  it('shows the read as starting until its first status arrives', () => {
+    render(
+      <TextReadingStatus idPrefix="panel" status={undefined} localizedStrings={localizedStrings} />,
+    );
+
+    expect(screen.getByTestId('panel-loading')).toHaveTextContent('Reading 0 of 0');
+  });
+
   it('shows how many books have been read while the text is read', () => {
     render(
       <TextReadingStatus
         idPrefix="panel"
-        text={{ status: 'loading', failedBookIds: [], booksRead: 12, bookCount: 66 }}
+        status={{ failedBookIds: [], booksRead: 12, bookCount: 66 }}
         localizedStrings={localizedStrings}
       />,
     );
@@ -25,11 +33,7 @@ describe('TextReadingStatus', () => {
 
   it('says so when the text could not be read', () => {
     render(
-      <TextReadingStatus
-        idPrefix="panel"
-        text={{ status: 'error', failedBookIds: [], booksRead: 0, bookCount: 66 }}
-        localizedStrings={localizedStrings}
-      />,
+      <TextReadingStatus idPrefix="panel" status="error" localizedStrings={localizedStrings} />,
     );
 
     expect(screen.getByTestId('panel-error')).toHaveTextContent('The text could not be read.');
@@ -40,7 +44,7 @@ describe('TextReadingStatus', () => {
     render(
       <TextReadingStatus
         idPrefix="panel"
-        text={{ status: 'ready', failedBookIds: ['MRK'], booksRead: 66, bookCount: 66 }}
+        status={{ failedBookIds: ['MRK'], booksRead: 66, bookCount: 66 }}
         localizedStrings={localizedStrings}
       />,
     );

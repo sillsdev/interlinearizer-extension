@@ -37,6 +37,7 @@ import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
 import { readBookOutline, readSegmentPage, readStaleSummary } from './services/sessionPages';
 import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
+import { sessionConcordanceHandlers } from './services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
@@ -1262,6 +1263,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getOpenVerseBook: bookService.getOpenVerseBook,
     getVerseBook: bookService.getVerseBook,
     isFormInText: bookService.isFormInText,
+  });
+  const concordance = sessionConcordanceHandlers({
+    sessions: activeSessions,
+    logger,
+    getConcordanceBooks: bookService.getConcordanceBooks,
+    getWritingSystem: bookService.getWritingSystem,
   });
   const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book, edited) =>
     activeSessions
@@ -2626,6 +2633,32 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       schema: { type: 'string' },
     },
   });
+
+  catalogRegistrations.push(
+    await papi.commands.registerCommand(
+      'interlinearizer.getConcordance',
+      concordance['interlinearizer.getConcordance'],
+      {
+        method: {
+          summary:
+            "Serve one page of a session's concordance: of the forms of its source's whole text, or of one form's occurrences",
+          params: sessionArgs({
+            name: 'request',
+            required: true,
+            summary:
+              'ConcordanceRequest naming the page, and either the current book or the form whose occurrences are paged',
+            schema: { type: 'object' },
+          }),
+          result: {
+            name: 'return value',
+            summary:
+              'JSON-stringified ConcordancePage, or ConcordanceOccurrencePage for a form; "null" until the whole text has been read',
+            schema: { type: 'string' },
+          },
+        },
+      },
+    ),
+  );
 
   const checkIndexesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.checkIndexes',

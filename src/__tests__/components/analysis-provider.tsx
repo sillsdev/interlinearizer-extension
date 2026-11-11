@@ -111,17 +111,21 @@ export async function prepareAnalysis(
   };
 }
 
-/** Renders `ui` inside the provider that {@link prepareAnalysis} makes over `analysis` and `book`. */
+/**
+ * Renders `ui` inside the provider that {@link prepareAnalysis} makes over `analysis`, `book` and
+ * `text`.
+ */
 export async function renderWithAnalysis(
   ui: ReactElement,
   {
     analysis,
     book,
+    text,
     ...props
-  }: Readonly<{ analysis: Partial<TextAnalysis>; book: Book }> &
+  }: Readonly<{ analysis: Partial<TextAnalysis>; book: Book; text?: FakeText }> &
     Omit<AnalysisProviderProps, 'children'>,
 ): Promise<AnalysisRendered> {
-  const Provider = await prepareAnalysis(analysis, book);
+  const Provider = await prepareAnalysis(analysis, book, text);
   const rendered = render(ui, {
     wrapper: ({ children }) => <Provider {...props}>{children}</Provider>,
   });

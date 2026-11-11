@@ -4403,6 +4403,36 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toContain('filler-99');
     });
 
+    it('scrolls to a row asked for once the host sends it', async () => {
+      const scrollIntoView = jest.fn();
+      // jsdom implements no scrollIntoView.
+      Element.prototype.scrollIntoView = scrollIntoView;
+      try {
+        const ref = createRef<AnalysisCatalogPanelHandle>();
+        await renderPanel({
+          ref,
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: Array.from({ length: 100 }, (_unused, index) => ({
+              ...FIXTURE_STAMPS,
+              id: `filler-${index}`,
+              surfaceText: `word${index}`,
+              gloss: { en: `g${String(index).padStart(3, '0')}` },
+            })),
+            tokenAnalysisLinks: [],
+          },
+        });
+        await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
+
+        act(() => ref.current?.revealRow('filler-99'));
+        await settle();
+
+        expect(scrollIntoView.mock.contexts).toContain(rowFor('filler-99'));
+      } finally {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      }
+    });
+
     it('stops holding a revealed row mounted once the listing changes', async () => {
       const ref = createRef<AnalysisCatalogPanelHandle>();
       await renderPanel({

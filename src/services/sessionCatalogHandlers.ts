@@ -190,12 +190,13 @@ export function sessionCatalogHandlers({
 
   /**
    * Reports what deleting a token analysis in a session's draft would do to the tokens that approve
-   * it, whichever book they sit in.
+   * it, whichever book they sit in. An outcome that turns on a token whose book cannot be read is
+   * `uncertain`.
    *
    * @returns A JSON string of the `AnalysisDeletionOutcome`; `"null"` when no analysis carries the
    *   id.
-   * @throws If the session is not open, or its analysis or the text of a book it reaches cannot be
-   *   read. The error is logged before rethrowing.
+   * @throws If the session is not open or its analysis cannot be read. The error is logged before
+   *   rethrowing.
    */
   async function previewDeletion({
     sessionId,
@@ -212,7 +213,10 @@ export function sessionCatalogHandlers({
         const liveText = new Map<string, string>();
         await Promise.all(
           [...bookIds].map(async (bookId) => {
-            const book = await getVerseBook(session.scope.sourceProjectId, bookId);
+            const book = await getVerseBook(session.scope.sourceProjectId, bookId).catch((e) => {
+              logger.error(`Interlinearizer: could not read ${bookId} to preview a deletion`, e);
+              return undefined;
+            });
             book?.segments.forEach((segment) =>
               segment.tokens.forEach((token) => liveText.set(token.ref, token.surfaceText)),
             );

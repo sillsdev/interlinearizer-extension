@@ -1028,12 +1028,12 @@ declare module 'papi-shared-types' {
 
     /**
      * Reports what deleting a token analysis in a session's draft would do to the tokens that
-     * approve it, whichever book they sit in.
+     * approve it, whichever book they sit in. An outcome that turns on a token whose book cannot be
+     * read is `uncertain`.
      *
      * @returns A JSON string of the `AnalysisDeletionOutcome`; `"null"` when no analysis carries
      *   the id.
-     * @throws If the session is not open, or its analysis or the text of a book it reaches cannot
-     *   be read (logged before rethrowing).
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
      */
     'interlinearizer.previewDeletion': (
       args: import('interlinearizer').SessionCommandArgs & { analysisId: string },

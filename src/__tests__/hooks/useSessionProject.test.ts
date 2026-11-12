@@ -177,7 +177,13 @@ describe('useSessionProject', () => {
   it('reads the draft again on a reported change while no pages are loaded', async () => {
     await fakeHost();
     const { result } = renderHook(() =>
-      useSessionProject('src', { bookId: undefined, scrRef: SCR_REF }),
+      useSessionProject('src', {
+        saveTargetId: undefined,
+        importProjectId: undefined,
+        importVersion: undefined,
+        bookId: undefined,
+        scrRef: SCR_REF,
+      }),
     );
     await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
     const reads = fullReads();

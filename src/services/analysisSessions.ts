@@ -29,6 +29,7 @@ import { settleAll } from './draftRepository';
 import { EditHistory, type EditOptions, type HistoryMove } from './editHistory';
 import { reanchorRestored, reanchorStoredBook } from './reanchorPasses';
 import { readTouchedPoolBuckets } from './sessionPages';
+import type { GlossRetagCounts } from '../utils/retag-glosses';
 
 /** BCP 47 tag for a language that cannot be determined. */
 export const UNDETERMINED_LANGUAGE = 'und';
@@ -83,11 +84,13 @@ export type EditOutcome = {
   hasFreeTranslations?: boolean;
   /** The token analyses that clearing glosses left empty, and so removed. */
   emptiedAnalysisIds?: string[];
+  /** What changing the analysis languages moved, when it was asked to move glosses. */
+  glossRetag?: GlossRetagCounts;
 };
 
 /** What a session answers an edit with. */
 export type EditReply = CommandReply &
-  Pick<EditOutcome, 'hasFreeTranslations' | 'emptiedAnalysisIds'>;
+  Pick<EditOutcome, 'hasFreeTranslations' | 'emptiedAnalysisIds' | 'glossRetag'>;
 
 /** An open session, as seen by the commands sent to it. */
 export type Session = {

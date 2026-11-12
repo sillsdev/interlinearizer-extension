@@ -282,6 +282,10 @@ const STRING_KEYS = [
   '%interlinearizer_redone_discardBook%',
   '%interlinearizer_undone_discardAll%',
   '%interlinearizer_redone_discardAll%',
+  '%interlinearizer_undone_changeAnalysisLanguages%',
+  '%interlinearizer_redone_changeAnalysisLanguages%',
+  '%interlinearizer_undone_retagGlosses%',
+  '%interlinearizer_redone_retagGlosses%',
   '%interlinearizer_error_load_book_heading%',
   '%interlinearizer_loading%',
   '%interlinearizer_error_projectUnavailable%',
@@ -570,6 +574,7 @@ function InterlinearizerLoaderInner({
     commitDraft,
     discardBook,
     discardAll,
+    changeAnalysisLanguages,
     detachFromProject,
     canUndo,
     canRedo,
@@ -624,6 +629,20 @@ function InterlinearizerLoaderInner({
   const handleAnalysisLanguageChange = useCallback(
     (tag: string) => setChosenLanguages({ ...chosenLanguages, [languageKey]: tag }),
     [chosenLanguages, languageKey, setChosenLanguages],
+  );
+
+  /**
+   * Gives the draft new analysis languages, as `changeAnalysisLanguages` does. Glosses moved to the
+   * new primary language are then shown in it.
+   */
+  const changeDraftAnalysisLanguages = useCallback(
+    async (analysisLanguages: string[], retagFrom?: string) => {
+      const moved = await changeAnalysisLanguages(analysisLanguages, retagFrom);
+      if (retagFrom !== undefined)
+        setChosenLanguages({ ...chosenLanguages, [DRAFT_LANGUAGE_KEY]: analysisLanguages[0] });
+      return moved;
+    },
+    [changeAnalysisLanguages, chosenLanguages, setChosenLanguages],
   );
 
   /** Whether the session that holds the import on screen has yet to open. */
@@ -1981,6 +2000,8 @@ function InterlinearizerLoaderInner({
 
       <ProjectModals
         activeProject={activeProject}
+        announceUndoable={announceUndoable}
+        changeDraftAnalysisLanguages={changeDraftAnalysisLanguages}
         defaultAnalysisLanguage={platformLanguage}
         hasUnsavedWork={hasUnsavedChanges}
         getDraftSnapshot={getDraftSnapshot}

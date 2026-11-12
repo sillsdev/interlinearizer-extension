@@ -470,6 +470,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     modal,
     setModal,
     activeProject,
+    changeDraftAnalysisLanguages,
     defaultAnalysisLanguage,
     hasUnsavedWork,
     onImportPt9,
@@ -482,6 +483,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     setModal: (m: string) => void;
     sourceShortName: string;
     activeProject: MockProject | undefined;
+    changeDraftAnalysisLanguages: (languages: string[], retagFrom?: string) => Promise<unknown>;
     defaultAnalysisLanguage?: string;
     hasUnsavedWork: boolean;
     getDraftSnapshot: () => DraftProject | undefined;
@@ -508,6 +510,20 @@ jest.mock('../../components/modals/ProjectModals', () => ({
         data-open-request-id={openRequest?.requestId}
         data-open-request-name={openRequest?.project.name}
       >
+        <button
+          type="button"
+          data-testid="change-draft-languages"
+          onClick={() => changeDraftAnalysisLanguages(['fr', 'en'])}
+        >
+          Change languages
+        </button>
+        <button
+          type="button"
+          data-testid="retag-draft-languages"
+          onClick={() => changeDraftAnalysisLanguages(['fr', 'en'], 'en')}
+        >
+          Retag languages
+        </button>
         {modal === 'select' && (
           <div data-testid="select-modal">
             <button
@@ -6072,6 +6088,38 @@ describe('analysis language switch', () => {
       }),
     );
 
+    expect(capturedStoreProps?.analysisLanguage).toBe('en');
+  });
+
+  it('shows glosses moved to a new primary language in it', async () => {
+    await mockDraftLanguages(['en', 'fr']);
+    await act(async () =>
+      renderLoader({
+        useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'en' } }),
+      }),
+    );
+
+    await flushHost(async () => {
+      fireEvent.click(screen.getByTestId('retag-draft-languages'));
+    });
+
+    expect(editsSent()).toContain('interlinearizer.changeAnalysisLanguages');
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
+  });
+
+  it('keeps the chosen language when only the list of languages changes', async () => {
+    await mockDraftLanguages(['en', 'fr']);
+    await act(async () =>
+      renderLoader({
+        useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'en' } }),
+      }),
+    );
+
+    await flushHost(async () => {
+      fireEvent.click(screen.getByTestId('change-draft-languages'));
+    });
+
+    expect(editsSent()).toContain('interlinearizer.changeAnalysisLanguages');
     expect(capturedStoreProps?.analysisLanguage).toBe('en');
   });
 

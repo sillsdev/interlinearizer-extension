@@ -29,6 +29,18 @@ type StepSummary = Readonly<
     }
   | { kind: 'discardBook'; book: string }
   | { kind: 'discardAll' }
+  | { kind: 'changeAnalysisLanguages' }
+  | {
+      kind: 'retagGlosses';
+      /** The tag the glosses moved from. */
+      from: string;
+      /** The tag the glosses moved to, the new primary analysis language. */
+      to: string;
+      /** How many word glosses moved. */
+      words: number;
+      /** How many morpheme glosses moved. */
+      morphemes: number;
+    }
 >;
 
 /** An undo step, as recorded. */

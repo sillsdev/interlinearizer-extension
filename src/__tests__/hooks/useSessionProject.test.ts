@@ -825,6 +825,50 @@ describe('useSessionProject edits sent to the session', () => {
     expect(fullReads()).toBe(reads);
   });
 
+  it("changes the draft's languages alone, reading the draft again for its unsaved mark", async () => {
+    const { result } = await renderAnswering();
+    const reads = fullReads();
+    let moved: unknown = 'unset';
+
+    await act(async () => {
+      moved = await result.current.changeAnalysisLanguages(['es', 'en']);
+    });
+
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+      'interlinearizer.changeAnalysisLanguages',
+      {
+        sessionId: result.current.session?.sessionId,
+        changeId: expect.any(String),
+        analysisLanguages: ['es', 'en'],
+      },
+    );
+    expect(moved).toBeUndefined();
+    expect(fullReads()).toBe(reads + 1);
+  });
+
+  it('hands back what moved when the languages change moves glosses', async () => {
+    const glossRetag = { words: 2, morphemes: 1, skipped: 0 };
+    await fakeHost(async (command) => {
+      if (command === 'interlinearizer.getTextReadStatus') return undefined;
+      if (command === 'interlinearizer.changeAnalysisLanguages')
+        return JSON.stringify({ ...JSON.parse(EMPTY_REPLY), glossRetag });
+      return EMPTY_REPLY;
+    });
+    const { result } = renderProject();
+    await waitFor(() => expect(result.current.session?.client).toBeDefined());
+    let moved: unknown;
+
+    await act(async () => {
+      moved = await result.current.changeAnalysisLanguages(['es'], 'en');
+    });
+
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+      'interlinearizer.changeAnalysisLanguages',
+      expect.objectContaining({ analysisLanguages: ['es'], retagFrom: 'en' }),
+    );
+    expect(moved).toStrictEqual(glossRetag);
+  });
+
   it('logs a draft it cannot read again after a discard', async () => {
     const { result } = await renderAnswering();
     jest

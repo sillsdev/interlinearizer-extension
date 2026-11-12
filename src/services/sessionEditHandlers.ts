@@ -13,6 +13,7 @@ import * as catalogCommands from './commands/catalogCommands';
 import type { ChangeBuffer } from './commands/changeBuffer';
 import * as discardCommands from './commands/discardCommands';
 import * as freeTranslationCommands from './commands/freeTranslationCommands';
+import * as languageCommands from './commands/languageCommands';
 import * as morphemeCommands from './commands/morphemeCommands';
 import * as phraseCommands from './commands/phraseCommands';
 import * as staleCommands from './commands/staleCommands';
@@ -880,6 +881,72 @@ export function sessionEditHandlers({
   }
 
   /**
+   * Gives a session's draft new analysis languages, primary first. With `retagFrom`, also moves
+   * every word and morpheme gloss under `retagFrom` to the new primary language, leaving one whose
+   * word or morpheme already has a gloss there where it is. Both are one undoable step. A change of
+   * languages alone leaves the draft as saved or unsaved as it was.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `glossRetag`: what moved, when
+   *   `retagFrom` was given.
+   * @throws If the languages are empty, `retagFrom` is the new primary language, the session is
+   *   read-only or not open, or the edit is refused or fails. The error is logged before
+   *   rethrowing.
+   */
+  async function changeAnalysisLanguages({
+    sessionId,
+    analysisLanguages,
+    retagFrom,
+    changeId,
+  }: ArgsOf<'interlinearizer.changeAnalysisLanguages'>): Promise<string> {
+    const intent = 'changeAnalysisLanguages';
+    try {
+      const [to] = analysisLanguages;
+      if (to === undefined) throw new Error('Interlinearizer: a draft needs an analysis language');
+      if (retagFrom === to)
+        throw new Error(`Interlinearizer: glosses cannot move from ${to} to itself`);
+      const target: EditTarget = { sessionId, changeId };
+      const reply = await sessions.edit(
+        sessionId,
+        intent,
+        async (buffer, session) => {
+          const { draft } = await session.repository.exportAll();
+          const glossRetag = await languageCommands.changeAnalysisLanguages(
+            buffer,
+            draft.analysis,
+            {
+              analysisLanguages,
+              retagFrom,
+              now: editStamp().now,
+            },
+          );
+          target.step = {
+            summary:
+              glossRetag && retagFrom !== undefined
+                ? {
+                    kind: 'retagGlosses',
+                    from: retagFrom,
+                    to,
+                    words: glossRetag.words,
+                    morphemes: glossRetag.morphemes,
+                  }
+                : { kind: 'changeAnalysisLanguages' },
+          };
+          return glossRetag ? { glossRetag } : undefined;
+        },
+        {
+          changeId,
+          step: () => target.step,
+          ...(retagFrom === undefined && { unsavedMark: 'keep' }),
+        },
+      );
+      return JSON.stringify(reply);
+    } catch (e) {
+      logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
+      throw e;
+    }
+  }
+
+  /**
    * Runs an unsaved-change discard as one edit of a session's analysis, re-anchoring each book it
    * rewrites to the book's current text. A book the text lacks has its links go stale.
    *
@@ -1079,6 +1146,7 @@ export function sessionEditHandlers({
     'interlinearizer.moveBoundary': moveBoundary,
     'interlinearizer.discardBook': discardBook,
     'interlinearizer.discardAll': discardAll,
+    'interlinearizer.changeAnalysisLanguages': changeAnalysisLanguages,
     'interlinearizer.previewRemovals': previewRemovals,
   } satisfies Partial<CommandHandlers>;
 }

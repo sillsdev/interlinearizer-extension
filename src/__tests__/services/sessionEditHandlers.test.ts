@@ -121,6 +121,65 @@ describe('sessionEditHandlers', () => {
     );
   });
 
+  it("changes the draft's languages alone as a step that leaves the unsaved mark as it was", async () => {
+    const { edits, sessionId, sessions } = await handlersOver();
+
+    const reply = JSON.parse(
+      await edits['interlinearizer.changeAnalysisLanguages']({
+        sessionId,
+        analysisLanguages: ['es', 'en'],
+      }),
+    );
+
+    expect(reply.step).toStrictEqual({ summary: { kind: 'changeAnalysisLanguages' } });
+    expect(reply.glossRetag).toBeUndefined();
+    const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(draft.analysisLanguages).toStrictEqual(['es', 'en']);
+    expect(draft.analysis.tokenAnalyses.map((ta) => ta.gloss)).toStrictEqual([{ en: 'God' }]);
+    expect(draft.dirty).toBe(false);
+  });
+
+  it("moves the old tag's glosses with the languages as one step that marks the draft unsaved", async () => {
+    const { edits, sessionId, sessions } = await handlersOver();
+
+    const reply = JSON.parse(
+      await edits['interlinearizer.changeAnalysisLanguages']({
+        sessionId,
+        analysisLanguages: ['es'],
+        retagFrom: 'en',
+      }),
+    );
+
+    const moved = { words: 1, morphemes: 0, skipped: 0 };
+    expect(reply.glossRetag).toStrictEqual(moved);
+    expect(reply.step).toStrictEqual({
+      summary: { kind: 'retagGlosses', from: 'en', to: 'es', words: 1, morphemes: 0 },
+    });
+    const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(draft.analysisLanguages).toStrictEqual(['es']);
+    expect(draft.analysis.tokenAnalyses.map((ta) => ta.gloss)).toStrictEqual([{ es: 'God' }]);
+    expect(draft.dirty).toBe(true);
+  });
+
+  it.each([
+    ['no languages', { analysisLanguages: [] }, 'needs an analysis language'],
+    [
+      'a move onto the same tag',
+      { analysisLanguages: ['en'], retagFrom: 'en' },
+      'cannot move from en to itself',
+    ],
+  ])('refuses and logs a change of languages with %s', async (_case, args, message) => {
+    const { edits, sessionId, host } = await handlersOver();
+
+    await expect(
+      edits['interlinearizer.changeAnalysisLanguages']({ sessionId, ...args }),
+    ).rejects.toThrow(message);
+    expect(host.logger.error).toHaveBeenCalledWith(
+      `Interlinearizer: failed to changeAnalysisLanguages in session ${sessionId}`,
+      expect.anything(),
+    );
+  });
+
   it('logs an edit that fails before rethrowing it', async () => {
     const { edits, host } = await handlersOver();
 

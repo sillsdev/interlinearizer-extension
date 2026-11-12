@@ -952,6 +952,24 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Gives a session's draft new analysis languages, primary first. With `retagFrom`, also moves
+     * every word and morpheme gloss under `retagFrom` to the new primary language; a gloss whose
+     * word or morpheme already has one there stays where it is. Both are one undoable step. A
+     * change of languages alone leaves the draft as saved or unsaved as it was.
+     *
+     * @returns A JSON string of the `CommandReply`, with `glossRetag`: how many word and morpheme
+     *   glosses moved and how many were skipped, when `retagFrom` was given.
+     * @throws If the languages are empty, `retagFrom` is the new primary language, the session is
+     *   read-only or not open, or the edit is refused or fails (logged before rethrowing).
+     */
+    'interlinearizer.changeAnalysisLanguages': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisLanguages: string[];
+        retagFrom?: string;
+      },
+    ) => Promise<string>;
+
+    /**
      * Names the token analyses a command would remove from a session's draft, applying nothing.
      *
      * @returns A JSON string of the ids; `"[]"` when it would remove none.
@@ -1024,6 +1042,25 @@ declare module 'papi-shared-types' {
       description: string | undefined,
       analysisLanguages: string[],
       targetProjectId?: string,
+    ) => Promise<string | undefined>;
+
+    /**
+     * Moves every word and morpheme gloss of a stored project from the tag `from` to the tag `to`.
+     * A gloss whose word or morpheme already has one under `to` stays under `from`. Nothing records
+     * the move to undo.
+     *
+     * @param interlinearProjectId - UUID of the interlinearizer project whose glosses move.
+     * @param from - BCP 47 tag the glosses move from.
+     * @param to - BCP 47 tag the glosses move to.
+     * @returns The JSON-stringified `{ words, morphemes, skipped }` counts, or `undefined` if no
+     *   project with that ID exists.
+     * @throws If `from` and `to` are the same tag, the project is a Paratext 9 import, or storage
+     *   fails. The error is logged and an error notification is sent before rethrowing.
+     */
+    'interlinearizer.retagProjectGlosses': (
+      interlinearProjectId: string,
+      from: string,
+      to: string,
     ) => Promise<string | undefined>;
 
     /**

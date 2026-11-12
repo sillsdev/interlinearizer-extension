@@ -8,6 +8,7 @@ import { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { CommandReply } from '../types/command-reply';
 import type { EditStep } from '../types/edit-step';
+import { isGlossRetagCounts } from '../utils/retag-glosses';
 import type {
   ProjectApi,
   ProjectViewOptions,
@@ -429,6 +430,31 @@ export default function useSessionProject(
     () => discard((args) => papi.commands.sendCommand('interlinearizer.discardAll', args)),
     [discard],
   );
+
+  /**
+   * Gives the draft new analysis languages, primary first, as one undoable step. With `retagFrom`,
+   * the step also moves the word and morpheme glosses under `retagFrom` to the new primary
+   * language.
+   *
+   * @returns What moved, or `undefined` when no glosses were asked to move.
+   * @throws If the pages' outline has not loaded yet, or whatever the edit's command throws.
+   */
+  const changeAnalysisLanguages = useCallback(
+    async (analysisLanguages: string[], retagFrom?: string) => {
+      const reply = await sendEditOrThrow((args) =>
+        papi.commands.sendCommand('interlinearizer.changeAnalysisLanguages', {
+          ...args,
+          analysisLanguages,
+          ...(retagFrom !== undefined && { retagFrom }),
+        }),
+      );
+      // The reply leaves out how a change of languages alone left the draft's unsaved mark.
+      refreshWhole();
+      const glossRetag: unknown = reply && 'glossRetag' in reply ? reply.glossRetag : undefined;
+      return isGlossRetagCounts(glossRetag) ? glossRetag : undefined;
+    },
+    [sendEditOrThrow, refreshWhole],
+  );
   const getHistoryRevision = useCallback(() => historyRevision.current, []);
   const subscribeToHistoryRevisions = useCallback((listener: () => void) => {
     revisionListeners.current.add(listener);
@@ -456,6 +482,7 @@ export default function useSessionProject(
     newDraft,
     discardBook,
     discardAll,
+    changeAnalysisLanguages,
     detachFromProject,
     canUndo,
     canRedo,

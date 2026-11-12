@@ -51,6 +51,7 @@ import { CURRENT_MODEL_VERSION } from './types/model-version';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
+import { retagGlosses } from './utils/retag-glosses';
 import { bookSegmentationJson } from './utils/segmentation';
 
 // #region WebView provider
@@ -429,6 +430,46 @@ async function updateProjectMetadata(
         message: '%interlinearizer_error_update_project_failed%',
         severity: 'error',
       })
+      .catch(() => {});
+    throw e;
+  }
+}
+
+/**
+ * Moves every word and morpheme gloss of a stored project from the tag `from` to the tag `to`. A
+ * gloss whose word or morpheme already has one under `to` stays under `from`. The project is
+ * written only when something moved. Nothing records the move to undo.
+ *
+ * @param interlinearProjectId - UUID of the interlinearizer project whose glosses move.
+ * @param from - BCP 47 tag the glosses move from.
+ * @param to - BCP 47 tag the glosses move to.
+ * @returns The JSON-stringified counts of what moved and what was skipped, or `undefined` if no
+ *   project with the given ID exists.
+ * @throws If `from` and `to` are the same tag, the project is a Paratext 9 import, or storage
+ *   fails. The error is logged and an error notification is sent before rethrowing.
+ */
+async function retagProjectGlosses(
+  interlinearProjectId: string,
+  from: string,
+  to: string,
+): Promise<string | undefined> {
+  try {
+    if (from === to) throw new Error(`Interlinearizer: glosses cannot move from ${to} to itself`);
+    const project = await projectStorage.getProject(executionToken, interlinearProjectId);
+    if (!project) return undefined;
+    const { counts, tokenAnalyses, phraseAnalyses } = retagGlosses(
+      project.analysis,
+      from,
+      to,
+      new Date().toISOString(),
+    );
+    if (tokenAnalyses.length > 0 || phraseAnalyses.length > 0)
+      await projectStorage.updateAnalysis(executionToken, interlinearProjectId, project.analysis);
+    return JSON.stringify(counts);
+  } catch (e) {
+    logger.error('Interlinearizer: failed to move project glosses to a new language', e);
+    await papi.notifications
+      .send({ message: '%interlinearizer_error_update_project_failed%', severity: 'error' })
       .catch(() => {});
     throw e;
   }
@@ -2429,6 +2470,27 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: discardResult,
   });
 
+  await registerEdit('interlinearizer.changeAnalysisLanguages', {
+    summary:
+      "Give a session's draft new analysis languages, optionally moving one tag's glosses to the new primary language",
+    params: sessionArgs(
+      {
+        name: 'analysisLanguages',
+        required: true,
+        summary: 'BCP 47 tags, primary first; never empty',
+        schema: { type: 'array', items: { type: 'string' } },
+      },
+      {
+        name: 'retagFrom',
+        required: false,
+        summary: 'The tag whose word and morpheme glosses move to the new primary language',
+        schema: { type: 'string' },
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
   await registerEdit('interlinearizer.previewRemovals', {
     summary: "Name the token analyses a command would remove from a session's draft",
     params: sessionArgs({
@@ -2553,6 +2615,43 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary: 'JSON-stringified { entries, pid }, or undefined while timing entries are off',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const retagProjectGlossesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.retagProjectGlosses',
+    retagProjectGlosses,
+    {
+      method: {
+        summary:
+          "Move a stored project's word and morpheme glosses from one language tag to another",
+        params: [
+          {
+            name: 'interlinearProjectId',
+            required: true,
+            summary: 'UUID of the interlinearizer project',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'from',
+            required: true,
+            summary: 'BCP 47 tag the glosses move from',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'to',
+            required: true,
+            summary: 'BCP 47 tag the glosses move to',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary:
+            'JSON-stringified { words, morphemes, skipped }, or undefined when no such project exists',
           schema: { type: 'string' },
         },
       },
@@ -2908,6 +3007,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     sessionIdForCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,
+    retagProjectGlossesCommandRegistration,
     importPt9ProjectCommandRegistration,
     createEditableCopyCommandRegistration,
     deleteProjectCommandRegistration,

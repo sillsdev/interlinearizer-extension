@@ -7,8 +7,8 @@ import {
   useTruncationTooltip,
 } from 'platform-bible-react';
 import { formatReplacementString, formatScrRef, type LanguageStrings } from 'platform-bible-utils';
-import { memo, useCallback, useMemo, useState } from 'react';
-import { useConcordanceOccurrences } from '../cache/catalogHooks';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { useConcordanceOccurrences } from '../cache/concordanceHooks';
 import type { ConcordanceRowSummary } from '../services/sessionConcordanceHandlers';
 import {
   contextLine,
@@ -31,6 +31,7 @@ export const CONCORDANCE_ROW_STRING_KEYS = [
   '%interlinearizer_concordance_noGloss%',
   '%interlinearizer_concordance_unanalyzed%',
   '%interlinearizer_concordance_showMoreOccurrences%',
+  '%interlinearizer_concordance_showFewerOccurrences%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -154,11 +155,32 @@ function ConcordanceRowView({
 
   const [shownCount, setShownCount] = useState(INLINE_OCCURRENCE_LIMIT);
 
+  /**
+   * Whether the Show N more link takes focus when it next mounts.
+   *
+   * Show fewer unmounts itself when clicked; focus moves to Show N more to stay in the row. Show N
+   * more is missing while every occurrence is listed, until the shorter page arrives.
+   */
+  const focusShowMoreOnMountRef = useRef(false);
+  const showMoreElementRef = useRef<HTMLButtonElement | undefined>(undefined);
+  const showMoreRef = useCallback((el: HTMLButtonElement | null) => {
+    showMoreElementRef.current = el ?? undefined;
+    if (!el || !focusShowMoreOnMountRef.current) return;
+    focusShowMoreOnMountRef.current = false;
+    el.focus();
+  }, []);
+  const handleShowFewer = useCallback(() => {
+    setShownCount(INLINE_OCCURRENCE_LIMIT);
+    if (showMoreElementRef.current) showMoreElementRef.current.focus();
+    else focusShowMoreOnMountRef.current = true;
+  }, []);
+
   // Collapsing returns the row to the inline cap, so a row paged deep into its occurrences reopens
   // short rather than mounting them all again.
   const handleToggle = useCallback(() => {
     setIsExpanded((expanded) => !expanded);
     setShownCount(INLINE_OCCURRENCE_LIMIT);
+    focusShowMoreOnMountRef.current = false;
   }, []);
 
   const detail = useConcordanceOccurrences(isExpanded ? row.form : undefined, shownCount);
@@ -319,6 +341,7 @@ function ConcordanceRowView({
               className="tw:self-start"
               data-testid="concordance-occurrences-show-more"
               onClick={() => setShownCount((count) => count + OCCURRENCE_PAGE_SIZE)}
+              ref={showMoreRef}
               size="sm"
               variant="link"
             >
@@ -326,6 +349,17 @@ function ConcordanceRowView({
                 localizedStrings['%interlinearizer_concordance_showMoreOccurrences%'],
                 { count: nextPageCount },
               )}
+            </Button>
+          )}
+          {shownCount > INLINE_OCCURRENCE_LIMIT && (
+            <Button
+              className="tw:self-start"
+              data-testid="concordance-occurrences-show-fewer"
+              onClick={handleShowFewer}
+              size="sm"
+              variant="link"
+            >
+              {localizedStrings['%interlinearizer_concordance_showFewerOccurrences%']}
             </Button>
           )}
         </div>

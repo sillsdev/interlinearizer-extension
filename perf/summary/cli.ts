@@ -65,7 +65,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'bench.applyBooksReached':
     'How many books each timed apply rewrites, which its time should follow.',
   'app.textRead':
-    "With a view open, the host reads every book of the source and files its word forms, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes each book's USJ, which the platform keeps for every book subscription.",
+    "With a view open, the host reads every book of the source and files its word forms and occurrences, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes the occurrence index and each book's USJ, which the platform keeps for every book subscription.",
   'app.scriptureSave':
     "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
   'app.editDuringRead':

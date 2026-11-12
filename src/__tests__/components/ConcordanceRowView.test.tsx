@@ -382,6 +382,49 @@ describe('ConcordanceRowView', () => {
 
         expect(screen.getAllByTestId('concordance-occurrence').length).toBeLessThan(20);
       });
+
+      it('offers no Show fewer while only the first occurrences are listed', async () => {
+        await renderRow({ verses: manyVerses(20) });
+
+        await expand();
+
+        expect(screen.queryByTestId('concordance-occurrences-show-fewer')).not.toBeInTheDocument();
+      });
+
+      it('offers Show fewer once more occurrences are listed', async () => {
+        await renderRow({ verses: manyVerses(20) });
+
+        await expand();
+        await showMore();
+
+        expect(screen.getByTestId('concordance-occurrences-show-fewer')).toHaveTextContent(
+          '%interlinearizer_concordance_showFewerOccurrences%',
+        );
+      });
+
+      it('returns to the first occurrences on Show fewer, focusing Show more once it returns', async () => {
+        await renderRow({ verses: manyVerses(20) });
+
+        await expand();
+        await showMore();
+        await userEvent.click(screen.getByTestId('concordance-occurrences-show-fewer'));
+        await settle();
+
+        expect(screen.getAllByTestId('concordance-occurrence').length).toBeLessThan(20);
+        expect(screen.queryByTestId('concordance-occurrences-show-fewer')).not.toBeInTheDocument();
+        expect(screen.getByTestId('concordance-occurrences-show-more')).toHaveFocus();
+      });
+
+      it('focuses Show more at once on Show fewer when more remain unlisted', async () => {
+        await renderRow({ verses: manyVerses(300) });
+
+        await expand();
+        await showMore();
+        await userEvent.click(screen.getByTestId('concordance-occurrences-show-fewer'));
+
+        expect(screen.getByTestId('concordance-occurrences-show-more')).toHaveFocus();
+        await settle();
+      });
     });
   });
 });

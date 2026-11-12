@@ -39,17 +39,6 @@ async function wrapperOver(text = readText([])) {
   };
 }
 
-/**
- * A wrapper like {@link wrapperOver}'s, whose analysis language is what `language.current` holds
- * when the hook renders.
- */
-async function languageWrapperOver(language: { current: string }) {
-  const Provider = await prepareAnalysis(ANALYSIS, BOOK, readText([]));
-  return function Wrapper({ children }: Readonly<{ children: ReactNode }>) {
-    return <Provider analysisLanguage={language.current}>{children}</Provider>;
-  };
-}
-
 /** Sets the language of the session that the view last sent `command` under, as the view does. */
 async function setLanguage(command: string, analysisLanguage: string): Promise<void> {
   await papi.commands.sendCommand('interlinearizer.setAnalysisLanguage', {
@@ -280,55 +269,43 @@ describe('useSelectionSummary', () => {
 });
 
 describe('a change of analysis language', () => {
-  it('fetches the catalog page again', async () => {
-    const language = { current: 'en' };
-    const wrapper = await languageWrapperOver(language);
-    const { rerender } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
-    await settle();
+  it('fetches the catalog page again in the new language', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await waitFor(() => expect(result.current?.rows[0]?.gloss).toBe('God'));
 
-    language.current = 'fr';
-    rerender();
-    await settle();
+    await setLanguage('interlinearizer.getCatalogRows', 'fr');
 
-    expect(timesSent('interlinearizer.getCatalogRows')).toBe(2);
+    await waitFor(() => expect(result.current?.rows[0]?.gloss).toBe(''));
   });
 
   it('summarizes the selection again in the new language', async () => {
-    const language = { current: 'en' };
-    const wrapper = await languageWrapperOver(language);
-    const { result, rerender } = renderHook(() => useSelectionSummary(['ta-god']), { wrapper });
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useSelectionSummary(['ta-god']), { wrapper });
     await waitFor(() => expect(result.current?.glossedIds).toStrictEqual(['ta-god']));
 
     await setLanguage('interlinearizer.getSelectionSummary', 'fr');
-    language.current = 'fr';
-    rerender();
 
     await waitFor(() => expect(result.current?.glossedIds).toStrictEqual([]));
   });
 
-  it('fetches the rows by id again', async () => {
-    const language = { current: 'en' };
-    const wrapper = await languageWrapperOver(language);
-    const { rerender } = renderHook(() => useCatalogRowsByIds(['ta-god'], 'GEN'), { wrapper });
-    await settle();
+  it('fetches the rows by id again in the new language', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useCatalogRowsByIds(['ta-god'], 'GEN'), { wrapper });
+    await waitFor(() => expect(result.current?.get('ta-god')?.gloss).toBe('God'));
 
-    language.current = 'fr';
-    rerender();
-    await settle();
+    await setLanguage('interlinearizer.getCatalogRowsByIds', 'fr');
 
-    expect(timesSent('interlinearizer.getCatalogRowsByIds')).toBe(2);
+    await waitFor(() => expect(result.current?.get('ta-god')?.gloss).toBe(''));
   });
 
-  it('fetches the homographs again', async () => {
-    const language = { current: 'en' };
-    const wrapper = await languageWrapperOver(language);
-    const { rerender } = renderHook(() => useHomographRows('ta-god', 'GEN'), { wrapper });
-    await settle();
+  it('fetches the homographs again in the new language', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useHomographRows('ta-god', 'GEN'), { wrapper });
+    await waitFor(() => expect(result.current?.[0]?.gloss).toBe('God'));
 
-    language.current = 'fr';
-    rerender();
-    await settle();
+    await setLanguage('interlinearizer.getHomographRows', 'fr');
 
-    expect(timesSent('interlinearizer.getHomographRows')).toBe(2);
+    await waitFor(() => expect(result.current?.[0]?.gloss).toBe(''));
   });
 });

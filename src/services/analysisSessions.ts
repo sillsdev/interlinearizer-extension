@@ -462,13 +462,23 @@ export class AnalysisSessions {
 
   /**
    * Sets the language that the session's glosses are read and written in, unchecked against the
-   * languages its draft lists. A read-only session takes it too, since it changes nothing stored.
+   * languages its draft lists. A read-only session takes it too, since it changes nothing stored. A
+   * switch to a different language is reported as a change that names the catalog, because the
+   * catalog's rows are read in the session's language.
    *
    * @throws {Error} If the session is not open.
    */
   setAnalysisLanguage(sessionId: string, analysisLanguage: string): Promise<void> {
     return this.run(sessionId, async (session) => {
+      if (session.analysisLanguage === analysisLanguage) return;
       session.analysisLanguage = analysisLanguage;
+      report(
+        this.host,
+        session,
+        { books: [], analysisIds: [], forms: [], queries: ['getCatalogRows'] },
+        crypto.randomUUID(),
+        [],
+      );
     });
   }
 

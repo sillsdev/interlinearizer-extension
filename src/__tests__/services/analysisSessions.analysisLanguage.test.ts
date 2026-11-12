@@ -42,4 +42,49 @@ describe('AnalysisSessions.setAnalysisLanguage', () => {
     ).resolves.toBe(tag);
     expect(writes).toHaveLength(savedWrites);
   });
+
+  /** Opens a session over a draft listing French then English, reporting its changes to `reported`. */
+  async function openReporting(reported: unknown[]) {
+    const { storage } = memoryStorage();
+    const logger = silentLogger();
+    const draft = { ...emptyDraft(SOURCE), analysisLanguages: ['fr', 'en'] };
+    await new DraftRepository(storage, SOURCE, logger).startOver(draft);
+    const sessions = new AnalysisSessions({
+      findProject: async () => undefined,
+      openDraftRepository: (sourceProjectId) =>
+        new DraftRepository(storage, sourceProjectId, logger),
+      releaseDraftRepository: async () => {},
+      openPt9ImportRepository: () => {
+        throw new Error('no import in this test');
+      },
+      getInterfaceLanguages: async () => [],
+      startTextRead: async () => {},
+      stopTextRead: async () => {},
+      heldBook: () => undefined,
+      getOpenVerseBook: async () => undefined,
+      reportChange: (change) => reported.push(change),
+    });
+    const { sessionId } = await sessions.open(SOURCE);
+    return { sessions, sessionId };
+  }
+
+  it('reports a new language as a change naming the catalog', async () => {
+    const reported: unknown[] = [];
+    const { sessions, sessionId } = await openReporting(reported);
+
+    await sessions.setAnalysisLanguage(sessionId, 'en');
+
+    expect(reported).toStrictEqual([
+      expect.objectContaining({ sessionId, books: [], queries: ['getCatalogRows'] }),
+    ]);
+  });
+
+  it('reports nothing for the language the session is already on', async () => {
+    const reported: unknown[] = [];
+    const { sessions, sessionId } = await openReporting(reported);
+
+    await sessions.setAnalysisLanguage(sessionId, 'fr');
+
+    expect(reported).toStrictEqual([]);
+  });
 });

@@ -12,6 +12,3 @@
 *.woff2 binary
 *.ldml  binary
 *.zip  binary
-
-c-sharp/InterlinearizerCrdt.Tests/SerializedChanges/*.json text eol=lf
-c-sharp/InterlinearizerCrdt.Tests/SerializedChanges/*.txt text eol=lf

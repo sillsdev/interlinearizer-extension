@@ -98,7 +98,8 @@ public class ChangeSerializationTests
         CheckEveryFileHasARegisteredType(directory);
 
         using var _ = Assert.Multiple();
-        await Assert.That(_problems).IsEmpty();
+        foreach (var problem in _problems)
+            Assert.Fail(problem);
         foreach (var file in files)
             await Assert.That(file.Stored).IsEqualTo(file.Expected).Because(OutOfDateMessage(file.Path, file.Written));
     }
@@ -115,8 +116,8 @@ public class ChangeSerializationTests
 
     private void CheckEveryFileHasARegisteredType(string directory)
     {
-        var known = Config.Value.ChangeTypes.Select(FileName).Append(ModelVersionsFile).ToHashSet();
-        foreach (var name in Directory.EnumerateFiles(directory).Select(Path.GetFileName))
+        var known = Config.Value.ChangeTypes.Select(FileName).ToHashSet();
+        foreach (var name in Directory.EnumerateFiles(directory, "*.json").Select(Path.GetFileName))
         {
             if (known.Contains(name!)) continue;
             _problems.Add($"{name} matches no registered change type. A removed or renamed change type needs a migration path; don't delete its file.");
@@ -132,6 +133,7 @@ public class ChangeSerializationTests
         var latest = samples.Select(Serialize).ToList();
         foreach (var node in latest)
             CheckRoundTrips(changeType, node);
+        CheckEveryPropertyIsSampled(changeType, latest);
         var stored = storedText == "" ? null : JsonNode.Parse(storedText)!.AsObject();
         var storedVersion = stored?["modelVersion"]?.GetValue<int>() ?? Config.Value.CurrentModelVersion;
 
@@ -159,10 +161,18 @@ public class ChangeSerializationTests
             _problems.Add($"{FileName(changeType)}: a latest entry changes when read back and written again:\n{Format(latest)}\nbecomes\n{Format(roundTripped)}");
     }
 
+    /// <summary>A patch leaves unset fields out, so a field no sample sets could change without changing the file.</summary>
+    private void CheckEveryPropertyIsSampled(RegisteredChangeType changeType, List<JsonNode> latest)
+    {
+        var written = latest.SelectMany(node => node.AsObject().Select(property => property.Key)).ToHashSet();
+        foreach (var property in Options.GetTypeInfo(changeType.Type).Properties)
+            if (property.Get is not null && !written.Contains(property.Name))
+                _problems.Add($"{FileName(changeType)}: no sample sets {property.Name}.");
+    }
+
     /// <summary>
     /// A legacy row keeps its <c>input</c> and the model version that wrote it, and gets its <c>output</c> from
-    /// today's code, or the stored one when today's code can't read the input. Its type must be listed in a
-    /// later model version than the one that wrote it.
+    /// today's code, or the stored one when today's code can't read the input.
     /// </summary>
     private JsonObject LegacyRow(RegisteredChangeType changeType, int modelVersion, JsonNode input, JsonNode? storedOutput)
     {
@@ -175,7 +185,7 @@ public class ChangeSerializationTests
             _problems.Add($"{FileName(changeType)}: {changeType.Discriminator} changed its JSON after model version {modelVersion}. " +
                 "An app on that version reads the new JSON with its old code and drops what it doesn't know, so list the type " +
                 $"in a model version after {modelVersion} in {nameof(InterlinearizerCrdtKernel)} and the upgrade replays it. " +
-                "If you only changed a sample's values, delete the new legacy row instead.");
+                "If you only changed a sample's values, or no release wrote the old JSON, delete the new legacy row instead.");
 
         return new JsonObject { ["modelVersion"] = modelVersion, ["input"] = JsonNode.Parse(inputText), ["output"] = output };
     }

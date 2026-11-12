@@ -205,8 +205,8 @@ function SortableCandidate({
       <Checkbox
         // The survivor is what the others merge into, so its membership is not a choice.
         checked={merged}
-        // The box's default hit area reaches across the gap and onto the drag handle.
-        className="tw:size-5 tw:after:inset-x-0"
+        // The box's default hit area reaches horizontally across the gap and onto the drag handle.
+        className="tw:size-5 tw:after:-inset-x-1"
         data-testid="catalog-merge-check"
         disabled={isSurvivor}
         onCheckedChange={onMergedChange}

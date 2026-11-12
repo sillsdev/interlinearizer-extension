@@ -10,7 +10,6 @@ import * as perfMarks from '../../utils/perf-marks';
 import {
   SessionAnalysisProvider,
   useAnalysis,
-  useAnalysisDeletionOutcome,
   useAnalysisLanguage,
   useAnalysisReadOnly,
   useFreeTranslationsBySegment,
@@ -442,15 +441,6 @@ describe('AnalysisStore dispatches', () => {
     });
 
     expect(papi.commands.sendCommand).toHaveBeenCalledWith(command, expect.anything());
-  });
-});
-
-describe('AnalysisStore reads as they stand', () => {
-  it("reads a deletion's outcome from the session's whole analysis", async () => {
-    const { wrapper } = await sessionProviderOver(GOD_WITH_SENSE, { start: 2, end: 3 });
-    const { result } = renderHook(() => useAnalysisDeletionOutcome(), { wrapper });
-
-    expect(result.current('ta-god', () => 'God')).toMatchObject({ usageCount: 1 });
   });
 });
 

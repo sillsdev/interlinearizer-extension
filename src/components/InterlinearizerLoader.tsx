@@ -1332,9 +1332,9 @@ function InterlinearizerLoaderInner({
   );
 
   /**
-   * Saves the current draft to the active project. When no project is active there is nothing to
-   * save to yet, so it opens Save As instead. Errors are logged; the backend surfaces the
-   * notification.
+   * Saves the current draft to the active project, analysis languages included. When no project is
+   * active there is nothing to save to yet, so it opens Save As instead. Errors are logged; the
+   * backend surfaces the notification.
    */
   const handleSave = useCallback(async () => {
     if (!activeProject) {
@@ -1342,17 +1342,17 @@ function InterlinearizerLoaderInner({
       return;
     }
     try {
-      await commitDraft(async (_snapshot, sessionId) => {
+      await commitDraft(async (snapshot, sessionId) => {
+        const config = {
+          analysisLanguages: snapshot.analysisLanguages,
+          targetProjectId: activeProject.targetProjectId,
+        };
+        const args = [sessionId, projectId, activeProject.id, config] as const;
         const savedJson = await perfTrack(
           'save',
-          papi.commands.sendCommand(
-            'interlinearizer.saveDraftToProject',
-            sessionId,
-            projectId,
-            activeProject.id,
-          ),
+          papi.commands.sendCommand('interlinearizer.saveDraftToProject', ...args),
           // The bytes the Save sends over the bus.
-          { bytes: JSON.stringify([sessionId, projectId, activeProject.id]).length },
+          { bytes: JSON.stringify(args).length },
         );
         // `undefined` means the project no longer exists, so nothing was persisted.
         if (!savedJson) {
@@ -1361,17 +1361,19 @@ function InterlinearizerLoaderInner({
             .catch(() => {});
           return false;
         }
-        // Fold the response's refreshed `updatedAt` into the cached active project so the picker
-        // sort and the metadata modal's Modified time stay current without a reload; extract it
-        // defensively so an unexpectedly shaped payload leaves the cache untouched.
+        // The cached active project takes the saved languages and the response's refreshed
+        // `updatedAt`, so the picker sort and the metadata modal stay current without a reload. A
+        // payload of unexpected shape leaves the cached Modified time as it was.
         const parsed: unknown = JSON.parse(savedJson);
         const refreshedUpdatedAt =
           parsed && typeof parsed === 'object' && 'updatedAt' in parsed
             ? parsed.updatedAt
             : undefined;
-        if (typeof refreshedUpdatedAt === 'string') {
-          setActiveProject({ ...activeProject, updatedAt: refreshedUpdatedAt });
-        }
+        setActiveProject({
+          ...activeProject,
+          analysisLanguages: config.analysisLanguages,
+          ...(typeof refreshedUpdatedAt === 'string' && { updatedAt: refreshedUpdatedAt }),
+        });
         return true;
       });
     } catch (e) {

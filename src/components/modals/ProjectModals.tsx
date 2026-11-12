@@ -354,7 +354,8 @@ export default function ProjectModals({
    * project is the currently active one, carrying through the server-refreshed `updatedAt` so the
    * cached Modified time (shown in the picker and on modal reopen) stays current.
    *
-   * The active project's new languages go to the open draft too. A change of primary analysis
+   * The active project's new languages go to the open draft as an undoable step, rather than to the
+   * stored project. The draft's Save writes them to the project. A change of primary analysis
    * language also decides what becomes of the glosses written in the old one:
    *
    * - In the open draft, an old primary dropped from the list has its glosses moved to the new one at
@@ -378,7 +379,12 @@ export default function ProjectModals({
       const [to] = analysisLanguages;
       const interlinearProjectId = resolvedMetadataProject.id;
       const active = activeProject !== undefined && interlinearProjectId === activeProject.id;
-      if (activeProject && active) setActiveProject({ ...activeProject, ...updated });
+      if (activeProject && active)
+        setActiveProject({
+          ...activeProject,
+          ...updated,
+          analysisLanguages: activeProject.analysisLanguages,
+        });
 
       if (!active) {
         const [from] = resolvedMetadataProject.analysisLanguages;
@@ -724,6 +730,16 @@ export default function ProjectModals({
   }, [metadataSourceIsSelect, setModal]);
 
   const draftSnapshot = getDraftSnapshot();
+  // The open project's languages are its draft's until the draft is saved. An import is never
+  // edited in the draft.
+  const metadataLanguagesInDraft =
+    resolvedMetadataProject !== undefined &&
+    resolvedMetadataProject.id === activeProject?.id &&
+    resolvedMetadataProject.pt9Import === undefined &&
+    draftSnapshot !== undefined;
+  const metadataLanguages = metadataLanguagesInDraft
+    ? draftSnapshot.analysisLanguages
+    : (resolvedMetadataProject?.analysisLanguages ?? []);
 
   return (
     <div>
@@ -767,12 +783,17 @@ export default function ProjectModals({
 
       {modal === 'metadata' && resolvedMetadataProject && (
         <ProjectMetadataModal
+          // Restarts the form when the draft's languages load or change under it.
+          key={metadataLanguages.join(',')}
           interlinearProjectId={resolvedMetadataProject.id}
           sourceShortName={sourceShortName}
           name={resolvedMetadataProject.name}
           description={resolvedMetadataProject.description}
           targetProjectId={resolvedMetadataProject.targetProjectId}
-          analysisLanguages={resolvedMetadataProject.analysisLanguages}
+          analysisLanguages={metadataLanguages}
+          storedAnalysisLanguages={
+            metadataLanguagesInDraft ? resolvedMetadataProject.analysisLanguages : undefined
+          }
           createdAt={resolvedMetadataProject.createdAt}
           updatedAt={resolvedMetadataProject.updatedAt}
           pt9ImportedAt={resolvedMetadataProject.pt9Import?.importedAt}

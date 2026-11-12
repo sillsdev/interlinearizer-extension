@@ -3238,6 +3238,7 @@ describe('InterlinearizerLoader', () => {
         expect.any(String),
         testProjectId,
         'proj-1',
+        expect.objectContaining({ analysisLanguages: expect.any(Array) }),
       );
       await waitFor(() =>
         expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({
@@ -3933,7 +3934,7 @@ describe('InterlinearizerLoader', () => {
       mountStoreProbe = false;
     });
 
-    it('has the host save the stored draft to the active project, sending no analysis', async () => {
+    it("has the host save the stored draft to the active project, sending the draft's languages but no analysis", async () => {
       const draftAnalysis = emptyAnalysis();
       draftAnalysis.tokenAnalyses.push({
         ...FIXTURE_STAMPS,
@@ -3941,7 +3942,11 @@ describe('InterlinearizerLoader', () => {
         surfaceText: 'In',
         gloss: { en: 'in' },
       });
-      await seedDraft({ ...emptyDraft(testProjectId), analysis: draftAnalysis });
+      await seedDraft({
+        ...emptyDraft(testProjectId),
+        analysisLanguages: ['fr'],
+        analysis: draftAnalysis,
+      });
       await act(async () =>
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
       );
@@ -3950,14 +3955,20 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
       // Nothing was pending, so the stored draft is already current: Save's first command is the
-      // host copy, carrying only ids. The host marks the stored draft clean itself, so no draft
-      // write follows.
+      // host copy, carrying ids and the draft's languages. The host marks the stored draft clean
+      // itself, so no draft write follows.
       expect(
         mockSendCommand.mock.calls.filter(
           ([command]) => command !== 'interlinearizer.getFullAnalysis',
         ),
       ).toEqual([
-        ['interlinearizer.saveDraftToProject', expect.any(String), testProjectId, 'proj-1'],
+        [
+          'interlinearizer.saveDraftToProject',
+          expect.any(String),
+          testProjectId,
+          'proj-1',
+          { analysisLanguages: ['fr'] },
+        ],
       ]);
     });
 

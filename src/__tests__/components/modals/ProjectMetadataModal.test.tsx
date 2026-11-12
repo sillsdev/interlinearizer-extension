@@ -104,6 +104,33 @@ describe('ProjectMetadataModal', () => {
     );
   });
 
+  it('keeps the stored languages in the project and hands the edited ones to the caller', async () => {
+    const onProjectSaved = jest.fn();
+    render(
+      <ProjectMetadataModal
+        {...testProps}
+        storedAnalysisLanguages={['de']}
+        onProjectSaved={onProjectSaved}
+      />,
+    );
+
+    const languagesInput = screen.getByLabelText(/analysis language/i);
+    await userEvent.clear(languagesInput);
+    await userEvent.type(languagesInput, 'fr');
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(onProjectSaved).toHaveBeenCalled());
+    expect(mockSendCommand).toHaveBeenCalledWith(
+      'interlinearizer.updateProjectMetadata',
+      'il-project-uuid',
+      expect.any(String),
+      undefined,
+      ['de'],
+      undefined,
+    );
+    expect(onProjectSaved.mock.calls[0][0]).toMatchObject({ analysisLanguages: ['fr'] });
+  });
+
   it('passes targetProjectId to sendCommand when the project has a target project', async () => {
     render(<ProjectMetadataModal {...testPropsWithTarget} />);
 

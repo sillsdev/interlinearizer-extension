@@ -234,10 +234,14 @@ jest.mock('../../../components/modals/DiscardDraftConfirm', () => ({
 jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
   __esModule: true,
   ProjectMetadataModal: ({
+    analysisLanguages,
+    storedAnalysisLanguages,
     isSaveBlocked,
     onClose,
     onProjectSaved,
   }: {
+    analysisLanguages: string[];
+    storedAnalysisLanguages?: string[];
     isSaveBlocked?: boolean;
     onClose: () => void;
     onProjectSaved?: (u: {
@@ -247,7 +251,11 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
       updatedAt?: string;
     }) => void;
   }) => (
-    <div data-testid="metadata-modal">
+    <div
+      data-testid="metadata-modal"
+      data-languages={analysisLanguages.join(',')}
+      data-stored-languages={storedAnalysisLanguages?.join(',')}
+    >
       <button type="button" data-testid="metadata-close" onClick={onClose}>
         Close
       </button>
@@ -1215,16 +1223,46 @@ describe('ProjectModals', () => {
         />,
       );
       await userEvent.click(screen.getByTestId('metadata-save'));
-      // The saved edits (name, languages, and the server-refreshed updatedAt) are merged onto the
-      // active project, so a regression that drops the update branch — or the refreshed timestamp —
-      // is caught here.
+      // The saved name and the server-refreshed updatedAt are merged onto the active project. Its
+      // languages stay as stored, because the draft holds the new ones until it is saved.
       expect(setActiveProject).toHaveBeenCalledWith({
         ...MOCK_PROJECT,
         name: 'Updated',
-        analysisLanguages: ['fr'],
         updatedAt: '2026-06-15T09:00:00Z',
       });
       expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it("shows the open project's languages from its draft, keeping the stored ones in storage", () => {
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'metadata',
+            activeProject: MOCK_PROJECT,
+            getDraftSnapshot: () => ({ ...MOCK_DRAFT, analysisLanguages: ['fr', 'en'] }),
+          })}
+        />,
+      );
+
+      const modal = screen.getByTestId('metadata-modal');
+      expect(modal).toHaveAttribute('data-languages', 'fr,en');
+      expect(modal).toHaveAttribute('data-stored-languages', 'en');
+    });
+
+    it("shows an open import's own languages, which no draft holds", () => {
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'metadata',
+            activeProject: MOCK_IMPORT_PROJECT,
+            getDraftSnapshot: () => ({ ...MOCK_DRAFT, analysisLanguages: ['fr'] }),
+          })}
+        />,
+      );
+
+      const modal = screen.getByTestId('metadata-modal');
+      expect(modal).toHaveAttribute('data-languages', 'en');
+      expect(modal).not.toHaveAttribute('data-stored-languages');
     });
 
     it('does not update the active project when the saved project is a different one', async () => {

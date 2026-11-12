@@ -35,8 +35,14 @@ type ProjectMetadataModalProps = Readonly<{
   sourceShortName: string;
   /** Optional Platform.Bible project ID of the target text for bilateral alignment projects. */
   targetProjectId?: string;
-  /** BCP 47 tags for the analysis languages. */
+  /** BCP 47 tags for the analysis languages, as shown and edited. */
   analysisLanguages: string[];
+  /**
+   * The analysis languages Save keeps in the stored project, when the edited ones go elsewhere. The
+   * open project's languages belong to its draft, which writes them to the project when it is
+   * saved. Absent when Save writes the edited languages to the project.
+   */
+  storedAnalysisLanguages?: string[];
   /** ISO 8601 creation timestamp. */
   createdAt: string;
   /** ISO 8601 timestamp of the most recent modification. */
@@ -72,6 +78,7 @@ export function ProjectMetadataModal({
   sourceShortName,
   targetProjectId,
   analysisLanguages,
+  storedAnalysisLanguages,
   createdAt,
   updatedAt,
   pt9ImportedAt,
@@ -124,7 +131,7 @@ export function ProjectMetadataModal({
             interlinearProjectId,
             newName,
             newDescription,
-            parsedLanguages,
+            storedAnalysisLanguages ?? parsedLanguages,
             targetProjectId,
           );
           if (!updatedProjectJson) return;
@@ -151,6 +158,7 @@ export function ProjectMetadataModal({
       editName,
       editDescription,
       parsedLanguages,
+      storedAnalysisLanguages,
       interlinearProjectId,
       targetProjectId,
       onProjectSaved,

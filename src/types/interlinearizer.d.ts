@@ -954,8 +954,8 @@ declare module 'papi-shared-types' {
     /**
      * Gives a session's draft new analysis languages, primary first. With `retagFrom`, also moves
      * the glosses under `retagFrom` to the new primary language. A gloss whose word or morpheme
-     * already has a different one there stays where it is. Both are one undoable step. A change of
-     * languages alone leaves the draft as saved or unsaved as it was.
+     * already has a different one there stays where it is. Both are one undoable step. The step
+     * leaves the draft unsaved.
      *
      * @returns A JSON string of the `CommandReply`, with `glossRetag`: how many glosses moved and
      *   how many were skipped, when `retagFrom` was given.

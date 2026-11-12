@@ -283,6 +283,7 @@ describe('InterlinearizerLoader saving', () => {
         expect.any(String),
         'src',
         'proj-1',
+        expect.objectContaining({ analysisLanguages: expect.any(Array) }),
       ),
     );
   });

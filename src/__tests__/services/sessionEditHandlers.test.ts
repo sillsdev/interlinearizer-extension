@@ -121,7 +121,7 @@ describe('sessionEditHandlers', () => {
     );
   });
 
-  it("changes the draft's languages alone as a step that leaves the unsaved mark as it was", async () => {
+  it("changes the draft's languages alone as a step that marks the draft unsaved", async () => {
     const { edits, sessionId, sessions } = await handlersOver();
 
     const reply = JSON.parse(
@@ -136,7 +136,7 @@ describe('sessionEditHandlers', () => {
     const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
     expect(draft.analysisLanguages).toStrictEqual(['es', 'en']);
     expect(draft.analysis.tokenAnalyses.map((ta) => ta.gloss)).toStrictEqual([{ en: 'God' }]);
-    expect(draft.dirty).toBe(false);
+    expect(draft.dirty).toBe(true);
   });
 
   it("moves the old tag's glosses with the languages as one step that marks the draft unsaved", async () => {

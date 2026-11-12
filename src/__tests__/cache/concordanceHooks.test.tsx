@@ -13,7 +13,6 @@ import { readText, relayChange, unreadText } from './fake-host';
 import {
   changeNaming,
   failing,
-  languageWrapperOver,
   sessionIdOf,
   setLanguage,
   timesSent,
@@ -138,16 +137,11 @@ describe('useConcordanceOccurrences', () => {
   });
 
   it('glosses the tallies in the language that the session switches to', async () => {
-    const language = { current: 'en' };
-    const wrapper = await languageWrapperOver(language);
-    const { result, rerender } = renderHook(() => useConcordanceOccurrences('god', 1), {
-      wrapper,
-    });
+    const wrapper = await wrapperOver(readText([], [BOOK]));
+    const { result } = renderHook(() => useConcordanceOccurrences('god', 1), { wrapper });
     await waitFor(() => expect(result.current?.tallies[0].gloss).toBe('God'));
 
     await setLanguage('interlinearizer.getConcordance', 'fr');
-    language.current = 'fr';
-    rerender();
 
     await waitFor(() => expect(result.current?.tallies[0].gloss).toBe(''));
   });

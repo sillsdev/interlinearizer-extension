@@ -424,7 +424,7 @@ declare module 'papi-shared-types' {
 
     /**
      * Sets the language a session's glosses are read and written in. A new language is reported as
-     * a change that names the catalog.
+     * a change that names the catalog and the concordance.
      *
      * @throws If the session is not open (logged before rethrowing).
      */

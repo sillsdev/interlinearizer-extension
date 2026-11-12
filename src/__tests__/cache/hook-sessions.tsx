@@ -24,17 +24,6 @@ export async function wrapperOver(text = readText([]), analysis: TextAnalysis = 
   };
 }
 
-/**
- * A wrapper like {@link wrapperOver}'s, whose analysis language is what `language.current` holds
- * when the hook renders.
- */
-export async function languageWrapperOver(language: { current: string }) {
-  const Provider = await prepareAnalysis(ANALYSIS, BOOK, readText([], [BOOK]));
-  return function Wrapper({ children }: Readonly<{ children: ReactNode }>) {
-    return <Provider analysisLanguage={language.current}>{children}</Provider>;
-  };
-}
-
 /** Sets the language of the session that the view last sent `command` under, as the view does. */
 export async function setLanguage(command: string, analysisLanguage: string): Promise<void> {
   await papi.commands.sendCommand('interlinearizer.setAnalysisLanguage', {

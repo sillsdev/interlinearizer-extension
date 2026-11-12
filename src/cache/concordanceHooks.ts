@@ -50,11 +50,11 @@ export function useConcordanceOccurrences(
   form: string | undefined,
   count: number,
 ): ConcordanceOccurrencePage | undefined {
-  const { sessionId, analysisLanguage } = usePageSession();
+  const { sessionId } = usePageSession();
   return useNamedFetch(
     CONCORDANCE_QUERIES,
     "a form's occurrences",
-    form === undefined ? undefined : JSON.stringify([form, count, analysisLanguage]),
+    form === undefined ? undefined : JSON.stringify([form, count]),
     async (): Promise<ConcordanceOccurrencePage> =>
       JSON.parse(
         await papi.commands.sendCommand('interlinearizer.getConcordance', {

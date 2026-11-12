@@ -2249,7 +2249,6 @@ describe('retryFailedBooks', () => {
 
     failing = false;
     const retried = retryFailedBooks('src');
-    await settle();
     await retried;
 
     expect(await readStatus()).toEqual({ booksRead: 2, bookCount: 2, failedBookIds: [] });
@@ -2268,7 +2267,6 @@ describe('retryFailedBooks', () => {
 
     project.subscribeError = undefined;
     const retried = retryFailedBooks('src');
-    await settle();
     await retried;
 
     expect(listener).toHaveBeenCalledWith('src', ['GEN']);

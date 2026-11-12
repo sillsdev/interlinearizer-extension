@@ -62,7 +62,10 @@ const outlineCounts = new Map<string, number>();
  */
 const READ_CONCURRENCY = 4;
 
-/** A source project's whole text, read book by book into a form index, each book watched for edits. */
+/**
+ * A source project's whole text, read book by book. Each book's forms and occurrences are filed,
+ * and the book is watched for edits.
+ */
 interface TextRead {
   /**
    * The text's books in canonical order, with the tag their text is written in; rejects when they,
@@ -569,8 +572,8 @@ function rereadHeldBook(sourceProjectId: string, bookId: string): void {
 }
 
 /**
- * Reads `bookId` of `read`'s text into its form index, and watches the book until the read ends or
- * reads it again. The book's text is passed to {@link onBookRead}'s listeners, as an edit's when
+ * Files the forms and occurrences of `bookId` in `read`, and watches the book until the read ends
+ * or reads it again. The book's text is passed to {@link onBookRead}'s listeners, as an edit's when
  * `edited`, unless the whole-text read has ended, or a later read of the book supersedes this one.
  * An edit to the book lets go of its kept copies, and is reported once the book is read again.
  *
@@ -739,9 +742,9 @@ function beginTextRead(sourceProjectId: string): TextRead {
 
 /**
  * Reports how far reading the source project's whole text has got, starting the read when the
- * project has none. The read keeps a form index that {@link isFormInText} answers from, and watches
- * each book it has read, reporting its edits through {@link onBookTextChanged}, until the read
- * ends.
+ * project has none. The read keeps a form index, which {@link isFormInText} answers from, and each
+ * book's occurrences, which {@link getConcordanceBooks} serves. Until the read ends, it watches each
+ * book it has read and reports the book's edits through {@link onBookTextChanged}.
  *
  * @returns Once the text's books are known, the `TextReadStatus` as JSON.
  * @throws If the books or the provider of their text cannot be got. The read is dropped, so the

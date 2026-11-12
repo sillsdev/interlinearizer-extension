@@ -7,7 +7,8 @@ import ConcordanceRowView, { CONCORDANCE_ROW_STRING_KEYS } from './ConcordanceRo
 import { useInterlinearNav } from './InterlinearNavContext';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
 import TextReadingStatus, { TEXT_READING_STRING_KEYS } from './TextReadingStatus';
-import { useConcordanceView, useRetryTextRead, useTextReadStatus } from '../cache/catalogHooks';
+import { useTextReadStatus } from '../cache/catalogHooks';
+import { useConcordanceView, useRetryTextRead } from '../cache/concordanceHooks';
 import useRowWindow from '../hooks/useRowWindow';
 import type { ConcordanceOccurrence } from '../utils/concordance';
 

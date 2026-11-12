@@ -51,7 +51,7 @@ function segmentPagesOf(client: PageClient, outline: BookOutline, version: numbe
     boundaries: outline.boundaries ?? NO_BOUNDARIES,
     duplicateVerseIds: outline.duplicateVerseIds,
     segmentAt: (index) => client.segmentAt(index),
-    heldPages: () => client.heldPages(),
+    heldRuns: () => client.heldRuns(),
     load: (start, end, caller) => client.load(start, end, caller),
     release: (caller) => client.release(caller),
     subscribe: (onChange) => client.subscribe(onChange),

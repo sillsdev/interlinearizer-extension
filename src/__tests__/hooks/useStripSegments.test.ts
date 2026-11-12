@@ -48,7 +48,7 @@ function makePages(book: Book, start = 0, end = book.segments.length) {
     duplicateVerseIds: [],
     segmentAt: (index) =>
       index >= loaded.start && index < loaded.end ? book.segments[index] : undefined,
-    heldPages: () => [
+    heldRuns: () => [
       {
         textVersion: book.textVersion,
         start: loaded.start,

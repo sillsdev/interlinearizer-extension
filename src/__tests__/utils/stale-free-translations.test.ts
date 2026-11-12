@@ -16,7 +16,12 @@ import { makeVerseBook, outlineOf } from '../test-helpers';
 
 /** Builds a stale translation of `segmentId`, its id and text derived from it. */
 function stale(segmentId: string): StaleFreeTranslation {
-  return { analysisId: `sa ${segmentId}`, segmentId, text: `translation of ${segmentId}` };
+  return {
+    linkId: `link sa ${segmentId}`,
+    analysisId: `sa ${segmentId}`,
+    segmentId,
+    text: `translation of ${segmentId}`,
+  };
 }
 
 /** Verses of Genesis 1, each its own segment. */
@@ -374,15 +379,20 @@ describe('placedIdsIn', () => {
 });
 
 describe('resolvePlaced', () => {
-  const kept: StaleFreeTranslation = { analysisId: 'sa-1', segmentId: 'GEN 1:1', text: 'one' };
+  const kept: StaleFreeTranslation = {
+    linkId: 'link-sa-1',
+    analysisId: 'sa-1',
+    segmentId: 'GEN 1:1',
+    text: 'one',
+  };
 
-  it('names each placed translation by the record it names, leaving out one not held', () => {
+  it('names each placed translation by the link it was read from, leaving out one not held', () => {
     expect(
       resolvePlaced(
         {
-          bySegment: { 'GEN 1:1': ['sa-1', 'sa-gone'] },
+          bySegment: { 'GEN 1:1': ['link-sa-1', 'link-gone'] },
           orphanedAfter: {},
-          orphanedAhead: ['sa-1'],
+          orphanedAhead: ['link-sa-1'],
         },
         [kept],
       ),
@@ -391,6 +401,21 @@ describe('resolvePlaced', () => {
       orphanedAfter: new Map(),
       orphanedAhead: [kept],
     });
+  });
+
+  it('keeps apart the links of a shared payload', () => {
+    const other: StaleFreeTranslation = { ...kept, linkId: 'link-other', segmentId: 'GEN 1:8' };
+
+    expect(
+      resolvePlaced(
+        {
+          bySegment: {},
+          orphanedAfter: { 'GEN 1:3': ['link-sa-1', 'link-other'] },
+          orphanedAhead: [],
+        },
+        [kept, other],
+      ).orphanedAfter,
+    ).toStrictEqual(new Map([['GEN 1:3', [kept, other]]]));
   });
 });
 

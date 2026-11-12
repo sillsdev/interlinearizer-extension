@@ -590,7 +590,9 @@ const READS: [string, () => unknown, unknown][] = [
   [
     'usePlacedStaleFreeTranslations',
     () => usePlacedStaleFreeTranslations().bySegment,
-    new Map([['GEN 1:2', [{ analysisId: 'sa-old', segmentId: 'GEN 1:2', text: 'old' }]]]),
+    new Map([
+      ['GEN 1:2', [{ linkId: 'sl-old', analysisId: 'sa-old', segmentId: 'GEN 1:2', text: 'old' }]],
+    ]),
   ],
   ['useAnalysisLanguage', () => useAnalysisLanguage(), 'en'],
   ['useAnalysisReadOnly', () => useAnalysisReadOnly(), false],

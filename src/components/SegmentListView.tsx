@@ -615,7 +615,7 @@ export default function SegmentListView({
   const orphanedCards = (translations: readonly StaleFreeTranslation[] | undefined) =>
     translations?.map((translation) => (
       <OrphanedFreeTranslationCard
-        key={translation.analysisId}
+        key={translation.linkId}
         translation={translation}
         localizedStrings={localizedStrings}
       />

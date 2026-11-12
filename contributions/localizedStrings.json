@@ -416,7 +416,7 @@
       "%interlinearizer_copyModal_info%": "You can continue to make changes to the interlinear in Paratext 9 after you make a copy. However, any changes you make in Paratext 9 will not be included in your editable Paratext 10 copy.",
       "%interlinearizer_warning_pt9Sync_failed%": "The Paratext 9 data couldn't be refreshed; showing the last imported data.",
       "%interlinearizer_warning_duplicateVerses%": "This book repeats one or more verse numbers. The repeated markers and their text aren't shown; fix the duplicates in the text to see them.",
-      "%interlinearizer_warning_invalidVerses%": "This book has one or more verse markers with no verse number. Those markers and their text aren't shown; add the missing numbers in the text to see them.",
+      "%interlinearizer_warning_invalidVerses%": "This book has one or more verse markers whose verse number is missing or isn't valid. Those markers and their text aren't shown; fix the numbers in the text to see them.",
       "%interlinearizer_modal_metadata_lastSynced_label%": "Last synced"
     }
   }

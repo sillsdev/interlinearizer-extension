@@ -67,7 +67,6 @@ function useNamedFetch<T>(
   const fetchRef = useLatestRef(fetch);
   const sessionKey = key === undefined ? undefined : JSON.stringify([sessionId, key]);
   const [attempt, setAttempt] = useState(0);
-  const retry = useCallback(() => setAttempt((was) => was + 1), []);
   const [answer, setAnswer] = useState<
     Readonly<{ key: string; value: T | undefined; failed: boolean }> | undefined
   >(undefined);
@@ -92,6 +91,11 @@ function useNamedFetch<T>(
       isCurrent = false;
     };
   }, [sessionKey, changes, attempt, what, fetchRef, keepPrevious]);
+  const retry = useCallback(() => {
+    /* v8 ignore next -- callers offer a retry only after a failure, so an answer is held */
+    setAnswer((was) => was && { ...was, failed: false });
+    setAttempt((was) => was + 1);
+  }, []);
   if (sessionKey === undefined) return undefined;
   if (answer?.key === sessionKey) return { ...answer, retry };
   return { value: keepPrevious ? answer?.value : undefined, failed: false, retry };
@@ -235,29 +239,38 @@ export function useSelectionSummary(analysisIds: readonly string[]): SelectionSu
   )?.value;
 }
 
+/** What the host has said so far about deleting an analysis. */
+export type DeletionPreviewState =
+  | Readonly<{ status: 'loading' }>
+  /** The host could not say; `retry` asks again. */
+  | Readonly<{ status: 'failed'; retry: () => void }>
+  /** No analysis carries the id. */
+  | Readonly<{ status: 'missing' }>
+  | Readonly<{ status: 'ready'; outcome: AnalysisDeletionOutcome }>;
+
 /**
- * What deleting the analysis `analysisId` names would do; `undefined` while `analysisId` is
- * `undefined`, until the outcome arrives, and for an analysis no longer stored.
+ * What deleting the analysis `analysisId` names would do, fetched again whenever a change to the
+ * session names the catalog.
  */
-export function useDeletionPreview(
-  analysisId: string | undefined,
-): AnalysisDeletionOutcome | undefined {
+export function useDeletionPreview(analysisId: string): DeletionPreviewState {
   const { sessionId, analysisLanguage } = usePageSession();
-  const key = analysisId === undefined ? undefined : JSON.stringify([analysisLanguage, analysisId]);
-  const outcome = useNamedFetch<AnalysisDeletionOutcome | null>(
+  const preview = useNamedFetch<AnalysisDeletionOutcome | 'missing'>(
     'getCatalogRows',
     'the deletion preview',
-    key,
+    JSON.stringify([analysisLanguage, analysisId]),
     async () =>
       JSON.parse(
         await papi.commands.sendCommand('interlinearizer.previewDeletion', {
           sessionId,
-          /* v8 ignore next -- fetched only under a key, which an id gives */
-          analysisId: analysisId ?? '',
+          analysisId,
         }),
-      ),
+      ) ?? 'missing',
   );
-  return outcome ?? undefined;
+  /* v8 ignore next -- the key is always defined, so a fetch state always comes back */
+  if (!preview) return { status: 'loading' };
+  if (preview.value === 'missing') return { status: 'missing' };
+  if (preview.value) return { status: 'ready', outcome: preview.value };
+  return preview.failed ? { status: 'failed', retry: preview.retry } : { status: 'loading' };
 }
 
 /** One-off catalog reads, for a count or a row an edit needs before it is sent. */

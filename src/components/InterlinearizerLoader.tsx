@@ -989,6 +989,10 @@ function InterlinearizerLoaderInner({
         navigate(verseOfId(step.location));
       } else if (step?.summary) {
         const { kind, ...replacers } = step.summary;
+        if (step.summary.kind === 'retagGlosses') {
+          const shown = direction === 'undone' ? step.summary.from : step.summary.to;
+          setChosenLanguages({ ...chosenLanguages, [DRAFT_LANGUAGE_KEY]: shown });
+        }
         if ('analysisId' in replacers) {
           const row = direction === 'undone' ? replacers.analysisId : replacers.survivingAnalysisId;
           if (row) catalogPanelRef.current?.revealRow(row);
@@ -1011,7 +1015,15 @@ function InterlinearizerLoaderInner({
           .catch((e) => logger.error('Interlinearizer: failed to announce an undo', e));
       }
     },
-    [getDraftSnapshot, localizedStrings, navigate, requestFocusToken, webViewId],
+    [
+      chosenLanguages,
+      getDraftSnapshot,
+      localizedStrings,
+      navigate,
+      requestFocusToken,
+      setChosenLanguages,
+      webViewId,
+    ],
   );
   const handleUndo = useCallback(
     () => moveThroughHistory(() => whenSettled(undo(), (step) => afterHistoryMove(step, 'undone'))),
@@ -2004,6 +2016,7 @@ function InterlinearizerLoaderInner({
         changeDraftAnalysisLanguages={changeDraftAnalysisLanguages}
         defaultAnalysisLanguage={platformLanguage}
         hasUnsavedWork={hasUnsavedChanges}
+        isDraftLoading={isDraftLoading}
         getDraftSnapshot={getDraftSnapshot}
         detachFromProject={detachFromProject}
         commitDraft={commitDraft}

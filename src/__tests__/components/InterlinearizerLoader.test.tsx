@@ -6107,6 +6107,31 @@ describe('analysis language switch', () => {
     expect(capturedStoreProps?.analysisLanguage).toBe('fr');
   });
 
+  it.each([
+    ['en', 'an undo', 'z'],
+    ['fr', 'a redo', 'y'],
+  ])('shows the glosses in %s after %s of their move', async (shown, _move, lastKey) => {
+    await mockDraftLanguages(['en', 'fr']);
+    await act(async () =>
+      renderLoader({
+        useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'en' } }),
+      }),
+    );
+    await flushHost(async () => {
+      fireEvent.click(screen.getByTestId('retag-draft-languages'));
+    });
+
+    await flushHost(async () => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+    if (lastKey === 'y')
+      await flushHost(async () => {
+        fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+      });
+
+    expect(capturedStoreProps?.analysisLanguage).toBe(shown);
+  });
+
   it('keeps the chosen language when only the list of languages changes', async () => {
     await mockDraftLanguages(['en', 'fr']);
     await act(async () =>

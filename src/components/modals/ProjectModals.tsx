@@ -96,6 +96,8 @@ function retagMessage(
  *   Resolves what moved.
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
  *   initial value of the analysis language field; should be the platform UI language.
+ * @param props.isDraftLoading - Whether the draft is still loading. Project Info can't save the
+ *   active project until it has loaded, because the save changes the draft's languages too.
  * @param props.hasUnsavedWork - Whether the draft has unsaved work — either committed-but-unsaved
  *   changes or uncommitted text still sitting in a gloss input (matching the tab's unsaved marker).
  *   When true, New / Open are gated behind the discard confirmation so neither kind of unsaved work
@@ -136,6 +138,7 @@ export default function ProjectModals({
   announceUndoable,
   changeDraftAnalysisLanguages,
   defaultAnalysisLanguage,
+  isDraftLoading,
   hasUnsavedWork,
   getDraftSnapshot,
   detachFromProject,
@@ -158,6 +161,7 @@ export default function ProjectModals({
     retagFrom?: string,
   ) => Promise<GlossRetagCounts | undefined>;
   defaultAnalysisLanguage?: string;
+  isDraftLoading: boolean;
   hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
   detachFromProject: () => void;
@@ -721,6 +725,7 @@ export default function ProjectModals({
           createdAt={resolvedMetadataProject.createdAt}
           updatedAt={resolvedMetadataProject.updatedAt}
           pt9ImportedAt={resolvedMetadataProject.pt9Import?.importedAt}
+          isSaveBlocked={isDraftLoading && resolvedMetadataProject.id === activeProject?.id}
           onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}
         />

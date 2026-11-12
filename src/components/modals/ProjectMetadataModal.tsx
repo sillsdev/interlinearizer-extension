@@ -47,6 +47,8 @@ type ProjectMetadataModalProps = Readonly<{
    * as static text and there is no Save.
    */
   pt9ImportedAt?: string;
+  /** Whether Save is disabled for a reason outside the form. */
+  isSaveBlocked?: boolean;
   /** Callback invoked when the modal should be dismissed without saving. */
   onClose: () => void;
   /** Optional callback invoked with updated metadata after a successful save. */
@@ -73,6 +75,7 @@ export function ProjectMetadataModal({
   createdAt,
   updatedAt,
   pt9ImportedAt,
+  isSaveBlocked = false,
   onClose,
   onProjectSaved,
 }: ProjectMetadataModalProps) {
@@ -257,7 +260,12 @@ export function ProjectMetadataModal({
         {!readOnly && (
           <Button
             onClick={handleSave}
-            disabled={isSubmitting || editName.trim() === '' || parsedLanguages.length === 0}
+            disabled={
+              isSaveBlocked ||
+              isSubmitting ||
+              editName.trim() === '' ||
+              parsedLanguages.length === 0
+            }
           >
             {localizedStrings['%interlinearizer_modal_metadata_save%']}
           </Button>

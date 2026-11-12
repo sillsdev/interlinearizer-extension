@@ -233,9 +233,11 @@ jest.mock('../../../components/modals/DiscardDraftConfirm', () => ({
 jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
   __esModule: true,
   ProjectMetadataModal: ({
+    isSaveBlocked,
     onClose,
     onProjectSaved,
   }: {
+    isSaveBlocked?: boolean;
     onClose: () => void;
     onProjectSaved?: (u: {
       name?: string;
@@ -251,6 +253,7 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
       <button
         type="button"
         data-testid="metadata-save"
+        disabled={isSaveBlocked}
         onClick={() => {
           onProjectSaved?.({
             name: 'Updated',
@@ -302,6 +305,7 @@ type ModalsOverrides = Partial<{
   announceUndoable: jest.Mock;
   changeDraftAnalysisLanguages: jest.Mock;
   defaultAnalysisLanguage: string;
+  isDraftLoading: boolean;
   hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
   detachFromProject: jest.Mock;
@@ -334,6 +338,7 @@ function buildProps(overrides: ModalsOverrides = {}) {
       overrides.changeDraftAnalysisLanguages ?? jest.fn().mockResolvedValue(undefined),
     defaultAnalysisLanguage: overrides.defaultAnalysisLanguage,
     hasUnsavedWork: overrides.hasUnsavedWork ?? false,
+    isDraftLoading: overrides.isDraftLoading ?? false,
     getDraftSnapshot,
     detachFromProject: overrides.detachFromProject ?? jest.fn(),
     commitDraft:
@@ -1289,13 +1294,14 @@ describe('ProjectModals', () => {
       }
 
       /** Renders the metadata modal for proj-2, in `fr`, while proj-1 is active. */
-      async function renderOther() {
+      async function renderOther(isDraftLoading = false) {
         const useWebViewState = makeWebViewState();
         const changeDraftAnalysisLanguages = jest.fn().mockResolvedValue(undefined);
         const props = {
           activeProject: MOCK_PROJECT,
           useWebViewState,
           changeDraftAnalysisLanguages,
+          isDraftLoading,
         };
         const { rerender } = render(
           <ProjectModals {...buildProps({ ...props, modal: 'select' })} />,
@@ -1304,6 +1310,26 @@ describe('ProjectModals', () => {
         rerender(<ProjectModals {...buildProps({ ...props, modal: 'metadata' })} />);
         return changeDraftAnalysisLanguages;
       }
+
+      it("can't save the open project until its draft has loaded", () => {
+        render(
+          <ProjectModals
+            {...buildProps({
+              modal: 'metadata',
+              activeProject: MOCK_PROJECT,
+              isDraftLoading: true,
+            })}
+          />,
+        );
+
+        expect(screen.getByTestId('metadata-save')).toBeDisabled();
+      });
+
+      it('saves another project while the draft loads', async () => {
+        await renderOther(true);
+
+        expect(screen.getByTestId('metadata-save')).toBeEnabled();
+      });
 
       it('moves the glosses of a dropped primary language in the draft and offers to undo', async () => {
         mockSavedLanguages = ['fr'];

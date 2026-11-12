@@ -303,6 +303,12 @@ describe('ProjectMetadataModal', () => {
     expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled();
   });
 
+  it('disables the Save button while saving is blocked', () => {
+    render(<ProjectMetadataModal {...testProps} isSaveBlocked />);
+
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+  });
+
   it('disables the Save button when the name field is empty', async () => {
     render(<ProjectMetadataModal {...testProps} />);
 

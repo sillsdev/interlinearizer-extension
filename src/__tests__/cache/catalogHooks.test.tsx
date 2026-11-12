@@ -407,15 +407,12 @@ describe('a change of analysis language', () => {
   });
 
   it('previews the deletion again', async () => {
-    const language = { current: 'en' };
-    const wrapper = await languageWrapperOver(language);
-    const { rerender } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
-    await settle();
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
 
-    language.current = 'fr';
-    rerender();
-    await settle();
+    await setLanguage('interlinearizer.previewDeletion', 'fr');
 
-    expect(timesSent('interlinearizer.previewDeletion')).toBe(2);
+    await waitFor(() => expect(timesSent('interlinearizer.previewDeletion')).toBe(2));
   });
 });

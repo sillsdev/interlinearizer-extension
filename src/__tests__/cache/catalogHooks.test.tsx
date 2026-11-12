@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import papi, { logger } from '@papi/frontend';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { TextAnalysis } from 'interlinearizer';
 import { useMemo, type ReactNode } from 'react';
 import {
@@ -287,6 +287,18 @@ describe('a change of analysis language', () => {
     await setLanguage('interlinearizer.getSelectionSummary', 'fr');
 
     await waitFor(() => expect(result.current?.glossedIds).toStrictEqual([]));
+  });
+
+  it("drops the old language's summary when fetching it in the new language fails", async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useSelectionSummary(['ta-god']), { wrapper });
+    await waitFor(() => expect(result.current?.glossedIds).toStrictEqual(['ta-god']));
+    failing('interlinearizer.getSelectionSummary');
+
+    await act(() => setLanguage('interlinearizer.getSelectionSummary', 'fr'));
+    await settle();
+
+    expect(result.current).toBeUndefined();
   });
 
   it('fetches the rows by id again in the new language', async () => {

@@ -148,8 +148,10 @@ export function relayChange(change: unknown): void {
  * unanswered runs through the host's own handlers, except `writeGloss`, whose record ids come from
  * the gloss value it writes. The catalog and concordance queries run through the host's own
  * handlers. `getTextReadStatus` answers from `others` first, then from `text`, which stands for the
- * whole-text read and is unread by default. Every change that a session reports is relayed to the
- * views.
+ * whole-text read and is unread by default. A session on a draft that lists no analysis language
+ * glosses in the first language that `getInterfaceLanguages` lists, or in `und` when it lists none.
+ * `getInterfaceLanguages` lists `en` by default. Every change that a session reports is relayed to
+ * the views.
  */
 export async function fakeHost(
   others: (command: string, args: unknown[]) => Promise<string | undefined> = async () => undefined,
@@ -159,14 +161,16 @@ export async function fakeHost(
     book = BOOK,
     textOf = () => book,
     text = unreadText(),
+    getInterfaceLanguages,
   }: Readonly<{
     analysis?: Partial<TextAnalysis>;
     book?: Book;
     textOf?: () => Book;
     text?: FakeText;
+    getInterfaceLanguages?: () => Promise<string[]>;
   }> = {},
 ) {
-  const made = await sessionOver(analysis, undefined, book);
+  const made = await sessionOver(analysis, undefined, book, getInterfaceLanguages);
   const { sessions, storage } = made;
   made.onChange(relayChange);
   const edits = sessionEditHandlers({
@@ -218,10 +222,14 @@ export async function fakeHost(
         return sessions.close(field(first, 'sessionId'));
       case 'interlinearizer.getDraftEnvelope':
         return JSON.stringify(
-          envelopeOf(
-            await sessions.run(field(first, 'sessionId'), (session) =>
-              session.repository.getWholeDraft(),
-            ),
+          await sessions.run(
+            field(first, 'sessionId'),
+            async ({ repository, analysisLanguage }) => {
+              const envelope = envelopeOf(await repository.getWholeDraft());
+              return envelope.analysisLanguages.length > 0
+                ? envelope
+                : { ...envelope, analysisLanguages: [analysisLanguage] };
+            },
           ),
         );
       case 'interlinearizer.getBookOutline': {

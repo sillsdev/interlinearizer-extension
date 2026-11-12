@@ -1,22 +1,16 @@
-import papi, { logger } from '@papi/frontend';
-import type { AnalysisQuery } from 'interlinearizer';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import papi from '@papi/frontend';
+import { useMemo } from 'react';
 import {
   restoreUntagged,
   type CatalogPageRow,
   type SelectionSummary,
 } from '../services/catalogPages';
 import type { CatalogRowsRequest } from '../services/sessionCatalogHandlers';
-import type {
-  ConcordanceOccurrencePage,
-  ConcordancePage,
-} from '../services/sessionConcordanceHandlers';
 import type { StaleSummary } from '../types/segment-pages';
 import type { TextReadStatus } from '../types/text-read-status';
 import type { CatalogFacets, CatalogRow } from '../utils/analysis-query';
 import type { AnalysisDeletionOutcome } from '../utils/analysis-selectors';
-import useLatestRef from '../hooks/useLatestRef';
-import useSessionChange from '../hooks/useSessionChange';
+import { useNamedFetch } from './namedQueryHooks';
 import { usePageSession } from './pageHooks';
 
 /** A row as the host sends it, its books listed. */
@@ -27,83 +21,6 @@ function fromWire<T extends CatalogRow>(
   row: WireRow<T>,
 ): Omit<T, 'books'> & { books: ReadonlySet<string> } {
   return { ...row, books: new Set(row.books) };
-}
-
-/**
- * How many of the session's reported changes have named `query` since the caller mounted. Each one
- * re-renders the caller.
- */
-function useNamedChanges(sessionId: string, query: AnalysisQuery): number {
-  const [count, setCount] = useState(0);
-  useSessionChange(sessionId, (change) => {
-    if (change.queries.includes(query)) setCount((was) => was + 1);
-  });
-  return count;
-}
-
-/** What {@link useNamedFetch} answers for its key. */
-type NamedFetch<T> = Readonly<{
-  /** The answer to show; `undefined` until one arrives. */
-  value: T | undefined;
-  /** Whether the latest fetch failed. */
-  failed: boolean;
-  /** Fetches again for the key. */
-  retry: () => void;
-}>;
-
-/**
- * Fetches with `fetch` for each `key` of the session, and again whenever a change to the session
- * names `query` or the caller retries. Logs a failed fetch as one of `what`. Nothing is fetched
- * while `key` is `undefined`.
- *
- * @returns `undefined` while `key` is `undefined`. Otherwise the latest answer for `key`, with
- *   whether the latest fetch failed; a failed fetch leaves the answer in place. Until an answer for
- *   `key` arrives, the answer is `undefined`, or the last key's answer with `keepPrevious`.
- */
-function useNamedFetch<T>(
-  query: AnalysisQuery,
-  what: string,
-  key: string | undefined,
-  fetch: () => Promise<T>,
-  keepPrevious = false,
-): NamedFetch<T> | undefined {
-  const { sessionId } = usePageSession();
-  const changes = useNamedChanges(sessionId, query);
-  const fetchRef = useLatestRef(fetch);
-  const sessionKey = key === undefined ? undefined : JSON.stringify([sessionId, key]);
-  const [answer, setAnswer] = useState<
-    Readonly<{ key: string; value: T | undefined; failed: boolean }> | undefined
-  >(undefined);
-  const [retries, setRetries] = useState(0);
-  useEffect(() => {
-    if (sessionKey === undefined) return undefined;
-    let isCurrent = true;
-    (async () => {
-      try {
-        const value = await fetchRef.current();
-        if (isCurrent) setAnswer({ key: sessionKey, value, failed: false });
-      } catch (e) {
-        logger.warn(`Interlinearizer: could not fetch ${what}`, e);
-        if (isCurrent)
-          setAnswer((was) => ({
-            key: sessionKey,
-            value: was?.key === sessionKey || keepPrevious ? was?.value : undefined,
-            failed: true,
-          }));
-      }
-    })();
-    return () => {
-      isCurrent = false;
-    };
-  }, [sessionKey, changes, retries, what, fetchRef, keepPrevious]);
-  const retry = useCallback(() => {
-    /* v8 ignore next -- callers offer a retry only after a failure, so an answer is held */
-    setAnswer((was) => was && { ...was, failed: false });
-    setRetries((was) => was + 1);
-  }, []);
-  if (sessionKey === undefined) return undefined;
-  if (answer?.key === sessionKey) return { value: answer.value, failed: answer.failed, retry };
-  return { value: keepPrevious ? answer?.value : undefined, failed: false, retry };
 }
 
 /** A page of the session's catalog, as the panel reads it. */
@@ -146,80 +63,6 @@ export function useCatalogView(
 }
 
 /**
- * The first `count` rows of the session's concordance, counted against `currentBook`, fetched again
- * whenever a change names the concordance or the text's read status. Keeps the last page while the
- * next is fetched.
- *
- * @returns `null` until the whole text has been read; `undefined` until the first answer arrives.
- */
-export function useConcordanceView(
-  currentBook: string,
-  count: number,
-): ConcordancePage | null | undefined {
-  const { sessionId } = usePageSession();
-  const changes = useNamedChanges(sessionId, 'getConcordance');
-  const readChanges = useNamedChanges(sessionId, 'getTextReadStatus');
-  const [page, setPage] = useState<ConcordancePage | null | undefined>(undefined);
-  useEffect(() => {
-    let isCurrent = true;
-    (async () => {
-      try {
-        const json = await papi.commands.sendCommand('interlinearizer.getConcordance', {
-          sessionId,
-          request: { currentBook, offset: 0, count },
-        });
-        if (isCurrent) setPage(JSON.parse(json));
-      } catch (e) {
-        logger.warn('Interlinearizer: could not fetch the concordance', e);
-      }
-    })();
-    return () => {
-      isCurrent = false;
-    };
-  }, [sessionId, currentBook, count, changes, readChanges]);
-  return page;
-}
-
-/**
- * The first `count` occurrences of `form` in the session's text, with the analyses its occurrences
- * are approved to, glossed in the session's language. Fetched again whenever a change names the
- * concordance or the text's read status. Kept while the next answer is fetched, until `form` is
- * `undefined`.
- *
- * @returns `undefined` while `form` is `undefined`, and until the first answer arrives.
- */
-export function useConcordanceOccurrences(
-  form: string | undefined,
-  count: number,
-): ConcordanceOccurrencePage | undefined {
-  const { sessionId, analysisLanguage } = usePageSession();
-  const changes = useNamedChanges(sessionId, 'getConcordance');
-  const readChanges = useNamedChanges(sessionId, 'getTextReadStatus');
-  const [page, setPage] = useState<ConcordanceOccurrencePage | undefined>(undefined);
-  // Dropped once no form is given, so the next form asked for starts without the last one's answer.
-  if (form === undefined && page !== undefined) setPage(undefined);
-  useEffect(() => {
-    if (form === undefined) return undefined;
-    let isCurrent = true;
-    (async () => {
-      try {
-        const json = await papi.commands.sendCommand('interlinearizer.getConcordance', {
-          sessionId,
-          request: { form, offset: 0, count },
-        });
-        if (isCurrent) setPage(JSON.parse(json));
-      } catch (e) {
-        logger.warn("Interlinearizer: could not fetch a form's occurrences", e);
-      }
-    })();
-    return () => {
-      isCurrent = false;
-    };
-  }, [sessionId, analysisLanguage, form, count, changes, readChanges]);
-  return page;
-}
-
-/**
  * How far the session's whole-text read has got, or `'error'` when the read could not start. Asking
  * starts the read.
  *
@@ -254,16 +97,6 @@ async function fetchRowsByIds(
     }),
   );
   return rows.map(fromWire);
-}
-
-/** A callback that reads again each book of the session's text whose latest read failed. */
-export function useRetryTextRead(): () => void {
-  const { sessionId } = usePageSession();
-  return useCallback(() => {
-    papi.commands.sendCommand('interlinearizer.retryTextRead', { sessionId }).catch((e) => {
-      logger.warn("Interlinearizer: could not read the session's text again", e);
-    });
-  }, [sessionId]);
 }
 
 /**

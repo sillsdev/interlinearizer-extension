@@ -59,6 +59,7 @@
       "%interlinearizer_concordance_noGloss%": "(no gloss)",
       "%interlinearizer_concordance_unanalyzed%": "unanalyzed",
       "%interlinearizer_concordance_showMoreOccurrences%": "Show {count} more",
+      "%interlinearizer_concordance_showFewerOccurrences%": "Show fewer",
       "%interlinearizer_analysisCatalog_title%": "Analysis Catalog",
       "%interlinearizer_analysisCatalog_close%": "Close analysis catalog",
       "%interlinearizer_analysisCatalog_empty%": "No analyses recorded yet.",

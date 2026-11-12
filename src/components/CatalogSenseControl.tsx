@@ -6,7 +6,7 @@ import { formatReplacementString, type LanguageStrings } from 'platform-bible-ut
 import { useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 import { useLexiconSearch, useLinkedGloss, type LinkedGloss } from './LexiconSenses';
 import LocalizedTooltip from './LocalizedTooltip';
-import { multiStringText } from '../utils/multi-string';
+import { multiStringTextByLanguage } from '../utils/multi-string';
 
 /** Localized string keys a {@link CatalogSenseControl} renders. */
 export const SENSE_CONTROL_STRING_KEYS = [
@@ -61,7 +61,7 @@ function linkIcon(link: LinkedGloss) {
  */
 function anyText(value: MultiString | undefined, language: string): string {
   return (
-    multiStringText(value, language) ||
+    multiStringTextByLanguage(value, language) ||
     Object.values(value ?? {}).find((text) => text.trim() !== '') ||
     ''
   );

@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createLexiconRegistry, type LexiconRegistry } from '../utils/lexicon-resolvers';
-import { multiStringText } from '../utils/multi-string';
+import { multiStringTextByLanguage } from '../utils/multi-string';
 import { createSenseCache, type SenseCache } from '../utils/sense-cache';
 
 /** Answers for a tree with no lexicon above it, where every sense misses. */
@@ -53,7 +53,8 @@ export type DisplayedGloss = Readonly<{
  * A ref that cannot be resolved shows the same as no ref. That covers an unreachable lexicon, a
  * sense that is gone, and a lexicon that is not connected. The ref itself is never changed.
  *
- * The sense is asked for only while no stored gloss covers it.
+ * The sense is asked for only while no stored gloss covers it. Its gloss is read as
+ * {@link multiStringTextByLanguage} reads it.
  */
 export function useDisplayedGloss(
   gloss: string,
@@ -63,7 +64,7 @@ export function useDisplayedGloss(
   const sense = useLexiconSense(gloss ? undefined : senseRef);
 
   if (gloss) return { text: gloss, fromLexicon: false };
-  const resolved = multiStringText(sense?.gloss, language);
+  const resolved = multiStringTextByLanguage(sense?.gloss, language);
   return { text: resolved, fromLexicon: resolved !== '' };
 }
 
@@ -91,6 +92,8 @@ export type LinkedGloss = DisplayedGloss &
  *
  * The stored gloss is shown when present; otherwise the sense's gloss is shown. The sense's gloss
  * is returned even where a stored gloss takes precedence, so that the two glosses can be compared.
+ * It is read as {@link multiStringTextByLanguage} reads it, since a lexicon keys glosses by its own
+ * writing systems rather than by the project's tag.
  */
 export function useLinkedGloss(
   gloss: string,
@@ -104,7 +107,7 @@ export function useLinkedGloss(
     senseRef ? senses.hasAnswer(senseRef) : false,
   );
   const lexiconAnswered = senseRef !== undefined && !registry.isForeign(senseRef) && answered;
-  const senseGloss = multiStringText(sense?.gloss, language);
+  const senseGloss = multiStringTextByLanguage(sense?.gloss, language);
 
   if (gloss)
     return {

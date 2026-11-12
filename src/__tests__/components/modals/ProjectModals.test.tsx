@@ -1478,25 +1478,6 @@ describe('ProjectModals', () => {
         expect(papi.notifications.send).not.toHaveBeenCalled();
       });
 
-      it("moves a draft not yet read off the project's old primary language", async () => {
-        const change = jest.fn().mockResolvedValue(undefined);
-        render(
-          <ProjectModals
-            {...buildProps({
-              modal: 'metadata',
-              activeProject: MOCK_PROJECT,
-              changeDraftAnalysisLanguages: change,
-              getDraftSnapshot: () => undefined,
-            })}
-          />,
-        );
-
-        await userEvent.click(screen.getByTestId('metadata-save'));
-
-        expect(change).toHaveBeenCalledWith(['fr'], 'en');
-        expect(screen.queryByTestId('retag-glosses-modal-title')).toBeNull();
-      });
-
       it("logs a project's move that fails", async () => {
         mockSavedLanguages = ['es'];
         jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('disk full'));

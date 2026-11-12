@@ -335,13 +335,11 @@ export default function ProjectModals({
       const active = activeProject !== undefined && interlinearProjectId === activeProject.id;
       if (activeProject && active) setActiveProject({ ...activeProject, ...updated });
 
-      const draftLanguages = getDraftSnapshot()?.analysisLanguages;
-      // A draft not yet read is assumed to hold the project's old languages.
-      const from = (
-        active && draftLanguages ? draftLanguages : resolvedMetadataProject.analysisLanguages
-      )[0];
+      /* v8 ignore next -- Save waits for the draft whenever the draft's languages are read */
+      const draftLanguages = getDraftSnapshot()?.analysisLanguages ?? [];
+      const from = active ? draftLanguages[0] : resolvedMetadataProject.analysisLanguages[0];
       if (from === undefined || from === to) {
-        if (active && draftLanguages?.join(',') !== analysisLanguages.join(','))
+        if (active && draftLanguages.join(',') !== analysisLanguages.join(','))
           changeDraftLanguages(analysisLanguages);
       } else if (active && !analysisLanguages.includes(from))
         changeDraftLanguages(analysisLanguages, from);

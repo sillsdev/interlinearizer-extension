@@ -38,7 +38,7 @@ type PendingReplace =
 type PendingRetag = {
   /** The project whose languages changed. */
   interlinearProjectId: string;
-  /** Whether the project is the one the draft saves to, so the move goes through the draft. */
+  /** Whether the draft saves to the project. The move then goes through the draft. */
   active: boolean;
   /** The project's new analysis languages, primary first. */
   analysisLanguages: string[];
@@ -213,7 +213,7 @@ export default function ProjectModals({
   /** A move of glosses to a project's new primary language, awaiting the user's answer. */
   const [pendingRetag, setPendingRetag] = useState<PendingRetag | undefined>(undefined);
 
-  /** Guards the answer to {@link pendingRetag} against double-submit. */
+  /** Guards the answer to the pending move against double-submit. */
   const retagGuard = useSubmitGuard();
   const { runGuarded: runGuardedRetag } = retagGuard;
 
@@ -331,10 +331,13 @@ export default function ProjectModals({
       const active = activeProject !== undefined && interlinearProjectId === activeProject.id;
       if (activeProject && active) setActiveProject({ ...activeProject, ...updated });
 
-      const draftLanguages = getDraftSnapshot()?.analysisLanguages ?? [];
-      const from = active ? draftLanguages[0] : resolvedMetadataProject.analysisLanguages[0];
+      const draftLanguages = getDraftSnapshot()?.analysisLanguages;
+      // A draft not yet read is assumed to hold the project's old languages.
+      const from = (
+        active && draftLanguages ? draftLanguages : resolvedMetadataProject.analysisLanguages
+      )[0];
       if (from === undefined || from === to) {
-        if (active && draftLanguages.join(',') !== analysisLanguages.join(','))
+        if (active && draftLanguages?.join(',') !== analysisLanguages.join(','))
           changeDraftLanguages(analysisLanguages);
       } else if (active && !analysisLanguages.includes(from))
         changeDraftLanguages(analysisLanguages, from);

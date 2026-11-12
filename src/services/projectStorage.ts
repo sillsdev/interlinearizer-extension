@@ -20,6 +20,7 @@ import { hasLinkWithoutId, isStringArray } from '../types/type-guards';
 import { removeBookFromSegmentation } from '../utils/analysis-book';
 import { reportAnalysisViolations } from '../utils/analysis-violations';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
+import { retagGlosses, type GlossRetagCounts } from '../utils/retag-glosses';
 import { DraftRepository } from './draftRepository';
 import { Pt9ImportRepository } from './pt9ImportRepository';
 import { ProjectSummaries, summarizeProject } from './projectSummaries';
@@ -894,6 +895,46 @@ export async function updateAnalysis(
     );
     const summary = perfTime('updateAnalysis:summary', () => summarizeProject(updated));
     return (await refreshSummary(token, summary)) ? updated : undefined;
+  });
+}
+
+/**
+ * Moves the glosses of project `id` from one language tag to another. A gloss whose word or
+ * morpheme already has one under `to` stays under `from`. The project is written, with `updatedAt`
+ * refreshed, only when a gloss moved.
+ *
+ * @param token - The execution token for storage access.
+ * @param id - The interlinearizer project UUID whose glosses move.
+ * @param from - BCP 47 tag the glosses move from.
+ * @param to - BCP 47 tag the glosses move to.
+ * @returns What moved and what was skipped, or `undefined` if no project with the given ID exists.
+ * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws {Error} If the stored record was written by a newer build; nothing is written.
+ * @throws {Error} If the project is a Paratext 9 import, as in {@link updateAnalysis}.
+ * @throws If a storage read or write rejects as in {@link updateAnalysis}.
+ */
+export async function retagProjectGlosses(
+  token: ExecutionToken,
+  id: string,
+  from: string,
+  to: string,
+): Promise<GlossRetagCounts | undefined> {
+  return enqueueProjectOp(id, async () => {
+    const raw = await readRecord(token, projectKey(id));
+    if (raw === undefined) return undefined;
+    const project = parseProject(raw, id);
+    if (project.pt9Import) throw pt9ImportReadOnlyError(id);
+    const now = new Date().toISOString();
+    const { counts, tokenAnalyses, phraseAnalyses } = retagGlosses(project.analysis, from, to, now);
+    if (tokenAnalyses.length === 0 && phraseAnalyses.length === 0) return counts;
+    const updated: InterlinearProject = {
+      ...project,
+      modelVersion: CURRENT_MODEL_VERSION,
+      updatedAt: now,
+    };
+    await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
+    await refreshSummary(token, summarizeProject(updated));
+    return counts;
   });
 }
 

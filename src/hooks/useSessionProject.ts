@@ -433,27 +433,34 @@ export default function useSessionProject(
 
   /**
    * Gives the draft new analysis languages, primary first, as one undoable step. With `retagFrom`,
-   * the step also moves the word and morpheme glosses under `retagFrom` to the new primary
-   * language.
+   * the step also moves the glosses under `retagFrom` to the new primary language.
    *
    * @returns What moved, or `undefined` when no glosses were asked to move.
-   * @throws If the pages' outline has not loaded yet, or whatever the edit's command throws.
+   * @throws If no session is open, or whatever the edit's command throws.
    */
   const changeAnalysisLanguages = useCallback(
     async (analysisLanguages: string[], retagFrom?: string) => {
-      const reply = await sendEditOrThrow((args) =>
+      const call = (args: SessionEditArgs) =>
         papi.commands.sendCommand('interlinearizer.changeAnalysisLanguages', {
           ...args,
           analysisLanguages,
           ...(retagFrom !== undefined && { retagFrom }),
-        }),
-      );
+        });
+      let reply: CommandReply | undefined;
+      if (client) reply = await sendEditOrThrow(call);
+      else {
+        // Project Info can save before the book's pages load. The draft takes its languages even then.
+        if (sessionId === undefined)
+          throw new Error('Interlinearizer: no session is open to change its analysis languages');
+        reply = JSON.parse(await call({ sessionId }));
+        if (reply) takeReply(reply);
+      }
       // The reply leaves out how a change of languages alone left the draft's unsaved mark.
       refreshWhole();
       const glossRetag: unknown = reply && 'glossRetag' in reply ? reply.glossRetag : undefined;
       return isGlossRetagCounts(glossRetag) ? glossRetag : undefined;
     },
-    [sendEditOrThrow, refreshWhole],
+    [client, sessionId, sendEditOrThrow, takeReply, refreshWhole],
   );
   const getHistoryRevision = useCallback(() => historyRevision.current, []);
   const subscribeToHistoryRevisions = useCallback((listener: () => void) => {

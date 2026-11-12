@@ -632,8 +632,8 @@ function InterlinearizerLoaderInner({
   );
 
   /**
-   * Gives the draft new analysis languages, as `changeAnalysisLanguages` does. Glosses moved to the
-   * new primary language are then shown in it.
+   * Gives the draft new analysis languages, moving the glosses under `retagFrom` to the new primary
+   * language when given. After a move, the draft is shown in the new primary language.
    */
   const changeDraftAnalysisLanguages = useCallback(
     async (analysisLanguages: string[], retagFrom?: string) => {

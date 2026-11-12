@@ -21,7 +21,7 @@ const RETAG_GLOSSES_CONFIRM_STRING_KEYS: `%${string}%`[] = [
  * @param props.to - BCP 47 tag of the new primary language.
  * @param props.fromRemoved - Whether `from` is no longer one of the project's analysis languages,
  *   so its glosses would not show at all.
- * @param props.undoable - Whether the move can be undone, which it can only in the open draft.
+ * @param props.undoable - Whether the move can be undone.
  * @param props.isSubmitting - When `true`, both buttons are disabled while the caller runs the
  *   choice.
  * @param props.onConfirm - Called to move the glosses.

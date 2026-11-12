@@ -17,13 +17,12 @@ export type ChangeAnalysisLanguagesRequest = {
 };
 
 /**
- * Stages giving the draft `analysisLanguages`, and, with `retagFrom`, moving every word and
- * morpheme gloss under `retagFrom` to the new primary language. A gloss whose word or morpheme
- * already has one in the new primary language stays where it is. A token analysis the move makes
- * identical to another payload is folded into that payload.
+ * Stages in `buffer` the change giving the draft new analysis languages. With `retagFrom`, it also
+ * moves the glosses under `retagFrom` in `stored`, the draft's analysis, to the new primary
+ * language, mutating `stored`. A gloss whose word or morpheme already has one in the new primary
+ * language stays where it is. A token analysis the move makes identical to another payload is
+ * folded into that payload.
  *
- * @param buffer - Where the changes are staged.
- * @param stored - The draft's analysis as stored, which this mutates.
  * @returns What moved, or `undefined` when no glosses were asked to move.
  */
 export async function changeAnalysisLanguages(

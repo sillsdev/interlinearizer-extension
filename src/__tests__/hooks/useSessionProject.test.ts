@@ -36,6 +36,19 @@ function renderProject(
   );
 }
 
+/** Renders the hook with no book open, so that no pages load. */
+function renderWithoutBook() {
+  return renderHook(() =>
+    useSessionProject('src', {
+      saveTargetId: undefined,
+      importProjectId: undefined,
+      importVersion: undefined,
+      bookId: undefined,
+      scrRef: SCR_REF,
+    }),
+  );
+}
+
 /** How often the WebView has read a session's whole draft. */
 function fullReads(): number {
   return jest
@@ -867,6 +880,29 @@ describe('useSessionProject edits sent to the session', () => {
       expect.objectContaining({ analysisLanguages: ['es'], retagFrom: 'en' }),
     );
     expect(moved).toStrictEqual(glossRetag);
+  });
+
+  it("changes the draft's languages before the book's pages load", async () => {
+    await fakeHost();
+    const { result } = renderWithoutBook();
+    await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.changeAnalysisLanguages(['es'], 'en');
+    });
+
+    expect(result.current.session?.client).toBeUndefined();
+    await waitFor(() => expect(result.current.draft?.analysisLanguages).toStrictEqual(['es']));
+    expect(result.current.canUndo).toBe(true);
+  });
+
+  it('refuses to change languages while no session is open', async () => {
+    jest.mocked(papi.commands.sendCommand).mockImplementation(() => new Promise(() => {}));
+    const { result } = renderWithoutBook();
+
+    await expect(result.current.changeAnalysisLanguages(['es'])).rejects.toThrow(
+      'no session is open',
+    );
   });
 
   it('logs a draft it cannot read again after a discard', async () => {

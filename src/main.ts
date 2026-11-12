@@ -51,7 +51,6 @@ import { CURRENT_MODEL_VERSION } from './types/model-version';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
-import { retagGlosses } from './utils/retag-glosses';
 import { bookSegmentationJson } from './utils/segmentation';
 
 // #region WebView provider
@@ -436,9 +435,8 @@ async function updateProjectMetadata(
 }
 
 /**
- * Moves every word and morpheme gloss of a stored project from the tag `from` to the tag `to`. A
- * gloss whose word or morpheme already has one under `to` stays under `from`. The project is
- * written only when something moved. Nothing records the move to undo.
+ * Moves the glosses of a stored project from the tag `from` to the tag `to`. A gloss whose word or
+ * morpheme already has one under `to` stays under `from`. Nothing records the move to undo.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project whose glosses move.
  * @param from - BCP 47 tag the glosses move from.
@@ -455,17 +453,13 @@ async function retagProjectGlosses(
 ): Promise<string | undefined> {
   try {
     if (from === to) throw new Error(`Interlinearizer: glosses cannot move from ${to} to itself`);
-    const project = await projectStorage.getProject(executionToken, interlinearProjectId);
-    if (!project) return undefined;
-    const { counts, tokenAnalyses, phraseAnalyses } = retagGlosses(
-      project.analysis,
+    const counts = await projectStorage.retagProjectGlosses(
+      executionToken,
+      interlinearProjectId,
       from,
       to,
-      new Date().toISOString(),
     );
-    if (tokenAnalyses.length > 0 || phraseAnalyses.length > 0)
-      await projectStorage.updateAnalysis(executionToken, interlinearProjectId, project.analysis);
-    return JSON.stringify(counts);
+    return counts && JSON.stringify(counts);
   } catch (e) {
     logger.error('Interlinearizer: failed to move project glosses to a new language', e);
     await papi.notifications

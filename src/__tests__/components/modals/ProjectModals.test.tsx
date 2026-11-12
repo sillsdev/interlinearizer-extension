@@ -1452,7 +1452,7 @@ describe('ProjectModals', () => {
         expect(papi.notifications.send).not.toHaveBeenCalled();
       });
 
-      it('gives a draft not yet read the languages, moving nothing', async () => {
+      it("moves a draft not yet read off the project's old primary language", async () => {
         const change = jest.fn().mockResolvedValue(undefined);
         render(
           <ProjectModals
@@ -1467,7 +1467,7 @@ describe('ProjectModals', () => {
 
         await userEvent.click(screen.getByTestId('metadata-save'));
 
-        expect(change).toHaveBeenCalledWith(['fr'], undefined);
+        expect(change).toHaveBeenCalledWith(['fr'], 'en');
         expect(screen.queryByTestId('retag-glosses-modal-title')).toBeNull();
       });
 

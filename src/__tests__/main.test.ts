@@ -1806,68 +1806,30 @@ describe('main', () => {
   });
 
   describe('interlinearizer.retagProjectGlosses command', () => {
-    const mockGetProject = jest.mocked(projectStorage.getProject);
-    const mockUpdateAnalysis = jest.mocked(projectStorage.updateAnalysis);
+    const mockRetag = jest.mocked(projectStorage.retagProjectGlosses);
 
-    /** A stored project in `fr` holding one glossed analysis. */
-    function glossedProject(gloss: Record<string, string>) {
-      const project = makeStubProject('proj-id');
-      return {
-        ...project,
-        analysis: {
-          ...project.analysis,
-          tokenAnalyses: [
-            {
-              id: 'ta-1',
-              createdAt: '2026-01-01T00:00:00.000Z',
-              updatedAt: '2026-01-01T00:00:00.000Z',
-              surfaceText: 'fish',
-              gloss,
-            },
-          ],
-        },
-      };
-    }
-
-    it('writes the project with its glosses moved, and returns what moved', async () => {
-      mockGetProject.mockResolvedValue(glossedProject({ fr: 'poisson' }));
+    it('returns what moved as JSON', async () => {
+      mockRetag.mockResolvedValue({ words: 1, morphemes: 2, skipped: 3 });
       const handler = await getRetagProjectGlossesHandler();
 
       const result = await handler('proj-id', 'fr', 'es');
 
-      expect(JSON.parse(result ?? '')).toStrictEqual({ words: 1, morphemes: 0, skipped: 0 });
-      expect(mockUpdateAnalysis).toHaveBeenCalledWith(
-        expect.anything(),
-        'proj-id',
-        expect.objectContaining({
-          tokenAnalyses: [expect.objectContaining({ gloss: { es: 'poisson' } })],
-        }),
-      );
-    });
-
-    it('writes nothing when no gloss moved', async () => {
-      mockGetProject.mockResolvedValue(glossedProject({ fr: 'poisson', es: 'pez' }));
-      const handler = await getRetagProjectGlossesHandler();
-
-      const result = await handler('proj-id', 'fr', 'es');
-
-      expect(JSON.parse(result ?? '')).toStrictEqual({ words: 0, morphemes: 0, skipped: 1 });
-      expect(mockUpdateAnalysis).not.toHaveBeenCalled();
+      expect(JSON.parse(result ?? '')).toStrictEqual({ words: 1, morphemes: 2, skipped: 3 });
+      expect(mockRetag).toHaveBeenCalledWith(expect.anything(), 'proj-id', 'fr', 'es');
     });
 
     it('returns undefined when the project does not exist', async () => {
-      mockGetProject.mockResolvedValue(undefined);
+      mockRetag.mockResolvedValue(undefined);
       const handler = await getRetagProjectGlossesHandler();
 
       expect(await handler('missing', 'fr', 'es')).toBeUndefined();
-      expect(mockUpdateAnalysis).not.toHaveBeenCalled();
     });
 
     it.each([
       ['a move onto the same tag', 'es', 'cannot move from es to itself'],
       ['a storage failure', 'fr', 'disk full'],
     ])('logs, notifies, and rethrows %s', async (_case, from, message) => {
-      mockGetProject.mockRejectedValue(new Error('disk full'));
+      mockRetag.mockRejectedValue(new Error('disk full'));
       const handler = await getRetagProjectGlossesHandler();
 
       await expect(handler('proj-id', from, 'es')).rejects.toThrow(message);

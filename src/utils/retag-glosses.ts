@@ -10,7 +10,7 @@ export type GlossRetagCounts = {
   skipped: number;
 };
 
-/** Whether `value` is a {@link GlossRetagCounts}, as a host reply carries one. */
+/** Whether `value` is a {@link GlossRetagCounts}. */
 export function isGlossRetagCounts(value: unknown): value is GlossRetagCounts {
   return (
     !!value &&
@@ -49,11 +49,9 @@ function retagMultiString(
 }
 
 /**
- * Moves the word and morpheme glosses of `analysis` written under the tag `from` to the tag `to`,
- * mutating the analyses in place and stamping each one changed with `now`. A gloss whose word or
- * morpheme already has text under `to` stays under `from` and is counted as skipped.
- *
- * @returns The analyses changed, and the counts.
+ * Moves the glosses of `analysis` written under the tag `from` to the tag `to`, mutating the
+ * analyses in place and stamping each one changed with `now`. A gloss whose word or morpheme
+ * already has text under `to` stays under `from` and is counted as skipped.
  */
 export function retagGlosses(
   analysis: TextAnalysis,

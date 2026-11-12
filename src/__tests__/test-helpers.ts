@@ -210,11 +210,15 @@ export function segmentPagesOf(book: Book, segmentationVersion = 0): SegmentPage
   const key = `${book.bookRef}:${segmentationVersion}`;
   let pages = byKey.get(key);
   if (!pages) {
+    const held = [{ textVersion: book.textVersion, start: 0, segments: book.segments }];
     pages = {
       bookRef: book.bookRef,
       outline: outlineOf(book.segments),
       segmentationVersion,
+      boundaries: { formerBoundaries: {}, unmergeableStarts: [], lostBoundaries: [] },
+      duplicateVerseIds: [],
       segmentAt: (index) => book.segments[index],
+      heldPages: () => held,
       load: jest.fn(),
       release: jest.fn(),
       subscribe: () => () => {},

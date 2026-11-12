@@ -31,8 +31,6 @@ interface HeldBook {
   book: Promise<Book | undefined>;
   /** The book once tokenized; absent until then, and when the project has no text for it. */
   tokenized?: Book;
-  /** The tokenized book as JSON, once it has been asked for whole. */
-  json?: Promise<string | undefined>;
   /** The book segmented by the boundaries last asked for, keyed by their JSON. */
   segmented?: { key: string; segments: Segment[] };
   watch: BookTextWatch;
@@ -279,14 +277,12 @@ function holdBook(sourceProjectId: string, bookId: string, writingSystem: string
     if (read?.watches.has(bookId)) rereadTextBook(sourceProjectId, read, bookId);
     else reportOpenBookEdit(sourceProjectId, reheld);
   });
-  const book = perfTrack('getTokenizedBook:usj', watch.text).then(
+  const book = perfTrack('readBook:usj', watch.text).then(
     (usj) =>
       usj &&
-      perfTime(
-        'getTokenizedBook:tokenize',
-        () => tokenizeBook(extractBookFromUsj(usj, writingSystem)),
-        { writingSystem },
-      ),
+      perfTime('readBook:tokenize', () => tokenizeBook(extractBookFromUsj(usj, writingSystem)), {
+        writingSystem,
+      }),
   );
   const held: HeldBook = { bookId, writingSystem, book, watch };
   book
@@ -351,24 +347,6 @@ async function keepBook(
   dropUnlessKept(sourceProjectId, latest);
   dropUnlessKept(sourceProjectId, open);
   return held;
-}
-
-/**
- * Tokenizes a book of the source project under the project's language tag.
- *
- * @returns The tokenized `Book` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book's text or the project's language tag cannot be read, or the text cannot be
- *   tokenized.
- */
-export async function getTokenizedBook(
-  sourceProjectId: string,
-  bookId: string,
-): Promise<string | undefined> {
-  const held = await keepBook(sourceProjectId, bookId);
-  held.json ??= held.book.then(
-    (book) => book && perfTime('getTokenizedBook:serialize', () => JSON.stringify(book)),
-  );
-  return held.json;
 }
 
 /**

@@ -499,13 +499,12 @@ async function measureOpen(
     frameOrigin + Math.max(...settled.map((m) => m.end)) - openedAt,
   );
   const hostEntries = await takeHostEntries(page);
-  open.addHostCall(HOST_CALLS.getTokenizedBook, hostEntries, settled);
   open.addHostCall(HOST_CALLS.getBookOutline, hostEntries, settled);
   // The first pages load side by side, so each is sampled without a transport to pair it with.
   hostEntries
     .filter(({ name }) => name === 'getSegments')
     .forEach(({ duration }) => open.host.addValue('page-fetch', duration));
-  const tokenizes = hostEntries.filter(({ name }) => name === 'getTokenizedBook:tokenize').length;
+  const tokenizes = hostEntries.filter(({ name }) => name === 'readBook:tokenize').length;
   if (tokenizes !== 1) console.warn(`Opening ${book} tokenized it ${tokenizes} times, not once`);
   await closeView(page);
 }
@@ -608,7 +607,7 @@ async function measureTier(
     switchBook.add(
       // eslint-disable-next-line no-await-in-loop
       await waitForMeasure(frame, 'book-render', tier.viewBook),
-      ['book-fetch', 'book-parse', 'book-render'],
+      ['book-render'],
     );
   }
   result.switchBook = switchBook.summary();

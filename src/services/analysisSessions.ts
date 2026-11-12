@@ -30,6 +30,7 @@ import { settleAll } from './draftRepository';
 import { EditHistory, type EditOptions, type HistoryMove } from './editHistory';
 import { reanchorRestored, reanchorStoredBook } from './reanchorPasses';
 import { readTouchedPoolBuckets } from './sessionPages';
+import type { AnalysisEditOutcome } from '../utils/edit-outcome';
 
 /** BCP 47 tag for a language that cannot be determined. */
 export const UNDETERMINED_LANGUAGE = 'und';
@@ -84,11 +85,13 @@ export type EditOutcome = {
   hasFreeTranslations?: boolean;
   /** The token analyses that clearing glosses left empty, and so removed. */
   emptiedAnalysisIds?: string[];
+  /** Where a catalog edit left the record it was aimed at. */
+  outcome?: AnalysisEditOutcome;
 };
 
 /** What a session answers an edit with. */
 export type EditReply = CommandReply &
-  Pick<EditOutcome, 'hasFreeTranslations' | 'emptiedAnalysisIds'>;
+  Pick<EditOutcome, 'hasFreeTranslations' | 'emptiedAnalysisIds' | 'outcome'>;
 
 /** An open session, as seen by the commands sent to it. */
 export type Session = {
@@ -176,13 +179,13 @@ export function isEmptyDraft({
   );
 }
 
-/** Reports `change` unless it touched nothing, carrying `passChanges` when given. */
+/** Reports `change` unless it touched nothing, saying so when it `keepsUnsavedMark`. */
 function report(
   host: SessionHost,
   session: Session,
   change: AnalysisChange,
   changeId: string,
-  passChanges?: ChangeSet[],
+  keepsUnsavedMark = false,
 ) {
   if (change.books.length === 0 && change.analysisIds.length === 0 && change.queries.length === 0)
     return;
@@ -190,12 +193,9 @@ function report(
     sessionId: session.id,
     changeId,
     ...change,
-    ...(passChanges && { passChanges }),
+    ...(keepsUnsavedMark && { keepsUnsavedMark }),
   });
 }
-
-/** What a pass to a book's edited text changed, kept until the edit is reported. */
-type UnreportedPass = Readonly<{ change: AnalysisChange; changes: ChangeSet }>;
 
 /**
  * Returns what an applied change touched, and reports that unless the change touched nothing. Reads
@@ -246,13 +246,13 @@ async function reanchorNow(
   host: SessionHost,
   session: Session,
   book: Book,
-  unreported?: UnreportedPass[],
+  unreported?: AnalysisChange[],
 ): Promise<void> {
   const applied = await reanchorStoredBook(session.repository, session.history, book);
   if (!applied) return;
   const change = await describeApplied(host, session, applied);
-  if (unreported) unreported.push({ change, changes: applied.changes });
-  else report(host, session, change, crypto.randomUUID(), [applied.changes]);
+  if (unreported) unreported.push(change);
+  else report(host, session, change, crypto.randomUUID(), true);
 }
 
 /**
@@ -318,7 +318,7 @@ type OpenSession = {
    */
   replies: Map<string, Promise<EditReply | undefined>>;
   /** What each pass to a book's edited text changed, by book, until the edit is reported. */
-  editPasses: Map<string, UnreportedPass[]>;
+  editPasses: Map<string, AnalysisChange[]>;
   /**
    * The `textVersion` that each book was last re-anchored to as it opened or as its text was read.
    * A book that opened with no text maps to `''`.
@@ -754,7 +754,7 @@ export class AnalysisSessions {
       sourceProjectId,
       async ({ session, editPasses, anchoredVersions }) => {
         if (anchoredVersions.get(book.bookRef) === book.textVersion) return;
-        let unreported: UnreportedPass[] | undefined;
+        let unreported: AnalysisChange[] | undefined;
         if (edited) {
           unreported = editPasses.get(book.bookRef) ?? [];
           editPasses.set(book.bookRef, unreported);
@@ -802,24 +802,15 @@ export class AnalysisSessions {
     return this.run(entry.session.id, async (session) => {
       const passes = entry.editPasses.get(bookId) ?? [];
       entry.editPasses.delete(bookId);
-      report(
-        this.host,
-        session,
-        describeScriptureEdit(
-          bookId,
-          passes.map(({ change }) => change),
-        ),
-        crypto.randomUUID(),
-        passes.map(({ changes }) => changes),
-      );
+      report(this.host, session, describeScriptureEdit(bookId, passes), crypto.randomUUID(), true);
     });
   }
 
   /**
    * Reports through the session open on the source project, in that session's turn, that its
    * whole-text read moved. The report names the read status, and names the catalog too when
-   * `formsChanged`. It carries no changes to apply. Does nothing when the source has no session
-   * open.
+   * `formsChanged`. The report also says that it leaves the draft as saved as it was. Does nothing
+   * when the source has no session open.
    *
    * @throws {Error} If the session is closing.
    */
@@ -834,7 +825,7 @@ export class AnalysisSessions {
         session,
         { books: [], analysisIds: [], forms: [], queries },
         crypto.randomUUID(),
-        [],
+        true,
       );
     });
   }

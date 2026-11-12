@@ -8,12 +8,15 @@ import { usePageSession } from './pageHooks';
 /**
  * How many of the session's reported changes have named `query` since the caller mounted. Each one
  * re-renders the caller.
+ *
+ * With a list of queries, a change counts once however many of them it names.
  */
-export function useNamedChanges(query: AnalysisQuery): number {
+export function useNamedChanges(query: AnalysisQuery | readonly AnalysisQuery[]): number {
   const { sessionId } = usePageSession();
   const [count, setCount] = useState(0);
   useSessionChange(sessionId, (change) => {
-    if (change.queries.includes(query)) setCount((was) => was + 1);
+    const queries = typeof query === 'string' ? [query] : query;
+    if (change.queries.some((named) => queries.includes(named))) setCount((was) => was + 1);
   });
   return count;
 }
@@ -31,16 +34,17 @@ export type NamedFetch<T> = Readonly<{
 }>;
 
 /**
- * Fetches with `fetch` for each `key` of the session, and again whenever a change to the session
- * names `query` or the caller retries. Logs a failed fetch as one of `what`. Nothing is fetched
- * while `key` is `undefined`.
+ * Fetches with `fetch` for each `key` of the session, and again whenever the caller retries or a
+ * change to the session names `query`. A list of queries matches a change that names any of them.
+ * Logs a failed fetch as one of `what`. Nothing is fetched while `key` is `undefined`.
  *
  * @returns `undefined` while `key` is `undefined`. Otherwise the latest answer for `key`, with
  *   whether the latest fetch failed. Until an answer for `key` arrives, and after a failed fetch,
- *   the answer is `undefined`, or, with `keepPrevious`, the last answer.
+ *   the answer is `undefined`, or, with `keepPrevious`, the last answer. An undefined `key` drops
+ *   the last answer, so the next key starts without it.
  */
 export function useNamedFetch<T>(
-  query: AnalysisQuery,
+  query: AnalysisQuery | readonly AnalysisQuery[],
   what: string,
   key: string | undefined,
   fetch: () => Promise<T>,
@@ -54,6 +58,7 @@ export function useNamedFetch<T>(
   const [answer, setAnswer] = useState<
     Readonly<{ key: string; value: T | undefined; failed: boolean; retries: number }> | undefined
   >(undefined);
+  if (sessionKey === undefined && answer !== undefined) setAnswer(undefined);
   useEffect(() => {
     if (sessionKey === undefined) return undefined;
     let isCurrent = true;

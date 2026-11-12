@@ -1,6 +1,6 @@
 import papi, { logger } from '@papi/frontend';
 import type { AnalysisQuery } from 'interlinearizer';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   restoreUntagged,
   type CatalogPageRow,
@@ -42,12 +42,14 @@ type NamedFetch<T> = Readonly<{
   value: T | undefined;
   /** Whether the latest fetch failed. */
   failed: boolean;
+  /** Fetches again for the key. */
+  retry: () => void;
 }>;
 
 /**
  * Fetches with `fetch` for each `key` of the session, and again whenever a change to the session
- * names `query`. Logs a failed fetch as one of `what`. Nothing is fetched while `key` is
- * `undefined`.
+ * names `query` or the caller retries. Logs a failed fetch as one of `what`. Nothing is fetched
+ * while `key` is `undefined`.
  *
  * @returns `undefined` while `key` is `undefined`. Otherwise the latest answer for `key`, with
  *   whether the latest fetch failed. Until an answer for `key` arrives, and after a failed fetch,
@@ -67,6 +69,7 @@ function useNamedFetch<T>(
   const [answer, setAnswer] = useState<
     Readonly<{ key: string; value: T | undefined; failed: boolean }> | undefined
   >(undefined);
+  const [retries, setRetries] = useState(0);
   useEffect(() => {
     if (sessionKey === undefined) return undefined;
     let isCurrent = true;
@@ -87,10 +90,15 @@ function useNamedFetch<T>(
     return () => {
       isCurrent = false;
     };
-  }, [sessionKey, changes, what, fetchRef, keepPrevious]);
+  }, [sessionKey, changes, retries, what, fetchRef, keepPrevious]);
+  const retry = useCallback(() => {
+    /* v8 ignore next -- callers offer a retry only after a failure, so an answer is held */
+    setAnswer((was) => was && { ...was, failed: false });
+    setRetries((was) => was + 1);
+  }, []);
   if (sessionKey === undefined) return undefined;
-  if (answer?.key === sessionKey) return answer;
-  return { value: keepPrevious ? answer?.value : undefined, failed: false };
+  if (answer?.key === sessionKey) return { value: answer.value, failed: answer.failed, retry };
+  return { value: keepPrevious ? answer?.value : undefined, failed: false, retry };
 }
 
 /** A page of the session's catalog, as the panel reads it. */
@@ -225,29 +233,38 @@ export function useSelectionSummary(analysisIds: readonly string[]): SelectionSu
   )?.value;
 }
 
+/** What the host has said so far about deleting an analysis. */
+export type DeletionPreviewState =
+  | Readonly<{ status: 'loading' }>
+  /** The host could not say; `retry` asks again. */
+  | Readonly<{ status: 'failed'; retry: () => void }>
+  /** No analysis carries the id. */
+  | Readonly<{ status: 'missing' }>
+  | Readonly<{ status: 'ready'; outcome: AnalysisDeletionOutcome }>;
+
 /**
- * What deleting the analysis `analysisId` names would do; `undefined` while `analysisId` is
- * `undefined`, until the outcome arrives, and for an analysis no longer stored.
+ * What deleting the analysis `analysisId` names would do, fetched again whenever a change to the
+ * session names the catalog.
  */
-export function useDeletionPreview(
-  analysisId: string | undefined,
-): AnalysisDeletionOutcome | undefined {
+export function useDeletionPreview(analysisId: string): DeletionPreviewState {
   const { sessionId, analysisLanguage } = usePageSession();
-  const key = analysisId === undefined ? undefined : JSON.stringify([analysisLanguage, analysisId]);
-  const outcome = useNamedFetch<AnalysisDeletionOutcome | null>(
+  const preview = useNamedFetch<AnalysisDeletionOutcome | 'missing'>(
     'getCatalogRows',
     'the deletion preview',
-    key,
+    JSON.stringify([analysisLanguage, analysisId]),
     async () =>
       JSON.parse(
         await papi.commands.sendCommand('interlinearizer.previewDeletion', {
           sessionId,
-          /* v8 ignore next -- fetched only under a key, which an id gives */
-          analysisId: analysisId ?? '',
+          analysisId,
         }),
-      ),
+      ) ?? 'missing',
   );
-  return outcome ?? undefined;
+  /* v8 ignore next -- the key is always defined, so a fetch state always comes back */
+  if (!preview) return { status: 'loading' };
+  if (preview.value === 'missing') return { status: 'missing' };
+  if (preview.value) return { status: 'ready', outcome: preview.value };
+  return preview.failed ? { status: 'failed', retry: preview.retry } : { status: 'loading' };
 }
 
 /** One-off catalog reads, for a count or a row an edit needs before it is sent. */

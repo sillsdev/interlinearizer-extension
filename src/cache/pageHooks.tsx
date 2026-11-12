@@ -152,17 +152,6 @@ export function useWholeSelector<T>(
 }
 
 /**
- * Returns a getter of the session's whole analysis and language, as they stand when the getter is
- * called.
- *
- * @throws When called outside a {@link PageClientProvider}.
- */
-export function useWholeStateGetter(): () => AnalysisState {
-  const { whole, analysisLanguage } = usePageContext();
-  return useCallback(() => stateOf(whole.current, analysisLanguage), [whole, analysisLanguage]);
-}
-
-/**
  * Returns a function that sends an edit to the session through the page client, which applies the
  * reply. The function hands `call` the session's id and a change id that the client mints, and
  * expects the reply's JSON back.

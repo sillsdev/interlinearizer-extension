@@ -406,7 +406,7 @@ describe('readSegmentPage', () => {
       const analysis = await pageWith('GEN 1:2', 1);
 
       expect(analysis?.staleFreeTranslations).toStrictEqual({
-        bySegment: { 'GEN 1:2': ['sa GEN 1:2'] },
+        bySegment: { 'GEN 1:2': ['sl GEN 1:2'] },
         orphanedAfter: {},
         orphanedAhead: [],
       });
@@ -417,7 +417,7 @@ describe('readSegmentPage', () => {
       const analysis = await pageWith(ref('created'), 1);
 
       expect(analysis?.staleFreeTranslations.bySegment).toStrictEqual({
-        'GEN 1:2': [`sa ${ref('created')}`],
+        'GEN 1:2': [`sl ${ref('created')}`],
       });
       expect(idsOf(analysis?.segmentAnalysisLinks)).toStrictEqual([`sl ${ref('created')}`]);
       expect(idsOf(analysis?.segmentAnalyses)).toStrictEqual([`sa ${ref('created')}`]);
@@ -428,7 +428,7 @@ describe('readSegmentPage', () => {
 
       expect(analysis?.staleFreeTranslations).toStrictEqual({
         bySegment: {},
-        orphanedAfter: { 'GEN 1:3': ['sa GEN 1:5'] },
+        orphanedAfter: { 'GEN 1:3': ['sl GEN 1:5'] },
         orphanedAhead: [],
       });
       expect(idsOf(analysis?.segmentAnalyses)).toStrictEqual(['sa GEN 1:5']);
@@ -436,7 +436,7 @@ describe('readSegmentPage', () => {
 
     it('lists one orphaned ahead of every verse only on the first page', async () => {
       expect((await pageWith('GEN 1:0', 0))?.staleFreeTranslations.orphanedAhead).toStrictEqual([
-        'sa GEN 1:0',
+        'sl GEN 1:0',
       ]);
       expect((await pageWith('GEN 1:0', 1))?.staleFreeTranslations.orphanedAhead).toStrictEqual([]);
     });
@@ -450,6 +450,29 @@ describe('readSegmentPage', () => {
         orphanedAhead: [],
       });
       expect(analysis?.segmentAnalysisLinks).toStrictEqual([]);
+    });
+
+    it('names each placement of a shared payload by its own link', async () => {
+      const shared = staleTranslation('GEN 1:1');
+      const repository = await repositoryOver({
+        segmentAnalyses: shared.segmentAnalyses,
+        segmentAnalysisLinks: [
+          ...(shared.segmentAnalysisLinks ?? []),
+          ...(staleTranslation('GEN 1:5').segmentAnalysisLinks ?? []).map((link) => ({
+            ...link,
+            analysisId: 'sa GEN 1:1',
+          })),
+        ],
+      });
+
+      const { analysis } = await readSegmentPage(repository, book, 0, 3);
+
+      expect(analysis?.staleFreeTranslations).toStrictEqual({
+        bySegment: { 'GEN 1:1': ['sl GEN 1:1'] },
+        orphanedAfter: { 'GEN 1:3': ['sl GEN 1:5'] },
+        orphanedAhead: [],
+      });
+      expect(idsOf(analysis?.segmentAnalyses)).toStrictEqual(['sa GEN 1:1']);
     });
 
     it('leaves out the link of a shared payload placed outside the range', async () => {

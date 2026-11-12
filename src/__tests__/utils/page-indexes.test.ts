@@ -108,9 +108,9 @@ describe('buildPageIndexes', () => {
   });
 
   it('builds over pages carrying no analysis, spanning nothing', () => {
-    const { textVersion, start, segments } = pageOf(BOOK, 0, 1);
+    const { start, segments } = pageOf(BOOK, 0, 1);
 
-    const indexes = buildPageIndexes(outline, [{ textVersion, start, segments }]);
+    const indexes = buildPageIndexes(outline, [{ start, segments }]);
 
     expect(indexes.wordTokenByRef.size).toBe(5);
     expect(indexes.straddledBoundaryRefs.size).toBe(0);

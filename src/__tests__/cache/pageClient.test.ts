@@ -146,26 +146,73 @@ describe('PageClient', () => {
     expect(client.heldAnalysis().tokenAnalyses.map(({ id }) => id)).toContain('ta-land');
   });
 
-  it('serves each run of the segments it holds as one page', async () => {
+  it('serves each run of the segments it holds, with the phrase links over it', async () => {
     const { client, fetchPage } = await clientOver();
     client.load(0, 1, 'list');
     client.load(2, 3, 'strip');
     await client.settled();
+    const runOf = async (start: number, end: number) => {
+      const page = await fetchPage(start, end);
+      return {
+        start: page.start,
+        segments: page.segments,
+        phraseAnalysisLinks: page.analysis?.phraseAnalysisLinks,
+        phraseSpans: page.analysis?.phraseSpans,
+      };
+    };
 
-    expect(client.heldPages().map(comparable)).toStrictEqual(
-      [await fetchPage(0, 1), await fetchPage(2, 3)].map(comparable),
-    );
+    expect(
+      client.heldRuns().map(({ start, segments, analysis }) => ({
+        start,
+        segments,
+        phraseAnalysisLinks: analysis?.phraseAnalysisLinks,
+        phraseSpans: analysis?.phraseSpans,
+      })),
+    ).toStrictEqual([await runOf(0, 1), await runOf(2, 3)]);
   });
 
-  it('gives the same held pages until what it holds changes', async () => {
+  it('keeps the same held runs through a reply that changes no phrase link', async () => {
     const { client, edit } = await clientOver();
     client.load(0, 3, 'list');
     await client.settled();
-    const before = client.heldPages();
+    const before = client.heldRuns();
 
-    expect(client.heldPages()).toBe(before);
     await client.send((changeId) => edit('writeGloss', glossing('earth', 'land'), changeId));
-    expect(client.heldPages()).not.toBe(before);
+
+    expect(client.heldRuns()).toBe(before);
+  });
+
+  it('gives new held runs once a reply changes a phrase link', async () => {
+    const { client, edit } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+    const before = client.heldRuns();
+
+    await client.send((changeId) =>
+      edit(
+        'createPhrase',
+        async (buffer) => {
+          buffer.create('phraseAnalyses', { id: 'pl', ...FIXTURE_STAMPS, surfaceText: 'In said' });
+          buffer.create('phraseAnalysisLinks', makePhraseLink('pl', [ref('In'), ref('said')]));
+        },
+        changeId,
+      ),
+    );
+
+    expect(client.heldRuns()).not.toBe(before);
+    expect(client.heldRuns()[0].analysis?.phraseAnalysisLinks.map(({ id }) => id)).toContain('pl');
+  });
+
+  it('gives new held runs once a page lands', async () => {
+    const { client } = await clientOver();
+    client.load(0, 1, 'list');
+    await client.settled();
+    const before = client.heldRuns();
+
+    client.load(2, 3, 'strip');
+    await client.settled();
+
+    expect(client.heldRuns()).not.toBe(before);
   });
 
   it('places no stale free translations before the outline loads', () => {
@@ -187,7 +234,7 @@ describe('PageClient', () => {
       getSegments: async () => undefined,
     });
 
-    expect(client.heldPages()).toStrictEqual([]);
+    expect(client.heldRuns()).toStrictEqual([]);
   });
 
   it('holds an empty analysis before the outline loads', () => {

@@ -3,7 +3,12 @@ import type { CommandReply } from '../types/command-reply';
 import { emptyAnalysis } from '../types/empty-factories';
 import { perfTime, perfTrack } from '../utils/perf-marks';
 import type { PoolEntry, PoolIndex } from '../utils/suggestion-engine';
-import type { BookOutline, PlacedFreeTranslations, SegmentPage } from '../types/segment-pages';
+import type {
+  BookOutline,
+  HeldRun,
+  PlacedFreeTranslations,
+  SegmentPage,
+} from '../types/segment-pages';
 import { RecordCache, type PageRequest, type Refetch } from './recordCache';
 
 /** A change as a session reports it, without the session's id. */
@@ -170,10 +175,11 @@ export class PageClient {
 
   private version = 0;
 
-  private pagesSnapshot: { version: number; pages: readonly SegmentPage[] } = {
-    version: -1,
-    pages: [],
-  };
+  private runsSnapshot: {
+    cache: RecordCache | undefined;
+    layout: number;
+    runs: readonly HeldRun[];
+  } = { cache: undefined, layout: -1, runs: [] };
 
   private placementSnapshot: { version: number; placement: PlacedFreeTranslations } = {
     version: -1,
@@ -276,28 +282,30 @@ export class PageClient {
   }
 
   /**
-   * Each run of the segments held, as one page with its analysis; none before the outline loads.
-   * The same list until {@link PageClient.loadedVersion} changes.
+   * Each run of the segments held; none before the outline loads. The same list until a page lands,
+   * the outline changes, or a reply changes a phrase link.
    */
-  heldPages(): readonly SegmentPage[] {
-    if (this.pagesSnapshot.version !== this.version) {
-      const pages: SegmentPage[] = [];
-      const cache = this.cacheHeld;
-      const total = cache?.outline.segments.length ?? 0;
+  heldRuns(): readonly HeldRun[] {
+    const cache = this.cacheHeld;
+    if (!cache) return this.runsSnapshot.runs;
+    const layout = cache.layoutRevision;
+    if (this.runsSnapshot.cache !== cache || this.runsSnapshot.layout !== layout) {
+      const runs: HeldRun[] = [];
+      const total = cache.outline.segments.length;
       let index = 0;
-      while (cache && index < total) {
+      while (index < total) {
         if (!cache.holds(index)) index += 1;
         else {
           const start = index;
           while (index < total && cache.holds(index)) index += 1;
           /* v8 ignore next -- a run of held segments always pages */
           const page = cache.pageAt(start, index);
-          if (page) pages.push(page);
+          if (page) runs.push(page);
         }
       }
-      this.pagesSnapshot = { version: this.version, pages };
+      this.runsSnapshot = { cache, layout, runs };
     }
-    return this.pagesSnapshot.pages;
+    return this.runsSnapshot.runs;
   }
 
   /**
@@ -315,8 +323,8 @@ export class PageClient {
   }
 
   /**
-   * The stale free translations placed among the held pages, each named by its payload's id; none
-   * before the outline loads. The same object until {@link PageClient.loadedVersion} changes.
+   * The stale free translations placed among the held pages, each named by its stale link's id;
+   * none before the outline loads. The same object until {@link PageClient.loadedVersion} changes.
    */
   heldPlacement(): PlacedFreeTranslations {
     if (this.placementSnapshot.version !== this.version) {

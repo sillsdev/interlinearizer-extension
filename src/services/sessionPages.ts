@@ -27,7 +27,6 @@ import {
   placedIdsIn,
   placeStaleFreeTranslations,
   type PlacedStaleFreeTranslations,
-  type StaleFreeTranslation,
 } from '../utils/stale-free-translations';
 import { buildPoolIndex } from '../utils/suggestion-engine';
 
@@ -62,10 +61,7 @@ function uniqueById<T extends { id: string }>(records: readonly T[]): T[] {
   return [...new Map(records.toReversed().map((record) => [record.id, record])).values()];
 }
 
-/** A stale free translation, with the link it was read from. */
-type StaleLink = StaleFreeTranslation & Readonly<{ link: SegmentAnalysisLink }>;
-
-const NOTHING_PLACED: PlacedStaleFreeTranslations<StaleLink> = {
+const NOTHING_PLACED: PlacedStaleFreeTranslations = {
   bySegment: new Map(),
   orphanedAfter: new Map(),
   orphanedAhead: [],
@@ -73,7 +69,7 @@ const NOTHING_PLACED: PlacedStaleFreeTranslations<StaleLink> = {
 
 /** The book's stale free translations, placed, with the links and payloads they were read from. */
 type StalePlacement = {
-  placed: PlacedStaleFreeTranslations<StaleLink>;
+  placed: PlacedStaleFreeTranslations;
   links: SegmentAnalysisLink[];
   payloads: SegmentAnalysis[];
 };
@@ -100,17 +96,17 @@ async function readStalePlacement(
   const links = staleLinks.filter(({ analysisId }) => stored.has(analysisId));
   // Placing walks the whole book; a book holding no stale translation skips the walk.
   if (links.length === 0) return { placed: NOTHING_PLACED, links, payloads };
-  const stale = links.map((link) => ({
-    analysisId: link.analysisId,
-    segmentId: link.segmentId,
+  const stale = links.map(({ id, analysisId, segmentId }) => ({
+    linkId: id,
+    analysisId,
+    segmentId,
     text: '',
-    link,
   }));
   return { placed: placeStaleFreeTranslations(stale, book), links, payloads };
 }
 
 /** A book's stale analyses, summarized, with its stale free translations placed. */
-type StaleRead = { summary: StaleSummary; placed: PlacedStaleFreeTranslations<StaleLink> };
+type StaleRead = { summary: StaleSummary; placed: PlacedStaleFreeTranslations };
 
 /**
  * Reads the stale analyses that `book` holds. A stale link whose payload is not stored is passed
@@ -266,12 +262,11 @@ export async function readSegmentPage(
     placement.placed,
     segmentIds,
     from === 0,
-    ({ analysisId }) => analysisId,
+    ({ linkId }) => linkId,
   );
-  const placedIds = placedIdsIn(staleFreeTranslations);
-  const placedLinkIds = placedIdsIn(
-    placedAmong(placement.placed, segmentIds, from === 0, ({ link }) => link.id),
-  );
+  const placedLinkIds = placedIdsIn(staleFreeTranslations);
+  const placedLinks = placement.links.filter(({ id }) => placedLinkIds.has(id));
+  const placedIds = new Set(placedLinks.map(({ analysisId }) => analysisId));
   return {
     textVersion: book.textVersion,
     start: from,
@@ -279,10 +274,7 @@ export async function readSegmentPage(
     analysis: {
       tokenAnalysisLinks,
       phraseAnalysisLinks,
-      segmentAnalysisLinks: uniqueById([
-        ...segmentAnalysisLinks,
-        ...placement.links.filter(({ id }) => placedLinkIds.has(id)),
-      ]),
+      segmentAnalysisLinks: uniqueById([...segmentAnalysisLinks, ...placedLinks]),
       tokenAnalyses: uniqueById([...linked, ...poolAnalyses]),
       phraseAnalyses,
       segmentAnalyses: uniqueById([

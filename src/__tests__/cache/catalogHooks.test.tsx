@@ -173,6 +173,18 @@ describe('useCatalogView', () => {
       expect.any(Error),
     );
   });
+
+  it('keeps the last page when fetching it again fails', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await waitFor(() => expect(result.current?.keptIds).toStrictEqual(['ta-god']));
+    failing('interlinearizer.getCatalogRows');
+
+    relayChange(changeNaming(sessionIdOf('interlinearizer.getCatalogRows'), ['getCatalogRows']));
+    await settle();
+
+    expect(result.current?.keptIds).toStrictEqual(['ta-god']);
+  });
 });
 
 describe('useTextReadStatus', () => {

@@ -23,7 +23,6 @@ import { catalogStepOf, deletionStepOf, phraseStartOf } from './editSteps';
 import type { DraftExport } from '../types/analysis-repository';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from '../types/command-reply';
-import type { DraftContent } from '../types/draft-content';
 import type { EditStep } from '../types/edit-step';
 import { bookOfRef } from '../utils/analysis-book';
 import { bookIndexesOf } from '../utils/book-indexes';
@@ -866,18 +865,22 @@ export function sessionEditHandlers({
   }
 
   /**
-   * The content of the project that the session's draft saves to, or `undefined` when it has none.
+   * The project that the session's draft saves to, as a discard restores it, or `undefined` when it
+   * has none.
    *
    * @throws If the project is not stored, or reading it fails.
    */
-  async function savedContentOf(session: Session): Promise<DraftContent | undefined> {
+  async function savedContentOf(
+    session: Session,
+  ): Promise<discardCommands.SavedProject | undefined> {
     const { interlinearProjectId } = session.scope;
     if (interlinearProjectId === undefined) return undefined;
     const project = await getProject(interlinearProjectId);
     if (!project) {
       throw new Error(`Interlinearizer: interlinear project ${interlinearProjectId} is not stored`);
     }
-    return { analysis: project.analysis, segmentation: project.segmentation };
+    const { analysis, segmentation, analysisLanguages } = project;
+    return { analysis, segmentation, analysisLanguages };
   }
 
   /**
@@ -962,7 +965,7 @@ export function sessionEditHandlers({
     stage: (
       buffer: ChangeBuffer,
       stored: DraftExport,
-      saved: DraftContent | undefined,
+      saved: discardCommands.SavedProject | undefined,
     ) => discardCommands.DiscardOutcome,
     unsavedMark: (savesToProject: boolean) => EditOptions['unsavedMark'],
   ): Promise<string> {

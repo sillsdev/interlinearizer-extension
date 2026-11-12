@@ -121,6 +121,27 @@ describe('sessionEditHandlers', () => {
     );
   });
 
+  it("restores the project's analysis languages when every change is discarded, undoably", async () => {
+    const { edits, sessionId, sessions } = await handlersOver({
+      getProject: async () => makeStubProject('proj-1'),
+    });
+    await saveToProject(sessions, sessionId);
+    await edits['interlinearizer.changeAnalysisLanguages']({
+      sessionId,
+      analysisLanguages: ['fr'],
+    });
+    const wholeDraft = () =>
+      sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+
+    await edits['interlinearizer.discardAll']({ sessionId });
+
+    expect(await wholeDraft()).toMatchObject({ analysisLanguages: ['en'], dirty: false });
+
+    await sessions.undo(sessionId);
+
+    expect(await wholeDraft()).toMatchObject({ analysisLanguages: ['fr'], dirty: true });
+  });
+
   it("changes the draft's languages alone as a step that marks the draft unsaved", async () => {
     const { edits, sessionId, sessions } = await handlersOver();
 

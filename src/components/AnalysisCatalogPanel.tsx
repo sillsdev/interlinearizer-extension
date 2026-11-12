@@ -75,6 +75,9 @@ import { languageNameForTag } from '../utils/language-tags';
 /** How many rows the panel first asks the host for, enough to fill the window it first mounts. */
 const INITIAL_FETCH_COUNT = 40;
 
+/** How far past the rows that have arrived the window may grow while it waits for more. */
+const FETCH_AHEAD_COUNT = 40;
+
 /** Tells no one about an edit, having no history to undo it from. */
 const ANNOUNCE_NOTHING = () => {};
 
@@ -398,12 +401,24 @@ export default function AnalysisCatalogPanel({
     return index === -1 ? undefined : index;
   }, [keptIds, rowToReveal]);
 
+  // Capped at FETCH_AHEAD_COUNT past the rows that have arrived, but long enough to reach a revealed
+  // row. Without the cap, a sentinel that stays in reach keeps growing the window while rows are
+  // fetched. Each step then asks the host for more rows.
+  const windowedRows = useMemo(
+    () => rows.slice(0, Math.max(sentRows.size + FETCH_AHEAD_COUNT, (revealedRowIndex ?? -1) + 1)),
+    [rows, sentRows, revealedRowIndex],
+  );
+
   /**
    * The slice of the listing that is actually mounted. A draft accumulates analyses without bound
    * and every row carries its own expander and usage list, so the list grows as it is scrolled
    * rather than rendering whole.
    */
-  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing, revealedRowIndex);
+  const { windowRows, scrollRef, sentinelRef } = useRowWindow(
+    windowedRows,
+    listing,
+    revealedRowIndex,
+  );
   // Reset with the window, so a new listing is not fetched at the size an earlier one scrolled to.
   if (listing !== fetchedListing) {
     setFetchedListing(listing);

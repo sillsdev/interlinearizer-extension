@@ -293,14 +293,13 @@ describe('useSelectionSummary', () => {
 });
 
 describe('useDeletionPreview', () => {
-  it('asks nothing without an analysis', async () => {
+  it('is loading until the host answers', async () => {
     const wrapper = await wrapperOver();
 
-    const { result } = renderHook(() => useDeletionPreview(undefined), { wrapper });
-    await settle();
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
 
-    expect(result.current).toBeUndefined();
-    expect(timesSent('interlinearizer.previewDeletion')).toBe(0);
+    expect(result.current).toStrictEqual({ status: 'loading' });
+    await settle();
   });
 
   it('states what deleting the analysis would do', async () => {
@@ -309,18 +308,48 @@ describe('useDeletionPreview', () => {
     const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
 
     await waitFor(() =>
-      expect(result.current).toStrictEqual({ kind: 'blank', usageCount: 1, unappliedCount: 0 }),
+      expect(result.current).toStrictEqual({
+        status: 'ready',
+        outcome: { kind: 'blank', usageCount: 1, unappliedCount: 0 },
+      }),
     );
   });
 
-  it('answers nothing for an analysis no longer stored', async () => {
+  it('reports an analysis no longer stored as missing', async () => {
     const wrapper = await wrapperOver();
 
     const { result } = renderHook(() => useDeletionPreview('ta-gone'), { wrapper });
-    await settle();
 
-    expect(timesSent('interlinearizer.previewDeletion')).toBe(1);
-    expect(result.current).toBeUndefined();
+    await waitFor(() => expect(result.current).toStrictEqual({ status: 'missing' }));
+  });
+
+  it('reports a preview the host could not give', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.previewDeletion');
+
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interlinearizer: could not fetch the deletion preview',
+      expect.any(Error),
+    );
+  });
+
+  it('asks again when retried', async () => {
+    const wrapper = await wrapperOver();
+    const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+    failing('interlinearizer.previewDeletion');
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+    jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => serve?.(...call));
+
+    const { current } = result;
+    act(() => {
+      if (current.status === 'failed') current.retry();
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
   });
 
   it('fetches again when a change to the session names the catalog', async () => {
@@ -389,13 +418,11 @@ describe('a change of analysis language', () => {
   });
 
   it('previews the deletion again', async () => {
-    const language = { current: 'en' };
-    const wrapper = await languageWrapperOver(language);
-    const { rerender } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    const wrapper = await wrapperOver();
+    renderHook(() => useDeletionPreview('ta-god'), { wrapper });
     await settle();
 
-    language.current = 'fr';
-    rerender();
+    await act(() => setLanguage('interlinearizer.previewDeletion', 'fr'));
     await settle();
 
     expect(timesSent('interlinearizer.previewDeletion')).toBe(2);

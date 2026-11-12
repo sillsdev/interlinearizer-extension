@@ -12,6 +12,7 @@ const STRINGS: Record<(typeof DELETION_ANNOUNCEMENT_STRING_KEYS)[number], string
   '%interlinearizer_analysisCatalog_deleted%': 'Deleted {form}.',
   '%interlinearizer_analysisCatalog_deleteBlank%': '{count} blank.',
   '%interlinearizer_analysisCatalog_deleteBlankNone%': 'Nothing changed.',
+  '%interlinearizer_analysisCatalog_deleteBlankNoneUnapplied%': '{count} unapplied, none used.',
   '%interlinearizer_analysisCatalog_deleteFallback%': '{count} to {gloss}.',
   '%interlinearizer_analysisCatalog_deleteFallbackNoGloss%': '{count} to another.',
   '%interlinearizer_analysisCatalog_deleteFallbackUncertain%': '{count} uncertain.',
@@ -68,6 +69,12 @@ describe('deletionAnnouncement', () => {
       deletionAnnouncement('λόγος', { kind: 'blank', usageCount: 2, unappliedCount: 4 }, STRINGS),
     ).toBe('Deleted λόγος. 2 blank. 4 unapplied.');
   });
+
+  it('names only the unapproved records when no use was left blank', () => {
+    expect(
+      deletionAnnouncement('λόγος', { kind: 'blank', usageCount: 0, unappliedCount: 4 }, STRINGS),
+    ).toBe('Deleted λόγος. 4 unapplied, none used.');
+  });
 });
 
 describe('deletionPreview', () => {
@@ -75,6 +82,8 @@ describe('deletionPreview', () => {
   const PREVIEW_STRINGS: Record<(typeof DELETION_PREVIEW_STRING_KEYS)[number], string> = {
     '%interlinearizer_analysisCatalog_deleteConfirmBlank%': '{count} will be blank.',
     '%interlinearizer_analysisCatalog_deleteConfirmBlankNone%': 'Nothing will change.',
+    '%interlinearizer_analysisCatalog_deleteConfirmBlankNoneUnapplied%':
+      '{count} will go unapplied, none used.',
     '%interlinearizer_analysisCatalog_deleteConfirmFallback%': '{count} will go to {gloss}.',
     '%interlinearizer_analysisCatalog_deleteConfirmFallbackNoGloss%': '{count} will go to another.',
     '%interlinearizer_analysisCatalog_deleteConfirmFallbackUncertain%':
@@ -93,7 +102,13 @@ describe('deletionPreview', () => {
 
   it('adds the unapproved records the deletion would take with it', () => {
     expect(
+      deletionPreview({ kind: 'blank', usageCount: 2, unappliedCount: 4 }, PREVIEW_STRINGS),
+    ).toBe('2 will be blank. 4 will go unapplied.');
+  });
+
+  it('names only the unapproved records when no use would be left blank', () => {
+    expect(
       deletionPreview({ kind: 'blank', usageCount: 0, unappliedCount: 4 }, PREVIEW_STRINGS),
-    ).toBe('Nothing will change. 4 will go unapplied.');
+    ).toBe('4 will go unapplied, none used.');
   });
 });

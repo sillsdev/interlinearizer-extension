@@ -267,11 +267,11 @@ export type DeletionPreviewState =
  * session names the catalog.
  */
 export function useDeletionPreview(analysisId: string): DeletionPreviewState {
-  const { sessionId, analysisLanguage } = usePageSession();
+  const { sessionId } = usePageSession();
   const preview = useNamedFetch<AnalysisDeletionOutcome | 'missing'>(
     'getCatalogRows',
     'the deletion preview',
-    JSON.stringify([analysisLanguage, analysisId]),
+    analysisId,
     async () => (await fetchDeletionPreview(sessionId, analysisId)) ?? 'missing',
   );
   /* v8 ignore next -- the key is always defined, so a fetch state always comes back */

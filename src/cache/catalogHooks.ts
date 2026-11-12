@@ -102,8 +102,8 @@ export type CatalogView = Readonly<{
 
 /**
  * The first `count` rows of the session's catalog that `request` keeps, with the ids of every kept
- * row. The page is fetched again whenever `request` or `count` changes, or a change names the
- * catalog.
+ * row. The page is fetched again whenever `request`, `count` or the analysis language changes, or a
+ * change names the catalog.
  *
  * The last page stays while the next is fetched, so a changed query leaves the list on screen until
  * its rows arrive.
@@ -112,8 +112,8 @@ export function useCatalogView(
   request: Omit<CatalogRowsRequest, 'offset' | 'count'>,
   count: number,
 ): CatalogView | undefined {
-  const { sessionId } = usePageSession();
-  const key = JSON.stringify([request, count]);
+  const { sessionId, analysisLanguage } = usePageSession();
+  const key = JSON.stringify([analysisLanguage, request, count]);
   return useNamedFetch(
     'getCatalogRows',
     'the catalog',

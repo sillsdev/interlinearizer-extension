@@ -285,14 +285,10 @@ export default function AnalysisCatalogPanel({
   // reconciled filters being the chosen set itself once every choice survives.
   if (filters !== chosenFilters) setFilters(filters);
 
-  /**
-   * What the host is asked to list. It changes with the analysis language too, because the host
-   * reads each row's gloss in that language.
-   */
+  /** What the host is asked to list. */
   const request = useMemo(
     () => ({ currentBook, search, sort, filters, sourceLanguageTag }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- a new language lists new glosses
-    [currentBook, search, sort, filters, sourceLanguageTag, analysisLanguage],
+    [currentBook, search, sort, filters, sourceLanguageTag],
   );
 
   const view = useCatalogView(request, fetchCount);

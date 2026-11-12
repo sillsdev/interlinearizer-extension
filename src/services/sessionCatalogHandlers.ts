@@ -1,3 +1,4 @@
+import type { TextAnalysis } from 'interlinearizer';
 import type { CommandHandlers } from 'papi-shared-types';
 import type { AnalysisSessions, Session } from './analysisSessions';
 import type * as bookService from './bookService';
@@ -61,6 +62,27 @@ export function sessionCatalogHandlers({
   }
 
   /**
+   * Runs `read` on the session over its draft's analysis. An error is logged as a failure to `what`
+   * before it is rethrown.
+   *
+   * @throws If the session is not open, its analysis cannot be read, or `read` throws.
+   */
+  async function readSession<T>(
+    sessionId: string,
+    what: string,
+    read: (session: Session, analysis: TextAnalysis) => Promise<T> | T,
+  ): Promise<T> {
+    try {
+      return await sessions.run(sessionId, async (session) =>
+        read(session, (await session.repository.getWholeDraft()).analysis),
+      );
+    } catch (e) {
+      logger.error(`Interlinearizer: failed to ${what} in session ${sessionId}`, e);
+      throw e;
+    }
+  }
+
+  /**
    * Serves one page of a session's catalog, its usages placed among the current book's headings, or
    * among none when that book cannot be read.
    *
@@ -72,22 +94,16 @@ export function sessionCatalogHandlers({
     sessionId,
     request,
   }: ArgsOf<'interlinearizer.getCatalogRows'>): Promise<string> {
-    try {
-      return await sessions.run(sessionId, async (session) => {
-        const { sourceProjectId } = session.scope;
-        const { analysis } = await session.repository.getWholeDraft();
-        const page = getCatalogPage(
-          analysis,
-          await scopeOf(session, request.currentBook),
-          { ...request, filters: restoreUntagged(request.filters) },
-          (form) => isFormInText(sourceProjectId, form),
-        );
-        return JSON.stringify({ ...page, rows: page.rows.map(wireRow) });
-      });
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to serve the catalog of session ${sessionId}`, e);
-      throw e;
-    }
+    return readSession(sessionId, 'serve the catalog', async (session, analysis) => {
+      const { sourceProjectId } = session.scope;
+      const page = getCatalogPage(
+        analysis,
+        await scopeOf(session, request.currentBook),
+        { ...request, filters: restoreUntagged(request.filters) },
+        (form) => isFormInText(sourceProjectId, form),
+      );
+      return JSON.stringify({ ...page, rows: page.rows.map(wireRow) });
+    });
   }
 
   /**
@@ -100,14 +116,9 @@ export function sessionCatalogHandlers({
     sessionId,
     analysisIds,
   }: ArgsOf<'interlinearizer.countUsages'>): Promise<number> {
-    try {
-      return await sessions.run(sessionId, async (session) =>
-        countAnalysisUsages((await session.repository.getWholeDraft()).analysis, analysisIds),
-      );
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to count usages in session ${sessionId}`, e);
-      throw e;
-    }
+    return readSession(sessionId, 'count usages', (_session, analysis) =>
+      countAnalysisUsages(analysis, analysisIds),
+    );
   }
 
   /**
@@ -123,16 +134,10 @@ export function sessionCatalogHandlers({
     currentBook,
     analysisIds,
   }: ArgsOf<'interlinearizer.getCatalogRowsByIds'>): Promise<string> {
-    try {
-      return await sessions.run(sessionId, async (session) => {
-        const { analysis } = await session.repository.getWholeDraft();
-        const rows = getRowsByIds(analysis, await scopeOf(session, currentBook), analysisIds);
-        return JSON.stringify(rows.map(wireRow));
-      });
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to serve catalog rows of session ${sessionId}`, e);
-      throw e;
-    }
+    return readSession(sessionId, 'serve catalog rows', async (session, analysis) => {
+      const rows = getRowsByIds(analysis, await scopeOf(session, currentBook), analysisIds);
+      return JSON.stringify(rows.map(wireRow));
+    });
   }
 
   /**
@@ -149,16 +154,10 @@ export function sessionCatalogHandlers({
     currentBook,
     analysisId,
   }: ArgsOf<'interlinearizer.getHomographRows'>): Promise<string> {
-    try {
-      return await sessions.run(sessionId, async (session) => {
-        const { analysis } = await session.repository.getWholeDraft();
-        const rows = homographRowsOf(analysis, await scopeOf(session, currentBook), analysisId);
-        return JSON.stringify(rows.map(wireRow));
-      });
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to serve homographs in session ${sessionId}`, e);
-      throw e;
-    }
+    return readSession(sessionId, 'serve homographs', async (session, analysis) => {
+      const rows = homographRowsOf(analysis, await scopeOf(session, currentBook), analysisId);
+      return JSON.stringify(rows.map(wireRow));
+    });
   }
 
   /**
@@ -172,16 +171,10 @@ export function sessionCatalogHandlers({
     sessionId,
     analysisIds,
   }: ArgsOf<'interlinearizer.getSelectionSummary'>): Promise<string> {
-    try {
-      return await sessions.run(sessionId, async (session) => {
-        const { analysis } = await session.repository.getWholeDraft();
-        const scope = { analysisLanguage: session.analysisLanguage, currentBook: '' };
-        return JSON.stringify(summarizeSelection(analysis, scope, analysisIds));
-      });
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to summarize a selection in session ${sessionId}`, e);
-      throw e;
-    }
+    return readSession(sessionId, 'summarize a selection', (session, analysis) => {
+      const scope = { analysisLanguage: session.analysisLanguage, currentBook: '' };
+      return JSON.stringify(summarizeSelection(analysis, scope, analysisIds));
+    });
   }
 
   return {

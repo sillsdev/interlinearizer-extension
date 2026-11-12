@@ -1,4 +1,5 @@
 import papi, { logger } from '@papi/backend';
+import { Canon } from '@sillsdev/scripture';
 import type { Book, Segment, SegmentationDelta } from 'interlinearizer';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
@@ -9,6 +10,7 @@ import type { TextReadStatus } from '../types/text-read-status';
 import { isSegmentationDelta } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { presentBookIds } from '../utils/books-present';
+import { indexBook, type BookConcordance } from '../utils/concordance';
 import { FormIndex, formsOfBook } from '../utils/form-index';
 import { perfTime, perfTrack } from '../utils/perf-marks';
 import { reanchorSegmentation } from '../utils/segmentation';
@@ -80,6 +82,8 @@ interface TextRead {
   /** Books whose latest read found text. */
   textBookIds: Set<string>;
   forms: FormIndex;
+  /** The occurrences of each book whose latest read found text, by book id. */
+  concordances: Map<string, BookConcordance>;
   /** Stops watching each book the read has started, by book id. */
   watches: Map<string, () => Promise<void>>;
 }
@@ -604,10 +608,16 @@ async function readTextBook(
   if (delivered) {
     read.forms.setBook(bookId, delivered.forms);
     read.failedBookIds.delete(bookId);
-    if (delivered.book) read.textBookIds.add(bookId);
-    else read.textBookIds.delete(bookId);
+    if (delivered.book) {
+      read.textBookIds.add(bookId);
+      read.concordances.set(bookId, indexBook(delivered.book));
+    } else {
+      read.textBookIds.delete(bookId);
+      read.concordances.delete(bookId);
+    }
   } else {
     read.failedBookIds.add(bookId);
+    read.concordances.delete(bookId);
   }
   read.readBookIds.add(bookId);
   reportProgress(sourceProjectId, read, wasAnswering);
@@ -701,6 +711,7 @@ function beginTextRead(sourceProjectId: string): TextRead {
     failedBookIds: new Set(),
     textBookIds: new Set(),
     forms: new FormIndex(),
+    concordances: new Map(),
     watches: new Map(),
   };
   textReads.set(sourceProjectId, read);
@@ -739,6 +750,20 @@ export function isFormInText(sourceProjectId: string, form: string): boolean | u
   const read = textReads.get(sourceProjectId);
   if (!read?.isRead || read.failedBookIds.size > 0) return undefined;
   return read.forms.has(normalizeSurfaceForm(form));
+}
+
+/**
+ * The occurrences of each book of the source project's text, in canonical order, leaving out books
+ * that hold no text and books whose latest read failed.
+ *
+ * @returns `undefined` until every book has been read.
+ */
+export function getConcordanceBooks(sourceProjectId: string): BookConcordance[] | undefined {
+  const read = textReads.get(sourceProjectId);
+  if (!read?.isRead) return undefined;
+  return [...read.concordances.values()].sort(
+    (a, b) => Canon.bookIdToNumber(a.book) - Canon.bookIdToNumber(b.book),
+  );
 }
 
 /**

@@ -1,6 +1,6 @@
 import { EmptyState, Spinner } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import type { SourceText } from '../hooks/useSourceTextReader';
+import type { TextReadStatus } from '../types/text-read-status';
 
 /** Localized string keys {@link TextReadingStatus} renders. */
 export const TEXT_READING_STRING_KEYS = [
@@ -10,7 +10,8 @@ export const TEXT_READING_STRING_KEYS = [
 
 /** Props for {@link TextReadingStatus}. */
 type TextReadingStatusProps = Readonly<{
-  text: Pick<SourceText, 'status' | 'failedBookIds' | 'booksRead' | 'bookCount'>;
+  /** How far the read has got; `'error'` when it could not start, `undefined` until it reports. */
+  status: TextReadStatus | 'error' | undefined;
   /** Prefixes the `-loading` and `-error` test ids the status is found by. */
   idPrefix: string;
   /** Resolved localizations covering at least {@link TEXT_READING_STRING_KEYS}. */
@@ -19,11 +20,11 @@ type TextReadingStatusProps = Readonly<{
 
 /** How far reading the source text has got, or that it could not be read. */
 export default function TextReadingStatus({
-  text,
+  status,
   idPrefix,
   localizedStrings,
 }: TextReadingStatusProps) {
-  if (text.status === 'error' || text.failedBookIds.length > 0) {
+  if (status === 'error' || (status && status.failedBookIds.length > 0)) {
     return (
       <EmptyState
         className="tw:px-3 tw:py-2"
@@ -40,8 +41,8 @@ export default function TextReadingStatus({
     >
       <Spinner className="tw:size-4" />
       {formatReplacementString(localizedStrings['%interlinearizer_textReading_loading%'], {
-        read: text.booksRead,
-        total: text.bookCount,
+        read: status?.booksRead ?? 0,
+        total: status?.bookCount ?? 0,
       })}
     </p>
   );

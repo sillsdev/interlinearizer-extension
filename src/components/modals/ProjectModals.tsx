@@ -50,30 +50,35 @@ type PendingRetag = {
 
 /** Localized string keys this component formats itself. */
 const PROJECT_MODALS_STRING_KEYS: `%${string}%`[] = [
-  '%interlinearizer_retagGlosses_moved%',
+  '%interlinearizer_retagGlosses_changed%',
+  '%interlinearizer_retagGlosses_movedWords%',
+  '%interlinearizer_retagGlosses_movedMorphemes%',
   '%interlinearizer_retagGlosses_skipped%',
 ];
 
-/** Tells the reader what a move of glosses from `from` to `to` did. */
+/** Tells the reader what a move of glosses from `from` to `to` did, leaving out zero counts. */
 function retagMessage(
   from: string,
   to: string,
   { words, morphemes, skipped }: GlossRetagCounts,
   localizedStrings: LanguageStrings,
 ): string {
-  const moved = formatReplacementString(localizedStrings['%interlinearizer_retagGlosses_moved%'], {
-    from,
-    to,
-    words,
-    morphemes,
-  });
-  if (skipped === 0) return moved;
-  const kept = formatReplacementString(localizedStrings['%interlinearizer_retagGlosses_skipped%'], {
-    from,
-    to,
-    skipped,
-  });
-  return `${moved} ${kept}`;
+  const sentences: [key: `%${string}%`, count: number][] = [
+    ['%interlinearizer_retagGlosses_movedWords%', words],
+    ['%interlinearizer_retagGlosses_movedMorphemes%', morphemes],
+    ['%interlinearizer_retagGlosses_skipped%', skipped],
+  ];
+  return [
+    formatReplacementString(localizedStrings['%interlinearizer_retagGlosses_changed%'], {
+      from,
+      to,
+    }),
+    ...sentences
+      .filter(([, count]) => count > 0)
+      .map(([key]) =>
+        formatReplacementString(localizedStrings[key], { from, to, words, morphemes, skipped }),
+      ),
+  ].join(' ');
 }
 
 /**

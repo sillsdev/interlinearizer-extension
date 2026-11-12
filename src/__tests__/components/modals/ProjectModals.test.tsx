@@ -45,8 +45,9 @@ const MOCK_FULL_PROJECT = { ...MOCK_PROJECT, analysis: emptyAnalysis() };
 
 /** The strings ProjectModals and the real RetagGlossesConfirm format. */
 const LOCALIZED: Record<string, string> = {
-  '%interlinearizer_retagGlosses_moved%':
-    'Changed {from} to {to}: {words} words, {morphemes} morphemes.',
+  '%interlinearizer_retagGlosses_changed%': 'Changed {from} to {to}.',
+  '%interlinearizer_retagGlosses_movedWords%': '{words} words.',
+  '%interlinearizer_retagGlosses_movedMorphemes%': '{morphemes} morphemes.',
   '%interlinearizer_retagGlosses_skipped%': '{skipped} kept {from}.',
   '%interlinearizer_confirm_retag_title%': 'Move glosses to {to}?',
   '%interlinearizer_confirm_retag_body_listed%': 'Move {from} glosses to {to}?',
@@ -1342,7 +1343,7 @@ describe('ProjectModals', () => {
         expect(change).toHaveBeenCalledWith(['fr'], 'en');
         expect(screen.queryByTestId('retag-glosses-modal-title')).toBeNull();
         await waitFor(() =>
-          expect(announceUndoable).toHaveBeenCalledWith('Changed en to fr: 3 words, 2 morphemes.'),
+          expect(announceUndoable).toHaveBeenCalledWith('Changed en to fr. 3 words. 2 morphemes.'),
         );
       });
 
@@ -1355,7 +1356,7 @@ describe('ProjectModals', () => {
 
         await waitFor(() =>
           expect(announceUndoable).toHaveBeenCalledWith(
-            'Changed en to fr: 3 words, 2 morphemes. 4 kept en.',
+            'Changed en to fr. 3 words. 2 morphemes. 4 kept en.',
           ),
         );
       });
@@ -1444,7 +1445,7 @@ describe('ProjectModals', () => {
           'es',
         );
         expect(papi.notifications.send).toHaveBeenCalledWith({
-          message: 'Changed fr to es: 5 words, 0 morphemes.',
+          message: 'Changed fr to es. 5 words.',
           severity: 'info',
         });
         expect(change).not.toHaveBeenCalled();

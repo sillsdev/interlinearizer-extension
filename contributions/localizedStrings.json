@@ -41,8 +41,10 @@
       "%interlinearizer_redone_changeAnalysisLanguages%": "Redid the analysis language change.",
       "%interlinearizer_undone_retagGlosses%": "Undid changing the analysis language from {from} to {to} and moving its glosses.",
       "%interlinearizer_redone_retagGlosses%": "Redid changing the analysis language from {from} to {to} and moving its glosses.",
-      "%interlinearizer_retagGlosses_moved%": "Analysis language changed from {from} to {to}. Moved {words} word glosses and {morphemes} morpheme glosses to {to}.",
-      "%interlinearizer_retagGlosses_skipped%": "{skipped} glosses stayed in {from} because they already had a {to} gloss.",
+      "%interlinearizer_retagGlosses_changed%": "Analysis language changed from {from} to {to}.",
+      "%interlinearizer_retagGlosses_movedWords%": "Moved {words} word glosses to {to}.",
+      "%interlinearizer_retagGlosses_movedMorphemes%": "Moved {morphemes} morpheme glosses to {to}.",
+      "%interlinearizer_retagGlosses_skipped%": "{skipped} glosses stayed in {from} because they already had a different {to} gloss.",
 
       "%interlinearizer_menu_column_view%": "View",
       "%interlinearizer_openAnalysisCatalog%": "Analysis catalog",

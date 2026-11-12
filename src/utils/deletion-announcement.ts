@@ -5,6 +5,7 @@ import type { AnalysisDeletionOutcome } from './analysis-selectors';
 type OutcomeKeys = Readonly<{
   blank: `%${string}%`;
   blankNone: `%${string}%`;
+  blankNoneUnapplied: `%${string}%`;
   fallback: `%${string}%`;
   fallbackNoGloss: `%${string}%`;
   fallbackUncertain: `%${string}%`;
@@ -15,6 +16,7 @@ type OutcomeKeys = Readonly<{
 const DONE_KEYS = {
   blank: '%interlinearizer_analysisCatalog_deleteBlank%',
   blankNone: '%interlinearizer_analysisCatalog_deleteBlankNone%',
+  blankNoneUnapplied: '%interlinearizer_analysisCatalog_deleteBlankNoneUnapplied%',
   fallback: '%interlinearizer_analysisCatalog_deleteFallback%',
   fallbackNoGloss: '%interlinearizer_analysisCatalog_deleteFallbackNoGloss%',
   fallbackUncertain: '%interlinearizer_analysisCatalog_deleteFallbackUncertain%',
@@ -25,6 +27,7 @@ const DONE_KEYS = {
 const CONFIRM_KEYS = {
   blank: '%interlinearizer_analysisCatalog_deleteConfirmBlank%',
   blankNone: '%interlinearizer_analysisCatalog_deleteConfirmBlankNone%',
+  blankNoneUnapplied: '%interlinearizer_analysisCatalog_deleteConfirmBlankNoneUnapplied%',
   fallback: '%interlinearizer_analysisCatalog_deleteConfirmFallback%',
   fallbackNoGloss: '%interlinearizer_analysisCatalog_deleteConfirmFallbackNoGloss%',
   fallbackUncertain: '%interlinearizer_analysisCatalog_deleteConfirmFallbackUncertain%',
@@ -67,12 +70,21 @@ function outcomeSentence(
   });
 }
 
-/** What the deletion does to the analysis's uses, then the unapproved records it takes with it. */
+/**
+ * What the deletion does to the analysis's uses, then the unapproved records it takes with it.
+ *
+ * An analysis used nowhere but recorded unapproved gets a sentence of its own. A token can be
+ * offered such a record, so deleting the record can change what the token shows.
+ */
 function outcomeSentences(
   outcome: AnalysisDeletionOutcome,
   keys: OutcomeKeys,
   strings: LanguageStrings,
 ): string[] {
+  if (outcome.kind === 'blank' && outcome.usageCount === 0 && outcome.unappliedCount > 0)
+    return [
+      formatReplacementString(strings[keys.blankNoneUnapplied], { count: outcome.unappliedCount }),
+    ];
   const sentences = [outcomeSentence(outcome, keys, strings)];
   if (outcome.unappliedCount > 0)
     sentences.push(

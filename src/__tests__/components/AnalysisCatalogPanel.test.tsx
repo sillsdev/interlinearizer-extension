@@ -4555,6 +4555,80 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['ta-1']);
     });
 
+    /** Serves `preview` in place of the host's answer to `previewDeletion`. */
+    function previewServedBy(preview: () => Promise<unknown>): void {
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.previewDeletion') return preview();
+        return serve?.(...call);
+      });
+    }
+
+    /** Expands the row and asks to delete it, leaving the confirmation open. */
+    async function openDeleteConfirmation(analysisId: string): Promise<void> {
+      await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-delete'));
+    }
+
+    it('withholds Delete until the host states what the deletion would do', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(() => new Promise(() => {}));
+
+      await openDeleteConfirmation('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-confirm')).toBeDisabled();
+      expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteConfirmLoading%',
+      );
+    });
+
+    it('offers Delete and a retry when the host cannot state what the deletion would do', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(() => Promise.reject(new Error('offline')));
+
+      await openDeleteConfirmation('ta-1');
+
+      expect(await screen.findByTestId('catalog-delete-confirm-retry')).toBeInTheDocument();
+      expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteConfirmFailed%',
+      );
+      expect(screen.getByTestId('catalog-delete-confirm')).toBeEnabled();
+    });
+
+    it('states what the deletion would do once a retry succeeds', async () => {
+      await renderDeleting({ analysis: LONE });
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      previewServedBy(() => Promise.reject(new Error('offline')));
+      await openDeleteConfirmation('ta-1');
+      const retry = await screen.findByTestId('catalog-delete-confirm-retry');
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mockImplementation(async (...call) => serve?.(...call));
+
+      await userEvent.click(retry);
+
+      await waitFor(() =>
+        expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_deleteConfirmBlank%',
+        ),
+      );
+      expect(screen.queryByTestId('catalog-delete-confirm-retry')).not.toBeInTheDocument();
+    });
+
+    it('withholds Delete for an analysis already deleted', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(async () => 'null');
+
+      await openDeleteConfirmation('ta-1');
+
+      await waitFor(() =>
+        expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_deleteConfirmMissing%',
+        ),
+      );
+      expect(screen.getByTestId('catalog-delete-confirm')).toBeDisabled();
+    });
+
     it('states that the uses are left blank when no homograph survives', async () => {
       await renderDeleting({ analysis: LONE });
 
@@ -4643,9 +4717,8 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    // An imported analysis no token approves still shows on screen nowhere, so the outcome sentence
-    // rightly says nothing changes — this further sentence is what tells the reader data goes with it.
-    it('warns that unapplied assignments are deleted too', async () => {
+    // The token is offered the record, so deleting it can change what the token shows.
+    it('warns that unapplied assignments are deleted when no token uses the analysis', async () => {
       await renderDeleting({
         analysis: { ...LONE, tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:5', 'candidate')] },
       });
@@ -4653,8 +4726,20 @@ describe('AnalysisCatalogPanel', () => {
       await deleteRow('ta-1');
 
       expect(announceUndoable).toHaveBeenCalledWith(
-        expect.stringContaining('%interlinearizer_analysisCatalog_deleteBlankNone%'),
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteBlankNoneUnapplied%'),
       );
+    });
+
+    it('warns that unapplied assignments are deleted along with the uses', async () => {
+      await renderDeleting({
+        analysis: {
+          ...LONE,
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:5'), link('ta-1', 'GEN 1:3:4', 'candidate')],
+        },
+      });
+
+      await deleteRow('ta-1');
+
       expect(announceUndoable).toHaveBeenCalledWith(
         expect.stringContaining('%interlinearizer_analysisCatalog_deleteUnapplied%'),
       );

@@ -153,6 +153,25 @@ describe('useCatalogView', () => {
     expect(result.current?.keptIds).toStrictEqual([]);
   });
 
+  it('keeps the last page on screen while the next request is fetched', async () => {
+    const wrapper = await wrapperOver();
+    const { result, rerender } = renderHook(
+      ({ search }: Readonly<{ search: string }>) =>
+        useCatalogView(
+          useMemo(() => ({ ...REQUEST, search }), [search]),
+          10,
+        ),
+      { wrapper, initialProps: { search: '' } },
+    );
+    await settle();
+
+    rerender({ search: 'nothing matches this' });
+    const shown = result.current?.keptIds;
+    await settle();
+
+    expect(shown).toStrictEqual(['ta-god']);
+  });
+
   it('logs a page that could not be fetched', async () => {
     const wrapper = await wrapperOver();
     failing('interlinearizer.getCatalogRows');

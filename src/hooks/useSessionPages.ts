@@ -1,11 +1,10 @@
 import papi, { logger } from '@papi/frontend';
-import { useEvent } from 'platform-bible-react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { NetworkEvents } from 'papi-shared-types';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PageClient } from '../cache/pageClient';
 import type { BookOutline, SegmentPages, SegmentPagesLoad } from '../types/segment-pages';
 import useLatestRef from './useLatestRef';
+import useSessionChange from './useSessionChange';
 import { EXTEND_CHUNK, INITIAL_WINDOW_HALF, findAnchorIndex } from './useSegmentWindow';
 
 /** Arguments for {@link useSessionPages}. */
@@ -141,20 +140,7 @@ export default function useSessionPages({
   }, [sessionId, bookId, key, scrRefRef]);
 
   const client = published?.key === key ? published?.client : undefined;
-  const analysisChangedEvent = useMemo(
-    () => papi.network.getNetworkEvent('interlinearizer.onAnalysisChanged'),
-    [],
-  );
-  useEvent(
-    analysisChangedEvent,
-    useCallback(
-      (change: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
-        if ('sessionId' in change && change.sessionId === sessionId)
-          activeClientRef.current?.hear(change);
-      },
-      [sessionId],
-    ),
-  );
+  useSessionChange(sessionId, (change) => activeClientRef.current?.hear(change));
 
   const isFailed = !!key && failure?.key === key;
   return {

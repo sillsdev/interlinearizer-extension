@@ -1,7 +1,5 @@
 import papi, { logger } from '@papi/frontend';
 import type { DraftProject, DraftStart, SessionEditArgs } from 'interlinearizer';
-import type { NetworkEvents } from 'papi-shared-types';
-import { useEvent } from 'platform-bible-react';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { HeardChange } from '../cache/pageClient';
 import { WholeAnalysis } from '../cache/wholeAnalysis';
@@ -15,6 +13,7 @@ import type {
   NewDraftConfig,
 } from '../types/project-api';
 import useLatestRef from './useLatestRef';
+import useSessionChange from './useSessionChange';
 import useSessionPages from './useSessionPages';
 
 /** The session open on the source, with what opening it answered. */
@@ -220,21 +219,10 @@ export default function useSessionProject(
     [whole, refreshWhole],
   );
 
-  const analysisChangedEvent = useMemo(
-    () => papi.network.getNetworkEvent('interlinearizer.onAnalysisChanged'),
-    [],
-  );
-  useEvent(
-    analysisChangedEvent,
-    useCallback(
-      (change: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
-        if (!('sessionId' in change) || change.sessionId !== sessionId) return;
-        // With pages loaded, the client tells which changes its replies left out.
-        if (!client) takeHeard(change);
-      },
-      [sessionId, client, takeHeard],
-    ),
-  );
+  useSessionChange(sessionId, (change) => {
+    // With pages loaded, the client tells which changes its replies left out.
+    if (!client) takeHeard(change);
+  });
   useEffect(() => client?.subscribeHeard(takeHeard), [client, takeHeard]);
 
   /**

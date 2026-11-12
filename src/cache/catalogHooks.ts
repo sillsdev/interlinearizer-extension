@@ -1,8 +1,6 @@
 import papi, { logger } from '@papi/frontend';
 import type { AnalysisQuery } from 'interlinearizer';
-import type { NetworkEvents } from 'papi-shared-types';
-import { useEvent } from 'platform-bible-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   restoreUntagged,
   type CatalogPageRow,
@@ -12,6 +10,7 @@ import type { CatalogRowsRequest } from '../services/sessionCatalogHandlers';
 import type { TextReadStatus } from '../types/text-read-status';
 import type { CatalogFacets, CatalogRow } from '../utils/analysis-query';
 import useLatestRef from '../hooks/useLatestRef';
+import useSessionChange from '../hooks/useSessionChange';
 import { usePageSession } from './pageHooks';
 
 /** A row as the host sends it, its books listed. */
@@ -28,62 +27,69 @@ function fromWire<T extends CatalogRow>(
  * How many of the session's reported changes have named `query` since the caller mounted. Each one
  * re-renders the caller.
  */
-function useNamedChanges(query: AnalysisQuery): number {
-  const { sessionId } = usePageSession();
+function useNamedChanges(sessionId: string, query: AnalysisQuery): number {
   const [count, setCount] = useState(0);
-  const event = useMemo(
-    () => papi.network.getNetworkEvent('interlinearizer.onAnalysisChanged'),
-    [],
-  );
-  useEvent(
-    event,
-    useCallback(
-      (change: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
-        if (
-          'sessionId' in change &&
-          change.sessionId === sessionId &&
-          change.queries.includes(query)
-        )
-          setCount((was) => was + 1);
-      },
-      [sessionId, query],
-    ),
-  );
+  useSessionChange(sessionId, (change) => {
+    if (change.queries.includes(query)) setCount((was) => was + 1);
+  });
   return count;
 }
 
+/** What {@link useNamedFetch} answers for its key. */
+type NamedFetch<T> = Readonly<{
+  /** The answer to show; `undefined` until one arrives. */
+  value: T | undefined;
+  /** Whether the latest fetch failed. */
+  failed: boolean;
+}>;
+
 /**
- * Fetches with `fetch` for each `key`, and again whenever a change to the session names `query`.
- * Logs a failed fetch as one of `what`.
+ * Fetches with `fetch` for each `key` of the session, and again whenever a change to the session
+ * names `query`. Logs a failed fetch as one of `what`. Nothing is fetched while `key` is
+ * `undefined`.
  *
- * @returns The latest answer for `key`; `undefined` while `key` is `undefined`, and until an answer
- *   for `key` arrives. A failed fetch leaves the last answer for `key` in place.
+ * @returns `undefined` while `key` is `undefined`. Otherwise the latest answer for `key`, with
+ *   whether the latest fetch failed; a failed fetch leaves the answer in place. Until an answer for
+ *   `key` arrives, the answer is `undefined`, or the last key's answer with `keepPrevious`.
  */
 function useNamedFetch<T>(
   query: AnalysisQuery,
   what: string,
   key: string | undefined,
   fetch: () => Promise<T>,
-): T | undefined {
-  const changes = useNamedChanges(query);
+  keepPrevious = false,
+): NamedFetch<T> | undefined {
+  const { sessionId } = usePageSession();
+  const changes = useNamedChanges(sessionId, query);
   const fetchRef = useLatestRef(fetch);
-  const [answer, setAnswer] = useState<Readonly<{ key: string; value: T }> | undefined>(undefined);
+  const sessionKey = key === undefined ? undefined : JSON.stringify([sessionId, key]);
+  const [answer, setAnswer] = useState<
+    Readonly<{ key: string; value: T | undefined; failed: boolean }> | undefined
+  >(undefined);
   useEffect(() => {
-    if (key === undefined) return undefined;
+    if (sessionKey === undefined) return undefined;
     let isCurrent = true;
     (async () => {
       try {
         const value = await fetchRef.current();
-        if (isCurrent) setAnswer({ key, value });
+        if (isCurrent) setAnswer({ key: sessionKey, value, failed: false });
       } catch (e) {
         logger.warn(`Interlinearizer: could not fetch ${what}`, e);
+        if (isCurrent)
+          setAnswer((was) => ({
+            key: sessionKey,
+            value: was?.key === sessionKey || keepPrevious ? was?.value : undefined,
+            failed: true,
+          }));
       }
     })();
     return () => {
       isCurrent = false;
     };
-  }, [key, changes, what, fetchRef]);
-  return answer && answer.key === key ? answer.value : undefined;
+  }, [sessionKey, changes, what, fetchRef, keepPrevious]);
+  if (sessionKey === undefined) return undefined;
+  if (answer?.key === sessionKey) return answer;
+  return { value: keepPrevious ? answer?.value : undefined, failed: false };
 }
 
 /** A page of the session's catalog, as the panel reads it. */
@@ -107,28 +113,22 @@ export function useCatalogView(
   count: number,
 ): CatalogView | undefined {
   const { sessionId } = usePageSession();
-  const changes = useNamedChanges('getCatalogRows');
-  const [view, setView] = useState<CatalogView | undefined>(undefined);
-  useEffect(() => {
-    let isCurrent = true;
-    (async () => {
-      try {
-        const json = await papi.commands.sendCommand('interlinearizer.getCatalogRows', {
+  const key = JSON.stringify([request, count]);
+  return useNamedFetch(
+    'getCatalogRows',
+    'the catalog',
+    key,
+    async (): Promise<CatalogView> => {
+      const page = JSON.parse(
+        await papi.commands.sendCommand('interlinearizer.getCatalogRows', {
           sessionId,
           request: { ...request, offset: 0, count },
-        });
-        if (!isCurrent) return;
-        const page = JSON.parse(json);
-        setView({ ...page, rows: page.rows.map(fromWire), facets: restoreUntagged(page.facets) });
-      } catch (e) {
-        logger.warn('Interlinearizer: could not fetch the catalog', e);
-      }
-    })();
-    return () => {
-      isCurrent = false;
-    };
-  }, [sessionId, request, count, changes]);
-  return view;
+        }),
+      );
+      return { ...page, rows: page.rows.map(fromWire), facets: restoreUntagged(page.facets) };
+    },
+    true,
+  )?.value;
 }
 
 /**
@@ -139,27 +139,33 @@ export function useCatalogView(
  */
 export function useTextReadStatus(wanted: boolean): TextReadStatus | 'error' | undefined {
   const { sessionId } = usePageSession();
-  const changes = useNamedChanges('getTextReadStatus');
-  const [status, setStatus] = useState<TextReadStatus | 'error' | undefined>(undefined);
-  useEffect(() => {
-    if (!wanted) return undefined;
-    let isCurrent = true;
-    (async () => {
-      try {
-        const json = await papi.commands.sendCommand('interlinearizer.getTextReadStatus', {
-          sessionId,
-        });
-        if (isCurrent) setStatus(JSON.parse(json));
-      } catch (e) {
-        logger.warn("Interlinearizer: could not read the session's text", e);
-        if (isCurrent) setStatus('error');
-      }
-    })();
-    return () => {
-      isCurrent = false;
-    };
-  }, [sessionId, wanted, changes]);
-  return wanted ? status : undefined;
+  const status = useNamedFetch(
+    'getTextReadStatus',
+    "the session's text read",
+    wanted ? 'text' : undefined,
+    async (): Promise<TextReadStatus> =>
+      JSON.parse(
+        await papi.commands.sendCommand('interlinearizer.getTextReadStatus', { sessionId }),
+      ),
+    true,
+  );
+  return status?.failed ? 'error' : status?.value;
+}
+
+/** The rows of the analyses `analysisIds` names, in that order, leaving out unstored ids. */
+async function fetchRowsByIds(
+  sessionId: string,
+  currentBook: string,
+  analysisIds: readonly string[],
+): Promise<CatalogRow[]> {
+  const rows: WireRow<CatalogRow>[] = JSON.parse(
+    await papi.commands.sendCommand('interlinearizer.getCatalogRowsByIds', {
+      sessionId,
+      currentBook,
+      analysisIds,
+    }),
+  );
+  return rows.map(fromWire);
 }
 
 /**
@@ -173,14 +179,9 @@ export function useCatalogRowsByIds(
   const { sessionId, analysisLanguage } = usePageSession();
   const key = JSON.stringify([analysisLanguage, currentBook, analysisIds]);
   return useNamedFetch('getCatalogRows', 'catalog rows', key, async () => {
-    const json = await papi.commands.sendCommand('interlinearizer.getCatalogRowsByIds', {
-      sessionId,
-      currentBook,
-      analysisIds,
-    });
-    const rows: WireRow<CatalogRow>[] = JSON.parse(json);
-    return new Map(rows.map((row) => [row.analysisId, fromWire(row)]));
-  });
+    const rows = await fetchRowsByIds(sessionId, currentBook, analysisIds);
+    return new Map(rows.map((row) => [row.analysisId, row]));
+  })?.value;
 }
 
 /**
@@ -205,7 +206,7 @@ export function useHomographRows(
     });
     const rows: WireRow<CatalogRow>[] = JSON.parse(json);
     return rows.map(fromWire);
-  });
+  })?.value;
 }
 
 /**
@@ -223,7 +224,7 @@ export function useSelectionSummary(analysisIds: readonly string[]): SelectionSu
         analysisIds,
       }),
     ),
-  );
+  )?.value;
 }
 
 /** One-off catalog reads, for a count or a row an edit needs before it is sent. */
@@ -233,15 +234,8 @@ export function useCatalogReads(currentBook: string) {
     () => ({
       countUsages: (analysisIds: readonly string[]) =>
         papi.commands.sendCommand('interlinearizer.countUsages', { sessionId, analysisIds }),
-      rowsByIds: async (analysisIds: readonly string[]): Promise<CatalogRow[]> => {
-        const json = await papi.commands.sendCommand('interlinearizer.getCatalogRowsByIds', {
-          sessionId,
-          currentBook,
-          analysisIds,
-        });
-        const rows: WireRow<CatalogRow>[] = JSON.parse(json);
-        return rows.map(fromWire);
-      },
+      rowsByIds: (analysisIds: readonly string[]) =>
+        fetchRowsByIds(sessionId, currentBook, analysisIds),
     }),
     [sessionId, currentBook],
   );

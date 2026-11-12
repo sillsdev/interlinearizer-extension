@@ -1414,6 +1414,25 @@ describe('AnalysisCatalogPanel', () => {
       expect(count).toBe(80);
     });
 
+    it('fetches a failed page again when the end of the list comes back into view', async () => {
+      await renderPanel({ analysis: MANY });
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      let failNext = true;
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.getCatalogRows' && failNext) {
+          failNext = false;
+          throw new Error('offline');
+        }
+        return serve?.(...call);
+      });
+      await reachListEnd();
+      expect(listedAnalysisIds()).toHaveLength(40);
+
+      await reachListEnd();
+
+      expect(listedAnalysisIds()).toHaveLength(80);
+    });
+
     it('starts the window over when the query changes', async () => {
       await renderPanel({ analysis: MANY });
       await reachListEnd();
@@ -2821,6 +2840,24 @@ describe('AnalysisCatalogPanel', () => {
         const onClose = jest.fn();
         await renderPanel({ analysis: SHARED, onClose });
         await typeUnsavedBreakdown();
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
+        expect(onClose).not.toHaveBeenCalled();
+      });
+
+      it('asks before closing over a hidden draft whose row could not be fetched', async () => {
+        const onClose = jest.fn();
+        await renderPanel({ analysis: SHARED, onClose });
+        const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+        jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+          if (call[0] === 'interlinearizer.getCatalogRowsByIds') throw new Error('offline');
+          return serve?.(...call);
+        });
+        await typeUnsavedBreakdown();
+        await userEvent.type(searchBox(), 'zzz');
+        await settle();
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 

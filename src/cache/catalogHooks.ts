@@ -1,6 +1,6 @@
 import papi, { logger } from '@papi/frontend';
 import type { AnalysisQuery } from 'interlinearizer';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   restoreUntagged,
   type CatalogPageRow,
@@ -41,12 +41,14 @@ type NamedFetch<T> = Readonly<{
   value: T | undefined;
   /** Whether the latest fetch failed. */
   failed: boolean;
+  /** Fetches for the key again. */
+  retry: () => void;
 }>;
 
 /**
  * Fetches with `fetch` for each `key` of the session, and again whenever a change to the session
- * names `query`. Logs a failed fetch as one of `what`. Nothing is fetched while `key` is
- * `undefined`.
+ * names `query`, or `retry` is called. Logs a failed fetch as one of `what`. Nothing is fetched
+ * while `key` is `undefined`.
  *
  * @returns `undefined` while `key` is `undefined`. Otherwise the latest answer for `key`, with
  *   whether the latest fetch failed. Until an answer for `key` arrives, and after a failed fetch,
@@ -63,6 +65,8 @@ function useNamedFetch<T>(
   const changes = useNamedChanges(sessionId, query);
   const fetchRef = useLatestRef(fetch);
   const sessionKey = key === undefined ? undefined : JSON.stringify([sessionId, key]);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((was) => was + 1), []);
   const [answer, setAnswer] = useState<
     Readonly<{ key: string; value: T | undefined; failed: boolean }> | undefined
   >(undefined);
@@ -86,10 +90,10 @@ function useNamedFetch<T>(
     return () => {
       isCurrent = false;
     };
-  }, [sessionKey, changes, what, fetchRef, keepPrevious]);
+  }, [sessionKey, changes, attempt, what, fetchRef, keepPrevious]);
   if (sessionKey === undefined) return undefined;
-  if (answer?.key === sessionKey) return answer;
-  return { value: keepPrevious ? answer?.value : undefined, failed: false };
+  if (answer?.key === sessionKey) return { ...answer, retry };
+  return { value: keepPrevious ? answer?.value : undefined, failed: false, retry };
 }
 
 /** A page of the session's catalog, as the panel reads it. */
@@ -98,6 +102,8 @@ export type CatalogView = Readonly<{
   keptIds: readonly string[];
   facets: CatalogFacets;
   rowCount: number;
+  /** Fetches the page again; `undefined` unless the latest fetch of it failed. */
+  retry: (() => void) | undefined;
 }>;
 
 /**
@@ -106,7 +112,7 @@ export type CatalogView = Readonly<{
  * catalog.
  *
  * The last page stays while the next is fetched, so a changed query leaves the list on screen until
- * its rows arrive.
+ * its rows arrive. A failed fetch leaves the last page too, with {@link CatalogView.retry} set.
  */
 export function useCatalogView(
   request: Omit<CatalogRowsRequest, 'offset' | 'count'>,
@@ -114,11 +120,11 @@ export function useCatalogView(
 ): CatalogView | undefined {
   const { sessionId } = usePageSession();
   const key = JSON.stringify([request, count]);
-  return useNamedFetch(
+  const fetched = useNamedFetch(
     'getCatalogRows',
     'the catalog',
     key,
-    async (): Promise<CatalogView> => {
+    async (): Promise<Omit<CatalogView, 'retry'>> => {
       const page = JSON.parse(
         await papi.commands.sendCommand('interlinearizer.getCatalogRows', {
           sessionId,
@@ -128,7 +134,10 @@ export function useCatalogView(
       return { ...page, rows: page.rows.map(fromWire), facets: restoreUntagged(page.facets) };
     },
     true,
-  )?.value;
+  );
+  const page = fetched?.value;
+  const retry = fetched?.failed ? fetched.retry : undefined;
+  return useMemo(() => page && { ...page, retry }, [page, retry]);
 }
 
 /**

@@ -413,11 +413,14 @@ export default function AnalysisCatalogPanel({
    * The slice of the listing that is actually mounted. A draft accumulates analyses without bound
    * and every row carries its own expander and usage list, so the list grows as it is scrolled
    * rather than rendering whole.
+   *
+   * A failed fetch leaves the window at its cap, so reaching the end there fetches the page again.
    */
   const { windowRows, scrollRef, sentinelRef } = useRowWindow(
     windowedRows,
     listing,
     revealedRowIndex,
+    view?.retry,
   );
   // Reset with the window, so a new listing is not fetched at the size an earlier one scrolled to.
   if (listing !== fetchedListing) {
@@ -579,13 +582,15 @@ export default function AnalysisCatalogPanel({
 
   /**
    * Whether one row is holding a breakdown the reader has changed but not saved. Measured against
-   * what the editor pre-filled, so a draft left untouched is not unsaved work.
+   * what the editor pre-filled, so a draft left untouched is not unsaved work. A draft whose row
+   * the panel holds no copy of counts as unsaved.
    */
   const rowHasUnsavedBreakdown = useCallback(
     (analysisId: string) => {
+      const draft = breakdownDrafts.get(analysisId);
+      if (draft === undefined) return false;
       const row = rowOf(analysisId);
-      const draft = row && breakdownDrafts.get(analysisId);
-      if (row === undefined || draft === undefined) return false;
+      if (row === undefined) return true;
       const prefilled = row.morphemes.map((m) => m.form).join(' ') || row.surfaceText;
       return breakdownDraftForms(draft.text).join(' ') !== breakdownDraftForms(prefilled).join(' ');
     },

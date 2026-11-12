@@ -232,6 +232,20 @@ export function useSelectionSummary(analysisIds: readonly string[]): SelectionSu
   )?.value;
 }
 
+/**
+ * What deleting the analysis `analysisId` names would do; `undefined` when no analysis carries the
+ * id.
+ */
+async function fetchDeletionPreview(
+  sessionId: string,
+  analysisId: string,
+): Promise<AnalysisDeletionOutcome | undefined> {
+  const outcome: AnalysisDeletionOutcome | null = JSON.parse(
+    await papi.commands.sendCommand('interlinearizer.previewDeletion', { sessionId, analysisId }),
+  );
+  return outcome ?? undefined;
+}
+
 /** What the host has said so far about deleting an analysis. */
 export type DeletionPreviewState =
   | Readonly<{ status: 'loading' }>
@@ -251,13 +265,7 @@ export function useDeletionPreview(analysisId: string): DeletionPreviewState {
     'getCatalogRows',
     'the deletion preview',
     JSON.stringify([analysisLanguage, analysisId]),
-    async () =>
-      JSON.parse(
-        await papi.commands.sendCommand('interlinearizer.previewDeletion', {
-          sessionId,
-          analysisId,
-        }),
-      ) ?? 'missing',
+    async () => (await fetchDeletionPreview(sessionId, analysisId)) ?? 'missing',
   );
   /* v8 ignore next -- the key is always defined, so a fetch state always comes back */
   if (!preview) return { status: 'loading' };
@@ -273,16 +281,7 @@ export function useCatalogReads(currentBook: string) {
     () => ({
       countUsages: (analysisIds: readonly string[]) =>
         papi.commands.sendCommand('interlinearizer.countUsages', { sessionId, analysisIds }),
-      previewDeletion: async (analysisId: string): Promise<AnalysisDeletionOutcome | undefined> => {
-        const outcome = JSON.parse(
-          await papi.commands.sendCommand('interlinearizer.previewDeletion', {
-            sessionId,
-            analysisId,
-          }),
-        );
-        /* v8 ignore next -- the panel previews only ids its rows hold, which always resolve */
-        return outcome ?? undefined;
-      },
+      previewDeletion: (analysisId: string) => fetchDeletionPreview(sessionId, analysisId),
       rowsByIds: (analysisIds: readonly string[]) =>
         fetchRowsByIds(sessionId, currentBook, analysisIds),
     }),

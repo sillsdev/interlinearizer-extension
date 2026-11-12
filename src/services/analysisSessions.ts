@@ -483,7 +483,6 @@ export class AnalysisSessions {
         session,
         { books: [], analysisIds: [], forms: [], queries: ['getCatalogRows', 'getConcordance'] },
         crypto.randomUUID(),
-        [],
       );
     });
   }

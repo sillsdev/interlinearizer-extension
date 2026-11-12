@@ -1,11 +1,15 @@
 import papi, { logger } from '@papi/frontend';
-import { useCallback, useEffect, useState } from 'react';
+import type { AnalysisQuery } from 'interlinearizer';
+import { useCallback } from 'react';
 import type {
   ConcordanceOccurrencePage,
   ConcordancePage,
 } from '../services/sessionConcordanceHandlers';
-import { useNamedChanges } from './namedQueryHooks';
+import { useNamedFetch } from './namedQueryHooks';
 import { usePageSession } from './pageHooks';
+
+/** A change that names any of these queries leaves a concordance answer out of date. */
+const CONCORDANCE_QUERIES: readonly AnalysisQuery[] = ['getConcordance', 'getTextReadStatus'];
 
 /**
  * The first `count` rows of the session's concordance, counted against `currentBook`, fetched again
@@ -19,27 +23,19 @@ export function useConcordanceView(
   count: number,
 ): ConcordancePage | null | undefined {
   const { sessionId } = usePageSession();
-  const changes = useNamedChanges('getConcordance');
-  const readChanges = useNamedChanges('getTextReadStatus');
-  const [page, setPage] = useState<ConcordancePage | null | undefined>(undefined);
-  useEffect(() => {
-    let isCurrent = true;
-    (async () => {
-      try {
-        const json = await papi.commands.sendCommand('interlinearizer.getConcordance', {
+  return useNamedFetch(
+    CONCORDANCE_QUERIES,
+    'the concordance',
+    JSON.stringify([currentBook, count]),
+    async (): Promise<ConcordancePage | null> =>
+      JSON.parse(
+        await papi.commands.sendCommand('interlinearizer.getConcordance', {
           sessionId,
           request: { currentBook, offset: 0, count },
-        });
-        if (isCurrent) setPage(JSON.parse(json));
-      } catch (e) {
-        logger.warn('Interlinearizer: could not fetch the concordance', e);
-      }
-    })();
-    return () => {
-      isCurrent = false;
-    };
-  }, [sessionId, currentBook, count, changes, readChanges]);
-  return page;
+        }),
+      ),
+    true,
+  )?.value;
 }
 
 /**
@@ -55,30 +51,20 @@ export function useConcordanceOccurrences(
   count: number,
 ): ConcordanceOccurrencePage | undefined {
   const { sessionId, analysisLanguage } = usePageSession();
-  const changes = useNamedChanges('getConcordance');
-  const readChanges = useNamedChanges('getTextReadStatus');
-  const [page, setPage] = useState<ConcordanceOccurrencePage | undefined>(undefined);
-  // Dropped once no form is given, so the next form asked for starts without the last one's answer.
-  if (form === undefined && page !== undefined) setPage(undefined);
-  useEffect(() => {
-    if (form === undefined) return undefined;
-    let isCurrent = true;
-    (async () => {
-      try {
-        const json = await papi.commands.sendCommand('interlinearizer.getConcordance', {
+  return useNamedFetch(
+    CONCORDANCE_QUERIES,
+    "a form's occurrences",
+    form === undefined ? undefined : JSON.stringify([form, count, analysisLanguage]),
+    async (): Promise<ConcordanceOccurrencePage> =>
+      JSON.parse(
+        await papi.commands.sendCommand('interlinearizer.getConcordance', {
           sessionId,
-          request: { form, offset: 0, count },
-        });
-        if (isCurrent) setPage(JSON.parse(json));
-      } catch (e) {
-        logger.warn("Interlinearizer: could not fetch a form's occurrences", e);
-      }
-    })();
-    return () => {
-      isCurrent = false;
-    };
-  }, [sessionId, analysisLanguage, form, count, changes, readChanges]);
-  return page;
+          /* v8 ignore next -- fetched only under a key, which a form gives */
+          request: { form: form ?? '', offset: 0, count },
+        }),
+      ),
+    true,
+  )?.value;
 }
 
 /** A callback that reads again each book of the session's text whose latest read failed. */

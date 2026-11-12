@@ -900,8 +900,8 @@ export async function updateAnalysis(
 
 /**
  * Moves the glosses of project `id` from one language tag to another. A gloss whose word or
- * morpheme already has one under `to` stays under `from`. The project is written, with `updatedAt`
- * refreshed, only when a gloss moved.
+ * morpheme already has a different one under `to` stays under `from`. The project is written, with
+ * `updatedAt` refreshed, only when a gloss moved.
  *
  * @param token - The execution token for storage access.
  * @param id - The interlinearizer project UUID whose glosses move.

@@ -6,7 +6,7 @@ export type GlossRetagCounts = {
   words: number;
   /** Morpheme glosses moved. */
   morphemes: number;
-  /** Word and morpheme glosses left under the old tag because the new tag already held one. */
+  /** Word and morpheme glosses left under the old tag because the new tag held a different one. */
   skipped: number;
 };
 
@@ -32,8 +32,9 @@ export type GlossRetag = {
 };
 
 /**
- * Moves the text under `from` to `to` in place. Text under `to` is never overwritten, and blank
- * text under `from` is left alone.
+ * Moves the text under `from` to `to` in place. Text under `to` is never overwritten. Text under
+ * `from` that matches the text under `to` is dropped and counts as moved. Blank text under `from`
+ * is left alone.
  */
 function retagMultiString(
   value: MultiString | undefined,
@@ -42,16 +43,18 @@ function retagMultiString(
 ): 'moved' | 'skipped' | 'none' {
   const text = value?.[from];
   if (!value || text === undefined || text.trim() === '') return 'none';
-  if ((value[to] ?? '').trim() !== '') return 'skipped';
+  const existing = (value[to] ?? '').trim();
+  if (existing !== '' && existing !== text.trim()) return 'skipped';
   delete value[from];
-  value[to] = text;
+  if (existing === '') value[to] = text;
   return 'moved';
 }
 
 /**
  * Moves the glosses of `analysis` written under the tag `from` to the tag `to`, mutating the
  * analyses in place and stamping each one changed with `now`. A gloss whose word or morpheme
- * already has text under `to` stays under `from` and is counted as skipped.
+ * already has the same text under `to` is dropped and counted as moved. One that has different text
+ * under `to` stays under `from` and is counted as skipped.
  */
 export function retagGlosses(
   analysis: TextAnalysis,

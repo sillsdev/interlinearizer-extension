@@ -954,8 +954,8 @@ declare module 'papi-shared-types' {
     /**
      * Gives a session's draft new analysis languages, primary first. With `retagFrom`, also moves
      * the glosses under `retagFrom` to the new primary language. A gloss whose word or morpheme
-     * already has one there stays where it is. Both are one undoable step. A change of languages
-     * alone leaves the draft as saved or unsaved as it was.
+     * already has a different one there stays where it is. Both are one undoable step. A change of
+     * languages alone leaves the draft as saved or unsaved as it was.
      *
      * @returns A JSON string of the `CommandReply`, with `glossRetag`: how many glosses moved and
      *   how many were skipped, when `retagFrom` was given.
@@ -1046,7 +1046,8 @@ declare module 'papi-shared-types' {
 
     /**
      * Moves the glosses of a stored project from the tag `from` to the tag `to`. A gloss whose word
-     * or morpheme already has one under `to` stays under `from`. Nothing records the move to undo.
+     * or morpheme already has a different one under `to` stays under `from`. Nothing records the
+     * move to undo.
      *
      * @param interlinearProjectId - UUID of the interlinearizer project whose glosses move.
      * @param from - BCP 47 tag the glosses move from.

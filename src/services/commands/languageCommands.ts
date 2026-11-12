@@ -19,9 +19,9 @@ export type ChangeAnalysisLanguagesRequest = {
 /**
  * Stages in `buffer` the change giving the draft new analysis languages. With `retagFrom`, it also
  * moves the glosses under `retagFrom` in `stored`, the draft's analysis, to the new primary
- * language, mutating `stored`. A gloss whose word or morpheme already has one in the new primary
- * language stays where it is. A token analysis the move makes identical to another payload is
- * folded into that payload.
+ * language, mutating `stored`. A gloss whose word or morpheme already has a different one in the
+ * new primary language stays where it is. A token analysis the move makes identical to another
+ * payload is folded into that payload.
  *
  * @returns What moved, or `undefined` when no glosses were asked to move.
  */

@@ -43,7 +43,42 @@ describe('retagGlosses', () => {
     expect(analysis.phraseAnalyses[0]).toMatchObject({ gloss: { es: 'whale' }, updatedAt: NOW });
   });
 
-  it('leaves a gloss whose word or morpheme already has one under the new tag, counting it', () => {
+  it('drops a gloss whose word or morpheme already has the same one under the new tag, as moved', () => {
+    const analysis = analysisOf({
+      tokenAnalyses: [
+        {
+          id: 'ta-1',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'fish',
+          gloss: { en: 'fish', es: 'fish ' },
+          morphemes: [
+            { id: 'm-1', form: 'fish', writingSystem: 'x', gloss: { en: 'fish', es: 'fish' } },
+          ],
+        },
+      ],
+      phraseAnalyses: [
+        {
+          id: 'pa-1',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'big fish',
+          gloss: { en: 'whale', es: 'whale' },
+        },
+      ],
+    });
+
+    const { counts, tokenAnalyses, phraseAnalyses } = retagGlosses(analysis, 'en', 'es', NOW);
+
+    expect(counts).toEqual({ words: 2, morphemes: 1, skipped: 0 });
+    expect(tokenAnalyses.map(({ id }) => id)).toEqual(['ta-1']);
+    expect(phraseAnalyses.map(({ id }) => id)).toEqual(['pa-1']);
+    const [token] = analysis.tokenAnalyses;
+    expect(token.gloss).toEqual({ es: 'fish ' });
+    expect(token.morphemes?.[0].gloss).toEqual({ es: 'fish' });
+    expect(token.updatedAt).toBe(NOW);
+    expect(analysis.phraseAnalyses[0]).toMatchObject({ gloss: { es: 'whale' }, updatedAt: NOW });
+  });
+
+  it('leaves a gloss whose word or morpheme already has a different one under the new tag, counting it', () => {
     const analysis = analysisOf({
       tokenAnalyses: [
         {

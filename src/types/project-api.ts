@@ -103,7 +103,7 @@ export type ProjectApi = {
   /**
    * Gives the draft new analysis languages, primary first, as one undoable step. With `retagFrom`,
    * the step also moves the glosses under `retagFrom` to the new primary language. A gloss whose
-   * word or morpheme already has one there stays where it is.
+   * word or morpheme already has a different one there stays where it is.
    *
    * @returns What moved, or `undefined` when no glosses were asked to move.
    * @throws If no session is open, or the session refuses or fails the edit.

@@ -436,7 +436,8 @@ async function updateProjectMetadata(
 
 /**
  * Moves the glosses of a stored project from the tag `from` to the tag `to`. A gloss whose word or
- * morpheme already has one under `to` stays under `from`. Nothing records the move to undo.
+ * morpheme already has a different one under `to` stays under `from`. Nothing records the move to
+ * undo.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project whose glosses move.
  * @param from - BCP 47 tag the glosses move from.

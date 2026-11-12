@@ -4,7 +4,7 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { logger } from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import type { Book, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { useEffect, type ReactNode } from 'react';
 import { useGlossDispatch } from '../../components/AnalysisStore';
@@ -411,6 +411,33 @@ describe('ConcordancePanel', () => {
       await settle();
 
       expect(screen.getAllByTestId('concordance-row')).toHaveLength(before * 2);
+    });
+
+    it('fetches a failed page again when the end of the list comes back into view', async () => {
+      await renderPanel({ text: textOf({ books: [MANY] }) });
+      const before = screen.getAllByTestId('concordance-row').length;
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      let failNext = true;
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.getConcordance' && failNext) {
+          failNext = false;
+          throw new Error('offline');
+        }
+        return serve?.(...call);
+      });
+      jest.spyOn(logger, 'warn').mockImplementation(() => {});
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('concordance-rows-sentinel'), true);
+      });
+      await settle();
+      expect(screen.getAllByTestId('concordance-row')).toHaveLength(before);
+
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('concordance-rows-sentinel'), true);
+      });
+      await settle();
+
+      expect(screen.getAllByTestId('concordance-row').length).toBeGreaterThan(before);
     });
   });
 });

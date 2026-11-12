@@ -1,6 +1,6 @@
 import papi, { logger } from '@papi/frontend';
 import type { AnalysisQuery } from 'interlinearizer';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import type {
   ConcordanceOccurrencePage,
   ConcordancePage,
@@ -11,19 +11,26 @@ import { usePageSession } from './pageHooks';
 /** A change that names any of these queries leaves a concordance answer out of date. */
 const CONCORDANCE_QUERIES: readonly AnalysisQuery[] = ['getConcordance', 'getTextReadStatus'];
 
+/** A page of the session's concordance, as the panel reads it. */
+export type ConcordanceView = ConcordancePage &
+  Readonly<{
+    /** Fetches the page again; `undefined` unless the latest fetch of it failed. */
+    retry: (() => void) | undefined;
+  }>;
+
 /**
  * The first `count` rows of the session's concordance, counted against `currentBook`, fetched again
  * whenever a change names the concordance or the text's read status. Keeps the last page while the
- * next is fetched.
+ * next is fetched. A failed fetch leaves the last page too, with {@link ConcordanceView.retry} set.
  *
  * @returns `null` until the whole text has been read; `undefined` until the first answer arrives.
  */
 export function useConcordanceView(
   currentBook: string,
   count: number,
-): ConcordancePage | null | undefined {
+): ConcordanceView | null | undefined {
   const { sessionId } = usePageSession();
-  return useNamedFetch(
+  const fetched = useNamedFetch(
     CONCORDANCE_QUERIES,
     'the concordance',
     JSON.stringify([currentBook, count]),
@@ -35,7 +42,10 @@ export function useConcordanceView(
         }),
       ),
     true,
-  )?.value;
+  );
+  const page = fetched?.value;
+  const retry = fetched?.failed ? fetched.retry : undefined;
+  return useMemo(() => page && { ...page, retry }, [page, retry]);
 }
 
 /**

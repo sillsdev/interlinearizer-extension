@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import papi, { logger } from '@papi/frontend';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import {
   useConcordanceOccurrences,
   useConcordanceView,
@@ -39,6 +39,7 @@ describe('useConcordanceView', () => {
             status: 'unanalyzed',
           },
         ],
+        retry: undefined,
       }),
     );
   });
@@ -96,6 +97,22 @@ describe('useConcordanceView', () => {
       'Interlinearizer: could not fetch the concordance',
       expect.any(Error),
     );
+  });
+  it('offers a retry after a failed fetch that fetches the page again', async () => {
+    const wrapper = await wrapperOver(readText([], [BOOK]));
+    const { result } = renderHook(() => useConcordanceView('GEN', 1), { wrapper });
+    await settle();
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('offline'));
+    relayChange(changeNaming(sessionIdOf('interlinearizer.getConcordance'), ['getConcordance']));
+    await settle();
+    const before = timesSent('interlinearizer.getConcordance');
+
+    act(() => result.current?.retry?.());
+    await settle();
+
+    expect(timesSent('interlinearizer.getConcordance')).toBe(before + 1);
+    expect(result.current?.retry).toBeUndefined();
   });
 });
 

@@ -421,6 +421,9 @@ export class PageClient {
 
   private hearNow(change: HeardChange): void {
     this.heardListeners.forEach((listener) => listener(change));
+    const { books, analysisIds, forms } = change;
+    // A change naming only queries touches no page, so it leaves nothing to fetch.
+    if (books.length === 0 && analysisIds.length === 0 && forms.length === 0) return;
     const cache = this.cacheHeld;
     if (!cache) {
       if (this.outlineReading) this.readOutlineAgain('outline');

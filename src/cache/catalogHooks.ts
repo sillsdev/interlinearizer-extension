@@ -102,8 +102,8 @@ export type CatalogView = Readonly<{
 
 /**
  * The first `count` rows of the session's catalog that `request` keeps, with the ids of every kept
- * row. The page is fetched again whenever `request`, `count` or the analysis language changes, or a
- * change names the catalog.
+ * row. The page is fetched again whenever `request` or `count` changes, or a change names the
+ * catalog.
  *
  * The last page stays while the next is fetched, so a changed query leaves the list on screen until
  * its rows arrive.
@@ -112,8 +112,8 @@ export function useCatalogView(
   request: Omit<CatalogRowsRequest, 'offset' | 'count'>,
   count: number,
 ): CatalogView | undefined {
-  const { sessionId, analysisLanguage } = usePageSession();
-  const key = JSON.stringify([analysisLanguage, request, count]);
+  const { sessionId } = usePageSession();
+  const key = JSON.stringify([request, count]);
   return useNamedFetch(
     'getCatalogRows',
     'the catalog',
@@ -176,8 +176,8 @@ export function useCatalogRowsByIds(
   analysisIds: readonly string[],
   currentBook: string,
 ): ReadonlyMap<string, CatalogRow> | undefined {
-  const { sessionId, analysisLanguage } = usePageSession();
-  const key = JSON.stringify([analysisLanguage, currentBook, analysisIds]);
+  const { sessionId } = usePageSession();
+  const key = JSON.stringify([currentBook, analysisIds]);
   return useNamedFetch('getCatalogRows', 'catalog rows', key, async () => {
     const rows = await fetchRowsByIds(sessionId, currentBook, analysisIds);
     return new Map(rows.map((row) => [row.analysisId, row]));
@@ -192,11 +192,8 @@ export function useHomographRows(
   analysisId: string | undefined,
   currentBook: string,
 ): readonly CatalogRow[] | undefined {
-  const { sessionId, analysisLanguage } = usePageSession();
-  const key =
-    analysisId === undefined
-      ? undefined
-      : JSON.stringify([analysisLanguage, currentBook, analysisId]);
+  const { sessionId } = usePageSession();
+  const key = analysisId === undefined ? undefined : JSON.stringify([currentBook, analysisId]);
   return useNamedFetch('getCatalogRows', 'homographs', key, async () => {
     const json = await papi.commands.sendCommand('interlinearizer.getHomographRows', {
       sessionId,
@@ -214,9 +211,8 @@ export function useHomographRows(
  * until it arrives.
  */
 export function useSelectionSummary(analysisIds: readonly string[]): SelectionSummary | undefined {
-  const { sessionId, analysisLanguage } = usePageSession();
-  const key =
-    analysisIds.length === 0 ? undefined : JSON.stringify([analysisLanguage, analysisIds]);
+  const { sessionId } = usePageSession();
+  const key = analysisIds.length === 0 ? undefined : JSON.stringify(analysisIds);
   return useNamedFetch('getCatalogRows', 'the selection summary', key, async () =>
     JSON.parse(
       await papi.commands.sendCommand('interlinearizer.getSelectionSummary', {

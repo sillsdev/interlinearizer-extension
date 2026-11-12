@@ -2,6 +2,7 @@ import papi from '@papi/frontend';
 import { act } from '@testing-library/react';
 import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
 import { useEvent } from 'platform-bible-react';
+import * as React from 'react';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import * as tokenCommands from '../../services/commands/tokenCommands';
 import { DraftRepository } from '../../services/draftRepository';
@@ -101,6 +102,12 @@ function startedDraft(sourceProjectId: string, from: unknown): DraftProject {
   };
 }
 
+/** React's shared internals, whose `actQueue` is set while an `act` scope is open or flushing. */
+const REACT_INTERNALS: object = Reflect.get(
+  React,
+  '__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE',
+);
+
 /**
  * Hands `change` to every listener that the views registered for {@link ANALYSIS_CHANGED_EVENT}, as
  * the platform relays a change to each.
@@ -112,7 +119,12 @@ export function relayChange(change: unknown): void {
       .mock.calls.filter(([event]) => event === ANALYSIS_CHANGED_EVENT)
       .map(([, handler]) => handler),
   );
-  act(() => handlers.forEach((handler) => typeof handler === 'function' && handler(change)));
+  const deliver = () =>
+    handlers.forEach((handler) => typeof handler === 'function' && handler(change));
+  // A change can land while an awaited `act` flushes its queued work. A nested `act` there would
+  // clear that queue on exit, leaving the flush's later updates outside any `act`.
+  if (Reflect.get(REACT_INTERNALS, 'actQueue')) deliver();
+  else act(deliver);
 }
 
 /**

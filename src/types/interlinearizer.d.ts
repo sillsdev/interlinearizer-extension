@@ -400,7 +400,8 @@ declare module 'papi-shared-types' {
     ) => Promise<void>;
 
     /**
-     * Sets the language a session's glosses are read and written in.
+     * Sets the language a session's glosses are read and written in. A new language is reported as
+     * a change that names the catalog.
      *
      * @throws If the session is not open (logged before rethrowing).
      */

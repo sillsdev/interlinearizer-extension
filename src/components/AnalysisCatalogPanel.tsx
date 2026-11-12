@@ -285,7 +285,6 @@ export default function AnalysisCatalogPanel({
   // reconciled filters being the chosen set itself once every choice survives.
   if (filters !== chosenFilters) setFilters(filters);
 
-  /** What the host is asked to list. */
   const request = useMemo(
     () => ({ currentBook, search, sort, filters, sourceLanguageTag }),
     [currentBook, search, sort, filters, sourceLanguageTag],

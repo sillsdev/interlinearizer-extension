@@ -711,6 +711,30 @@ describe('PageClient', () => {
     expect(client.outline).toStrictEqual(made.outline);
   });
 
+  it('reads the outline once for a change naming only queries that arrives while it is read', async () => {
+    const outlines = gate();
+    const made = await sessionOver();
+    const getOutline = jest.fn(async () => {
+      await outlines.pass();
+      return made.fetchOutline();
+    });
+    const client = new PageClient({ getOutline, getSegments: made.fetchPage });
+    outlines.close();
+    const opening = client.open();
+
+    client.hear({
+      changeId: 'a',
+      books: [],
+      analysisIds: [],
+      forms: [],
+      queries: ['getCatalogRows'],
+    });
+    outlines.open();
+    await opening;
+
+    expect(getOutline).toHaveBeenCalledTimes(1);
+  });
+
   it('reads the outline once more, not once per change, for changes arriving during a read', async () => {
     const outlines = gate();
     const { client, getOutline, fetchOutline } = await clientOver();

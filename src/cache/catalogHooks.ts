@@ -9,6 +9,7 @@ import {
 import type { CatalogRowsRequest } from '../services/sessionCatalogHandlers';
 import type { TextReadStatus } from '../types/text-read-status';
 import type { CatalogFacets, CatalogRow } from '../utils/analysis-query';
+import type { AnalysisDeletionOutcome } from '../utils/analysis-selectors';
 import useLatestRef from '../hooks/useLatestRef';
 import useSessionChange from '../hooks/useSessionChange';
 import { usePageSession } from './pageHooks';
@@ -231,6 +232,16 @@ export function useCatalogReads(currentBook: string) {
     () => ({
       countUsages: (analysisIds: readonly string[]) =>
         papi.commands.sendCommand('interlinearizer.countUsages', { sessionId, analysisIds }),
+      previewDeletion: async (analysisId: string): Promise<AnalysisDeletionOutcome | undefined> => {
+        const outcome = JSON.parse(
+          await papi.commands.sendCommand('interlinearizer.previewDeletion', {
+            sessionId,
+            analysisId,
+          }),
+        );
+        /* v8 ignore next -- the panel previews only ids its rows hold, which always resolve */
+        return outcome ?? undefined;
+      },
       rowsByIds: (analysisIds: readonly string[]) =>
         fetchRowsByIds(sessionId, currentBook, analysisIds),
     }),

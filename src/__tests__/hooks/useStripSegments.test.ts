@@ -2,22 +2,18 @@
 
 import { act, renderHook } from '@testing-library/react';
 import type { Book } from 'interlinearizer';
-import type { SegmentPages } from '../../types/segment-pages';
 import useStripSegments, {
   STRIP_PREFETCH_SEGMENTS,
   type UseStripSegmentsArgs,
 } from '../../hooks/useStripSegments';
+import type { SegmentPages } from '../../types/segment-pages';
 import { STRIP_MARGIN_WORDS } from '../../utils/strip-range';
-import { makeSegment, makeWordToken, outlineOf } from '../test-helpers';
+import { EMPTY_GEN_BOOK, makeSegment, makeWordToken, outlineOf } from '../test-helpers';
 
 /** A book of `count` one-word verses in chapter 1. */
 function makeBook(count: number): Book {
   return {
-    id: 'GEN',
-    bookRef: 'GEN',
-    textVersion: 'v1',
-    duplicateVerseIds: [],
-    invalidVerseIds: [],
+    ...EMPTY_GEN_BOOK,
     segments: Array.from({ length: count }, (_unused, i) =>
       makeSegment(`GEN 1:${i + 1}`, 'word', [makeWordToken(tokenAt(i), 'word')]),
     ),

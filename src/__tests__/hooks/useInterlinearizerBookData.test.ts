@@ -7,7 +7,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
 import { useEvent } from 'platform-bible-react';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
-import { getMockedSendCommand, makeSegment, makeWordToken } from '../test-helpers';
+import { EMPTY_GEN_BOOK, getMockedSendCommand, makeSegment, makeWordToken } from '../test-helpers';
 
 /** Mock PlatformError shape */
 type PlatformError = { message: string; platformErrorVersion: number };
@@ -15,11 +15,7 @@ type PlatformError = { message: string; platformErrorVersion: number };
 const mockSendCommand = getMockedSendCommand(papi);
 
 const TEST_BOOK: Book = {
-  id: 'GEN',
-  bookRef: 'GEN',
-  textVersion: 'v1',
-  duplicateVerseIds: [],
-  invalidVerseIds: [],
+  ...EMPTY_GEN_BOOK,
   segments: [
     makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
     makeSegment('GEN 1:2', 'And the earth.', [makeWordToken('GEN 1:2:0', 'And')]),

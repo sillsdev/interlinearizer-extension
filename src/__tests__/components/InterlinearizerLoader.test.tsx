@@ -46,13 +46,14 @@ import type { PhraseMode } from '../../types/phrase-mode';
 import type { ViewOptions } from '../../types/view-options';
 import type { SegmentationDispatch } from '../../components/SegmentationStore';
 import {
+  EMPTY_GEN_BOOK,
   FIXTURE_STAMPS,
   GEN_1_1_BOOK,
+  getMockedPdpGet,
   makePunctToken,
   makeScrollGroupHook,
   makeSegment,
   makeVerseBook,
-  getMockedPdpGet,
   makeWebViewState,
   makeWordToken,
   type ScrollGroupTuple,
@@ -347,11 +348,7 @@ function analysisApprovingAt(tokenRef: string, surfaceText: string): TextAnalysi
 
 /** A one-verse book with a second word to split before. */
 const ALPHA_BETA_BOOK: Book = {
-  id: 'GEN',
-  bookRef: 'GEN',
-  textVersion: 'v1',
-  duplicateVerseIds: [],
-  invalidVerseIds: [],
+  ...EMPTY_GEN_BOOK,
   segments: [
     makeSegment('GEN 1:1', 'Alpha beta.', [
       makeWordToken('GEN 1:1:0', 'Alpha'),
@@ -975,11 +972,9 @@ describe('InterlinearizerLoader', () => {
 
   it('keeps a verse-0 reference when the book has a verse-0 (superscription) segment', async () => {
     const bookWithSuperscription: Book = {
+      ...EMPTY_GEN_BOOK,
       id: 'PSA',
       bookRef: 'PSA',
-      textVersion: 'v1',
-      duplicateVerseIds: [],
-      invalidVerseIds: [],
       segments: [makeSegment('PSA 3:0', 'A Psalm by David.', [])],
     };
     mockBookData({ book: bookWithSuperscription });
@@ -1032,11 +1027,7 @@ describe('InterlinearizerLoader', () => {
     // to the chapter's last segment rather than letting the views fall back to the start of the
     // book. Chapter 4 exists so the test proves resolution stays within the requested chapter.
     const multiSegmentBook: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      duplicateVerseIds: [],
-      invalidVerseIds: [],
+      ...EMPTY_GEN_BOOK,
       segments: [
         makeSegment('GEN 3:1', 'First verse.', []),
         makeSegment('GEN 3:2', 'Last verse of the chapter.', []),
@@ -1068,11 +1059,7 @@ describe('InterlinearizerLoader', () => {
     // (verse 4 here, with only 5:1..5:3 present), the fallback must still find the nearest preceding
     // verse start in chapter 5 — 5:3 — even though no segment's `startRef` sits in chapter 5.
     const crossChapterBook: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      duplicateVerseIds: [],
-      invalidVerseIds: [],
+      ...EMPTY_GEN_BOOK,
       segments: [
         {
           id: 'GEN 4:20',
@@ -1113,11 +1100,7 @@ describe('InterlinearizerLoader', () => {
     // segment, so the loader resolves it to the nearest preceding segment start in the chapter —
     // skipping the later segment that also sits in the chapter.
     const gappedBook: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      duplicateVerseIds: [],
-      invalidVerseIds: [],
+      ...EMPTY_GEN_BOOK,
       segments: [
         makeSegment('GEN 3:1', 'First verse.', []),
         makeSegment('GEN 3:3', 'Verse after the gap.', []),
@@ -1147,11 +1130,7 @@ describe('InterlinearizerLoader', () => {
     // segment even though no segment starts at it, so the loader passes the reference through
     // unchanged and the views resolve it to the containing segment.
     const mergedSegmentBook: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      duplicateVerseIds: [],
-      invalidVerseIds: [],
+      ...EMPTY_GEN_BOOK,
       segments: [
         {
           id: 'GEN 3:1',
@@ -3135,11 +3114,7 @@ describe('InterlinearizerLoader', () => {
   describe('segmentation dispatch', () => {
     /** A two-verse book so boundary edits produce real, non-default deltas. */
     const TWO_VERSE_BOOK: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      duplicateVerseIds: [],
-      invalidVerseIds: [],
+      ...EMPTY_GEN_BOOK,
       segments: [
         makeSegment('GEN 1:1', 'Alpha beta.', [
           makeWordToken('GEN 1:1:0', 'Alpha'),
@@ -3269,11 +3244,7 @@ describe('InterlinearizerLoader', () => {
      * verse with no word token at all (1:4), and a token-less verse (1:5).
      */
     const BOUNDARY_SHAPES_BOOK: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      duplicateVerseIds: [],
-      invalidVerseIds: [],
+      ...EMPTY_GEN_BOOK,
       segments: [
         makeSegment('GEN 1:1', 'Alpha.', [makeWordToken('GEN 1:1:0', 'Alpha')]),
         makeSegment('GEN 1:2', '“Gamma.', [

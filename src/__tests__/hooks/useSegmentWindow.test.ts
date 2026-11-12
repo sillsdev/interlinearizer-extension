@@ -2,6 +2,8 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment } from 'interlinearizer';
 import { act, fireEvent, renderHook } from '@testing-library/react';
 import { useRef } from 'react';
+import { verseKey, type RecenterRequest } from '../../components/InterlinearNavContext';
+import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useSegmentWindow, {
   CULL_RETENTION_PX,
   EXTEND_CHUNK,
@@ -14,10 +16,8 @@ import useSegmentWindow, {
   SKIM_SETTLE_MS,
   SKIM_SLIDE_PX,
 } from '../../hooks/useSegmentWindow';
-import { verseKey, type RecenterRequest } from '../../components/InterlinearNavContext';
-import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import type { HeightTable } from '../../utils/segment-heights';
-import { makeWordToken, outlineOf } from '../test-helpers';
+import { EMPTY_GEN_BOOK, makeWordToken, outlineOf } from '../test-helpers';
 
 /** Height the test table gives every segment, so a jump target reads as a round offset. */
 const UNIFORM_SEGMENT_PX = 1000;
@@ -78,14 +78,7 @@ function makeBook(chapter1Count: number, chapter2Count: number, book = 'GEN'): B
   const segments: Segment[] = [];
   for (let v = 1; v <= chapter1Count; v += 1) segments.push(makeSegment(1, v, book));
   for (let v = 1; v <= chapter2Count; v += 1) segments.push(makeSegment(2, v, book));
-  return {
-    id: book,
-    bookRef: book,
-    textVersion: 'v1',
-    segments,
-    duplicateVerseIds: [],
-    invalidVerseIds: [],
-  };
+  return { ...EMPTY_GEN_BOOK, id: book, bookRef: book, segments };
 }
 
 const tokenSegmentMaps = new WeakMap<readonly Segment[], ReadonlyMap<string, string>>();
@@ -1249,14 +1242,7 @@ describe('useSegmentWindow', () => {
       },
       ...Array.from({ length: 8 }, (_, i) => makeSegment(1, i + 13)),
     ];
-    const book: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      segments,
-      duplicateVerseIds: [],
-      invalidVerseIds: [],
-    };
+    const book: Book = { ...EMPTY_GEN_BOOK, segments };
     const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 11 });
 
     // The merged segment sits at flat index 10, so the window centers there rather than on the
@@ -1790,14 +1776,7 @@ describe('useSegmentWindow', () => {
       },
       ...Array.from({ length: 94 }, (_, i) => makeSegment(1, i + 7)),
     ];
-    const editedBook: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      segments: mergedTail,
-      duplicateVerseIds: [],
-      invalidVerseIds: [],
-    };
+    const editedBook: Book = { ...EMPTY_GEN_BOOK, segments: mergedTail };
 
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
@@ -1823,14 +1802,7 @@ describe('useSegmentWindow', () => {
       { ...makeSegment(1, 5), id: 'GEN 1:5b' },
       ...Array.from({ length: 95 }, (_, i) => makeSegment(1, i + 6)),
     ];
-    const editedBook: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      segments: splitTail,
-      duplicateVerseIds: [],
-      invalidVerseIds: [],
-    };
+    const editedBook: Book = { ...EMPTY_GEN_BOOK, segments: splitTail };
 
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
@@ -1857,14 +1829,7 @@ describe('useSegmentWindow', () => {
       },
       makeSegment(1, 100),
     ];
-    const editedBook: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      segments: mergedTail,
-      duplicateVerseIds: [],
-      invalidVerseIds: [],
-    };
+    const editedBook: Book = { ...EMPTY_GEN_BOOK, segments: mergedTail };
 
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 

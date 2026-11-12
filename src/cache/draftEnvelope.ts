@@ -1,5 +1,6 @@
 import type { DraftEnvelope } from 'interlinearizer';
 import type { ChangeSet } from '../types/analysis-repository';
+import { deepEqual } from '../utils/analysis-identity';
 import { isEmptyChangeSet } from '../utils/change-set';
 
 /** Whether changes left the draft unsaved, or `'kept'` when they left its unsaved mark as it was. */
@@ -98,7 +99,7 @@ export class DraftEnvelopeStore {
       this.marksDuringFetch = undefined;
     }
     // An envelope fetched again unchanged keeps the held one, so its readers render nothing new.
-    if (this.held && JSON.stringify(this.held) === JSON.stringify(next)) return;
+    if (this.held && deepEqual(this.held, next)) return;
     this.held = next;
     this.notify();
   }

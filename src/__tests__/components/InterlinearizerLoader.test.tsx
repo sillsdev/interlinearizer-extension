@@ -369,6 +369,8 @@ const otherCommands = jest.fn<Promise<unknown>, unknown[]>();
 
 /** The book the fake host pages, which follows the book a test serves the view. */
 let hostBook: Book = GEN_1_1_BOOK;
+/** The interface languages that the host's sessions read, as `mockSettings` last mocked them. */
+let hostInterfaceLanguages: string[] = [];
 
 /** The fake host that serves the view's session. */
 let host: Awaited<ReturnType<typeof fakeHost>>;
@@ -393,6 +395,7 @@ async function viewedAnalysis(): Promise<TextAnalysis> {
 
 beforeEach(async () => {
   hostBook = GEN_1_1_BOOK;
+  hostInterfaceLanguages = [];
   outlineAnswer = undefined;
   otherCommands.mockResolvedValue(undefined);
   host = await fakeHost(
@@ -405,7 +408,11 @@ beforeEach(async () => {
       const { error } = outlineAnswer;
       return error === undefined ? new Promise(() => {}) : Promise.reject(new Error(error));
     },
-    { book: GEN_1_1_BOOK, textOf: () => hostBook },
+    {
+      book: GEN_1_1_BOOK,
+      textOf: () => hostBook,
+      getInterfaceLanguages: async () => hostInterfaceLanguages,
+    },
   );
 });
 
@@ -762,6 +769,7 @@ function mockSettings(
   interfaceLanguage: string[] = [],
   isInterfaceModeLoading = false,
 ): void {
+  hostInterfaceLanguages = interfaceLanguage;
   jest.mocked(useSetting).mockImplementation((key: string) => {
     if (key === 'platform.interfaceMode')
       return [interfaceMode, jest.fn(), jest.fn(), isInterfaceModeLoading];

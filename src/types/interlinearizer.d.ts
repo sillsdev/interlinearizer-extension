@@ -2534,9 +2534,6 @@ declare module 'interlinearizer' {
    * on load. Alignment `links` are intentionally not carried here yet (there is no link-editing
    * feature); `Save` preserves a target project's existing links via `updateAnalysis`.
    */
-  /** A draft without its analysis or boundaries, which the view reads whole. */
-  export type DraftEnvelope = Omit<DraftProject, 'analysis' | 'segmentation'>;
-
   export interface DraftProject {
     /** Platform.Bible source project ID this draft belongs to; equals the storage key suffix. */
     sourceProjectId: string;
@@ -2581,6 +2578,9 @@ declare module 'interlinearizer' {
      */
     segmentation?: SegmentationDelta;
   }
+
+  /** A draft without its analysis or boundaries, which the view reads whole. */
+  export type DraftEnvelope = Omit<DraftProject, 'analysis' | 'segmentation'>;
 
   // ---------------------------------------------------------------------------
   // §8 ActiveProject — runtime pairing of project envelope and text layers

@@ -137,7 +137,7 @@ describe('CatalogSenseControl', () => {
       renderControl();
 
       expect(screen.getByRole('button', { name: 'senseAddLink' })).toBeInTheDocument();
-      expect(screen.getByTestId('link2-icon')).toBeInTheDocument();
+      expect(screen.getByTestId('book-open-icon')).toBeInTheDocument();
     });
 
     it('shows a read-only link as a mark that opens nothing', async () => {

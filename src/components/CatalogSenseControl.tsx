@@ -1,6 +1,6 @@
 import type { MultiString, SenseRef } from 'interlinearizer';
 import type { SenseCandidate } from 'interlinearizer/lexicon';
-import { BookAlert, BookOpen, Link2 } from 'lucide-react';
+import { BookAlert, BookOpen } from 'lucide-react';
 import { Button, Popover, PopoverContent, PopoverTrigger, Spinner } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
@@ -88,7 +88,7 @@ function StaticMark({
   return (
     <LocalizedTooltip label={label}>
       <span
-        className={`tw:flex tw:shrink-0 tw:items-center tw:justify-center tw:text-muted-foreground${className ? ` ${className}` : ''}`}
+        className={`tw:flex tw:shrink-0 tw:items-center tw:justify-center tw:text-foreground${className ? ` ${className}` : ''}`}
         data-differs={String(link.differs)}
         data-from-lexicon={String(link.fromLexicon)}
         data-testid="catalog-sense-link"
@@ -285,7 +285,7 @@ export default function CatalogSenseControl({
   if (!canLink && !canUnlink && !canAdopt)
     return <StaticMark className={className} label={label} link={link} style={style} />;
 
-  const Icon = linked ? linkIcon(link) : Link2;
+  const Icon = linked ? linkIcon(link) : BookOpen;
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
     if (!next) setView('menu');
@@ -408,7 +408,7 @@ export default function CatalogSenseControl({
         <PopoverTrigger asChild>
           <Button
             aria-label={label}
-            className={`tw:shrink-0 tw:justify-self-center tw:text-muted-foreground${className ? ` ${className}` : ''}`}
+            className={`tw:shrink-0 tw:justify-self-center ${linked ? 'tw:text-foreground' : 'tw:text-muted-foreground/50'}${className ? ` ${className}` : ''}`}
             data-testid="catalog-sense-control"
             size="icon-xs"
             style={style}

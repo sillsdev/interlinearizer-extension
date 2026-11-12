@@ -400,7 +400,8 @@ declare module 'papi-shared-types' {
     ) => Promise<void>;
 
     /**
-     * Sets the language a session's glosses are read and written in.
+     * Sets the language a session's glosses are read and written in. A new language is reported as
+     * a change that names the catalog.
      *
      * @throws If the session is not open (logged before rethrowing).
      */
@@ -979,6 +980,68 @@ declare module 'papi-shared-types' {
     'interlinearizer.previewRemovals': (
       args: import('interlinearizer').SessionCommandArgs & {
         request: import('interlinearizer').RemovalPreviewRequest;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Serves one page of a session's analysis catalog, its usages placed among the current book's
+     * headings, or among none when that book cannot be read.
+     *
+     * @returns A JSON string of the `CatalogPage`, each row's books listed.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getCatalogRows': (
+      args: import('interlinearizer').SessionCommandArgs & {
+        request: import('../services/sessionCatalogHandlers').CatalogRowsRequest;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Summarizes the selected analyses of a session's draft for a bulk action over them. A tie in
+     * use for the merge's survivor goes to the analysis named first.
+     *
+     * @returns A JSON string of the `SelectionSummary`.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getSelectionSummary': (
+      args: import('interlinearizer').SessionCommandArgs & { analysisIds: readonly string[] },
+    ) => Promise<string>;
+
+    /**
+     * Counts the distinct tokens in a session's draft that approve any of the analyses.
+     *
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.countUsages': (
+      args: import('interlinearizer').SessionCommandArgs & { analysisIds: readonly string[] },
+    ) => Promise<number>;
+
+    /**
+     * Serves the catalog rows of the analyses in a session's draft that `analysisIds` names, in
+     * that order, leaving out unstored ids.
+     *
+     * @returns A JSON string of the rows, each row's books listed.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getCatalogRowsByIds': (
+      args: import('interlinearizer').SessionCommandArgs & {
+        currentBook: string;
+        analysisIds: readonly string[];
+      },
+    ) => Promise<string>;
+
+    /**
+     * Serves the catalog rows in a session's draft sharing the analysis's normalized surface form,
+     * the analysis's own among them, most used first.
+     *
+     * @returns A JSON string of the rows, each row's books listed; `"[]"` when no analysis carries
+     *   the id.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getHomographRows': (
+      args: import('interlinearizer').SessionCommandArgs & {
+        currentBook: string;
+        analysisId: string;
       },
     ) => Promise<string>;
 
@@ -2392,7 +2455,8 @@ declare module 'interlinearizer' {
   };
 
   /** A host query whose answer spans books, which a view keeps and refetches when a change names it. */
-  export type AnalysisQuery = 'getCatalogRows' | 'getConcordance' | 'getStaleSummary';
+  export type AnalysisQuery =
+    'getCatalogRows' | 'getConcordance' | 'getStaleSummary' | 'getTextReadStatus';
 
   /** Outline indexes `[start, end)` of a book's segments. */
   export type SegmentRange = { start: number; end: number };

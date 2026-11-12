@@ -17,7 +17,6 @@ import {
   selectApprovedGloss,
   selectApprovedGlossSenseRef,
   selectApprovedMorphemes,
-  selectCatalogRows,
   selectMorphemePayloadIsSolelyOwned,
   selectMorphemeResetLosesAnnotation,
   selectPhraseLinkById,
@@ -729,26 +728,6 @@ describe('selectPoolIndex', () => {
     const a = selectPoolIndex(store.getState().analysis);
     const b = selectPoolIndex(store.getState().analysis);
     expect(a).toBe(b);
-  });
-});
-
-describe('selectCatalogRows', () => {
-  it('returns the same reference for repeated calls on unchanged state (memoized)', () => {
-    const store = createAnalysisStore();
-
-    const a = selectCatalogRows(store.getState().analysis, 'GEN');
-    const b = selectCatalogRows(store.getState().analysis, 'GEN');
-
-    expect(a).toBe(b);
-  });
-
-  it('keeps a book cached across a call for another one', () => {
-    const store = createAnalysisStore();
-
-    const first = selectCatalogRows(store.getState().analysis, 'GEN');
-    selectCatalogRows(store.getState().analysis, 'MAT');
-
-    expect(selectCatalogRows(store.getState().analysis, 'GEN')).toBe(first);
   });
 });
 

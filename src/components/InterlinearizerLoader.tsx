@@ -89,7 +89,7 @@ import {
   toSerializedVerseRef,
   verseOfId,
 } from '../utils/verse-ref';
-import { placeHeadings, type CatalogFilters } from '../utils/analysis-query';
+import type { CatalogFilters } from '../utils/analysis-query';
 import { nextSegmentAmong } from '../utils/stale-free-translations';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
@@ -774,8 +774,6 @@ function InterlinearizerLoaderInner({
   );
 
   const { pages, isLoading: isPagesLoading, error: pagesError } = session?.pages ?? OPENING_PAGES;
-
-  const headingPlacements = useMemo(() => placeHeadings(verseBook?.segments ?? []), [verseBook]);
 
   const { undismissedLostBoundaries, onDismiss: handleDismissLostBoundaries } =
     useLostBoundaryDismissal({
@@ -1786,7 +1784,6 @@ function InterlinearizerLoaderInner({
                 announceUndoable={announceUndoable}
                 currentBook={scrRef.book}
                 currentBookName={currentBookName}
-                headingPlacements={headingPlacements}
                 liveSurfaceText={liveSurfaceText}
                 localizedStrings={localizedStrings}
                 onClose={handleSidePanelClose}

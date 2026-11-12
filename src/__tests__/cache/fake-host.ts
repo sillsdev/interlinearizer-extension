@@ -2,13 +2,16 @@ import papi from '@papi/frontend';
 import { act } from '@testing-library/react';
 import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
 import { useEvent } from 'platform-bible-react';
+import * as React from 'react';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import * as tokenCommands from '../../services/commands/tokenCommands';
 import { DraftRepository } from '../../services/draftRepository';
+import { sessionCatalogHandlers } from '../../services/sessionCatalogHandlers';
 import { sessionEditHandlers } from '../../services/sessionEditHandlers';
 import { readBookOutline, readSegmentPage } from '../../services/sessionPages';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
+import type { TextReadStatus } from '../../types/text-read-status';
 import { silentLogger } from '../test-helpers';
 import { BOOK, NOW, sessionOver } from './session-source';
 
@@ -20,6 +23,46 @@ function field(args: unknown, key: string): string {
   const value = typeof args === 'object' && args ? Reflect.get(args, key) : undefined;
   if (typeof value !== 'string') throw new Error(`fake host: ${key} is not a string`);
   return value;
+}
+
+/** The commands a {@link fakeHost} is still answering. */
+const inFlight = new Set<Promise<unknown>>();
+
+/**
+ * Settles once the {@link fakeHost} has answered every command sent so far, along with every command
+ * sent while it answers them.
+ */
+export async function hostSettled(): Promise<void> {
+  // Lets the views act on what has settled. Acting on it can send the next commands to wait for.
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  if (inFlight.size === 0) return;
+  await Promise.allSettled([...inFlight]);
+  await hostSettled();
+}
+
+/** The source text as a {@link fakeHost} reads it whole. */
+export type FakeText = Readonly<{
+  status: () => TextReadStatus;
+  /** Whether the text holds a normalized form, `undefined` until it is read. */
+  isFormInText: (form: string) => boolean | undefined;
+}>;
+
+/** A text of one book whose whole-text read has not yet read it. */
+export function unreadText(): FakeText {
+  return {
+    status: () => ({ booksRead: 0, bookCount: 1, failedBookIds: [] }),
+    isFormInText: () => undefined,
+  };
+}
+
+/** A text of one book, read, holding exactly `forms`. */
+export function readText(forms: readonly string[]): FakeText {
+  return {
+    status: () => ({ booksRead: 1, bookCount: 1, failedBookIds: [] }),
+    isFormInText: (form) => forms.includes(form),
+  };
 }
 
 /** The project that {@link fakeHost} starts a draft over from, when Open names its id. */
@@ -59,6 +102,12 @@ function startedDraft(sourceProjectId: string, from: unknown): DraftProject {
   };
 }
 
+/** React's shared internals, whose `actQueue` is set while an `act` scope is open or flushing. */
+const REACT_INTERNALS: object = Reflect.get(
+  React,
+  '__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE',
+);
+
 /**
  * Hands `change` to every listener that the views registered for {@link ANALYSIS_CHANGED_EVENT}, as
  * the platform relays a change to each.
@@ -70,7 +119,12 @@ export function relayChange(change: unknown): void {
       .mock.calls.filter(([event]) => event === ANALYSIS_CHANGED_EVENT)
       .map(([, handler]) => handler),
   );
-  act(() => handlers.forEach((handler) => typeof handler === 'function' && handler(change)));
+  const deliver = () =>
+    handlers.forEach((handler) => typeof handler === 'function' && handler(change));
+  // A change can land while an awaited `act` flushes its queued work. A nested `act` there would
+  // clear that queue on exit, leaving the flush's later updates outside any `act`.
+  if (Reflect.get(REACT_INTERNALS, 'actQueue')) deliver();
+  else act(deliver);
 }
 
 /**
@@ -80,7 +134,9 @@ export function relayChange(change: unknown): void {
  * answers gets that answer instead. A command that the host does not serve resolves to what
  * `others` returns, `undefined` by default. An edit that `others` leaves unanswered runs through
  * the host's own handlers, except `writeGloss`, whose record ids come from the gloss value it
- * writes. Every change that a session reports is relayed to the views.
+ * writes. The catalog queries run through the host's own handlers. `getTextReadStatus` answers from
+ * `others` first, then from `text`, which stands for the whole-text read and is unread by default.
+ * Every change that a session reports is relayed to the views.
  */
 export async function fakeHost(
   others: (command: string, args: unknown[]) => Promise<string | undefined> = async () => undefined,
@@ -89,7 +145,13 @@ export async function fakeHost(
     analysis,
     book = BOOK,
     textOf = () => book,
-  }: Readonly<{ analysis?: Partial<TextAnalysis>; book?: Book; textOf?: () => Book }> = {},
+    text = unreadText(),
+  }: Readonly<{
+    analysis?: Partial<TextAnalysis>;
+    book?: Book;
+    textOf?: () => Book;
+    text?: FakeText;
+  }> = {},
 ) {
   const made = await sessionOver(analysis, undefined, book);
   const { sessions, storage } = made;
@@ -105,6 +167,13 @@ export async function fakeHost(
       bookId === textOf().bookRef ? textOf() : undefined,
     getProject: async () => undefined,
   });
+  const catalog = sessionCatalogHandlers({
+    sessions,
+    logger: { error: () => {} },
+    getOpenVerseBook: async (_sourceProjectId, bookId) =>
+      bookId === textOf().bookRef ? textOf() : undefined,
+    isFormInText: (_sourceProjectId, form) => text.isFormInText(form),
+  });
   const segmented = async (sessionId: string) => {
     const { segmentation } = await sessions.run(sessionId, (session) =>
       session.repository.getScope(),
@@ -116,7 +185,7 @@ export async function fakeHost(
     .mockImplementation((name: string) =>
       name === 'interlinearizer.onAnalysisChanged' ? ANALYSIS_CHANGED_EVENT : () => () => true,
     );
-  jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call: unknown[]) => {
+  const serve = async (...call: unknown[]): Promise<string | number | void> => {
     const [command, first, ...rest] = call;
     const intercepted = intercept(String(command));
     if (intercepted) return intercepted;
@@ -150,6 +219,19 @@ export async function fakeHost(
             readSegmentPage(session.repository, segmentedBook, Number(start), Number(end)),
           ),
         );
+      }
+      case 'interlinearizer.getTextReadStatus':
+        return (await others(String(command), [first, ...rest])) ?? JSON.stringify(text.status());
+      case 'interlinearizer.getCatalogRows':
+      case 'interlinearizer.getSelectionSummary':
+      case 'interlinearizer.countUsages':
+      case 'interlinearizer.getCatalogRowsByIds':
+      case 'interlinearizer.getHomographRows': {
+        const handler: (args: unknown) => Promise<string | number> = Reflect.get(
+          catalog,
+          String(command),
+        );
+        return handler(first);
       }
       case 'interlinearizer.undoEdit': {
         const reply = await sessions.undo(field(first, 'sessionId'), field(first, 'changeId'));
@@ -203,6 +285,12 @@ export async function fakeHost(
         return answer === undefined && edit ? edit(first) : answer;
       }
     }
+  };
+  jest.mocked(papi.commands.sendCommand).mockImplementation((...call: unknown[]) => {
+    const answer = serve(...call);
+    inFlight.add(answer);
+    answer.finally(() => inFlight.delete(answer)).catch(() => {});
+    return answer;
   });
   return made;
 }

@@ -20,6 +20,7 @@ import {
   onBookRead,
   onBookTextChanged,
   onTextRead,
+  onTextReadProgress,
   startTextRead,
   stopTextRead,
 } from '../../services/bookService';
@@ -1573,6 +1574,72 @@ describe('onBookRead', () => {
 
     expect(project.subscriptions).toHaveLength(1);
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('onTextReadProgress', () => {
+  const unsubscribers: Array<() => boolean> = [];
+
+  /** A listener for read progress, registered for the test and removed once it ends. */
+  function listenForProgress() {
+    const listener = jest.fn();
+    unsubscribers.push(onTextReadProgress(listener));
+    return listener;
+  }
+
+  afterEach(() => {
+    unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
+  });
+
+  it('reports each book the read files, its forms unanswerable until the read ends', async () => {
+    const project = serveProject();
+    project.booksPresent = '11';
+    const listener = listenForProgress();
+    readStatus();
+    await settle();
+
+    project.subscriptions[0].deliver(usj('GEN'));
+    await settle();
+
+    expect(listener.mock.calls).toEqual([['src', false]]);
+    await finishReading(project);
+  });
+
+  it('reports that the forms are answerable once every book is read', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '11';
+    const listener = listenForProgress();
+
+    readStatus();
+    await settle();
+
+    expect(listener.mock.calls.at(-1)).toEqual(['src', true]);
+  });
+
+  it('reports a failed book', async () => {
+    const project = serveProject(() => platformError('busy'));
+    project.booksPresent = '1';
+    const listener = listenForProgress();
+
+    readStatus();
+    await settle();
+
+    expect(listener).toHaveBeenCalledWith('src', false);
+  });
+
+  it('reports a change to the forms when an edit rereads a book of a finished read', async () => {
+    let delivery: Delivery = usj('GEN');
+    const project = serveProject(() => delivery);
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+    const listener = listenForProgress();
+
+    delivery = usj('GEN', 'v2');
+    subscriptionsTo(project, 'GEN').at(-1)?.deliver(delivery);
+    await settle();
+
+    expect(listener.mock.calls).toEqual([['src', true]]);
   });
 });
 

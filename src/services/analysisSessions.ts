@@ -1,5 +1,6 @@
 import type {
   AnalysisChange,
+  AnalysisQuery,
   Book,
   ChangeId,
   DraftProject,
@@ -464,13 +465,23 @@ export class AnalysisSessions {
 
   /**
    * Sets the language that the session's glosses are read and written in, unchecked against the
-   * languages its draft lists. A read-only session takes it too, since it changes nothing stored.
+   * languages its draft lists. A read-only session takes it too, since it changes nothing stored. A
+   * switch to a different language is reported as a change that names the catalog, because the
+   * catalog's rows are read in the session's language.
    *
    * @throws {Error} If the session is not open.
    */
   setAnalysisLanguage(sessionId: string, analysisLanguage: string): Promise<void> {
     return this.run(sessionId, async (session) => {
+      if (session.analysisLanguage === analysisLanguage) return;
       session.analysisLanguage = analysisLanguage;
+      report(
+        this.host,
+        session,
+        { books: [], analysisIds: [], forms: [], queries: ['getCatalogRows'] },
+        crypto.randomUUID(),
+        [],
+      );
     });
   }
 
@@ -794,6 +805,30 @@ export class AnalysisSessions {
         ),
         crypto.randomUUID(),
         passes.map(({ changes }) => changes),
+      );
+    });
+  }
+
+  /**
+   * Reports through the session open on the source project, in that session's turn, that its
+   * whole-text read moved. The report names the read status, and names the catalog too when
+   * `formsChanged`. It carries no changes to apply. Does nothing when the source has no session
+   * open.
+   *
+   * @throws {Error} If the session is closing.
+   */
+  reportTextReadProgress(sourceProjectId: string, formsChanged: boolean): Promise<void> {
+    const entry = this.sessionsBySource.get(sourceProjectId);
+    if (!entry) return Promise.resolve();
+    return this.run(entry.session.id, async (session) => {
+      const queries: AnalysisQuery[] = ['getTextReadStatus'];
+      if (formsChanged) queries.push('getCatalogRows');
+      report(
+        this.host,
+        session,
+        { books: [], analysisIds: [], forms: [], queries },
+        crypto.randomUUID(),
+        [],
       );
     });
   }

@@ -96,7 +96,8 @@ export default function CatalogRowHeader({
             { form: row.surfaceText, gloss: glossLabel },
           )}
           checked={isChecked}
-          className="tw:col-start-1 tw:me-2"
+          // The box's default hit area reaches past its x-margin and onto the toggle's chevron.
+          className="tw:col-start-1 tw:me-2 tw:after:-inset-x-1"
           data-testid="catalog-row-check"
           onCheckedChange={(checked: boolean) => onCheckedChange(row.analysisId, checked)}
         />

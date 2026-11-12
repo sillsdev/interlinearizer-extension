@@ -494,10 +494,16 @@ describe('main', () => {
 
       it('disposes the emitter and stops listening on deactivation', async () => {
         const emitters = emittersByEvent();
-        const unsubscribers = [jest.fn(() => true), jest.fn(() => true), jest.fn(() => true)];
+        const unsubscribers = [
+          jest.fn(() => true),
+          jest.fn(() => true),
+          jest.fn(() => true),
+          jest.fn(() => true),
+        ];
         jest.mocked(bookService.onBookTextChanged).mockReturnValue(unsubscribers[0]);
         jest.mocked(bookService.onBookRead).mockReturnValue(unsubscribers[1]);
         jest.mocked(bookService.onTextRead).mockReturnValue(unsubscribers[2]);
+        jest.mocked(bookService.onTextReadProgress).mockReturnValue(unsubscribers[3]);
         const context = createTestActivationContext();
         await activate(context);
 
@@ -568,6 +574,36 @@ describe('main', () => {
       });
     });
 
+    describe('whole-text read progress', () => {
+      it("reports the read's progress through the source's session", async () => {
+        const reportTextReadProgress = jest
+          .spyOn(AnalysisSessions.prototype, 'reportTextReadProgress')
+          .mockResolvedValue(undefined);
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onTextReadProgress).mock.calls[0];
+
+        listener('src-project', true);
+
+        expect(reportTextReadProgress).toHaveBeenCalledWith('src-project', true);
+      });
+
+      it('logs a progress report that fails', async () => {
+        jest
+          .spyOn(AnalysisSessions.prototype, 'reportTextReadProgress')
+          .mockRejectedValue(new Error('closing'));
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onTextReadProgress).mock.calls[0];
+
+        listener('src-project', false);
+        await nextTick();
+
+        expect(__mockLogger.warn).toHaveBeenCalledWith(
+          'Interlinearizer: could not report how far the text of project src-project is read',
+          expect.any(Error),
+        );
+      });
+    });
+
     it('registers the WebView provider with a callable getWebView handler', async () => {
       const context = createTestActivationContext();
       await activate(context);
@@ -630,6 +666,11 @@ describe('main', () => {
           'interlinearizer.getBookOutline',
           'interlinearizer.getSegments',
           'interlinearizer.getTextReadStatus',
+          'interlinearizer.getCatalogRows',
+          'interlinearizer.countUsages',
+          'interlinearizer.getSelectionSummary',
+          'interlinearizer.getCatalogRowsByIds',
+          'interlinearizer.getHomographRows',
           'interlinearizer.openSession',
           'interlinearizer.closeSession',
           'interlinearizer.setAnalysisLanguage',

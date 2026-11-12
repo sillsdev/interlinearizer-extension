@@ -130,6 +130,31 @@ export function sessionEditHandlers({
   }
 
   /**
+   * Runs a catalog edit aimed at `analysisId`. The edit stages its changes and resolves to the
+   * analysis that holds the edited content afterward. The undo step is placed at that analysis.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws As {@link runSessionEdit} does.
+   */
+  function runCatalogEdit(
+    target: EditTarget,
+    intent: string,
+    kind: 'catalogEdit' | 'catalogMerge',
+    analysisId: string,
+    edit: (buffer: ChangeBuffer, session: Session) => Promise<string | undefined>,
+  ): Promise<string> {
+    return runSessionEdit(target, intent, async (buffer, session) => {
+      const stepOf = await catalogStepOf(buffer, kind, analysisId);
+      const survivor = await edit(buffer, session);
+      target.step = stepOf(survivor);
+      return {
+        outcome: await catalogOutcomeOf(buffer, analysisId, survivor, session.analysisLanguage),
+      };
+    });
+  }
+
+  /**
    * Writes a token's gloss in the session's analysis language; a blank value clears it.
    *
    * @returns A JSON string of the {@link CommandReply}.
@@ -360,20 +385,19 @@ export function sessionEditHandlers({
     value,
     changeId,
   }: ArgsOf<'interlinearizer.writeAnalysisGloss'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'writeAnalysisGloss', async (buffer, session) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-      const survivor = await catalogCommands.writeAnalysisGloss(buffer, {
-        analysisId,
-        value,
-        analysisLanguage: session.analysisLanguage,
-        now: editStamp().now,
-      });
-      target.step = stepOf(survivor);
-      return {
-        outcome: await catalogOutcomeOf(buffer, analysisId, survivor, session.analysisLanguage),
-      };
-    });
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'writeAnalysisGloss',
+      'catalogEdit',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.writeAnalysisGloss(buffer, {
+          analysisId,
+          value,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
   }
 
   /**
@@ -414,20 +438,19 @@ export function sessionEditHandlers({
     writingSystem,
     changeId,
   }: ArgsOf<'interlinearizer.writeAnalysisMorphemes'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'writeAnalysisMorphemes', async (buffer, session) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-      const survivor = await catalogCommands.writeAnalysisMorphemes(buffer, {
-        analysisId,
-        morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
-        writingSystem,
-        now: editStamp().now,
-      });
-      target.step = stepOf(survivor);
-      return {
-        outcome: await catalogOutcomeOf(buffer, analysisId, survivor, session.analysisLanguage),
-      };
-    });
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'writeAnalysisMorphemes',
+      'catalogEdit',
+      analysisId,
+      (buffer) =>
+        catalogCommands.writeAnalysisMorphemes(buffer, {
+          analysisId,
+          morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
+          writingSystem,
+          now: editStamp().now,
+        }),
+    );
   }
 
   /**
@@ -467,21 +490,20 @@ export function sessionEditHandlers({
     value,
     changeId,
   }: ArgsOf<'interlinearizer.writeAnalysisMorphemeGloss'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'writeAnalysisMorphemeGloss', async (buffer, session) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-      const survivor = await catalogCommands.writeAnalysisMorphemeGloss(buffer, {
-        analysisId,
-        morphemeId,
-        value,
-        analysisLanguage: session.analysisLanguage,
-        now: editStamp().now,
-      });
-      target.step = stepOf(survivor);
-      return {
-        outcome: await catalogOutcomeOf(buffer, analysisId, survivor, session.analysisLanguage),
-      };
-    });
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'writeAnalysisMorphemeGloss',
+      'catalogEdit',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.writeAnalysisMorphemeGloss(buffer, {
+          analysisId,
+          morphemeId,
+          value,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
   }
 
   /**
@@ -517,26 +539,20 @@ export function sessionEditHandlers({
     content,
     changeId,
   }: ArgsOf<'interlinearizer.mergeAnalysesInto'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'mergeAnalysesInto', async (buffer, session) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogMerge', survivorAnalysisId);
-      const survivor = await catalogCommands.mergeAnalysesInto(buffer, {
-        survivorAnalysisId,
-        mergedAnalysisIds,
-        content,
-        analysisLanguage: session.analysisLanguage,
-        now: editStamp().now,
-      });
-      target.step = stepOf(survivor);
-      return {
-        outcome: await catalogOutcomeOf(
-          buffer,
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'mergeAnalysesInto',
+      'catalogMerge',
+      survivorAnalysisId,
+      (buffer, session) =>
+        catalogCommands.mergeAnalysesInto(buffer, {
           survivorAnalysisId,
-          survivor,
-          session.analysisLanguage,
-        ),
-      };
-    });
+          mergedAnalysisIds,
+          content,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
   }
 
   /**

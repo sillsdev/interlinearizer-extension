@@ -49,8 +49,8 @@ type NamedFetch<T> = Readonly<{
  * `undefined`.
  *
  * @returns `undefined` while `key` is `undefined`. Otherwise the latest answer for `key`, with
- *   whether the latest fetch failed; a failed fetch leaves the answer in place. Until an answer for
- *   `key` arrives, the answer is `undefined`, or the last key's answer with `keepPrevious`.
+ *   whether the latest fetch failed. Until an answer for `key` arrives, and after a failed fetch,
+ *   the answer is `undefined`, or, with `keepPrevious`, the last answer.
  */
 function useNamedFetch<T>(
   query: AnalysisQuery,
@@ -78,7 +78,7 @@ function useNamedFetch<T>(
         if (isCurrent)
           setAnswer((was) => ({
             key: sessionKey,
-            value: was?.key === sessionKey || keepPrevious ? was?.value : undefined,
+            value: keepPrevious ? was?.value : undefined,
             failed: true,
           }));
       }
@@ -170,7 +170,7 @@ async function fetchRowsByIds(
 
 /**
  * The rows of the analyses `analysisIds` names, by id, leaving out analyses no longer stored;
- * `undefined` until the rows for these ids arrive.
+ * `undefined` until the rows for these ids arrive, and after a fetch of them fails.
  */
 export function useCatalogRowsByIds(
   analysisIds: readonly string[],
@@ -186,7 +186,8 @@ export function useCatalogRowsByIds(
 
 /**
  * The rows sharing the surface form of the analysis `analysisId` names, most used first;
- * `undefined` while `analysisId` is `undefined`, and until the rows arrive.
+ * `undefined` while `analysisId` is `undefined`, until the rows arrive, and after a fetch of them
+ * fails.
  */
 export function useHomographRows(
   analysisId: string | undefined,
@@ -207,8 +208,8 @@ export function useHomographRows(
 }
 
 /**
- * What a bulk action over the selected analyses would reach; `undefined` while none is selected and
- * until it arrives.
+ * What a bulk action over the selected analyses would reach; `undefined` while none is selected,
+ * until it arrives, and after a fetch of it fails.
  */
 export function useSelectionSummary(analysisIds: readonly string[]): SelectionSummary | undefined {
   const { sessionId } = usePageSession();

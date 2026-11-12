@@ -240,7 +240,7 @@ describe('useSelectionSummary', () => {
     );
   });
 
-  it('keeps the last summary when fetching it again fails', async () => {
+  it('drops the last summary when fetching it again fails', async () => {
     const wrapper = await wrapperOver();
     const { result } = renderHook(() => useSelectionSummary(['ta-god']), { wrapper });
     await waitFor(() => expect(result.current).toBeDefined());
@@ -251,7 +251,7 @@ describe('useSelectionSummary', () => {
     );
     await settle();
 
-    expect(result.current).toStrictEqual({ usageCount: 1, glossedIds: ['ta-god'] });
+    expect(result.current).toBeUndefined();
   });
 
   it('logs a summary that could not be fetched', async () => {

@@ -7,11 +7,11 @@ import { usePageSession } from '../../cache/pageHooks';
 import { relayChange } from './fake-host';
 import { changeNaming, wrapperOver } from './hook-sessions';
 
-/** Renders {@link useNamedChanges} for `getConcordance`, beside the session it reads. */
-async function renderChanges() {
+/** Renders {@link useNamedChanges} for `query`, beside the session it reads. */
+async function renderChanges(query: Parameters<typeof useNamedChanges>[0] = 'getConcordance') {
   const wrapper = await wrapperOver();
   const { result } = renderHook(
-    () => ({ changes: useNamedChanges('getConcordance'), session: usePageSession() }),
+    () => ({ changes: useNamedChanges(query), session: usePageSession() }),
     { wrapper },
   );
   return result;
@@ -35,6 +35,26 @@ describe('useNamedChanges', () => {
     expect(result.current.changes).toBe(0);
   });
 
+  it('counts each change to the session that names any of the queries', async () => {
+    const result = await renderChanges(['getConcordance', 'getTextReadStatus']);
+
+    relayChange(changeNaming(result.current.session.sessionId, ['getConcordance']));
+    relayChange(changeNaming(result.current.session.sessionId, ['getTextReadStatus']));
+    relayChange(changeNaming(result.current.session.sessionId, ['getCatalogRows']));
+
+    expect(result.current.changes).toBe(2);
+  });
+
+  it('counts a change that names several of the queries once', async () => {
+    const result = await renderChanges(['getConcordance', 'getTextReadStatus']);
+
+    relayChange(
+      changeNaming(result.current.session.sessionId, ['getConcordance', 'getTextReadStatus']),
+    );
+
+    expect(result.current.changes).toBe(1);
+  });
+
   it('ignores a change to another session', async () => {
     const result = await renderChanges();
 
@@ -53,14 +73,22 @@ describe('useNamedChanges', () => {
 });
 
 describe('useNamedFetch', () => {
-  /** Renders {@link useNamedFetch} for `getConcordance` under the key that `key.current` holds. */
-  async function renderFetch(key: { current: string | undefined }, fetch: () => Promise<string>) {
+  /**
+   * Renders {@link useNamedFetch} for `getConcordance` under the key that `key.current` holds,
+   * keeping the last key's answer when `keepPrevious`.
+   */
+  async function renderFetch(
+    key: { current: string | undefined },
+    fetch: () => Promise<string>,
+    keepPrevious = false,
+  ) {
     const wrapper = await wrapperOver();
     // Inside `act`, so that an answer resolving at once lands within it.
     return act(async () =>
       renderHook(
         () => ({
-          answer: useNamedFetch('getConcordance', 'the answer', key.current, fetch)?.value,
+          answer: useNamedFetch('getConcordance', 'the answer', key.current, fetch, keepPrevious)
+            ?.value,
           session: usePageSession(),
         }),
         { wrapper },
@@ -114,6 +142,22 @@ describe('useNamedFetch', () => {
     expect(result.current.answer).toBeUndefined();
     await act(async () => release());
     expect(result.current.answer).toBe('second');
+  });
+
+  it('drops the last answer once the key is undefined, so the next key starts without it', async () => {
+    const key: { current: string | undefined } = { current: 'a' };
+    const { result, rerender } = await renderFetch(
+      key,
+      () => (key.current === 'a' ? Promise.resolve('first') : new Promise(() => {})),
+      true,
+    );
+    key.current = undefined;
+    await act(async () => rerender());
+
+    key.current = 'b';
+    await act(async () => rerender());
+
+    expect(result.current.answer).toBeUndefined();
   });
 
   it('keeps the last answer and logs when a fetch fails', async () => {

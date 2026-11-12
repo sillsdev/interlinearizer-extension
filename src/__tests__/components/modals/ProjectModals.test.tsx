@@ -150,25 +150,28 @@ jest.mock('../../../components/modals/SaveAsProjectModal', () => ({
   SaveAsProjectModal: ({
     activeProjectId,
     activeProjectName,
+    defaultAnalysisLanguages,
     onSaveNew,
     onOverwrite,
     onClose,
   }: {
     activeProjectId?: string;
     activeProjectName?: string;
-    onSaveNew: (name?: string, description?: string) => void;
+    defaultAnalysisLanguages?: readonly string[];
+    onSaveNew: (name: string, analysisLanguages: string[], description?: string) => void;
     onOverwrite: (p: InterlinearProjectSummary) => void;
     onClose: () => void;
   }) => (
     <div
       data-active-project-id={activeProjectId}
       data-active-project-name={activeProjectName}
+      data-default-analysis-languages={defaultAnalysisLanguages?.join(',')}
       data-testid="saveas-modal"
     >
       <button
         type="button"
         data-testid="saveas-new"
-        onClick={() => onSaveNew('NewName', 'NewDesc')}
+        onClick={() => onSaveNew('NewName', ['fr'], 'NewDesc')}
       >
         Save new
       </button>
@@ -783,6 +786,40 @@ describe('ProjectModals', () => {
   });
 
   describe('save as flow', () => {
+    it("offers the draft's analysis languages for the new project", () => {
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            defaultAnalysisLanguage: 'de',
+            getDraftSnapshot: () => ({ ...MOCK_DRAFT, analysisLanguages: ['sw', 'fr'] }),
+          })}
+        />,
+      );
+
+      expect(screen.getByTestId('saveas-modal')).toHaveAttribute(
+        'data-default-analysis-languages',
+        'sw,fr',
+      );
+    });
+
+    it('offers the interface language when the draft names no analysis language', () => {
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            defaultAnalysisLanguage: 'de',
+            getDraftSnapshot: () => ({ ...MOCK_DRAFT, analysisLanguages: [] }),
+          })}
+        />,
+      );
+
+      expect(screen.getByTestId('saveas-modal')).toHaveAttribute(
+        'data-default-analysis-languages',
+        'de',
+      );
+    });
+
     it('has the host create a project from the stored draft through commitDraft, and closes', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(savedAs(MOCK_PROJECT));
       const { commitDraft, outcomes } = recordingCommitDraft();
@@ -798,7 +835,7 @@ describe('ProjectModals', () => {
         'interlinearizer.saveDraftAsProject',
         SESSION_ID,
         'source-proj',
-        ['en'],
+        ['fr'],
         undefined,
         'NewName',
         'NewDesc',
@@ -819,7 +856,7 @@ describe('ProjectModals', () => {
           'interlinearizer.saveDraftAsProject',
           SESSION_ID,
           'source-proj',
-          ['en'],
+          ['fr'],
           undefined,
           'NewName',
           'NewDesc',
@@ -853,7 +890,7 @@ describe('ProjectModals', () => {
         'interlinearizer.saveDraftAsProject',
         SESSION_ID,
         'source-proj',
-        ['en'],
+        ['fr'],
         undefined,
         'NewName',
         'NewDesc',

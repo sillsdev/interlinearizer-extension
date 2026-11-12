@@ -41,7 +41,8 @@ type PendingReplace =
  * @param props.activeProject - The currently active interlinear project (the Save target), read
  *   from WebView state by the parent.
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
- *   initial value of the analysis language field; should be the platform UI language.
+ *   initial value of the analysis language field, and to {@link SaveAsProjectModal} when the draft
+ *   names no analysis language; should be the platform UI language.
  * @param props.hasUnsavedWork - Whether the draft has unsaved work — either committed-but-unsaved
  *   changes or uncommitted text still sitting in a gloss input (matching the tab's unsaved marker).
  *   When true, New / Open are gated behind the discard confirmation so neither kind of unsaved work
@@ -397,20 +398,21 @@ export default function ProjectModals({
   const handleCancelReplace = useCallback(() => setPendingReplace(undefined), []);
 
   /**
-   * Saves the current draft as a brand-new project: has the host create the project with the
-   * draft's languages / target and copy the stored draft's analysis and segment boundaries into it,
-   * then makes it the active Save target and closes. When the project leaves some of the draft's
-   * books out, the draft stays unsaved. Backend commands surface their own error notifications;
-   * here we only log.
+   * Saves the current draft as a brand-new project: has the host create the project with the chosen
+   * analysis languages and the draft's target and copy the stored draft's analysis and segment
+   * boundaries into it, then makes it the active Save target and closes. When the project leaves
+   * some of the draft's books out, the draft stays unsaved. Backend commands surface their own
+   * error notifications; here we only log.
    *
    * @param name - Trimmed project name; never blank.
+   * @param analysisLanguages - BCP 47 tags for the new project; never empty.
    * @param description - Trimmed project description, or `undefined`.
    */
   const handleSaveAsNew = useCallback(
-    async (name: string, description?: string) => {
+    async (name: string, analysisLanguages: string[], description?: string) => {
       try {
         const saved = await commitDraft(async (snapshot, sessionId) => {
-          const { analysisLanguages, targetProjectId } = snapshot;
+          const { targetProjectId } = snapshot;
           const createdJson = await papi.commands.sendCommand(
             'interlinearizer.saveDraftAsProject',
             sessionId,
@@ -519,6 +521,10 @@ export default function ProjectModals({
   }, [metadataSourceIsSelect, setModal]);
 
   const draftSnapshot = getDraftSnapshot();
+  const draftLanguages = draftSnapshot?.analysisLanguages ?? [];
+  let saveAsLanguages: readonly string[] | undefined = draftLanguages;
+  if (draftLanguages.length === 0)
+    saveAsLanguages = defaultAnalysisLanguage ? [defaultAnalysisLanguage] : undefined;
 
   return (
     <div>
@@ -554,6 +560,7 @@ export default function ProjectModals({
           hasUnsavedWork={hasUnsavedWork}
           activeProjectName={activeProject?.name}
           defaultDescription={draftSnapshot?.suggestedDescription}
+          defaultAnalysisLanguages={saveAsLanguages}
           onSaveNew={handleSaveAsNew}
           onOverwrite={handleOverwrite}
           onClose={handleSaveAsClose}

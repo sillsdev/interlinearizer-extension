@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import useProjectsForSource from '../../hooks/useProjectsForSource';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
+import { parseLanguageTags } from '../../utils/language-tags';
 import { uniqueDefaultName } from '../../utils/unique-name';
 import { ModalShell } from './ModalShell';
 import { ProjectSummaryDetails } from './ProjectSummaryDetails';
@@ -18,6 +19,8 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_create_name_placeholder%',
   '%interlinearizer_modal_create_description_label%',
   '%interlinearizer_modal_create_description_placeholder%',
+  '%interlinearizer_modal_create_language_label%',
+  '%interlinearizer_modal_create_language_placeholder%',
   '%interlinearizer_modal_saveAs_save_new%',
   '%interlinearizer_modal_saveAs_existing_section%',
   '%interlinearizer_modal_saveAs_none%',
@@ -37,34 +40,42 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
 /**
  * Fields for saving the draft as a new project.
  *
- * The fields start from `initialName` and `initialDescription`. Later changes to those props never
- * overwrite what the fields hold.
+ * The fields start from `initialName`, `initialDescription`, and `initialLanguages`. Later changes
+ * to those props never overwrite what the fields hold.
  */
 function SaveAsNewForm({
   initialName,
   initialDescription,
+  initialLanguages,
   isLoading,
   isSubmitting,
   nameLabel,
   namePlaceholder,
   descriptionLabel,
   descriptionPlaceholder,
+  languageLabel,
+  languagePlaceholder,
   saveLabel,
   onSave,
 }: Readonly<{
   initialName: string;
   initialDescription: string;
+  /** Comma-separated BCP 47 tags. */
+  initialLanguages: string;
   isLoading: boolean;
   isSubmitting: boolean;
   nameLabel: string;
   namePlaceholder: string;
   descriptionLabel: string;
   descriptionPlaceholder: string;
+  languageLabel: string;
+  languagePlaceholder: string;
   saveLabel: string;
-  onSave: (name: string, description: string) => void;
+  onSave: (name: string, description: string, languages: string) => void;
 }>) {
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
+  const [languages, setLanguages] = useState(initialLanguages);
 
   return (
     <>
@@ -91,9 +102,20 @@ function SaveAsNewForm({
         onChange={(e) => setDescription(e.target.value)}
         placeholder={descriptionPlaceholder}
       />
+      <Label className="tw:mb-1" htmlFor="save-as-analysis-language">
+        {languageLabel}
+      </Label>
+      <Input
+        id="save-as-analysis-language"
+        className="tw:mb-3 tw:w-full"
+        disabled={isLoading}
+        value={languages}
+        onChange={(e) => setLanguages(e.target.value)}
+        placeholder={languagePlaceholder}
+      />
       <div className="tw:flex tw:justify-end tw:mb-4">
         <Button
-          onClick={() => onSave(name, description)}
+          onClick={() => onSave(name, description, languages)}
           data-testid="save-as-new"
           disabled={isLoading || isSubmitting || name.trim() === ''}
         >
@@ -105,10 +127,10 @@ function SaveAsNewForm({
 }
 
 /**
- * Save As dialog. Lets the user save the current draft either to a brand-new project (name +
- * description) or by overwriting an existing project for this source (with an inline confirm). This
- * component is presentational: it collects the choice and delegates the actual persistence to the
- * caller via {@link onSaveNew} / {@link onOverwrite}.
+ * Save As dialog. Lets the user save the current draft either to a brand-new project (name,
+ * description, and analysis languages) or by overwriting an existing project for this source (with
+ * an inline confirm). This component is presentational: it collects the choice and delegates the
+ * actual persistence to the caller via {@link onSaveNew} / {@link onOverwrite}.
  *
  * Writing to the project the draft is already open against is an ordinary save rather than a
  * clobber, so that row's Overwrite needs no confirmation. When the draft holds nothing unsaved,
@@ -126,8 +148,11 @@ function SaveAsNewForm({
  *   project of the source bears. With no active project, the field starts blank. A later change to
  *   this name leaves the field as it is.
  * @param props.defaultDescription - Description prefilled into the new-project field.
- * @param props.onSaveNew - Called with the trimmed name/description to save the draft as a new
- *   project.
+ * @param props.defaultAnalysisLanguages - BCP 47 tags prefilled into the new-project analysis
+ *   language field, which starts at `und` when there are none. Glosses the draft holds under a tag
+ *   the new project leaves out stay stored but are not shown.
+ * @param props.onSaveNew - Called with the trimmed name, the parsed analysis languages (`['und']`
+ *   when the field is left blank), and the trimmed description to save the draft as a new project.
  * @param props.onOverwrite - Called with the chosen existing project to overwrite it with the
  *   draft.
  * @param props.onClose - Called when the user dismisses the dialog without saving.
@@ -139,6 +164,7 @@ export function SaveAsProjectModal({
   hasUnsavedWork,
   activeProjectName,
   defaultDescription,
+  defaultAnalysisLanguages,
   onSaveNew,
   onOverwrite,
   onClose,
@@ -148,7 +174,12 @@ export function SaveAsProjectModal({
   hasUnsavedWork: boolean;
   activeProjectName?: string;
   defaultDescription?: string;
-  onSaveNew: (name: string, description?: string) => void | Promise<void>;
+  defaultAnalysisLanguages?: readonly string[];
+  onSaveNew: (
+    name: string,
+    analysisLanguages: string[],
+    description?: string,
+  ) => void | Promise<void>;
   onOverwrite: (project: InterlinearProjectSummary) => void | Promise<void>;
   onClose: () => void;
 }>) {
@@ -182,13 +213,18 @@ export function SaveAsProjectModal({
 
   /**
    * Saves the draft as a new project with the trimmed name and description (a blank description →
-   * undefined), blocking re-entry while the save is in flight so a double-click cannot create
-   * duplicate projects.
+   * undefined) and the parsed analysis languages (none → `['und']`), blocking re-entry while the
+   * save is in flight so a double-click cannot create duplicate projects.
    */
   const handleSaveNew = useCallback(
-    (name: string, description: string) =>
+    (name: string, description: string, languages: string) =>
       runGuarded(async () => {
-        await onSaveNew(name.trim(), description.trim() || undefined);
+        const analysisLanguages = parseLanguageTags(languages);
+        await onSaveNew(
+          name.trim(),
+          analysisLanguages.length > 0 ? analysisLanguages : ['und'],
+          description.trim() || undefined,
+        );
       }),
     [onSaveNew, runGuarded],
   );
@@ -234,6 +270,9 @@ export function SaveAsProjectModal({
         key={isLoading ? 'loading' : 'ready'}
         initialName={initialName}
         initialDescription={defaultDescription ?? ''}
+        initialLanguages={
+          defaultAnalysisLanguages?.length ? defaultAnalysisLanguages.join(', ') : 'und'
+        }
         isLoading={isLoading}
         isSubmitting={isSubmitting}
         nameLabel={localizedStrings['%interlinearizer_modal_create_name_label%']}
@@ -241,6 +280,10 @@ export function SaveAsProjectModal({
         descriptionLabel={localizedStrings['%interlinearizer_modal_create_description_label%']}
         descriptionPlaceholder={
           localizedStrings['%interlinearizer_modal_create_description_placeholder%']
+        }
+        languageLabel={localizedStrings['%interlinearizer_modal_create_language_label%']}
+        languagePlaceholder={
+          localizedStrings['%interlinearizer_modal_create_language_placeholder%']
         }
         saveLabel={localizedStrings['%interlinearizer_modal_saveAs_save_new%']}
         onSave={handleSaveNew}

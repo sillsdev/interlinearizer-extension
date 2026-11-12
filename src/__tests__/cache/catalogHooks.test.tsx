@@ -186,6 +186,29 @@ describe('useCatalogView', () => {
     expect(result.current.retry).toBeInstanceOf(Function);
   });
 
+  it('keeps the same retry while a retry of the page fails', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.getCatalogRows');
+    const retries: unknown[] = [];
+    const { result } = renderHook(
+      () => {
+        const fetched = useCatalogView(REQUEST, 10);
+        retries.push(fetched.retry);
+        return fetched;
+      },
+      { wrapper },
+    );
+    await settle();
+    const { retry } = result.current;
+    const failedAt = retries.length;
+
+    act(() => retry?.());
+    await settle();
+
+    expect(timesSent('interlinearizer.getCatalogRows')).toBe(2);
+    expect(retries.slice(failedAt).every((each) => each === retry)).toBe(true);
+  });
+
   it('keeps the last page when fetching it again fails', async () => {
     const wrapper = await wrapperOver();
     const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
@@ -350,6 +373,21 @@ describe('useDeletionPreview', () => {
     });
 
     await waitFor(() => expect(result.current.status).toBe('ready'));
+  });
+
+  it('shows a retried preview as loading until the host answers', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.previewDeletion');
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+
+    const { current } = result;
+    act(() => {
+      if (current.status === 'failed') current.retry();
+    });
+
+    expect(result.current.status).toBe('loading');
+    await waitFor(() => expect(result.current.status).toBe('failed'));
   });
 
   it('fetches again when a change to the session names the catalog', async () => {

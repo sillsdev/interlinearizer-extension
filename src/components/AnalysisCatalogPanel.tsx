@@ -99,19 +99,13 @@ async function afterCounting(counted: Promise<number | undefined>, then: (count:
   if (count !== undefined) then(count);
 }
 
-/** Calls `then` with the deletion outcome once `previewed` settles, logging a failure. */
+/** Calls `then` with the deletion outcome once it arrives, unless it could not be had. */
 async function afterPreviewing(
   previewed: Promise<AnalysisDeletionOutcome | undefined>,
   then: (outcome: AnalysisDeletionOutcome) => void,
 ) {
-  try {
-    const outcome = await previewed;
-    /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
-    if (outcome) then(outcome);
-    /* v8 ignore next 3 -- logging only */
-  } catch (e) {
-    logger.warn('Interlinearizer: could not preview what a deletion reached', e);
-  }
+  const outcome = await previewed;
+  if (outcome) then(outcome);
 }
 
 /** How many tokens the rows `analysisIds` names are used at, a token carrying several counting once. */
@@ -816,7 +810,7 @@ export default function AnalysisCatalogPanel({
   const deleteAnalysis = useCallback(
     (analysisId: string) => {
       // Previewed before the record goes, because the deletion takes its uses with it.
-      const previewed = reads.previewDeletion(analysisId);
+      const previewed = readForEdit(reads.previewDeletion(analysisId));
       const form = surfaceTextOf(analysisId);
       // Cleared before the record goes, so this removal is not reported back to the reader who
       // asked for it.

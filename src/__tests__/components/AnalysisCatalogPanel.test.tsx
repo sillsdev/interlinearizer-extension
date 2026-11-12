@@ -4692,6 +4692,18 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByTestId('catalog-delete-confirm')).toBeEnabled();
     });
 
+    it('deletes without announcing when the host cannot state what the deletion did', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(() => Promise.reject(new Error('offline')));
+      await openDeleteConfirmation('ta-1');
+      await screen.findByTestId('catalog-delete-confirm-retry');
+
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+      await waitFor(() => expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument());
+      expect(announceUndoable).not.toHaveBeenCalled();
+    });
+
     it('states what the deletion would do once a retry succeeds', async () => {
       await renderDeleting({ analysis: LONE });
       const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();

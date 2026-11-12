@@ -278,7 +278,7 @@ export function useDeletionPreview(analysisId: string): DeletionPreviewState {
 /** The stale analyses that the session's draft holds in `bookId`; `undefined` until they arrive. */
 export function useStaleSummary(bookId: string): StaleSummary | undefined {
   const { sessionId } = usePageSession();
-  return useNamedFetch(
+  return useNamedFetch<StaleSummary | undefined>(
     'getStaleSummary',
     'the stale summary',
     `${sessionId} ${bookId}`,
@@ -290,7 +290,7 @@ export function useStaleSummary(bookId: string): StaleSummary | undefined {
       /* v8 ignore next -- defensive: the notice asks only of a book whose text has loaded */
       return json === undefined ? undefined : JSON.parse(json);
     },
-  );
+  )?.value;
 }
 
 /** One-off catalog reads, for a count or a row an edit needs before it is sent. */

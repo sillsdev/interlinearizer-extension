@@ -79,7 +79,12 @@ export default function ConcordancePanel({
     () => Array.from({ length: slotCount }, (_unused, index) => index),
     [slotCount],
   );
-  const { windowRows: windowSlots, scrollRef, sentinelRef } = useRowWindow(slots);
+  // A failed fetch leaves the window at its cap, so reaching the end there fetches the page again.
+  const {
+    windowRows: windowSlots,
+    scrollRef,
+    sentinelRef,
+  } = useRowWindow(slots, undefined, undefined, view?.retry);
   if (windowSlots.length > fetchCount) setFetchCount(windowSlots.length);
   const windowRows = useMemo(
     () => view?.rows.slice(0, windowSlots.length) ?? [],

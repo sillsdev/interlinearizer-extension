@@ -280,6 +280,19 @@ describe('useSelectionSummary', () => {
 });
 
 describe('a change of analysis language', () => {
+  it('fetches the catalog page again', async () => {
+    const language = { current: 'en' };
+    const wrapper = await languageWrapperOver(language);
+    const { rerender } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await settle();
+
+    language.current = 'fr';
+    rerender();
+    await settle();
+
+    expect(timesSent('interlinearizer.getCatalogRows')).toBe(2);
+  });
+
   it('summarizes the selection again in the new language', async () => {
     const language = { current: 'en' };
     const wrapper = await languageWrapperOver(language);

@@ -464,8 +464,8 @@ export class AnalysisSessions {
   /**
    * Sets the language that the session's glosses are read and written in, unchecked against the
    * languages its draft lists. A read-only session takes it too, since it changes nothing stored. A
-   * switch to a different language is reported as a change that names the catalog, because the
-   * catalog's rows are read in the session's language.
+   * switch to a different language is reported as a change that names the catalog and the
+   * concordance. The catalog's rows and a form's occurrences are both read in that language.
    *
    * @throws {Error} If the session is not open.
    */
@@ -476,7 +476,7 @@ export class AnalysisSessions {
       report(
         this.host,
         session,
-        { books: [], analysisIds: [], forms: [], queries: ['getCatalogRows'] },
+        { books: [], analysisIds: [], forms: [], queries: ['getCatalogRows', 'getConcordance'] },
         crypto.randomUUID(),
         [],
       );

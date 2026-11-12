@@ -68,14 +68,18 @@ describe('AnalysisSessions.setAnalysisLanguage', () => {
     return { sessions, sessionId };
   }
 
-  it('reports a new language as a change naming the catalog', async () => {
+  it('reports a new language as a change naming the catalog and the concordance', async () => {
     const reported: unknown[] = [];
     const { sessions, sessionId } = await openReporting(reported);
 
     await sessions.setAnalysisLanguage(sessionId, 'en');
 
     expect(reported).toStrictEqual([
-      expect.objectContaining({ sessionId, books: [], queries: ['getCatalogRows'] }),
+      expect.objectContaining({
+        sessionId,
+        books: [],
+        queries: ['getCatalogRows', 'getConcordance'],
+      }),
     ]);
   });
 

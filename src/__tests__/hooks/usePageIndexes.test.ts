@@ -15,7 +15,7 @@ function pagesHolding(count: number) {
   let snapshotVersion = -1;
   const pages: SegmentPages = {
     ...segmentPagesOf(BOOK),
-    heldPages: () => {
+    heldRuns: () => {
       if (snapshotVersion !== version) {
         snapshot = [
           { textVersion: BOOK.textVersion, start: 0, segments: BOOK.segments.slice(0, held) },

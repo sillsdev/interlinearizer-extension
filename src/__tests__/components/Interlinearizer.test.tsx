@@ -1691,8 +1691,8 @@ describe('Interlinearizer', () => {
   it('reserves the stale translations a segment below the window lists for review', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockStaleBySegment.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
-      { analysisId: 'sa-2', segmentId: 'GEN 1:190', text: 'B' },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
+      { linkId: 'link-sa-2', analysisId: 'sa-2', segmentId: 'GEN 1:190', text: 'B' },
     ]);
 
     // The review heading plus a row for each listed translation.
@@ -1702,7 +1702,7 @@ describe('Interlinearizer', () => {
   it('reserves only the buttons of a stale translation the input adopts, however long', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockStaleBySegment.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'a'.repeat(200) },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'a'.repeat(200) },
     ]);
 
     // The text sits in the one-line input, leaving the review its heading and a button row.
@@ -1714,7 +1714,9 @@ describe('Interlinearizer', () => {
       '%interlinearizer_freeTranslationInput_staleNoText%': 'a'.repeat(200),
     });
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
-    mockStaleBySegment.set('GEN 1:190', [{ analysisId: 'sa-1', segmentId: 'GEN 1:190', text: '' }]);
+    mockStaleBySegment.set('GEN 1:190', [
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190', text: '' },
+    ]);
 
     expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(20 + 32 + 2 * 20 + 4);
   });
@@ -1723,7 +1725,7 @@ describe('Interlinearizer', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockApprovedSegments.add('GEN 1:190');
     mockStaleBySegment.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'a'.repeat(200) },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'a'.repeat(200) },
     ]);
 
     // The text wraps onto two lines at the fallback wrap width jsdom leaves, its buttons below them.
@@ -1736,7 +1738,7 @@ describe('Interlinearizer', () => {
     mockReadOnly = true;
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockStaleBySegment.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
     ]);
 
     expect(trailingSpacerPx(STALE_BELOW_WINDOW)).toBe(without);
@@ -1745,8 +1747,8 @@ describe('Interlinearizer', () => {
   it('reserves the cards orphaned after a segment below the window', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockOrphanedAfter.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'A' },
-      { analysisId: 'sa-2', segmentId: 'GEN 1:190:9', text: 'B' },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'A' },
+      { linkId: 'link-sa-2', analysisId: 'sa-2', segmentId: 'GEN 1:190:9', text: 'B' },
     ]);
 
     // Each card's gap and height.
@@ -1756,7 +1758,7 @@ describe('Interlinearizer', () => {
   it('reserves a long orphaned translation no more than a short one', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockOrphanedAfter.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'a'.repeat(200) },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'a'.repeat(200) },
     ]);
 
     expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(8 + 66);
@@ -1772,7 +1774,12 @@ describe('Interlinearizer', () => {
       return height;
     };
     const without = leadingSpacerPx();
-    mockOrphanedAhead.push({ analysisId: 'sa-1', segmentId: 'GEN 1:0', text: 'A' });
+    mockOrphanedAhead.push({
+      linkId: 'link-sa-1',
+      analysisId: 'sa-1',
+      segmentId: 'GEN 1:0',
+      text: 'A',
+    });
 
     expect(leadingSpacerPx() - without).toBe(8 + 66);
   });
@@ -1781,7 +1788,7 @@ describe('Interlinearizer', () => {
     mockReadOnly = true;
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockOrphanedAfter.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'A' },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'A' },
     ]);
 
     expect(trailingSpacerPx(STALE_BELOW_WINDOW)).toBe(without);
@@ -1797,7 +1804,7 @@ describe('Interlinearizer', () => {
     };
     const without = standInPx();
     mockOrphanedAfter.set('GEN 1:110', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:110:9', text: 'A' },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:110:9', text: 'A' },
     ]);
 
     expect(without).toEqual(expect.any(Number));
@@ -1805,7 +1812,9 @@ describe('Interlinearizer', () => {
   });
 
   it('shows a translation orphaned after a segment as a card right after it', () => {
-    mockOrphanedAfter.set('GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' }]);
+    mockOrphanedAfter.set('GEN 1:1', [
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' },
+    ]);
 
     renderInterlinearizer({ book: makeManySegmentBook(3), showFreeTranslation: true });
 
@@ -1816,7 +1825,12 @@ describe('Interlinearizer', () => {
   });
 
   it('shows the translations orphaned ahead of the book in a block before its first segment', () => {
-    mockOrphanedAhead.push({ analysisId: 'sa-1', segmentId: 'GEN 1:0', text: 'A' });
+    mockOrphanedAhead.push({
+      linkId: 'link-sa-1',
+      analysisId: 'sa-1',
+      segmentId: 'GEN 1:0',
+      text: 'A',
+    });
 
     const { container } = renderInterlinearizer({
       book: makeManySegmentBook(3),
@@ -1838,8 +1852,15 @@ describe('Interlinearizer', () => {
   });
 
   it('shows no orphaned translations while free translations are hidden', () => {
-    mockOrphanedAfter.set('GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' }]);
-    mockOrphanedAhead.push({ analysisId: 'sa-2', segmentId: 'GEN 1:0', text: 'A' });
+    mockOrphanedAfter.set('GEN 1:1', [
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' },
+    ]);
+    mockOrphanedAhead.push({
+      linkId: 'link-sa-2',
+      analysisId: 'sa-2',
+      segmentId: 'GEN 1:0',
+      text: 'A',
+    });
 
     renderInterlinearizer({ book: makeManySegmentBook(3), showFreeTranslation: false });
 
@@ -1848,8 +1869,15 @@ describe('Interlinearizer', () => {
 
   it('shows no orphaned translations in a read-only analysis', () => {
     mockReadOnly = true;
-    mockOrphanedAfter.set('GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' }]);
-    mockOrphanedAhead.push({ analysisId: 'sa-2', segmentId: 'GEN 1:0', text: 'A' });
+    mockOrphanedAfter.set('GEN 1:1', [
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' },
+    ]);
+    mockOrphanedAhead.push({
+      linkId: 'link-sa-2',
+      analysisId: 'sa-2',
+      segmentId: 'GEN 1:0',
+      text: 'A',
+    });
 
     renderInterlinearizer({ book: makeManySegmentBook(3), showFreeTranslation: true });
 
@@ -2594,7 +2622,7 @@ describe('straddled boundary refs', () => {
     phraseLinks: PhraseAnalysisLink[] = [],
   ): ReadonlySet<string> {
     const pages = segmentPagesOf(book);
-    const held = pages.heldPages().map((page) => ({
+    const held = pages.heldRuns().map((page) => ({
       ...page,
       analysis: {
         tokenAnalysisLinks: [],
@@ -2610,7 +2638,7 @@ describe('straddled boundary refs', () => {
     }));
     renderInterlinearizer({
       book,
-      pages: { ...pages, heldPages: () => held },
+      pages: { ...pages, heldRuns: () => held },
       continuousScroll: true,
     });
     const straddled = capturedSegmentation?.straddledBoundaryRefs;

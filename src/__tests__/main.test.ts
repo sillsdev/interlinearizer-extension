@@ -2961,7 +2961,7 @@ describe('main', () => {
         expect(page).toMatchObject({
           start: 1,
           segments: [VERSE_BOOK.segments[1]],
-          analysis: { staleFreeTranslations: { orphanedAfter: { 'GEN 1:2': ['sa-9'] } } },
+          analysis: { staleFreeTranslations: { orphanedAfter: { 'GEN 1:2': ['sl-9'] } } },
         });
       });
 

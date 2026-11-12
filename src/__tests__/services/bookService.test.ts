@@ -8,6 +8,7 @@ import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtrac
 import {
   closeAllProjects,
   closeProject,
+  getConcordanceBooks,
   getOpenBook,
   getSegmentedBook,
   getTextReadStatus,
@@ -2111,6 +2112,110 @@ describe('getTextReadStatus', () => {
 
     expect(project.subscriptions).toHaveLength(2);
     expect(project.subscriptions.every((s) => s.unsubscribe.mock.calls.length === 1)).toBe(true);
+  });
+});
+
+describe('getConcordanceBooks', () => {
+  beforeEach(() => {
+    tokenizeToWords();
+  });
+
+  it('serves the occurrences of each book once the whole text is read', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '11';
+    readStatus();
+    await settle();
+
+    expect(
+      getConcordanceBooks('src')?.map((b) => [b.book, b.occurrencesByForm.get('shared')]),
+    ).toEqual([
+      [
+        'GEN',
+        [
+          {
+            tokenRef: 'GEN 1:1:0',
+            book: 'GEN',
+            chapter: 1,
+            verse: 1,
+            surfaceText: 'shared',
+            contextText: 'shared GEN-v1',
+            charStart: 0,
+            charEnd: 6,
+          },
+        ],
+      ],
+      [
+        'EXO',
+        [
+          {
+            tokenRef: 'EXO 1:1:0',
+            book: 'EXO',
+            chapter: 1,
+            verse: 1,
+            surfaceText: 'shared',
+            contextText: 'shared EXO-v1',
+            charStart: 0,
+            charEnd: 6,
+          },
+        ],
+      ],
+    ]);
+  });
+
+  it('answers nothing for a project whose text has not been read', () => {
+    expect(getConcordanceBooks('src')).toBeUndefined();
+  });
+
+  it('answers nothing until every book has been read', async () => {
+    const project = serveProject();
+    project.booksPresent = '11';
+    readStatus();
+    await settle();
+
+    project.subscriptions[0].deliver(usj('GEN'));
+    await settle();
+
+    expect(getConcordanceBooks('src')).toBeUndefined();
+    await finishReading(project);
+  });
+
+  it('serves an edited book from its new text', async () => {
+    let delivery: Delivery = usj('GEN');
+    const project = serveProject(() => delivery);
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    delivery = usj('GEN', 'v2');
+    subscriptionsTo(project, 'GEN').at(-1)?.deliver(delivery);
+    await settle();
+
+    expect(getConcordanceBooks('src')?.map((b) => [...b.occurrencesByForm.keys()])).toEqual([
+      ['shared', 'gen-v2'],
+    ]);
+  });
+
+  it('leaves out a book whose latest read failed', async () => {
+    let delivery: Delivery = usj('GEN');
+    const project = serveProject(() => delivery);
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+
+    delivery = platformError('busy');
+    subscriptionsTo(project, 'GEN').at(-1)?.deliver(delivery);
+    await settle();
+
+    expect(getConcordanceBooks('src')).toEqual([]);
+  });
+
+  it('leaves out a book that holds no text', async () => {
+    const project = serveProject((bookId) => (bookId === 'EXO' ? undefined : usj(bookId)));
+    project.booksPresent = '11';
+    readStatus();
+    await settle();
+
+    expect(getConcordanceBooks('src')?.map((b) => b.book)).toEqual(['GEN']);
   });
 });
 

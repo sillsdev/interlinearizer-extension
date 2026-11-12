@@ -1156,11 +1156,7 @@ export default function AnalysisCatalogPanel({
           <TextReadingStatus
             idPrefix="analysis-catalog-text"
             localizedStrings={localizedStrings}
-            text={
-              readStatus === 'error' || readStatus === undefined
-                ? { status: readStatus ?? 'loading', booksRead: 0, bookCount: 0, failedBookIds: [] }
-                : { status: 'loading', ...readStatus }
-            }
+            status={readStatus}
           />
         )}
 

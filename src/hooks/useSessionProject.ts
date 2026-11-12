@@ -79,7 +79,6 @@ export default function useSessionProject(
     historyFlags.current = next;
   }, []);
   const [hasFreeTranslations, setHasFreeTranslations] = useState(false);
-  const [isTextWanted, setIsTextWanted] = useState(false);
 
   /** The interlinear project that the open session was opened on, or was last told to save to. */
   const targetRef = useRef<string | undefined>(undefined);
@@ -190,17 +189,6 @@ export default function useSessionProject(
   const { draft } = whole;
   const pages = useSessionPages({ sessionId, bookId, scrRef });
   const { client } = pages;
-
-  // Asking how far the read has got starts the session's read of the whole text. A failed start
-  // clears the request, so that the next feature that wants the text asks again.
-  useEffect(() => {
-    if (sessionId === undefined || !isTextWanted) return;
-    papi.commands.sendCommand('interlinearizer.getTextReadStatus', { sessionId }).catch((e) => {
-      logger.warn("Interlinearizer: could not start reading the session's text", e);
-      setIsTextWanted(false);
-    });
-  }, [sessionId, isTextWanted]);
-  const requestTextRead = useCallback(() => setIsTextWanted(true), []);
 
   /** Fetches the whole draft again, logging a failure. */
   const refreshWhole = useCallback(() => {
@@ -458,7 +446,6 @@ export default function useSessionProject(
       pages,
       client,
       hasFreeTranslations,
-      requestTextRead,
       boundaries,
       setAnalysisLanguage,
     },

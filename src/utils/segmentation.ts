@@ -9,6 +9,8 @@ import type { Book, SegmentationDelta, TokenSnapshot } from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
 import { normalizeSurfaceForm } from './analysis-identity';
 import { reanchorSnapshots, verseOfTokenRef } from './reanchor-analysis';
+import { isWordToken } from '../types/type-guards';
+import type { OutlineBoundaries } from '../types/segment-pages';
 
 /** An empty delta — equivalent to the default verse segmentation. */
 const EMPTY_DELTA: SegmentationDelta = { removedVerseStarts: [], addedStarts: [] };
@@ -432,4 +434,29 @@ export function lostBoundaries(
       .filter((start) => isMine(start.tokenRef) && !namesItsWord(lookups, start))
       .map((start) => start.tokenRef),
   ];
+}
+
+/**
+ * What the boundary controls of `verseBook` need to know of `delta`, the draft's boundaries,
+ * re-anchored to the book's text as its segments are.
+ */
+export function outlineBoundaries(
+  verseBook: Book,
+  delta: SegmentationDelta | undefined,
+): OutlineBoundaries {
+  const forBook = reanchorSegmentation(verseBook, segmentationForBook(delta, verseBook.bookRef));
+  const removed = new Set(forBook?.removedVerseStarts ?? []);
+  const formerBoundaries: Record<string, string> = {};
+  if (removed.size > 0)
+    verseBook.segments.forEach((verse) => {
+      const startRef = verse.tokens[0]?.ref;
+      if (startRef === undefined || !removed.has(startRef)) return;
+      const wordAnchorRef = verse.tokens.find(isWordToken)?.ref;
+      if (wordAnchorRef !== undefined) formerBoundaries[wordAnchorRef] = startRef;
+    });
+  return {
+    formerBoundaries,
+    unmergeableStarts: [...unmergeableVerseStarts(verseBook)],
+    lostBoundaries: [...lostBoundaries(verseBook, forBook)],
+  };
 }

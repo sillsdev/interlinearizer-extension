@@ -30,10 +30,11 @@ export type AnalysisEditOutcome =
 /**
  * Reports where an edit left the record that `analysisId` names, so a row that vanishes can be
  * explained rather than read as lost work. Only the survivor that the write recorded tells a
- * collapse from a removal; the state they leave is the same.
+ * collapse from a removal; the state they leave is the same. Reads `after`, the analysis the edit
+ * left, for the records of `analysisId` and the survivor and for every token link to the survivor.
  */
 export function readEditOutcome(
-  after: TextAnalysis,
+  after: Pick<TextAnalysis, 'tokenAnalyses' | 'tokenAnalysisLinks'>,
   survivingAnalysisId: string | undefined,
   analysisId: string,
   analysisLanguage: string,

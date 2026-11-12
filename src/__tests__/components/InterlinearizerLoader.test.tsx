@@ -20,14 +20,13 @@ import {
   useState as useReactState,
 } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
-import { useAnalysis, useGlossDispatch, usePhraseDispatch } from '../../components/AnalysisStore';
+import { useGlossDispatch, usePhraseDispatch } from '../../components/AnalysisStore';
 import { useInterlinearNav, type RecenterRequest } from '../../components/InterlinearNavContext';
 import InterlinearizerLoader, {
   BOOK_NAME_TIMEOUT_MS,
   UNDO_NOTIFICATION_DURATION_MS,
 } from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
-import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import type { SegmentPages } from '../../types/segment-pages';
 import { DraftRepository } from '../../services/draftRepository';
 import { ANALYSIS_CHANGED_EVENT, fakeHost } from '../cache/fake-host';
@@ -58,7 +57,6 @@ import {
 } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
-jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
@@ -273,9 +271,6 @@ jest.mock('../../components/AnalysisStore', () => {
  */
 let mountStoreProbe = false;
 
-/** The analysis the store the probe is mounted in holds. */
-let probeAnalysis: TextAnalysis | undefined;
-
 /** Creates a phrase through the store that the probe is mounted in. */
 let probeCreatePhrase: ((tokens: TokenSnapshot[]) => void) | undefined;
 
@@ -296,7 +291,6 @@ let probeWriteGloss: ((tokenRef: string, surfaceText: string, value: string) => 
  * book change replaced the store or left it alone. Renders no markup.
  */
 function StoreProbe() {
-  probeAnalysis = useAnalysis();
   probeWriteGloss = useGlossDispatch();
   probeCreatePhrase = usePhraseDispatch().createPhrase;
   probeFocusRequest = useInterlinearNav().peekFocusRequest('GEN');
@@ -378,15 +372,38 @@ let hostBook: Book = GEN_1_1_BOOK;
 /** The fake host that serves the view's session. */
 let host: Awaited<ReturnType<typeof fakeHost>>;
 
+/**
+ * How the fake host answers an outline read in place of outlining {@link hostBook}: by failing with
+ * `error`, or by never answering when there is none. Outlines `hostBook` while `undefined`.
+ */
+let outlineAnswer: { error: string | undefined } | undefined;
+
+/** The analysis of the draft that the view's latest session holds. */
+async function viewedAnalysis(): Promise<TextAnalysis> {
+  const opened = mockSendCommand.mock.calls.findLastIndex(
+    ([command]) => command === 'interlinearizer.openSession',
+  );
+  const reply: unknown = await mockSendCommand.mock.results[opened]?.value;
+  if (typeof reply !== 'string') throw new Error('Expected the view to have opened a session');
+  const { sessionId } = JSON.parse(reply);
+  return (await host.sessions.run(sessionId, (session) => session.repository.getWholeDraft()))
+    .analysis;
+}
+
 beforeEach(async () => {
   hostBook = GEN_1_1_BOOK;
+  outlineAnswer = undefined;
   otherCommands.mockResolvedValue(undefined);
   host = await fakeHost(
     async (command, args) => {
       const answer = await otherCommands(command, ...args);
       return typeof answer === 'string' ? answer : undefined;
     },
-    undefined,
+    (command) => {
+      if (command !== 'interlinearizer.getBookOutline' || !outlineAnswer) return undefined;
+      const { error } = outlineAnswer;
+      return error === undefined ? new Promise(() => {}) : Promise.reject(new Error(error));
+    },
     { book: GEN_1_1_BOOK, textOf: () => hostBook },
   );
 });
@@ -649,26 +666,38 @@ function renderLoader(
   return { ...result, updateWebViewDefinition };
 }
 
-/** Configures useInterlinearizerBookData to return the given state. */
+/**
+ * Builds a scroll-group hook whose reference can be restaged between rerenders. A fresh object
+ * identity is required each change so the provider adopts it as a new `scrRef`.
+ */
+function makeMutableScrollGroupHook(
+  initial: SerializedVerseRef,
+): [() => ScrollGroupTuple, (n: SerializedVerseRef) => void] {
+  let current = initial;
+  const hook = (): ScrollGroupTuple => [current, () => {}, undefined, () => {}, undefined];
+  return [
+    hook,
+    (next) => {
+      current = next;
+    },
+  ];
+}
+
+/**
+ * Has the fake host serve `book`, the GEN 1:1 book unless named. A book `undefined` leaves the book
+ * served as it was and has the host answer an outline read with `bookError` when given, and never
+ * otherwise.
+ */
 function mockBookData(
   overrides: Partial<{
     book: Book | undefined;
     isLoading: boolean;
     bookError: string | undefined;
-    writingSystem: string;
-    reload: () => void;
   }> = {},
 ): void {
-  const data = {
-    book: GEN_1_1_BOOK,
-    isLoading: false,
-    bookError: undefined,
-    writingSystem: 'und',
-    reload: jest.fn(),
-    ...overrides,
-  };
-  if (data.book) hostBook = data.book;
-  jest.mocked(useInterlinearizerBookData).mockReturnValue(data);
+  const book = 'book' in overrides ? overrides.book : GEN_1_1_BOOK;
+  if (book) hostBook = book;
+  outlineAnswer = book ? undefined : { error: overrides.bookError };
 }
 
 /**
@@ -1304,20 +1333,25 @@ describe('InterlinearizerLoader', () => {
 
     it('keeps the panel hidden when a later book fails to load', async () => {
       mockBookData();
-      const view = await act(async () => renderLoader());
+      const [scrollGroupHook, setRef] = makeMutableScrollGroupHook({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+      const buildUi = () => (
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          webViewId={testWebViewId}
+          useWebViewScrollGroupScrRef={scrollGroupHook}
+          useWebViewState={makeWebViewState()}
+          updateWebViewDefinition={jest.fn(() => true)}
+        />
+      );
+      const view = await act(async () => render(buildUi()));
 
       mockBookData({ book: undefined, bookError: 'Book EXO not found' });
-      await act(async () => {
-        view.rerender(
-          <InterlinearizerLoader
-            projectId={testProjectId}
-            webViewId={testWebViewId}
-            useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-            useWebViewState={makeWebViewState()}
-            updateWebViewDefinition={view.updateWebViewDefinition}
-          />,
-        );
-      });
+      setRef({ book: 'EXO', chapterNum: 1, verseNum: 1 });
+      await flushHost(() => view.rerender(buildUi()));
 
       expect(screen.getByText('Book EXO not found')).toBeInTheDocument();
       expect(screen.queryByTestId('project-unavailable')).not.toBeInTheDocument();
@@ -3162,23 +3196,20 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('re-renders the interlinearizer with the new segments in place after a boundary edit', async () => {
-      // The resegmented book is derived from the draft's ref-held segmentation, so the new `book`
-      // prop reaches the interlinearizer only because a boundary change bumps a dedicated version.
-      // Assert the split reaches the rendered `book` (verse 1 becomes two segments) without a
-      // remount.
+      // A split reaches the rendered outline (verse 1 becomes two segments) without a remount.
       mockBookData({ book: TWO_VERSE_BOOK });
       await flushHost(async () => {
         renderLoader();
       });
       const dispatch = getSegmentationDispatch();
-      expect(capturedInterlinearizerProps?.book.segments).toHaveLength(2);
+      expect(capturedInterlinearizerProps?.pages.outline).toHaveLength(2);
       const mountsBefore = interlinearizerMountCount;
 
       await flushHost(() => dispatch.split('GEN 1:1:6'));
 
       // Verse 1 is now two segments (before/after "beta"), so the book has three segments total, and
       // the interlinearizer was updated in place rather than remounted.
-      expect(capturedInterlinearizerProps?.book.segments).toHaveLength(3);
+      expect(capturedInterlinearizerProps?.pages.outline).toHaveLength(3);
       expect(interlinearizerMountCount).toBe(mountsBefore);
     });
 
@@ -3239,7 +3270,7 @@ describe('InterlinearizerLoader', () => {
       await flushHost(() => jest.advanceTimersByTime(300));
       jest.useRealTimers();
 
-      expect(capturedInterlinearizerProps?.book.segments).toHaveLength(3);
+      expect(capturedInterlinearizerProps?.pages.outline).toHaveLength(3);
       expect(editsSent()).toEqual([]);
     });
   });
@@ -3340,41 +3371,6 @@ describe('InterlinearizerLoader', () => {
       expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(1);
       expect(capturedInterlinearizerProps?.formerBoundaries.has('GEN 1:1:0')).toBe(false);
       expect(capturedInterlinearizerProps?.formerBoundaries.has('GEN 1:2:1')).toBe(false);
-    });
-
-    it('shows the loading state when the book unloads while the draft holds removals', async () => {
-      // Render with a rebuildable element so the same loader instance can be re-invoked after the
-      // book-data mock changes (the mock mutates hook output, not React state).
-      mockBookData({ book: BOUNDARY_SHAPES_BOOK });
-      const updateWebViewDefinition = jest.fn(() => true);
-      const scrollGroupHook = makeScrollGroupHook();
-      const webViewState = makeWebViewState();
-      const buildUi = () => (
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          webViewId={testWebViewId}
-          useWebViewScrollGroupScrRef={scrollGroupHook}
-          useWebViewState={webViewState}
-          updateWebViewDefinition={updateWebViewDefinition}
-        />
-      );
-      let view: ReturnType<typeof render> | undefined;
-      await flushHost(async () => {
-        view = render(buildUi());
-      });
-      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
-      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
-      // Merge so the draft's delta has a removed verse start.
-      await flushHost(() => dispatch.merge('GEN 1:3:0'));
-      expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(1);
-
-      // The book unloads (e.g. a cross-book swap): with no verse book to resolve refs against, the
-      // former boundaries cannot be derived and the loader falls back to the loading curtain.
-      mockBookData({ book: undefined, isLoading: true });
-      view?.rerender(buildUi());
-
-      expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
-      expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
     });
   });
 
@@ -3927,7 +3923,7 @@ describe('InterlinearizerLoader', () => {
       // write follows.
       expect(
         mockSendCommand.mock.calls.filter(
-          ([command]) => command !== 'interlinearizer.getFullAnalysis',
+          ([command]) => command !== 'interlinearizer.getDraftEnvelope',
         ),
       ).toEqual([
         ['interlinearizer.saveDraftToProject', expect.any(String), testProjectId, 'proj-1'],
@@ -4948,23 +4944,6 @@ describe('InterlinearizerLoader', () => {
     }
 
     /**
-     * Builds a scroll-group hook whose reference can be restaged between rerenders. A fresh object
-     * identity is required each change so the provider adopts it as a new `scrRef`.
-     */
-    function makeMutableScrollGroupHook(
-      initial: SerializedVerseRef,
-    ): [() => ScrollGroupTuple, (n: SerializedVerseRef) => void] {
-      let current = initial;
-      const hook = (): ScrollGroupTuple => [current, () => {}, undefined, () => {}, undefined];
-      return [
-        hook,
-        (next) => {
-          current = next;
-        },
-      ];
-    }
-
-    /**
      * Renders the loader with a mutable scroll-group hook, returning a `rerenderNow` that rebuilds
      * a fresh element so React re-invokes the component (the stub mutates a closure variable, not
      * state, so an identical element would let React bail out).
@@ -5029,18 +5008,16 @@ describe('InterlinearizerLoader', () => {
       });
       expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
 
-      // Cross-book jump to MAT while the loaded book is still GEN (before the USJ arrives and
+      // Cross-book jump to MAT while the loaded book is still GEN (before MAT's outline arrives and
       // Interlinearizer remounts). The loader shows the Loading curtain rather than the previous
       // book's views, so nothing of either book is visible until the new one mounts and fades in.
+      mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       controls?.rerenderNow();
-      await flushHost();
       expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
       expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
 
-      // Once MAT's book data arrives, Interlinearizer mounts on it and receives the live MAT ref.
-      mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });
-      controls?.rerenderNow();
+      // Once MAT's outline arrives, Interlinearizer mounts on it and receives the live MAT ref.
       await flushHost();
       expect(capturedInterlinearizerProps?.scrRef).toEqual({
         book: 'MAT',
@@ -5124,7 +5101,6 @@ describe('InterlinearizerLoader', () => {
 /** Resets the loader's mocks and captures for a test that reads the store through the probe. */
 function prepareStoreProbeTest(): void {
   mountStoreProbe = true;
-  probeAnalysis = undefined;
   probeWriteGloss = undefined;
   probeCreatePhrase = undefined;
   probeFocusRequest = undefined;
@@ -5177,7 +5153,7 @@ describe('undo and redo', () => {
       fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     });
 
-    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(0);
   });
 
   it('redoes an undone edit on Ctrl+Y', async () => {
@@ -5190,7 +5166,7 @@ describe('undo and redo', () => {
       fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
     });
 
-    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
   });
 
   it('leaves the draft alone on Ctrl+Z while a dialog is open over it', async () => {
@@ -5201,7 +5177,7 @@ describe('undo and redo', () => {
       fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     });
 
-    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
   });
 
   it('leaves the draft alone on Ctrl+Z while an editor open over it blocks undo', async () => {
@@ -5212,7 +5188,7 @@ describe('undo and redo', () => {
       fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     });
 
-    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
   });
 
   describe('showing the edit', () => {
@@ -5283,7 +5259,7 @@ describe('undo and redo', () => {
     it('stops editing a phrase an undo removes', async () => {
       await flushHost(async () => renderLoader());
       await flushHost(() => probeCreatePhrase?.(ALPHA_BETA));
-      const phraseId = probeAnalysis?.phraseAnalysisLinks[0]?.id ?? '';
+      const phraseId = (await viewedAnalysis()).phraseAnalysisLinks[0]?.id ?? '';
       editPhrase(phraseId);
 
       await flushHost(() => {
@@ -5296,7 +5272,7 @@ describe('undo and redo', () => {
     it('keeps editing a phrase the undo leaves in place', async () => {
       await flushHost(async () => renderLoader());
       await flushHost(() => probeCreatePhrase?.(ALPHA_BETA));
-      const phraseId = probeAnalysis?.phraseAnalysisLinks[0]?.id ?? '';
+      const phraseId = (await viewedAnalysis()).phraseAnalysisLinks[0]?.id ?? '';
       await flushHost(() => probeWriteGloss?.('GEN 1:1:0', 'Alpha', 'alpha'));
       editPhrase(phraseId);
 
@@ -5702,7 +5678,7 @@ describe('undo and redo', () => {
 
       await flushHost();
 
-      expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+      expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
     });
 
     it('offers the undo again when a dialog open over the draft blocks it', async () => {
@@ -5726,7 +5702,7 @@ describe('undo and redo', () => {
 
       await flushHost();
 
-      expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+      expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(0);
     });
 
     it('takes the notification down once a later step is made', async () => {
@@ -5745,7 +5721,9 @@ describe('undo and redo', () => {
 
       await flushHost();
 
-      expect(probeAnalysis?.tokenAnalysisLinks.map((l) => l.token.tokenRef)).toEqual(['GEN 1:1:6']);
+      expect((await viewedAnalysis()).tokenAnalysisLinks.map((l) => l.token.tokenRef)).toEqual([
+        'GEN 1:1:6',
+      ]);
     });
 
     it('takes down a notification a step superseded while it was on its way', async () => {
@@ -5805,7 +5783,7 @@ describe('undo and redo', () => {
       clickNotificationUndo('toast-2');
       await flushHost();
 
-      expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+      expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
     });
   });
 
@@ -5820,7 +5798,7 @@ describe('undo and redo', () => {
       fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     });
 
-    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
   });
 
   it('undoes from the Edit menu', async () => {
@@ -5828,7 +5806,7 @@ describe('undo and redo', () => {
 
     await flushHost(() => screen.getByTestId('tab-toolbar-undo').click());
 
-    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(0);
   });
 
   it('redoes from the Edit menu', async () => {
@@ -5837,7 +5815,7 @@ describe('undo and redo', () => {
     await flushHost(() => screen.getByTestId('tab-toolbar-undo').click());
     await flushHost(() => screen.getByTestId('tab-toolbar-redo').click());
 
-    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
   });
 
   it("undoes from the toolbar's undo button", async () => {
@@ -5845,7 +5823,7 @@ describe('undo and redo', () => {
 
     await flushHost(() => screen.getByRole('button', { name: '%undoButton_tooltip%' }).click());
 
-    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(0);
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(0);
   });
 
   it("redoes from the toolbar's redo button", async () => {
@@ -5854,7 +5832,7 @@ describe('undo and redo', () => {
     await flushHost(() => screen.getByRole('button', { name: '%undoButton_tooltip%' }).click());
     await flushHost(() => screen.getByRole('button', { name: '%redoButton_tooltip%' }).click());
 
-    expect(probeAnalysis?.tokenAnalysisLinks).toHaveLength(1);
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
   });
 
   it('disables the toolbar buttons while there is nothing to undo or redo', async () => {

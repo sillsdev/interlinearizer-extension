@@ -139,9 +139,6 @@ const selectRejectedAnalysisIdsByTokenRef = createSelector(selectTokenAnalysisLi
   return index;
 });
 
-/** Returns the `TextAnalysis` that `state` holds. */
-export const selectAnalysis = (state: AnalysisState) => state.analysis;
-
 /**
  * Returns the approved gloss string for `tokenRef` in the active analysis language, or `''` when no
  * approved analysis exists or the analysis has no gloss for the active language.
@@ -183,20 +180,6 @@ const selectApprovedTokenCountByAnalysisId = createSelector(
     return counts;
   },
 );
-
-/**
- * Memoized selector mapping each `TokenAnalysis.id` to the number of distinct tokens linking it at
- * any status — the tokens a per-token edit must fork around.
- */
-const selectLinkedTokenCountByAnalysisId = createSelector(selectTokenAnalysisLinks, (links) => {
-  const tokenRefsById = new Map<string, Set<string>>();
-  links.forEach((l) => {
-    const tokenRefs = tokenRefsById.get(l.analysisId);
-    if (tokenRefs) tokenRefs.add(l.token.tokenRef);
-    else tokenRefsById.set(l.analysisId, new Set([l.token.tokenRef]));
-  });
-  return new Map([...tokenRefsById].map(([id, tokenRefs]) => [id, tokenRefs.size]));
-});
 
 /**
  * Memoized selector that builds the suggestion-engine pool index from the approved analyses: each
@@ -411,49 +394,6 @@ export function selectSuggestionAfterClearing(
     deriveTokenSuggestion(pool, surfaceText, approvedId),
   );
   return suggestion ? { status: 'suggested', ...suggestion } : undefined;
-}
-
-/**
- * Reports whether removing `tokenRef`'s morpheme breakdown would destroy annotation no other token
- * still holds — the condition under which the morpheme editor confirms before resetting. True only
- * when at least one morpheme carries a gloss or a lexicon reference AND no other token links its
- * approved payload. A payload shared with other tokens is forked rather than emptied, so the
- * co-linked tokens keep their morphemes and nothing is lost project-wide; an unannotated breakdown
- * is bare segmentation that is cheap to retype. Sharing is judged by the same linked-token count
- * the write path tests before it forks, so the two can never disagree about what "shared" means.
- */
-export function selectMorphemeResetLosesAnnotation(
-  state: AnalysisState,
-  tokenRef: string,
-): boolean {
-  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
-  if (approvedId === undefined) return false;
-  const analysis = selectAnalysisById(state).get(approvedId);
-  const hasAnnotatedMorpheme = analysis?.morphemes?.some(morphemeCarriesAnnotation) ?? false;
-  if (!hasAnnotatedMorpheme) return false;
-  // A payload another token links is forked rather than emptied, so only a sole owner loses anything.
-  /* v8 ignore next -- this token's own link is among those counted, so approvedId is always present */
-  const linkedTokenCount = selectLinkedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
-  return linkedTokenCount <= 1;
-}
-
-/**
- * Reports whether no token besides `tokenRef` links its approved payload, so a breakdown edit here
- * destroys what it drops instead of leaving it with co-linked tokens. False when the token has no
- * approval at all.
- *
- * Sharing is judged by the same linked-token count a breakdown write forks on, so the two can never
- * disagree about which edits are recoverable.
- */
-export function selectMorphemePayloadIsSolelyOwned(
-  state: AnalysisState,
-  tokenRef: string,
-): boolean {
-  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
-  if (approvedId === undefined) return false;
-  /* v8 ignore next -- this token's own link is among those counted, so approvedId is always present */
-  const linkedTokenCount = selectLinkedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
-  return linkedTokenCount <= 1;
 }
 
 /**

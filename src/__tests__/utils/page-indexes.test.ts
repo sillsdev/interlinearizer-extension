@@ -5,7 +5,7 @@ import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { PageAnalysis, SegmentPage } from '../../types/segment-pages';
 import { buildBookIndexes } from '../../utils/book-indexes';
 import { buildBookOutline } from '../../utils/book-outline';
-import { buildPageIndexes, outlineRangeOf } from '../../utils/page-indexes';
+import { buildPageIndexes, heldSurfaceText, outlineRangeOf } from '../../utils/page-indexes';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { makePhraseLink, makeVerseBook, tokenRefOf } from '../test-helpers';
 
@@ -200,5 +200,25 @@ describe('outlineRangeOf', () => {
 
   it('finds nothing for a heading the book lacks', () => {
     expect(outlineRangeOf(outline, 'GEN 1:2/s1:0')).toBeUndefined();
+  });
+});
+
+describe('heldSurfaceText', () => {
+  const outline = buildBookOutline(BOOK, BOOK.segments).segments;
+  const pagesHolding = (held: number) => ({
+    outline,
+    segmentAt: (index: number) => (index < held ? BOOK.segments[index] : undefined),
+  });
+
+  it('reads the text of a token whose page has loaded', () => {
+    expect(heldSurfaceText(pagesHolding(1), ref('God'))).toBe('God');
+  });
+
+  it('reads nothing for a token whose page has not loaded', () => {
+    expect(heldSurfaceText(pagesHolding(1), ref('earth'))).toBeUndefined();
+  });
+
+  it('reads nothing for a token in a verse that the outline does not hold', () => {
+    expect(heldSurfaceText(pagesHolding(4), 'GEN 9:9:0')).toBeUndefined();
   });
 });

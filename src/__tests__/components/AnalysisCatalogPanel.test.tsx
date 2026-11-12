@@ -4864,7 +4864,7 @@ describe('AnalysisCatalogPanel', () => {
       ],
     };
 
-    /** Checks the row for each of `analysisIds`. */
+    /** Checks the row for each of `analysisIds`, then waits for the selection's summary. */
     async function select(...analysisIds: string[]): Promise<void> {
       // Chained: each click re-renders the list the next row is found in.
       await analysisIds.reduce(
@@ -4874,6 +4874,8 @@ describe('AnalysisCatalogPanel', () => {
           ),
         Promise.resolve(),
       );
+      // The summary decides which actions the selection bar offers.
+      await settle();
     }
 
     it('states how many rows are checked and how many uses they have', async () => {

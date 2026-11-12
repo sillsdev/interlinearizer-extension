@@ -2,11 +2,18 @@
 
 import type {
   MergedContent,
+  MorphemeAnalysis,
   TextAnalysis,
   TokenAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
 import {
+  adoptAnalysisMorphemeSenseGloss as adoptMorphemeSenseGlossCommand,
+  adoptAnalysisSenseGloss as adoptSenseGlossCommand,
+  linkAnalysisMorphemeSense as linkAnalysisMorphemeSenseCommand,
+  linkAnalysisSense as linkAnalysisSenseCommand,
+  unlinkAnalysisMorphemeSense as unlinkAnalysisMorphemeSenseCommand,
+  unlinkAnalysisSense as unlinkAnalysisSenseCommand,
   clearAnalysisGlosses as clearGlossesCommand,
   confirmAnalysisMorphemes as confirmMorphemesCommand,
   deleteAnalyses as deleteAnalysesCommand,
@@ -708,6 +715,537 @@ describe('writeAnalysisMorphemeGloss', () => {
     );
 
     expectResult(outcome.result);
+  });
+});
+
+describe('linkAnalysisSense', () => {
+  const cases: [string, CommandCase<{ analysisId: string }>][] = [
+    [
+      'sets the sense and keeps the typed gloss',
+      {
+        analysis: analysisOf(
+          [payload('ta-in', 'In', { gloss: { en: 'at' } })],
+          [link('tl-1', 'ta-in', TOKEN), link('tl-2', 'ta-in', OTHER_TOKEN)],
+        ),
+        input: { analysisId: 'ta-in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toStrictEqual([
+            payload('ta-in', 'In', { gloss: { en: 'at' }, glossSenseRef: SENSE, updatedAt: NOW }),
+          ]);
+          expect(result.tokenAnalysisLinks).toHaveLength(2);
+        },
+      },
+    ],
+    [
+      'replaces the sense the analysis had',
+      {
+        analysis: analysisOf(
+          [payload('ta-in', 'In', { glossSenseRef: OTHER_SENSE })],
+          [link('tl-1', 'ta-in', TOKEN)],
+        ),
+        input: { analysisId: 'ta-in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].glossSenseRef).toStrictEqual(SENSE);
+        },
+      },
+    ],
+    [
+      'folds an analysis the link makes identical into the sibling',
+      {
+        analysis: homographs(
+          { gloss: { en: 'at' } },
+          { gloss: { en: 'at' }, glossSenseRef: SENSE },
+        ),
+        input: { analysisId: 'ta-a' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses.map(({ id }) => id)).toStrictEqual(['ta-b']);
+          expect(result.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toStrictEqual([
+            'ta-b',
+            'ta-b',
+          ]);
+        },
+      },
+    ],
+    [
+      'changes nothing for an analysis that is not stored',
+      {
+        analysis: analysisOf([payload('ta-in', 'In')], [link('tl-1', 'ta-in', TOKEN)]),
+        input: { analysisId: 'ta-missing' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].glossSenseRef).toBeUndefined();
+        },
+      },
+    ],
+  ];
+
+  it.each(cases)('%s', async (_name, { analysis, input, expectResult }) => {
+    const outcome = await runCommand(analysis, 'en', (buffer) =>
+      linkAnalysisSenseCommand(buffer, { ...input, senseRef: SENSE, now: NOW }),
+    );
+
+    expectResult(outcome.result);
+  });
+});
+
+describe('unlinkAnalysisSense', () => {
+  const cases: [string, CommandCase<{ analysisId: string; keepGloss?: string }>][] = [
+    [
+      'removes an analysis that held only the sense, with its links',
+      {
+        analysis: analysisOf(
+          [payload('ta-in', 'In', { glossSenseRef: SENSE })],
+          [link('tl-1', 'ta-in', TOKEN)],
+        ),
+        input: { analysisId: 'ta-in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toStrictEqual([]);
+          expect(result.tokenAnalysisLinks).toStrictEqual([]);
+        },
+      },
+    ],
+    [
+      'keeps the analysis, with the typed gloss, when it held more than the sense',
+      {
+        analysis: analysisOf(
+          [payload('ta-in', 'In', { gloss: { en: 'at' }, glossSenseRef: SENSE })],
+          [link('tl-1', 'ta-in', TOKEN)],
+        ),
+        input: { analysisId: 'ta-in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toStrictEqual([
+            payload('ta-in', 'In', { gloss: { en: 'at' }, updatedAt: NOW }),
+          ]);
+        },
+      },
+    ],
+    [
+      'writes keepGloss, replacing the typed gloss and keeping other languages',
+      {
+        analysis: analysisOf(
+          [payload('ta-in', 'In', { gloss: { en: 'at', fr: 'à' }, glossSenseRef: SENSE })],
+          [link('tl-1', 'ta-in', TOKEN)],
+        ),
+        input: { analysisId: 'ta-in', keepGloss: 'in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toStrictEqual([
+            payload('ta-in', 'In', { gloss: { en: 'in', fr: 'à' }, updatedAt: NOW }),
+          ]);
+        },
+      },
+    ],
+    [
+      'keeps a ref-only analysis alive when keepGloss is given',
+      {
+        analysis: analysisOf(
+          [payload('ta-in', 'In', { glossSenseRef: SENSE })],
+          [link('tl-1', 'ta-in', TOKEN)],
+        ),
+        input: { analysisId: 'ta-in', keepGloss: 'in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toStrictEqual([
+            payload('ta-in', 'In', { gloss: { en: 'in' }, updatedAt: NOW }),
+          ]);
+          expect(result.tokenAnalysisLinks).toHaveLength(1);
+        },
+      },
+    ],
+    [
+      'treats a blank keepGloss as none',
+      {
+        analysis: analysisOf(
+          [payload('ta-in', 'In', { gloss: { en: 'at' }, glossSenseRef: SENSE })],
+          [link('tl-1', 'ta-in', TOKEN)],
+        ),
+        input: { analysisId: 'ta-in', keepGloss: '  ' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].gloss).toStrictEqual({ en: 'at' });
+        },
+      },
+    ],
+    [
+      'folds an analysis the unlink makes identical into the sibling',
+      {
+        analysis: homographs(
+          { gloss: { en: 'at' }, glossSenseRef: SENSE },
+          { gloss: { en: 'at' } },
+        ),
+        input: { analysisId: 'ta-a' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses.map(({ id }) => id)).toStrictEqual(['ta-b']);
+          expect(result.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toStrictEqual([
+            'ta-b',
+            'ta-b',
+          ]);
+        },
+      },
+    ],
+    [
+      'changes nothing for an analysis with no sense',
+      {
+        analysis: analysisOf(
+          [payload('ta-in', 'In', { gloss: { en: 'at' } })],
+          [link('tl-1', 'ta-in', TOKEN)],
+        ),
+        input: { analysisId: 'ta-in', keepGloss: 'in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toStrictEqual([
+            payload('ta-in', 'In', { gloss: { en: 'at' } }),
+          ]);
+        },
+      },
+    ],
+  ];
+
+  it.each(cases)('%s', async (_name, { analysis, input, expectResult }) => {
+    const outcome = await runCommand(analysis, 'en', (buffer) =>
+      unlinkAnalysisSenseCommand(buffer, { ...input, analysisLanguage: 'en', now: NOW }),
+    );
+
+    expectResult(outcome.result);
+  });
+});
+
+describe('linkAnalysisMorphemeSense', () => {
+  const ENTRY = { authority: 'x-test', entryId: 'entry-in' };
+  const OTHER_ENTRY = { authority: 'x-test', entryId: 'entry-at' };
+  const ALLOMORPH = { authority: 'x-test', allomorphId: 'allo-in' };
+  const GRAMMAR = { authority: 'x-test', msaId: 'msa-in' };
+  const linked = (fields: Partial<MorphemeAnalysis> = {}) =>
+    analysisOf(
+      [
+        payload('ta-in', 'Into', {
+          morphemes: [morpheme('m-in', 'in', 'qaa', fields), morpheme('m-to', 'to', 'qaa')],
+        }),
+      ],
+      [link('tl-1', 'ta-in', TOKEN)],
+    );
+
+  const cases: [string, CommandCase<{ analysisId: string; morphemeId: string }>][] = [
+    [
+      'sets the entry and sense, keeping the typed gloss',
+      {
+        analysis: linked({ gloss: { en: 'in' } }),
+        input: { analysisId: 'ta-in', morphemeId: 'm-in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].morphemes?.[0]).toStrictEqual(
+            morpheme('m-in', 'in', 'qaa', {
+              gloss: { en: 'in' },
+              entryRef: ENTRY,
+              senseRef: SENSE,
+            }),
+          );
+          expect(result.tokenAnalyses[0].updatedAt).toBe(NOW);
+        },
+      },
+    ],
+    [
+      'drops the allomorph and grammar of the entry it leaves',
+      {
+        analysis: linked({
+          entryRef: OTHER_ENTRY,
+          senseRef: OTHER_SENSE,
+          allomorphRef: ALLOMORPH,
+          grammarRef: GRAMMAR,
+        }),
+        input: { analysisId: 'ta-in', morphemeId: 'm-in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].morphemes?.[0]).toStrictEqual(
+            morpheme('m-in', 'in', 'qaa', { entryRef: ENTRY, senseRef: SENSE }),
+          );
+        },
+      },
+    ],
+    [
+      'keeps the allomorph and grammar when the entry is the same',
+      {
+        analysis: linked({
+          entryRef: ENTRY,
+          senseRef: OTHER_SENSE,
+          allomorphRef: ALLOMORPH,
+          grammarRef: GRAMMAR,
+        }),
+        input: { analysisId: 'ta-in', morphemeId: 'm-in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].morphemes?.[0]).toStrictEqual(
+            morpheme('m-in', 'in', 'qaa', {
+              entryRef: ENTRY,
+              senseRef: SENSE,
+              allomorphRef: ALLOMORPH,
+              grammarRef: GRAMMAR,
+            }),
+          );
+        },
+      },
+    ],
+    [
+      'folds an analysis the link makes identical into the sibling',
+      {
+        analysis: homographs(
+          { morphemes: [morpheme('m-a', 'in', 'qaa')] },
+          { morphemes: [morpheme('m-a', 'in', 'qaa', { entryRef: ENTRY, senseRef: SENSE })] },
+        ),
+        input: { analysisId: 'ta-a', morphemeId: 'm-a' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses.map(({ id }) => id)).toStrictEqual(['ta-b']);
+          expect(result.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toStrictEqual([
+            'ta-b',
+            'ta-b',
+          ]);
+        },
+      },
+    ],
+    [
+      'changes nothing for a morpheme the analysis lacks',
+      {
+        analysis: linked(),
+        input: { analysisId: 'ta-in', morphemeId: 'm-missing' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
+        },
+      },
+    ],
+    [
+      'changes nothing for an analysis that is not stored',
+      {
+        analysis: linked(),
+        input: { analysisId: 'ta-missing', morphemeId: 'm-in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
+        },
+      },
+    ],
+  ];
+
+  it.each(cases)('%s', async (_name, { analysis, input, expectResult }) => {
+    const outcome = await runCommand(analysis, 'en', (buffer) =>
+      linkAnalysisMorphemeSenseCommand(buffer, {
+        ...input,
+        entryRef: ENTRY,
+        senseRef: SENSE,
+        now: NOW,
+      }),
+    );
+
+    expectResult(outcome.result);
+  });
+});
+
+describe('unlinkAnalysisMorphemeSense', () => {
+  const ENTRY = { authority: 'x-test', entryId: 'entry-in' };
+  const ALLOMORPH = { authority: 'x-test', allomorphId: 'allo-in' };
+  const GRAMMAR = { authority: 'x-test', msaId: 'msa-in' };
+  const linked = (fields: Partial<MorphemeAnalysis> = {}) =>
+    analysisOf(
+      [
+        payload('ta-in', 'Into', {
+          morphemes: [
+            morpheme('m-in', 'in', 'qaa', {
+              entryRef: ENTRY,
+              senseRef: SENSE,
+              allomorphRef: ALLOMORPH,
+              grammarRef: GRAMMAR,
+              ...fields,
+            }),
+            morpheme('m-to', 'to', 'qaa'),
+          ],
+        }),
+      ],
+      [link('tl-1', 'ta-in', TOKEN)],
+    );
+
+  const cases: [
+    string,
+    CommandCase<{ analysisId: string; morphemeId: string; keepGloss?: string }>,
+  ][] = [
+    [
+      'drops every lexicon reference, keeping the typed gloss',
+      {
+        analysis: linked({ gloss: { en: 'in' } }),
+        input: { analysisId: 'ta-in', morphemeId: 'm-in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].morphemes?.[0]).toStrictEqual(
+            morpheme('m-in', 'in', 'qaa', { gloss: { en: 'in' } }),
+          );
+          expect(result.tokenAnalyses[0].updatedAt).toBe(NOW);
+        },
+      },
+    ],
+    [
+      'writes keepGloss, replacing the typed gloss',
+      {
+        analysis: linked({ gloss: { en: 'at', fr: 'dans' } }),
+        input: { analysisId: 'ta-in', morphemeId: 'm-in', keepGloss: 'in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].morphemes?.[0]).toStrictEqual(
+            morpheme('m-in', 'in', 'qaa', { gloss: { en: 'in', fr: 'dans' } }),
+          );
+        },
+      },
+    ],
+    [
+      'treats a blank keepGloss as none',
+      {
+        analysis: linked({ gloss: { en: 'at' } }),
+        input: { analysisId: 'ta-in', morphemeId: 'm-in', keepGloss: ' ' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].morphemes?.[0].gloss).toStrictEqual({ en: 'at' });
+        },
+      },
+    ],
+    [
+      'folds an analysis the unlink makes identical into the sibling',
+      {
+        analysis: homographs(
+          { morphemes: [morpheme('m-a', 'in', 'qaa', { entryRef: ENTRY, senseRef: SENSE })] },
+          { morphemes: [morpheme('m-a', 'in', 'qaa')] },
+        ),
+        input: { analysisId: 'ta-a', morphemeId: 'm-a' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses.map(({ id }) => id)).toStrictEqual(['ta-b']);
+          expect(result.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toStrictEqual([
+            'ta-b',
+            'ta-b',
+          ]);
+        },
+      },
+    ],
+    [
+      'changes nothing for a morpheme with no sense',
+      {
+        analysis: linked(),
+        input: { analysisId: 'ta-in', morphemeId: 'm-to', keepGloss: 'to' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].morphemes?.[1]).toStrictEqual(
+            morpheme('m-to', 'to', 'qaa'),
+          );
+          expect(result.tokenAnalyses[0].updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
+        },
+      },
+    ],
+    [
+      'changes nothing for a morpheme the analysis lacks',
+      {
+        analysis: linked(),
+        input: { analysisId: 'ta-in', morphemeId: 'm-missing' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
+        },
+      },
+    ],
+    [
+      'changes nothing for an analysis that is not stored',
+      {
+        analysis: linked(),
+        input: { analysisId: 'ta-missing', morphemeId: 'm-in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses[0].updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
+        },
+      },
+    ],
+  ];
+
+  it.each(cases)('%s', async (_name, { analysis, input, expectResult }) => {
+    const outcome = await runCommand(analysis, 'en', (buffer) =>
+      unlinkAnalysisMorphemeSenseCommand(buffer, { ...input, analysisLanguage: 'en', now: NOW }),
+    );
+
+    expectResult(outcome.result);
+  });
+});
+
+describe('adoptAnalysisSenseGloss', () => {
+  const cases: [string, CommandCase<GlossInput>][] = [
+    [
+      'replaces a differing gloss and keeps the sense',
+      {
+        analysis: analysisOf(
+          [payload('ta-in', 'In', { gloss: { en: 'at' }, glossSenseRef: SENSE })],
+          [link('tl-1', 'ta-in', TOKEN)],
+        ),
+        input: { analysisId: 'ta-in', value: 'in' },
+        expectResult: (result) => {
+          expect(result.tokenAnalyses).toStrictEqual([
+            payload('ta-in', 'In', { gloss: { en: 'in' }, glossSenseRef: SENSE, updatedAt: NOW }),
+          ]);
+        },
+      },
+    ],
+  ];
+
+  it.each(cases)('%s', async (_name, { analysis, input, expectResult }) => {
+    const outcome = await runCommand(analysis, 'en', (buffer) =>
+      adoptSenseGlossCommand(buffer, { ...input, analysisLanguage: 'en', now: NOW }),
+    );
+
+    expectResult(outcome.result);
+  });
+
+  it('throws on a blank value', async () => {
+    await expect(
+      runCommand(
+        analysisOf([payload('ta-in', 'In', { glossSenseRef: SENSE })], []),
+        'en',
+        (buffer) =>
+          adoptSenseGlossCommand(buffer, {
+            analysisId: 'ta-in',
+            value: ' ',
+            analysisLanguage: 'en',
+            now: NOW,
+          }),
+      ),
+    ).rejects.toThrow('must not be blank');
+  });
+});
+
+describe('adoptAnalysisMorphemeSenseGloss', () => {
+  const linkedMorpheme = (gloss?: Record<string, string>) =>
+    analysisOf(
+      [
+        payload('ta-in', 'Into', {
+          morphemes: [
+            morpheme('m-in', 'in', 'qaa', {
+              gloss,
+              entryRef: { authority: 'x-test', entryId: 'entry-in' },
+              senseRef: SENSE,
+            }),
+          ],
+        }),
+      ],
+      [link('tl-1', 'ta-in', TOKEN)],
+    );
+
+  it('replaces a differing gloss and keeps the references', async () => {
+    const outcome = await runCommand(linkedMorpheme({ en: 'at' }), 'en', (buffer) =>
+      adoptMorphemeSenseGlossCommand(buffer, {
+        analysisId: 'ta-in',
+        morphemeId: 'm-in',
+        value: 'in',
+        analysisLanguage: 'en',
+        now: NOW,
+      }),
+    );
+
+    expect(outcome.result.tokenAnalyses[0].morphemes?.[0]).toStrictEqual(
+      morpheme('m-in', 'in', 'qaa', {
+        gloss: { en: 'in' },
+        entryRef: { authority: 'x-test', entryId: 'entry-in' },
+        senseRef: SENSE,
+      }),
+    );
+  });
+
+  it('throws on a blank value', async () => {
+    await expect(
+      runCommand(linkedMorpheme(), 'en', (buffer) =>
+        adoptMorphemeSenseGlossCommand(buffer, {
+          analysisId: 'ta-in',
+          morphemeId: 'm-in',
+          value: '',
+          analysisLanguage: 'en',
+          now: NOW,
+        }),
+      ),
+    ).rejects.toThrow('must not be blank');
   });
 });
 

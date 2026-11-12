@@ -2,10 +2,16 @@
 
 import type { TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import {
+  adoptAnalysisMorphemeSenseGloss,
+  adoptAnalysisSenseGloss,
   clearAnalysisGlosses,
   confirmAnalysisMorphemes,
   deleteAnalyses,
+  linkAnalysisMorphemeSense,
+  linkAnalysisSense,
   mergeAnalysesInto,
+  unlinkAnalysisMorphemeSense,
+  unlinkAnalysisSense,
   writeAnalysisGloss,
   writeAnalysisMorphemeGloss,
   writeAnalysisMorphemes,
@@ -79,6 +85,67 @@ describe('catalog commands over an analysis that is not stored', () => {
       'writeAnalysisMorphemeGloss',
       (buffer) =>
         writeAnalysisMorphemeGloss(buffer, {
+          analysisId: 'ta-missing',
+          morphemeId: 'm-in',
+          value: 'in',
+          analysisLanguage: 'en',
+          now: NOW,
+        }),
+    ],
+    [
+      'linkAnalysisSense',
+      (buffer) =>
+        linkAnalysisSense(buffer, {
+          analysisId: 'ta-missing',
+          senseRef: { authority: 'x-test', senseId: 's' },
+          now: NOW,
+        }),
+    ],
+    [
+      'unlinkAnalysisSense',
+      (buffer) =>
+        unlinkAnalysisSense(buffer, {
+          analysisId: 'ta-missing',
+          keepGloss: 'in',
+          analysisLanguage: 'en',
+          now: NOW,
+        }),
+    ],
+    [
+      'linkAnalysisMorphemeSense',
+      (buffer) =>
+        linkAnalysisMorphemeSense(buffer, {
+          analysisId: 'ta-missing',
+          morphemeId: 'm-in',
+          entryRef: { authority: 'x-test', entryId: 'e' },
+          senseRef: { authority: 'x-test', senseId: 's' },
+          now: NOW,
+        }),
+    ],
+    [
+      'unlinkAnalysisMorphemeSense',
+      (buffer) =>
+        unlinkAnalysisMorphemeSense(buffer, {
+          analysisId: 'ta-missing',
+          morphemeId: 'm-in',
+          analysisLanguage: 'en',
+          now: NOW,
+        }),
+    ],
+    [
+      'adoptAnalysisSenseGloss',
+      (buffer) =>
+        adoptAnalysisSenseGloss(buffer, {
+          analysisId: 'ta-missing',
+          value: 'in',
+          analysisLanguage: 'en',
+          now: NOW,
+        }),
+    ],
+    [
+      'adoptAnalysisMorphemeSenseGloss',
+      (buffer) =>
+        adoptAnalysisMorphemeSenseGloss(buffer, {
           analysisId: 'ta-missing',
           morphemeId: 'm-in',
           value: 'in',

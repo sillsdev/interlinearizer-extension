@@ -2161,6 +2161,85 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
+  const senseRefParam = {
+    name: 'senseRef',
+    required: true,
+    summary: 'SenseRef of the lexicon sense linked',
+    schema: { type: 'object' },
+  } as const;
+  const keepGlossParam = {
+    name: 'keepGloss',
+    required: false,
+    summary:
+      "Gloss to write in the session's analysis language before the link is dropped; omit or leave blank to keep none",
+    schema: { type: 'string' },
+  } as const;
+  const morphemeIdParam = {
+    name: 'morphemeId',
+    required: true,
+    summary: 'MorphemeAnalysis.id of the morpheme edited',
+    schema: { type: 'string' },
+  } as const;
+  const adoptValueParam = {
+    name: 'value',
+    required: true,
+    summary: "The linked sense's gloss, which is never blank",
+    schema: { type: 'string' },
+  } as const;
+
+  await registerEdit('interlinearizer.linkAnalysisSense', {
+    summary:
+      'Link a token analysis to a lexicon sense, for every token linked to it, replacing any sense it had',
+    params: sessionArgs(catalogAnalysisParam, senseRefParam, changeIdParam),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.unlinkAnalysisSense', {
+    summary:
+      "Drop a token analysis's lexicon sense link, for every token linked to it, optionally keeping a gloss",
+    params: sessionArgs(catalogAnalysisParam, keepGlossParam, changeIdParam),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.linkAnalysisMorphemeSense', {
+    summary:
+      'Link one morpheme of a token analysis to a lexicon sense, for every token linked to it; a different entry drops its allomorph and grammar references',
+    params: sessionArgs(
+      catalogAnalysisParam,
+      morphemeIdParam,
+      {
+        name: 'entryRef',
+        required: true,
+        summary: 'EntryRef of the lexicon entry that owns the sense',
+        schema: { type: 'object' },
+      },
+      senseRefParam,
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.unlinkAnalysisMorphemeSense', {
+    summary:
+      'Drop every lexicon reference of one morpheme of a token analysis, for every token linked to it, optionally keeping a gloss',
+    params: sessionArgs(catalogAnalysisParam, morphemeIdParam, keepGlossParam, changeIdParam),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.adoptAnalysisSenseGloss', {
+    summary:
+      "Write a linked sense's gloss as a token analysis's gloss in a session's analysis language, keeping the link",
+    params: sessionArgs(catalogAnalysisParam, adoptValueParam, changeIdParam),
+    result: editResult,
+  });
+
+  await registerEdit('interlinearizer.adoptAnalysisMorphemeSenseGloss', {
+    summary:
+      "Write a linked sense's gloss as one morpheme's gloss in a session's analysis language, keeping the link",
+    params: sessionArgs(catalogAnalysisParam, morphemeIdParam, adoptValueParam, changeIdParam),
+    result: editResult,
+  });
+
   await registerEdit('interlinearizer.deleteAnalyses', {
     summary: 'Remove token analyses with every token link to them',
     params: sessionArgs(analysisIdsParam, changeIdParam),

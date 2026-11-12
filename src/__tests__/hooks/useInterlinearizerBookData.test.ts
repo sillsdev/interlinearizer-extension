@@ -19,6 +19,7 @@ const TEST_BOOK: Book = {
   bookRef: 'GEN',
   textVersion: 'v1',
   duplicateVerseIds: [],
+  invalidVerseIds: [],
   segments: [
     makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
     makeSegment('GEN 1:2', 'And the earth.', [makeWordToken('GEN 1:2:0', 'And')]),
@@ -231,6 +232,41 @@ describe('useInterlinearizerBookData', () => {
       const { result } = renderBookData();
 
       expect(result.current.writingSystem).toBe('und');
+    });
+  });
+
+  describe('verse markers that name no verse', () => {
+    const BOOK_WITH_INVALID: Book = { ...TEST_BOOK, invalidVerseIds: ['GEN 1:'] };
+
+    beforeEach(() => {
+      jest.mocked(logger.warn).mockImplementation(() => {});
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+    });
+
+    it('sends its own warning notification and logs the skipped SIDs', async () => {
+      serveBooks(BOOK_WITH_INVALID);
+
+      renderBookData();
+
+      await waitFor(() =>
+        expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+          message: '%interlinearizer_warning_invalidVerses%',
+          severity: 'warning',
+        }),
+      );
+      expect(jest.mocked(logger.warn)).toHaveBeenCalledWith(expect.stringContaining('GEN 1:'));
+    });
+
+    it('warns only once when the same book is fetched again', async () => {
+      serveBooks(BOOK_WITH_INVALID);
+      const { result, rerender } = renderBookData();
+      await waitFor(() => expect(jest.mocked(papi.notifications.send)).toHaveBeenCalled());
+
+      mockLanguageTag('fr');
+      rerender({ scrRef: GEN_1_1 });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -191,6 +191,11 @@ export async function importPt9Project(
             `Interlinearizer: book ${bookId} in project ${sourceProjectId} repeats ${book.duplicateVerseIds.length} verse marker(s); their text is excluded from the import: ${book.duplicateVerseIds.join(', ')}`,
           );
         }
+        if (book.invalidVerseIds.length > 0) {
+          logger.warn(
+            `Interlinearizer: book ${bookId} in project ${sourceProjectId} has ${book.invalidVerseIds.length} verse marker(s) that name no verse; their text is excluded from the import: ${book.invalidVerseIds.join(', ')}`,
+          );
+        }
         return [book];
       }),
     )

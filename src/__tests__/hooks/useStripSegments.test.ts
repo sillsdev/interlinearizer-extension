@@ -17,6 +17,7 @@ function makeBook(count: number): Book {
     bookRef: 'GEN',
     textVersion: 'v1',
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     segments: Array.from({ length: count }, (_unused, i) =>
       makeSegment(`GEN 1:${i + 1}`, 'word', [makeWordToken(tokenAt(i), 'word')]),
     ),

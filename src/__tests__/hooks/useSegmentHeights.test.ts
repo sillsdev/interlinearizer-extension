@@ -14,6 +14,7 @@ function makeBook(count: number): Book {
     bookRef: 'PSA',
     textVersion: 'v1',
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     segments: Array.from({ length: count }, (_unused, i) =>
       makeSegment(`PSA 1:${i + 1}`, 'a', [makeWordToken(`PSA 1:${i + 1}:0`, 'a')]),
     ),
@@ -48,6 +49,7 @@ function wideSegmentBook(): Book {
     bookRef: 'PSA',
     textVersion: 'v1',
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     segments: [
       makeSegment(
         'PSA 1:1',

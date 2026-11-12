@@ -232,6 +232,7 @@ export const GEN_1_1_BOOK: Book = {
   textVersion: 'v1',
   segments: [makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')])],
   duplicateVerseIds: [],
+  invalidVerseIds: [],
 };
 
 /** Minimal elevated privileges for tests (all properties optional per papi type). */
@@ -340,6 +341,7 @@ export function makeRawBook(
     writingSystem: 'en',
     contentHash: 'abc123',
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     frontMatter,
     segments: entries.map((entry) => {
       if ('sid' in entry) {

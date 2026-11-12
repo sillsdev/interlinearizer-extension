@@ -19,7 +19,14 @@ const mockSendCommand = getMockedSendCommand(papi);
 
 /** A stand-in tokenized book, which the stand-in index reads only the code and version of. */
 function book(bookRef: string, textVersion: string): Book {
-  return { id: bookRef, bookRef, textVersion, segments: [], duplicateVerseIds: [] };
+  return {
+    id: bookRef,
+    bookRef,
+    textVersion,
+    segments: [],
+    duplicateVerseIds: [],
+    invalidVerseIds: [],
+  };
 }
 
 /** Wires the host to serve `booksPresent` and each tokenized book from `readBook`. */

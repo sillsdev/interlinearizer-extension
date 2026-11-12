@@ -51,6 +51,7 @@ describe('buildBookOutline', () => {
       textVersion: 'v1',
       segments: [],
       duplicateVerseIds: [],
+      invalidVerseIds: [],
     };
 
     expect(buildBookOutline(book, segments)).toEqual({

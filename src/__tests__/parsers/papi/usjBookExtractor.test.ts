@@ -818,6 +818,62 @@ describe('extractBookFromUsj', () => {
     expect(extractBookFromUsj(usj, WS).duplicateVerseIds).toEqual(['GEN 1:1', 'GEN 1:1']);
   });
 
+  describe('a verse marker whose SID names no verse', () => {
+    /** A `\v` with no number reaches USJ as number "" and a SID with no verse portion. */
+    const unnumberedVerseUsj: UsjDocument = {
+      content: [
+        { type: 'book', code: '1SA', content: [] },
+        { type: 'chapter', number: '9', sid: '1SA 9' },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [
+            { type: 'verse', number: '16', sid: '1SA 9:16' },
+            'Sixteen.',
+            { type: 'verse', number: '', sid: '1SA 9:' },
+            'Orphan.',
+            { type: 'verse', number: '18', sid: '1SA 9:18' },
+            'Eighteen.',
+          ],
+        },
+      ],
+    };
+
+    it('drops the marker and its text, folding nothing into the verse before it', () => {
+      expect(extractBookFromUsj(unnumberedVerseUsj, WS).segments).toEqual([
+        { kind: 'verse', sid: '1SA 9:16', number: '16', text: 'Sixteen.' },
+        { kind: 'verse', sid: '1SA 9:18', number: '18', text: 'Eighteen.' },
+      ]);
+    });
+
+    it('reports the SID as invalid, not as a duplicate', () => {
+      const { invalidVerseIds, duplicateVerseIds } = extractBookFromUsj(unnumberedVerseUsj, WS);
+      expect(invalidVerseIds).toEqual(['1SA 9:']);
+      expect(duplicateVerseIds).toEqual([]);
+    });
+
+    it('reports one entry per marker when the same invalid SID recurs', () => {
+      const usj: UsjDocument = {
+        content: [
+          { type: 'book', code: '1SA', content: [] },
+          {
+            type: 'para',
+            marker: 'p',
+            content: [
+              { type: 'verse', number: '', sid: '1SA 9:' },
+              { type: 'verse', number: '', sid: '1SA 9:' },
+            ],
+          },
+        ],
+      };
+      expect(extractBookFromUsj(usj, WS).invalidVerseIds).toEqual(['1SA 9:', '1SA 9:']);
+    });
+
+    it('reports no invalid SIDs for a well-formed book', () => {
+      expect(extractBookFromUsj(duplicateVerseUsj, WS).invalidVerseIds).toEqual([]);
+    });
+  });
+
   it('captures a d descriptive title before verse 1 as verse 0', () => {
     const usj: UsjDocument = {
       content: [

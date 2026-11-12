@@ -78,7 +78,14 @@ function makeBook(chapter1Count: number, chapter2Count: number, book = 'GEN'): B
   const segments: Segment[] = [];
   for (let v = 1; v <= chapter1Count; v += 1) segments.push(makeSegment(1, v, book));
   for (let v = 1; v <= chapter2Count; v += 1) segments.push(makeSegment(2, v, book));
-  return { id: book, bookRef: book, textVersion: 'v1', segments, duplicateVerseIds: [] };
+  return {
+    id: book,
+    bookRef: book,
+    textVersion: 'v1',
+    segments,
+    duplicateVerseIds: [],
+    invalidVerseIds: [],
+  };
 }
 
 const tokenSegmentMaps = new WeakMap<readonly Segment[], ReadonlyMap<string, string>>();
@@ -1248,6 +1255,7 @@ describe('useSegmentWindow', () => {
       textVersion: 'v1',
       segments,
       duplicateVerseIds: [],
+      invalidVerseIds: [],
     };
     const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 11 });
 
@@ -1788,6 +1796,7 @@ describe('useSegmentWindow', () => {
       textVersion: 'v1',
       segments: mergedTail,
       duplicateVerseIds: [],
+      invalidVerseIds: [],
     };
 
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
@@ -1820,6 +1829,7 @@ describe('useSegmentWindow', () => {
       textVersion: 'v1',
       segments: splitTail,
       duplicateVerseIds: [],
+      invalidVerseIds: [],
     };
 
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
@@ -1853,6 +1863,7 @@ describe('useSegmentWindow', () => {
       textVersion: 'v1',
       segments: mergedTail,
       duplicateVerseIds: [],
+      invalidVerseIds: [],
     };
 
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));

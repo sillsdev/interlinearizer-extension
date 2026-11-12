@@ -284,6 +284,7 @@ const GEN_EMPTY_BOOK: Book = {
   textVersion: 'v1',
   segments: [],
   duplicateVerseIds: [],
+  invalidVerseIds: [],
 };
 
 /**
@@ -303,7 +304,14 @@ function makeLargeBook(count: number): Book {
       verseStarts: [{ charStart: 0, number: String(v), chapter: 1 }],
     });
   }
-  return { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments, duplicateVerseIds: [] };
+  return {
+    id: 'GEN',
+    bookRef: 'GEN',
+    textVersion: 'v1',
+    segments,
+    duplicateVerseIds: [],
+    invalidVerseIds: [],
+  };
 }
 
 /** Book with two segments in GEN 1. */
@@ -312,6 +320,7 @@ const GEN_1_MULTI_BOOK: Book = {
   bookRef: 'GEN',
   textVersion: 'v1',
   duplicateVerseIds: [],
+  invalidVerseIds: [],
   segments: [
     makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
     makeSegment('GEN 1:2', 'And the earth.', [makeWordToken('GEN 1:2:0', 'And')]),
@@ -328,6 +337,7 @@ const GEN_1_EMPTY_MIDDLE_BOOK: Book = {
   bookRef: 'GEN',
   textVersion: 'v1',
   duplicateVerseIds: [],
+  invalidVerseIds: [],
   segments: [
     makeSegment('GEN 1:1', 'Alpha.', [makeWordToken('GEN 1:1:0', 'Alpha')]),
     makeSegment('GEN 1:2', '', []),
@@ -346,6 +356,7 @@ function makeManySegmentBook(count: number): Book {
     bookRef: 'GEN',
     textVersion: 'v1',
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     segments: Array.from({ length: count }, (_unused, i) =>
       makeSegment(`GEN 1:${i + 1}`, 'Word.', [makeWordToken(`GEN 1:${i + 1}:0`, 'Word')]),
     ),
@@ -357,6 +368,7 @@ const GEN_TWO_CHAPTER_BOOK: Book = {
   bookRef: 'GEN',
   textVersion: 'v1',
   duplicateVerseIds: [],
+  invalidVerseIds: [],
   segments: [1, 2].flatMap((chapter) =>
     [1, 2].map((verse) =>
       makeSegment(`GEN ${chapter}:${verse}`, 'Word.', [
@@ -376,6 +388,7 @@ const GEN_SPLITTABLE_V1_BOOK: Book = {
   bookRef: 'GEN',
   textVersion: 'v1',
   duplicateVerseIds: [],
+  invalidVerseIds: [],
   segments: [
     makeSegment('GEN 1:1', 'In beginning.', [
       makeWordToken('GEN 1:1:0', 'In'),
@@ -402,6 +415,7 @@ const GEN_SUPERSCRIPTION_BOOK: Book = {
   bookRef: 'GEN',
   textVersion: 'v1',
   duplicateVerseIds: [],
+  invalidVerseIds: [],
   segments: [
     makeSegment('GEN 1:0', 'A song.', [makeWordToken('GEN 1:0:0', 'A')]),
     makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
@@ -1317,6 +1331,7 @@ describe('Interlinearizer', () => {
     bookRef: 'GEN',
     textVersion: 'v1',
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     segments: [1, 2].flatMap((chapter) =>
       Array.from({ length: 40 }, (_, i) => i + 1).map((verse) =>
         makeSegment(`GEN ${chapter}:${verse}`, 'Word.', [
@@ -1647,6 +1662,7 @@ describe('Interlinearizer', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       duplicateVerseIds: [],
+      invalidVerseIds: [],
       segments,
     };
     const scrRef = { book: 'GEN', chapterNum: 1, verseNum: 100 };
@@ -2509,6 +2525,7 @@ describe('focus preservation across segmentation edits', () => {
     bookRef: 'GEN',
     textVersion: 'v1',
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     segments: [
       makeSegment('GEN 1:1', 'In beginning.', [
         makeWordToken('GEN 1:1:0', 'In'),
@@ -2716,6 +2733,7 @@ const LUK_1_1_BOOK: Book = {
   bookRef: 'LUK',
   textVersion: 'v1',
   duplicateVerseIds: [],
+  invalidVerseIds: [],
   segments: [
     makeSegment('LUK 1:1', 'Since many', [
       makeWordToken('LUK 1:1:0', 'Since'),

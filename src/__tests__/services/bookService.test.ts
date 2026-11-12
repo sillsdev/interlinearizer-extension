@@ -157,6 +157,7 @@ function tokenizeToWords() {
     bookRef: raw.bookCode,
     textVersion: `${raw.contentHash}@${raw.writingSystem}`,
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     segments: [
       makeSegment(`${raw.bookCode} 1:1`, `shared ${raw.bookCode}-${raw.contentHash}`, [
         makeWordToken(`${raw.bookCode} 1:1:0`, 'shared'),
@@ -172,6 +173,7 @@ const VERSE_BOOK: Book = {
   bookRef: 'GEN',
   textVersion: 'v1@en',
   duplicateVerseIds: [],
+  invalidVerseIds: [],
   segments: [1, 2, 3].map((verse) =>
     makeSegment(`GEN 1:${verse}`, 'word', [makeWordToken(`GEN 1:${verse}:0`, 'word')]),
   ),
@@ -218,6 +220,7 @@ beforeEach(() => {
     contentHash: String(doc.content[1]),
     writingSystem,
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     segments: [],
     frontMatter: [],
   }));
@@ -227,6 +230,7 @@ beforeEach(() => {
     textVersion: `${raw.contentHash}@${raw.writingSystem}`,
     segments: [],
     duplicateVerseIds: [],
+    invalidVerseIds: [],
   }));
 });
 

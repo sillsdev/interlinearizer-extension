@@ -351,6 +351,7 @@ const ALPHA_BETA_BOOK: Book = {
   bookRef: 'GEN',
   textVersion: 'v1',
   duplicateVerseIds: [],
+  invalidVerseIds: [],
   segments: [
     makeSegment('GEN 1:1', 'Alpha beta.', [
       makeWordToken('GEN 1:1:0', 'Alpha'),
@@ -978,6 +979,7 @@ describe('InterlinearizerLoader', () => {
       bookRef: 'PSA',
       textVersion: 'v1',
       duplicateVerseIds: [],
+      invalidVerseIds: [],
       segments: [makeSegment('PSA 3:0', 'A Psalm by David.', [])],
     };
     mockBookData({ book: bookWithSuperscription });
@@ -1034,6 +1036,7 @@ describe('InterlinearizerLoader', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       duplicateVerseIds: [],
+      invalidVerseIds: [],
       segments: [
         makeSegment('GEN 3:1', 'First verse.', []),
         makeSegment('GEN 3:2', 'Last verse of the chapter.', []),
@@ -1069,6 +1072,7 @@ describe('InterlinearizerLoader', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       duplicateVerseIds: [],
+      invalidVerseIds: [],
       segments: [
         {
           id: 'GEN 4:20',
@@ -1113,6 +1117,7 @@ describe('InterlinearizerLoader', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       duplicateVerseIds: [],
+      invalidVerseIds: [],
       segments: [
         makeSegment('GEN 3:1', 'First verse.', []),
         makeSegment('GEN 3:3', 'Verse after the gap.', []),
@@ -1146,6 +1151,7 @@ describe('InterlinearizerLoader', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       duplicateVerseIds: [],
+      invalidVerseIds: [],
       segments: [
         {
           id: 'GEN 3:1',
@@ -3133,6 +3139,7 @@ describe('InterlinearizerLoader', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       duplicateVerseIds: [],
+      invalidVerseIds: [],
       segments: [
         makeSegment('GEN 1:1', 'Alpha beta.', [
           makeWordToken('GEN 1:1:0', 'Alpha'),
@@ -3266,6 +3273,7 @@ describe('InterlinearizerLoader', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       duplicateVerseIds: [],
+      invalidVerseIds: [],
       segments: [
         makeSegment('GEN 1:1', 'Alpha.', [makeWordToken('GEN 1:1:0', 'Alpha')]),
         makeSegment('GEN 1:2', '“Gamma.', [

@@ -211,6 +211,7 @@ export function tokenizeBook(rawBook: RawBook): Book {
     textVersion: rawBook.contentHash,
     segments,
     duplicateVerseIds: rawBook.duplicateVerseIds,
+    invalidVerseIds: rawBook.invalidVerseIds,
     ...(frontMatter.length > 0 && { frontMatter }),
   };
 }

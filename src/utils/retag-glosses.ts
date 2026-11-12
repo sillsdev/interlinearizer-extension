@@ -31,6 +31,18 @@ export type GlossRetag = {
   phraseAnalyses: PhraseAnalysis[];
 };
 
+/** What {@link retagMultiString} would do to `value`, without changing it. */
+function retagOutcome(
+  value: MultiString | undefined,
+  from: string,
+  to: string,
+): 'moved' | 'skipped' | 'none' {
+  const text = value?.[from];
+  if (text === undefined || text.trim() === '') return 'none';
+  const existing = (value?.[to] ?? '').trim();
+  return existing !== '' && existing !== text.trim() ? 'skipped' : 'moved';
+}
+
 /**
  * Moves the text under `from` to `to` in place. Text under `to` is never overwritten. Text under
  * `from` that matches the text under `to` is dropped and counts as moved. Blank text under `from`
@@ -40,14 +52,23 @@ function retagMultiString(
   value: MultiString | undefined,
   from: string,
   to: string,
-): 'moved' | 'skipped' | 'none' {
+): ReturnType<typeof retagOutcome> {
+  const outcome = retagOutcome(value, from, to);
   const text = value?.[from];
-  if (!value || text === undefined || text.trim() === '') return 'none';
-  const existing = (value[to] ?? '').trim();
-  if (existing !== '' && existing !== text.trim()) return 'skipped';
+  if (!value || text === undefined || outcome !== 'moved') return outcome;
   delete value[from];
-  if (existing === '') value[to] = text;
-  return 'moved';
+  if ((value[to] ?? '').trim() === '') value[to] = text;
+  return outcome;
+}
+
+/** Whether {@link retagGlosses} would move any gloss of `analysis` from `from` to `to`. */
+export function hasGlossesToRetag(analysis: TextAnalysis, from: string, to: string): boolean {
+  const moves = (value: MultiString | undefined) => retagOutcome(value, from, to) === 'moved';
+  return (
+    analysis.tokenAnalyses.some(
+      ({ gloss, morphemes }) => moves(gloss) || (morphemes ?? []).some((m) => moves(m.gloss)),
+    ) || analysis.phraseAnalyses.some(({ gloss }) => moves(gloss))
+  );
 }
 
 /**

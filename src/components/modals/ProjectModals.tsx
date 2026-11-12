@@ -8,8 +8,16 @@ import type { DraftCopyResult, NewDraftConfig } from '../../types/project-api';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
-import { isInterlinearProjectSummary, isSavedAsProject } from '../../types/type-guards';
-import { isGlossRetagCounts, type GlossRetagCounts } from '../../utils/retag-glosses';
+import {
+  isInterlinearProjectSummary,
+  isSavedAsProject,
+  isTextAnalysis,
+} from '../../types/type-guards';
+import {
+  hasGlossesToRetag,
+  isGlossRetagCounts,
+  type GlossRetagCounts,
+} from '../../utils/retag-glosses';
 import type { Settles } from '../../utils/settles';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
 import { DiscardDraftConfirm } from './DiscardDraftConfirm';
@@ -55,6 +63,11 @@ const PROJECT_MODALS_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_retagGlosses_movedMorphemes%',
   '%interlinearizer_retagGlosses_skipped%',
 ];
+
+/** Whether a move of glosses moved any. */
+function movedAny({ words, morphemes }: GlossRetagCounts): boolean {
+  return words + morphemes > 0;
+}
 
 /** Tells the reader what a move of glosses from `from` to `to` did, leaving out zero counts. */
 function retagMessage(
@@ -262,14 +275,14 @@ export default function ProjectModals({
 
   /**
    * Gives the draft new analysis languages, moving the glosses under `retagFrom` to the new primary
-   * language when given, and tells the reader what moved, offering to undo it. A failure is
-   * logged.
+   * language when given. When any glosses moved, tells the reader what moved, offering to undo it.
+   * A failure is logged.
    */
   const changeDraftLanguages = useCallback(
     async (analysisLanguages: string[], retagFrom?: string) => {
       try {
         const moved = await changeDraftAnalysisLanguages(analysisLanguages, retagFrom);
-        if (moved && retagFrom !== undefined)
+        if (moved && movedAny(moved) && retagFrom !== undefined)
           announceUndoable(retagMessage(retagFrom, analysisLanguages[0], moved, localizedStrings));
       } catch (e) {
         logger.error("Interlinearizer: failed to change the draft's analysis languages", e);
@@ -297,7 +310,7 @@ export default function ProjectModals({
               to,
             );
             const moved: unknown = movedJson ? JSON.parse(movedJson) : undefined;
-            if (isGlossRetagCounts(moved))
+            if (isGlossRetagCounts(moved) && movedAny(moved))
               await papi.notifications.send({
                 message: retagMessage(from, to, moved, localizedStrings),
                 severity: 'info',
@@ -312,6 +325,31 @@ export default function ProjectModals({
   );
 
   /**
+   * Asks whether to move the glosses of a project that isn't open, unless its stored analysis has
+   * none that would move. A project that can't be read is asked about anyway.
+   */
+  const offerStoredRetag = useCallback(async (retag: PendingRetag) => {
+    try {
+      const projectJson = await papi.commands.sendCommand(
+        'interlinearizer.getProject',
+        retag.interlinearProjectId,
+      );
+      const project: unknown = projectJson ? JSON.parse(projectJson) : undefined;
+      const analysis =
+        project && typeof project === 'object' && 'analysis' in project
+          ? project.analysis
+          : undefined;
+      if (isTextAnalysis(analysis) && !hasGlossesToRetag(analysis, retag.from, retag.to)) return;
+    } catch (e) {
+      logger.warn(
+        "Interlinearizer: couldn't read a project to see whether it has glosses to move",
+        e,
+      );
+    }
+    setPendingRetag(retag);
+  }, []);
+
+  /**
    * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
    * project is the currently active one, carrying through the server-refreshed `updatedAt` so the
    * cached Modified time (shown in the picker and on modal reopen) stays current.
@@ -321,7 +359,9 @@ export default function ProjectModals({
    *
    * - In the open draft, an old primary dropped from the list has its glosses moved to the new one at
    *   once, as an undoable step. One still listed is moved only if the user says so.
-   * - In a project not open, nothing can be undone, so the user is always asked.
+   * - In a project not open, nothing can be undone, so the user is asked.
+   *
+   * Neither happens when no gloss would move.
    *
    * @param updated - The updated name, description, analysisLanguages, and refreshed `updatedAt`.
    */
@@ -340,20 +380,28 @@ export default function ProjectModals({
       const active = activeProject !== undefined && interlinearProjectId === activeProject.id;
       if (activeProject && active) setActiveProject({ ...activeProject, ...updated });
 
+      if (!active) {
+        const [from] = resolvedMetadataProject.analysisLanguages;
+        if (from !== undefined && from !== to)
+          offerStoredRetag({ interlinearProjectId, active, analysisLanguages, from, to });
+        return;
+      }
+
+      const draft = getDraftSnapshot();
       /* v8 ignore next -- Save waits for the draft whenever the draft's languages are read */
-      const draftLanguages = getDraftSnapshot()?.analysisLanguages ?? [];
-      const from = active ? draftLanguages[0] : resolvedMetadataProject.analysisLanguages[0];
-      if (from === undefined || from === to) {
-        if (active && draftLanguages.join(',') !== analysisLanguages.join(','))
+      if (!draft) return;
+      const [from] = draft.analysisLanguages;
+      if (from === undefined || from === to || !hasGlossesToRetag(draft.analysis, from, to)) {
+        if (draft.analysisLanguages.join(',') !== analysisLanguages.join(','))
           changeDraftLanguages(analysisLanguages);
-      } else if (active && !analysisLanguages.includes(from))
-        changeDraftLanguages(analysisLanguages, from);
+      } else if (!analysisLanguages.includes(from)) changeDraftLanguages(analysisLanguages, from);
       else setPendingRetag({ interlinearProjectId, active, analysisLanguages, from, to });
     },
     [
       activeProject,
       changeDraftLanguages,
       getDraftSnapshot,
+      offerStoredRetag,
       resolvedMetadataProject,
       setActiveProject,
     ],

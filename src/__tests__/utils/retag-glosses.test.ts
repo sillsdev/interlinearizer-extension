@@ -2,10 +2,14 @@
 
 import type { TextAnalysis } from 'interlinearizer';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { isGlossRetagCounts, retagGlosses } from '../../utils/retag-glosses';
+import { hasGlossesToRetag, isGlossRetagCounts, retagGlosses } from '../../utils/retag-glosses';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
 const NOW = '2026-06-01T00:00:00.000Z';
+
+const TOKEN = { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish' };
+
+const PHRASE = { id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'big fish' };
 
 function analysisOf(fields: Partial<TextAnalysis>): TextAnalysis {
   return { ...emptyAnalysis(), ...fields };
@@ -138,6 +142,42 @@ describe('retagGlosses', () => {
     expect(tokenAnalyses).toEqual([]);
     expect(phraseAnalyses).toEqual([]);
     expect(analysis).toEqual(before);
+  });
+});
+
+describe('hasGlossesToRetag', () => {
+  it.each([
+    ['a word gloss', { tokenAnalyses: [{ ...TOKEN, gloss: { en: 'fish' } }] }],
+    [
+      'a morpheme gloss',
+      {
+        tokenAnalyses: [
+          {
+            ...TOKEN,
+            morphemes: [{ id: 'm-1', form: 'fish', writingSystem: 'x', gloss: { en: 'fish' } }],
+          },
+        ],
+      },
+    ],
+    ['a phrase gloss', { phraseAnalyses: [{ ...PHRASE, gloss: { en: 'whale' } }] }],
+    [
+      'a gloss matching the new one',
+      { tokenAnalyses: [{ ...TOKEN, gloss: { en: 'a', es: 'a' } }] },
+    ],
+  ])('finds %s to move', (_, fields: Partial<TextAnalysis>) => {
+    expect(hasGlossesToRetag(analysisOf(fields), 'en', 'es')).toBe(true);
+  });
+
+  it('finds none when every gloss under the old tag is blank or held back by a different one', () => {
+    const analysis = analysisOf({
+      tokenAnalyses: [
+        { ...TOKEN, gloss: { en: ' ', fr: 'poisson' } },
+        { ...TOKEN, id: 'ta-2', gloss: { en: 'fish', es: 'pez' } },
+      ],
+      phraseAnalyses: [{ ...PHRASE }],
+    });
+
+    expect(hasGlossesToRetag(analysis, 'en', 'es')).toBe(false);
   });
 });
 

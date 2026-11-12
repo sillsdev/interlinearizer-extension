@@ -4653,7 +4653,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     /** Serves `preview` in place of the host's answer to `previewDeletion`. */
-    function previewServedBy(preview: () => Promise<unknown>): void {
+    function previewServedBy(preview: () => ReturnType<typeof papi.commands.sendCommand>): void {
       const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
       jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
         if (call[0] === 'interlinearizer.previewDeletion') return preview();

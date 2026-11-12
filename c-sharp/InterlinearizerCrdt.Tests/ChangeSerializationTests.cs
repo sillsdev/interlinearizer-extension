@@ -130,6 +130,8 @@ public class ChangeSerializationTests
     private string ExpectedFile(RegisteredChangeType changeType, IEnumerable<IChange> samples, string storedText)
     {
         var latest = samples.Select(Serialize).ToList();
+        foreach (var node in latest)
+            CheckRoundTrips(changeType, node);
         var stored = storedText == "" ? null : JsonNode.Parse(storedText)!.AsObject();
         var storedVersion = stored?["modelVersion"]?.GetValue<int>() ?? Config.Value.CurrentModelVersion;
 
@@ -150,6 +152,13 @@ public class ChangeSerializationTests
         }) + "\n";
     }
 
+    private void CheckRoundTrips(RegisteredChangeType changeType, JsonNode latest)
+    {
+        var roundTripped = Reserialize(changeType, Format(latest));
+        if (roundTripped is not null && !JsonNode.DeepEquals(latest, roundTripped))
+            _problems.Add($"{FileName(changeType)}: a latest entry changes when read back and written again:\n{Format(latest)}\nbecomes\n{Format(roundTripped)}");
+    }
+
     /// <summary>
     /// A legacy row keeps its <c>input</c> and the model version that wrote it, and gets its <c>output</c> from
     /// today's code, or the stored one when today's code can't read the input. Its type must be listed in a
@@ -165,7 +174,8 @@ public class ChangeSerializationTests
         if (!listedLater)
             _problems.Add($"{FileName(changeType)}: {changeType.Discriminator} changed its JSON after model version {modelVersion}. " +
                 "An app on that version reads the new JSON with its old code and drops what it doesn't know, so list the type " +
-                $"in a model version after {modelVersion} in {nameof(InterlinearizerCrdtKernel)} and the upgrade replays it.");
+                $"in a model version after {modelVersion} in {nameof(InterlinearizerCrdtKernel)} and the upgrade replays it. " +
+                "If you only changed a sample's values, delete the new legacy row instead.");
 
         return new JsonObject { ["modelVersion"] = modelVersion, ["input"] = JsonNode.Parse(inputText), ["output"] = output };
     }

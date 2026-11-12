@@ -331,6 +331,12 @@ async function checkPages(
       JSON.stringify(stale.glosses)
     )
       mismatches.push(`${book.bookRef} stale summary glosses`);
+    const { tokenDocOrder } = bookIndexesOf(book.segments);
+    const glossOrders = summary.glosses.map(
+      ({ tokenRef }) => tokenDocOrder.get(tokenRef) ?? Number.MAX_SAFE_INTEGER,
+    );
+    if (glossOrders.some((order, i) => i > 0 && order < glossOrders[i - 1]))
+      mismatches.push(`${book.bookRef} stale summary gloss order`);
     if (
       JSON.stringify(
         summary.freeTranslations.map((t) => `freeTranslation ${t.analysisId} at ${t.segmentId}`),

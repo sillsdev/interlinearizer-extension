@@ -1399,6 +1399,21 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getAllByTestId('catalog-row').length).toBeGreaterThan(before);
     });
 
+    it('grows the window no further than one page past the rows that have arrived', async () => {
+      await renderPanel({ analysis: MANY });
+
+      // Each report extends the window before the host has answered any request.
+      Array.from({ length: 3 }).forEach(() =>
+        act(() => {
+          global.triggerIntersection(screen.getByTestId('catalog-rows-sentinel'), true);
+        }),
+      );
+      const count = lastCatalogRowsCount();
+      await settle();
+
+      expect(count).toBe(80);
+    });
+
     it('starts the window over when the query changes', async () => {
       await renderPanel({ analysis: MANY });
       await reachListEnd();

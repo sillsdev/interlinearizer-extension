@@ -8,6 +8,8 @@ import { positionOf, segmentContainsVerse, verseLabelCovers, verseOfId } from '.
 
 /** A free translation whose segment's text has changed since it was written. */
 export type StaleFreeTranslation = Readonly<{
+  /** The id of the stale link it was read from. */
+  linkId: string;
   analysisId: string;
   /** The segment it was written for, which may no longer exist. */
   segmentId: string;
@@ -175,14 +177,14 @@ export function placedAmong<T>(
 }
 
 /**
- * `placed` with each id replaced by the translation in `stale` that the id names. An id that
- * `stale` lacks is left out.
+ * `placed` with each stale link id replaced by the translation in `stale` read from that link. An
+ * id that `stale` lacks is left out.
  */
 export function resolvePlaced<T extends StaleFreeTranslation>(
   placed: PlacedFreeTranslations,
   stale: readonly T[],
 ): PlacedStaleFreeTranslations<T> {
-  const byId = new Map(stale.map((translation) => [translation.analysisId, translation]));
+  const byId = new Map(stale.map((translation) => [translation.linkId, translation]));
   const resolve = (ids: readonly string[]) =>
     ids.flatMap((id) => {
       const translation = byId.get(id);

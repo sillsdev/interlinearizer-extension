@@ -111,7 +111,7 @@ export type PhraseSpanToken = Readonly<{
   gapText?: string;
 }>;
 
-/** Stale free translations by where the view shows them, each named by its payload's id. */
+/** Stale free translations by where the view shows them, each named by its stale link's id. */
 export type PlacedFreeTranslations = Readonly<{
   /**
    * Those that each segment shows for review beside its own translation, by segment id, in document
@@ -163,6 +163,14 @@ export type SegmentPage = Readonly<{
   analysis?: PageAnalysis;
 }>;
 
+/** A run of held segments, with the phrase links over them and each link's word tokens. */
+export type HeldRun = Readonly<{
+  /** Outline index of the first segment. */
+  start: number;
+  segments: readonly Segment[];
+  analysis?: Pick<PageAnalysis, 'phraseAnalysisLinks' | 'phraseSpans'>;
+}>;
+
 /**
  * The loaded book's segment list, as the host segments and serves it. One object per outline: pages
  * loading into it change none of its fields, only what {@link SegmentPages.segmentAt} answers.
@@ -180,10 +188,10 @@ export interface SegmentPages {
   /** The segment at `index` of the outline, `undefined` until its page has loaded. */
   segmentAt: (index: number) => Segment | undefined;
   /**
-   * Each run of the segments loaded, as one page with its analysis. The same list until
-   * {@link SegmentPages.loadedVersion} changes.
+   * Each run of the segments loaded. The same list until a page loads or a phrase link over the
+   * runs changes.
    */
-  heldPages: () => readonly SegmentPage[];
+  heldRuns: () => readonly HeldRun[];
   /**
    * Asks for the segments at outline indexes `[start, end)`, clamped to the outline. The latest
    * range that each `caller` asked for is reloaded whenever a new outline loads.

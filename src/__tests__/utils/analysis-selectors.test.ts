@@ -353,7 +353,7 @@ describe('selectStaleFreeTranslations', () => {
     );
 
     expect(selectStaleFreeTranslations(store.getState().analysis)).toEqual([
-      { analysisId: 'sa-1', segmentId: 'seg-1', text: 'old' },
+      { linkId: 'seg-1:sa-1', analysisId: 'sa-1', segmentId: 'seg-1', text: 'old' },
     ]);
   });
 

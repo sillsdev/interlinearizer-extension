@@ -218,7 +218,7 @@ export function segmentPagesOf(book: Book, segmentationVersion = 0): SegmentPage
       boundaries: { formerBoundaries: {}, unmergeableStarts: [], lostBoundaries: [] },
       duplicateVerseIds: [],
       segmentAt: (index) => book.segments[index],
-      heldPages: () => held,
+      heldRuns: () => held,
       load: jest.fn(),
       release: jest.fn(),
       subscribe: () => () => {},

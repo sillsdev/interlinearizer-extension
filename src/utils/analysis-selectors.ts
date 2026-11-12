@@ -572,6 +572,7 @@ export const selectStaleFreeTranslations = createSelector(
       if (link.status !== 'stale' || !analysis) return [];
       return [
         {
+          linkId: link.id,
           analysisId: link.analysisId,
           segmentId: link.segmentId,
           text: analysis.freeTranslation?.[language] ?? '',

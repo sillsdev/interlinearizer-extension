@@ -64,8 +64,6 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     "One edit applied through the host's draft repository, with its draft loaded and indexed and its storage in memory, the writes to storage included.",
   'bench.applyBooksReached':
     'How many books each timed apply rewrites, which its time should follow.',
-  'bench.formsNotInText':
-    "How many of the catalog's forms the text lacks, by the WebView's whole-text read and by the host's form index, and how many forms the two disagree on.",
   'app.textRead':
     "With a view open, the host reads every book of the source and files its word forms, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes each book's USJ, which the platform keeps for every book subscription.",
   'app.scriptureSave':
@@ -122,7 +120,6 @@ const SECTION_LABELS: Record<string, string> = {
   editDuringRead: 'Edit one gloss during the whole-text read',
   editAfterRead: 'Edit one gloss after the whole-text read',
   scriptureSaveAfterRead: 'Save a Scripture chapter after the whole-text read',
-  formsNotInText: 'Catalog forms not in the text',
   applyBooksReached: 'Books an apply reaches',
   'timings.load': 'Load',
   'timings.storage': 'Storage',
@@ -167,9 +164,6 @@ const METRIC_LABELS: Record<string, string> = {
   'text-read': 'Read every book',
   'text-read-tokenize': 'Tokenize every book, summed',
   formIndex: "Index every book's forms",
-  byWebViewRead: "By the WebView's read",
-  byHostIndex: "By the host's index",
-  disagreeing: 'Disagreeing',
   parseDraft: 'Parse draft',
   storeMount: 'Mount analysis store',
   readShards: 'Parse and merge shards',

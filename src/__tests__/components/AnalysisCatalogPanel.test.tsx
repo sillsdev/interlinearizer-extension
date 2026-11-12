@@ -23,12 +23,10 @@ import AnalysisCatalogPanel, {
   type AnalysisCatalogPanelHandle,
 } from '../../components/AnalysisCatalogPanel';
 import { useGlossDispatch } from '../../components/AnalysisStore';
-import { SourceTextContext } from '../../components/SourceTextContext';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
-import type { SourceText } from '../../hooks/useSourceTextReader';
+import { readText, type FakeText } from '../cache/fake-host';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
-import type { HeadingPlacement } from '../../utils/analysis-query';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
 import {
   editsSaved,
@@ -37,17 +35,10 @@ import {
   settle,
   type AnalysisProviderProps,
 } from './analysis-provider';
-import {
-  makeSourceText,
-  mockKeyAsValueLocalizedStrings,
-  testSenseRef,
-  withLexicon,
-} from './test-helpers';
+import { mockKeyAsValueLocalizedStrings, testSenseRef, withLexicon } from './test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
 jest.mock('../../components/TextReadingStatus');
-
-const NO_HEADINGS: ReadonlyMap<string, HeadingPlacement> = new Map();
 
 /**
  * The intersection-observer Jest stub exposes a helper for firing intersections on the global
@@ -162,8 +153,8 @@ type PanelOptions = Partial<{
   liveSurfaceText: (tokenRef: string) => string | undefined;
   /** The word the view beside the panel has focused, or none. */
   focusedTokenRef: string;
-  /** The source text. Defaults to one not yet read. */
-  text: SourceText;
+  /** The source text as the host reads it whole. Defaults to one not yet read. */
+  text: FakeText;
   /** Whether every book has been checked for stale places. Defaults to only the opened ones. */
   /** Senses of the connected lexicon, keyed by sense id. Omitted, no lexicon is connected. */
   senses: Record<string, ResolvedSense>;
@@ -180,15 +171,20 @@ let AnalysisProvider: (props: AnalysisProviderProps) => ReactNode = () => {
   throw new Error('no analysis prepared');
 };
 
-/** Prepares the analysis provider over `analysis`, an empty analysis by default. */
-async function prepare(analysis: TextAnalysis = emptyAnalysis()): Promise<void> {
-  AnalysisProvider = await prepareAnalysis(analysis, GENESIS);
+/**
+ * Prepares the analysis provider over `analysis`, an empty analysis by default, on a source whose
+ * whole text the host reads as `text`.
+ */
+async function prepare(analysis: TextAnalysis | undefined, text?: FakeText): Promise<void> {
+  AnalysisProvider = await prepareAnalysis(analysis ?? emptyAnalysis(), GENESIS, text);
 }
 
-/** Renders `ui` once the analysis provider over `analysis` is prepared. */
-async function renderOver(analysis: TextAnalysis | undefined, ui: ReactElement) {
-  await prepare(analysis);
-  return render(ui);
+/** Renders `ui` once the analysis provider over `analysis` and `text` is prepared. */
+async function renderOver(analysis: TextAnalysis | undefined, ui: ReactElement, text?: FakeText) {
+  await prepare(analysis, text);
+  const rendered = render(ui);
+  await settle();
+  return rendered;
 }
 
 /**
@@ -216,9 +212,7 @@ function PanelProviders({
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
         <FocusPublishProbe tokenRef={overrides.focusedTokenRef} />
-        <SourceTextContext.Provider value={overrides.text ?? makeSourceText()}>
-          {children}
-        </SourceTextContext.Provider>
+        {children}
       </AnalysisProvider>
     </InterlinearNavProvider>
   );
@@ -232,7 +226,6 @@ function renderPanel(overrides: PanelOptions = {}) {
         ref={overrides.ref}
         announceUndoable={overrides.announceUndoable}
         currentBook={overrides.currentBook ?? 'GEN'}
-        headingPlacements={NO_HEADINGS}
         liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
         onClose={overrides.onClose ?? (() => {})}
         onShowConcordance={overrides.onShowConcordance ?? (() => {})}
@@ -246,6 +239,7 @@ function renderPanel(overrides: PanelOptions = {}) {
   return renderOver(
     overrides.analysis,
     overrides.senses ? withLexicon(panel, overrides.senses).ui : panel,
+    overrides.text,
   );
 }
 
@@ -263,7 +257,6 @@ function ReopenableCatalog() {
       {isOpen && (
         <CatalogPanel
           currentBook="GEN"
-          headingPlacements={NO_HEADINGS}
           liveSurfaceText={undriftedText}
           onClose={() => setIsOpen(false)}
           onShowConcordance={() => {}}
@@ -305,7 +298,6 @@ function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
       <GlossEditProbe />
       <CatalogPanel
         currentBook={overrides.currentBook ?? 'GEN'}
-        headingPlacements={NO_HEADINGS}
         liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
         onClose={overrides.onClose ?? (() => {})}
         onShowConcordance={overrides.onShowConcordance ?? (() => {})}
@@ -1284,7 +1276,6 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: PER_BREAKDOWN }}>
           <CatalogPanel
             currentBook="GEN"
-            headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
             onShowConcordance={() => {}}
@@ -1372,11 +1363,21 @@ describe('AnalysisCatalogPanel', () => {
       return list;
     }
 
-    /** Reports the end of the list as having come into view. */
-    function reachListEnd(): void {
+    /** How many rows the panel last asked the host for. */
+    function lastCatalogRowsCount(): unknown {
+      const args = jest
+        .mocked(papi.commands.sendCommand)
+        .mock.calls.findLast(([command]) => command === 'interlinearizer.getCatalogRows')?.[1];
+      const request = typeof args === 'object' && args ? Reflect.get(args, 'request') : undefined;
+      return typeof request === 'object' && request ? Reflect.get(request, 'count') : undefined;
+    }
+
+    /** Reports the end of the list as having come into view, then waits for the rows it brings. */
+    async function reachListEnd(): Promise<void> {
       act(() => {
         global.triggerIntersection(screen.getByTestId('catalog-rows-sentinel'), true);
       });
+      await settle();
     }
 
     it('mounts only part of a long list', async () => {
@@ -1393,20 +1394,110 @@ describe('AnalysisCatalogPanel', () => {
       await renderPanel({ analysis: MANY });
       const before = screen.getAllByTestId('catalog-row').length;
 
-      reachListEnd();
+      await reachListEnd();
 
       expect(screen.getAllByTestId('catalog-row').length).toBeGreaterThan(before);
     });
 
+    it('grows the window no further than one page past the rows that have arrived', async () => {
+      await renderPanel({ analysis: MANY });
+
+      // Each report extends the window before the host has answered any request.
+      Array.from({ length: 3 }).forEach(() =>
+        act(() => {
+          global.triggerIntersection(screen.getByTestId('catalog-rows-sentinel'), true);
+        }),
+      );
+      const count = lastCatalogRowsCount();
+      await settle();
+
+      expect(count).toBe(80);
+    });
+
+    it('fetches a failed page again when the end of the list comes back into view', async () => {
+      await renderPanel({ analysis: MANY });
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      let failNext = true;
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.getCatalogRows' && failNext) {
+          failNext = false;
+          throw new Error('offline');
+        }
+        return serve?.(...call);
+      });
+      await reachListEnd();
+      expect(listedAnalysisIds()).toHaveLength(40);
+
+      await reachListEnd();
+
+      expect(listedAnalysisIds()).toHaveLength(80);
+    });
+
+    /** Renders the panel over {@link MANY} with the host failing its first catalog page. */
+    async function renderPanelFailingFirstPage() {
+      await prepare(MANY);
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      let failNext = true;
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.getCatalogRows' && failNext) {
+          failNext = false;
+          throw new Error('offline');
+        }
+        return serve?.(...call);
+      });
+      render(
+        <PanelProviders overrides={{}}>
+          <CatalogPanel
+            currentBook="GEN"
+            liveSurfaceText={undriftedText}
+            onClose={() => {}}
+            onShowConcordance={() => {}}
+            showMorphology
+            sourceLanguageTag="el"
+          />
+        </PanelProviders>,
+      );
+      await settle();
+    }
+
+    it('says the catalog could not be loaded when its first page fails', async () => {
+      await renderPanelFailingFirstPage();
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_loadFailed%',
+      );
+    });
+
+    it('lists the rows once a failed first page is tried again', async () => {
+      await renderPanelFailingFirstPage();
+
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_retry%'));
+      await settle();
+
+      expect(listedAnalysisIds()).toHaveLength(40);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('starts the window over when the query changes', async () => {
       await renderPanel({ analysis: MANY });
-      reachListEnd();
+      await reachListEnd();
       const grown = screen.getAllByTestId('catalog-row').length;
 
       // Matches every row, so the listing is the same length as before — only the window resets.
       await userEvent.type(searchBox(), 'word');
 
       expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
+    });
+
+    it('asks the host for no more than the reset window once the query changes', async () => {
+      await renderPanel({ analysis: MANY });
+      const firstCount = lastCatalogRowsCount();
+      await reachListEnd();
+
+      await userEvent.type(searchBox(), 'word');
+      await settle();
+
+      expect(lastCatalogRowsCount()).toBe(firstCount);
     });
 
     it('returns the list to its top when the query changes', async () => {
@@ -1436,14 +1527,13 @@ describe('AnalysisCatalogPanel', () => {
 
     it('starts the window over when the book changes', async () => {
       const { rerender } = await renderPanel({ analysis: MANY, currentBook: 'GEN' });
-      reachListEnd();
+      await reachListEnd();
       const grown = screen.getAllByTestId('catalog-row').length;
 
       rerender(
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
           <CatalogPanel
             currentBook="MAT"
-            headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
             onShowConcordance={() => {}}
@@ -1452,6 +1542,7 @@ describe('AnalysisCatalogPanel', () => {
           />
         </PanelProviders>,
       );
+      await settle();
 
       expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
     });
@@ -1467,7 +1558,6 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
           <CatalogPanel
             currentBook="MAT"
-            headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
             onShowConcordance={() => {}}
@@ -1476,6 +1566,7 @@ describe('AnalysisCatalogPanel', () => {
           />
         </PanelProviders>,
       );
+      await settle();
 
       expect(list.scrollTop).toBe(0);
     });
@@ -1486,7 +1577,6 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: MANY, analysisLanguage }}>
           <CatalogPanel
             currentBook="GEN"
-            headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
             onShowConcordance={() => {}}
@@ -1503,6 +1593,7 @@ describe('AnalysisCatalogPanel', () => {
       list.scrollTop = 500;
 
       rerender(panelIn('fr'));
+      await settle();
 
       expect(list.scrollTop).toBe(500);
     });
@@ -1514,6 +1605,7 @@ describe('AnalysisCatalogPanel', () => {
       list.scrollTop = 500;
 
       rerender(panelIn('fr'));
+      await settle();
 
       expect(list.scrollTop).toBe(0);
     });
@@ -1530,6 +1622,7 @@ describe('AnalysisCatalogPanel', () => {
       list.scrollTop = 500;
 
       rerender(panelIn('fr'));
+      await settle();
 
       expect(list.scrollTop).toBe(0);
     });
@@ -1539,7 +1632,7 @@ describe('AnalysisCatalogPanel', () => {
       // anything, and collapsing a deeply scrolled list back to its first chunk on that would throw
       // the reader to the end of it.
       await renderPanelWithGlossEditing({ analysis: MANY });
-      reachListEnd();
+      await reachListEnd();
       const grown = screen.getAllByTestId('catalog-row').length;
 
       act(() => editGloss('GEN 1:1:0', 'word0', 'beginning'));
@@ -2072,6 +2165,7 @@ describe('AnalysisCatalogPanel', () => {
         await renderPanel({ ref, analysis: LIVE_AND_STALE });
 
         act(() => ref.current?.filterTo({ stale: true }));
+        await settle();
 
         expect(listedAnalysisIds()).toEqual(['stale']);
       });
@@ -2094,6 +2188,7 @@ describe('AnalysisCatalogPanel', () => {
         );
 
         act(() => ref.current?.filterTo({ stale: true }));
+        await settle();
 
         expect(listedAnalysisIds()).toEqual(['stale']);
       });
@@ -2104,21 +2199,24 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.type(searchBox(), 'λόγος');
 
         act(() => ref.current?.filterTo({ stale: true }));
+        await settle();
 
         expect(searchBox()).toHaveValue('');
       });
     });
 
     it('asks for the text to be read when filtering for them', async () => {
-      const request = jest.fn();
-      await renderPanel({ analysis: ONLY_STALE, text: makeSourceText({ request }) });
+      await renderPanel({ analysis: ONLY_STALE });
       await openFilters();
 
       await userEvent.click(
         screen.getByRole('checkbox', { name: '%interlinearizer_analysisCatalog_filter_stale%' }),
       );
 
-      expect(request).toHaveBeenCalled();
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.anything(),
+      );
     });
 
     it('names the stale filter plainly', async () => {
@@ -2281,82 +2379,98 @@ describe('AnalysisCatalogPanel', () => {
       });
     }
 
+    /** A text holding only the form of the analysis `kept`. */
+    const keptOnly = () => readText([normalizeSurfaceForm('λόγος')]);
+
     it('asks for the text to be read when filtering for them', async () => {
-      const request = jest.fn();
-      await renderPanel({ analysis, text: makeSourceText({ request }) });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
 
-      expect(request).toHaveBeenCalled();
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.anything(),
+      );
     });
 
     it('asks for the text to be read when narrowed to them from outside', async () => {
-      const request = jest.fn();
       const ref = createRef<AnalysisCatalogPanelHandle>();
-      await renderPanel({ ref, analysis, text: makeSourceText({ request }) });
+      await renderPanel({ ref, analysis });
 
       act(() => ref.current?.filterTo({ notInText: true }));
+      await settle();
 
-      expect(request).toHaveBeenCalled();
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.anything(),
+      );
     });
 
     it('keeps only the analyses whose form the text lacks once it is read', async () => {
-      const text = makeSourceText({
-        status: 'ready',
-        textForms: new Set([normalizeSurfaceForm('λόγος')]),
-      });
-      await renderPanel({ analysis, text });
+      await renderPanel({ analysis, text: keptOnly() });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
+      await settle();
 
       expect(listedAnalysisIds()).toEqual(['gone']);
     });
 
     it('shows how far reading the text has got while filtering for them', async () => {
-      await renderPanel({ analysis, text: makeSourceText({ status: 'loading' }) });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
+      await settle();
 
       expect(screen.getByTestId('text-reading-status')).toBeInTheDocument();
       expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument();
     });
 
-    it('says so when a book could not be read', async () => {
+    it('says so when the text could not be read at all', async () => {
       await renderPanel({
         analysis,
-        text: makeSourceText({ status: 'ready', failedBookIds: ['GEN'] }),
+        text: {
+          status: () => {
+            throw new Error('offline');
+          },
+          isFormInText: () => undefined,
+        },
       });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
+      await settle();
+
+      expect(screen.getByTestId('text-reading-status')).toHaveAttribute('data-status', 'error');
+    });
+
+    it('says so when a book could not be read', async () => {
+      await renderPanel({
+        analysis,
+        text: {
+          status: () => ({ booksRead: 1, bookCount: 1, failedBookIds: ['GEN'] }),
+          isFormInText: () => undefined,
+        },
+      });
+      await openFilters();
+
+      await userEvent.click(notInTextFilter());
+      await settle();
 
       expect(screen.getByTestId('text-reading-status')).toHaveAttribute('data-partial', 'true');
       expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument();
     });
 
     it('marks an analysis whose form the text lacks once it is read', async () => {
-      await renderPanel({
-        analysis,
-        text: makeSourceText({
-          status: 'ready',
-          textForms: new Set([normalizeSurfaceForm('λόγος')]),
-        }),
-      });
+      await renderPanel({ analysis, text: keptOnly() });
 
       expect(within(rowFor('gone')).getByTestId('catalog-row-not-in-text')).toBeInTheDocument();
     });
 
     it('does not mark an analysis whose form the text holds', async () => {
-      await renderPanel({
-        analysis,
-        text: makeSourceText({
-          status: 'ready',
-          textForms: new Set([normalizeSurfaceForm('λόγος')]),
-        }),
-      });
+      await renderPanel({ analysis, text: keptOnly() });
 
       expect(
         within(rowFor('kept')).queryByTestId('catalog-row-not-in-text'),
@@ -2771,6 +2885,24 @@ describe('AnalysisCatalogPanel', () => {
         const onClose = jest.fn();
         await renderPanel({ analysis: SHARED, onClose });
         await typeUnsavedBreakdown();
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
+        expect(onClose).not.toHaveBeenCalled();
+      });
+
+      it('asks before closing over a hidden draft whose row could not be fetched', async () => {
+        const onClose = jest.fn();
+        await renderPanel({ analysis: SHARED, onClose });
+        const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+        jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+          if (call[0] === 'interlinearizer.getCatalogRowsByIds') throw new Error('offline');
+          return serve?.(...call);
+        });
+        await typeUnsavedBreakdown();
+        await userEvent.type(searchBox(), 'zzz');
+        await settle();
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
@@ -3698,6 +3830,7 @@ describe('AnalysisCatalogPanel', () => {
       await editIntoEquality();
 
       act(() => ref.current?.revealRow('ta-2'));
+      await settle();
 
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
     });
@@ -3729,6 +3862,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.clear(input);
       await userEvent.type(input, 'zzz');
       await userEvent.tab();
+      await settle();
 
       expect(screen.getByTestId('catalog-merge-notice')).toBeInTheDocument();
       expect(listedAnalysisIds()).toContain('ta-dst');
@@ -4381,8 +4515,39 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).not.toContain('filler-99');
 
       act(() => ref.current?.revealRow('filler-99'));
+      await settle();
 
       expect(listedAnalysisIds()).toContain('filler-99');
+    });
+
+    it('scrolls to a row asked for once the host sends it', async () => {
+      const scrollIntoView = jest.fn();
+      // jsdom implements no scrollIntoView.
+      Element.prototype.scrollIntoView = scrollIntoView;
+      try {
+        const ref = createRef<AnalysisCatalogPanelHandle>();
+        await renderPanel({
+          ref,
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: Array.from({ length: 100 }, (_unused, index) => ({
+              ...FIXTURE_STAMPS,
+              id: `filler-${index}`,
+              surfaceText: `word${index}`,
+              gloss: { en: `g${String(index).padStart(3, '0')}` },
+            })),
+            tokenAnalysisLinks: [],
+          },
+        });
+        await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
+
+        act(() => ref.current?.revealRow('filler-99'));
+        await settle();
+
+        expect(scrollIntoView.mock.contexts).toContain(rowFor('filler-99'));
+      } finally {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      }
     });
 
     it('stops holding a revealed row mounted once the listing changes', async () => {
@@ -4402,6 +4567,7 @@ describe('AnalysisCatalogPanel', () => {
       });
       await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
       act(() => ref.current?.revealRow('filler-99'));
+      await settle();
 
       // Matches every row, so filler-99 stays in the listing, past the end of its first chunk.
       await userEvent.type(searchBox(), 'word');
@@ -5198,6 +5364,23 @@ describe('AnalysisCatalogPanel', () => {
       expect(announceUndoable).toHaveBeenCalledWith(
         '%interlinearizer_analysisCatalog_deletedChecked%',
       );
+    });
+
+    it('deletes the checked rows unannounced when their uses could not be counted', async () => {
+      const announceUndoable = jest.fn();
+      await renderPanel({ announceUndoable, analysis: THREE_FORMS });
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.countUsages') throw new Error('offline');
+        return serve?.(...call);
+      });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+      await settle();
+
+      expect(listedAnalysisIds()).toEqual(['ta-2']);
+      expect(announceUndoable).not.toHaveBeenCalled();
     });
   });
 });

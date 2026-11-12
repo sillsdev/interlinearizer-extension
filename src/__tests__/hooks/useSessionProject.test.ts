@@ -174,6 +174,32 @@ describe('useSessionProject', () => {
     );
   });
 
+  it('reads the draft again on a reported change while no pages are loaded', async () => {
+    await fakeHost();
+    const { result } = renderHook(() =>
+      useSessionProject('src', {
+        saveTargetId: undefined,
+        importProjectId: undefined,
+        importVersion: undefined,
+        bookId: undefined,
+        scrRef: SCR_REF,
+      }),
+    );
+    await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+    const reads = fullReads();
+
+    relayChange({
+      sessionId: result.current.session?.sessionId,
+      changeId: 'reported',
+      books: [],
+      analysisIds: [],
+      forms: [],
+      queries: [],
+    });
+
+    await waitFor(() => expect(fullReads()).toBe(reads + 1));
+  });
+
   it('applies a re-anchor pass the session reports without reading the draft again', async () => {
     const { result, host } = await renderCurrent();
     const edited = makeVerseBook([

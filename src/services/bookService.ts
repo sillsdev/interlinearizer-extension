@@ -161,6 +161,26 @@ type TextReadListener = (sourceProjectId: string, textBookIds: string[]) => void
 const textReadListeners = new Set<TextReadListener>();
 
 /**
+ * Receives the source project of a whole-text read that moved, and whether {@link isFormInText}'s
+ * answers may have changed with it.
+ */
+type TextReadProgressListener = (sourceProjectId: string, formsChanged: boolean) => void;
+
+const textReadProgressListeners = new Set<TextReadProgressListener>();
+
+/**
+ * Tells {@link onTextReadProgress}'s listeners that a whole-text read moved.
+ *
+ * @param sourceProjectId The project whose text is read.
+ * @param read The read that moved.
+ * @param wasAnswering Whether {@link isFormInText} answered from `read` before the move.
+ */
+function reportProgress(sourceProjectId: string, read: TextRead, wasAnswering: boolean): void {
+  const formsChanged = wasAnswering || textBookIdsOf(read) !== undefined;
+  textReadProgressListeners.forEach((listener) => listener(sourceProjectId, formsChanged));
+}
+
+/**
  * Resolves the writing system tag of the source project's text, `und` when the project declares
  * none.
  */
@@ -416,6 +436,16 @@ export function onTextRead(listener: TextReadListener): () => boolean {
 }
 
 /**
+ * Calls `listener` each time a source project's whole-text read files a book, whether read or
+ * failed, and again once every book is filed. A book that an edit sends back to the read is filed
+ * again. Calling the returned function stops the calls.
+ */
+export function onTextReadProgress(listener: TextReadProgressListener): () => boolean {
+  textReadProgressListeners.add(listener);
+  return () => textReadProgressListeners.delete(listener);
+}
+
+/**
  * Reads a book of the source project, segmented by the boundaries `segmentationJson` names. The
  * book becomes the project's open book, whose edits {@link onBookTextChanged} reports. The book's
  * segments are shared, so the caller must not change them.
@@ -570,6 +600,7 @@ async function readTextBook(
   if (textReads.get(sourceProjectId) !== read) return false;
   // A later read of the book reads newer text, so this one files only a book none has filed.
   if (read.watches.get(bookId) !== stop && read.readBookIds.has(bookId)) return false;
+  const wasAnswering = textBookIdsOf(read) !== undefined;
   if (delivered) {
     read.forms.setBook(bookId, delivered.forms);
     read.failedBookIds.delete(bookId);
@@ -579,6 +610,7 @@ async function readTextBook(
     read.failedBookIds.add(bookId);
   }
   read.readBookIds.add(bookId);
+  reportProgress(sourceProjectId, read, wasAnswering);
   if (delivered) finishRead(sourceProjectId, bookId, delivered.readNumber, delivered.book, edited);
   return true;
 }
@@ -653,6 +685,7 @@ async function readText(sourceProjectId: string, read: TextRead): Promise<void> 
   await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
   if (!isCurrent()) return;
   read.isRead = true;
+  reportProgress(sourceProjectId, read, false);
   reportTextRead(sourceProjectId, read);
 }
 

@@ -36,6 +36,7 @@ import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
 import { readBookOutline, readSegmentPage } from './services/sessionPages';
+import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
@@ -1225,6 +1226,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getProject: (interlinearProjectId) =>
       projectStorage.getProject(executionToken, interlinearProjectId),
   });
+  const catalog = sessionCatalogHandlers({
+    sessions: activeSessions,
+    logger,
+    getOpenVerseBook: bookService.getOpenVerseBook,
+    isFormInText: bookService.isFormInText,
+  });
   const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book, edited) =>
     activeSessions
       .reanchorBook(sourceProjectId, book, edited)
@@ -1244,6 +1251,17 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           e,
         ),
       ),
+  );
+  const textReadProgressUnsubscriber = bookService.onTextReadProgress(
+    (sourceProjectId, formsChanged) =>
+      activeSessions
+        .reportTextReadProgress(sourceProjectId, formsChanged)
+        .catch((e) =>
+          logger.warn(
+            `Interlinearizer: could not report how far the text of project ${sourceProjectId} is read`,
+            e,
+          ),
+        ),
   );
   const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
     activeSessions
@@ -1278,6 +1296,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
     bookReadUnsubscriber,
     textReadUnsubscriber,
+    textReadProgressUnsubscriber,
     bookTextUnsubscriber,
   );
 
@@ -1911,17 +1930,20 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  const editRegistrations: UnsubscriberAsync[] = [];
-  async function registerEdit(
-    commandName: keyof typeof edits,
+  const sessionCommands = { ...edits, ...catalog };
+  const sessionRegistrations: UnsubscriberAsync[] = [];
+
+  /** Registers the session command `commandName`, served by its edit or catalog handler. */
+  async function registerSessionCommand(
+    commandName: keyof typeof sessionCommands,
     method: MethodDocumentationWithoutName,
   ): Promise<void> {
-    editRegistrations.push(
-      await papi.commands.registerCommand(commandName, edits[commandName], { method }),
+    sessionRegistrations.push(
+      await papi.commands.registerCommand(commandName, sessionCommands[commandName], { method }),
     );
   }
 
-  await registerEdit('interlinearizer.writeGloss', {
+  await registerSessionCommand('interlinearizer.writeGloss', {
     summary: "Write a token's gloss in a session's analysis language; a blank value clears it",
     params: sessionArgs(
       ...tokenParams,
@@ -1936,7 +1958,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.approveAnalysisForToken', {
+  await registerSessionCommand('interlinearizer.approveAnalysisForToken', {
     summary: 'Approve a stored token analysis for a token, in place of any approval the token held',
     params: sessionArgs(
       ...tokenParams,
@@ -1951,7 +1973,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writeMorphemes', {
+  await registerSessionCommand('interlinearizer.writeMorphemes', {
     summary: "Write a token's morpheme breakdown",
     params: sessionArgs(
       ...tokenParams,
@@ -1972,13 +1994,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.deleteMorphemes', {
+  await registerSessionCommand('interlinearizer.deleteMorphemes', {
     summary: "Remove a token's morpheme breakdown",
     params: sessionArgs(tokenParams[0], changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writeMorphemeGloss', {
+  await registerSessionCommand('interlinearizer.writeMorphemeGloss', {
     summary:
       "Gloss one morpheme of a token's breakdown in a session's analysis language; a blank value clears the morpheme's gloss",
     params: sessionArgs(
@@ -2007,7 +2029,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  await registerEdit('interlinearizer.discardStaleAnalysis', {
+  await registerSessionCommand('interlinearizer.discardStaleAnalysis', {
     summary: 'Give up the place an analysis went stale at, leaving its other places alone',
     params: sessionArgs(
       staleAnalysisParam,
@@ -2022,7 +2044,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.reapplyStaleAnalysis', {
+  await registerSessionCommand('interlinearizer.reapplyStaleAnalysis', {
     summary:
       'Move an analysis from a place it went stale at onto a token, approving it there in place of whatever the token held',
     params: sessionArgs(
@@ -2046,7 +2068,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  await registerEdit('interlinearizer.keepStaleFreeTranslation', {
+  await registerSessionCommand('interlinearizer.keepStaleFreeTranslation', {
     summary:
       "Keep a stale free translation as a claim about a segment's current text, approving it for that segment",
     params: sessionArgs(
@@ -2068,7 +2090,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.discardStaleFreeTranslation', {
+  await registerSessionCommand('interlinearizer.discardStaleFreeTranslation', {
     summary: 'Drop a stale free translation, one whose verse the book no longer holds included',
     params: sessionArgs(staleTranslationParam, changeIdParam),
     result: editResult,
@@ -2089,7 +2111,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'array', items: { type: 'string' } },
   } as const;
 
-  await registerEdit('interlinearizer.writeAnalysisGloss', {
+  await registerSessionCommand('interlinearizer.writeAnalysisGloss', {
     summary:
       "Write a token analysis's gloss in a session's analysis language, for every token linked to it; a blank value clears it",
     params: sessionArgs(
@@ -2100,13 +2122,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.clearAnalysisGlosses', {
+  await registerSessionCommand('interlinearizer.clearAnalysisGlosses', {
     summary: "Clear the glosses of several token analyses in a session's analysis language",
     params: sessionArgs(analysisIdsParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writeAnalysisMorphemes', {
+  await registerSessionCommand('interlinearizer.writeAnalysisMorphemes', {
     summary:
       "Re-split a token analysis's breakdown, for every token linked to it; no forms removes the breakdown",
     params: sessionArgs(
@@ -2128,7 +2150,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.confirmAnalysisMorphemes', {
+  await registerSessionCommand('interlinearizer.confirmAnalysisMorphemes', {
     summary: "Keep a token analysis's stale breakdown as it stands, for every token linked to it",
     params: sessionArgs(
       catalogAnalysisParam,
@@ -2144,7 +2166,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writeAnalysisMorphemeGloss', {
+  await registerSessionCommand('interlinearizer.writeAnalysisMorphemeGloss', {
     summary:
       "Write the gloss of one morpheme of a token analysis in a session's analysis language, for every token linked to it; a blank value clears it",
     params: sessionArgs(
@@ -2161,13 +2183,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.deleteAnalyses', {
+  await registerSessionCommand('interlinearizer.deleteAnalyses', {
     summary: 'Remove token analyses with every token link to them',
     params: sessionArgs(analysisIdsParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.mergeAnalysesInto', {
+  await registerSessionCommand('interlinearizer.mergeAnalysesInto', {
     summary:
       "Fold token analyses into a survivor and write the settled content onto it, in a session's analysis language",
     params: sessionArgs(
@@ -2214,7 +2236,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   };
 
-  await registerEdit('interlinearizer.createPhrase', {
+  await registerSessionCommand('interlinearizer.createPhrase', {
     summary:
       'Add an approved phrase occurrence, sharing a content-identical stored payload where one exists',
     params: sessionArgs(
@@ -2229,7 +2251,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.updatePhrase', {
+  await registerSessionCommand('interlinearizer.updatePhrase', {
     summary: 'Give a phrase occurrence a new token run, keeping its gloss; an empty run removes it',
     params: sessionArgs(
       phraseIdParam,
@@ -2244,13 +2266,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.deletePhrase', {
+  await registerSessionCommand('interlinearizer.deletePhrase', {
     summary: 'Remove a phrase occurrence, with its payload unless another occurrence shares it',
     params: sessionArgs(phraseIdParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.mergePhrases', {
+  await registerSessionCommand('interlinearizer.mergePhrases', {
     summary:
       'Grow a phrase occurrence to a merged token run, removing the absorbed occurrence when named',
     params: sessionArgs(
@@ -2278,7 +2300,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writePhraseGloss', {
+  await registerSessionCommand('interlinearizer.writePhraseGloss', {
     summary:
       "Write a phrase occurrence's gloss in a session's analysis language; a blank value clears it",
     params: sessionArgs(
@@ -2294,13 +2316,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.approvePhrase', {
+  await registerSessionCommand('interlinearizer.approvePhrase', {
     summary: 'Approve a phrase occurrence, unless any of its tokens is in an approved phrase',
     params: sessionArgs(phraseIdParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.splitPhrase', {
+  await registerSessionCommand('interlinearizer.splitPhrase', {
     summary:
       "Split a phrase occurrence just after a token, in the document order of the token's book",
     params: sessionArgs(
@@ -2316,7 +2338,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writeSegmentFreeTranslation', {
+  await registerSessionCommand('interlinearizer.writeSegmentFreeTranslation', {
     summary:
       "Write a segment's free translation in a session's analysis language; a blank value clears it",
     params: sessionArgs(
@@ -2350,7 +2372,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.mergeSegments', {
+  await registerSessionCommand('interlinearizer.mergeSegments', {
     summary: 'Merge the segment beginning at a token into the one before it',
     params: sessionArgs(
       {
@@ -2364,7 +2386,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.splitSegment', {
+  await registerSessionCommand('interlinearizer.splitSegment', {
     summary:
       'Split a segment so a new one begins at a token, first splitting every approved phrase the boundary would cut',
     params: sessionArgs(
@@ -2379,7 +2401,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.moveBoundary', {
+  await registerSessionCommand('interlinearizer.moveBoundary', {
     summary:
       'Move a segment boundary from one token to another, first splitting every approved phrase the moved boundary would cut',
     params: sessionArgs(
@@ -2407,7 +2429,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  await registerEdit('interlinearizer.discardBook', {
+  await registerSessionCommand('interlinearizer.discardBook', {
     summary:
       "Discard the unsaved changes to one book of a session's draft, restoring what the project it saves to holds for the book",
     params: sessionArgs(
@@ -2422,14 +2444,14 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: discardResult,
   });
 
-  await registerEdit('interlinearizer.discardAll', {
+  await registerSessionCommand('interlinearizer.discardAll', {
     summary:
       "Discard every unsaved change to a session's draft, restoring what the project it saves to holds",
     params: sessionArgs(changeIdParam),
     result: discardResult,
   });
 
-  await registerEdit('interlinearizer.previewRemovals', {
+  await registerSessionCommand('interlinearizer.previewRemovals', {
     summary: "Name the token analyses a command would remove from a session's draft",
     params: sessionArgs({
       name: 'request',
@@ -2440,6 +2462,88 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: {
       name: 'return value',
       summary: 'JSON-stringified ids of the token analyses; "[]" when it would remove none',
+      schema: { type: 'string' },
+    },
+  });
+
+  const currentBookParam = {
+    name: 'currentBook',
+    required: true,
+    summary: 'Book code the per-book usage count is taken against',
+    schema: { type: 'string' },
+  } as const;
+
+  const catalogRowsResult = {
+    name: 'return value',
+    summary: "JSON-stringified CatalogRow[], each row's books listed",
+    schema: { type: 'string' },
+  } as const;
+
+  await registerSessionCommand('interlinearizer.getCatalogRows', {
+    summary: "Serve one page of a session's analysis catalog, with the filter choices to offer",
+    params: sessionArgs({
+      name: 'request',
+      required: true,
+      summary: 'CatalogRowsRequest naming the search, sort, filters, page and current book',
+      schema: { type: 'object' },
+    }),
+    result: {
+      name: 'return value',
+      summary: "JSON-stringified CatalogPage, each row's books listed",
+      schema: { type: 'string' },
+    },
+  });
+
+  await registerSessionCommand('interlinearizer.getSelectionSummary', {
+    summary:
+      "Summarize the selected analyses of a session's draft: their use count, the glossed ones, and the merge they allow",
+    params: sessionArgs({
+      name: 'analysisIds',
+      required: true,
+      summary: 'IDs of the selected token analyses, in listing order',
+      schema: { type: 'array', items: { type: 'string' } },
+    }),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified SelectionSummary',
+      schema: { type: 'string' },
+    },
+  });
+
+  await registerSessionCommand('interlinearizer.countUsages', {
+    summary: "Count the distinct tokens in a session's draft that approve any of the analyses",
+    params: sessionArgs({
+      name: 'analysisIds',
+      required: true,
+      summary: 'IDs of the token analyses',
+      schema: { type: 'array', items: { type: 'string' } },
+    }),
+    result: { name: 'return value', summary: 'How many tokens', schema: { type: 'number' } },
+  });
+
+  await registerSessionCommand('interlinearizer.getCatalogRowsByIds', {
+    summary: "Serve the catalog rows of the named analyses in a session's draft, in that order",
+    params: sessionArgs(currentBookParam, {
+      name: 'analysisIds',
+      required: true,
+      summary: 'IDs of the token analyses; an unstored one is left out',
+      schema: { type: 'array', items: { type: 'string' } },
+    }),
+    result: catalogRowsResult,
+  });
+
+  await registerSessionCommand('interlinearizer.getHomographRows', {
+    summary:
+      "Serve the catalog rows in a session's draft sharing an analysis's normalized surface form, most used first",
+    params: sessionArgs(currentBookParam, {
+      name: 'analysisId',
+      required: true,
+      summary: 'ID of the token analysis',
+      schema: { type: 'string' },
+    }),
+    result: {
+      name: 'return value',
+      summary: `JSON-stringified CatalogRow[], each row's books listed; "[]" when no analysis carries the id`,
       schema: { type: 'string' },
     },
   });
@@ -2877,7 +2981,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   );
 
   context.registrations.add(
-    ...editRegistrations,
+    ...sessionRegistrations,
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
     continuousScrollValidatorRegistration,

@@ -63,6 +63,8 @@
       "%interlinearizer_analysisCatalog_close%": "Close analysis catalog",
       "%interlinearizer_analysisCatalog_empty%": "No analyses recorded yet.",
       "%interlinearizer_analysisCatalog_noMatches%": "No analyses match the search and filters.",
+      "%interlinearizer_analysisCatalog_loadFailed%": "The analysis catalog couldn't be loaded.",
+      "%interlinearizer_analysisCatalog_retry%": "Try again",
       "%interlinearizer_analysisCatalog_searchPlaceholder%": "Search forms and glosses",
       "%interlinearizer_analysisCatalog_sort%": "Sort by",
       "%interlinearizer_analysisCatalog_sort_usageCount%": "Most used",

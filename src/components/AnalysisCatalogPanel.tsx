@@ -1,7 +1,7 @@
 import { logger } from '@papi/frontend';
 import { useSetting } from '@papi/frontend/react';
 import { X } from 'lucide-react';
-import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
+import { Button, EmptyState, RetryableErrorView, TooltipProvider } from 'platform-bible-react';
 import {
   formatReplacementString,
   isPlatformError,
@@ -129,9 +129,11 @@ export const ANALYSIS_CATALOG_PANEL_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_close%',
   '%interlinearizer_analysisCatalog_deletedChecked%',
   '%interlinearizer_analysisCatalog_empty%',
+  '%interlinearizer_analysisCatalog_loadFailed%',
   '%interlinearizer_analysisCatalog_mergedEmpty%',
   '%interlinearizer_analysisCatalog_usageCountInBook%',
   '%interlinearizer_analysisCatalog_noMatches%',
+  '%interlinearizer_analysisCatalog_retry%',
   ...TEXT_READING_STRING_KEYS,
   ...QUERY_CONTROL_STRING_KEYS,
   ...ROW_STRING_KEYS,
@@ -293,7 +295,7 @@ export default function AnalysisCatalogPanel({
     [currentBook, search, sort, filters, sourceLanguageTag],
   );
 
-  const view = useCatalogView(request, fetchCount);
+  const { view, retry } = useCatalogView(request, fetchCount);
   if (view && view.facets !== facets) setFacets(view.facets);
   const keptIds = useMemo(() => view?.keptIds ?? [], [view]);
   const rowCount = view?.rowCount ?? 0;
@@ -420,7 +422,7 @@ export default function AnalysisCatalogPanel({
     windowedRows,
     listing,
     revealedRowIndex,
-    view?.retry,
+    retry,
   );
   // Reset with the window, so a new listing is not fetched at the size an earlier one scrolled to.
   if (listing !== fetchedListing) {
@@ -1152,6 +1154,15 @@ export default function AnalysisCatalogPanel({
                 ? { status: readStatus ?? 'loading', booksRead: 0, bookCount: 0, failedBookIds: [] }
                 : { status: 'loading', ...readStatus }
             }
+          />
+        )}
+
+        {!view && retry && !isAwaitingText && (
+          <RetryableErrorView
+            className="tw:px-3 tw:py-2"
+            message={localizedStrings['%interlinearizer_analysisCatalog_loadFailed%']}
+            onRetry={retry}
+            retryLabel={localizedStrings['%interlinearizer_analysisCatalog_retry%']}
           />
         )}
 

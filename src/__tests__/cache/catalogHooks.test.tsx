@@ -84,7 +84,7 @@ describe('useCatalogView', () => {
     const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
     await settle();
 
-    expect(result.current?.rows.map((row) => [row.analysisId, row.books])).toStrictEqual([
+    expect(result.current.view?.rows.map((row) => [row.analysisId, row.books])).toStrictEqual([
       ['ta-god', new Set(['GEN'])],
     ]);
   });
@@ -139,7 +139,7 @@ describe('useCatalogView', () => {
     rerender({ search: 'nothing matches this' });
     await settle();
 
-    expect(result.current?.keptIds).toStrictEqual([]);
+    expect(result.current.view?.keptIds).toStrictEqual([]);
   });
 
   it('keeps the last page on screen while the next request is fetched', async () => {
@@ -155,7 +155,7 @@ describe('useCatalogView', () => {
     await settle();
 
     rerender({ search: 'nothing matches this' });
-    const shown = result.current?.keptIds;
+    const shown = result.current.view?.keptIds;
     await settle();
 
     expect(shown).toStrictEqual(['ta-god']);
@@ -174,16 +174,27 @@ describe('useCatalogView', () => {
     );
   });
 
+  it('offers a retry when the first page could not be fetched', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.getCatalogRows');
+
+    const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await settle();
+
+    expect(result.current.view).toBeUndefined();
+    expect(result.current.retry).toBeInstanceOf(Function);
+  });
+
   it('keeps the last page when fetching it again fails', async () => {
     const wrapper = await wrapperOver();
     const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
-    await waitFor(() => expect(result.current?.keptIds).toStrictEqual(['ta-god']));
+    await waitFor(() => expect(result.current.view?.keptIds).toStrictEqual(['ta-god']));
     failing('interlinearizer.getCatalogRows');
 
     relayChange(changeNaming(sessionIdOf('interlinearizer.getCatalogRows'), ['getCatalogRows']));
     await settle();
 
-    expect(result.current?.keptIds).toStrictEqual(['ta-god']);
+    expect(result.current.view?.keptIds).toStrictEqual(['ta-god']);
   });
 });
 
@@ -284,11 +295,11 @@ describe('a change of analysis language', () => {
   it('fetches the catalog page again in the new language', async () => {
     const wrapper = await wrapperOver();
     const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
-    await waitFor(() => expect(result.current?.rows[0]?.gloss).toBe('God'));
+    await waitFor(() => expect(result.current.view?.rows[0]?.gloss).toBe('God'));
 
     await setLanguage('interlinearizer.getCatalogRows', 'fr');
 
-    await waitFor(() => expect(result.current?.rows[0]?.gloss).toBe(''));
+    await waitFor(() => expect(result.current.view?.rows[0]?.gloss).toBe(''));
   });
 
   it('summarizes the selection again in the new language', async () => {

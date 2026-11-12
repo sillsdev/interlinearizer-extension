@@ -639,6 +639,32 @@ export function EmptyState({
   );
 }
 
+/** Stub failure view: its message in an `alert`, and a retry button when `onRetry` is given. */
+export function RetryableErrorView({
+  message,
+  retryLabel,
+  onRetry,
+  role = 'alert',
+  className,
+}: Readonly<{
+  message: ReactNode;
+  retryLabel?: ReactNode;
+  onRetry?: () => void;
+  role?: 'alert' | 'status';
+  className?: string;
+}>): ReactElement {
+  return (
+    <div className={className} role={role}>
+      {message}
+      {onRetry && (
+        <button onClick={onRetry} type="button">
+          {retryLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /**
  * Stub disabled-action wrapper that, as the real one does, becomes a `group` named by `tooltipText`
  * only while `disabled`.

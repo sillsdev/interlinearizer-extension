@@ -1433,6 +1433,51 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toHaveLength(80);
     });
 
+    /** Renders the panel over {@link MANY} with the host failing its first catalog page. */
+    async function renderPanelFailingFirstPage() {
+      await prepare(MANY);
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      let failNext = true;
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.getCatalogRows' && failNext) {
+          failNext = false;
+          throw new Error('offline');
+        }
+        return serve?.(...call);
+      });
+      render(
+        <PanelProviders overrides={{}}>
+          <CatalogPanel
+            currentBook="GEN"
+            liveSurfaceText={undriftedText}
+            onClose={() => {}}
+            onShowConcordance={() => {}}
+            showMorphology
+            sourceLanguageTag="el"
+          />
+        </PanelProviders>,
+      );
+      await settle();
+    }
+
+    it('says the catalog could not be loaded when its first page fails', async () => {
+      await renderPanelFailingFirstPage();
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_loadFailed%',
+      );
+    });
+
+    it('lists the rows once a failed first page is tried again', async () => {
+      await renderPanelFailingFirstPage();
+
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_retry%'));
+      await settle();
+
+      expect(listedAnalysisIds()).toHaveLength(40);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('starts the window over when the query changes', async () => {
       await renderPanel({ analysis: MANY });
       await reachListEnd();

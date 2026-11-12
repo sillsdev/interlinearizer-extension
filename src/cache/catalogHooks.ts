@@ -102,8 +102,6 @@ export type CatalogView = Readonly<{
   keptIds: readonly string[];
   facets: CatalogFacets;
   rowCount: number;
-  /** Fetches the page again; `undefined` unless the latest fetch of it failed. */
-  retry: (() => void) | undefined;
 }>;
 
 /**
@@ -112,19 +110,22 @@ export type CatalogView = Readonly<{
  * catalog.
  *
  * The last page stays while the next is fetched, so a changed query leaves the list on screen until
- * its rows arrive. A failed fetch leaves the last page too, with {@link CatalogView.retry} set.
+ * its rows arrive. A failed fetch leaves the last page too, or none if no page has arrived.
+ *
+ * @returns The page as `view`, and as `retry` a call that fetches it again. `retry` is `undefined`
+ *   unless the latest fetch failed.
  */
 export function useCatalogView(
   request: Omit<CatalogRowsRequest, 'offset' | 'count'>,
   count: number,
-): CatalogView | undefined {
+): Readonly<{ view: CatalogView | undefined; retry: (() => void) | undefined }> {
   const { sessionId } = usePageSession();
   const key = JSON.stringify([request, count]);
   const fetched = useNamedFetch(
     'getCatalogRows',
     'the catalog',
     key,
-    async (): Promise<Omit<CatalogView, 'retry'>> => {
+    async (): Promise<CatalogView> => {
       const page = JSON.parse(
         await papi.commands.sendCommand('interlinearizer.getCatalogRows', {
           sessionId,
@@ -135,9 +136,9 @@ export function useCatalogView(
     },
     true,
   );
-  const page = fetched?.value;
+  const view = fetched?.value;
   const retry = fetched?.failed ? fetched.retry : undefined;
-  return useMemo(() => page && { ...page, retry }, [page, retry]);
+  return useMemo(() => ({ view, retry }), [view, retry]);
 }
 
 /**

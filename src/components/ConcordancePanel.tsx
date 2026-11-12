@@ -1,27 +1,15 @@
-import { RefreshCw, X } from 'lucide-react';
-import {
-  Button,
-  EmptyState,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from 'platform-bible-react';
+import { X } from 'lucide-react';
+import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
-import { useAnalysis, useAnalysisLanguage } from './AnalysisStore';
-import { useConcordanceEntriesContext, useSourceTextContext } from './SourceTextContext';
+import { useAnalysisLanguage } from './AnalysisStore';
 import ConcordanceRowView, { CONCORDANCE_ROW_STRING_KEYS } from './ConcordanceRowView';
 import { useInterlinearNav } from './InterlinearNavContext';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
 import TextReadingStatus, { TEXT_READING_STRING_KEYS } from './TextReadingStatus';
+import { useConcordanceView, useTextReadStatus } from '../cache/catalogHooks';
 import useRowWindow from '../hooks/useRowWindow';
-import { resolvedOrEmpty, tooltipContentOrUndefined } from '../utils/localized-strings';
-import {
-  approvedAnalysisByToken,
-  deriveConcordanceRows,
-  type ConcordanceOccurrence,
-} from '../utils/concordance';
+import type { ConcordanceOccurrence } from '../utils/concordance';
 
 /**
  * Localized string keys the panel needs, the rows' among them so the list resolves once rather than
@@ -29,7 +17,6 @@ import {
  */
 export const CONCORDANCE_PANEL_STRING_KEYS = [
   '%interlinearizer_concordance_close%',
-  '%interlinearizer_concordance_refresh%',
   '%interlinearizer_concordance_empty%',
   '%interlinearizer_concordance_booksRead%',
   '%interlinearizer_concordance_unreadBooks%',
@@ -38,6 +25,9 @@ export const CONCORDANCE_PANEL_STRING_KEYS = [
   ...CONCORDANCE_ROW_STRING_KEYS,
   ...TEXT_READING_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
+
+/** How many rows are asked of the host before the list has been scrolled. */
+const INITIAL_FETCH_COUNT = 40;
 
 /** Props for {@link ConcordancePanel}. */
 type ConcordancePanelProps = Readonly<{
@@ -70,31 +60,19 @@ export default function ConcordancePanel({
   localizedStrings,
   currentBookName,
 }: ConcordancePanelProps) {
-  const refreshTooltip = tooltipContentOrUndefined(
-    resolvedOrEmpty(localizedStrings['%interlinearizer_concordance_refresh%']),
-  );
-  const text = useSourceTextContext();
-  const entries = useConcordanceEntriesContext();
-  const analysis = useAnalysis();
+  const readStatus = useTextReadStatus(true);
   const analysisLanguage = useAnalysisLanguage();
 
-  const analysesById = useMemo(
-    () => new Map(analysis.tokenAnalyses.map((ta) => [ta.id, ta])),
-    [analysis.tokenAnalyses],
-  );
-  const approvedByToken = useMemo(
-    () => approvedAnalysisByToken(analysis.tokenAnalysisLinks, analysesById),
-    [analysis.tokenAnalysisLinks, analysesById],
-  );
-
-  // Keyed on the status so a refresh, which passes through loading, starts the window over.
-  const { windowRows: windowEntries, scrollRef, sentinelRef } = useRowWindow(entries, text.status);
-
-  // Joined only for the mounted rows: a join over every form walks every occurrence in the text,
-  // too much to repeat on each gloss written beside the panel.
+  // Asked for as many rows as the window mounts, so the window can grow past what has arrived.
+  const [fetchCount, setFetchCount] = useState(INITIAL_FETCH_COUNT);
+  const view = useConcordanceView(currentBook, fetchCount);
+  const total = view?.total ?? 0;
+  const slots = useMemo(() => Array.from({ length: total }, (_unused, index) => index), [total]);
+  const { windowRows: windowSlots, scrollRef, sentinelRef } = useRowWindow(slots);
+  if (windowSlots.length > fetchCount) setFetchCount(windowSlots.length);
   const windowRows = useMemo(
-    () => deriveConcordanceRows(windowEntries, approvedByToken, currentBook),
-    [windowEntries, approvedByToken, currentBook],
+    () => view?.rows.slice(0, windowSlots.length) ?? [],
+    [view, windowSlots.length],
   );
 
   /** Label every row carries for its per-book occurrence count. */
@@ -132,12 +110,19 @@ export default function ConcordancePanel({
     [navigate, requestFocusToken],
   );
 
+  const failedBookIds =
+    readStatus === undefined || readStatus === 'error' ? [] : readStatus.failedBookIds;
+
   let body: ReactNode;
-  if (text.status !== 'ready') {
+  if (!view) {
     body = (
-      <TextReadingStatus idPrefix="concordance" localizedStrings={localizedStrings} text={text} />
+      <TextReadingStatus
+        idPrefix="concordance"
+        localizedStrings={localizedStrings}
+        status={readStatus}
+      />
     );
-  } else if (entries.length === 0) {
+  } else if (total === 0) {
     body = (
       <EmptyState
         className="tw:px-3 tw:py-2"
@@ -150,11 +135,9 @@ export default function ConcordancePanel({
       <ul className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:overflow-y-auto" ref={scrollRef}>
         {windowRows.map((row) => (
           <ConcordanceRowView
-            key={row.entry.form}
-            analysesById={analysesById}
+            key={row.form}
             analysisLanguage={analysisLanguage}
-            approvedByToken={approvedByToken}
-            isSelected={row.entry.form === selectedForm}
+            isSelected={row.form === selectedForm}
             localizedStrings={localizedStrings}
             occurrenceCountInBookLabel={occurrenceCountInBookLabel}
             onOccurrenceSelect={handleOccurrenceSelect}
@@ -183,21 +166,6 @@ export default function ConcordancePanel({
             onSelect={onShowCatalog}
           />
           <div className="tw:flex tw:items-center">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  aria-label={localizedStrings['%interlinearizer_concordance_refresh%']}
-                  data-testid="concordance-refresh"
-                  disabled={text.status === 'loading'}
-                  onClick={text.refresh}
-                  size="icon"
-                  variant="ghost"
-                >
-                  <RefreshCw className="tw:size-4" />
-                </Button>
-              </TooltipTrigger>
-              {refreshTooltip !== undefined && <TooltipContent>{refreshTooltip}</TooltipContent>}
-            </Tooltip>
             <Button
               aria-label={localizedStrings['%interlinearizer_concordance_close%']}
               data-testid="concordance-close"
@@ -209,25 +177,23 @@ export default function ConcordancePanel({
             </Button>
           </div>
         </div>
-        {text.status === 'ready' && (
+        {view && (
           <div
-            className={`tw:border-b tw:border-border tw:px-3 tw:py-2 tw:text-xs ${text.failedBookIds.length > 0 ? 'tw:bg-accent/50' : 'tw:text-muted-foreground'}`}
+            className={`tw:border-b tw:border-border tw:px-3 tw:py-2 tw:text-xs ${failedBookIds.length > 0 ? 'tw:bg-accent/50' : 'tw:text-muted-foreground'}`}
             data-testid="concordance-read-summary"
             role="status"
           >
             <p data-testid="concordance-books-read">
               {formatReplacementString(
                 localizedStrings['%interlinearizer_concordance_booksRead%'],
-                {
-                  count: text.readings?.size ?? 0,
-                },
+                { count: view.bookCount },
               )}
             </p>
-            {text.failedBookIds.length > 0 && (
+            {failedBookIds.length > 0 && (
               <p data-testid="concordance-unread-books">
                 {formatReplacementString(
                   localizedStrings['%interlinearizer_concordance_unreadBooks%'],
-                  { books: text.failedBookIds.join(', ') },
+                  { books: failedBookIds.join(', ') },
                 )}
               </p>
             )}

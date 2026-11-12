@@ -45,7 +45,6 @@
       "%interlinearizer_sidePanel_resize%": "Resize side panel",
       "%interlinearizer_concordance_title%": "Concordance",
       "%interlinearizer_concordance_close%": "Close concordance",
-      "%interlinearizer_concordance_refresh%": "Read the source text again",
       "%interlinearizer_textReading_loading%": "Reading books… {read} of {total}",
       "%interlinearizer_textReading_error%": "The text of this project could not be read.",
       "%interlinearizer_concordance_empty%": "The source text has no words to list.",

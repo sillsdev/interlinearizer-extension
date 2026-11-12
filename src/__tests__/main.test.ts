@@ -666,6 +666,7 @@ describe('main', () => {
           'interlinearizer.getSelectionSummary',
           'interlinearizer.getCatalogRowsByIds',
           'interlinearizer.getHomographRows',
+          'interlinearizer.getConcordance',
           'interlinearizer.openSession',
           'interlinearizer.closeSession',
           'interlinearizer.setAnalysisLanguage',

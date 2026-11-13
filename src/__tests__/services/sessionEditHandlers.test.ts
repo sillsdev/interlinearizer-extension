@@ -282,6 +282,20 @@ describe('sessionEditHandlers', () => {
     expect(counts).toStrictEqual({ en: { glosses: 1, freeTranslations: 0 } });
   });
 
+  it('refuses to count while a book cannot be read', async () => {
+    const { edits, sessionId, sessions, host } = await handlersOver();
+    const { repository } = await sessions.run(sessionId, async (session) => session);
+    const read = repository.exportAll.bind(repository);
+    jest
+      .spyOn(repository, 'exportAll')
+      .mockImplementation(async () => ({ ...(await read()), unreadableBooks: ['GEN'] }));
+
+    await expect(edits['interlinearizer.countLanguageText']({ sessionId })).rejects.toThrow(
+      'while GEN cannot be read',
+    );
+    expect(host.logger.error).toHaveBeenCalled();
+  });
+
   it('logs and rethrows a count for a session that is not open', async () => {
     const { edits, host } = await handlersOver();
 

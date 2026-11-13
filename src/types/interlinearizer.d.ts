@@ -1004,7 +1004,8 @@ declare module 'papi-shared-types' {
      * has any.
      *
      * @returns A JSON string of `{ glosses, freeTranslations }` keyed by tag.
-     * @throws If the session is not open or its draft can't be read (logged before rethrowing).
+     * @throws If the session is not open, or its draft or any book of it can't be read (logged
+     *   before rethrowing).
      */
     'interlinearizer.countLanguageText': (
       args: import('interlinearizer').SessionCommandArgs,

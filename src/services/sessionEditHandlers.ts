@@ -961,14 +961,21 @@ export function sessionEditHandlers({
    * any.
    *
    * @returns A JSON string of the counts, keyed by tag.
-   * @throws If the session is not open or its draft can't be read. The error is logged before
-   *   rethrowing.
+   * @throws If the session is not open, or its draft or any book of it can't be read. The error is
+   *   logged before rethrowing.
    */
   async function countLanguageText({
     sessionId,
   }: ArgsOf<'interlinearizer.countLanguageText'>): Promise<string> {
     try {
-      const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+      const { draft, unreadableBooks } = await sessions.run(sessionId, (session) =>
+        session.repository.exportAll(),
+      );
+      // Counts that left out a book would read its text as absent.
+      if (unreadableBooks.length > 0)
+        throw new Error(
+          `Interlinearizer: cannot count language text while ${unreadableBooks.join(', ')} cannot be read`,
+        );
       return JSON.stringify(countTextOfEveryTag(draft.analysis));
     } catch (e) {
       logger.error(`Interlinearizer: failed to count language text in session ${sessionId}`, e);

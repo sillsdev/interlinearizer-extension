@@ -37,7 +37,8 @@ type AnalysisLanguageChipsProps = Readonly<{
   /**
    * Counts the glosses and free translations of every code that has any. The counts decide whether
    * an action asks before hiding or merging text. Actions wait for the first count, and the text is
-   * counted again after each change. Absent, no action asks.
+   * counted again after each change. While a count has failed, Remove and Change are unavailable.
+   * Absent, no action asks.
    */
   countText?: () => Promise<TextCountsByTag>;
   /** Applies a change. Absent to show the codes without letting them change. */
@@ -81,18 +82,18 @@ export default function AnalysisLanguageChips({
   const chipButtons = useRef(new Map<string, HTMLButtonElement>());
   const [counted, setCounted] = useState<TextCountsByTag | undefined>(countText ? undefined : {});
   const textCounts = counted ?? NO_COUNTS;
+  const [countFailed, setCountFailed] = useState(false);
 
-  /**
-   * Counts the text again. After a failed count, no action asks first; that is safe because none
-   * deletes text unasked.
-   */
+  /** Counts the text again. */
   const recount = useCallback(async () => {
     if (!countText) return;
     try {
       setCounted(await countText());
+      setCountFailed(false);
     } catch (e) {
       logger.warn('Interlinearizer: could not count the text in each analysis language', e);
-      setCounted({});
+      setCounted(NO_COUNTS);
+      setCountFailed(true);
     }
   }, [countText]);
 
@@ -205,6 +206,7 @@ export default function AnalysisLanguageChips({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuItem
+                  disabled={countFailed}
                   onSelect={() =>
                     setPicker({ changing: tag, returnFocusTo: chipButtons.current.get(tag) })
                   }
@@ -225,7 +227,7 @@ export default function AnalysisLanguageChips({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
-                  disabled={languages.length < 2}
+                  disabled={countFailed || languages.length < 2}
                   onSelect={() => handleRemove(tag)}
                 >
                   {localizedStrings['%interlinearizer_languageChips_remove%']}

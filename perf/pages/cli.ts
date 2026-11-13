@@ -90,6 +90,7 @@ function sessionHost(
     startTextRead: async () => {},
     stopTextRead: async () => {},
     heldBook: (_source, bookId, segmentation) => heldBook(bookId, segmentation),
+    getOpenVerseBook: async (_source, bookId) => heldBook(bookId, undefined),
     reportChange,
   };
 }

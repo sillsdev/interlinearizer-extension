@@ -114,7 +114,10 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
             !currentUrl.startsWith('http://localhost:1212/')
           ) {
             await electronApp.evaluate(({ BrowserWindow }, url) => {
-              const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+              const win = BrowserWindow.getAllWindows().find(
+                (w: { isDestroyed(): boolean; loadURL(url: string): Promise<void> }) =>
+                  !w.isDestroyed(),
+              );
               if (win) win.loadURL(url).catch(() => {});
             }, rendererUrl);
             // Allow the navigation to start before we poll loadState.

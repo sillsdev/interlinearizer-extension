@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.lint.json",
+  "compilerOptions": {
+    // jest.c-sharp-host.config.ts imports jest.config.ts by extension, as Jest loads it as ESM
+    "allowImportingTsExtensions": true
+  },
+  // Tailwind 4 publishes its types only through package exports, which moduleResolution Node can't read
+  "exclude": ["tailwind.config.ts"]
+}

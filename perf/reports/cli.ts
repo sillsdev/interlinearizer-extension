@@ -52,9 +52,12 @@ function sessionHost(
     startTextRead: async () => {},
     stopTextRead: async () => {},
     heldBook: () => undefined,
+    getOpenVerseBook: async () => undefined,
     reportChange,
   };
 }
+
+type MarkerContent = UsjDocument['content'][number];
 
 /**
  * `usj` with `edit` applied to each nonblank text string after its first verse, outside notes, up
@@ -63,21 +66,15 @@ function sessionHost(
 function editUsj(usj: UsjDocument, edit: (text: string) => string, limit = Infinity): UsjDocument {
   let edited = 0;
   let inVerses = false;
-  const walk = (node: unknown): unknown => {
+  const walk = (node: MarkerContent): MarkerContent => {
     if (typeof node === 'string') {
       if (!inVerses || edited >= limit || node.trim().length === 0) return node;
       edited += 1;
       return edit(node);
     }
-    if (Array.isArray(node)) return node.map(walk);
-    if (node && typeof node === 'object') {
-      if ('type' in node && node.type === 'verse') inVerses = true;
-      if ('type' in node && node.type === 'note') return node;
-      return Object.fromEntries(
-        Object.entries(node).map(([key, value]) => [key, key === 'content' ? walk(value) : value]),
-      );
-    }
-    return node;
+    if (node.type === 'verse') inVerses = true;
+    if (node.type === 'note' || !node.content) return node;
+    return { ...node, content: node.content.map(walk) };
   };
   return { ...usj, content: usj.content.map(walk) };
 }
@@ -171,7 +168,7 @@ async function runOnce(draftJson: string, book: Book, scenario: Scenario) {
 }
 
 async function measureScenario(draftJson: string, book: Book, scenario: Scenario) {
-  const runs = [];
+  const runs: Awaited<ReturnType<typeof runOnce>>[] = [];
   for (let i = 0; i < RUNS; i += 1) {
     // eslint-disable-next-line no-await-in-loop -- each run is timed on its own
     runs.push(await runOnce(draftJson, book, scenario));

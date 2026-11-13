@@ -52,7 +52,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'app.picker': 'The Select interlinear dialog opens, listing every saved project for the source.',
   'app.save': 'Save from the Project menu writes the analysis to the project it came from.',
   'app.concordance':
-    'The concordance opens in a fresh view, which reads and indexes every book of the source.',
+    'The concordance panel opens in a fresh view and is timed until the first concordance page arrives. That page waits for the host to read every book of the source.',
   'bench.timings.load': 'Tokenizing the view book and parsing the draft.',
   'bench.timings.storage':
     'Splitting the draft into per-book shards to store it, and merging them back.',
@@ -136,8 +136,6 @@ const METRIC_LABELS: Record<string, string> = {
   'app-startup': 'App startup',
   'usj-fetch': 'Fetch book text',
   tokenize: 'Tokenize book',
-  'book-fetch': 'Fetch tokenized book',
-  'book-parse': 'Parse tokenized book',
   'outline-fetch': 'Fetch book outline',
   'outline-parse': 'Parse book outline',
   'page-fetch': 'Fetch a page of segments',
@@ -159,8 +157,7 @@ const METRIC_LABELS: Record<string, string> = {
   'projects-fetch': 'Fetch saved projects',
   save: 'Save',
   'save-bytes': 'Request sent',
-  'concordance-read': 'Read every book',
-  'concordance-entries': 'Build entries',
+  'concordance-entries': 'Open to first page',
   'text-read': 'Read every book',
   'text-read-tokenize': 'Tokenize every book, summed',
   formIndex: "Index every book's forms",

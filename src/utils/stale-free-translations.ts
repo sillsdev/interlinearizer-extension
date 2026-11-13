@@ -1,12 +1,15 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book, Segment } from 'interlinearizer';
-import type { PlacedFreeTranslations } from '../types/segment-pages';
+import type { Book } from 'interlinearizer';
+import type { OutlineSegment, PlacedFreeTranslations } from '../types/segment-pages';
 import { bookOfRef } from './analysis-book';
 import { verseOfTokenRef } from './reanchor-analysis';
+import { outlineRangeOf } from './page-indexes';
 import { positionOf, segmentContainsVerse, verseLabelCovers, verseOfId } from './verse-ref';
 
 /** A free translation whose segment's text has changed since it was written. */
 export type StaleFreeTranslation = Readonly<{
+  /** The id of the stale link it was read from. */
+  linkId: string;
   analysisId: string;
   /** The segment it was written for, which may no longer exist. */
   segmentId: string;
@@ -173,6 +176,29 @@ export function placedAmong<T>(
   };
 }
 
+/**
+ * `placed` with each stale link id replaced by the translation in `stale` read from that link. An
+ * id that `stale` lacks is left out.
+ */
+export function resolvePlaced<T extends StaleFreeTranslation>(
+  placed: PlacedFreeTranslations,
+  stale: readonly T[],
+): PlacedStaleFreeTranslations<T> {
+  const byId = new Map(stale.map((translation) => [translation.linkId, translation]));
+  const resolve = (ids: readonly string[]) =>
+    ids.flatMap((id) => {
+      const translation = byId.get(id);
+      return translation ? [translation] : [];
+    });
+  const resolveAll = (record: Readonly<Record<string, readonly string[]>>) =>
+    new Map(Object.entries(record).map(([segmentId, ids]) => [segmentId, resolve(ids)]));
+  return {
+    bySegment: resolveAll(placed.bySegment),
+    orphanedAfter: resolveAll(placed.orphanedAfter),
+    orphanedAhead: resolve(placed.orphanedAhead),
+  };
+}
+
 /** Every id that `placement` names. */
 export function placedIdsIn(placement: PlacedFreeTranslations): Set<string> {
   return new Set(
@@ -266,29 +292,26 @@ export function placeStaleFreeTranslations<T extends StaleFreeTranslation>(
 }
 
 /**
- * Finds the first of `segmentIds` after the reader's place in `book`, wrapping around to the book's
- * first of them, or `undefined` when the book holds none. The reader is at the segment
+ * Finds the first of `segmentIds` after the reader's place in `outline`, wrapping around to the
+ * outline's first of them, or `undefined` when the outline holds none. The reader is at the segment
  * `landedSegmentId` names, else at the segment holding `focusedTokenRef`, else at the first holding
  * `scrRef`'s verse, else ahead of the whole book.
  */
 export function nextSegmentAmong(
-  book: Book,
+  outline: readonly OutlineSegment[],
   segmentIds: readonly string[],
   focusedTokenRef: string | undefined,
   scrRef: SerializedVerseRef,
   landedSegmentId?: string,
-): Segment | undefined {
-  const { segments } = book;
-  let readerIndex = segments.findIndex((segment) => segment.id === landedSegmentId);
+): OutlineSegment | undefined {
+  let readerIndex = outline.findIndex((segment) => segment.id === landedSegmentId);
+  if (readerIndex === -1 && focusedTokenRef !== undefined)
+    readerIndex = outlineRangeOf(outline, focusedTokenRef)?.start ?? -1;
   if (readerIndex === -1)
-    readerIndex = segments.findIndex((segment) =>
-      segment.tokens.some((token) => token.ref === focusedTokenRef),
-    );
-  if (readerIndex === -1)
-    readerIndex = segments.findIndex((segment) => segmentContainsVerse(segment, scrRef));
+    readerIndex = outline.findIndex((segment) => segmentContainsVerse(segment, scrRef));
   const wanted = new Set(segmentIds);
   return (
-    segments.find((segment, index) => index > readerIndex && wanted.has(segment.id)) ??
-    segments.find((segment) => wanted.has(segment.id))
+    outline.find((segment, index) => index > readerIndex && wanted.has(segment.id)) ??
+    outline.find((segment) => wanted.has(segment.id))
   );
 }

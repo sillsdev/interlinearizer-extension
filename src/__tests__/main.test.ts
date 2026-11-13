@@ -349,60 +349,20 @@ describe('main', () => {
         return emitters;
       }
 
-      it('emits the project and book of an edit to a watched book', async () => {
-        const emitters = emittersByEvent();
-        await activate(createTestActivationContext());
-        const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
-
-        listener('src-project', 'GEN');
-        await nextTick();
-
-        expect(emitters.get('interlinearizer.onAnalysisChanged')?.emit).toHaveBeenCalledWith({
-          sourceProjectId: 'src-project',
-          changeId: expect.any(String),
-          scriptureEdit: { bookId: 'GEN' },
-        });
-      });
-
-      it('gives each emitted change its own id', async () => {
-        const emitters = emittersByEvent();
-        await activate(createTestActivationContext());
-        const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
-
-        listener('src-project', 'GEN');
-        listener('src-project', 'GEN');
-        await nextTick();
-
-        const emit = emitters.get('interlinearizer.onAnalysisChanged')?.emit;
-        expect(emit?.mock.calls[0][0].changeId).not.toBe(emit?.mock.calls[1][0].changeId);
-      });
-
-      it("emits an edit once the source's session has reported it", async () => {
-        const emitters = emittersByEvent();
-        let settle: () => void = () => {};
+      it("reports an edit to a watched book to the source's session", async () => {
         const reportScriptureEdit = jest
           .spyOn(AnalysisSessions.prototype, 'reportScriptureEdit')
-          .mockReturnValue(
-            new Promise<void>((resolve) => {
-              settle = resolve;
-            }),
-          );
+          .mockResolvedValue();
         await activate(createTestActivationContext());
         const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
-        const emit = emitters.get('interlinearizer.onAnalysisChanged')?.emit;
 
         listener('src-project', 'GEN');
-        await nextTick();
-        expect(emit).not.toHaveBeenCalled();
-        settle();
         await nextTick();
 
         expect(reportScriptureEdit).toHaveBeenCalledWith('src-project', 'GEN');
-        expect(emit).toHaveBeenCalledTimes(1);
       });
 
-      it("logs a report to the source's session that fails, and emits the edit all the same", async () => {
-        const emitters = emittersByEvent();
+      it("logs a report to the source's session that fails", async () => {
         jest
           .spyOn(AnalysisSessions.prototype, 'reportScriptureEdit')
           .mockRejectedValue(new Error('closed'));
@@ -415,9 +375,6 @@ describe('main', () => {
         expect(__mockLogger.warn).toHaveBeenCalledWith(
           'Interlinearizer: could not report the edit to GEN of project src-project',
           expect.any(Error),
-        );
-        expect(emitters.get('interlinearizer.onAnalysisChanged')?.emit).toHaveBeenCalledWith(
-          expect.objectContaining({ scriptureEdit: { bookId: 'GEN' } }),
         );
       });
 
@@ -656,7 +613,6 @@ describe('main', () => {
           'interlinearizer.saveDraftToProject',
           'interlinearizer.saveDraftAsProject',
           'interlinearizer.getProjectsForSource',
-          'interlinearizer.getTokenizedBook',
           'interlinearizer.getBookOutline',
           'interlinearizer.getStaleSummary',
           'interlinearizer.getSegments',
@@ -676,7 +632,7 @@ describe('main', () => {
           'interlinearizer.undoEdit',
           'interlinearizer.redoEdit',
           'interlinearizer.checkIndexes',
-          'interlinearizer.getFullAnalysis',
+          'interlinearizer.getDraftEnvelope',
           'interlinearizer.writeGloss',
           'interlinearizer.approveAnalysisForToken',
           'interlinearizer.writeMorphemes',
@@ -2091,35 +2047,6 @@ describe('main', () => {
     });
   });
 
-  describe('interlinearizer.getTokenizedBook command', () => {
-    const mockGetTokenizedBook = jest.mocked(bookService.getTokenizedBook);
-    const getHandler = () =>
-      activateAndGetHandler<(sourceProjectId: string, bookId: string) => Promise<unknown>>(
-        'interlinearizer.getTokenizedBook',
-      );
-
-    it('returns the tokenized book the service serves', async () => {
-      mockGetTokenizedBook.mockResolvedValue('{"bookRef":"GEN"}');
-      const handler = await getHandler();
-
-      const result = await handler('src-project', 'GEN');
-
-      expect(mockGetTokenizedBook).toHaveBeenCalledWith('src-project', 'GEN');
-      expect(result).toBe('{"bookRef":"GEN"}');
-    });
-
-    it('logs the error and rethrows when the book cannot be tokenized', async () => {
-      mockGetTokenizedBook.mockRejectedValue(new Error('bad text'));
-      const handler = await getHandler();
-
-      await expect(handler('src-project', 'GEN')).rejects.toThrow('bad text');
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to tokenize book GEN of project src-project',
-        expect.any(Error),
-      );
-    });
-  });
-
   describe('interlinearizer.setPerfMarks command', () => {
     it("turns the host's timing entries on or off as asked", async () => {
       const handler = await activateAndGetHandler<(enabled: boolean) => Promise<void>>(
@@ -2387,8 +2314,8 @@ describe('main', () => {
         checkIndexes: handler<CommandHandlers['interlinearizer.checkIndexes']>(
           'interlinearizer.checkIndexes',
         ),
-        getFullAnalysis: handler<CommandHandlers['interlinearizer.getFullAnalysis']>(
-          'interlinearizer.getFullAnalysis',
+        getDraftEnvelope: handler<CommandHandlers['interlinearizer.getDraftEnvelope']>(
+          'interlinearizer.getDraftEnvelope',
         ),
         saveDraftToProject: handler<CommandHandlers['interlinearizer.saveDraftToProject']>(
           'interlinearizer.saveDraftToProject',
@@ -2786,23 +2713,27 @@ describe('main', () => {
       );
     });
 
-    it("replies with the session's whole draft as its edits leave it", async () => {
+    it("replies with the session's draft envelope as its edits leave it", async () => {
       await seedDraft(CATS_BREAKDOWN);
-      const { openSession, deleteMorphemes, getFullAnalysis } = await activateSessionCommands();
+      const { openSession, deleteMorphemes, getDraftEnvelope } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
       await deleteMorphemes({ sessionId, tokenRef: 'GEN 1:1:0' });
 
-      await expect(getFullAnalysis({ sessionId }).then(JSON.parse)).resolves.toMatchObject({
+      const envelope = JSON.parse(await getDraftEnvelope({ sessionId }));
+
+      expect(envelope).toMatchObject({
         sourceProjectId: 'src-project',
         analysisLanguages: ['en'],
-        analysis: emptyAnalysis(),
+        dirty: true,
       });
+      expect(envelope).not.toHaveProperty('analysis');
+      expect(envelope).not.toHaveProperty('segmentation');
     });
 
     it("closes the source's session before starting its draft over", async () => {
       await seedDraft(CATS_BREAKDOWN);
       jest.mocked(projectStorage.startDraftOver).mockResolvedValue();
-      const { openSession, getFullAnalysis } = await activateSessionCommands();
+      const { openSession, getDraftEnvelope } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
       const startDraftOver = findRegisteredHandler('interlinearizer.startDraftOver');
 
@@ -2811,7 +2742,7 @@ describe('main', () => {
         from: { analysisLanguages: ['fr'] },
       });
 
-      await expect(getFullAnalysis({ sessionId })).rejects.toThrow(
+      await expect(getDraftEnvelope({ sessionId })).rejects.toThrow(
         `no session ${sessionId} is open`,
       );
     });
@@ -2821,22 +2752,22 @@ describe('main', () => {
         .mocked(projectStorage.openDraftRepository)
         .mockReturnValue(await stubRepository(emptyDraft('src-project')));
       __mockSettingsGet.mockResolvedValue(['fr']);
-      const { openSession, getFullAnalysis } = await activateSessionCommands();
+      const { openSession, getDraftEnvelope } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await expect(getFullAnalysis({ sessionId }).then(JSON.parse)).resolves.toMatchObject({
+      await expect(getDraftEnvelope({ sessionId }).then(JSON.parse)).resolves.toMatchObject({
         analysisLanguages: ['fr'],
       });
     });
 
-    it('logs the error and rethrows when the whole draft cannot be read', async () => {
-      const { getFullAnalysis } = await activateSessionCommands();
+    it('logs the error and rethrows when the draft envelope cannot be read', async () => {
+      const { getDraftEnvelope } = await activateSessionCommands();
 
-      await expect(getFullAnalysis({ sessionId: 'not-a-session' })).rejects.toThrow(
+      await expect(getDraftEnvelope({ sessionId: 'not-a-session' })).rejects.toThrow(
         'no session not-a-session is open',
       );
       expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to read the whole draft of session not-a-session',
+        'Interlinearizer: failed to read the draft envelope of session not-a-session',
         expect.any(Error),
       );
     });
@@ -3022,7 +2953,7 @@ describe('main', () => {
         expect(page).toMatchObject({
           start: 1,
           segments: [VERSE_BOOK.segments[1]],
-          analysis: { staleFreeTranslations: { orphanedAfter: { 'GEN 1:2': ['sa-9'] } } },
+          analysis: { staleFreeTranslations: { orphanedAfter: { 'GEN 1:2': ['sl-9'] } } },
         });
       });
 
@@ -3043,7 +2974,10 @@ describe('main', () => {
       });
 
       it('logs a failed re-anchor and still outlines the book', async () => {
-        jest.mocked(bookService.getOpenVerseBook).mockRejectedValue(new Error('unreadable'));
+        jest
+          .mocked(bookService.getOpenVerseBook)
+          .mockRejectedValueOnce(new Error('unreadable'))
+          .mockResolvedValue(VERSE_BOOK);
         jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
         const { openSession, getBookOutline } = await activateSessionCommands();
         const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));

@@ -8,14 +8,20 @@ import {
   placedAmong,
   placedIdsIn,
   placeStaleFreeTranslations,
+  resolvePlaced,
   type StaleFreeTranslation,
   verseLabelOf,
 } from '../../utils/stale-free-translations';
-import { makeVerseBook } from '../test-helpers';
+import { makeVerseBook, outlineOf } from '../test-helpers';
 
 /** Builds a stale translation of `segmentId`, its id and text derived from it. */
 function stale(segmentId: string): StaleFreeTranslation {
-  return { analysisId: `sa ${segmentId}`, segmentId, text: `translation of ${segmentId}` };
+  return {
+    linkId: `link sa ${segmentId}`,
+    analysisId: `sa ${segmentId}`,
+    segmentId,
+    text: `translation of ${segmentId}`,
+  };
 }
 
 /** Verses of Genesis 1, each its own segment. */
@@ -372,13 +378,54 @@ describe('placedIdsIn', () => {
   });
 });
 
+describe('resolvePlaced', () => {
+  const kept: StaleFreeTranslation = {
+    linkId: 'link-sa-1',
+    analysisId: 'sa-1',
+    segmentId: 'GEN 1:1',
+    text: 'one',
+  };
+
+  it('names each placed translation by the link it was read from, leaving out one not held', () => {
+    expect(
+      resolvePlaced(
+        {
+          bySegment: { 'GEN 1:1': ['link-sa-1', 'link-gone'] },
+          orphanedAfter: {},
+          orphanedAhead: ['link-sa-1'],
+        },
+        [kept],
+      ),
+    ).toStrictEqual({
+      bySegment: new Map([['GEN 1:1', [kept]]]),
+      orphanedAfter: new Map(),
+      orphanedAhead: [kept],
+    });
+  });
+
+  it('keeps apart the links of a shared payload', () => {
+    const other: StaleFreeTranslation = { ...kept, linkId: 'link-other', segmentId: 'GEN 1:8' };
+
+    expect(
+      resolvePlaced(
+        {
+          bySegment: {},
+          orphanedAfter: { 'GEN 1:3': ['link-sa-1', 'link-other'] },
+          orphanedAhead: [],
+        },
+        [kept, other],
+      ).orphanedAfter,
+    ).toStrictEqual(new Map([['GEN 1:3', [kept, other]]]));
+  });
+});
+
 describe('nextSegmentAmong', () => {
   const [verse1, verse2, verse3] = verseBook.segments;
   const atVerse = (verseNum: number) => ({ book: 'GEN', chapterNum: 1, verseNum });
 
   it('finds the first listed segment after the one holding the focused word', () => {
     const next = nextSegmentAmong(
-      verseBook,
+      outlineOf(verseBook.segments),
       ['GEN 1:1', 'GEN 1:3'],
       verse1.tokens[0].ref,
       atVerse(1),
@@ -387,21 +434,42 @@ describe('nextSegmentAmong', () => {
     expect(next?.id).toBe('GEN 1:3');
   });
 
+  it('places the reader at the verse when the focused word lies in no verse of the outline', () => {
+    const next = nextSegmentAmong(
+      outlineOf(verseBook.segments),
+      ['GEN 1:1', 'GEN 1:3'],
+      'GEN 9:9:0',
+      atVerse(2),
+    );
+
+    expect(next?.id).toBe('GEN 1:3');
+  });
+
   it('wraps around to the book’s first listed segment past the last', () => {
-    const next = nextSegmentAmong(verseBook, ['GEN 1:1'], verse3.tokens[0].ref, atVerse(3));
+    const next = nextSegmentAmong(
+      outlineOf(verseBook.segments),
+      ['GEN 1:1'],
+      verse3.tokens[0].ref,
+      atVerse(3),
+    );
 
     expect(next?.id).toBe('GEN 1:1');
   });
 
   it('starts from the segment holding the active verse while no word is focused', () => {
-    const next = nextSegmentAmong(verseBook, ['GEN 1:2', 'GEN 1:3'], undefined, atVerse(2));
+    const next = nextSegmentAmong(
+      outlineOf(verseBook.segments),
+      ['GEN 1:2', 'GEN 1:3'],
+      undefined,
+      atVerse(2),
+    );
 
     expect(next?.id).toBe('GEN 1:3');
   });
 
   it('starts from the focused word rather than the active verse', () => {
     const next = nextSegmentAmong(
-      verseBook,
+      outlineOf(verseBook.segments),
       ['GEN 1:2', 'GEN 1:3'],
       verse2.tokens[0].ref,
       atVerse(1),
@@ -412,7 +480,7 @@ describe('nextSegmentAmong', () => {
 
   it('starts from the segment the last jump landed on rather than the focused word', () => {
     const next = nextSegmentAmong(
-      verseBook,
+      outlineOf(verseBook.segments),
       ['GEN 1:2', 'GEN 1:3'],
       verse1.tokens[0].ref,
       atVerse(1),
@@ -423,16 +491,23 @@ describe('nextSegmentAmong', () => {
   });
 
   it('starts ahead of the whole book when neither the focus nor the verse is in it', () => {
-    const next = nextSegmentAmong(verseBook, ['GEN 1:1', 'GEN 1:3'], undefined, {
-      book: 'EXO',
-      chapterNum: 1,
-      verseNum: 1,
-    });
+    const next = nextSegmentAmong(
+      outlineOf(verseBook.segments),
+      ['GEN 1:1', 'GEN 1:3'],
+      undefined,
+      {
+        book: 'EXO',
+        chapterNum: 1,
+        verseNum: 1,
+      },
+    );
 
     expect(next?.id).toBe('GEN 1:1');
   });
 
   it('finds nothing when the book holds none of the segments', () => {
-    expect(nextSegmentAmong(verseBook, ['GEN 9:9'], undefined, atVerse(1))).toBeUndefined();
+    expect(
+      nextSegmentAmong(outlineOf(verseBook.segments), ['GEN 9:9'], undefined, atVerse(1)),
+    ).toBeUndefined();
   });
 });

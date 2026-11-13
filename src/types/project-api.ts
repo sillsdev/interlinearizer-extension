@@ -1,7 +1,6 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { DraftProject } from 'interlinearizer';
+import type { DraftEnvelope } from 'interlinearizer';
 import type { PageClient } from '../cache/pageClient';
-import type { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { EditStep } from './edit-step';
 import type { SegmentPagesLoad } from './segment-pages';
@@ -27,8 +26,6 @@ export type SessionView = Readonly<{
   sessionId: string;
   /** Whether the session is on a Paratext 9 import, which no edit may change. */
   readOnly: boolean;
-  /** The session's whole draft, for its scope and the answers that span books. */
-  whole: WholeAnalysis;
   /** The loaded book's segment list, as the session segments and serves it. */
   pages: SegmentPagesLoad;
   /**
@@ -48,30 +45,28 @@ export type SessionView = Readonly<{
 export type ProjectApi = {
   /** True until the session has opened and its draft has been read. */
   isDraftLoading: boolean;
-  /** The draft as last read from the session, or `undefined` until the first read. */
-  draft: DraftProject | undefined;
+  /** The draft's envelope as last read from the session, or `undefined` until the first read. */
+  draft: DraftEnvelope | undefined;
   /** Bumped each time the draft is replaced wholesale: New, Open, Discard, or an undo of one. */
   draftVersion: number;
-  /** Bumped each time the draft's segment boundaries change. */
-  segmentationVersion: number;
   /** Whether the draft has diverged from the project it saves to. */
   dirty: boolean;
-  /** Returns the draft as of the moment of the call; `undefined` before the first read. */
-  getDraftSnapshot: () => DraftProject | undefined;
+  /** Returns the draft's envelope as of the moment of the call; `undefined` before the first read. */
+  getDraftSnapshot: () => DraftEnvelope | undefined;
   /** True while {@link ProjectApi.commitDraft} runs. */
   isSaving: boolean;
   /**
-   * Saves the draft to a project, passing the draft and the id of the session that keeps it to
-   * `copy`, which copies the stored draft into a project and resolves whether the copy landed. When
-   * the copy landed whole, the draft is marked synced; a partial copy leaves it unsaved. Resolves
-   * whether the copy landed, or `false` without copying when no draft has loaded or another save is
-   * in flight.
+   * Saves the draft to a project, passing the draft's envelope and the id of the session that keeps
+   * it to `copy`, which copies the stored draft into a project and resolves whether the copy
+   * landed. When the copy landed whole, the draft is marked synced; a partial copy leaves it
+   * unsaved. Resolves whether the copy landed, or `false` without copying when no draft has loaded
+   * or another save is in flight.
    *
    * @throws Whatever `copy` throws; the draft stays dirty.
    * @throws If the draft cannot be read again once the copy lands.
    */
   commitDraft: (
-    copy: (snapshot: DraftProject, sessionId: string) => Promise<DraftCopyResult>,
+    copy: (snapshot: DraftEnvelope, sessionId: string) => Promise<DraftCopyResult>,
   ) => Promise<boolean>;
   /**
    * Replaces the draft with a working copy of the stored project `projectId`'s analysis and config,

@@ -5,6 +5,7 @@ import path from 'path';
 import { readDraftJson, readManifest } from '../../../perf/dataset/store';
 import { TIERS, type TierSpec } from '../../../perf/dataset/tiers';
 import { provenance, writeResults } from '../../../perf/results';
+import { readCaptureMeta } from '../../../perf/usj-cache';
 import { addSavedProject, readDraft, writeDraft } from '../../../perf/storage';
 import type { TextReadStatus } from '../../../src/types/text-read-status';
 import { expect, test } from '../../fixtures/cdp.fixture';
@@ -499,13 +500,12 @@ async function measureOpen(
     frameOrigin + Math.max(...settled.map((m) => m.end)) - openedAt,
   );
   const hostEntries = await takeHostEntries(page);
-  open.addHostCall(HOST_CALLS.getTokenizedBook, hostEntries, settled);
   open.addHostCall(HOST_CALLS.getBookOutline, hostEntries, settled);
   // The first pages load side by side, so each is sampled without a transport to pair it with.
   hostEntries
     .filter(({ name }) => name === 'getSegments')
     .forEach(({ duration }) => open.host.addValue('page-fetch', duration));
-  const tokenizes = hostEntries.filter(({ name }) => name === 'getTokenizedBook:tokenize').length;
+  const tokenizes = hostEntries.filter(({ name }) => name === 'readBook:tokenize').length;
   if (tokenizes !== 1) console.warn(`Opening ${book} tokenized it ${tokenizes} times, not once`);
   await closeView(page);
 }
@@ -524,7 +524,7 @@ async function measureTier(
   createdProjects: string[],
   result: Record<string, unknown>,
 ): Promise<void> {
-  const manifest = readManifest(tier.name);
+  const manifest = readManifest(tier.name, readCaptureMeta());
   const draftJson = readDraftJson(tier.name);
   const draftWire = wireBytes(draftJson);
   const wire: Record<string, number> = { draft: draftWire };
@@ -608,7 +608,7 @@ async function measureTier(
     switchBook.add(
       // eslint-disable-next-line no-await-in-loop
       await waitForMeasure(frame, 'book-render', tier.viewBook),
-      ['book-fetch', 'book-parse', 'book-render'],
+      ['book-render'],
     );
   }
   result.switchBook = switchBook.summary();
@@ -692,8 +692,8 @@ async function measureTier(
   result.save = saves.summary();
   await recordMemory('afterSave');
 
-  // Concordance: indexing every book of the source, in a fresh WebView each run since a WebView
-  // keeps the index it built.
+  // Concordance: from opening the panel to its first page, in a fresh view each run, because the
+  // host keeps the whole-text read until the view closes.
   const concordance = new Samples();
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop
@@ -709,7 +709,7 @@ async function measureTier(
     concordance.add(
       // eslint-disable-next-line no-await-in-loop
       await waitForMeasure(view, 'concordance-entries'),
-      ['concordance-read', 'concordance-entries'],
+      ['concordance-entries'],
     );
   }
   result.concordance = concordance.summary();

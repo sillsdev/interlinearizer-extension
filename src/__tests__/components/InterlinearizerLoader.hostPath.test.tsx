@@ -7,18 +7,16 @@ import { useGloss, useGlossDispatch } from '../../components/AnalysisStore';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { emptyPt9ImportReport } from '../../converters/pt9/report';
 import type { SegmentationDispatch } from '../../components/SegmentationStore';
-import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../../hooks/useProjectBookIds';
 import useStaleAnalysisDismissal from '../../hooks/useStaleAnalysisDismissal';
 import { fakeHost, replyProjectMissing, STORED_PROJECT } from '../cache/fake-host';
-import { BOOK, ref } from '../cache/session-source';
+import { ref } from '../cache/session-source';
 import { makeScrollGroupHook, makeWebViewState } from '../test-helpers';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
-jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
@@ -116,15 +114,8 @@ jest.mock('../../components/Interlinearizer', () => ({
   },
 }));
 
-/** Serves the loader's other hooks as a project with {@link BOOK} open would. */
+/** Serves the loader's other hooks as a project with GEN open would. */
 function mockLoaderHooks(): void {
-  jest.mocked(useInterlinearizerBookData).mockReturnValue({
-    book: BOOK,
-    isLoading: false,
-    bookError: undefined,
-    writingSystem: 'und',
-    reload: jest.fn(),
-  });
   jest.mocked(useProjectBookIds).mockReturnValue({ bookIds: ['GEN'], isLoading: false });
   jest
     .mocked(useOptimisticBooleanSetting)
@@ -417,45 +408,38 @@ describe('InterlinearizerLoader opening a Paratext 9 import', () => {
 
 describe('InterlinearizerLoader changing book', () => {
   it("keeps the side panel mounted while the next book's pages load", async () => {
-    await fakeHost();
+    let holdOutlines = false;
+    await fakeHost(undefined, (command) =>
+      holdOutlines && command === 'interlinearizer.getBookOutline'
+        ? new Promise(() => {})
+        : undefined,
+    );
     jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
-    const loader = () => (
+    jest.mocked(useProjectBookIds).mockReturnValue({ bookIds: ['GEN', 'EXO'], isLoading: false });
+    const loader = (book: string) => (
       <InterlinearizerLoader
         projectId="src"
         webViewId="web-view-1"
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook({ book, chapterNum: 1, verseNum: 1 })}
         useWebViewState={makeWebViewState({ sidePanel: 'catalog' })}
         updateWebViewDefinition={jest.fn(() => true)}
       />
     );
-    const { rerender } = render(loader());
+    const { rerender } = render(loader('GEN'));
     await screen.findByTestId('earth');
 
-    jest.mocked(useInterlinearizerBookData).mockReturnValue({
-      book: undefined,
-      isLoading: true,
-      bookError: undefined,
-      writingSystem: 'und',
-      reload: jest.fn(),
-    });
-    rerender(loader());
+    holdOutlines = true;
+    rerender(loader('EXO'));
 
-    expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
+    expect(await screen.findByTestId('loading-indicator')).toBeInTheDocument();
     expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
     expect(mockCatalogMounted).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('InterlinearizerLoader with no book loaded', () => {
-  it("asks the session for no outline of a book whose text didn't load", async () => {
-    await fakeHost();
-    jest.mocked(useInterlinearizerBookData).mockReturnValue({
-      book: undefined,
-      isLoading: false,
-      bookError: 'no such book',
-      writingSystem: 'und',
-      reload: jest.fn(),
-    });
+describe('InterlinearizerLoader reading the open book', () => {
+  /** Renders the loader on the source `src`, open at GEN 1:1. */
+  function renderOnGenesis() {
     render(
       <InterlinearizerLoader
         projectId="src"
@@ -465,17 +449,34 @@ describe('InterlinearizerLoader with no book loaded', () => {
         updateWebViewDefinition={jest.fn(() => true)}
       />,
     );
+  }
 
-    await waitFor(() =>
-      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-        'interlinearizer.getFullAnalysis',
-        expect.anything(),
-      ),
+  /** The names of the commands that the view has sent. */
+  const commandsSent = () =>
+    jest.mocked(papi.commands.sendCommand).mock.calls.map(([name]) => name);
+
+  it('shows the book from its outline and pages, reading neither the whole analysis nor the whole text', async () => {
+    await fakeHost();
+    mockLoaderHooks();
+
+    renderOnGenesis();
+
+    expect(await screen.findByTestId('interlinearizer')).toBeInTheDocument();
+    expect(commandsSent()).toEqual(
+      expect.arrayContaining(['interlinearizer.getBookOutline', 'interlinearizer.getSegments']),
     );
-    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
-      'interlinearizer.getBookOutline',
-      expect.anything(),
-      expect.anything(),
-    );
+    expect(commandsSent()).not.toContain('interlinearizer.getFullAnalysis');
+    expect(commandsSent()).not.toContain('interlinearizer.getTokenizedBook');
+  });
+
+  it('asks the session for no outline of a book the project lacks', async () => {
+    await fakeHost();
+    mockLoaderHooks();
+    jest.mocked(useProjectBookIds).mockReturnValue({ bookIds: ['EXO'], isLoading: false });
+
+    renderOnGenesis();
+
+    await waitFor(() => expect(commandsSent()).toContain('interlinearizer.getDraftEnvelope'));
+    expect(commandsSent()).not.toContain('interlinearizer.getBookOutline');
   });
 });

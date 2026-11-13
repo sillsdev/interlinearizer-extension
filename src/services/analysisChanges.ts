@@ -58,7 +58,10 @@ function freeTranslationIndex(book: Book, segmentId: string): number | undefined
   const { segmentOrder } = bookIndexesOf(book.segments);
   const own = segmentOrder.get(segmentId);
   if (own !== undefined) return own;
-  const placed = placeStaleFreeTranslations([{ analysisId: '', segmentId, text: '' }], book);
+  const placed = placeStaleFreeTranslations(
+    [{ linkId: '', analysisId: '', segmentId, text: '' }],
+    book,
+  );
   if (placed.orphanedAhead.length > 0) return 0;
   const [placedAt] = [...placed.bySegment.keys(), ...placed.orphanedAfter.keys()];
   return placedAt === undefined ? undefined : segmentOrder.get(placedAt);

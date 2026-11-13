@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
-import type { TextAnalysis, TokenAnalysis } from 'interlinearizer';
+import type { SegmentationDelta, TextAnalysis, TokenAnalysis } from 'interlinearizer';
+import { resegmentBook } from 'parsers/papi/resegmentBook';
 import { DraftRepository } from '../../services/draftRepository';
 import {
   readBookOutline,
@@ -31,12 +32,16 @@ function idsOf(records: readonly { id: string }[] | undefined): string[] | undef
   return records?.map(({ id }) => id).sort();
 }
 
-async function repositoryOver(analysis: Partial<TextAnalysis> = {}): Promise<DraftRepository> {
+async function repositoryOver(
+  analysis: Partial<TextAnalysis> = {},
+  segmentation: SegmentationDelta | undefined = undefined,
+): Promise<DraftRepository> {
   const { storage } = memoryStorage();
   const repository = new DraftRepository(storage, 'src', silentLogger());
   await seedRepository(repository, {
     ...emptyDraft('src'),
     analysis: { ...emptyAnalysis(), ...analysis },
+    ...(segmentation && { segmentation }),
   });
   return repository;
 }
@@ -156,7 +161,7 @@ describe('readBookOutline', () => {
       segmentAnalysisLinks: translations.flatMap((t) => t.segmentAnalysisLinks ?? []),
     });
 
-    const outline = await readBookOutline(repository, book);
+    const outline = await readBookOutline(repository, book, book);
 
     expect(outline.bookRef).toBe('GEN');
     expect(outline.textVersion).toBe(book.textVersion);
@@ -166,6 +171,53 @@ describe('readBookOutline', () => {
       'GEN 1:3',
     ]);
     expect(outline.segments.map((segment) => segment.orphanedCardCount)).toStrictEqual([1, 0, 2]);
+  });
+});
+
+describe('readBookOutline boundaries', () => {
+  it("names the draft's merged-away verse starts by the word that each verse begins with", async () => {
+    const delta = { removedVerseStarts: [ref('God')], addedStarts: [] };
+    const repository = await repositoryOver({}, delta);
+
+    const outline = await readBookOutline(repository, resegmentBook(book, delta), book);
+
+    expect(outline.boundaries?.formerBoundaries).toStrictEqual({ [ref('God')]: ref('God') });
+  });
+
+  it('names the verse starts that no merge can remove', async () => {
+    const repository = await repositoryOver();
+
+    const outline = await readBookOutline(repository, book, book);
+
+    expect(outline.boundaries?.unmergeableStarts).toStrictEqual([ref('In')]);
+  });
+
+  it('names the boundaries that the text no longer carries', async () => {
+    const delta = {
+      removedVerseStarts: [],
+      addedStarts: [{ tokenRef: ref('created'), surfaceText: 'made' }],
+    };
+    const repository = await repositoryOver({}, delta);
+
+    const outline = await readBookOutline(repository, resegmentBook(book, delta), book);
+
+    expect(outline.boundaries?.lostBoundaries).toStrictEqual([ref('created')]);
+  });
+
+  it("leaves out another book's boundaries", async () => {
+    const delta = {
+      removedVerseStarts: ['EXO 1:2:0'],
+      addedStarts: [{ tokenRef: 'EXO 1:1:1', surfaceText: 'gone' }],
+    };
+    const repository = await repositoryOver({}, delta);
+
+    const outline = await readBookOutline(repository, book, book);
+
+    expect(outline.boundaries).toStrictEqual({
+      formerBoundaries: {},
+      unmergeableStarts: [ref('In')],
+      lostBoundaries: [],
+    });
   });
 });
 
@@ -180,7 +232,7 @@ describe('readBookOutline stale flags', () => {
       ],
     });
 
-    const outline = await readBookOutline(repository, book);
+    const outline = await readBookOutline(repository, book, book);
 
     expect(outline.segments.map((segment) => segment.hasStaleGloss)).toStrictEqual([
       false,
@@ -196,7 +248,7 @@ describe('readBookOutline stale flags', () => {
       segmentAnalysisLinks: translations.flatMap((t) => t.segmentAnalysisLinks ?? []),
     });
 
-    const outline = await readBookOutline(repository, book);
+    const outline = await readBookOutline(repository, book, book);
 
     expect(outline.segments.map((segment) => segment.hasStaleFreeTranslation)).toStrictEqual([
       true,
@@ -354,7 +406,7 @@ describe('readSegmentPage', () => {
       const analysis = await pageWith('GEN 1:2', 1);
 
       expect(analysis?.staleFreeTranslations).toStrictEqual({
-        bySegment: { 'GEN 1:2': ['sa GEN 1:2'] },
+        bySegment: { 'GEN 1:2': ['sl GEN 1:2'] },
         orphanedAfter: {},
         orphanedAhead: [],
       });
@@ -365,7 +417,7 @@ describe('readSegmentPage', () => {
       const analysis = await pageWith(ref('created'), 1);
 
       expect(analysis?.staleFreeTranslations.bySegment).toStrictEqual({
-        'GEN 1:2': [`sa ${ref('created')}`],
+        'GEN 1:2': [`sl ${ref('created')}`],
       });
       expect(idsOf(analysis?.segmentAnalysisLinks)).toStrictEqual([`sl ${ref('created')}`]);
       expect(idsOf(analysis?.segmentAnalyses)).toStrictEqual([`sa ${ref('created')}`]);
@@ -376,7 +428,7 @@ describe('readSegmentPage', () => {
 
       expect(analysis?.staleFreeTranslations).toStrictEqual({
         bySegment: {},
-        orphanedAfter: { 'GEN 1:3': ['sa GEN 1:5'] },
+        orphanedAfter: { 'GEN 1:3': ['sl GEN 1:5'] },
         orphanedAhead: [],
       });
       expect(idsOf(analysis?.segmentAnalyses)).toStrictEqual(['sa GEN 1:5']);
@@ -384,7 +436,7 @@ describe('readSegmentPage', () => {
 
     it('lists one orphaned ahead of every verse only on the first page', async () => {
       expect((await pageWith('GEN 1:0', 0))?.staleFreeTranslations.orphanedAhead).toStrictEqual([
-        'sa GEN 1:0',
+        'sl GEN 1:0',
       ]);
       expect((await pageWith('GEN 1:0', 1))?.staleFreeTranslations.orphanedAhead).toStrictEqual([]);
     });
@@ -398,6 +450,29 @@ describe('readSegmentPage', () => {
         orphanedAhead: [],
       });
       expect(analysis?.segmentAnalysisLinks).toStrictEqual([]);
+    });
+
+    it('names each placement of a shared payload by its own link', async () => {
+      const shared = staleTranslation('GEN 1:1');
+      const repository = await repositoryOver({
+        segmentAnalyses: shared.segmentAnalyses,
+        segmentAnalysisLinks: [
+          ...(shared.segmentAnalysisLinks ?? []),
+          ...(staleTranslation('GEN 1:5').segmentAnalysisLinks ?? []).map((link) => ({
+            ...link,
+            analysisId: 'sa GEN 1:1',
+          })),
+        ],
+      });
+
+      const { analysis } = await readSegmentPage(repository, book, 0, 3);
+
+      expect(analysis?.staleFreeTranslations).toStrictEqual({
+        bySegment: { 'GEN 1:1': ['sl GEN 1:1'] },
+        orphanedAfter: { 'GEN 1:3': ['sl GEN 1:5'] },
+        orphanedAhead: [],
+      });
+      expect(idsOf(analysis?.segmentAnalyses)).toStrictEqual(['sa GEN 1:1']);
     });
 
     it('leaves out the link of a shared payload placed outside the range', async () => {

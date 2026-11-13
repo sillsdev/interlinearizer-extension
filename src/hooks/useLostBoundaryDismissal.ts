@@ -1,20 +1,12 @@
 import type { UseWebViewStateHook } from '@papi/core';
-import type { Book, SegmentationDelta } from 'interlinearizer';
-import { useMemo } from 'react';
-import { lostBoundaries as findLostBoundaries } from '../utils/segmentation';
+import type { SegmentPages } from '../types/segment-pages';
 import useRecordDismissal from './useRecordDismissal';
 
 type LostBoundaryDismissalOptions = {
-  /** The verse-tokenized loaded book, `undefined` while none is loaded. */
-  verseBook: Book | undefined;
-  /** The draft's boundary edits, whose anchors are the ones checked against the source. */
-  segmentation: SegmentationDelta | undefined;
-  /** Bumped by every boundary edit. */
-  segmentationVersion: number;
+  /** The loaded book's pages, `undefined` while none is loaded. */
+  pages: SegmentPages | undefined;
   /** Bumped by every wholesale draft replacement (New / Open / Discard). */
   draftVersion: number;
-  /** Whether the initial draft load is still outstanding, which bumps neither counter. */
-  isDraftLoading: boolean;
   /** Whether a read-only Paratext 9 import is showing, which the draft's boundaries never reach. */
   isImportView: boolean;
   /** Scopes the dismissal to one tab. */
@@ -28,31 +20,25 @@ type LostBoundaryDismissal = {
   onDismiss: () => void;
 };
 
+const NONE: readonly string[] = [];
+
 /**
- * Finds the draft's segment boundaries the loaded source text no longer carries — a loss that
- * reverts those regions to one segment per verse, silently without this — and tracks which of them
- * the user has dismissed the banner for, a boundary that recovers dropping out of the dismissal.
+ * Reports the draft's segment boundaries that the loaded source text no longer carries, as the
+ * book's outline names them. Unreported, such a loss silently reverts those regions to one segment
+ * per verse.
+ *
+ * Also tracks which of them the user has dismissed the banner for; a boundary that recovers drops
+ * out of the dismissal.
  */
 export default function useLostBoundaryDismissal({
-  verseBook,
-  segmentation,
-  segmentationVersion,
+  pages,
   draftVersion,
-  isDraftLoading,
   isImportView,
   useWebViewState,
 }: LostBoundaryDismissalOptions): LostBoundaryDismissal {
-  // Keying on the draft itself would re-run the search after every gloss edit, which replaces its
-  // identity without touching the boundaries.
-  const lostBoundaries = useMemo(
-    () => (verseBook && !isImportView ? findLostBoundaries(verseBook, segmentation) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track segmentation, a ref value
-    [verseBook, segmentationVersion, draftVersion, isDraftLoading, isImportView],
-  );
-
   const { undismissed, onDismiss } = useRecordDismissal({
-    records: lostBoundaries,
-    observedBookRef: isImportView ? undefined : verseBook?.bookRef,
+    records: (!isImportView && pages?.boundaries.lostBoundaries) || NONE,
+    observedBookRef: isImportView ? undefined : pages?.bookRef,
     draftVersion,
     stateKey: 'dismissedLostBoundaries',
     useWebViewState,

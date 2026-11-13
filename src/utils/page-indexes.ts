@@ -1,5 +1,5 @@
 import type { PhraseAnalysisLink, Segment, SegmentRange, Token } from 'interlinearizer';
-import type { OutlineSegment, SegmentPage } from '../types/segment-pages';
+import type { OutlineSegment, SegmentPage, SegmentPages } from '../types/segment-pages';
 import { indexSegmentTokens, type TokenIndexes } from './book-indexes';
 import { straddledRefs } from './phrase-arc';
 import { positionOf } from './verse-ref';
@@ -128,4 +128,15 @@ export function outlineRangeOf(
   const index = outline.findIndex((segment) => segment.id === ref);
   const found = index === -1 ? outline.findLastIndex(holds) : index;
   return found === -1 ? undefined : { start: found, end: found + 1 };
+}
+
+/** The text of the token `tokenRef` as `pages` hold it; `undefined` until its page has loaded. */
+export function heldSurfaceText(
+  pages: Pick<SegmentPages, 'outline' | 'segmentAt'>,
+  tokenRef: string,
+): string | undefined {
+  const range = outlineRangeOf(pages.outline, tokenRef);
+  return (
+    range && pages.segmentAt(range.start)?.tokens.find(({ ref }) => ref === tokenRef)?.surfaceText
+  );
 }

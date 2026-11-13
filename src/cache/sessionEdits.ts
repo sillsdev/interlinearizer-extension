@@ -6,9 +6,10 @@ import type {
   SessionEditArgs,
   TokenSnapshot,
 } from 'interlinearizer';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { BreakdownPreview } from '../services/commands/morphemeCommands';
 import type { CommandReply } from '../types/command-reply';
-import { readEditOutcome, type AnalysisEditOutcome } from '../utils/edit-outcome';
+import type { AnalysisEditOutcome } from '../utils/edit-outcome';
 import { perfMark } from '../utils/perf-marks';
 import { usePageSession, useSessionEdit } from './pageHooks';
 
@@ -344,23 +345,22 @@ export function useStaleLocationDispatch(): {
   );
 }
 
-/**
- * The analysis that holds `analysisId`'s row after a catalog edit, as the edit's step names it.
- * With no step, that is `analysisId` itself; with a step that names no survivor, `undefined`.
- */
-function survivorOf(reply: CommandReply | undefined, analysisId: string): string | undefined {
-  if (!reply?.step) return analysisId;
-  const { summary } = reply.step;
-  return summary && 'survivingAnalysisId' in summary ? summary.survivingAnalysisId : undefined;
-}
+/** A catalog edit's reply, with what the host adds to it. */
+type CatalogEditReply = CommandReply & {
+  /** Where the edit left the record it was aimed at. */
+  outcome?: AnalysisEditOutcome;
+  /** The token analyses that a gloss clear left empty, and so removed. */
+  emptiedAnalysisIds?: string[];
+};
+
+const EDITED: AnalysisEditOutcome = { kind: 'edited' };
 
 /**
  * Returns stable callbacks for editing the analysis records that the catalog lists. Each edit
  * rewrites the record for every token linked to it.
  *
- * Each write reports where it left the record, so the caller can say when an edit collapsed the row
- * onto a sibling. An edit settles once it has applied; one that reports an outcome settles once the
- * whole analysis has been read again.
+ * Each write reports where its reply says it left the record, so the caller can say when an edit
+ * collapsed the row onto a sibling. An edit settles once it has applied.
  *
  * @throws When called outside a {@link PageClientProvider}.
  */
@@ -385,14 +385,13 @@ export function useAnalysisRowDispatch(): {
   ) => Promise<AnalysisEditOutcome>;
 } {
   const edit = useSessionEdit();
-  const { whole, analysisLanguage } = usePageSession();
 
   return useMemo(() => {
     /** Sends an edit, logging and rethrowing a failure. */
     const send = async (
       intent: string,
       call: (args: SessionEditArgs) => Promise<string | undefined>,
-    ): Promise<CommandReply | undefined> => {
+    ): Promise<CatalogEditReply | undefined> => {
       try {
         return await edit(call);
       } catch (e) {
@@ -400,9 +399,9 @@ export function useAnalysisRowDispatch(): {
         throw e;
       }
     };
-    /** Where the edit that `reply` answers left `analysisId`. */
-    const outcomeOf = (reply: CommandReply | undefined, analysisId: string) =>
-      readEditOutcome(whole.current, survivorOf(reply, analysisId), analysisId, analysisLanguage);
+    /** Where the edit that `reply` answers left its record; in place when no reply came. */
+    const outcomeOf = (reply: CatalogEditReply | undefined): AnalysisEditOutcome =>
+      reply?.outcome ?? EDITED;
     return {
       writeGloss: async (analysisId, value) =>
         outcomeOf(
@@ -413,16 +412,13 @@ export function useAnalysisRowDispatch(): {
               value,
             }),
           ),
-          analysisId,
         ),
       clearGlosses: async (analysisIds) => {
-        const reply: (CommandReply & { emptiedAnalysisIds?: string[] }) | undefined = await send(
-          'clearAnalysisGlosses',
-          (args) =>
-            papi.commands.sendCommand('interlinearizer.clearAnalysisGlosses', {
-              ...args,
-              analysisIds: [...analysisIds],
-            }),
+        const reply = await send('clearAnalysisGlosses', (args) =>
+          papi.commands.sendCommand('interlinearizer.clearAnalysisGlosses', {
+            ...args,
+            analysisIds: [...analysisIds],
+          }),
         );
         return reply?.emptiedAnalysisIds ?? [];
       },
@@ -436,7 +432,6 @@ export function useAnalysisRowDispatch(): {
               writingSystem,
             }),
           ),
-          analysisId,
         ),
       writeMorphemeGloss: async (analysisId, morphemeId, value) =>
         outcomeOf(
@@ -448,7 +443,6 @@ export function useAnalysisRowDispatch(): {
               value,
             }),
           ),
-          analysisId,
         ),
       deleteAnalyses: async (analysisIds) => {
         await send('deleteAnalyses', (args) =>
@@ -468,10 +462,9 @@ export function useAnalysisRowDispatch(): {
               content,
             }),
           ),
-          survivorAnalysisId,
         ),
     };
-  }, [edit, whole, analysisLanguage]);
+  }, [edit]);
 }
 
 /** Asks the session which token analyses an edit would remove, applying nothing. */
@@ -506,4 +499,46 @@ export function useRemovalPreviews(): {
         }),
     };
   }, [sessionId]);
+}
+
+/** What a breakdown edit is taken to do when the session cannot say: lose what a reset drops. */
+const UNKNOWN_BREAKDOWN: BreakdownPreview = { solelyOwned: false, resetLosesAnnotation: true };
+
+/**
+ * Asks the session what a breakdown edit at `tokenRef` would do, each time `isOpen` turns on. A
+ * failed ask is logged and answered as a reset that loses annotation.
+ *
+ * @returns The answer; `undefined` while `isOpen` is off, and until the answer arrives.
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function useBreakdownPreview(
+  tokenRef: string,
+  isOpen: boolean,
+): BreakdownPreview | undefined {
+  const { sessionId } = usePageSession();
+  const [preview, setPreview] = useState<BreakdownPreview>();
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let isCurrent = true;
+    (async () => {
+      let answer: BreakdownPreview;
+      try {
+        answer = JSON.parse(
+          await papi.commands.sendCommand('interlinearizer.previewBreakdownEdit', {
+            sessionId,
+            tokenRef,
+          }),
+        );
+      } catch (e) {
+        logger.warn(`Interlinearizer: could not preview a breakdown edit at ${tokenRef}`, e);
+        answer = UNKNOWN_BREAKDOWN;
+      }
+      if (isCurrent) setPreview(answer);
+    })();
+    return () => {
+      isCurrent = false;
+      setPreview(undefined);
+    };
+  }, [sessionId, tokenRef, isOpen]);
+  return preview;
 }

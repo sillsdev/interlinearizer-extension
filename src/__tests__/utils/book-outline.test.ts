@@ -57,6 +57,7 @@ describe('buildBookOutline', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       segments: segments.map(outlineSegment),
+      duplicateVerseIds: [],
     });
   });
 });

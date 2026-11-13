@@ -1029,8 +1029,8 @@ declare module 'papi-shared-types' {
 
     /**
      * Reports what deleting a token analysis in a session's draft would do to the tokens that
-     * approve it, whichever book they sit in. An outcome that turns on a token whose book cannot be
-     * read is `uncertain`.
+     * approve it, whichever book they sit in. The outcome is `uncertain` when a token that approves
+     * it sits in a book that cannot be read.
      *
      * @returns A JSON string of the `AnalysisDeletionOutcome`; `"null"` when no analysis carries
      *   the id.

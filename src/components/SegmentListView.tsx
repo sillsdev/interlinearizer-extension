@@ -236,11 +236,14 @@ type SegmentListViewProps = Readonly<{
   editPhraseSegmentId: string | undefined;
   /** Word token ref → the verbatim baseline text separating it from the previous word. */
   gapTextByWordRef: ReadonlyMap<string, string>;
-  /** Maps every token ref to the id of the segment that contains it. */
+  /** Each token held, or spanned by a phrase, to the id of its segment. */
   tokenSegmentMap: ReadonlyMap<string, string>;
-  /** Maps every word token ref to its flat book-level index; used to sort phrase tokens. */
+  /**
+   * Each word token held, or spanned by a phrase, to its flat book-level index; used to sort phrase
+   * tokens.
+   */
   tokenDocOrder: ReadonlyMap<string, number>;
-  /** Maps every word token ref to the token; the input for resolving focus context. */
+  /** Each word token held, or spanned by a phrase, by ref; the input for resolving focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
 }>;
 

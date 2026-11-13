@@ -13,7 +13,7 @@ export function phraseSurfaceText(tokens: readonly TokenSnapshot[]): string {
   return tokens.map((t) => t.surfaceText).join(' ');
 }
 
-/** The book-wide lookups {@link phraseSurfaceForm} reads a phrase's text and spacing out of. */
+/** The lookups {@link phraseSurfaceForm} reads a phrase's text and spacing out of. */
 export type PhraseTextIndexes = Readonly<{
   /** Word token ref → the verbatim baseline text separating it from the previous word. */
   gapTextByWordRef: ReadonlyMap<string, string>;
@@ -36,8 +36,8 @@ export type PhraseTextIndexes = Readonly<{
  * every gap after it. A phrase with nothing left to name comes back empty.
  *
  * @param tokens - Phrase token snapshots, in the order the link stores them.
- * @param indexes - Book-wide lookups, which decide both which tokens the book still has and where
- *   they now sit.
+ * @param indexes - Lookups that must hold every token of the phrase that the book still has. They
+ *   decide which of the phrase's tokens remain and where those tokens now sit.
  */
 export function phraseSurfaceForm(
   tokens: readonly TokenSnapshot[],

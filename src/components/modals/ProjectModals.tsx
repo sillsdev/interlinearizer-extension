@@ -56,9 +56,9 @@ const PROJECT_MODALS_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_retagGlosses_skipped%',
 ];
 
-/** Whether a move moved any glosses or free translations. */
-function movedAny({ words, morphemes, freeTranslations }: GlossRetagCounts): boolean {
-  return words + morphemes + freeTranslations > 0;
+/** Whether a move has anything to report: text it moved, or text it left hidden under `from`. */
+function hasReport({ words, morphemes, freeTranslations, skipped }: GlossRetagCounts): boolean {
+  return words + morphemes + freeTranslations + skipped > 0;
 }
 
 /** Tells the reader what a move from `from` to `to` did, leaving out zero counts. */
@@ -267,14 +267,14 @@ export default function ProjectModals({
 
   /**
    * Gives the draft new analysis languages, moving the glosses and free translations under
-   * `retagFrom` to the new primary language when given. When anything moved, tells the reader what
-   * moved, offering to undo it. A failure is logged.
+   * `retagFrom` to the new primary language when given. When anything moved or stayed behind, tells
+   * the reader, offering to undo it. A failure is logged.
    */
   const changeDraftLanguages = useCallback(
     async (analysisLanguages: string[], retagFrom?: string) => {
       try {
         const moved = await changeDraftAnalysisLanguages(analysisLanguages, retagFrom);
-        if (moved && movedAny(moved) && retagFrom !== undefined)
+        if (moved && hasReport(moved) && retagFrom !== undefined)
           announceUndoable(retagMessage(retagFrom, analysisLanguages[0], moved, localizedStrings));
       } catch (e) {
         logger.error("Interlinearizer: failed to change the draft's analysis languages", e);
@@ -301,7 +301,7 @@ export default function ProjectModals({
               to,
             );
             const moved: unknown = movedJson ? JSON.parse(movedJson) : undefined;
-            if (isGlossRetagCounts(moved) && movedAny(moved))
+            if (isGlossRetagCounts(moved) && hasReport(moved))
               await papi.notifications.send({
                 message: retagMessage(from, to, moved, localizedStrings),
                 severity: 'info',

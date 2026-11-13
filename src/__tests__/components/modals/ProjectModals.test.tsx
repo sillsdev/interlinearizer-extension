@@ -1501,7 +1501,21 @@ describe('ProjectModals', () => {
         expect(change).toHaveBeenCalledWith(['fr', 'en'], undefined);
       });
 
-      it('announces nothing when the move moved nothing', async () => {
+      it('announces nothing when the move neither moved nor kept anything', async () => {
+        mockSavedLanguages = ['fr'];
+        const change = jest
+          .fn()
+          .mockResolvedValue({ words: 0, morphemes: 0, freeTranslations: 0, skipped: 0 });
+        const announceUndoable = jest.fn();
+        renderActive(change, announceUndoable);
+
+        await userEvent.click(screen.getByTestId('metadata-save'));
+
+        await waitFor(() => expect(change).toHaveBeenCalledWith(['fr'], 'en'));
+        expect(announceUndoable).not.toHaveBeenCalled();
+      });
+
+      it('says how much stayed behind when the move moved nothing', async () => {
         mockSavedLanguages = ['fr'];
         const change = jest
           .fn()
@@ -1511,8 +1525,9 @@ describe('ProjectModals', () => {
 
         await userEvent.click(screen.getByTestId('metadata-save'));
 
-        await waitFor(() => expect(change).toHaveBeenCalledWith(['fr'], 'en'));
-        expect(announceUndoable).not.toHaveBeenCalled();
+        await waitFor(() =>
+          expect(announceUndoable).toHaveBeenCalledWith('Changed en to fr. 2 kept en.'),
+        );
       });
 
       it('says how many glosses stayed because the new language already had one', async () => {
@@ -1650,7 +1665,21 @@ describe('ProjectModals', () => {
         );
       });
 
-      it("reports nothing when a project that isn't open moved nothing", async () => {
+      it("reports nothing when a project that isn't open neither moved nor kept anything", async () => {
+        mockSavedLanguages = ['es'];
+        mockStoredProject({
+          retagged: JSON.stringify({ words: 0, morphemes: 0, freeTranslations: 0, skipped: 0 }),
+        });
+        await renderOther();
+
+        await userEvent.click(screen.getByTestId('metadata-save'));
+        await userEvent.click(await screen.findByTestId('retag-glosses-confirm'));
+
+        await waitFor(() => expect(screen.queryByTestId('retag-glosses-modal-title')).toBeNull());
+        expect(papi.notifications.send).not.toHaveBeenCalled();
+      });
+
+      it("reports what stayed behind when a project that isn't open moved nothing", async () => {
         mockSavedLanguages = ['es'];
         mockStoredProject({
           retagged: JSON.stringify({ words: 0, morphemes: 0, freeTranslations: 0, skipped: 1 }),
@@ -1660,8 +1689,12 @@ describe('ProjectModals', () => {
         await userEvent.click(screen.getByTestId('metadata-save'));
         await userEvent.click(await screen.findByTestId('retag-glosses-confirm'));
 
-        await waitFor(() => expect(screen.queryByTestId('retag-glosses-modal-title')).toBeNull());
-        expect(papi.notifications.send).not.toHaveBeenCalled();
+        await waitFor(() =>
+          expect(papi.notifications.send).toHaveBeenCalledWith({
+            message: 'Changed fr to es. 1 kept fr.',
+            severity: 'info',
+          }),
+        );
       });
 
       it("leaves a project's glosses when it isn't open and the user keeps them", async () => {

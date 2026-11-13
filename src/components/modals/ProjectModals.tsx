@@ -35,8 +35,8 @@ type PendingReplace =
   { kind: 'new'; config: CreateDraftConfig } | { kind: 'open'; project: InterlinearProjectSummary };
 
 /**
- * A move of a stored project's glosses from its dropped primary analysis language to its new one,
- * awaiting the user's answer.
+ * A move of a stored project's glosses and free translations from its dropped primary analysis
+ * language to its new one, awaiting the user's answer.
  */
 type PendingRetag = {
   /** The project whose languages changed. */
@@ -52,25 +52,27 @@ const PROJECT_MODALS_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_retagGlosses_changed%',
   '%interlinearizer_retagGlosses_movedWords%',
   '%interlinearizer_retagGlosses_movedMorphemes%',
+  '%interlinearizer_retagGlosses_movedFreeTranslations%',
   '%interlinearizer_retagGlosses_skipped%',
 ];
 
-/** Whether a move of glosses moved any. */
-function movedAny({ words, morphemes }: GlossRetagCounts): boolean {
-  return words + morphemes > 0;
+/** Whether a move moved any glosses or free translations. */
+function movedAny({ words, morphemes, freeTranslations }: GlossRetagCounts): boolean {
+  return words + morphemes + freeTranslations > 0;
 }
 
-/** Tells the reader what a move of glosses from `from` to `to` did, leaving out zero counts. */
+/** Tells the reader what a move from `from` to `to` did, leaving out zero counts. */
 function retagMessage(
   from: string,
   to: string,
-  { words, morphemes, skipped }: GlossRetagCounts,
+  counts: GlossRetagCounts,
   localizedStrings: LanguageStrings,
 ): string {
   const sentences: [key: `%${string}%`, count: number][] = [
-    ['%interlinearizer_retagGlosses_movedWords%', words],
-    ['%interlinearizer_retagGlosses_movedMorphemes%', morphemes],
-    ['%interlinearizer_retagGlosses_skipped%', skipped],
+    ['%interlinearizer_retagGlosses_movedWords%', counts.words],
+    ['%interlinearizer_retagGlosses_movedMorphemes%', counts.morphemes],
+    ['%interlinearizer_retagGlosses_movedFreeTranslations%', counts.freeTranslations],
+    ['%interlinearizer_retagGlosses_skipped%', counts.skipped],
   ];
   return [
     formatReplacementString(localizedStrings['%interlinearizer_retagGlosses_changed%'], {
@@ -79,9 +81,7 @@ function retagMessage(
     }),
     ...sentences
       .filter(([, count]) => count > 0)
-      .map(([key]) =>
-        formatReplacementString(localizedStrings[key], { from, to, words, morphemes, skipped }),
-      ),
+      .map(([key]) => formatReplacementString(localizedStrings[key], { from, to, ...counts })),
   ].join(' ');
 }
 
@@ -101,8 +101,8 @@ function retagMessage(
  * @param props.announceUndoable - Tells the reader what the step just made did, offering to undo
  *   it.
  * @param props.changeDraftAnalysisLanguages - Gives the draft new analysis languages as one
- *   undoable step, moving the glosses under `retagFrom` to the new primary language when given.
- *   Resolves what moved.
+ *   undoable step, moving the glosses and free translations under `retagFrom` to the new primary
+ *   language when given. Resolves what moved.
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
  *   initial value of the analysis language field; should be the platform UI language.
  * @param props.isDraftLoading - Whether the draft is still loading. Project Info can't save the
@@ -224,7 +224,7 @@ export default function ProjectModals({
   /** A draft-replacing action awaiting confirmation because the draft has unsaved changes. */
   const [pendingReplace, setPendingReplace] = useState<PendingReplace | undefined>(undefined);
 
-  /** A move of glosses to a project's new primary language, awaiting the user's answer. */
+  /** A move to a stored project's new primary language, awaiting the user's answer. */
   const [pendingRetag, setPendingRetag] = useState<PendingRetag | undefined>(undefined);
 
   /** Guards the answer to the pending move against double-submit. */
@@ -266,9 +266,9 @@ export default function ProjectModals({
   );
 
   /**
-   * Gives the draft new analysis languages, moving the glosses under `retagFrom` to the new primary
-   * language when given. When any glosses moved, tells the reader what moved, offering to undo it.
-   * A failure is logged.
+   * Gives the draft new analysis languages, moving the glosses and free translations under
+   * `retagFrom` to the new primary language when given. When anything moved, tells the reader what
+   * moved, offering to undo it. A failure is logged.
    */
   const changeDraftLanguages = useCallback(
     async (analysisLanguages: string[], retagFrom?: string) => {
@@ -284,9 +284,9 @@ export default function ProjectModals({
   );
 
   /**
-   * Moves a stored project's glosses to its new primary language if the user says so, then clears
-   * the question. The move can't be undone, so it is only reported. A failed move keeps the
-   * question open, so the user can try again or keep the glosses where they are.
+   * Moves a stored project's glosses and free translations to its new primary language if the user
+   * says so, then clears the question. The move can't be undone, so it is only reported. A failed
+   * move keeps the question open, so the user can try again or keep the text where it is.
    */
   const answerRetag = useCallback(
     (retag: PendingRetag, move: boolean) =>
@@ -317,8 +317,8 @@ export default function ProjectModals({
   );
 
   /**
-   * Asks whether to move the glosses of a project that isn't open, unless it has no glosses in the
-   * old primary language. A project that can't be read is asked about anyway.
+   * Asks whether to move the glosses and free translations of a project that isn't open, unless it
+   * has none in the old primary language. A project that can't be read is asked about anyway.
    */
   const offerStoredRetag = useCallback(async (retag: PendingRetag) => {
     try {
@@ -328,7 +328,8 @@ export default function ProjectModals({
         [retag.from],
       );
       const counts: unknown = countsJson ? JSON.parse(countsJson) : undefined;
-      if (isTextCountsByTag(counts) && counts[retag.from]?.glosses === 0) return;
+      const fromCounts = isTextCountsByTag(counts) ? counts[retag.from] : undefined;
+      if (fromCounts && fromCounts.glosses + fromCounts.freeTranslations === 0) return;
     } catch (e) {
       logger.warn(
         "Interlinearizer: couldn't read a project to see whether it has glosses to move",
@@ -345,13 +346,13 @@ export default function ProjectModals({
    *
    * The active project's new languages go to the open draft as an undoable step, rather than to the
    * stored project. The draft's Save writes them to the project. When the old primary language is
-   * dropped from the list, its glosses move to the new primary language:
+   * dropped from the list, its glosses and free translations move to the new primary language:
    *
    * - In the open draft, at once, in the same undoable step.
    * - In a project not open, only if the user says so, because the move can't be undone.
    *
-   * Neither happens when the old primary language has no glosses. A project not open is still asked
-   * about when every gloss in the old primary language already has a different one in the new
+   * Neither happens when the old primary language has no glosses or free translations. A project
+   * not open is still asked about when all of that text already has different text in the new
    * language, though none would move.
    *
    * @param updated - The updated name, description, analysisLanguages, and refreshed `updatedAt`.
@@ -390,7 +391,7 @@ export default function ProjectModals({
       if (
         from !== undefined &&
         !analysisLanguages.includes(from) &&
-        countTextByTag(draft.analysis, [from])[from].glosses > 0
+        Object.values(countTextByTag(draft.analysis, [from])[from]).some((count) => count > 0)
       )
         changeDraftLanguages(analysisLanguages, from);
       else if (draft.analysisLanguages.join(',') !== analysisLanguages.join(','))

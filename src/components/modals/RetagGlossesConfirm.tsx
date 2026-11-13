@@ -13,14 +13,14 @@ const RETAG_GLOSSES_CONFIRM_STRING_KEYS: `%${string}%`[] = [
 ];
 
 /**
- * Asks whether to move the glosses written under a stored project's dropped primary analysis
- * language to its new primary language, warning that the move can't be undone.
+ * Asks whether to move the glosses and free translations written under a stored project's dropped
+ * primary analysis language to its new primary language, warning that the move can't be undone.
  *
  * @param props.from - BCP 47 tag of the old primary language.
  * @param props.to - BCP 47 tag of the new primary language.
  * @param props.isSubmitting - When `true`, both buttons are disabled while the caller runs the
  *   choice.
- * @param props.onConfirm - Called to move the glosses.
+ * @param props.onConfirm - Called to move the text.
  * @param props.onCancel - Called to leave them where they are.
  * @returns The confirmation overlay, or nothing while localized strings are loading.
  */

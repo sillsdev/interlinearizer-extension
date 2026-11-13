@@ -9,8 +9,8 @@ export type ChangeAnalysisLanguagesRequest = {
   /** The draft's new analysis languages, primary first; never empty. */
   analysisLanguages: readonly string[];
   /**
-   * The tag whose glosses move to the new primary language, or `undefined` to move none. Never the
-   * new primary language itself.
+   * The tag whose glosses and free translations move to the new primary language, or `undefined` to
+   * move none. Never the new primary language itself.
    */
   retagFrom?: string;
   /** ISO 8601 time of the edit, stamped on the records it touches. */
@@ -19,12 +19,12 @@ export type ChangeAnalysisLanguagesRequest = {
 
 /**
  * Stages in `buffer` the change giving the draft new analysis languages. With `retagFrom`, it also
- * moves the glosses under `retagFrom` in `stored`, the draft's analysis, to the new primary
- * language, mutating `stored`. A gloss whose word or morpheme already has a different one in the
- * new primary language stays where it is. A token or phrase analysis the move makes identical to
+ * moves the glosses and free translations under `retagFrom` in `stored`, the draft's analysis, to
+ * the new primary language, mutating `stored`. One that already has different text in the new
+ * primary language stays where it is. A token or phrase analysis the move makes identical to
  * another payload is folded into that payload.
  *
- * @returns What moved, or `undefined` when no glosses were asked to move.
+ * @returns What moved, or `undefined` when nothing was asked to move.
  */
 export async function changeAnalysisLanguages(
   buffer: ChangeBuffer,
@@ -35,7 +35,7 @@ export async function changeAnalysisLanguages(
   buffer.putScope({ ...scope, analysisLanguages: [...analysisLanguages] });
   if (retagFrom === undefined) return undefined;
 
-  const { counts, tokenAnalyses, phraseAnalyses } = retagGlosses(
+  const { counts, tokenAnalyses, phraseAnalyses, segmentAnalyses } = retagGlosses(
     stored,
     retagFrom,
     analysisLanguages[0],
@@ -43,6 +43,7 @@ export async function changeAnalysisLanguages(
   );
   tokenAnalyses.forEach((analysis) => buffer.put('tokenAnalyses', analysis));
   phraseAnalyses.forEach((analysis) => buffer.put('phraseAnalyses', analysis));
+  segmentAnalyses.forEach((analysis) => buffer.put('segmentAnalyses', analysis));
   // Folded only once every gloss has moved, so that each analysis is compared as the move leaves
   // it rather than against one not yet moved.
   const foldToken = async (analysisId: string) => {

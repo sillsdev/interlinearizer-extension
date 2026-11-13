@@ -1856,12 +1856,17 @@ describe('main', () => {
     const mockRetag = jest.mocked(projectStorage.retagProjectGlosses);
 
     it('returns what moved as JSON', async () => {
-      mockRetag.mockResolvedValue({ words: 1, morphemes: 2, skipped: 3 });
+      mockRetag.mockResolvedValue({ words: 1, morphemes: 2, freeTranslations: 4, skipped: 3 });
       const handler = await getRetagProjectGlossesHandler();
 
       const result = await handler('proj-id', 'fr', 'es');
 
-      expect(JSON.parse(result ?? '')).toStrictEqual({ words: 1, morphemes: 2, skipped: 3 });
+      expect(JSON.parse(result ?? '')).toStrictEqual({
+        words: 1,
+        morphemes: 2,
+        freeTranslations: 4,
+        skipped: 3,
+      });
       expect(mockRetag).toHaveBeenCalledWith(expect.anything(), 'proj-id', 'fr', 'es');
     });
 

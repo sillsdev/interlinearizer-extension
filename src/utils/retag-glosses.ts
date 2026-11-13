@@ -1,12 +1,20 @@
-import type { MultiString, PhraseAnalysis, TextAnalysis, TokenAnalysis } from 'interlinearizer';
+import type {
+  MultiString,
+  PhraseAnalysis,
+  SegmentAnalysis,
+  TextAnalysis,
+  TokenAnalysis,
+} from 'interlinearizer';
 
-/** How many glosses a retag moved, and how many it left where they were. */
+/** How many glosses and free translations a retag moved, and how many it left where they were. */
 export type GlossRetagCounts = {
   /** Word glosses moved: one per token or phrase analysis whose own gloss moved. */
   words: number;
   /** Morpheme glosses moved. */
   morphemes: number;
-  /** Word and morpheme glosses left under the old tag because the new tag held a different one. */
+  /** Segment free translations moved. */
+  freeTranslations: number;
+  /** Glosses and free translations left under the old tag because the new tag held a different one. */
   skipped: number;
 };
 
@@ -19,6 +27,8 @@ export function isGlossRetagCounts(value: unknown): value is GlossRetagCounts {
     typeof value.words === 'number' &&
     'morphemes' in value &&
     typeof value.morphemes === 'number' &&
+    'freeTranslations' in value &&
+    typeof value.freeTranslations === 'number' &&
     'skipped' in value &&
     typeof value.skipped === 'number'
   );
@@ -29,6 +39,7 @@ export type GlossRetag = {
   counts: GlossRetagCounts;
   tokenAnalyses: TokenAnalysis[];
   phraseAnalyses: PhraseAnalysis[];
+  segmentAnalyses: SegmentAnalysis[];
 };
 
 /** What {@link retagMultiString} would do to `value`, without changing it. */
@@ -62,10 +73,11 @@ function retagMultiString(
 }
 
 /**
- * Moves the glosses of `analysis` written under the tag `from` to the tag `to`, mutating the
- * analyses in place and stamping each one changed with `now`. A gloss whose word or morpheme
- * already has the same text under `to` is dropped and counted as moved. One that has different text
- * under `to` stays under `from` and is counted as skipped.
+ * Moves the glosses and free translations of `analysis` written under the tag `from` to the tag
+ * `to`, mutating the analyses in place and stamping each one changed with `now`. Text whose word,
+ * morpheme, or segment already has the same text under `to` is dropped and counted as moved. Text
+ * whose word, morpheme, or segment has different text under `to` stays under `from` and is counted
+ * as skipped.
  */
 export function retagGlosses(
   analysis: TextAnalysis,
@@ -73,8 +85,11 @@ export function retagGlosses(
   to: string,
   now: string,
 ): GlossRetag {
-  const counts: GlossRetagCounts = { words: 0, morphemes: 0, skipped: 0 };
-  const tally = (outcome: ReturnType<typeof retagMultiString>, kind: 'words' | 'morphemes') => {
+  const counts: GlossRetagCounts = { words: 0, morphemes: 0, freeTranslations: 0, skipped: 0 };
+  const tally = (
+    outcome: ReturnType<typeof retagMultiString>,
+    kind: 'words' | 'morphemes' | 'freeTranslations',
+  ) => {
     if (outcome === 'moved') counts[kind] += 1;
     else if (outcome === 'skipped') counts.skipped += 1;
     return outcome === 'moved';
@@ -96,5 +111,12 @@ export function retagGlosses(
     return true;
   });
 
-  return { counts, tokenAnalyses, phraseAnalyses };
+  const segmentAnalyses = analysis.segmentAnalyses.filter((segmentAnalysis) => {
+    if (!tally(retagMultiString(segmentAnalysis.freeTranslation, from, to), 'freeTranslations'))
+      return false;
+    segmentAnalysis.updatedAt = now;
+    return true;
+  });
+
+  return { counts, tokenAnalyses, phraseAnalyses, segmentAnalyses };
 }

@@ -102,10 +102,10 @@ export type ProjectApi = {
   discardAll: () => Promise<void>;
   /**
    * Gives the draft new analysis languages, primary first, as one undoable step. With `retagFrom`,
-   * the step also moves the glosses under `retagFrom` to the new primary language. A gloss whose
-   * word or morpheme already has a different one there stays where it is.
+   * the step also moves the glosses and free translations under `retagFrom` to the new primary
+   * language. One that already has different text there stays where it is.
    *
-   * @returns What moved, or `undefined` when no glosses were asked to move.
+   * @returns What moved, or `undefined` when nothing was asked to move.
    * @throws If no session is open, or the session refuses or fails the edit.
    */
   changeAnalysisLanguages: (

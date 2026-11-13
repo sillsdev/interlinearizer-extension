@@ -257,7 +257,7 @@ export function ProjectMetadataModal({
               value={editName}
               placeholder={localizedStrings['%interlinearizer_modal_metadata_name_placeholder%']}
               onChange={(e) => setEditName(e.target.value)}
-              disabled={isSaveBlocked}
+              disabled={isSaveBlocked || isSubmitting}
             />
           </div>
 
@@ -274,7 +274,7 @@ export function ProjectMetadataModal({
                 localizedStrings['%interlinearizer_modal_metadata_description_placeholder%']
               }
               onChange={(e) => setEditDescription(e.target.value)}
-              disabled={isSaveBlocked}
+              disabled={isSaveBlocked || isSubmitting}
             />
           </div>
 
@@ -290,7 +290,7 @@ export function ProjectMetadataModal({
                 localizedStrings['%interlinearizer_modal_metadata_language_placeholder%']
               }
               onChange={(e) => setEditLanguages(e.target.value)}
-              disabled={isSaveBlocked}
+              disabled={isSaveBlocked || isSubmitting}
             />
           </div>
         </div>

@@ -49,6 +49,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_retagGlosses_changed%': 'Changed {from} to {to}.',
   '%interlinearizer_retagGlosses_movedWords%': '{words} words.',
   '%interlinearizer_retagGlosses_movedMorphemes%': '{morphemes} morphemes.',
+  '%interlinearizer_retagGlosses_movedFreeTranslations%': '{freeTranslations} free translations.',
   '%interlinearizer_retagGlosses_skipped%': '{skipped} kept {from}.',
   '%interlinearizer_confirm_retag_title%': 'Move glosses to {to}?',
   '%interlinearizer_confirm_retag_body%': '{from} was removed. Move its glosses to {to}?',
@@ -1329,7 +1330,7 @@ describe('ProjectModals', () => {
     });
 
     describe('a change of analysis languages', () => {
-      const MOVED = { words: 3, morphemes: 2, skipped: 0 };
+      const MOVED = { words: 3, morphemes: 2, freeTranslations: 0, skipped: 0 };
 
       /** An analysis with one word glossed in `tag`. */
       function glossedIn(tag: string): TextAnalysis {
@@ -1459,6 +1460,36 @@ describe('ProjectModals', () => {
         expect(announceUndoable).not.toHaveBeenCalled();
       });
 
+      it('moves the free translations of a dropped primary language that has no glosses', async () => {
+        mockSavedLanguages = ['fr'];
+        const change = jest
+          .fn()
+          .mockResolvedValue({ words: 0, morphemes: 0, freeTranslations: 1, skipped: 0 });
+        const announceUndoable = jest.fn();
+        renderActive(change, announceUndoable, {
+          ...MOCK_DRAFT,
+          analysis: {
+            ...emptyAnalysis(),
+            segmentAnalyses: [
+              {
+                id: 'sa-1',
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+                surfaceText: 'Fish.',
+                freeTranslation: { en: 'Fish.' },
+              },
+            ],
+          },
+        });
+
+        await userEvent.click(screen.getByTestId('metadata-save'));
+
+        expect(change).toHaveBeenCalledWith(['fr'], 'en');
+        await waitFor(() =>
+          expect(announceUndoable).toHaveBeenCalledWith('Changed en to fr. 1 free translations.'),
+        );
+      });
+
       it('changes only the draft languages when the old primary language stays listed', async () => {
         mockSavedLanguages = ['fr', 'en'];
         const change = jest.fn().mockResolvedValue(undefined);
@@ -1472,7 +1503,9 @@ describe('ProjectModals', () => {
 
       it('announces nothing when the move moved nothing', async () => {
         mockSavedLanguages = ['fr'];
-        const change = jest.fn().mockResolvedValue({ words: 0, morphemes: 0, skipped: 2 });
+        const change = jest
+          .fn()
+          .mockResolvedValue({ words: 0, morphemes: 0, freeTranslations: 0, skipped: 2 });
         const announceUndoable = jest.fn();
         renderActive(change, announceUndoable);
 
@@ -1533,7 +1566,9 @@ describe('ProjectModals', () => {
 
       it("asks before moving a project's glosses when it isn't open, and reports the move", async () => {
         mockSavedLanguages = ['es'];
-        mockStoredProject({ retagged: JSON.stringify({ words: 5, morphemes: 0, skipped: 0 }) });
+        mockStoredProject({
+          retagged: JSON.stringify({ words: 5, morphemes: 0, freeTranslations: 0, skipped: 0 }),
+        });
         const change = await renderOther();
 
         await userEvent.click(screen.getByTestId('metadata-save'));
@@ -1585,6 +1620,22 @@ describe('ProjectModals', () => {
         expect(screen.queryByTestId('retag-glosses-modal-title')).toBeNull();
       });
 
+      it("asks about a project that isn't open when it has only free translations to move", async () => {
+        mockSavedLanguages = ['es'];
+        jest
+          .mocked(papi.commands.sendCommand)
+          .mockImplementation(async (...call: unknown[]) =>
+            call[0] === 'interlinearizer.countProjectText'
+              ? JSON.stringify({ fr: { glosses: 0, freeTranslations: 2 } })
+              : undefined,
+          );
+        await renderOther();
+
+        await userEvent.click(screen.getByTestId('metadata-save'));
+
+        expect(await screen.findByTestId('retag-glosses-modal-title')).toBeInTheDocument();
+      });
+
       it("asks about a project that isn't open when it can't be read", async () => {
         mockSavedLanguages = ['es'];
         mockStoredProject({ glossCount: new Error('unreadable') });
@@ -1601,7 +1652,9 @@ describe('ProjectModals', () => {
 
       it("reports nothing when a project that isn't open moved nothing", async () => {
         mockSavedLanguages = ['es'];
-        mockStoredProject({ retagged: JSON.stringify({ words: 0, morphemes: 0, skipped: 1 }) });
+        mockStoredProject({
+          retagged: JSON.stringify({ words: 0, morphemes: 0, freeTranslations: 0, skipped: 1 }),
+        });
         await renderOther();
 
         await userEvent.click(screen.getByTestId('metadata-save'));

@@ -95,12 +95,33 @@ describe('changeAnalysisLanguages', () => {
 
     const { counts, draft } = await change(repository, ['es'], 'en');
 
-    expect(counts).toEqual({ words: 2, morphemes: 1, skipped: 0 });
+    expect(counts).toEqual({ words: 2, morphemes: 1, freeTranslations: 0, skipped: 0 });
     expect(draft.analysisLanguages).toEqual(['es']);
     const [token] = draft.analysis.tokenAnalyses;
     expect(token).toMatchObject({ gloss: { es: 'fish' }, updatedAt: NOW });
     expect(token.morphemes?.[0].gloss).toEqual({ es: 'fish' });
     expect(draft.analysis.phraseAnalyses[0].gloss).toEqual({ es: 'whale' });
+  });
+
+  it('moves the free translations under the old tag to the new primary language', async () => {
+    const repository = await repositoryOver({
+      segmentAnalyses: [
+        {
+          id: 'sa-1',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'Big fish.',
+          freeTranslation: { en: 'Big.' },
+        },
+      ],
+    });
+
+    const { counts, draft } = await change(repository, ['es'], 'en');
+
+    expect(counts).toEqual({ words: 0, morphemes: 0, freeTranslations: 1, skipped: 0 });
+    expect(draft.analysis.segmentAnalyses[0]).toMatchObject({
+      freeTranslation: { es: 'Big.' },
+      updatedAt: NOW,
+    });
   });
 
   it('folds an analysis the move makes identical to another into it', async () => {
@@ -117,7 +138,7 @@ describe('changeAnalysisLanguages', () => {
 
     const { counts, draft } = await change(repository, ['es'], 'en');
 
-    expect(counts).toEqual({ words: 1, morphemes: 0, skipped: 0 });
+    expect(counts).toEqual({ words: 1, morphemes: 0, freeTranslations: 0, skipped: 0 });
     expect(draft.analysis.tokenAnalyses.map(({ id }) => id)).toEqual(['ta-es']);
     expect(draft.analysis.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toEqual([
       'ta-es',
@@ -139,7 +160,7 @@ describe('changeAnalysisLanguages', () => {
 
     const { counts, draft } = await change(repository, ['es'], 'en');
 
-    expect(counts).toEqual({ words: 1, morphemes: 0, skipped: 0 });
+    expect(counts).toEqual({ words: 1, morphemes: 0, freeTranslations: 0, skipped: 0 });
     expect(draft.analysis.phraseAnalyses.map(({ id }) => id)).toEqual(['pa-es']);
     expect(draft.analysis.phraseAnalysisLinks.map(({ analysisId }) => analysisId)).toEqual([
       'pa-es',

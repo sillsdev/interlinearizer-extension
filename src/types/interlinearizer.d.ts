@@ -955,12 +955,12 @@ declare module 'papi-shared-types' {
 
     /**
      * Gives a session's draft new analysis languages, primary first. With `retagFrom`, also moves
-     * the glosses under `retagFrom` to the new primary language. A gloss whose word or morpheme
-     * already has a different one there stays where it is. Both are one undoable step. The step
+     * the glosses and free translations under `retagFrom` to the new primary language. One that
+     * already has different text there stays where it is. Both are one undoable step. The step
      * leaves the draft unsaved.
      *
-     * @returns A JSON string of the `CommandReply`, with `glossRetag`: how many glosses moved and
-     *   how many were skipped, when `retagFrom` was given.
+     * @returns A JSON string of the `CommandReply`, with `glossRetag`: how many glosses and free
+     *   translations moved and how many were skipped, when `retagFrom` was given.
      * @throws If the languages are empty, `retagFrom` is the new primary language, the session is
      *   read-only or not open, or the edit is refused or fails (logged before rethrowing).
      */
@@ -1109,13 +1109,13 @@ declare module 'papi-shared-types' {
     ) => Promise<string | undefined>;
 
     /**
-     * Moves the glosses of a stored project from the tag `from` to the tag `to`. A gloss whose word
-     * or morpheme already has a different one under `to` stays under `from`. Nothing records the
-     * move to undo.
+     * Moves the glosses and free translations of a stored project from the tag `from` to the tag
+     * `to`. A gloss or free translation that already has different text under `to` stays under
+     * `from`. Nothing records the move to undo.
      *
-     * @param interlinearProjectId - UUID of the interlinearizer project whose glosses move.
-     * @param from - BCP 47 tag the glosses move from.
-     * @param to - BCP 47 tag the glosses move to.
+     * @param interlinearProjectId - UUID of the interlinearizer project whose text moves.
+     * @param from - BCP 47 tag the text moves from.
+     * @param to - BCP 47 tag the text moves to.
      * @returns The JSON-stringified `GlossRetagCounts`, or `undefined` if no project with that ID
      *   exists.
      * @throws If `from` and `to` are the same tag, the project is a Paratext 9 import, or storage

@@ -421,9 +421,10 @@ export default function useSessionProject(
 
   /**
    * Gives the draft new analysis languages, primary first, as one undoable step. With `retagFrom`,
-   * the step also moves the glosses under `retagFrom` to the new primary language.
+   * the step also moves the glosses and free translations under `retagFrom` to the new primary
+   * language.
    *
-   * @returns What moved, or `undefined` when no glosses were asked to move.
+   * @returns What moved, or `undefined` when nothing was asked to move.
    * @throws If no session is open, or whatever the edit's command throws.
    */
   const changeAnalysisLanguages = useCallback(

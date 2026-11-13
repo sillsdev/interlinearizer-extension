@@ -437,13 +437,13 @@ async function updateProjectMetadata(
 }
 
 /**
- * Moves the glosses of a stored project from the tag `from` to the tag `to`. A gloss whose word or
- * morpheme already has a different one under `to` stays under `from`. Nothing records the move to
- * undo.
+ * Moves the glosses and free translations of a stored project from the tag `from` to the tag `to`.
+ * A gloss or free translation that already has different text under `to` stays under `from`.
+ * Nothing records the move to undo.
  *
- * @param interlinearProjectId - UUID of the interlinearizer project whose glosses move.
- * @param from - BCP 47 tag the glosses move from.
- * @param to - BCP 47 tag the glosses move to.
+ * @param interlinearProjectId - UUID of the interlinearizer project whose text moves.
+ * @param from - BCP 47 tag the text moves from.
+ * @param to - BCP 47 tag the text moves to.
  * @returns The JSON-stringified counts of what moved and what was skipped, or `undefined` if no
  *   project with the given ID exists.
  * @throws If `from` and `to` are the same tag, the project is a Paratext 9 import, or storage
@@ -2522,7 +2522,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       {
         name: 'retagFrom',
         required: false,
-        summary: 'The tag whose word and morpheme glosses move to the new primary language',
+        summary: 'The tag whose glosses and free translations move to the new primary language',
         schema: { type: 'string' },
       },
       changeIdParam,
@@ -2748,7 +2748,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary:
-          "Move a stored project's word and morpheme glosses from one language tag to another",
+          "Move a stored project's glosses and free translations from one language tag to another",
         params: [
           {
             name: 'interlinearProjectId',
@@ -2759,13 +2759,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           {
             name: 'from',
             required: true,
-            summary: 'BCP 47 tag the glosses move from',
+            summary: 'BCP 47 tag the text moves from',
             schema: { type: 'string' },
           },
           {
             name: 'to',
             required: true,
-            summary: 'BCP 47 tag the glosses move to',
+            summary: 'BCP 47 tag the text moves to',
             schema: { type: 'string' },
           },
         ],

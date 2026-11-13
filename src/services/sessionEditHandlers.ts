@@ -885,8 +885,8 @@ export function sessionEditHandlers({
 
   /**
    * Gives a session's draft new analysis languages, primary first. With `retagFrom`, also moves the
-   * glosses under `retagFrom` to the new primary language. A gloss whose word or morpheme already
-   * has a different one there stays where it is. Both are one undoable step. The step leaves the
+   * glosses and free translations under `retagFrom` to the new primary language. One that already
+   * has different text there stays where it is. Both are one undoable step. The step leaves the
    * draft unsaved.
    *
    * @returns A JSON string of the {@link CommandReply}, with `glossRetag`: what moved, when
@@ -931,6 +931,7 @@ export function sessionEditHandlers({
                     to,
                     words: glossRetag.words,
                     morphemes: glossRetag.morphemes,
+                    freeTranslations: glossRetag.freeTranslations,
                   }
                 : { kind: 'changeAnalysisLanguages' },
           };

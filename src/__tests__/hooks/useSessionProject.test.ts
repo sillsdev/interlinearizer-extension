@@ -886,7 +886,7 @@ describe('useSessionProject edits sent to the session', () => {
   });
 
   it('hands back what moved when the languages change moves glosses', async () => {
-    const glossRetag = { words: 2, morphemes: 1, skipped: 0 };
+    const glossRetag = { words: 2, morphemes: 1, freeTranslations: 0, skipped: 0 };
     await fakeHost(async (command) => {
       if (command === 'interlinearizer.getTextReadStatus') return undefined;
       if (command === 'interlinearizer.changeAnalysisLanguages')

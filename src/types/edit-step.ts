@@ -32,14 +32,16 @@ type StepSummary = Readonly<
   | { kind: 'changeAnalysisLanguages' }
   | {
       kind: 'retagGlosses';
-      /** The tag the glosses moved from. */
+      /** The tag the glosses and free translations moved from. */
       from: string;
-      /** The tag the glosses moved to, the new primary analysis language. */
+      /** The tag they moved to, the new primary analysis language. */
       to: string;
       /** How many word glosses moved. */
       words: number;
       /** How many morpheme glosses moved. */
       morphemes: number;
+      /** How many free translations moved. */
+      freeTranslations: number;
     }
 >;
 

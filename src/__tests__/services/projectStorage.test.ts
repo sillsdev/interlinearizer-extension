@@ -1285,10 +1285,30 @@ describe('projectStorage', () => {
 
       const counts = await retagProjectGlosses(token, 'proj-id', 'fr', 'es');
 
-      expect(counts).toStrictEqual({ words: 1, morphemes: 0, skipped: 0 });
+      expect(counts).toStrictEqual({ words: 1, morphemes: 0, freeTranslations: 0, skipped: 0 });
       expect(writtenProject()).toMatchObject({
         updatedAt: MOVE_TIME,
         analysis: { tokenAnalyses: [{ gloss: { es: 'poisson' } }] },
+      });
+    });
+
+    it('writes the project when only a free translation moved', async () => {
+      const project = makeStubProject('proj-id');
+      mockListedProject({
+        ...project,
+        analysis: {
+          ...emptyAnalysis(),
+          segmentAnalyses: [
+            { ...FIXTURE_STAMPS, id: 'sa-1', surfaceText: 'Fish.', freeTranslation: { fr: 'Un.' } },
+          ],
+        },
+      });
+
+      const counts = await retagProjectGlosses(token, 'proj-id', 'fr', 'es');
+
+      expect(counts).toStrictEqual({ words: 0, morphemes: 0, freeTranslations: 1, skipped: 0 });
+      expect(writtenProject()).toMatchObject({
+        analysis: { segmentAnalyses: [{ freeTranslation: { es: 'Un.' } }] },
       });
     });
 
@@ -1307,7 +1327,7 @@ describe('projectStorage', () => {
 
       const counts = await retagProjectGlosses(token, 'proj-id', 'fr', 'es');
 
-      expect(counts).toStrictEqual({ words: 0, morphemes: 0, skipped: 1 });
+      expect(counts).toStrictEqual({ words: 0, morphemes: 0, freeTranslations: 0, skipped: 1 });
       expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
@@ -1645,11 +1665,34 @@ describe('projectStorage', () => {
       it('clears the target when the config given has none', async () => {
         const stored = backStorageWithMap();
         storeListedProject(stored, { ...makeStubProject('proj-id'), targetProjectId: 'tgt-old' });
-        await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+        await storeDraft(token, 'src-proj', {
+          ...makeDraftSpanningBooks('src-proj', 'GEN'),
+          analysisLanguages: ['en'],
+        });
 
         await saveDraftToProject(token, 'src-proj', 'proj-id', {});
 
         expect(storedProject(stored, 'proj-id')).not.toHaveProperty('targetProjectId');
+      });
+
+      it('leaves the configuration unchanged when the draft has no languages', async () => {
+        const stored = backStorageWithMap();
+        storeListedProject(stored, {
+          ...makeStubProject('proj-id'),
+          analysisLanguages: ['de'],
+          targetProjectId: 'tgt-old',
+        });
+        await storeDraft(token, 'src-proj', {
+          ...makeDraftSpanningBooks('src-proj', 'GEN'),
+          analysisLanguages: [],
+        });
+
+        await saveDraftToProject(token, 'src-proj', 'proj-id', { targetProjectId: 'tgt-9' });
+
+        expect(storedProject(stored, 'proj-id')).toMatchObject({
+          analysisLanguages: ['de'],
+          targetProjectId: 'tgt-old',
+        });
       });
 
       it('leaves the configuration unchanged when no config is given', async () => {

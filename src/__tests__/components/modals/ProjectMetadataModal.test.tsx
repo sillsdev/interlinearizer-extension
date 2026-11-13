@@ -433,6 +433,14 @@ describe('ProjectMetadataModal', () => {
       expect(saved()).toBe(false);
     });
 
+    it('holds the fields while it counts', async () => {
+      await saveWithoutSecondaries(jest.fn(() => new Promise(() => {})));
+
+      expect(screen.getByLabelText(/analysis language/i)).toBeDisabled();
+      expect(screen.getByLabelText(/^name$/i)).toBeDisabled();
+      expect(screen.getByLabelText(/^description$/i)).toBeDisabled();
+    });
+
     it('saves once the user confirms the removal', async () => {
       await saveWithoutSecondaries(
         jest.fn().mockResolvedValue({ de: { glosses: 3, freeTranslations: 0 } }),

@@ -899,14 +899,14 @@ export async function updateAnalysis(
 }
 
 /**
- * Moves the glosses of project `id` from one language tag to another. A gloss whose word or
- * morpheme already has a different one under `to` stays under `from`. The project is written, with
- * `updatedAt` refreshed, only when a gloss moved.
+ * Moves the glosses and free translations of project `id` from one language tag to another. A gloss
+ * or free translation that already has different text under `to` stays under `from`. The project is
+ * written, with `updatedAt` refreshed, only when something moved.
  *
  * @param token - The execution token for storage access.
- * @param id - The interlinearizer project UUID whose glosses move.
- * @param from - BCP 47 tag the glosses move from.
- * @param to - BCP 47 tag the glosses move to.
+ * @param id - The interlinearizer project UUID whose text moves.
+ * @param from - BCP 47 tag the text moves from.
+ * @param to - BCP 47 tag the text moves to.
  * @returns What moved and what was skipped, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws {Error} If the stored record was written by a newer build; nothing is written.
@@ -925,8 +925,13 @@ export async function retagProjectGlosses(
     const project = parseProject(raw, id);
     if (project.pt9Import) throw pt9ImportReadOnlyError(id);
     const now = new Date().toISOString();
-    const { counts, tokenAnalyses, phraseAnalyses } = retagGlosses(project.analysis, from, to, now);
-    if (tokenAnalyses.length === 0 && phraseAnalyses.length === 0) return counts;
+    const { counts, tokenAnalyses, phraseAnalyses, segmentAnalyses } = retagGlosses(
+      project.analysis,
+      from,
+      to,
+      now,
+    );
+    if (tokenAnalyses.length + phraseAnalyses.length + segmentAnalyses.length === 0) return counts;
     const updated: InterlinearProject = {
       ...project,
       modelVersion: CURRENT_MODEL_VERSION,
@@ -942,9 +947,9 @@ export async function retagProjectGlosses(
  * Copies the source project's stored draft into an existing interlinearizer project: the draft's
  * analysis replaces the project's, and the draft's custom segment boundaries replace the project's,
  * cleared when the draft has none. Refreshes `updatedAt` to the current time. The project's name
- * and description are untouched. Its configuration changes only when `config` is given: the project
- * then takes the draft's analysis languages along with the given target, so they match the glosses
- * it receives.
+ * and description are untouched. Its configuration changes only when `config` is given and the
+ * draft has analysis languages: the project then takes the draft's languages along with the given
+ * target, so they match the glosses it receives.
  *
  * The caller must first have written the draft it means to save; whatever the draft holds when its
  * queued read runs is what the project receives. The copy is refused while any book's stored draft
@@ -984,10 +989,10 @@ export async function saveDraftToProject(
     draft.analysis,
     // eslint-disable-next-line no-null/no-null -- null clears the project's stored boundaries
     draft.segmentation ?? null,
-    config && {
-      analysisLanguages: draft.analysisLanguages,
-      targetProjectId: config.targetProjectId,
-    },
+    // A draft never written has no languages, and a project needs at least one.
+    config && draft.analysisLanguages.length > 0
+      ? { analysisLanguages: draft.analysisLanguages, targetProjectId: config.targetProjectId }
+      : undefined,
   );
   if (project) await markCopiedDraftClean(token, sourceProjectId, writesBefore);
   return project;

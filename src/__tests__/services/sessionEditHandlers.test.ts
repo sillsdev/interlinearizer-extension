@@ -171,10 +171,17 @@ describe('sessionEditHandlers', () => {
       }),
     );
 
-    const moved = { words: 1, morphemes: 0, skipped: 0 };
+    const moved = { words: 1, morphemes: 0, freeTranslations: 0, skipped: 0 };
     expect(reply.glossRetag).toStrictEqual(moved);
     expect(reply.step).toStrictEqual({
-      summary: { kind: 'retagGlosses', from: 'en', to: 'es', words: 1, morphemes: 0 },
+      summary: {
+        kind: 'retagGlosses',
+        from: 'en',
+        to: 'es',
+        words: 1,
+        morphemes: 0,
+        freeTranslations: 0,
+      },
     });
     const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
     expect(draft.analysisLanguages).toStrictEqual(['es']);

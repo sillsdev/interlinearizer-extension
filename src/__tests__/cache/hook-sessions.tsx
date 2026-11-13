@@ -9,11 +9,18 @@ import { FIXTURE_STAMPS, makeTokenLink } from '../test-helpers';
 import { BOOK, ref } from './session-source';
 import { readText } from './fake-host';
 
-/** A draft whose one analysis glosses "God". */
+/** A draft whose one analysis glosses "beginning". */
 export const ANALYSIS: TextAnalysis = {
   ...emptyAnalysis(),
-  tokenAnalyses: [{ id: 'ta-god', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'God' } }],
-  tokenAnalysisLinks: [makeTokenLink('ta-god', ref('God'), { surfaceText: 'God', id: 'tl-god' })],
+  tokenAnalyses: [
+    { id: 'ta-beginning', ...FIXTURE_STAMPS, surfaceText: 'beginning', gloss: { en: 'start' } },
+  ],
+  tokenAnalysisLinks: [
+    makeTokenLink('ta-beginning', ref('beginning'), {
+      surfaceText: 'beginning',
+      id: 'tl-beginning',
+    }),
+  ],
 };
 
 /** A wrapper giving the hooks a session over `analysis` that a fake host serves. */

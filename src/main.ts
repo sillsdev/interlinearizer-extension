@@ -1290,6 +1290,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     sessions: activeSessions,
     logger,
     getOpenVerseBook: bookService.getOpenVerseBook,
+    getVerseBook: bookService.getVerseBook,
     isFormInText: bookService.isFormInText,
   });
   const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book, edited) =>
@@ -2623,6 +2624,22 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: {
       name: 'return value',
       summary: `JSON-stringified CatalogRow[], each row's books listed; "[]" when no analysis carries the id`,
+      schema: { type: 'string' },
+    },
+  });
+
+  await registerSessionCommand('interlinearizer.previewDeletion', {
+    summary:
+      "Report what deleting a token analysis in a session's draft would do to the tokens that approve it",
+    params: sessionArgs({
+      name: 'analysisId',
+      required: true,
+      summary: 'ID of the token analysis',
+      schema: { type: 'string' },
+    }),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified AnalysisDeletionOutcome; "null" when no analysis carries the id',
       schema: { type: 'string' },
     },
   });

@@ -36,7 +36,7 @@ A test title is a **claim**; its body is the **evidence**. Flag a title that the
 
 ### Mock hygiene
 
-- Each test gets its mock implementations from its own body or a `beforeEach`. `resetMocks` clears them, so anything set at file load or in `beforeAll` is gone by the second test.
+- Each test gets its mock implementations from its own body or a `beforeEach`. `resetMocks` clears them before every test, the first included, so anything set at file load or in `beforeAll` is gone before any test runs.
 - Every mock that is set up gets exercised. Every mock implementation a test sets either matters to its outcome or is asserted on.
 - Assertions land on outcomes the user or caller sees. A `toHaveBeenCalledWith` on an internal collaborator is a finding when the outcome is assertable. It is fine when the call is the outcome, such as a PAPI command being registered.
 - Manual cleanup covers only what `restoreMocks` can't undo, such as a reassigned global. Spies restore themselves.
@@ -85,7 +85,7 @@ Flag a test that renders a component only to reach a hook or context. Tells: a t
 - Each test passes when it runs alone (`--testNamePattern`) and in any order. Flag reliance on state an earlier test left.
 - Setup lives in hooks or the test body. Jest runs every `describe` body when it collects the file, before any test, so state built there is shared by all of them.
 - Fake timers get switched back with `jest.useRealTimers()` in the test or an `afterEach`.
-- TUnit: instance fields are already fresh for each test. Flag `static` state and shared resources such as files or databases, because TUnit runs tests in parallel by default.
+- TUnit: instance fields are already fresh for each test. Flag mutable `static` state that lets one test see another's writes, and shared resources such as files or databases, because TUnit runs tests in parallel by default. `static readonly` values and thread-safe counters that only hand out unique values are safe.
 
 ### Queries and interactions (Jest)
 

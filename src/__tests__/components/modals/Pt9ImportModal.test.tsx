@@ -328,6 +328,75 @@ describe('Pt9ImportModal', () => {
     );
   });
 
+  it('lists and copies drops in canonical order, then by language', async () => {
+    const user = userEvent.setup();
+    const report = makeReport();
+    const [en, fr] = report.languages;
+    report.languages = [fr, en];
+    fr.books[0].drops = [
+      { verseRef: 'MAT 10:1', reason: 'formMismatch', lexemeIds: ['Word:a'] },
+      { verseRef: 'MAT 2:5', reason: 'formMismatch', lexemeIds: ['Word:b'] },
+    ];
+    en.books[0].drops = [
+      { verseRef: 'MAT 2:10', reason: 'formMismatch', lexemeIds: ['Word:c'] },
+      { verseRef: 'MAT 2:5', reason: 'formMismatch', lexemeIds: ['Word:d'] },
+      { verseRef: 'GEN 3:1', reason: 'formMismatch', lexemeIds: ['Word:e'] },
+    ];
+    const expected = [
+      'GEN 3:1 (en) Word:e — did not match the text',
+      'MAT 2:5 (en) Word:d — did not match the text',
+      'MAT 2:5 (fr) Word:b — did not match the text',
+      'MAT 2:10 (en) Word:c — did not match the text',
+      'MAT 10:1 (fr) Word:a — did not match the text',
+    ].join('\n');
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await user.click(screen.getByText('Show what was not imported'));
+
+    expect(await screen.findByTestId('pt9-import-drop-lines')).toHaveTextContent(expected, {
+      normalizeWhitespace: false,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Copy all' }));
+
+    expect(await navigator.clipboard.readText()).toBe(expected);
+  });
+
+  it('lists a drop whose verse has no ASCII number after every numbered verse', async () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:10', reason: 'verseNotFound', lexemeIds: ['Word:a'] },
+      { verseRef: 'MAT 1:२', reason: 'verseNotFound', lexemeIds: ['Word:b'] },
+      { verseRef: 'MAT 1:2', reason: 'verseNotFound', lexemeIds: ['Word:c'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByText('Show what was not imported'));
+
+    expect(await screen.findByTestId('pt9-import-drop-lines')).toHaveTextContent(
+      [
+        'MAT 1:2 (en) Word:c — verse not found',
+        'MAT 1:10 (en) Word:a — verse not found',
+        'MAT 1:२ (en) Word:b — verse not found',
+      ].join('\n'),
+      { normalizeWhitespace: false },
+    );
+  });
+
   it('shows only the first lines of a long list and copies every line', async () => {
     const user = userEvent.setup();
     const report = makeReport();

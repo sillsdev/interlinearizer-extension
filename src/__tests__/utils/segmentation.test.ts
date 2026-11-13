@@ -4,7 +4,6 @@ import type { SegmentationDelta, TokenSnapshot } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import {
   addBoundaryBefore,
-  bookSegmentationJson,
   defaultVerseStarts,
   effectiveStarts,
   isDefaultSegmentationForBook,
@@ -171,25 +170,6 @@ describe('segmentationForBook', () => {
       resegmentBook(THREE_VERSES, reanchorSegmentation(THREE_VERSES, boundaries)).segments;
 
     expect(segmentBy(segmentationForBook(delta, 'GEN'))).toEqual(segmentBy(delta));
-  });
-});
-
-describe('bookSegmentationJson', () => {
-  it("serializes the book's part of the delta", () => {
-    const delta: SegmentationDelta = {
-      removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'],
-      addedStarts: [],
-    };
-
-    expect(bookSegmentationJson(delta, 'GEN')).toBe(
-      JSON.stringify({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] }),
-    );
-  });
-
-  it('gives undefined for a book the delta does not name', () => {
-    const delta: SegmentationDelta = { removedVerseStarts: ['EXO 1:2:0'], addedStarts: [] };
-
-    expect(bookSegmentationJson(delta, 'GEN')).toBeUndefined();
   });
 });
 

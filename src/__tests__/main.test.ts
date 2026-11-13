@@ -2975,11 +2975,7 @@ describe('main', () => {
 
         const json = await getBookOutline({ sessionId }, 'GEN');
 
-        expect(bookService.getOpenBook).toHaveBeenCalledWith(
-          'src-project',
-          'GEN',
-          JSON.stringify(segmentation),
-        );
+        expect(bookService.getOpenBook).toHaveBeenCalledWith('src-project', 'GEN', segmentation);
         expect(
           JSON.parse(json ?? '').segments.map(
             ({ orphanedCardCount }: { orphanedCardCount: number }) => orphanedCardCount,
@@ -2995,11 +2991,7 @@ describe('main', () => {
 
         const json = await getStaleSummary({ sessionId, bookId: 'GEN' });
 
-        expect(bookService.getOpenBook).toHaveBeenCalledWith(
-          'src-project',
-          'GEN',
-          JSON.stringify(segmentation),
-        );
+        expect(bookService.getOpenBook).toHaveBeenCalledWith('src-project', 'GEN', segmentation);
         expect(JSON.parse(json ?? '')).toStrictEqual({
           glosses: [{ analysisId: 'ta-in', tokenRef: 'GEN 1:1:0' }],
           freeTranslations: [{ analysisId: 'sa-9', segmentId: 'GEN 1:2' }],
@@ -3025,7 +3017,7 @@ describe('main', () => {
         expect(bookService.getSegmentedBook).toHaveBeenCalledWith(
           'src-project',
           'GEN',
-          JSON.stringify(segmentation),
+          segmentation,
         );
         expect(page).toMatchObject({
           start: 1,
@@ -3270,11 +3262,7 @@ describe('main', () => {
         }),
       );
 
-      expect(bookService.heldBook).toHaveBeenCalledWith(
-        'src-project',
-        'GEN',
-        JSON.stringify(segmentation),
-      );
+      expect(bookService.heldBook).toHaveBeenCalledWith('src-project', 'GEN', segmentation);
       expect(emitter.emit).toHaveBeenCalledWith({
         sessionId,
         changeId: 'change-1',
@@ -3730,18 +3718,17 @@ describe('main', () => {
       expect(bookService.getSegmentedBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
     });
 
-    it("checks a phrase against the segments the draft's boundaries in its book make", async () => {
+    it("checks a phrase against the segments the draft's boundaries make", async () => {
       await seedDraft({}, { removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'], addedStarts: [] });
       const { openSession, createPhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       await createPhrase({ sessionId, tokens: inThe });
 
-      expect(bookService.getSegmentedBook).toHaveBeenCalledWith(
-        'src-project',
-        'GEN',
-        JSON.stringify({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] }),
-      );
+      expect(bookService.getSegmentedBook).toHaveBeenCalledWith('src-project', 'GEN', {
+        removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'],
+        addedStarts: [],
+      });
     });
 
     const godAnd: TokenSnapshot[] = [

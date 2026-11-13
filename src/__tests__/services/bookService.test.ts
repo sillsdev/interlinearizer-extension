@@ -38,7 +38,10 @@ jest.mock('parsers/papi/usjBookExtractor');
 // Segmenting and outlining have suites of their own; these stand-ins record what they were given.
 jest.mock('parsers/papi/resegmentBook');
 jest.mock('../../utils/book-outline');
-jest.mock('../../utils/segmentation');
+jest.mock('../../utils/segmentation', () => ({
+  ...jest.requireActual('../../utils/segmentation'),
+  reanchorSegmentation: jest.fn(),
+}));
 
 function isBackendMock(m: unknown): m is { __mockProjectDataProvidersGet: jest.Mock } {
   return !!m && typeof m === 'object' && '__mockProjectDataProvidersGet' in m;
@@ -443,18 +446,10 @@ describe('getSegmentedBook', () => {
     segmentStandIns();
   });
 
-  it('refuses boundaries that are not a SegmentationDelta', async () => {
-    serveProject((bookId) => usj(bookId));
-
-    await expect(getSegmentedBook('src', 'GEN', '{"removed":[]}')).rejects.toThrow(
-      'The segmentation is not a SegmentationDelta',
-    );
-  });
-
   it('serves the book segmented by the boundaries named', async () => {
     serveProject((bookId) => usj(bookId));
 
-    const book = await getSegmentedBook('src', 'GEN', JSON.stringify(DELTA));
+    const book = await getSegmentedBook('src', 'GEN', DELTA);
 
     expect(book).toStrictEqual({ ...VERSE_BOOK, segments: SEGMENTED });
     expect(book?.segments).toBe(SEGMENTED);
@@ -463,9 +458,32 @@ describe('getSegmentedBook', () => {
 
   it('serves the segments its pages hold for the same boundaries without segmenting again', async () => {
     serveProject((bookId) => usj(bookId));
-    await getSegmentedBook('src', 'GEN', JSON.stringify(DELTA));
+    await getSegmentedBook('src', 'GEN', DELTA);
 
-    await getSegmentedBook('src', 'GEN', JSON.stringify(DELTA));
+    await getSegmentedBook('src', 'GEN', DELTA);
+
+    expect(resegmentBook).toHaveBeenCalledTimes(1);
+  });
+
+  it("segments by the book's own boundaries, ignoring those of other books", async () => {
+    serveProject((bookId) => usj(bookId));
+
+    await getSegmentedBook('src', 'GEN', {
+      removedVerseStarts: [...DELTA.removedVerseStarts, 'EXO 1:2:0'],
+      addedStarts: [],
+    });
+
+    expect(reanchorSegmentation).toHaveBeenCalledWith(VERSE_BOOK, DELTA);
+  });
+
+  it('segments once for boundaries that differ only in other books', async () => {
+    serveProject((bookId) => usj(bookId));
+    await getSegmentedBook('src', 'GEN', DELTA);
+
+    await getSegmentedBook('src', 'GEN', {
+      removedVerseStarts: [...DELTA.removedVerseStarts, 'EXO 1:2:0'],
+      addedStarts: [],
+    });
 
     expect(resegmentBook).toHaveBeenCalledTimes(1);
   });
@@ -495,7 +513,7 @@ describe('getOpenBook', () => {
   it('serves the book segmented by the boundaries named', async () => {
     serveProject((bookId) => usj(bookId));
 
-    const book = await getOpenBook('src', 'GEN', JSON.stringify(DELTA));
+    const book = await getOpenBook('src', 'GEN', DELTA);
 
     expect(book).toStrictEqual({ ...VERSE_BOOK, segments: SEGMENTED });
     expect(resegmentBook).toHaveBeenCalledWith(VERSE_BOOK, REANCHORED);
@@ -531,7 +549,7 @@ describe('heldBook', () => {
     serveProject((bookId) => usj(bookId));
     await getVerseBook('src', 'GEN');
 
-    expect(heldBook('src', 'GEN', JSON.stringify(DELTA))).toStrictEqual({
+    expect(heldBook('src', 'GEN', DELTA)).toStrictEqual({
       ...VERSE_BOOK,
       segments: SEGMENTED,
     });

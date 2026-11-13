@@ -331,18 +331,6 @@ export function segmentationForBook(
     : { removedVerseStarts, addedStarts };
 }
 
-/**
- * The boundaries that the delta sets in `bookId`, as JSON for a cache key; `undefined` when the
- * delta sets none there.
- */
-export function bookSegmentationJson(
-  delta: SegmentationDelta | undefined,
-  bookId: string,
-): string | undefined {
-  const forBook = segmentationForBook(delta, bookId);
-  return forBook && JSON.stringify(forBook);
-}
-
 /** Whether two boundary deltas list the same entries in the same order. */
 export function sameSegmentation(
   a: SegmentationDelta | undefined,

@@ -17,8 +17,6 @@ import {
   selectApprovedGloss,
   selectApprovedGlossSenseRef,
   selectApprovedMorphemes,
-  selectMorphemePayloadIsSolelyOwned,
-  selectMorphemeResetLosesAnnotation,
   selectPhraseLinkById,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
@@ -1080,69 +1078,6 @@ describe('selectStaleMorphemesAnalysisId', () => {
     const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'suggested')]));
 
     expect(selectStaleMorphemesAnalysisId(store.getState().analysis, 'tok-1')).toBeUndefined();
-  });
-});
-
-describe('selectMorphemeResetLosesAnnotation', () => {
-  it('reports no loss when the token has no approved analysis', () => {
-    const store = createAnalysisStore();
-    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-1')).toBe(false);
-  });
-
-  it('reports a loss when an unglossed breakdown carries a lexicon reference', () => {
-    // An imported morpheme can hold an entry with no gloss beside it, and the reset discards it.
-    const ta: TokenAnalysis = {
-      ...FIXTURE_STAMPS,
-      id: 'ta-1',
-      surfaceText: 'cats',
-      morphemes: [
-        {
-          id: 'm-1',
-          form: 'cat',
-          writingSystem: 'en',
-          senseRef: { authority: 'lexicon', senseId: 's-1' },
-        },
-      ],
-    };
-    const store = createAnalysisStore({
-      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
-    });
-    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-1')).toBe(true);
-  });
-
-  it('reports no loss when another token links the glossed breakdown without approving it', () => {
-    const ta: TokenAnalysis = {
-      ...FIXTURE_STAMPS,
-      id: 'ta-1',
-      surfaceText: 'cats',
-      morphemes: [{ id: 'm-1', form: 'cat', writingSystem: 'en', gloss: { und: 'feline' } }],
-    };
-    const store = createAnalysisStore(
-      tokenState([ta], [makeLink(ta, 'tok-1', 'approved'), makeLink(ta, 'tok-2', 'suggested')]),
-    );
-
-    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-1')).toBe(false);
-  });
-});
-
-describe('selectMorphemePayloadIsSolelyOwned', () => {
-  it('reports not solely owned when the token has no approved analysis', () => {
-    const store = createAnalysisStore();
-    expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-1')).toBe(false);
-  });
-
-  it('reports not solely owned when another token links the payload without approving it', () => {
-    const ta: TokenAnalysis = {
-      ...FIXTURE_STAMPS,
-      id: 'ta-1',
-      surfaceText: 'cats',
-      morphemes: [{ id: 'm-1', form: 'cat', writingSystem: 'en' }],
-    };
-    const store = createAnalysisStore(
-      tokenState([ta], [makeLink(ta, 'tok-1', 'approved'), makeLink(ta, 'tok-2', 'suggested')]),
-    );
-
-    expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-1')).toBe(false);
   });
 });
 

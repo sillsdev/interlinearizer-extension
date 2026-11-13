@@ -193,7 +193,7 @@ export default function useSessionProject(
   );
   const { draft } = whole;
   const pages = useSessionPages({ sessionId, bookId, scrRef });
-  const { client } = pages;
+  const { client, heldClient } = pages;
 
   /** Fetches the whole draft again, logging a failure. */
   const refreshWhole = useCallback(() => {
@@ -231,11 +231,12 @@ export default function useSessionProject(
     },
     [whole, noteHistory],
   );
-  useEffect(() => client?.subscribeReplies(takeReply), [client, takeReply]);
+  // Held, so that a reply to an edit sent while the next book loads still reaches the whole draft.
+  useEffect(() => heldClient?.subscribeReplies(takeReply), [heldClient, takeReply]);
 
   /**
-   * Sends an edit through the client so that its reply lands in the pages. Before the pages load,
-   * the edit goes straight to the session, and its reply updates only the whole draft.
+   * Sends an edit through the client so that its reply lands in the pages. Before the first pages
+   * load, the edit goes straight to the session, and its reply updates only the whole draft.
    *
    * @returns The reply, or `undefined` when no session is open or the edit applied nothing.
    * @throws If the pages' outline has not loaded yet, or whatever the edit's command throws.
@@ -246,18 +247,18 @@ export default function useSessionProject(
     ): Promise<CommandReply | undefined> => {
       /* v8 ignore next -- edits come only from a view whose session has opened */
       if (sessionId === undefined) return undefined;
-      if (!client) {
+      if (!heldClient) {
         const json = await call({ sessionId, changeId: crypto.randomUUID() });
         const reply: CommandReply | undefined = json === undefined ? undefined : JSON.parse(json);
         if (reply) takeReply(reply);
         return reply;
       }
-      return client.send(async (changeId) => {
+      return heldClient.send(async (changeId) => {
         const reply = await call({ sessionId, changeId });
         return reply === undefined ? undefined : JSON.parse(reply);
       });
     },
-    [client, sessionId, takeReply],
+    [heldClient, sessionId, takeReply],
   );
 
   /**
@@ -495,7 +496,7 @@ export default function useSessionProject(
       readOnly: opened.readOnly,
       whole,
       pages,
-      client,
+      client: heldClient,
       hasFreeTranslations,
       boundaries,
       setAnalysisLanguage,

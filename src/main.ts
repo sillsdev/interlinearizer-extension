@@ -8,7 +8,13 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type { DraftProject, DraftStart, InterlinearProject, ProjectConfig } from 'interlinearizer';
+import type {
+  DraftProject,
+  DraftStart,
+  InterlinearProject,
+  ProjectConfig,
+  SegmentationDelta,
+} from 'interlinearizer';
 import type { CommandHandlers, NetworkEvents } from 'papi-shared-types';
 import {
   formatReplacementString,
@@ -53,7 +59,6 @@ import { CURRENT_MODEL_VERSION } from './types/model-version';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
-import { bookSegmentationJson } from './utils/segmentation';
 
 // #region WebView provider
 
@@ -212,7 +217,7 @@ function createSessions(
     },
     stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
     heldBook: (sourceProjectId, bookId, segmentation) =>
-      bookService.heldBook(sourceProjectId, bookId, segmentation && JSON.stringify(segmentation)),
+      bookService.heldBook(sourceProjectId, bookId, segmentation),
     getOpenVerseBook: bookService.getOpenVerseBook,
     reportChange: (change) => emitter.emit(change),
   });
@@ -748,9 +753,9 @@ async function getTokenizedBook(
 /** The session that a page or text-read command reads. */
 type SessionAddress = Readonly<{ sessionId: string }>;
 
-/** The boundaries the session's draft sets in the book, as JSON; `undefined` when it sets none. */
-async function sessionBoundaries(session: Session, bookId: string): Promise<string | undefined> {
-  return bookSegmentationJson((await session.repository.getScope()).segmentation, bookId);
+/** The boundaries that the session's draft sets. */
+async function sessionBoundaries(session: Session): Promise<SegmentationDelta | undefined> {
+  return (await session.repository.getScope()).segmentation;
 }
 
 /**
@@ -778,7 +783,7 @@ async function getBookOutline(
         const book = await bookService.getOpenBook(
           session.scope.sourceProjectId,
           bookId,
-          await sessionBoundaries(session, bookId),
+          await sessionBoundaries(session),
         );
         if (!book) return undefined;
         const outline = await readBookOutline(session.repository, book);
@@ -808,7 +813,7 @@ async function getStaleSummary({
       const book = await bookService.getOpenBook(
         session.scope.sourceProjectId,
         bookId,
-        await sessionBoundaries(session, bookId),
+        await sessionBoundaries(session),
       );
       return book && JSON.stringify(await readStaleSummary(session.repository, book));
     });
@@ -841,7 +846,7 @@ async function getSegments(
         const book = await bookService.getSegmentedBook(
           session.scope.sourceProjectId,
           bookId,
-          await sessionBoundaries(session, bookId),
+          await sessionBoundaries(session),
         );
         if (!book) return undefined;
         const page = await readSegmentPage(session.repository, book, start, end);

@@ -4,6 +4,7 @@ import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
 import { useEvent } from 'platform-bible-react';
 import * as React from 'react';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
+import { segmentationForBook } from '../../utils/segmentation';
 import * as tokenCommands from '../../services/commands/tokenCommands';
 import { DraftRepository } from '../../services/draftRepository';
 import { sessionCatalogHandlers } from '../../services/sessionCatalogHandlers';
@@ -170,9 +171,9 @@ export async function fakeHost(
   const edits = sessionEditHandlers({
     sessions,
     logger: { error: () => {} },
-    getSegmentedBook: async (_sourceProjectId, bookId, segmentationJson) =>
+    getSegmentedBook: async (_sourceProjectId, bookId, segmentation) =>
       bookId === textOf().bookRef
-        ? resegmentBook(textOf(), segmentationJson ? JSON.parse(segmentationJson) : undefined)
+        ? resegmentBook(textOf(), segmentationForBook(segmentation, bookId))
         : undefined,
     getVerseBook: async (_sourceProjectId, bookId) =>
       bookId === textOf().bookRef ? textOf() : undefined,

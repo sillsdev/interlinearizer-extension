@@ -84,7 +84,6 @@ export default function AnalysisLanguageChips({
   const textCounts = counted ?? NO_COUNTS;
   const [countFailed, setCountFailed] = useState(false);
 
-  /** Counts the text again. */
   const recount = useCallback(async () => {
     if (!countText) return;
     try {

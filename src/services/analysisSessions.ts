@@ -17,7 +17,7 @@ import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { perfTimeAsync } from '../utils/perf-marks';
 import { missingBook } from '../utils/reanchor-analysis';
-import { isEmptyDelta, segmentationForBook } from '../utils/segmentation';
+import { isEmptyDelta } from '../utils/segmentation';
 import {
   booksResegmented,
   describeChange,
@@ -134,8 +134,8 @@ export interface SessionHost {
   /** Ends the source project's whole-text read. */
   stopTextRead(sourceProjectId: string): Promise<void>;
   /**
-   * The source project's book as `segmentation` segments it, or `undefined` when the host holds no
-   * tokenized copy of the book. Reads nothing.
+   * The source project's book, segmented by the boundaries that `segmentation` sets in it, or
+   * `undefined` when the host holds no tokenized copy of the book. Reads nothing.
    */
   heldBook(
     sourceProjectId: string,
@@ -168,7 +168,7 @@ async function describeApplied(
   const { segmentation } = await session.repository.getScope();
   const { sourceProjectId } = session.scope;
   return describeChange(session.repository, applied, (bookId) =>
-    host.heldBook(sourceProjectId, bookId, segmentationForBook(segmentation, bookId)),
+    host.heldBook(sourceProjectId, bookId, segmentation),
   );
 }
 

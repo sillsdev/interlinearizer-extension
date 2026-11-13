@@ -7,13 +7,12 @@ import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtrac
 import { isPlatformError } from 'platform-bible-utils';
 import type { IUSJBookProjectDataProvider } from 'platform-scripture';
 import type { TextReadStatus } from '../types/text-read-status';
-import { isSegmentationDelta } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { presentBookIds } from '../utils/books-present';
 import { indexBook, type BookConcordance } from '../utils/concordance';
 import { FormIndex, formsOfBook } from '../utils/form-index';
 import { perfTime, perfTrack } from '../utils/perf-marks';
-import { reanchorSegmentation } from '../utils/segmentation';
+import { reanchorSegmentation, segmentationForBook } from '../utils/segmentation';
 
 interface BookTextWatch {
   /** The text as first delivered; `undefined` when the project has no text for the book. */
@@ -33,7 +32,7 @@ interface HeldBook {
   tokenized?: Book;
   /** The tokenized book as JSON, once it has been asked for whole. */
   json?: Promise<string | undefined>;
-  /** The book segmented by the boundaries last asked for, keyed by their JSON. */
+  /** The book segmented by the boundaries last asked for, keyed by the JSON of the book's own. */
   segmented?: { key: string; segments: Segment[] };
   watch: BookTextWatch;
 }
@@ -372,32 +371,18 @@ export async function getTokenizedBook(
 }
 
 /**
- * Reads the boundaries a request names, none when it names none (over PAPI, `null`).
- *
- * @throws If they are not a JSON `SegmentationDelta`.
- */
-function parseSegmentation(segmentationJson: string | undefined): SegmentationDelta | undefined {
-  if (!segmentationJson) return undefined;
-  const delta: unknown = JSON.parse(segmentationJson);
-  if (!isSegmentationDelta(delta)) throw new Error('The segmentation is not a SegmentationDelta');
-  return delta;
-}
-
-/**
- * Segments `held`'s book by the boundaries `segmentationJson` names, once for the latest boundaries
- * asked for, timed as part of `call`.
- *
- * @throws If `segmentationJson` is not a JSON `SegmentationDelta`.
+ * Segments `held`'s book by the boundaries that `segmentation` sets in it, once for the latest
+ * boundaries asked for, timed as part of `call`.
  */
 function segmentsOf(
   held: HeldBook,
   book: Book,
-  segmentationJson: string | undefined,
+  segmentation: SegmentationDelta | undefined,
   call: 'getBookOutline' | 'getSegmentedBook' | 'heldBook',
 ): Segment[] {
-  const key = segmentationJson || '';
+  const delta = segmentationForBook(segmentation, held.bookId);
+  const key = delta ? JSON.stringify(delta) : '';
   if (held.segmented?.key !== key) {
-    const delta = parseSegmentation(segmentationJson);
     const segments = perfTime(
       `${call}:resegment`,
       () => resegmentBook(book, reanchorSegmentation(book, delta)).segments,
@@ -458,44 +443,42 @@ export function onTextReadProgress(listener: TextReadProgressListener): () => bo
 }
 
 /**
- * Reads a book of the source project, segmented by the boundaries `segmentationJson` names. The
- * book becomes the project's open book, whose edits {@link onBookTextChanged} reports. The book's
- * segments are shared, so the caller must not change them.
+ * Reads a book of the source project, segmented by the boundaries that `segmentation` sets in it.
+ * The book becomes the project's open book, whose edits {@link onBookTextChanged} reports. The
+ * book's segments are shared, so the caller must not change them.
  *
  * @returns `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
- *   `SegmentationDelta`.
+ * @throws If the book cannot be read or tokenized.
  */
 export async function getOpenBook(
   sourceProjectId: string,
   bookId: string,
-  segmentationJson?: string,
+  segmentation?: SegmentationDelta,
 ): Promise<Book | undefined> {
   const held = await keepBook(sourceProjectId, bookId, true);
   const book = await held.book;
   if (!book) return undefined;
-  return { ...book, segments: segmentsOf(held, book, segmentationJson, 'getBookOutline') };
+  return { ...book, segments: segmentsOf(held, book, segmentation, 'getBookOutline') };
 }
 
 /**
- * The source project's book, segmented by the boundaries `segmentationJson` names, when the project
- * keeps a tokenized copy as its open or latest book. Reads nothing. The book's segments are shared,
- * so the caller must not change them.
+ * The source project's book, segmented by the boundaries that `segmentation` sets in it, when the
+ * project keeps a tokenized copy as its open or latest book. Reads nothing. The book's segments are
+ * shared, so the caller must not change them.
  *
  * @returns `undefined` when the project keeps no tokenized copy of the book.
- * @throws If `segmentationJson` is not a JSON `SegmentationDelta`.
  */
 export function heldBook(
   sourceProjectId: string,
   bookId: string,
-  segmentationJson?: string,
+  segmentation?: SegmentationDelta,
 ): Book | undefined {
   const held = [openBooks.get(sourceProjectId), latestBooks.get(sourceProjectId)].find(
     (kept) => kept?.bookId === bookId && kept.tokenized,
   );
   const book = held?.tokenized;
   if (!held || !book) return undefined;
-  return { ...book, segments: segmentsOf(held, book, segmentationJson, 'heldBook') };
+  return { ...book, segments: segmentsOf(held, book, segmentation, 'heldBook') };
 }
 
 /**
@@ -543,22 +526,22 @@ export async function getOpenVerseBook(
 }
 
 /**
- * Reads a book of the source project, segmented by the boundaries `segmentationJson` names, as a
- * session's pages segment it. The book's segments are shared, so the caller must not change them.
+ * Reads a book of the source project, segmented by the boundaries that `segmentation` sets in it,
+ * as a session's pages segment it. The book's segments are shared, so the caller must not change
+ * them.
  *
  * @returns `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or tokenized, or `segmentationJson` is not a JSON
- *   `SegmentationDelta`.
+ * @throws If the book cannot be read or tokenized.
  */
 export async function getSegmentedBook(
   sourceProjectId: string,
   bookId: string,
-  segmentationJson?: string,
+  segmentation?: SegmentationDelta,
 ): Promise<Book | undefined> {
   const held = await keptBook(sourceProjectId, bookId);
   const book = await held.book;
   if (!book) return undefined;
-  return { ...book, segments: segmentsOf(held, book, segmentationJson, 'getSegmentedBook') };
+  return { ...book, segments: segmentsOf(held, book, segmentation, 'getSegmentedBook') };
 }
 
 /** Lets go of the source project's kept copies of `bookId`, holding its open book again at once. */

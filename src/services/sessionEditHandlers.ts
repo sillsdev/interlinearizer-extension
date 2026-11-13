@@ -29,7 +29,6 @@ import { countTextOfEveryTag } from '../utils/text-counts';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 import { missingBook } from '../utils/reanchor-analysis';
-import { bookSegmentationJson } from '../utils/segmentation';
 
 /** The one argument that the command `C` takes. */
 type ArgsOf<C extends keyof CommandHandlers> = Parameters<CommandHandlers[C]>[0];
@@ -541,17 +540,8 @@ export function sessionEditHandlers({
     tokens: readonly TokenSnapshot[],
   ): Promise<void> {
     const { segmentation } = await buffer.getScope();
-    const { segments } = await readBookOf(
-      session,
-      tokens[0].tokenRef,
-      (sourceProjectId, bookId) => {
-        // Keyed as page reads key it, so that the two share the book's segmentation.
-        return getSegmentedBook(
-          sourceProjectId,
-          bookId,
-          bookSegmentationJson(segmentation, bookId),
-        );
-      },
+    const { segments } = await readBookOf(session, tokens[0].tokenRef, (sourceProjectId, bookId) =>
+      getSegmentedBook(sourceProjectId, bookId, segmentation),
     );
     const { tokenSegmentMap } = bookIndexesOf(segments);
     const segmentIds = new Set(tokens.map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)));

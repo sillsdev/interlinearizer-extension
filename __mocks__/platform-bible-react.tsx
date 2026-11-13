@@ -1668,15 +1668,18 @@ function OpenDropdownMenuContent({
 
 /**
  * Stub dropdown-menu item rendered as a `role="menuitem"` button. Choosing it fires `onSelect` and
- * then closes the menu unless the handler prevents the event, as the real item does.
+ * then closes the menu unless the handler prevents the event, as the real item does. A disabled
+ * item can't be chosen.
  */
 export function DropdownMenuItem({
   children,
   className,
+  disabled,
   onSelect,
 }: Readonly<{
   children?: ReactNode;
   className?: string;
+  disabled?: boolean;
   onSelect?: (event: Event) => void;
   variant?: 'default' | 'destructive';
 }>): ReactElement {
@@ -1684,6 +1687,7 @@ export function DropdownMenuItem({
   return (
     <button
       className={className}
+      disabled={disabled}
       role="menuitem"
       type="button"
       onClick={() => {
@@ -1695,6 +1699,11 @@ export function DropdownMenuItem({
       {children}
     </button>
   );
+}
+
+/** Stub dropdown-menu separator rendered as a `role="separator"` element. */
+export function DropdownMenuSeparator(): ReactElement {
+  return <div role="separator" />;
 }
 
 /**

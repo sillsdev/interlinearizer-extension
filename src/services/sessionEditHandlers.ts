@@ -23,7 +23,7 @@ import { catalogStepOf, deletionStepOf, phraseStartOf } from './editSteps';
 import type { DraftExport } from '../types/analysis-repository';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from '../types/command-reply';
-import type { EditStep } from '../types/edit-step';
+import type { EditStep, StepSummary } from '../types/edit-step';
 import { bookOfRef } from '../utils/analysis-book';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
@@ -884,58 +884,61 @@ export function sessionEditHandlers({
   }
 
   /**
-   * Gives a session's draft new analysis languages, primary first. With `retagFrom`, also moves the
-   * glosses and free translations under `retagFrom` to the new primary language. One that already
-   * has different text there stays where it is. Both are one undoable step. The step leaves the
-   * draft unsaved.
+   * Gives a session's draft new analysis languages, primary first, as one undoable step that leaves
+   * the draft unsaved. The step can also move or delete one tag's glosses and free translations:
    *
-   * @returns A JSON string of the {@link CommandReply}, with `glossRetag`: what moved, when
-   *   `retagFrom` was given.
-   * @throws If the languages are empty, `retagFrom` is the new primary language, the session is
-   *   read-only or not open, or the edit is refused or fails. The error is logged before
-   *   rethrowing.
+   * - With `retag`, those under `retag.from` move to `retag.to`. One that already has different text
+   *   there stays where it is.
+   * - With `deleteTextOf`, those under that tag are deleted.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `glossRetag` (what moved) when `retag`
+   *   was given, and `deletedText` (what was deleted) when `deleteTextOf` was.
+   * @throws If the languages are empty, `retag` moves a tag to itself, both `retag` and
+   *   `deleteTextOf` are given, the session is read-only or not open, or the edit is refused or
+   *   fails. The error is logged before rethrowing.
    */
   async function changeAnalysisLanguages({
     sessionId,
     analysisLanguages,
-    retagFrom,
+    retag,
+    deleteTextOf,
     changeId,
   }: ArgsOf<'interlinearizer.changeAnalysisLanguages'>): Promise<string> {
     const intent = 'changeAnalysisLanguages';
     try {
-      const [to] = analysisLanguages;
-      if (to === undefined) throw new Error('Interlinearizer: a draft needs an analysis language');
-      if (retagFrom === to)
-        throw new Error(`Interlinearizer: glosses cannot move from ${to} to itself`);
+      if (analysisLanguages.length === 0)
+        throw new Error('Interlinearizer: a draft needs an analysis language');
+      if (retag && retag.from === retag.to)
+        throw new Error(`Interlinearizer: glosses cannot move from ${retag.to} to itself`);
+      if (retag && deleteTextOf !== undefined)
+        throw new Error('Interlinearizer: a language change either moves text or deletes it');
       const target: EditTarget = { sessionId, changeId };
       const reply = await sessions.edit(
         sessionId,
         intent,
         async (buffer, session) => {
           const { draft } = await session.repository.exportAll();
-          const glossRetag = await languageCommands.changeAnalysisLanguages(
-            buffer,
-            draft.analysis,
-            {
-              analysisLanguages,
-              retagFrom,
-              now: editStamp().now,
-            },
-          );
-          target.step = {
-            summary:
-              glossRetag && retagFrom !== undefined
-                ? {
-                    kind: 'retagGlosses',
-                    from: retagFrom,
-                    to,
-                    words: glossRetag.words,
-                    morphemes: glossRetag.morphemes,
-                    freeTranslations: glossRetag.freeTranslations,
-                  }
-                : { kind: 'changeAnalysisLanguages' },
-          };
-          return glossRetag ? { glossRetag } : undefined;
+          const outcome = await languageCommands.changeAnalysisLanguages(buffer, draft.analysis, {
+            analysisLanguages,
+            retag,
+            deleteTextOf,
+            now: editStamp().now,
+          });
+          const { glossRetag, deletedText } = outcome;
+          let summary: StepSummary = { kind: 'changeAnalysisLanguages' };
+          if (retag && glossRetag)
+            summary = {
+              kind: 'retagGlosses',
+              from: retag.from,
+              to: retag.to,
+              words: glossRetag.words,
+              morphemes: glossRetag.morphemes,
+              freeTranslations: glossRetag.freeTranslations,
+            };
+          else if (deleteTextOf !== undefined && deletedText)
+            summary = { kind: 'deleteLanguageText', tag: deleteTextOf, ...deletedText };
+          target.step = { summary };
+          return glossRetag || deletedText ? outcome : undefined;
         },
         { changeId, step: () => target.step },
       );

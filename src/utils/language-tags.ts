@@ -69,3 +69,25 @@ export function languageNameForTag(tag: string, locales?: readonly string[]): st
     return tag;
   }
 }
+
+/**
+ * Reads a language code typed by the user. A code that matches one of `knownTags`, apart from case
+ * or canonical form, is read as that known tag. Text already written under the known tag then stays
+ * reachable. Any other code is read in its canonical form.
+ *
+ * @returns The tag, or `undefined` when the input is blank or not a well-formed BCP 47 tag.
+ */
+export function readLanguageCode(input: string, knownTags: readonly string[]): string | undefined {
+  const typed = input.trim();
+  if (typed === '') return undefined;
+  let canonical: string | undefined;
+  try {
+    [canonical] = Intl.getCanonicalLocales(typed);
+  } catch {
+    return undefined;
+  }
+  /* v8 ignore next -- a well-formed tag always has a canonical form */
+  if (canonical === undefined) return undefined;
+  const lowered = [typed.toLowerCase(), canonical.toLowerCase()];
+  return knownTags.find((tag) => lowered.includes(tag.toLowerCase())) ?? canonical;
+}

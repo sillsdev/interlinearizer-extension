@@ -160,14 +160,14 @@ describe('sessionEditHandlers', () => {
     expect(draft.dirty).toBe(true);
   });
 
-  it("moves the old tag's glosses with the languages as one step that marks the draft unsaved", async () => {
+  it("moves a tag's glosses with the languages as one step that marks the draft unsaved", async () => {
     const { edits, sessionId, sessions } = await handlersOver();
 
     const reply = JSON.parse(
       await edits['interlinearizer.changeAnalysisLanguages']({
         sessionId,
         analysisLanguages: ['es'],
-        retagFrom: 'en',
+        retag: { from: 'en', to: 'es' },
       }),
     );
 
@@ -189,12 +189,38 @@ describe('sessionEditHandlers', () => {
     expect(draft.dirty).toBe(true);
   });
 
+  it("deletes a tag's glosses with the languages as one step that marks the draft unsaved", async () => {
+    const { edits, sessionId, sessions } = await handlersOver();
+
+    const reply = JSON.parse(
+      await edits['interlinearizer.changeAnalysisLanguages']({
+        sessionId,
+        analysisLanguages: ['es'],
+        deleteTextOf: 'en',
+      }),
+    );
+
+    expect(reply.deletedText).toStrictEqual({ glosses: 1, freeTranslations: 0 });
+    expect(reply.step).toStrictEqual({
+      summary: { kind: 'deleteLanguageText', tag: 'en', glosses: 1, freeTranslations: 0 },
+    });
+    const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(draft.analysisLanguages).toStrictEqual(['es']);
+    expect(draft.analysis.tokenAnalyses.map((ta) => ta.gloss)).toStrictEqual([{}]);
+    expect(draft.dirty).toBe(true);
+  });
+
   it.each([
     ['no languages', { analysisLanguages: [] }, 'needs an analysis language'],
     [
       'a move onto the same tag',
-      { analysisLanguages: ['en'], retagFrom: 'en' },
+      { analysisLanguages: ['en'], retag: { from: 'en', to: 'en' } },
       'cannot move from en to itself',
+    ],
+    [
+      'both a move and a deletion',
+      { analysisLanguages: ['es'], retag: { from: 'en', to: 'es' }, deleteTextOf: 'fr' },
+      'either moves text or deletes it',
     ],
   ])('refuses and logs a change of languages with %s', async (_case, args, message) => {
     const { edits, sessionId, host } = await handlersOver();

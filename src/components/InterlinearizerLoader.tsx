@@ -37,6 +37,7 @@ import useLatestRef from '../hooks/useLatestRef';
 import useUndoRedoKeys from '../hooks/useUndoRedoKeys';
 import useSessionProject from '../hooks/useSessionProject';
 import { whenSettled } from '../utils/settles';
+import type { AnalysisLanguagesChange } from '../types/analysis-languages-change';
 import type { EditStep } from '../types/edit-step';
 import { formatTemplate } from '../utils/format-template';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
@@ -286,6 +287,8 @@ const STRING_KEYS = [
   '%interlinearizer_redone_changeAnalysisLanguages%',
   '%interlinearizer_undone_retagGlosses%',
   '%interlinearizer_redone_retagGlosses%',
+  '%interlinearizer_undone_deleteLanguageText%',
+  '%interlinearizer_redone_deleteLanguageText%',
   '%interlinearizer_error_load_book_heading%',
   '%interlinearizer_loading%',
   '%interlinearizer_error_projectUnavailable%',
@@ -632,16 +635,15 @@ function InterlinearizerLoaderInner({
   );
 
   /**
-   * Gives the draft new analysis languages, moving the glosses and free translations under
-   * `retagFrom` to the new primary language when given. After a move, the draft is shown in the new
-   * primary language.
+   * Gives the draft new analysis languages, moving or deleting any text the change names. After a
+   * move, the draft is shown in the language the text moved to.
    */
   const changeDraftAnalysisLanguages = useCallback(
-    async (analysisLanguages: string[], retagFrom?: string) => {
-      const moved = await changeAnalysisLanguages(analysisLanguages, retagFrom);
-      if (retagFrom !== undefined)
-        setChosenLanguages({ ...chosenLanguages, [DRAFT_LANGUAGE_KEY]: analysisLanguages[0] });
-      return moved;
+    async (change: AnalysisLanguagesChange) => {
+      const outcome = await changeAnalysisLanguages(change);
+      if (change.retag)
+        setChosenLanguages({ ...chosenLanguages, [DRAFT_LANGUAGE_KEY]: change.retag.to });
+      return outcome;
     },
     [changeAnalysisLanguages, chosenLanguages, setChosenLanguages],
   );

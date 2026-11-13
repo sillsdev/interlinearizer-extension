@@ -1,6 +1,11 @@
 /// <reference types="jest" />
 
-import { collatorForTag, languageNameForTag, parseLanguageTags } from '../../utils/language-tags';
+import {
+  collatorForTag,
+  languageNameForTag,
+  parseLanguageTags,
+  readLanguageCode,
+} from '../../utils/language-tags';
 
 describe('parseLanguageTags', () => {
   it('keeps a repeated tag only where it first appears', () => {
@@ -52,5 +57,20 @@ describe('languageNameForTag', () => {
 
   it('gives back a tag Intl rejects', () => {
     expect(languageNameForTag('en_US')).toBe('en_US');
+  });
+});
+
+describe('readLanguageCode', () => {
+  it('reads a well-formed code in its canonical form', () => {
+    expect(readLanguageCode(' EN-us ', [])).toBe('en-US');
+  });
+
+  it('reads a code matching a known tag apart from case or form as that tag', () => {
+    expect(readLanguageCode('EN', ['fr', 'En'])).toBe('En');
+    expect(readLanguageCode('en-us', ['en-us'])).toBe('en-us');
+  });
+
+  it.each(['', '   ', 'not a tag', 'en_US'])('reads %p as no code', (input) => {
+    expect(readLanguageCode(input, [])).toBeUndefined();
   });
 });

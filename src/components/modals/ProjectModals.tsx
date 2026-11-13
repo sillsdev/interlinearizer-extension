@@ -3,22 +3,28 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import type { DraftProject } from 'interlinearizer';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import type { DraftCopyResult, NewDraftConfig } from '../../types/project-api';
 import { isInterlinearProjectSummary, isSavedAsProject } from '../../types/type-guards';
-import { countTextByTag, isTextCountsByTag } from '../../utils/text-counts';
-import type { TextCountsByTag } from '../../utils/text-counts';
-import { isGlossRetagCounts } from '../../utils/retag-glosses';
+import type {
+  AnalysisLanguagesChange,
+  AnalysisLanguagesChangeOutcome,
+} from '../../types/analysis-languages-change';
+import { countTextOfEveryTag } from '../../utils/text-counts';
 import type { GlossRetagCounts } from '../../utils/retag-glosses';
 import type { Settles } from '../../utils/settles';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
+import {
+  describeTextCounts,
+  hasText,
+  LANGUAGE_TEXT_COUNTS_STRING_KEYS,
+} from './language-text-counts';
 import { DiscardDraftConfirm } from './DiscardDraftConfirm';
 import { DeleteProjectConfirm } from './DeleteProjectConfirm';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
-import { RetagGlossesConfirm } from './RetagGlossesConfirm';
 import { SaveAsProjectModal } from './SaveAsProjectModal';
 import { SelectInterlinearProjectModal } from './SelectInterlinearProjectModal';
 
@@ -34,19 +40,6 @@ export type ModalState =
 type PendingReplace =
   { kind: 'new'; config: CreateDraftConfig } | { kind: 'open'; project: InterlinearProjectSummary };
 
-/**
- * A move of a stored project's glosses and free translations from its dropped primary analysis
- * language to its new one, awaiting the user's answer.
- */
-type PendingRetag = {
-  /** The project whose languages changed. */
-  interlinearProjectId: string;
-  /** The old primary language. */
-  from: string;
-  /** The new primary language. */
-  to: string;
-};
-
 /** Localized string keys this component formats itself. */
 const PROJECT_MODALS_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_retagGlosses_changed%',
@@ -54,6 +47,8 @@ const PROJECT_MODALS_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_retagGlosses_movedMorphemes%',
   '%interlinearizer_retagGlosses_movedFreeTranslations%',
   '%interlinearizer_retagGlosses_skipped%',
+  '%interlinearizer_deleteLanguageText_deleted%',
+  ...LANGUAGE_TEXT_COUNTS_STRING_KEYS,
 ];
 
 /** Whether a move has anything to report: text it moved, or text it left hidden under `from`. */
@@ -101,13 +96,11 @@ function retagMessage(
  * @param props.announceUndoable - Tells the reader what the step just made did, offering to undo
  *   it.
  * @param props.changeDraftAnalysisLanguages - Gives the draft new analysis languages as one
- *   undoable step, moving the glosses and free translations under `retagFrom` to the new primary
- *   language when given. Resolves what moved.
+ *   undoable step, moving or deleting any text the change names. Resolves what it did to the text.
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
  *   initial value of the analysis language field; should be the platform UI language.
- * @param props.isDraftLoading - Whether the draft is still loading. Project Info can't save the
- *   active project until it has loaded, because the save changes the draft's languages too. Its
- *   fields are disabled meanwhile, because the form restarts when the draft's languages arrive.
+ * @param props.isDraftLoading - Whether the draft is still loading. Project Info holds the active
+ *   project's fields until it has loaded, because its analysis languages are the draft's.
  * @param props.hasUnsavedWork - Whether the draft has unsaved work — either committed-but-unsaved
  *   changes or uncommitted text still sitting in a gloss input (matching the tab's unsaved marker).
  *   When true, New / Open are gated behind the discard confirmation so neither kind of unsaved work
@@ -167,9 +160,8 @@ export default function ProjectModals({
   activeProject: InterlinearProjectSummary | undefined;
   announceUndoable: (message: string) => void;
   changeDraftAnalysisLanguages: (
-    analysisLanguages: string[],
-    retagFrom?: string,
-  ) => Promise<GlossRetagCounts | undefined>;
+    change: AnalysisLanguagesChange,
+  ) => Promise<AnalysisLanguagesChangeOutcome>;
   defaultAnalysisLanguage?: string;
   isDraftLoading: boolean;
   hasUnsavedWork: boolean;
@@ -224,13 +216,6 @@ export default function ProjectModals({
   /** A draft-replacing action awaiting confirmation because the draft has unsaved changes. */
   const [pendingReplace, setPendingReplace] = useState<PendingReplace | undefined>(undefined);
 
-  /** A move to a stored project's new primary language, awaiting the user's answer. */
-  const [pendingRetag, setPendingRetag] = useState<PendingRetag | undefined>(undefined);
-
-  /** Guards the answer to the pending move against double-submit. */
-  const retagGuard = useSubmitGuard();
-  const { runGuarded: runGuardedRetag } = retagGuard;
-
   const [localizedStrings] = useLocalizedStrings(PROJECT_MODALS_STRING_KEYS);
 
   /**
@@ -266,16 +251,27 @@ export default function ProjectModals({
   );
 
   /**
-   * Gives the draft new analysis languages, moving the glosses and free translations under
-   * `retagFrom` to the new primary language when given. When anything moved or stayed behind, tells
-   * the reader, offering to undo it. A failure is logged.
+   * Applies a change to the draft's analysis languages from Project Info. When the change moved,
+   * skipped, or deleted any text, tells the reader, offering to undo it. A failure is logged.
    */
   const changeDraftLanguages = useCallback(
-    async (analysisLanguages: string[], retagFrom?: string) => {
+    async (change: AnalysisLanguagesChange) => {
       try {
-        const moved = await changeDraftAnalysisLanguages(analysisLanguages, retagFrom);
-        if (moved && hasReport(moved) && retagFrom !== undefined)
-          announceUndoable(retagMessage(retagFrom, analysisLanguages[0], moved, localizedStrings));
+        const { glossRetag, deletedText } = await changeDraftAnalysisLanguages(change);
+        if (change.retag && glossRetag && hasReport(glossRetag))
+          announceUndoable(
+            retagMessage(change.retag.from, change.retag.to, glossRetag, localizedStrings),
+          );
+        if (change.deleteTextOf !== undefined && hasText(deletedText))
+          announceUndoable(
+            formatReplacementString(
+              localizedStrings['%interlinearizer_deleteLanguageText_deleted%'],
+              {
+                tag: change.deleteTextOf,
+                counts: describeTextCounts(deletedText, localizedStrings),
+              },
+            ),
+          );
       } catch (e) {
         logger.error("Interlinearizer: failed to change the draft's analysis languages", e);
       }
@@ -284,127 +280,16 @@ export default function ProjectModals({
   );
 
   /**
-   * Moves a stored project's glosses and free translations to its new primary language if the user
-   * says so, then clears the question. The move can't be undone, so it is only reported. A failed
-   * move keeps the question open, so the user can try again or keep the text where it is.
-   */
-  const answerRetag = useCallback(
-    (retag: PendingRetag, move: boolean) =>
-      runGuardedRetag(async () => {
-        if (move) {
-          const { interlinearProjectId, from, to } = retag;
-          try {
-            const movedJson = await papi.commands.sendCommand(
-              'interlinearizer.retagProjectGlosses',
-              interlinearProjectId,
-              from,
-              to,
-            );
-            const moved: unknown = movedJson ? JSON.parse(movedJson) : undefined;
-            if (isGlossRetagCounts(moved) && hasReport(moved))
-              await papi.notifications.send({
-                message: retagMessage(from, to, moved, localizedStrings),
-                severity: 'info',
-              });
-          } catch (e) {
-            logger.error("Interlinearizer: failed to move a project's glosses", e);
-            return;
-          }
-        }
-        setPendingRetag(undefined);
-      }),
-    [runGuardedRetag, localizedStrings],
-  );
-
-  /**
-   * Asks whether to move the glosses and free translations of a project that isn't open, unless it
-   * has none in the old primary language. A project that can't be read is asked about anyway.
-   */
-  const offerStoredRetag = useCallback(async (retag: PendingRetag) => {
-    try {
-      const countsJson = await papi.commands.sendCommand(
-        'interlinearizer.countProjectText',
-        retag.interlinearProjectId,
-        [retag.from],
-      );
-      const counts: unknown = countsJson ? JSON.parse(countsJson) : undefined;
-      const fromCounts = isTextCountsByTag(counts) ? counts[retag.from] : undefined;
-      if (fromCounts && fromCounts.glosses + fromCounts.freeTranslations === 0) return;
-    } catch (e) {
-      logger.warn(
-        "Interlinearizer: couldn't read a project to see whether it has glosses to move",
-        e,
-      );
-    }
-    setPendingRetag(retag);
-  }, []);
-
-  /**
    * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
    * project is the currently active one, carrying through the server-refreshed `updatedAt` so the
    * cached Modified time (shown in the picker and on modal reopen) stays current.
-   *
-   * The active project's new languages go to the open draft as an undoable step, rather than to the
-   * stored project. The draft's Save writes them to the project. When the old primary language is
-   * dropped from the list, its glosses and free translations move to the new primary language:
-   *
-   * - In the open draft, at once, in the same undoable step.
-   * - In a project not open, only if the user says so, because the move can't be undone.
-   *
-   * Neither happens when the old primary language has no glosses or free translations. A project
-   * not open is still asked about when all of that text already has different text in the new
-   * language, though none would move.
-   *
-   * @param updated - The updated name, description, analysisLanguages, and refreshed `updatedAt`.
    */
   const handleMetadataProjectSaved = useCallback(
-    (updated: {
-      name?: string;
-      description?: string;
-      analysisLanguages: string[];
-      updatedAt?: string;
-    }) => {
-      /* v8 ignore next -- the metadata modal is shown only for a resolved project */
-      if (!resolvedMetadataProject) return;
-      const { analysisLanguages } = updated;
-      const [to] = analysisLanguages;
-      const interlinearProjectId = resolvedMetadataProject.id;
-      const active = activeProject !== undefined && interlinearProjectId === activeProject.id;
-      if (activeProject && active)
-        setActiveProject({
-          ...activeProject,
-          ...updated,
-          analysisLanguages: activeProject.analysisLanguages,
-        });
-
-      if (!active) {
-        const [from] = resolvedMetadataProject.analysisLanguages;
-        if (from !== undefined && !analysisLanguages.includes(from))
-          offerStoredRetag({ interlinearProjectId, from, to });
-        return;
-      }
-
-      const draft = getDraftSnapshot();
-      /* v8 ignore next -- Save waits for the draft whenever the draft's languages are read */
-      if (!draft) return;
-      const [from] = draft.analysisLanguages;
-      if (
-        from !== undefined &&
-        !analysisLanguages.includes(from) &&
-        Object.values(countTextByTag(draft.analysis, [from])[from]).some((count) => count > 0)
-      )
-        changeDraftLanguages(analysisLanguages, from);
-      else if (draft.analysisLanguages.join(',') !== analysisLanguages.join(','))
-        changeDraftLanguages(analysisLanguages);
+    (updated: { name?: string; description?: string; updatedAt?: string }) => {
+      if (activeProject && resolvedMetadataProject?.id === activeProject.id)
+        setActiveProject({ ...activeProject, ...updated });
     },
-    [
-      activeProject,
-      changeDraftLanguages,
-      getDraftSnapshot,
-      offerStoredRetag,
-      resolvedMetadataProject,
-      setActiveProject,
-    ],
+    [activeProject, resolvedMetadataProject, setActiveProject],
   );
 
   /**
@@ -721,34 +606,24 @@ export default function ProjectModals({
   }, [metadataSourceIsSelect, setModal]);
 
   const draftSnapshot = getDraftSnapshot();
-  // The open project's languages are its draft's until the draft is saved. An import is never
-  // edited in the draft.
+  // The open project's languages are its draft's until the draft is saved, and change only there.
+  // An import is never edited in the draft.
   const metadataLanguagesInDraft =
     resolvedMetadataProject !== undefined &&
     resolvedMetadataProject.id === activeProject?.id &&
-    resolvedMetadataProject.pt9Import === undefined &&
-    draftSnapshot !== undefined;
-  const metadataLanguages = metadataLanguagesInDraft
-    ? draftSnapshot.analysisLanguages
-    : (resolvedMetadataProject?.analysisLanguages ?? []);
-
-  /**
-   * Counts the glosses and free translations of the project Project Info shows, reading the open
-   * project's from its draft.
-   */
-  const countMetadataText = async (tags: string[]): Promise<TextCountsByTag> => {
-    const draft = metadataLanguagesInDraft ? getDraftSnapshot() : undefined;
-    if (draft) return countTextByTag(draft.analysis, tags);
-    /* v8 ignore next -- the metadata modal is shown only for a resolved project */
-    if (!resolvedMetadataProject) return {};
-    const countsJson = await papi.commands.sendCommand(
-      'interlinearizer.countProjectText',
-      resolvedMetadataProject.id,
-      tags,
-    );
-    const counts: unknown = countsJson ? JSON.parse(countsJson) : undefined;
-    return isTextCountsByTag(counts) ? counts : {};
-  };
+    resolvedMetadataProject.pt9Import === undefined;
+  const metadataLanguages =
+    metadataLanguagesInDraft && draftSnapshot
+      ? draftSnapshot.analysisLanguages
+      : (resolvedMetadataProject?.analysisLanguages ?? []);
+  const draftAnalysis = draftSnapshot?.analysis;
+  const metadataTextCounts = useMemo(
+    () =>
+      modal === 'metadata' && metadataLanguagesInDraft && draftAnalysis
+        ? countTextOfEveryTag(draftAnalysis)
+        : undefined,
+    [modal, metadataLanguagesInDraft, draftAnalysis],
+  );
 
   return (
     <div>
@@ -792,8 +667,6 @@ export default function ProjectModals({
 
       {modal === 'metadata' && resolvedMetadataProject && (
         <ProjectMetadataModal
-          // Restarts the form when the draft's languages load or change under it.
-          key={metadataLanguages.join(',')}
           interlinearProjectId={resolvedMetadataProject.id}
           sourceShortName={sourceShortName}
           name={resolvedMetadataProject.name}
@@ -807,7 +680,8 @@ export default function ProjectModals({
           updatedAt={resolvedMetadataProject.updatedAt}
           pt9ImportedAt={resolvedMetadataProject.pt9Import?.importedAt}
           isSaveBlocked={isDraftLoading && resolvedMetadataProject.id === activeProject?.id}
-          countText={countMetadataText}
+          languageTextCounts={metadataTextCounts}
+          onChangeLanguages={metadataLanguagesInDraft ? changeDraftLanguages : undefined}
           onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}
         />
@@ -823,16 +697,6 @@ export default function ProjectModals({
             handleProjectDeleted(deletedId);
             setModal('none');
           }}
-        />
-      )}
-
-      {pendingRetag && (
-        <RetagGlossesConfirm
-          from={pendingRetag.from}
-          to={pendingRetag.to}
-          isSubmitting={retagGuard.isSubmitting}
-          onConfirm={() => answerRetag(pendingRetag, true)}
-          onCancel={() => answerRetag(pendingRetag, false)}
         />
       )}
 

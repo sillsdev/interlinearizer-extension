@@ -201,18 +201,6 @@ const getUpdateProjectMetadataHandler = () =>
     ) => Promise<string | undefined>
   >('interlinearizer.updateProjectMetadata');
 
-/** Activates the extension and returns the `interlinearizer.retagProjectGlosses` handler. */
-const getRetagProjectGlossesHandler = () =>
-  activateAndGetHandler<(id: string, from: string, to: string) => Promise<string | undefined>>(
-    'interlinearizer.retagProjectGlosses',
-  );
-
-/** Activates the extension and returns the `interlinearizer.countProjectText` handler. */
-const getCountProjectTextHandler = () =>
-  activateAndGetHandler<(id: string, tags: string[]) => Promise<string | undefined>>(
-    'interlinearizer.countProjectText',
-  );
-
 /** Activates the extension and returns the `interlinearizer.importPt9Project` handler. */
 const getImportPt9ProjectHandler = () =>
   activateAndGetHandler<(sourceProjectId: string) => Promise<string>>(
@@ -717,7 +705,6 @@ describe('main', () => {
           'interlinearizer.redo',
           'interlinearizer.undoFromNotification',
           'interlinearizer.updateProjectMetadata',
-          'interlinearizer.retagProjectGlosses',
           'interlinearizer.changeAnalysisLanguages',
           'interlinearizer.deleteProject',
         ]),
@@ -1849,90 +1836,6 @@ describe('main', () => {
       );
       expect(__mockNotificationsSend).toHaveBeenCalledWith(
         expect.objectContaining({ severity: 'error' }),
-      );
-    });
-  });
-
-  describe('interlinearizer.retagProjectGlosses command', () => {
-    const mockRetag = jest.mocked(projectStorage.retagProjectGlosses);
-
-    it('returns what moved as JSON', async () => {
-      mockRetag.mockResolvedValue({ words: 1, morphemes: 2, freeTranslations: 4, skipped: 3 });
-      const handler = await getRetagProjectGlossesHandler();
-
-      const result = await handler('proj-id', 'fr', 'es');
-
-      expect(JSON.parse(result ?? '')).toStrictEqual({
-        words: 1,
-        morphemes: 2,
-        freeTranslations: 4,
-        skipped: 3,
-      });
-      expect(mockRetag).toHaveBeenCalledWith(expect.anything(), 'proj-id', 'fr', 'es');
-    });
-
-    it('returns undefined when the project does not exist', async () => {
-      mockRetag.mockResolvedValue(undefined);
-      const handler = await getRetagProjectGlossesHandler();
-
-      expect(await handler('missing', 'fr', 'es')).toBeUndefined();
-    });
-
-    it.each([
-      ['a move onto the same tag', 'es', 'cannot move from es to itself'],
-      ['a storage failure', 'fr', 'disk full'],
-    ])('logs, notifies, and rethrows %s', async (_case, from, message) => {
-      mockRetag.mockRejectedValue(new Error('disk full'));
-      const handler = await getRetagProjectGlossesHandler();
-
-      await expect(handler('proj-id', from, 'es')).rejects.toThrow(message);
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to move project glosses to a new language',
-        expect.any(Error),
-      );
-      expect(__mockNotificationsSend).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'error' }),
-      );
-    });
-  });
-
-  describe('interlinearizer.countProjectText command', () => {
-    const mockGetProject = jest.mocked(projectStorage.getProject);
-
-    it('returns the counts of each tag as JSON', async () => {
-      mockGetProject.mockResolvedValue({
-        ...makeStubProject('proj-id'),
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [
-            { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { fr: 'poisson' } },
-          ],
-        },
-      });
-      const handler = await getCountProjectTextHandler();
-
-      expect(JSON.parse((await handler('proj-id', ['fr', 'de'])) ?? '')).toStrictEqual({
-        fr: { glosses: 1, freeTranslations: 0 },
-        de: { glosses: 0, freeTranslations: 0 },
-      });
-      expect(mockGetProject).toHaveBeenCalledWith(expect.anything(), 'proj-id');
-    });
-
-    it('returns undefined when the project does not exist', async () => {
-      mockGetProject.mockResolvedValue(undefined);
-      const handler = await getCountProjectTextHandler();
-
-      expect(await handler('missing', ['fr'])).toBeUndefined();
-    });
-
-    it('logs and rethrows a read failure', async () => {
-      mockGetProject.mockRejectedValue(new Error('unreadable'));
-      const handler = await getCountProjectTextHandler();
-
-      await expect(handler('proj-id', ['fr'])).rejects.toThrow('unreadable');
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        "Interlinearizer: failed to count a project's text",
-        expect.any(Error),
       );
     });
   });

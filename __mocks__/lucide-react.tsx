@@ -27,6 +27,13 @@ export function BookAlert(props: Readonly<{ className?: string }>): ReactElement
 }
 
 /**
+ * Stub for the Star icon.
+ */
+export function Star(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="star-icon" {...props} />;
+}
+
+/**
  * Stub for the ArrowUpToLine icon.
  */
 export function ArrowUpToLine(props: Readonly<{ className?: string }>): ReactElement {

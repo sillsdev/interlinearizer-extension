@@ -18,7 +18,6 @@ import {
   rememberActiveProject,
   releaseDraftRepository,
   resetQueuesForTesting,
-  retagProjectGlosses,
   saveDraftAsNewProject,
   saveDraftToProject,
   savePt9Import,
@@ -1246,129 +1245,6 @@ describe('projectStorage', () => {
       const result = await updateAnalysis(token, 'proj-id', newAnalysis);
 
       expect(result).toMatchObject({ segmentation: projectWithBoundaries.segmentation });
-    });
-  });
-
-  describe('retagProjectGlosses', () => {
-    const MOVE_TIME = '2026-03-01T12:00:00.000Z';
-
-    /** A stored project holding one analysis glossed `gloss`. */
-    function glossedProject(gloss: Record<string, string>): InterlinearProject {
-      const project = makeStubProject('proj-id');
-      return {
-        ...project,
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'fish', gloss }],
-        },
-      };
-    }
-
-    /** The project record the last write of it held. */
-    function writtenProject(): InterlinearProject {
-      const writes = __mockWriteUserData.mock.calls.filter(([, key]) => key === 'project:proj-id');
-      const json: unknown = writes[writes.length - 1]?.[2];
-      if (typeof json !== 'string') throw new Error('Expected a write of the project');
-      return JSON.parse(json);
-    }
-
-    beforeEach(() => {
-      jest.useFakeTimers().setSystemTime(new Date(MOVE_TIME));
-    });
-
-    afterEach(() => {
-      jest.useRealTimers();
-    });
-
-    it('writes the project with its glosses moved, and returns what moved', async () => {
-      mockListedProject(glossedProject({ fr: 'poisson' }));
-
-      const counts = await retagProjectGlosses(token, 'proj-id', 'fr', 'es');
-
-      expect(counts).toStrictEqual({ words: 1, morphemes: 0, freeTranslations: 0, skipped: 0 });
-      expect(writtenProject()).toMatchObject({
-        updatedAt: MOVE_TIME,
-        analysis: { tokenAnalyses: [{ gloss: { es: 'poisson' } }] },
-      });
-    });
-
-    it('writes the project when only a free translation moved', async () => {
-      const project = makeStubProject('proj-id');
-      mockListedProject({
-        ...project,
-        analysis: {
-          ...emptyAnalysis(),
-          segmentAnalyses: [
-            { ...FIXTURE_STAMPS, id: 'sa-1', surfaceText: 'Fish.', freeTranslation: { fr: 'Un.' } },
-          ],
-        },
-      });
-
-      const counts = await retagProjectGlosses(token, 'proj-id', 'fr', 'es');
-
-      expect(counts).toStrictEqual({ words: 0, morphemes: 0, freeTranslations: 1, skipped: 0 });
-      expect(writtenProject()).toMatchObject({
-        analysis: { segmentAnalyses: [{ freeTranslation: { es: 'Un.' } }] },
-      });
-    });
-
-    it("brings the project's listed summary up to date", async () => {
-      mockListedProject(glossedProject({ fr: 'poisson' }));
-
-      await retagProjectGlosses(token, 'proj-id', 'fr', 'es');
-
-      expect(writtenSummaries()).toContainEqual(
-        expect.objectContaining({ id: 'proj-id', updatedAt: MOVE_TIME }),
-      );
-    });
-
-    it('writes nothing when no gloss moved', async () => {
-      mockListedProject(glossedProject({ fr: 'poisson', es: 'pez' }));
-
-      const counts = await retagProjectGlosses(token, 'proj-id', 'fr', 'es');
-
-      expect(counts).toStrictEqual({ words: 0, morphemes: 0, freeTranslations: 0, skipped: 1 });
-      expect(__mockWriteUserData).not.toHaveBeenCalled();
-    });
-
-    it('keeps a save queued before the move', async () => {
-      const project = glossedProject({ fr: 'poisson' });
-      writeThroughStore({
-        'project:proj-id': JSON.stringify(project),
-        projectSummaries: storedSummaries(project),
-      });
-      const saved = updateAnalysis(
-        token,
-        'proj-id',
-        glossedProject({ fr: 'poisson', de: 'Fisch' }).analysis,
-      );
-
-      const moved = retagProjectGlosses(token, 'proj-id', 'fr', 'es');
-      await saved;
-      await moved;
-
-      expect(writtenProject().analysis.tokenAnalyses).toMatchObject([
-        { gloss: { es: 'poisson', de: 'Fisch' } },
-      ]);
-    });
-
-    it('returns undefined when the project does not exist', async () => {
-      mockStore({});
-
-      expect(await retagProjectGlosses(token, 'missing', 'fr', 'es')).toBeUndefined();
-      expect(__mockWriteUserData).not.toHaveBeenCalled();
-    });
-
-    it('refuses a Paratext 9 import', async () => {
-      mockListedProject({
-        ...glossedProject({ fr: 'poisson' }),
-        pt9Import: { fileHashes: {}, importedAt: '2026-02-01T00:00:00.000Z' },
-      });
-
-      await expect(retagProjectGlosses(token, 'proj-id', 'fr', 'es')).rejects.toThrow(
-        'is a Paratext 9 import and is read-only',
-      );
-      expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
   });
 

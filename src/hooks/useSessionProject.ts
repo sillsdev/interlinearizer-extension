@@ -5,8 +5,11 @@ import type { HeardChange } from '../cache/pageClient';
 import { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { CommandReply } from '../types/command-reply';
+import {
+  analysisLanguagesChangeOutcomeOf,
+  type AnalysisLanguagesChange,
+} from '../types/analysis-languages-change';
 import type { EditStep } from '../types/edit-step';
-import { isGlossRetagCounts } from '../utils/retag-glosses';
 import type {
   ProjectApi,
   ProjectViewOptions,
@@ -420,25 +423,24 @@ export default function useSessionProject(
   );
 
   /**
-   * Gives the draft new analysis languages, primary first, as one undoable step. With `retagFrom`,
-   * the step also moves the glosses and free translations under `retagFrom` to the new primary
-   * language.
+   * Gives the draft new analysis languages as one undoable step, moving or deleting any text the
+   * change names.
    *
-   * @returns What moved, or `undefined` when nothing was asked to move.
    * @throws If no session is open, or whatever the edit's command throws.
    */
   const changeAnalysisLanguages = useCallback(
-    async (analysisLanguages: string[], retagFrom?: string) => {
+    async (change: AnalysisLanguagesChange) => {
       const call = (args: SessionEditArgs) =>
         papi.commands.sendCommand('interlinearizer.changeAnalysisLanguages', {
           ...args,
-          analysisLanguages,
-          ...(retagFrom !== undefined && { retagFrom }),
+          analysisLanguages: change.analysisLanguages,
+          ...(change.retag && { retag: { ...change.retag } }),
+          ...(change.deleteTextOf !== undefined && { deleteTextOf: change.deleteTextOf }),
         });
       let reply: CommandReply | undefined;
       if (client) reply = await sendEditOrThrow(call);
       else {
-        // Project Info can save before the book's pages load. The draft takes its languages even then.
+        // Project Info can change languages before the book's pages load. The draft takes them even then.
         if (sessionId === undefined)
           throw new Error('Interlinearizer: no session is open to change its analysis languages');
         reply = JSON.parse(await call({ sessionId }));
@@ -446,8 +448,7 @@ export default function useSessionProject(
       }
       // The reply leaves out how a change of languages alone left the draft's unsaved mark.
       refreshWhole();
-      const glossRetag: unknown = reply && 'glossRetag' in reply ? reply.glossRetag : undefined;
-      return isGlossRetagCounts(glossRetag) ? glossRetag : undefined;
+      return analysisLanguagesChangeOutcomeOf(reply);
     },
     [client, sessionId, sendEditOrThrow, takeReply, refreshWhole],
   );

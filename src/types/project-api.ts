@@ -5,7 +5,10 @@ import type { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { EditStep } from './edit-step';
 import type { SegmentPagesLoad } from './segment-pages';
-import type { GlossRetagCounts } from '../utils/retag-glosses';
+import type {
+  AnalysisLanguagesChange,
+  AnalysisLanguagesChangeOutcome,
+} from './analysis-languages-change';
 
 /**
  * Whether a copy of the draft into a project landed, `'partial'` when it left part of the draft
@@ -101,17 +104,14 @@ export type ProjectApi = {
    */
   discardAll: () => Promise<void>;
   /**
-   * Gives the draft new analysis languages, primary first, as one undoable step. With `retagFrom`,
-   * the step also moves the glosses and free translations under `retagFrom` to the new primary
-   * language. One that already has different text there stays where it is.
+   * Gives the draft new analysis languages as one undoable step, moving or deleting any text the
+   * change names. Moved text that already has different text where it moves to stays where it is.
    *
-   * @returns What moved, or `undefined` when nothing was asked to move.
    * @throws If no session is open, or the session refuses or fails the edit.
    */
   changeAnalysisLanguages: (
-    analysisLanguages: string[],
-    retagFrom?: string,
-  ) => Promise<GlossRetagCounts | undefined>;
+    change: AnalysisLanguagesChange,
+  ) => Promise<AnalysisLanguagesChangeOutcome>;
   /** Records that the project the draft saves to was deleted. */
   detachFromProject: () => Promise<void>;
   canUndo: boolean;

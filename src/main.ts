@@ -51,7 +51,6 @@ import { emptyAnalysis } from './types/empty-factories';
 import { CURRENT_MODEL_VERSION } from './types/model-version';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
-import { countTextByTag } from './utils/text-counts';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 import { bookSegmentationJson } from './utils/segmentation';
 
@@ -432,65 +431,6 @@ async function updateProjectMetadata(
         severity: 'error',
       })
       .catch(() => {});
-    throw e;
-  }
-}
-
-/**
- * Moves the glosses and free translations of a stored project from the tag `from` to the tag `to`.
- * A gloss or free translation that already has different text under `to` stays under `from`.
- * Nothing records the move to undo.
- *
- * @param interlinearProjectId - UUID of the interlinearizer project whose text moves.
- * @param from - BCP 47 tag the text moves from.
- * @param to - BCP 47 tag the text moves to.
- * @returns The JSON-stringified counts of what moved and what was skipped, or `undefined` if no
- *   project with the given ID exists.
- * @throws If `from` and `to` are the same tag, the project is a Paratext 9 import, or storage
- *   fails. The error is logged and an error notification is sent before rethrowing.
- */
-async function retagProjectGlosses(
-  interlinearProjectId: string,
-  from: string,
-  to: string,
-): Promise<string | undefined> {
-  try {
-    if (from === to) throw new Error(`Interlinearizer: glosses cannot move from ${to} to itself`);
-    const counts = await projectStorage.retagProjectGlosses(
-      executionToken,
-      interlinearProjectId,
-      from,
-      to,
-    );
-    return counts && JSON.stringify(counts);
-  } catch (e) {
-    logger.error('Interlinearizer: failed to move project glosses to a new language', e);
-    await papi.notifications
-      .send({ message: '%interlinearizer_error_update_project_failed%', severity: 'error' })
-      .catch(() => {});
-    throw e;
-  }
-}
-
-/**
- * Counts a stored project's glosses and free translations in each of `tags`. Only the counts cross
- * PAPI, never the project's analysis.
- *
- * @param interlinearProjectId - UUID of the interlinearizer project to count in.
- * @param tags - BCP 47 tags to count the text of.
- * @returns The JSON-stringified `TextCountsByTag`, or `undefined` if no project with the given ID
- *   exists.
- * @throws If the project can't be read. The error is logged before rethrowing.
- */
-async function countProjectText(
-  interlinearProjectId: string,
-  tags: string[],
-): Promise<string | undefined> {
-  try {
-    const project = await projectStorage.getProject(executionToken, interlinearProjectId);
-    return project && JSON.stringify(countTextByTag(project.analysis, tags));
-  } catch (e) {
-    logger.error("Interlinearizer: failed to count a project's text", e);
     throw e;
   }
 }
@@ -2565,7 +2505,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   await registerSessionCommand('interlinearizer.changeAnalysisLanguages', {
     summary:
-      "Give a session's draft new analysis languages, optionally moving one tag's glosses to the new primary language",
+      "Give a session's draft new analysis languages, optionally moving or deleting one tag's glosses and free translations",
     params: sessionArgs(
       {
         name: 'analysisLanguages',
@@ -2574,9 +2514,19 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         schema: { type: 'array', items: { type: 'string' } },
       },
       {
-        name: 'retagFrom',
+        name: 'retag',
         required: false,
-        summary: 'The tag whose glosses and free translations move to the new primary language',
+        summary: 'Glosses and free translations to move from one tag to another',
+        schema: {
+          type: 'object',
+          properties: { from: { type: 'string' }, to: { type: 'string' } },
+          required: ['from', 'to'],
+        },
+      },
+      {
+        name: 'deleteTextOf',
+        required: false,
+        summary: 'The tag whose glosses and free translations are deleted',
         schema: { type: 'string' },
       },
       changeIdParam,
@@ -2806,72 +2756,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary: 'JSON-stringified { entries, pid }, or undefined while timing entries are off',
-          schema: { type: 'string' },
-        },
-      },
-    },
-  );
-
-  const retagProjectGlossesCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.retagProjectGlosses',
-    retagProjectGlosses,
-    {
-      method: {
-        summary:
-          "Move a stored project's glosses and free translations from one language tag to another",
-        params: [
-          {
-            name: 'interlinearProjectId',
-            required: true,
-            summary: 'UUID of the interlinearizer project',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'from',
-            required: true,
-            summary: 'BCP 47 tag the text moves from',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'to',
-            required: true,
-            summary: 'BCP 47 tag the text moves to',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary:
-            'JSON-stringified { words, morphemes, skipped }, or undefined when no such project exists',
-          schema: { type: 'string' },
-        },
-      },
-    },
-  );
-
-  const countProjectTextCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.countProjectText',
-    countProjectText,
-    {
-      method: {
-        summary: "Count a stored project's glosses and free translations in each language tag",
-        params: [
-          {
-            name: 'interlinearProjectId',
-            required: true,
-            summary: 'UUID of the interlinearizer project',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'tags',
-            required: true,
-            summary: 'BCP 47 tags to count the text of',
-            schema: { type: 'array', items: { type: 'string' } },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified counts keyed by tag, or undefined when no such project exists',
           schema: { type: 'string' },
         },
       },
@@ -3228,8 +3112,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     sessionIdForCommandRegistration,
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,
-    retagProjectGlossesCommandRegistration,
-    countProjectTextCommandRegistration,
     importPt9ProjectCommandRegistration,
     createEditableCopyCommandRegistration,
     deleteProjectCommandRegistration,

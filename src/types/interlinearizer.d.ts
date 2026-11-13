@@ -968,20 +968,24 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
-     * Gives a session's draft new analysis languages, primary first. With `retagFrom`, also moves
-     * the glosses and free translations under `retagFrom` to the new primary language. One that
-     * already has different text there stays where it is. Both are one undoable step. The step
-     * leaves the draft unsaved.
+     * Gives a session's draft new analysis languages, primary first, as one undoable step that
+     * leaves the draft unsaved. With `retag`, the step also moves the glosses and free translations
+     * under `retag.from` to `retag.to`; one that already has different text there stays where it
+     * is. With `deleteTextOf`, it deletes the glosses and free translations under that tag
+     * instead.
      *
-     * @returns A JSON string of the `CommandReply`, with `glossRetag`: how many glosses and free
-     *   translations moved and how many were skipped, when `retagFrom` was given.
-     * @throws If the languages are empty, `retagFrom` is the new primary language, the session is
-     *   read-only or not open, or the edit is refused or fails (logged before rethrowing).
+     * @returns A JSON string of the `CommandReply`, with `glossRetag` (how many glosses and free
+     *   translations moved and how many were skipped) when `retag` was given, and `deletedText`
+     *   (how many glosses and free translations were deleted) when `deleteTextOf` was.
+     * @throws If the languages are empty, `retag` moves a tag to itself, both `retag` and
+     *   `deleteTextOf` are given, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
      */
     'interlinearizer.changeAnalysisLanguages': (
       args: import('interlinearizer').SessionEditArgs & {
         analysisLanguages: string[];
-        retagFrom?: string;
+        retag?: { from: string; to: string };
+        deleteTextOf?: string;
       },
     ) => Promise<string>;
 
@@ -1133,40 +1137,6 @@ declare module 'papi-shared-types' {
       description: string | undefined,
       analysisLanguages: string[],
       targetProjectId?: string,
-    ) => Promise<string | undefined>;
-
-    /**
-     * Moves the glosses and free translations of a stored project from the tag `from` to the tag
-     * `to`. A gloss or free translation that already has different text under `to` stays under
-     * `from`. Nothing records the move to undo.
-     *
-     * @param interlinearProjectId - UUID of the interlinearizer project whose text moves.
-     * @param from - BCP 47 tag the text moves from.
-     * @param to - BCP 47 tag the text moves to.
-     * @returns The JSON-stringified `GlossRetagCounts`, or `undefined` if no project with that ID
-     *   exists.
-     * @throws If `from` and `to` are the same tag, the project is a Paratext 9 import, or storage
-     *   fails. The error is logged and an error notification is sent before rethrowing.
-     */
-    'interlinearizer.retagProjectGlosses': (
-      interlinearProjectId: string,
-      from: string,
-      to: string,
-    ) => Promise<string | undefined>;
-
-    /**
-     * Counts a stored project's glosses and free translations in each of `tags`. Only the counts
-     * cross PAPI, never the project's analysis.
-     *
-     * @param interlinearProjectId - UUID of the interlinearizer project to count in.
-     * @param tags - BCP 47 tags to count the text of.
-     * @returns The JSON-stringified `{ glosses, freeTranslations }` counts keyed by tag, every tag
-     *   in `tags` included, or `undefined` if no project with that ID exists.
-     * @throws If the project can't be read. The error is logged before rethrowing.
-     */
-    'interlinearizer.countProjectText': (
-      interlinearProjectId: string,
-      tags: string[],
     ) => Promise<string | undefined>;
 
     /**

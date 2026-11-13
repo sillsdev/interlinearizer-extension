@@ -8,7 +8,7 @@ type CatalogStepSummary = {
 };
 
 /** What an undo step made at no one place tells the reader it was, once undone or redone. */
-type StepSummary = Readonly<
+export type StepSummary = Readonly<
   | (CatalogStepSummary & { kind: 'catalogEdit' | 'catalogMerge' | 'catalogDeleteUnused' })
   | (CatalogStepSummary & {
       kind: 'catalogDelete';
@@ -34,13 +34,22 @@ type StepSummary = Readonly<
       kind: 'retagGlosses';
       /** The tag the glosses and free translations moved from. */
       from: string;
-      /** The tag they moved to, the new primary analysis language. */
+      /** The tag they moved to. */
       to: string;
       /** How many word glosses moved. */
       words: number;
       /** How many morpheme glosses moved. */
       morphemes: number;
       /** How many free translations moved. */
+      freeTranslations: number;
+    }
+  | {
+      kind: 'deleteLanguageText';
+      /** The tag removed from the analysis languages, whose text was deleted. */
+      tag: string;
+      /** How many glosses were deleted. */
+      glosses: number;
+      /** How many free translations were deleted. */
       freeTranslations: number;
     }
 >;

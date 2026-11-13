@@ -1,5 +1,7 @@
-import type { TextAnalysis } from 'interlinearizer';
-import { retagGlosses, type GlossRetagCounts } from '../../utils/retag-glosses';
+import type { PhraseAnalysis, SegmentAnalysis, TextAnalysis, TokenAnalysis } from 'interlinearizer';
+import { deleteLanguageText } from '../../utils/delete-language-text';
+import type { AnalysisLanguagesChangeOutcome } from '../../types/analysis-languages-change';
+import { retagGlosses } from '../../utils/retag-glosses';
 import type { ChangeBuffer } from './changeBuffer';
 import { mergeIntoIdenticalPhrase } from './phraseCommands';
 import { mergeIntoIdenticalPayload } from './tokenCommands';
@@ -9,43 +11,38 @@ export type ChangeAnalysisLanguagesRequest = {
   /** The draft's new analysis languages, primary first; never empty. */
   analysisLanguages: readonly string[];
   /**
-   * The tag whose glosses and free translations move to the new primary language, or `undefined` to
-   * move none. Never the new primary language itself.
+   * Glosses and free translations to move from one tag to another, or `undefined` to move none.
+   * `from` and `to` are never the same tag.
    */
-  retagFrom?: string;
+  retag?: Readonly<{ from: string; to: string }>;
+  /** The tag whose glosses and free translations are deleted, or `undefined` to delete none. */
+  deleteTextOf?: string;
   /** ISO 8601 time of the edit, stamped on the records it touches. */
   now: string;
 };
 
 /**
- * Stages in `buffer` the change giving the draft new analysis languages. With `retagFrom`, it also
- * moves the glosses and free translations under `retagFrom` in `stored`, the draft's analysis, to
- * the new primary language, mutating `stored`. One that already has different text in the new
- * primary language stays where it is. A token or phrase analysis the move makes identical to
- * another payload is folded into that payload.
- *
- * @returns What moved, or `undefined` when nothing was asked to move.
+ * Stages the analyses that a move or deletion changed. Any token or phrase analysis that the change
+ * made identical to another payload is then folded into that payload.
  */
-export async function changeAnalysisLanguages(
+async function stageTextChange(
   buffer: ChangeBuffer,
-  stored: TextAnalysis,
-  { analysisLanguages, retagFrom, now }: ChangeAnalysisLanguagesRequest,
-): Promise<GlossRetagCounts | undefined> {
-  const scope = await buffer.getScope();
-  buffer.putScope({ ...scope, analysisLanguages: [...analysisLanguages] });
-  if (retagFrom === undefined) return undefined;
-
-  const { counts, tokenAnalyses, phraseAnalyses, segmentAnalyses } = retagGlosses(
-    stored,
-    retagFrom,
-    analysisLanguages[0],
-    now,
-  );
+  {
+    tokenAnalyses,
+    phraseAnalyses,
+    segmentAnalyses,
+  }: {
+    tokenAnalyses: readonly TokenAnalysis[];
+    phraseAnalyses: readonly PhraseAnalysis[];
+    segmentAnalyses: readonly SegmentAnalysis[];
+  },
+  now: string,
+): Promise<void> {
   tokenAnalyses.forEach((analysis) => buffer.put('tokenAnalyses', analysis));
   phraseAnalyses.forEach((analysis) => buffer.put('phraseAnalyses', analysis));
   segmentAnalyses.forEach((analysis) => buffer.put('segmentAnalyses', analysis));
-  // Folded only once every gloss has moved, so that each analysis is compared as the move leaves
-  // it rather than against one not yet moved.
+  // Folded only once every analysis is staged, so that each is compared as the change leaves it
+  // rather than against one not yet changed.
   const foldToken = async (analysisId: string) => {
     const [analysis] = await buffer.getTokenAnalyses([analysisId]);
     if (analysis) await mergeIntoIdenticalPayload(buffer, analysis, now);
@@ -62,5 +59,36 @@ export async function changeAnalysisLanguages(
     (previous, { id }) => previous.then(() => foldPhrase(id)),
     Promise.resolve(),
   );
-  return counts;
+}
+
+/**
+ * Stages in `buffer` the change giving the draft new analysis languages, mutating `stored`, the
+ * draft's analysis, for any text it moves or deletes:
+ *
+ * - With `deleteTextOf`, the glosses and free translations under that tag are deleted.
+ * - With `retag`, those under `retag.from` move to `retag.to`. One that already has different text
+ *   under `retag.to` stays where it is.
+ *
+ * A token or phrase analysis the change makes identical to another payload is folded into it.
+ */
+export async function changeAnalysisLanguages(
+  buffer: ChangeBuffer,
+  stored: TextAnalysis,
+  { analysisLanguages, retag, deleteTextOf, now }: ChangeAnalysisLanguagesRequest,
+): Promise<AnalysisLanguagesChangeOutcome> {
+  const scope = await buffer.getScope();
+  buffer.putScope({ ...scope, analysisLanguages: [...analysisLanguages] });
+  const outcome: AnalysisLanguagesChangeOutcome = {};
+
+  if (deleteTextOf !== undefined) {
+    const { counts, ...changed } = deleteLanguageText(stored, deleteTextOf, now);
+    await stageTextChange(buffer, changed, now);
+    outcome.deletedText = counts;
+  }
+  if (retag !== undefined) {
+    const { counts, ...changed } = retagGlosses(stored, retag.from, retag.to, now);
+    await stageTextChange(buffer, changed, now);
+    outcome.glossRetag = counts;
+  }
+  return outcome;
 }

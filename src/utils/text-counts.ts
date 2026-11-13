@@ -11,21 +11,15 @@ export type LanguageTextCounts = {
 /** {@link LanguageTextCounts} for each of a set of language tags, keyed by tag. */
 export type TextCountsByTag = Record<string, LanguageTextCounts>;
 
-/** Whether `value` is a {@link TextCountsByTag}. */
-export function isTextCountsByTag(value: unknown): value is TextCountsByTag {
+/** Whether `value` is a {@link LanguageTextCounts}. */
+export function isLanguageTextCounts(value: unknown): value is LanguageTextCounts {
   return (
     !!value &&
     typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.values(value).every(
-      (counts: unknown) =>
-        !!counts &&
-        typeof counts === 'object' &&
-        'glosses' in counts &&
-        typeof counts.glosses === 'number' &&
-        'freeTranslations' in counts &&
-        typeof counts.freeTranslations === 'number',
-    )
+    'glosses' in value &&
+    typeof value.glosses === 'number' &&
+    'freeTranslations' in value &&
+    typeof value.freeTranslations === 'number'
   );
 }
 
@@ -53,4 +47,24 @@ export function countTextByTag(analysis: TextAnalysis, tags: readonly string[]):
     tally(freeTranslation, 'freeTranslations'),
   );
   return counts;
+}
+
+/**
+ * Counts the glosses and free translations of `analysis` in every language tag that has any.
+ *
+ * @returns Counts for each tag with text that isn't blank; no other tags.
+ */
+export function countTextOfEveryTag(analysis: TextAnalysis): TextCountsByTag {
+  const tags = new Set<string>();
+  const collect = (text: MultiString | undefined) =>
+    Object.entries(text ?? {}).forEach(([tag, value]) => {
+      if (value.trim() !== '') tags.add(tag);
+    });
+  analysis.tokenAnalyses.forEach(({ gloss, morphemes }) => {
+    collect(gloss);
+    morphemes?.forEach((morpheme) => collect(morpheme.gloss));
+  });
+  analysis.phraseAnalyses.forEach(({ gloss }) => collect(gloss));
+  analysis.segmentAnalyses.forEach(({ freeTranslation }) => collect(freeTranslation));
+  return countTextByTag(analysis, [...tags]);
 }

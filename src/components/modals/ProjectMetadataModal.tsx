@@ -4,10 +4,10 @@ import { Button, Input, Label, Textarea } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
-import type { LanguageTextCounts, TextCountsByTag } from '../../utils/text-counts';
-import { parseLanguageTags } from '../../utils/language-tags';
+import type { AnalysisLanguagesChange } from '../../types/analysis-languages-change';
+import type { TextCountsByTag } from '../../utils/text-counts';
+import AnalysisLanguageChips from '../controls/AnalysisLanguageChips';
 import { ModalShell } from './ModalShell';
-import { RemoveLanguagesConfirm } from './RemoveLanguagesConfirm';
 
 /** Localized string keys requested for this modal's rendered text. */
 const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
@@ -17,7 +17,7 @@ const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_description_label%',
   '%interlinearizer_modal_metadata_description_placeholder%',
   '%interlinearizer_modal_metadata_analysis_language_label%',
-  '%interlinearizer_modal_metadata_language_placeholder%',
+  '%interlinearizer_modal_metadata_languages_openToEdit%',
   '%interlinearizer_modal_metadata_created_label%',
   '%interlinearizer_modal_metadata_modified_label%',
   '%interlinearizer_modal_metadata_save%',
@@ -37,12 +37,12 @@ type ProjectMetadataModalProps = Readonly<{
   sourceShortName: string;
   /** Optional Platform.Bible project ID of the target text for bilateral alignment projects. */
   targetProjectId?: string;
-  /** BCP 47 tags for the analysis languages, as shown and edited. */
+  /** BCP 47 tags for the analysis languages, as shown. */
   analysisLanguages: string[];
   /**
-   * The analysis languages Save keeps in the stored project, when the edited ones go elsewhere. The
-   * open project's languages belong to its draft, which writes them to the project when it is
-   * saved. Absent when Save writes the edited languages to the project.
+   * The analysis languages Save keeps in the stored project, when they differ from the ones shown.
+   * The open project's languages belong to its draft, which writes them to the project when it is
+   * saved. Absent when the shown languages are the stored ones.
    */
   storedAnalysisLanguages?: string[];
   /** ISO 8601 creation timestamp. */
@@ -57,26 +57,24 @@ type ProjectMetadataModalProps = Readonly<{
   pt9ImportedAt?: string;
   /** Whether the fields and Save are disabled for a reason outside the form. */
   isSaveBlocked?: boolean;
+  /** Glosses and free translations of every language code that has any, for the language actions. */
+  languageTextCounts?: TextCountsByTag;
   /**
-   * Counts the project's glosses and free translations in each of the given languages. When it is
-   * given, Save asks before removing a secondary analysis language that has either.
+   * Applies a change to the analysis languages at once, apart from Save. Absent when the languages
+   * can't change here, because the project isn't the one open.
    */
-  countText?: (tags: string[]) => Promise<TextCountsByTag>;
+  onChangeLanguages?: (change: AnalysisLanguagesChange) => Promise<void>;
   /** Callback invoked when the modal should be dismissed without saving. */
   onClose: () => void;
   /** Optional callback invoked with updated metadata after a successful save. */
-  onProjectSaved?: (updated: {
-    name?: string;
-    description?: string;
-    analysisLanguages: string[];
-    updatedAt?: string;
-  }) => void;
+  onProjectSaved?: (updated: { name?: string; description?: string; updatedAt?: string }) => void;
 }>;
 
 /**
- * Modal that displays and allows editing of the active interlinearizer project's metadata. Editable
- * fields are name, description, and analysis language. Read-only fields are the creation and
- * modification dates and, for an import, the last sync.
+ * Modal that displays and allows editing of the active interlinearizer project's metadata. Name and
+ * description are edited and saved together. The open project's analysis languages change one
+ * action at a time, apart from Save. Read-only fields are the creation and modification dates and,
+ * for an import, the last sync.
  */
 export function ProjectMetadataModal({
   interlinearProjectId,
@@ -90,7 +88,8 @@ export function ProjectMetadataModal({
   updatedAt,
   pt9ImportedAt,
   isSaveBlocked = false,
-  countText,
+  languageTextCounts,
+  onChangeLanguages,
   onClose,
   onProjectSaved,
 }: ProjectMetadataModalProps) {
@@ -100,13 +99,8 @@ export function ProjectMetadataModal({
 
   const [editName, setEditName] = useState(name ?? '');
   const [editDescription, setEditDescription] = useState(description ?? '');
-  const [editLanguages, setEditLanguages] = useState(analysisLanguages.join(', '));
   // Guards Save against double-submit; `isSubmitting` disables the controls while it runs.
   const { isSubmitting, runGuarded } = useSubmitGuard();
-  /** The removed languages that have analysis text, while Save waits for the user to confirm. */
-  const [removedTextCounts, setRemovedTextCounts] = useState<
-    [language: string, counts: LanguageTextCounts][] | undefined
-  >(undefined);
 
   const readOnly = pt9ImportedAt !== undefined;
 
@@ -118,20 +112,11 @@ export function ProjectMetadataModal({
   );
 
   /**
-   * Parsed analysis-language tags from the comma-separated field. Parsed once per edit, so every
-   * decision that depends on the tags sees the same list.
-   */
-  const parsedLanguages = useMemo(() => parseLanguageTags(editLanguages), [editLanguages]);
-
-  /**
    * Sends the updated name and description to the backend, with the analysis languages the stored
    * project keeps, then hands the edited fields to the caller and closes the modal. Logs on
    * failure; the backend command handler is responsible for showing the error notification so this
-   * handler does not re-send it.
-   *
-   * The analysis-languages input is interpreted as a comma-separated list of BCP 47 tags; entries
-   * are trimmed and empty entries dropped. Save is disabled when the name is blank or the parsed
-   * list is empty, since neither may be cleared.
+   * handler does not re-send it. Save is disabled when the name is blank, because a name may not be
+   * cleared.
    */
   const saveMetadata = useCallback(async () => {
     const newName = editName.trim();
@@ -142,7 +127,7 @@ export function ProjectMetadataModal({
         interlinearProjectId,
         newName,
         newDescription,
-        storedAnalysisLanguages ?? parsedLanguages,
+        storedAnalysisLanguages ?? analysisLanguages,
         targetProjectId,
       );
       if (!updatedProjectJson) return;
@@ -157,7 +142,6 @@ export function ProjectMetadataModal({
       onProjectSaved?.({
         name: newName,
         description: newDescription,
-        analysisLanguages: parsedLanguages,
         ...(refreshedUpdatedAt !== undefined && { updatedAt: refreshedUpdatedAt }),
       });
       onClose();
@@ -167,7 +151,7 @@ export function ProjectMetadataModal({
   }, [
     editName,
     editDescription,
-    parsedLanguages,
+    analysisLanguages,
     storedAnalysisLanguages,
     interlinearProjectId,
     targetProjectId,
@@ -175,47 +159,7 @@ export function ProjectMetadataModal({
     onClose,
   ]);
 
-  /**
-   * Saves, unless the edit removes secondary analysis languages that have glosses or free
-   * translations. In that case it shows how many each has and waits for the user to confirm. A
-   * failed count is logged and does not hold up the save, because removing a language deletes none
-   * of its text.
-   */
-  const handleSave = useCallback(
-    () =>
-      runGuarded(async () => {
-        const removed = analysisLanguages
-          .slice(1)
-          .filter((language) => !parsedLanguages.includes(language));
-        if (countText && removed.length > 0) {
-          let counts: TextCountsByTag = {};
-          try {
-            counts = await countText(removed);
-          } catch (e) {
-            logger.warn('Interlinearizer: failed to count the text of removed languages', e);
-          }
-          const withText = removed
-            .map((language): [string, LanguageTextCounts] => [
-              language,
-              counts[language] ?? { glosses: 0, freeTranslations: 0 },
-            ])
-            .filter(([, { glosses, freeTranslations }]) => glosses + freeTranslations > 0);
-          if (withText.length > 0) {
-            setRemovedTextCounts(withText);
-            return;
-          }
-        }
-        await saveMetadata();
-      }),
-    [analysisLanguages, countText, parsedLanguages, runGuarded, saveMetadata],
-  );
-
-  const handleConfirmRemove = useCallback(() => {
-    setRemovedTextCounts(undefined);
-    runGuarded(saveMetadata);
-  }, [runGuarded, saveMetadata]);
-
-  const handleCancelRemove = useCallback(() => setRemovedTextCounts(undefined), []);
+  const handleSave = useCallback(() => runGuarded(saveMetadata), [runGuarded, saveMetadata]);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
@@ -239,11 +183,17 @@ export function ProjectMetadataModal({
             label={localizedStrings['%interlinearizer_modal_metadata_description_label%']}
             value={description ?? ''}
           />
-          <MetadataRow
-            label={localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
-            value={analysisLanguages.join(', ')}
-            mono
-          />
+          <div className="tw:flex tw:flex-col tw:gap-0.5">
+            <dt className="tw:section-label" id="metadata-languages-label">
+              {localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
+            </dt>
+            <dd>
+              <AnalysisLanguageChips
+                languages={analysisLanguages}
+                labelledBy="metadata-languages-label"
+              />
+            </dd>
+          </div>
         </dl>
       ) : (
         <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">
@@ -279,19 +229,21 @@ export function ProjectMetadataModal({
           </div>
 
           <div className="tw:flex tw:flex-col tw:gap-1">
-            <Label className="tw:section-label" htmlFor="metadata-edit-language">
+            <span className="tw:section-label" id="metadata-languages-label">
               {localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
-            </Label>
-            <Input
-              id="metadata-edit-language"
-              className="tw:modal-metadata-input tw:font-mono"
-              value={editLanguages}
-              placeholder={
-                localizedStrings['%interlinearizer_modal_metadata_language_placeholder%']
-              }
-              onChange={(e) => setEditLanguages(e.target.value)}
+            </span>
+            <AnalysisLanguageChips
+              languages={analysisLanguages}
+              labelledBy="metadata-languages-label"
+              textCounts={languageTextCounts}
+              onChange={onChangeLanguages}
               disabled={isSaveBlocked || isSubmitting}
             />
+            {!onChangeLanguages && (
+              <p className="tw:text-xs tw:text-muted-foreground">
+                {localizedStrings['%interlinearizer_modal_metadata_languages_openToEdit%']}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -321,25 +273,12 @@ export function ProjectMetadataModal({
         {!readOnly && (
           <Button
             onClick={handleSave}
-            disabled={
-              isSaveBlocked ||
-              isSubmitting ||
-              editName.trim() === '' ||
-              parsedLanguages.length === 0
-            }
+            disabled={isSaveBlocked || isSubmitting || editName.trim() === ''}
           >
             {localizedStrings['%interlinearizer_modal_metadata_save%']}
           </Button>
         )}
       </div>
-
-      {removedTextCounts && (
-        <RemoveLanguagesConfirm
-          textCounts={removedTextCounts}
-          onConfirm={handleConfirmRemove}
-          onCancel={handleCancelRemove}
-        />
-      )}
     </ModalShell>
   );
 }
@@ -349,23 +288,12 @@ export function ProjectMetadataModal({
  *
  * @param props.label - Localized field label shown as `<dt>`.
  * @param props.value - Value string shown as `<dd>`.
- * @param props.mono - When true, renders the value in a monospace font.
  */
-function MetadataRow({
-  label,
-  value,
-  mono,
-}: Readonly<{ label: string; value: string; mono?: boolean }>) {
+function MetadataRow({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="tw:flex tw:flex-col tw:gap-0.5">
       <dt className="tw:section-label">{label}</dt>
-      <dd
-        className={['tw:text-sm tw:break-words tw:text-foreground', mono ? 'tw:font-mono' : '']
-          .filter(Boolean)
-          .join(' ')}
-      >
-        {value}
-      </dd>
+      <dd className="tw:text-sm tw:break-words tw:text-foreground">{value}</dd>
     </div>
   );
 }

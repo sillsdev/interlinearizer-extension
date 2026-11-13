@@ -30,6 +30,7 @@ import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useConcordanceEntries from '../../hooks/useConcordanceEntries';
 import useSourceTextReader from '../../hooks/useSourceTextReader';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
+import type { AnalysisLanguagesChange } from '../../types/analysis-languages-change';
 import type { SegmentPages } from '../../types/segment-pages';
 import { DraftRepository } from '../../services/draftRepository';
 import { ANALYSIS_CHANGED_EVENT, fakeHost } from '../cache/fake-host';
@@ -483,7 +484,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     setModal: (m: string) => void;
     sourceShortName: string;
     activeProject: MockProject | undefined;
-    changeDraftAnalysisLanguages: (languages: string[], retagFrom?: string) => Promise<unknown>;
+    changeDraftAnalysisLanguages: (change: AnalysisLanguagesChange) => Promise<unknown>;
     defaultAnalysisLanguage?: string;
     hasUnsavedWork: boolean;
     getDraftSnapshot: () => DraftProject | undefined;
@@ -514,14 +515,19 @@ jest.mock('../../components/modals/ProjectModals', () => ({
         <button
           type="button"
           data-testid="change-draft-languages"
-          onClick={() => changeDraftAnalysisLanguages(['fr', 'en'])}
+          onClick={() => changeDraftAnalysisLanguages({ analysisLanguages: ['fr', 'en'] })}
         >
           Change languages
         </button>
         <button
           type="button"
           data-testid="retag-draft-languages"
-          onClick={() => changeDraftAnalysisLanguages(['fr', 'en'], 'en')}
+          onClick={() =>
+            changeDraftAnalysisLanguages({
+              analysisLanguages: ['fr'],
+              retag: { from: 'en', to: 'fr' },
+            })
+          }
         >
           Retag languages
         </button>
@@ -6116,7 +6122,7 @@ describe('analysis language switch', () => {
     expect(capturedStoreProps?.analysisLanguage).toBe('en');
   });
 
-  it('shows glosses moved to a new primary language in it', async () => {
+  it('shows glosses moved to another language in it', async () => {
     await mockDraftLanguages(['en', 'fr']);
     await act(async () =>
       renderLoader({

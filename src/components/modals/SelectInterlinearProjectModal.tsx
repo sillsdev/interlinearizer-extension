@@ -248,6 +248,7 @@ export function SelectInterlinearProjectModal({
           projectId={pendingDelete.project.id}
           projectName={pendingDelete.project.name}
           isPt9Import={pendingDelete.project.pt9Import !== undefined}
+          isActiveProject={pendingDelete.project.id === activeProjectId}
           onCancel={() => setPendingDelete(undefined)}
           onDeleted={handleDeleted}
           returnFocusTo={pendingDelete.actionsButton}

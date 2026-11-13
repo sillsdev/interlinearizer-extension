@@ -24,7 +24,8 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_metadata_lastSynced_label%': 'Last synced',
   '%interlinearizer_confirm_deleteProject_title%': 'Delete {name}?',
   '%interlinearizer_confirm_deleteProject_title_unnamed%': 'Delete unnamed project?',
-  '%interlinearizer_confirm_deleteProject_body%': 'Permanently delete this interlinear data?',
+  '%interlinearizer_confirm_deleteProject_body%':
+    'Permanently delete this saved interlinear project?',
   '%interlinearizer_confirm_deleteProject_pt9Unaffected%': 'No Paratext 9 data will be affected.',
   '%interlinearizer_confirm_deleteProject_ok%': 'Delete',
   '%interlinearizer_confirm_deleteProject_cancel%': 'Cancel',

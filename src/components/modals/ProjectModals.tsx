@@ -581,6 +581,7 @@ export default function ProjectModals({
           projectId={activeProject.id}
           projectName={activeProject.name}
           isPt9Import={activeProject.pt9Import !== undefined}
+          isActiveProject
           onCancel={() => setModal('none')}
           onDeleted={(deletedId) => {
             handleProjectDeleted(deletedId);

@@ -263,6 +263,8 @@ When it isn't worth handling, throw a clear error naming the unsupported case. A
 
 Jest with ts-jest, jsdom environment. PAPI is fully mocked in `__mocks__/`. Coverage is enforced at 100% on all `src/**` files (branches, functions, lines, statements), aside for select explicit exclusions.
 
+After adding or editing a Jest `describe` block or a TUnit test class, run the [test-audit skill](.claude/skills/test-audit/SKILL.md) on what you edited.
+
 `resetMocks: true` is set globally — mock implementations are cleared before every test, so each test must set up its own mocks (typically in `beforeEach`). Never rely on implementation state leaking from a prior test.
 
 Any `console.error` or `console.warn` call fails the test that is running when it lands, or the file when it lands after the last test ([jest.environment.ts](jest.environment.ts)). A log from a cleanup hook fails the test that the hook ran after. A log from loading a test file, or from its `afterAll`, fails the file. A test that expects a log silences it with `jest.spyOn(console, 'error').mockImplementation(...)`. A test that leaves async work running, such as a lookup that sets state once it resolves, waits for that work with `findBy*` or `waitFor`, or unmounts to abandon it.

@@ -1772,7 +1772,9 @@ function InterlinearizerLoaderInner({
   // What fills the view area: the session's provider, or the loading/error panel while the
   // session opens. The provider sits above the cross-book fade curtain (which lives inside the view
   // panel), so the side panel can read it without being dimmed by it.
-  // The session holds the draft or the import. Its client holds the loaded book's pages.
+  // The session holds the draft or the import. Its client holds the loaded book's pages. While the
+  // next book's pages load, the client holds the previous book's, so that the side panel stays
+  // mounted.
   const viewArea =
     session?.client === undefined ? (
       <BookFadeWrapper fadePhase={fadePhase}>{loadingOrErrorPanel}</BookFadeWrapper>

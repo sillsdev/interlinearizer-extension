@@ -7,7 +7,6 @@ import { TIERS, type TierSpec } from '../../../perf/dataset/tiers';
 import { provenance, writeResults } from '../../../perf/results';
 import { readCaptureMeta } from '../../../perf/usj-cache';
 import { addSavedProject, readDraft, writeDraft } from '../../../perf/storage';
-import { readCaptureMeta } from '../../../perf/usj-cache';
 import type { TextReadStatus } from '../../../src/types/text-read-status';
 import { expect, test } from '../../fixtures/cdp.fixture';
 import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';

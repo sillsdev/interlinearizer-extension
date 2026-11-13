@@ -98,6 +98,7 @@ describe('useConcordanceView', () => {
       expect.any(Error),
     );
   });
+
   it('offers a retry after a failed fetch that fetches the page again', async () => {
     const wrapper = await wrapperOver(readText([], [BOOK]));
     const { result } = renderHook(() => useConcordanceView('GEN', 1), { wrapper });

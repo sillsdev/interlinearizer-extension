@@ -28,10 +28,17 @@ jest.mock('../../components/StaleAnalysesReporter', () => ({
   __esModule: true,
   default: () => undefined,
 }));
+const mockCatalogMounted = jest.fn();
+
 jest.mock('../../components/AnalysisCatalogPanel', () => ({
   __esModule: true,
   ANALYSIS_CATALOG_PANEL_STRING_KEYS: [],
-  default: () => <div data-testid="analysis-catalog-panel" />,
+  default: function CatalogStub() {
+    // eslint-disable-next-line global-require -- jest.mock factories may not close over imports
+    const { useEffect } = require('react');
+    useEffect(() => mockCatalogMounted(), []);
+    return <div data-testid="analysis-catalog-panel" />;
+  },
 }));
 jest.mock('../../components/ContinuousView', () => ({
   __esModule: true,
@@ -405,6 +412,37 @@ describe('InterlinearizerLoader opening a Paratext 9 import', () => {
       'interlinearizer.getProject',
       expect.anything(),
     );
+  });
+});
+
+describe('InterlinearizerLoader changing book', () => {
+  it("keeps the side panel mounted while the next book's pages load", async () => {
+    await fakeHost();
+    jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+    const loader = () => (
+      <InterlinearizerLoader
+        projectId="src"
+        webViewId="web-view-1"
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState({ sidePanel: 'catalog' })}
+        updateWebViewDefinition={jest.fn(() => true)}
+      />
+    );
+    const { rerender } = render(loader());
+    await screen.findByTestId('earth');
+
+    jest.mocked(useInterlinearizerBookData).mockReturnValue({
+      book: undefined,
+      isLoading: true,
+      bookError: undefined,
+      writingSystem: 'und',
+      reload: jest.fn(),
+    });
+    rerender(loader());
+
+    expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
+    expect(screen.getByTestId('analysis-catalog-panel')).toBeInTheDocument();
+    expect(mockCatalogMounted).toHaveBeenCalledTimes(1);
   });
 });
 

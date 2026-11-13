@@ -27,6 +27,11 @@ export type UseSessionPagesResult = SegmentPagesLoad & {
    * book's first pages load.
    */
   client: PageClient | undefined;
+  /**
+   * The session's latest published client: `client` once the book's pages load, and the previous
+   * book's client until then. `undefined` until the session's first pages load.
+   */
+  heldClient: PageClient | undefined;
 };
 
 /** The segment list that `client` serves for `outline`, the `version`th outline published from it. */
@@ -62,6 +67,7 @@ export default function useSessionPages({
 }: Readonly<UseSessionPagesArgs>): UseSessionPagesResult {
   const [published, setPublished] = useState<{
     key: string;
+    sessionId: string;
     client: PageClient;
     pages: SegmentPages;
   }>();
@@ -99,7 +105,7 @@ export default function useSessionPages({
       if (!isCurrent || !outline || outline === shown) return;
       shown = outline;
       version += 1;
-      setPublished({ key, client, pages: segmentPagesOf(client, outline, version) });
+      setPublished({ key, sessionId, client, pages: segmentPagesOf(client, outline, version) });
     };
     const unsubscribe = client.subscribe(async () => {
       if (!ready || client.outline === shown) return;
@@ -148,5 +154,6 @@ export default function useSessionPages({
     isLoading: !client && !isFailed,
     error: isFailed ? failure.message : undefined,
     client,
+    heldClient: published?.sessionId === sessionId ? published?.client : undefined,
   };
 }

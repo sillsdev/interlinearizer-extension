@@ -31,7 +31,10 @@ export type SessionView = Readonly<{
   whole: WholeAnalysis;
   /** The loaded book's segment list, as the session segments and serves it. */
   pages: SegmentPagesLoad;
-  /** Holds the loaded book's pages and sends the session's edits; absent until the first pages load. */
+  /**
+   * Holds the loaded book's pages and sends the session's edits; absent until the first pages load.
+   * While the next book's pages load, it is still the previous book's client.
+   */
   client: PageClient | undefined;
   /** Whether any segment of the draft has a free translation, as of opening or the last discard. */
   hasFreeTranslations: boolean;

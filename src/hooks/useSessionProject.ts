@@ -188,7 +188,7 @@ export default function useSessionProject(
   );
   const { draft } = whole;
   const pages = useSessionPages({ sessionId, bookId, scrRef });
-  const { client } = pages;
+  const { client, heldClient } = pages;
 
   /** Fetches the whole draft again, logging a failure. */
   const refreshWhole = useCallback(() => {
@@ -226,7 +226,8 @@ export default function useSessionProject(
     },
     [whole, noteHistory],
   );
-  useEffect(() => client?.subscribeReplies(takeReply), [client, takeReply]);
+  // Held, so that a reply to an edit sent while the next book loads still reaches the whole draft.
+  useEffect(() => heldClient?.subscribeReplies(takeReply), [heldClient, takeReply]);
 
   /**
    * Sends an edit through the client so that its reply lands in the pages.
@@ -238,13 +239,13 @@ export default function useSessionProject(
       call: (args: SessionEditArgs) => Promise<string | undefined>,
     ): Promise<CommandReply | undefined> => {
       /* v8 ignore next -- edits come only from a view whose pages have loaded */
-      if (!client || sessionId === undefined) return undefined;
-      return client.send(async (changeId) => {
+      if (!heldClient || sessionId === undefined) return undefined;
+      return heldClient.send(async (changeId) => {
         const reply = await call({ sessionId, changeId });
         return reply === undefined ? undefined : JSON.parse(reply);
       });
     },
-    [client, sessionId],
+    [heldClient, sessionId],
   );
 
   /**
@@ -444,7 +445,7 @@ export default function useSessionProject(
       readOnly: opened.readOnly,
       whole,
       pages,
-      client,
+      client: heldClient,
       hasFreeTranslations,
       boundaries,
       setAnalysisLanguage,

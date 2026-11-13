@@ -274,6 +274,38 @@ describe('useSessionPages', () => {
     }
   });
 
+  it("holds the previous book's client while the next book's pages load", async () => {
+    const made = await sessionOver();
+    serve(made);
+    const { result, rerender } = renderHook(
+      ({ bookId }: BookProps) =>
+        useSessionPages({ sessionId: made.sessionId, bookId, scrRef: SCR_REF }),
+      { initialProps: GEN_PROPS },
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    const { client } = result.current;
+
+    rerender({ bookId: undefined });
+
+    expect(result.current.client).toBeUndefined();
+    expect(result.current.heldClient).toBe(client);
+  });
+
+  it('holds no client of another session', async () => {
+    const made = await sessionOver();
+    serve(made);
+    const { result, rerender } = renderHook(
+      ({ sessionId }: { sessionId: string }) =>
+        useSessionPages({ sessionId, bookId: 'GEN', scrRef: SCR_REF }),
+      { initialProps: { sessionId: made.sessionId } },
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    rerender({ sessionId: 'another-session' });
+
+    expect(result.current.heldClient).toBeUndefined();
+  });
+
   it('reports no failure of the pages of a book the view has moved off', async () => {
     jest.useFakeTimers();
     try {

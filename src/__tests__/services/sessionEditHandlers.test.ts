@@ -235,6 +235,45 @@ describe('sessionEditHandlers', () => {
     );
   });
 
+  it.each([
+    ['a move', { retag: { from: 'en', to: 'es' } }],
+    ['a deletion', { deleteTextOf: 'en' }],
+  ])('refuses %s of language text while a book cannot be read', async (_case, change) => {
+    const { edits, sessionId, sessions } = await handlersOver();
+    const { repository } = await sessions.run(sessionId, async (session) => session);
+    const read = repository.exportAll.bind(repository);
+    jest
+      .spyOn(repository, 'exportAll')
+      .mockImplementation(async () => ({ ...(await read()), unreadableBooks: ['GEN'] }));
+
+    await expect(
+      edits['interlinearizer.changeAnalysisLanguages']({
+        sessionId,
+        analysisLanguages: ['es'],
+        ...change,
+      }),
+    ).rejects.toThrow('while GEN cannot be read');
+    const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(draft.analysisLanguages).toStrictEqual(['en']);
+  });
+
+  it('changes the language list alone while a book cannot be read', async () => {
+    const { edits, sessionId, sessions } = await handlersOver();
+    const { repository } = await sessions.run(sessionId, async (session) => session);
+    const read = repository.exportAll.bind(repository);
+    jest
+      .spyOn(repository, 'exportAll')
+      .mockImplementation(async () => ({ ...(await read()), unreadableBooks: ['GEN'] }));
+
+    await edits['interlinearizer.changeAnalysisLanguages']({
+      sessionId,
+      analysisLanguages: ['es', 'en'],
+    });
+
+    const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(draft.analysisLanguages).toStrictEqual(['es', 'en']);
+  });
+
   it("counts the draft's text under each tag that has any", async () => {
     const { edits, sessionId } = await handlersOver();
 

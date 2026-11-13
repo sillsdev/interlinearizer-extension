@@ -144,9 +144,8 @@ describe('ProjectMetadataModal', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Make primary' }));
 
     expect(onChangeLanguages).toHaveBeenCalledWith({ analysisLanguages: ['fr', 'en'] });
-    expect(mockSendCommand).not.toHaveBeenCalledWith(
+    expect(mockSendCommand.mock.calls.map(([command]) => command)).not.toContain(
       'interlinearizer.updateProjectMetadata',
-      ...Array(5).fill(expect.anything()),
     );
   });
 
@@ -179,32 +178,8 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         'New Name',
         undefined,
-        ['en'],
         undefined,
       ),
-    );
-  });
-
-  it("keeps the stored languages in the project when the shown ones are the draft's", async () => {
-    const onProjectSaved = jest.fn();
-    render(
-      <ProjectMetadataModal
-        {...testProps}
-        storedAnalysisLanguages={['de']}
-        onProjectSaved={onProjectSaved}
-      />,
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
-
-    await waitFor(() => expect(onProjectSaved).toHaveBeenCalled());
-    expect(mockSendCommand).toHaveBeenCalledWith(
-      'interlinearizer.updateProjectMetadata',
-      'il-project-uuid',
-      expect.any(String),
-      undefined,
-      ['de'],
-      undefined,
     );
   });
 
@@ -219,7 +194,6 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         'Old Name',
         undefined,
-        ['en'],
         'target-project-id',
       ),
     );
@@ -295,7 +269,6 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         'Old Name',
         'New Desc',
-        ['en'],
         undefined,
       ),
     );
@@ -314,7 +287,6 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         'Old Name',
         undefined,
-        ['en'],
         undefined,
       ),
     );

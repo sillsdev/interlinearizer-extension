@@ -239,7 +239,6 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
   __esModule: true,
   ProjectMetadataModal: ({
     analysisLanguages,
-    storedAnalysisLanguages,
     isSaveBlocked,
     countLanguageText,
     onChangeLanguages,
@@ -247,7 +246,6 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
     onProjectSaved,
   }: {
     analysisLanguages: string[];
-    storedAnalysisLanguages?: string[];
     isSaveBlocked?: boolean;
     countLanguageText?: () => Promise<TextCountsByTag>;
     onChangeLanguages?: (change: AnalysisLanguagesChange) => Promise<void>;
@@ -257,7 +255,6 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
     <div
       data-testid="metadata-modal"
       data-languages={analysisLanguages.join(',')}
-      data-stored-languages={storedAnalysisLanguages?.join(',')}
       data-counts-text={countLanguageText !== undefined}
     >
       <button type="button" data-testid="metadata-close" onClick={onClose}>
@@ -1259,7 +1256,7 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
-    it("shows the open project's languages from its draft, keeping the stored ones in storage", () => {
+    it("shows the open project's languages from its draft", () => {
       render(
         <ProjectModals
           {...buildProps({
@@ -1272,7 +1269,6 @@ describe('ProjectModals', () => {
 
       const modal = screen.getByTestId('metadata-modal');
       expect(modal).toHaveAttribute('data-languages', 'fr,en');
-      expect(modal).toHaveAttribute('data-stored-languages', 'en');
     });
 
     it("shows an open import's own languages, which no draft holds", () => {
@@ -1288,7 +1284,6 @@ describe('ProjectModals', () => {
 
       const modal = screen.getByTestId('metadata-modal');
       expect(modal).toHaveAttribute('data-languages', 'en');
-      expect(modal).not.toHaveAttribute('data-stored-languages');
     });
 
     it('does not update the active project when the saved project is a different one', async () => {
@@ -1521,17 +1516,35 @@ describe('ProjectModals', () => {
         expect(announceUndoable).not.toHaveBeenCalled();
       });
 
-      it('logs a draft change that fails', async () => {
+      it('logs a draft change that fails and tells the user', async () => {
         const change = jest.fn().mockRejectedValue(new Error('refused'));
         renderActive(change);
 
         await userEvent.click(screen.getByTestId('metadata-change-languages'));
 
         await waitFor(() =>
-          expect(logger.error).toHaveBeenCalledWith(
-            "Interlinearizer: failed to change the draft's analysis languages",
-            expect.any(Error),
-          ),
+          expect(papi.notifications.send).toHaveBeenCalledWith({
+            message: '%interlinearizer_error_changeAnalysisLanguages%',
+            severity: 'error',
+          }),
+        );
+        expect(logger.error).toHaveBeenCalledWith(
+          "Interlinearizer: failed to change the draft's analysis languages",
+          expect.any(Error),
+        );
+      });
+
+      it('still logs a failed change when the notification fails', async () => {
+        jest.mocked(papi.notifications.send).mockRejectedValue(new Error('no bus'));
+        const change = jest.fn().mockRejectedValue(new Error('refused'));
+        renderActive(change);
+
+        await userEvent.click(screen.getByTestId('metadata-change-languages'));
+
+        await waitFor(() => expect(papi.notifications.send).toHaveBeenCalled());
+        expect(logger.error).toHaveBeenCalledWith(
+          "Interlinearizer: failed to change the draft's analysis languages",
+          expect.any(Error),
         );
       });
     });

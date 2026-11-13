@@ -256,7 +256,8 @@ export default function ProjectModals({
 
   /**
    * Applies a change to the draft's analysis languages from Project Info. When the change moved,
-   * skipped, or deleted any text, tells the reader, offering to undo it. A failure is logged.
+   * skipped, or deleted any text, tells the reader, offering to undo it. A failure is logged, and
+   * the reader is told.
    */
   const changeDraftLanguages = useCallback(
     async (change: AnalysisLanguagesChange) => {
@@ -278,6 +279,9 @@ export default function ProjectModals({
           );
       } catch (e) {
         logger.error("Interlinearizer: failed to change the draft's analysis languages", e);
+        await papi.notifications
+          .send({ message: '%interlinearizer_error_changeAnalysisLanguages%', severity: 'error' })
+          .catch(() => {});
       }
     },
     [announceUndoable, changeDraftAnalysisLanguages, localizedStrings],
@@ -669,9 +673,6 @@ export default function ProjectModals({
           description={resolvedMetadataProject.description}
           targetProjectId={resolvedMetadataProject.targetProjectId}
           analysisLanguages={metadataLanguages}
-          storedAnalysisLanguages={
-            metadataLanguagesInDraft ? resolvedMetadataProject.analysisLanguages : undefined
-          }
           createdAt={resolvedMetadataProject.createdAt}
           updatedAt={resolvedMetadataProject.updatedAt}
           pt9ImportedAt={resolvedMetadataProject.pt9Import?.importedAt}

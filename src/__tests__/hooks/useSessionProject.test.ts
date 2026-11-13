@@ -953,6 +953,29 @@ describe('useSessionProject edits sent to the session', () => {
   });
 
   it.each([
+    ['undoes', 'undo', ['en']],
+    ['redoes', 'redo', ['es']],
+  ] as const)(
+    "%s a language change before the book's pages load",
+    async (_case, move, languages) => {
+      await fakeHost();
+      const { result } = renderWithoutBook();
+      await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+      await act(async () => {
+        await result.current.changeAnalysisLanguages({ analysisLanguages: ['es'] });
+      });
+
+      await act(async () => {
+        await result.current.undo();
+        if (move === 'redo') await result.current.redo();
+      });
+
+      expect(result.current.session?.client).toBeUndefined();
+      await waitFor(() => expect(result.current.draft?.analysisLanguages).toStrictEqual(languages));
+    },
+  );
+
+  it.each([
     [
       'the counts',
       JSON.stringify({ fr: { glosses: 2, freeTranslations: 1 } }),
@@ -972,6 +995,18 @@ describe('useSessionProject edits sent to the session', () => {
     expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.countLanguageText', {
       sessionId: result.current.session?.sessionId,
     });
+  });
+
+  it("finds nothing to undo before the book's pages load when no edit was made", async () => {
+    await fakeHost();
+    const { result } = renderWithoutBook();
+    await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.undo();
+    });
+
+    expect(result.current.canUndo).toBe(false);
   });
 
   it('refuses to count language text while no session is open', async () => {

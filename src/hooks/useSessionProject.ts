@@ -234,22 +234,30 @@ export default function useSessionProject(
   useEffect(() => client?.subscribeReplies(takeReply), [client, takeReply]);
 
   /**
-   * Sends an edit through the client so that its reply lands in the pages.
+   * Sends an edit through the client so that its reply lands in the pages. Before the pages load,
+   * the edit goes straight to the session, and its reply updates only the whole draft.
    *
+   * @returns The reply, or `undefined` when no session is open or the edit applied nothing.
    * @throws If the pages' outline has not loaded yet, or whatever the edit's command throws.
    */
   const sendEditOrThrow = useCallback(
     async (
       call: (args: SessionEditArgs) => Promise<string | undefined>,
     ): Promise<CommandReply | undefined> => {
-      /* v8 ignore next -- edits come only from a view whose pages have loaded */
-      if (!client || sessionId === undefined) return undefined;
+      /* v8 ignore next -- edits come only from a view whose session has opened */
+      if (sessionId === undefined) return undefined;
+      if (!client) {
+        const json = await call({ sessionId, changeId: crypto.randomUUID() });
+        const reply: CommandReply | undefined = json === undefined ? undefined : JSON.parse(json);
+        if (reply) takeReply(reply);
+        return reply;
+      }
       return client.send(async (changeId) => {
         const reply = await call({ sessionId, changeId });
         return reply === undefined ? undefined : JSON.parse(reply);
       });
     },
-    [client, sessionId],
+    [client, sessionId, takeReply],
   );
 
   /**
@@ -426,18 +434,11 @@ export default function useSessionProject(
           ...(change.retag && { retag: { ...change.retag } }),
           ...(change.deleteTextOf !== undefined && { deleteTextOf: change.deleteTextOf }),
         });
-      let reply: CommandReply | undefined;
-      if (client) reply = await sendEditOrThrow(call);
-      else {
-        // Project Info can change languages before the book's pages load. The draft takes them even then.
-        if (sessionId === undefined)
-          throw new Error('Interlinearizer: no session is open to change its analysis languages');
-        reply = JSON.parse(await call({ sessionId }));
-        if (reply) takeReply(reply);
-      }
-      return analysisLanguagesChangeOutcomeOf(reply);
+      if (sessionId === undefined)
+        throw new Error('Interlinearizer: no session is open to change its analysis languages');
+      return analysisLanguagesChangeOutcomeOf(await sendEditOrThrow(call));
     },
-    [client, sessionId, sendEditOrThrow, takeReply],
+    [sessionId, sendEditOrThrow],
   );
   /**
    * Counts the draft's glosses and free translations under each language tag that has any.

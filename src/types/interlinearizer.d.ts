@@ -987,8 +987,9 @@ declare module 'papi-shared-types' {
      *   translations moved and how many were skipped) when `retag` was given, and `deletedText`
      *   (how many glosses and free translations were deleted) when `deleteTextOf` was.
      * @throws If the languages are empty, `retag` moves a tag to itself, both `retag` and
-     *   `deleteTextOf` are given, the session is read-only or not open, or the edit is refused or
-     *   fails (logged before rethrowing).
+     *   `deleteTextOf` are given, a move or deletion is asked while a book of the draft can't be
+     *   read, the session is read-only or not open, or the edit is refused or fails (logged before
+     *   rethrowing).
      */
     'interlinearizer.changeAnalysisLanguages': (
       args: import('interlinearizer').SessionEditArgs & {
@@ -1158,8 +1159,6 @@ declare module 'papi-shared-types' {
      * @param interlinearProjectId - UUID of the interlinearizer project to update.
      * @param name - New user-facing name; omit or pass `undefined` to clear.
      * @param description - New user-facing description; omit or pass `undefined` to clear.
-     * @param analysisLanguages - New BCP 47 analysis language tags. Must be a non-empty array; pass
-     *   the current value to leave it unchanged (the field is required and cannot be cleared).
      * @param targetProjectId - New target-project ID; omit or pass `undefined` to clear (removes
      *   the target-side text binding).
      * @returns The updated project as a JSON string, or `undefined` if no project with that ID
@@ -1171,7 +1170,6 @@ declare module 'papi-shared-types' {
       interlinearProjectId: string,
       name: string | undefined,
       description: string | undefined,
-      analysisLanguages: string[],
       targetProjectId?: string,
     ) => Promise<string | undefined>;
 

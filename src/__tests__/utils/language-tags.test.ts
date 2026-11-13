@@ -70,6 +70,14 @@ describe('readLanguageCode', () => {
     expect(readLanguageCode('en-us', ['en-us'])).toBe('en-us');
   });
 
+  it('reads a code whose canonical form matches a known tag as that tag', () => {
+    expect(readLanguageCode('he', ['iw'])).toBe('iw');
+  });
+
+  it('reads a new code past a known tag that is not well formed', () => {
+    expect(readLanguageCode('fr', ['en_US'])).toBe('fr');
+  });
+
   it('reads a known tag that is not well formed as that tag', () => {
     expect(readLanguageCode('EN_us', ['en_US'])).toBe('en_US');
   });

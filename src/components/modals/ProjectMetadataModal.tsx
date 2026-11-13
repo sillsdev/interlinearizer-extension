@@ -39,12 +39,6 @@ type ProjectMetadataModalProps = Readonly<{
   targetProjectId?: string;
   /** BCP 47 tags for the analysis languages, as shown. */
   analysisLanguages: string[];
-  /**
-   * The analysis languages Save keeps in the stored project, when the shown languages are the
-   * draft's. The open project's languages belong to its draft, which writes them to the project
-   * when it is saved. Absent when the shown languages are the stored ones.
-   */
-  storedAnalysisLanguages?: string[];
   /** ISO 8601 creation timestamp. */
   createdAt: string;
   /** ISO 8601 timestamp of the most recent modification. */
@@ -83,7 +77,6 @@ export function ProjectMetadataModal({
   sourceShortName,
   targetProjectId,
   analysisLanguages,
-  storedAnalysisLanguages,
   createdAt,
   updatedAt,
   pt9ImportedAt,
@@ -112,11 +105,10 @@ export function ProjectMetadataModal({
   );
 
   /**
-   * Sends the updated name and description to the backend, with the analysis languages the stored
-   * project keeps, then hands the edited fields to the caller and closes the modal. Logs on
-   * failure; the backend command handler is responsible for showing the error notification so this
-   * handler does not re-send it. Save is disabled when the name is blank, because a name may not be
-   * cleared.
+   * Sends the updated name and description to the backend, then hands the edited fields to the
+   * caller and closes the modal. Logs on failure; the backend command handler is responsible for
+   * showing the error notification so this handler does not re-send it. Save is disabled when the
+   * name is blank, because a name may not be cleared.
    */
   const saveMetadata = useCallback(async () => {
     const newName = editName.trim();
@@ -127,7 +119,6 @@ export function ProjectMetadataModal({
         interlinearProjectId,
         newName,
         newDescription,
-        storedAnalysisLanguages ?? analysisLanguages,
         targetProjectId,
       );
       if (!updatedProjectJson) return;
@@ -148,16 +139,7 @@ export function ProjectMetadataModal({
     } catch (e) {
       logger.error('Interlinearizer: failed to save project metadata', e);
     }
-  }, [
-    editName,
-    editDescription,
-    analysisLanguages,
-    storedAnalysisLanguages,
-    interlinearProjectId,
-    targetProjectId,
-    onProjectSaved,
-    onClose,
-  ]);
+  }, [editName, editDescription, interlinearProjectId, targetProjectId, onProjectSaved, onClose]);
 
   const handleSave = useCallback(() => runGuarded(saveMetadata), [runGuarded, saveMetadata]);
 

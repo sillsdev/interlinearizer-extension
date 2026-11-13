@@ -399,8 +399,6 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisLanguages - New BCP 47 analysis language tags. Required and must be non-empty;
- *   pass the current value to leave it unchanged.
  * @param targetProjectId - New target-project ID; omit to clear the target binding.
  * @returns The updated project as a JSON string, or `undefined` if no project with the given ID
  *   exists.
@@ -411,7 +409,6 @@ async function updateProjectMetadata(
   interlinearProjectId: string,
   name: string | undefined,
   description: string | undefined,
-  analysisLanguages: string[],
   targetProjectId?: string,
 ): Promise<string | undefined> {
   try {
@@ -420,7 +417,6 @@ async function updateProjectMetadata(
       interlinearProjectId,
       name,
       description,
-      analysisLanguages,
       targetProjectId,
     );
     return updated ? JSON.stringify(updated) : undefined;
@@ -2836,8 +2832,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     updateProjectMetadata,
     {
       method: {
-        summary:
-          'Update the name, description, and analysis language of an existing interlinearizer project',
+        summary: 'Update the name, description, and target of an existing interlinearizer project',
         params: [
           {
             name: 'interlinearProjectId',
@@ -2856,13 +2851,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             required: false,
             summary: 'New user-facing description; omit to clear',
             schema: { type: 'string' },
-          },
-          {
-            name: 'analysisLanguages',
-            required: true,
-            summary:
-              'New BCP 47 analysis language tags; must be non-empty (pass current value to leave unchanged)',
-            schema: { type: 'array', items: { type: 'string' } },
           },
           {
             name: 'targetProjectId',

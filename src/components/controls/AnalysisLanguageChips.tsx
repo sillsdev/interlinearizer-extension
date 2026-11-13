@@ -82,7 +82,10 @@ export default function AnalysisLanguageChips({
   const [counted, setCounted] = useState<TextCountsByTag | undefined>(countText ? undefined : {});
   const textCounts = counted ?? NO_COUNTS;
 
-  /** Counts the text again. A failed count asks nothing, because no action deletes text unasked. */
+  /**
+   * Counts the text again. After a failed count, no action asks first; that is safe because none
+   * deletes text unasked.
+   */
   const recount = useCallback(async () => {
     if (!countText) return;
     try {

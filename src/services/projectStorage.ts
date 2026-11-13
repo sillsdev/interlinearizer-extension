@@ -960,8 +960,6 @@ export async function saveDraftToProject(
  * @param id - The interlinearizer project UUID to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisLanguages - New BCP 47 analysis language tags. Required and must be non-empty;
- *   pass the current value to leave the field unchanged (it cannot be cleared).
  * @param targetProjectId - New target-project ID. `undefined` removes the target binding (the
  *   project becomes analysis-only); a string overwrites the existing value.
  * @returns The updated project record, or `undefined` if no project with the given ID exists or it
@@ -978,7 +976,6 @@ export async function updateProjectMetadata(
   id: string,
   name: string | undefined,
   description: string | undefined,
-  analysisLanguages: string[],
   targetProjectId?: string,
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
@@ -1000,7 +997,6 @@ export async function updateProjectMetadata(
     } else {
       updated.description = description;
     }
-    updated.analysisLanguages = analysisLanguages;
     if (targetProjectId === undefined) {
       delete updated.targetProjectId;
     } else {

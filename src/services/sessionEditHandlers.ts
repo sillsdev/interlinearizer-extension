@@ -895,8 +895,9 @@ export function sessionEditHandlers({
    * @returns A JSON string of the {@link CommandReply}, with `glossRetag` (what moved) when `retag`
    *   was given, and `deletedText` (what was deleted) when `deleteTextOf` was.
    * @throws If the languages are empty, `retag` moves a tag to itself, both `retag` and
-   *   `deleteTextOf` are given, the session is read-only or not open, or the edit is refused or
-   *   fails. The error is logged before rethrowing.
+   *   `deleteTextOf` are given, a move or deletion is asked while a book of the draft can't be
+   *   read, the session is read-only or not open, or the edit is refused or fails. The error is
+   *   logged before rethrowing.
    */
   async function changeAnalysisLanguages({
     sessionId,
@@ -918,7 +919,12 @@ export function sessionEditHandlers({
         sessionId,
         intent,
         async (buffer, session) => {
-          const { draft } = await session.repository.exportAll();
+          const { draft, unreadableBooks } = await session.repository.exportAll();
+          // A book that can't be read would keep its text under the old tag.
+          if ((retag || deleteTextOf !== undefined) && unreadableBooks.length > 0)
+            throw new Error(
+              `Interlinearizer: cannot move or delete language text while ${unreadableBooks.join(', ')} cannot be read`,
+            );
           const outcome = await languageCommands.changeAnalysisLanguages(buffer, draft.analysis, {
             analysisLanguages,
             retag,

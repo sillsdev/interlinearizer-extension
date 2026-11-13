@@ -4,7 +4,7 @@ import type { DraftEnvelope } from 'interlinearizer';
 import { DraftEnvelopeStore } from '../../cache/draftEnvelope';
 import type { ChangeSet } from '../../types/analysis-repository';
 import { emptyDraft } from '../../types/empty-factories';
-import { envelopeOf as draftEnvelopeOf } from '../../utils/draft-envelope';
+import { envelopeOf as draftEnvelopeOf } from '../../types/draft-envelope';
 
 /** The envelope of a draft for the source `src`, saved unless `dirty`. */
 function envelopeOf(dirty = false, analysisLanguages = ['en']): DraftEnvelope {

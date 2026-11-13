@@ -1,7 +1,7 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button, Input, Label } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { readLanguageCode } from '../../utils/language-tags';
 import type { TextCountsByTag } from '../../utils/text-counts';
 import {
@@ -77,8 +77,7 @@ export function LanguageCodePicker({
     });
   const canSubmit = tag !== undefined && error === undefined && tag !== changing;
 
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
+  const submit = () => {
     if (canSubmit) onSubmit(tag);
   };
 
@@ -97,7 +96,8 @@ export function LanguageCodePicker({
       onClose={onCancel}
       returnFocusTo={returnFocusTo}
     >
-      <form onSubmit={handleSubmit} className="tw:flex tw:flex-col tw:gap-3">
+      {/* No <form>: the WebView's sandbox blocks form submission before its submit event fires. */}
+      <div className="tw:flex tw:flex-col tw:gap-3">
         <div className="tw:flex tw:flex-col tw:gap-1">
           <Label className="tw:section-label" htmlFor="language-code-picker-input">
             {localizedStrings['%interlinearizer_languagePicker_codeLabel%']}
@@ -112,6 +112,9 @@ export function LanguageCodePicker({
             aria-invalid={error !== undefined}
             aria-describedby={error === undefined ? undefined : 'language-code-picker-error'}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submit();
+            }}
           />
           {error !== undefined && (
             <p id="language-code-picker-error" className="tw:text-xs tw:text-destructive">
@@ -153,13 +156,18 @@ export function LanguageCodePicker({
           <Button type="button" variant="secondary" onClick={onCancel}>
             {localizedStrings['%interlinearizer_languagePicker_cancel%']}
           </Button>
-          <Button type="submit" disabled={!canSubmit} data-testid="language-code-picker-submit">
+          <Button
+            type="button"
+            onClick={submit}
+            disabled={!canSubmit}
+            data-testid="language-code-picker-submit"
+          >
             {changing === undefined
               ? localizedStrings['%interlinearizer_languagePicker_add%']
               : localizedStrings['%interlinearizer_languagePicker_change%']}
           </Button>
         </div>
-      </form>
+      </div>
     </ModalShell>
   );
 }

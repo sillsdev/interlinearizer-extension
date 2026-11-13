@@ -187,6 +187,25 @@ describe('AnalysisLanguageChips', () => {
       ).not.toBeInTheDocument();
     });
 
+    it('adds the typed code on Enter', async () => {
+      const onChange = renderChips(['en']);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await userEvent.type(screen.getByLabelText('Language code'), 'tpi{Enter}');
+
+      expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en', 'tpi'] });
+    });
+
+    it('ignores Enter while the typed code is refused', async () => {
+      const onChange = renderChips(['en']);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await userEvent.type(screen.getByLabelText('Language code'), 'en{Enter}');
+
+      expect(onChange).not.toHaveBeenCalled();
+      expect(screen.getByRole('heading', { name: 'Add analysis language' })).toBeInTheDocument();
+    });
+
     it('refuses a code already listed', async () => {
       renderChips(['en', 'fr']);
 

@@ -238,9 +238,10 @@ declare module 'papi-shared-types' {
      *   the session's history marks the draft saved.
      * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
      * @param interlinearProjectId - UUID of the interlinearizer project to save into.
-     * @param config - The configuration to set on the project in the same write, so the project's
-     *   declared configuration matches the glosses it receives. An absent `targetProjectId` clears
-     *   the project's target binding. Omit `config` to leave the configuration unchanged.
+     * @param config - The target to set on the project in the same write. The project also takes
+     *   the analysis languages of the draft being copied, so its declared configuration matches the
+     *   glosses it receives. An absent `targetProjectId` clears the project's target binding. Omit
+     *   `config` to leave the configuration unchanged.
      * @returns The saved project's `InterlinearProjectSummary` (with its refreshed `updatedAt`) as
      *   a JSON string, or `undefined` if no project with the given ID exists. The WebView uses the
      *   refreshed `updatedAt` to keep the cached Modified time current after a Save.
@@ -253,7 +254,7 @@ declare module 'papi-shared-types' {
       sessionId: string,
       sourceProjectId: string,
       interlinearProjectId: string,
-      config?: import('interlinearizer').ProjectConfig,
+      config?: Pick<import('interlinearizer').ProjectConfig, 'targetProjectId'>,
     ) => Promise<string | undefined>;
 
     /**
@@ -1127,21 +1128,19 @@ declare module 'papi-shared-types' {
     ) => Promise<string | undefined>;
 
     /**
-     * Checks a stored project for glosses that `interlinearizer.retagProjectGlosses` would move.
-     * Only the answer crosses the bus, never the project's analysis.
+     * Counts a stored project's word, phrase, and morpheme glosses under each of `tags`. Only the
+     * counts cross PAPI, never the project's analysis.
      *
-     * @param interlinearProjectId - UUID of the interlinearizer project to check.
-     * @param from - BCP 47 tag the glosses would move from.
-     * @param to - BCP 47 tag the glosses would move to.
-     * @returns `true` if any gloss would move, `false` if none would, or `undefined` if no project
-     *   with that ID exists.
+     * @param interlinearProjectId - UUID of the interlinearizer project to count in.
+     * @param tags - BCP 47 tags to count the glosses of.
+     * @returns The JSON-stringified counts keyed by tag, every tag in `tags` included, or
+     *   `undefined` if no project with that ID exists.
      * @throws If the project can't be read. The error is logged before rethrowing.
      */
-    'interlinearizer.hasGlossesToRetag': (
+    'interlinearizer.countProjectGlosses': (
       interlinearProjectId: string,
-      from: string,
-      to: string,
-    ) => Promise<boolean | undefined>;
+      tags: string[],
+    ) => Promise<string | undefined>;
 
     /**
      * Imports the source project's Paratext 9 interlinear data, serving both first import and sync:

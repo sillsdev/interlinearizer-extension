@@ -61,16 +61,6 @@ function retagMultiString(
   return outcome;
 }
 
-/** Whether {@link retagGlosses} would move any gloss of `analysis` from `from` to `to`. */
-export function hasGlossesToRetag(analysis: TextAnalysis, from: string, to: string): boolean {
-  const moves = (value: MultiString | undefined) => retagOutcome(value, from, to) === 'moved';
-  return (
-    analysis.tokenAnalyses.some(
-      ({ gloss, morphemes }) => moves(gloss) || (morphemes ?? []).some((m) => moves(m.gloss)),
-    ) || analysis.phraseAnalyses.some(({ gloss }) => moves(gloss))
-  );
-}
-
 /**
  * Moves the glosses of `analysis` written under the tag `from` to the tag `to`, mutating the
  * analyses in place and stamping each one changed with `now`. A gloss whose word or morpheme

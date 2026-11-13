@@ -9,7 +9,9 @@ import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import type { DraftCopyResult, NewDraftConfig } from '../../types/project-api';
 import { isInterlinearProjectSummary, isSavedAsProject } from '../../types/type-guards';
-import { hasGlossesToRetag, isGlossRetagCounts } from '../../utils/retag-glosses';
+import { countGlossesByTag, isGlossCountsByTag } from '../../utils/gloss-counts';
+import type { GlossCountsByTag } from '../../utils/gloss-counts';
+import { isGlossRetagCounts } from '../../utils/retag-glosses';
 import type { GlossRetagCounts } from '../../utils/retag-glosses';
 import type { Settles } from '../../utils/settles';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
@@ -108,7 +110,8 @@ function retagMessage(
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
  *   initial value of the analysis language field; should be the platform UI language.
  * @param props.isDraftLoading - Whether the draft is still loading. Project Info can't save the
- *   active project until it has loaded, because the save changes the draft's languages too.
+ *   active project until it has loaded, because the save changes the draft's languages too. Its
+ *   fields are disabled meanwhile, because the form restarts when the draft's languages arrive.
  * @param props.hasUnsavedWork - Whether the draft has unsaved work — either committed-but-unsaved
  *   changes or uncommitted text still sitting in a gloss input (matching the tab's unsaved marker).
  *   When true, New / Open are gated behind the discard confirmation so neither kind of unsaved work
@@ -287,12 +290,20 @@ export default function ProjectModals({
   /**
    * Moves a project's glosses to its new primary language as the user chose, or leaves them, then
    * clears the question. The open draft's move is undoable; a stored project's is not, so it is
-   * only reported.
+   * only reported. A stored project's failed move keeps the question open, so the user can try
+   * again or keep the glosses where they are.
+   *
+   * A question about the open project lapses once another project's draft replaces that project's.
+   * The language change waits on the answer, and only the replaced draft could have taken it.
    */
   const answerRetag = useCallback(
     (retag: PendingRetag, move: boolean) =>
       runGuardedRetag(async () => {
         const { interlinearProjectId, active, analysisLanguages, from, to } = retag;
+        if (active && interlinearProjectId !== activeProject?.id) {
+          setPendingRetag(undefined);
+          return;
+        }
         if (active) await changeDraftLanguages(analysisLanguages, move ? from : undefined);
         else if (move) {
           try {
@@ -310,26 +321,27 @@ export default function ProjectModals({
               });
           } catch (e) {
             logger.error("Interlinearizer: failed to move a project's glosses", e);
+            return;
           }
         }
         setPendingRetag(undefined);
       }),
-    [runGuardedRetag, changeDraftLanguages, localizedStrings],
+    [runGuardedRetag, activeProject?.id, changeDraftLanguages, localizedStrings],
   );
 
   /**
-   * Asks whether to move the glosses of a project that isn't open, unless it has no gloss that
-   * would move. A project that can't be read is asked about anyway.
+   * Asks whether to move the glosses of a project that isn't open, unless it has no glosses in the
+   * old primary language. A project that can't be read is asked about anyway.
    */
   const offerStoredRetag = useCallback(async (retag: PendingRetag) => {
     try {
-      const hasGlosses = await papi.commands.sendCommand(
-        'interlinearizer.hasGlossesToRetag',
+      const countsJson = await papi.commands.sendCommand(
+        'interlinearizer.countProjectGlosses',
         retag.interlinearProjectId,
-        retag.from,
-        retag.to,
+        [retag.from],
       );
-      if (hasGlosses === false) return;
+      const counts: unknown = countsJson ? JSON.parse(countsJson) : undefined;
+      if (isGlossCountsByTag(counts) && counts[retag.from] === 0) return;
     } catch (e) {
       logger.warn(
         "Interlinearizer: couldn't read a project to see whether it has glosses to move",
@@ -352,7 +364,8 @@ export default function ProjectModals({
    *   once, as an undoable step. One still listed is moved only if the user says so.
    * - In a project not open, nothing can be undone, so the user is asked.
    *
-   * Neither happens when no gloss would move.
+   * Neither happens when the old primary language has no glosses. One still happens when each of
+   * its glosses already has a different one in the new language, though none would move.
    *
    * @param updated - The updated name, description, analysisLanguages, and refreshed `updatedAt`.
    */
@@ -387,7 +400,11 @@ export default function ProjectModals({
       /* v8 ignore next -- Save waits for the draft whenever the draft's languages are read */
       if (!draft) return;
       const [from] = draft.analysisLanguages;
-      if (from === undefined || from === to || !hasGlossesToRetag(draft.analysis, from, to)) {
+      if (
+        from === undefined ||
+        from === to ||
+        countGlossesByTag(draft.analysis, [from])[from] === 0
+      ) {
         if (draft.analysisLanguages.join(',') !== analysisLanguages.join(','))
           changeDraftLanguages(analysisLanguages);
       } else if (!analysisLanguages.includes(from)) changeDraftLanguages(analysisLanguages, from);
@@ -652,10 +669,7 @@ export default function ProjectModals({
     async (project: InterlinearProjectSummary) => {
       try {
         const saved = await commitDraft(async (snapshot, sessionId) => {
-          const config = {
-            analysisLanguages: snapshot.analysisLanguages,
-            targetProjectId: snapshot.targetProjectId,
-          };
+          const config = { targetProjectId: snapshot.targetProjectId };
           const savedJson = await papi.commands.sendCommand(
             'interlinearizer.saveDraftToProject',
             sessionId,
@@ -731,6 +745,24 @@ export default function ProjectModals({
     ? draftSnapshot.analysisLanguages
     : (resolvedMetadataProject?.analysisLanguages ?? []);
 
+  /**
+   * Counts the glosses of the project Project Info shows, reading the open project's from its
+   * draft.
+   */
+  const countMetadataGlosses = async (tags: string[]): Promise<GlossCountsByTag> => {
+    const draft = metadataLanguagesInDraft ? getDraftSnapshot() : undefined;
+    if (draft) return countGlossesByTag(draft.analysis, tags);
+    /* v8 ignore next -- the metadata modal is shown only for a resolved project */
+    if (!resolvedMetadataProject) return {};
+    const countsJson = await papi.commands.sendCommand(
+      'interlinearizer.countProjectGlosses',
+      resolvedMetadataProject.id,
+      tags,
+    );
+    const counts: unknown = countsJson ? JSON.parse(countsJson) : undefined;
+    return isGlossCountsByTag(counts) ? counts : {};
+  };
+
   return (
     <div>
       {modal === 'select' && (
@@ -788,6 +820,7 @@ export default function ProjectModals({
           updatedAt={resolvedMetadataProject.updatedAt}
           pt9ImportedAt={resolvedMetadataProject.pt9Import?.importedAt}
           isSaveBlocked={isDraftLoading && resolvedMetadataProject.id === activeProject?.id}
+          countGlosses={countMetadataGlosses}
           onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}
         />

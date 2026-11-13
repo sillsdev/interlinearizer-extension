@@ -4,8 +4,10 @@ import { Button, Input, Label, Textarea } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
+import type { GlossCountsByTag } from '../../utils/gloss-counts';
 import { parseLanguageTags } from '../../utils/language-tags';
 import { ModalShell } from './ModalShell';
+import { RemoveLanguagesConfirm } from './RemoveLanguagesConfirm';
 
 /** Localized string keys requested for this modal's rendered text. */
 const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
@@ -53,8 +55,13 @@ type ProjectMetadataModalProps = Readonly<{
    * as static text and there is no Save.
    */
   pt9ImportedAt?: string;
-  /** Whether Save is disabled for a reason outside the form. */
+  /** Whether the fields and Save are disabled for a reason outside the form. */
   isSaveBlocked?: boolean;
+  /**
+   * Counts the project's glosses in each of the given languages. When it is given, Save asks before
+   * removing a secondary analysis language that has glosses.
+   */
+  countGlosses?: (tags: string[]) => Promise<GlossCountsByTag>;
   /** Callback invoked when the modal should be dismissed without saving. */
   onClose: () => void;
   /** Optional callback invoked with updated metadata after a successful save. */
@@ -83,6 +90,7 @@ export function ProjectMetadataModal({
   updatedAt,
   pt9ImportedAt,
   isSaveBlocked = false,
+  countGlosses,
   onClose,
   onProjectSaved,
 }: ProjectMetadataModalProps) {
@@ -95,6 +103,10 @@ export function ProjectMetadataModal({
   const [editLanguages, setEditLanguages] = useState(analysisLanguages.join(', '));
   // Guards Save against double-submit; `isSubmitting` disables the controls while it runs.
   const { isSubmitting, runGuarded } = useSubmitGuard();
+  /** The removed languages that have glosses, while Save waits for the user to confirm. */
+  const [removedGlossCounts, setRemovedGlossCounts] = useState<
+    [language: string, count: number][] | undefined
+  >(undefined);
 
   const readOnly = pt9ImportedAt !== undefined;
 
@@ -112,60 +124,94 @@ export function ProjectMetadataModal({
   const parsedLanguages = useMemo(() => parseLanguageTags(editLanguages), [editLanguages]);
 
   /**
-   * Sends the updated name, description, and analysis languages to the backend, then notifies the
-   * caller and closes the modal. Logs on failure; the backend command handler is responsible for
-   * showing the error notification so this handler does not re-send it.
+   * Sends the updated name and description to the backend, with the analysis languages the stored
+   * project keeps, then hands the edited fields to the caller and closes the modal. Logs on
+   * failure; the backend command handler is responsible for showing the error notification so this
+   * handler does not re-send it.
    *
    * The analysis-languages input is interpreted as a comma-separated list of BCP 47 tags; entries
    * are trimmed and empty entries dropped. Save is disabled when the name is blank or the parsed
    * list is empty, since neither may be cleared.
    */
+  const saveMetadata = useCallback(async () => {
+    const newName = editName.trim();
+    const newDescription = editDescription.trim() || undefined;
+    try {
+      const updatedProjectJson = await papi.commands.sendCommand(
+        'interlinearizer.updateProjectMetadata',
+        interlinearProjectId,
+        newName,
+        newDescription,
+        storedAnalysisLanguages ?? parsedLanguages,
+        targetProjectId,
+      );
+      if (!updatedProjectJson) return;
+      // Parse the refreshed `updatedAt` out of the returned project so the caller's cached copy
+      // shows the new Modified time; omit it defensively if the payload is unexpectedly shaped.
+      const parsed: unknown = JSON.parse(updatedProjectJson);
+      const rawUpdatedAt =
+        parsed && typeof parsed === 'object' && 'updatedAt' in parsed
+          ? parsed.updatedAt
+          : undefined;
+      const refreshedUpdatedAt = typeof rawUpdatedAt === 'string' ? rawUpdatedAt : undefined;
+      onProjectSaved?.({
+        name: newName,
+        description: newDescription,
+        analysisLanguages: parsedLanguages,
+        ...(refreshedUpdatedAt !== undefined && { updatedAt: refreshedUpdatedAt }),
+      });
+      onClose();
+    } catch (e) {
+      logger.error('Interlinearizer: failed to save project metadata', e);
+    }
+  }, [
+    editName,
+    editDescription,
+    parsedLanguages,
+    storedAnalysisLanguages,
+    interlinearProjectId,
+    targetProjectId,
+    onProjectSaved,
+    onClose,
+  ]);
+
+  /**
+   * Saves, unless the edit removes secondary analysis languages that have glosses. In that case it
+   * shows how many glosses each has and waits for the user to confirm. A failed count is logged and
+   * does not hold up the save, because removing a language deletes none of its glosses.
+   */
   const handleSave = useCallback(
     () =>
       runGuarded(async () => {
-        const newName = editName.trim();
-        const newDescription = editDescription.trim() || undefined;
-        try {
-          const updatedProjectJson = await papi.commands.sendCommand(
-            'interlinearizer.updateProjectMetadata',
-            interlinearProjectId,
-            newName,
-            newDescription,
-            storedAnalysisLanguages ?? parsedLanguages,
-            targetProjectId,
-          );
-          if (!updatedProjectJson) return;
-          // Parse the refreshed `updatedAt` out of the returned project so the caller's cached copy
-          // shows the new Modified time; omit it defensively if the payload is unexpectedly shaped.
-          const parsed: unknown = JSON.parse(updatedProjectJson);
-          const rawUpdatedAt =
-            parsed && typeof parsed === 'object' && 'updatedAt' in parsed
-              ? parsed.updatedAt
-              : undefined;
-          const refreshedUpdatedAt = typeof rawUpdatedAt === 'string' ? rawUpdatedAt : undefined;
-          onProjectSaved?.({
-            name: newName,
-            description: newDescription,
-            analysisLanguages: parsedLanguages,
-            ...(refreshedUpdatedAt !== undefined && { updatedAt: refreshedUpdatedAt }),
-          });
-          onClose();
-        } catch (e) {
-          logger.error('Interlinearizer: failed to save project metadata', e);
+        const removed = analysisLanguages
+          .slice(1)
+          .filter((language) => !parsedLanguages.includes(language));
+        if (countGlosses && removed.length > 0) {
+          let counts: GlossCountsByTag = {};
+          try {
+            counts = await countGlosses(removed);
+          } catch (e) {
+            logger.warn('Interlinearizer: failed to count the glosses of removed languages', e);
+          }
+          const withGlosses = removed
+            .map((language): [string, number] => [language, counts[language] ?? 0])
+            .filter(([, count]) => count > 0);
+          if (withGlosses.length > 0) {
+            setRemovedGlossCounts(withGlosses);
+            return;
+          }
         }
+        await saveMetadata();
       }),
-    [
-      editName,
-      editDescription,
-      parsedLanguages,
-      storedAnalysisLanguages,
-      interlinearProjectId,
-      targetProjectId,
-      onProjectSaved,
-      onClose,
-      runGuarded,
-    ],
+    [analysisLanguages, countGlosses, parsedLanguages, runGuarded, saveMetadata],
   );
+
+  const handleConfirmRemove = useCallback(() => {
+    setRemovedGlossCounts(undefined);
+    runGuarded(saveMetadata);
+  }, [runGuarded, saveMetadata]);
+
+  const handleCancelRemove = useCallback(() => setRemovedGlossCounts(undefined), []);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
@@ -207,6 +253,7 @@ export function ProjectMetadataModal({
               value={editName}
               placeholder={localizedStrings['%interlinearizer_modal_metadata_name_placeholder%']}
               onChange={(e) => setEditName(e.target.value)}
+              disabled={isSaveBlocked}
             />
           </div>
 
@@ -223,6 +270,7 @@ export function ProjectMetadataModal({
                 localizedStrings['%interlinearizer_modal_metadata_description_placeholder%']
               }
               onChange={(e) => setEditDescription(e.target.value)}
+              disabled={isSaveBlocked}
             />
           </div>
 
@@ -238,6 +286,7 @@ export function ProjectMetadataModal({
                 localizedStrings['%interlinearizer_modal_metadata_language_placeholder%']
               }
               onChange={(e) => setEditLanguages(e.target.value)}
+              disabled={isSaveBlocked}
             />
           </div>
         </div>
@@ -279,6 +328,14 @@ export function ProjectMetadataModal({
           </Button>
         )}
       </div>
+
+      {removedGlossCounts && (
+        <RemoveLanguagesConfirm
+          glossCounts={removedGlossCounts}
+          onConfirm={handleConfirmRemove}
+          onCancel={handleCancelRemove}
+        />
+      )}
     </ModalShell>
   );
 }

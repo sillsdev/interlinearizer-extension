@@ -1623,15 +1623,15 @@ describe('projectStorage', () => {
         expect(storedProject(stored, 'proj-id')).not.toHaveProperty('segmentation');
       });
 
-      it('sets the analysis languages and target in the same write when config is given', async () => {
+      it("sets the draft's analysis languages and the target in the same write when config is given", async () => {
         const stored = backStorageWithMap();
         storeListedProject(stored, makeStubProject('proj-id'));
-        await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
-
-        await saveDraftToProject(token, 'src-proj', 'proj-id', {
+        await storeDraft(token, 'src-proj', {
+          ...makeDraftSpanningBooks('src-proj', 'GEN'),
           analysisLanguages: ['sw', 'fr'],
-          targetProjectId: 'tgt-9',
         });
+
+        await saveDraftToProject(token, 'src-proj', 'proj-id', { targetProjectId: 'tgt-9' });
 
         expect(
           __mockWriteUserData.mock.calls.filter(([, key]) => key === 'project:proj-id'),
@@ -1647,7 +1647,7 @@ describe('projectStorage', () => {
         storeListedProject(stored, { ...makeStubProject('proj-id'), targetProjectId: 'tgt-old' });
         await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
 
-        await saveDraftToProject(token, 'src-proj', 'proj-id', { analysisLanguages: ['en'] });
+        await saveDraftToProject(token, 'src-proj', 'proj-id', {});
 
         expect(storedProject(stored, 'proj-id')).not.toHaveProperty('targetProjectId');
       });

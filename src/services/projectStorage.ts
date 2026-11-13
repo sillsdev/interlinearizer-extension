@@ -942,7 +942,9 @@ export async function retagProjectGlosses(
  * Copies the source project's stored draft into an existing interlinearizer project: the draft's
  * analysis replaces the project's, and the draft's custom segment boundaries replace the project's,
  * cleared when the draft has none. Refreshes `updatedAt` to the current time. The project's name
- * and description are untouched; its configuration changes only when `config` is given.
+ * and description are untouched. Its configuration changes only when `config` is given: the project
+ * then takes the draft's analysis languages along with the given target, so they match the glosses
+ * it receives.
  *
  * The caller must first have written the draft it means to save; whatever the draft holds when its
  * queued read runs is what the project receives. The copy is refused while any book's stored draft
@@ -953,8 +955,7 @@ export async function retagProjectGlosses(
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID whose draft to copy.
  * @param id - The interlinearizer project UUID to save into.
- * @param config - The analysis languages and target to persist alongside, as in
- *   {@link updateAnalysis}.
+ * @param config - The target to persist alongside, a missing target clearing the binding.
  * @returns The saved project, or `undefined` if no project with the given ID exists or it is
  *   unlisted.
  * @throws {UnreadableBooksError} If any book's stored draft analysis cannot be read; nothing is
@@ -969,7 +970,7 @@ export async function saveDraftToProject(
   token: ExecutionToken,
   sourceProjectId: string,
   id: string,
-  config?: ProjectConfig,
+  config?: Pick<ProjectConfig, 'targetProjectId'>,
 ): Promise<InterlinearProject | undefined> {
   const { draft, unreadableBooks, writesBefore } = await readDraftForCopy(token, sourceProjectId);
   if (unreadableBooks.length > 0)
@@ -983,7 +984,10 @@ export async function saveDraftToProject(
     draft.analysis,
     // eslint-disable-next-line no-null/no-null -- null clears the project's stored boundaries
     draft.segmentation ?? null,
-    config,
+    config && {
+      analysisLanguages: draft.analysisLanguages,
+      targetProjectId: config.targetProjectId,
+    },
   );
   if (project) await markCopiedDraftClean(token, sourceProjectId, writesBefore);
   return project;

@@ -51,8 +51,8 @@ import { emptyAnalysis } from './types/empty-factories';
 import { CURRENT_MODEL_VERSION } from './types/model-version';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
+import { countGlossesByTag } from './utils/gloss-counts';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
-import { hasGlossesToRetag } from './utils/retag-glosses';
 import { bookSegmentationJson } from './utils/segmentation';
 
 // #region WebView provider
@@ -473,26 +473,24 @@ async function retagProjectGlosses(
 }
 
 /**
- * Checks a stored project for glosses that {@link retagProjectGlosses} would move. Only the answer
- * crosses the bus, never the project's analysis.
+ * Counts a stored project's word, phrase, and morpheme glosses under each of `tags`. Only the
+ * counts cross PAPI, never the project's analysis.
  *
- * @param interlinearProjectId - UUID of the interlinearizer project to check.
- * @param from - BCP 47 tag the glosses would move from.
- * @param to - BCP 47 tag the glosses would move to.
- * @returns `true` if any gloss would move, `false` if none would, or `undefined` if no project with
- *   the given ID exists.
+ * @param interlinearProjectId - UUID of the interlinearizer project to count in.
+ * @param tags - BCP 47 tags to count the glosses of.
+ * @returns The JSON-stringified `GlossCountsByTag`, or `undefined` if no project with the given ID
+ *   exists.
  * @throws If the project can't be read. The error is logged before rethrowing.
  */
-async function hasProjectGlossesToRetag(
+async function countProjectGlosses(
   interlinearProjectId: string,
-  from: string,
-  to: string,
-): Promise<boolean | undefined> {
+  tags: string[],
+): Promise<string | undefined> {
   try {
     const project = await projectStorage.getProject(executionToken, interlinearProjectId);
-    return project && hasGlossesToRetag(project.analysis, from, to);
+    return project && JSON.stringify(countGlossesByTag(project.analysis, tags));
   } catch (e) {
-    logger.error("Interlinearizer: failed to read a project's glosses to move", e);
+    logger.error("Interlinearizer: failed to count a project's glosses", e);
     throw e;
   }
 }
@@ -683,8 +681,8 @@ async function savingInSession<T>(
  *   session's history marks the draft saved.
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param interlinearProjectId - UUID of the interlinearizer project to save into.
- * @param config - The configuration to set on the project in the same write; omit to leave the
- *   project's configuration unchanged.
+ * @param config - The target to set on the project in the same write, along with the draft's
+ *   analysis languages; omit to leave the project's configuration unchanged.
  * @returns The saved project's `InterlinearProjectSummary` (carrying the refreshed `updatedAt`) as
  *   a JSON string, or `undefined` if no project with the given ID exists.
  * @throws If `sessionId` names no open session, if the draft cannot be read for some book, if the
@@ -695,7 +693,7 @@ async function saveDraftToProject(
   sessionId: string,
   sourceProjectId: string,
   interlinearProjectId: string,
-  config?: ProjectConfig,
+  config?: Pick<ProjectConfig, 'targetProjectId'>,
 ): Promise<string | undefined> {
   try {
     return await perfTimeAsync('saveDraftToProject', async () => {
@@ -1549,14 +1547,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             name: 'config',
             required: false,
             summary:
-              "The project's analysis languages and target to set in the same write, a missing target clearing the binding; omit to leave its configuration unchanged",
+              "The project's target to set in the same write, along with the draft's analysis languages, a missing target clearing the binding; omit to leave its configuration unchanged",
             schema: {
               type: 'object',
               properties: {
-                analysisLanguages: { type: 'array', items: { type: 'string' } },
                 targetProjectId: { type: 'string' },
               },
-              required: ['analysisLanguages'],
             },
           },
         ],
@@ -2783,12 +2779,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const hasGlossesToRetagCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.hasGlossesToRetag',
-    hasProjectGlossesToRetag,
+  const countProjectGlossesCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.countProjectGlosses',
+    countProjectGlosses,
     {
       method: {
-        summary: "Check whether moving a stored project's glosses to another tag would move any",
+        summary: "Count a stored project's word, phrase, and morpheme glosses in each language tag",
         params: [
           {
             name: 'interlinearProjectId',
@@ -2797,22 +2793,16 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           {
-            name: 'from',
+            name: 'tags',
             required: true,
-            summary: 'BCP 47 tag the glosses would move from',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'to',
-            required: true,
-            summary: 'BCP 47 tag the glosses would move to',
-            schema: { type: 'string' },
+            summary: 'BCP 47 tags to count the glosses of',
+            schema: { type: 'array', items: { type: 'string' } },
           },
         ],
         result: {
           name: 'return value',
-          summary: 'Whether any gloss would move, or undefined when no such project exists',
-          schema: { type: 'boolean' },
+          summary: 'JSON-stringified counts keyed by tag, or undefined when no such project exists',
+          schema: { type: 'string' },
         },
       },
     },
@@ -3168,7 +3158,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,
     retagProjectGlossesCommandRegistration,
-    hasGlossesToRetagCommandRegistration,
+    countProjectGlossesCommandRegistration,
     importPt9ProjectCommandRegistration,
     createEditableCopyCommandRegistration,
     deleteProjectCommandRegistration,

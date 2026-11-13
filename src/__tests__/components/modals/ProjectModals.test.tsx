@@ -59,6 +59,8 @@ const LOCALIZED: Record<string, string> = {
 
 /** The analysis languages the mocked metadata modal saves; a test may set its own. */
 let mockSavedLanguages = ['fr'];
+/** What the mocked metadata modal's count button last got from `countGlosses`. */
+let mockCounted: Promise<Record<string, number>> | undefined;
 
 /** Draft snapshot returned by the default `getDraftSnapshot`. */
 const MOCK_DRAFT: DraftProject = {
@@ -237,12 +239,14 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
     analysisLanguages,
     storedAnalysisLanguages,
     isSaveBlocked,
+    countGlosses,
     onClose,
     onProjectSaved,
   }: {
     analysisLanguages: string[];
     storedAnalysisLanguages?: string[];
     isSaveBlocked?: boolean;
+    countGlosses?: (tags: string[]) => Promise<Record<string, number>>;
     onClose: () => void;
     onProjectSaved?: (u: {
       name?: string;
@@ -258,6 +262,15 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
     >
       <button type="button" data-testid="metadata-close" onClick={onClose}>
         Close
+      </button>
+      <button
+        type="button"
+        data-testid="metadata-count"
+        onClick={() => {
+          mockCounted = countGlosses?.(['fr', 'de']);
+        }}
+      >
+        Count
       </button>
       <button
         type="button"
@@ -983,7 +996,7 @@ describe('ProjectModals', () => {
         SESSION_ID,
         'source-proj',
         'proj-1',
-        { analysisLanguages: ['en'], targetProjectId: undefined },
+        { targetProjectId: undefined },
       );
       expect(outcomes).toEqual([true]);
     });
@@ -1001,7 +1014,7 @@ describe('ProjectModals', () => {
           SESSION_ID,
           'source-proj',
           'proj-1',
-          { analysisLanguages: ['en'], targetProjectId: undefined },
+          { targetProjectId: undefined },
         ),
       );
     });
@@ -1021,7 +1034,7 @@ describe('ProjectModals', () => {
         SESSION_ID,
         'source-proj',
         'proj-1',
-        { analysisLanguages: ['en'], targetProjectId: undefined },
+        { targetProjectId: undefined },
       );
     });
 
@@ -1129,7 +1142,7 @@ describe('ProjectModals', () => {
       expect(setModal).not.toHaveBeenCalled();
     });
 
-    it('sends the draft config with the overwrite so the host sets it in the same write', async () => {
+    it("sends the draft's target with the overwrite so the host sets it in the same write", async () => {
       const draftWithConfig: DraftProject = {
         sourceProjectId: 'source-proj',
         modelVersion: CURRENT_MODEL_VERSION,
@@ -1146,15 +1159,15 @@ describe('ProjectModals', () => {
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
 
-      // One command carries the draft's analysis languages and alignment target; the project's
-      // own name and description are not sent, so the host keeps them.
+      // One command carries the draft's alignment target; the host takes the languages from the
+      // stored draft. The project's own name and description are not sent, so the host keeps them.
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveDraftToProject',
           SESSION_ID,
           'source-proj',
           'proj-1',
-          { analysisLanguages: ['sw', 'fr'], targetProjectId: 'tgt-9' },
+          { targetProjectId: 'tgt-9' },
         ),
       );
       expect(papi.commands.sendCommand).toHaveBeenCalledTimes(1);
@@ -1357,18 +1370,19 @@ describe('ProjectModals', () => {
       }
 
       /**
-       * Answers `hasGlossesToRetag` with `hasGlosses`, which by default reports glosses to move,
-       * and `retagProjectGlosses` with `retagged`. An error is thrown instead of answered.
+       * Answers `countProjectGlosses` with `glossCount` glosses in `fr`, by default one, and
+       * `retagProjectGlosses` with `retagged`. An error is thrown instead of answered.
        */
       function mockStoredProject({
-        hasGlosses = true,
+        glossCount = 1,
         retagged,
       }: {
-        hasGlosses?: boolean | Error;
+        glossCount?: number | Error;
         retagged?: string | Error;
       } = {}) {
-        const replies: Record<string, string | boolean | Error | undefined> = {
-          'interlinearizer.hasGlossesToRetag': hasGlosses,
+        const replies: Record<string, string | Error | undefined> = {
+          'interlinearizer.countProjectGlosses':
+            glossCount instanceof Error ? glossCount : JSON.stringify({ fr: glossCount }),
           'interlinearizer.retagProjectGlosses': retagged,
         };
         jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call: unknown[]) => {
@@ -1498,6 +1512,34 @@ describe('ProjectModals', () => {
         await waitFor(() => expect(screen.queryByTestId('retag-glosses-modal-title')).toBeNull());
       });
 
+      it('drops the question about the open project once another project replaces its draft', async () => {
+        mockSavedLanguages = ['fr', 'en'];
+        const change = jest.fn().mockResolvedValue(MOVED);
+        const props = {
+          activeProject: MOCK_PROJECT,
+          changeDraftAnalysisLanguages: change,
+          getDraftSnapshot: () => ({ ...MOCK_DRAFT, analysis: glossedIn('en') }),
+        };
+        const { rerender } = render(
+          <ProjectModals {...buildProps({ ...props, modal: 'metadata' })} />,
+        );
+        await userEvent.click(screen.getByTestId('metadata-save'));
+        rerender(
+          <ProjectModals
+            {...buildProps({
+              ...props,
+              modal: 'none',
+              activeProject: { ...MOCK_PROJECT, id: 'proj-9' },
+            })}
+          />,
+        );
+
+        await userEvent.click(screen.getByTestId('retag-glosses-confirm'));
+
+        await waitFor(() => expect(screen.queryByTestId('retag-glosses-modal-title')).toBeNull());
+        expect(change).not.toHaveBeenCalled();
+      });
+
       it('changes only the draft languages when the user keeps the old glosses', async () => {
         mockSavedLanguages = ['fr', 'en'];
         const change = jest.fn().mockResolvedValue(undefined);
@@ -1570,17 +1612,16 @@ describe('ProjectModals', () => {
 
       it("doesn't ask about a project that isn't open when it has no gloss to move", async () => {
         mockSavedLanguages = ['es'];
-        mockStoredProject({ hasGlosses: false });
+        mockStoredProject({ glossCount: 0 });
         await renderOther();
 
         await userEvent.click(screen.getByTestId('metadata-save'));
 
         await waitFor(() =>
           expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-            'interlinearizer.hasGlossesToRetag',
+            'interlinearizer.countProjectGlosses',
             'proj-2',
-            'fr',
-            'es',
+            ['fr'],
           ),
         );
         expect(screen.queryByTestId('retag-glosses-modal-title')).toBeNull();
@@ -1588,7 +1629,7 @@ describe('ProjectModals', () => {
 
       it("asks about a project that isn't open when it can't be read", async () => {
         mockSavedLanguages = ['es'];
-        mockStoredProject({ hasGlosses: new Error('unreadable') });
+        mockStoredProject({ glossCount: new Error('unreadable') });
         await renderOther();
 
         await userEvent.click(screen.getByTestId('metadata-save'));
@@ -1641,7 +1682,7 @@ describe('ProjectModals', () => {
         expect(papi.notifications.send).not.toHaveBeenCalled();
       });
 
-      it("logs a project's move that fails", async () => {
+      it("logs a project's move that fails and keeps asking", async () => {
         mockSavedLanguages = ['es'];
         mockStoredProject({ retagged: new Error('disk full') });
         await renderOther();
@@ -1656,6 +1697,47 @@ describe('ProjectModals', () => {
           ),
         );
         expect(papi.notifications.send).not.toHaveBeenCalled();
+        await userEvent.click(await screen.findByRole('button', { name: 'Keep in fr' }));
+        await waitFor(() => expect(screen.queryByTestId('retag-glosses-modal-title')).toBeNull());
+      });
+
+      it("counts the glosses of a project that isn't open on the host", async () => {
+        jest.mocked(papi.commands.sendCommand).mockResolvedValue(JSON.stringify({ fr: 2, de: 0 }));
+        await renderOther();
+
+        await userEvent.click(screen.getByTestId('metadata-count'));
+
+        expect(await mockCounted).toStrictEqual({ fr: 2, de: 0 });
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.countProjectGlosses',
+          'proj-2',
+          ['fr', 'de'],
+        );
+      });
+
+      it.each([
+        ['the project is gone', undefined],
+        ['the reply is malformed', JSON.stringify(['fr'])],
+      ])("counts no glosses for a project that isn't open when %s", async (_case, reply) => {
+        jest.mocked(papi.commands.sendCommand).mockResolvedValue(reply);
+        await renderOther();
+
+        await userEvent.click(screen.getByTestId('metadata-count'));
+
+        expect(await mockCounted).toStrictEqual({});
+      });
+
+      it("counts the open project's glosses in its draft", async () => {
+        renderActive(jest.fn(), jest.fn(), { ...MOCK_DRAFT, analysis: glossedIn('fr') });
+
+        await userEvent.click(screen.getByTestId('metadata-count'));
+
+        expect(await mockCounted).toStrictEqual({ fr: 1, de: 0 });
+        expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+          'interlinearizer.countProjectGlosses',
+          expect.anything(),
+          expect.anything(),
+        );
       });
     });
 

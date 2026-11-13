@@ -1340,11 +1340,8 @@ function InterlinearizerLoaderInner({
       return;
     }
     try {
-      await commitDraft(async (snapshot, sessionId) => {
-        const config = {
-          analysisLanguages: snapshot.analysisLanguages,
-          targetProjectId: activeProject.targetProjectId,
-        };
+      await commitDraft(async (_snapshot, sessionId) => {
+        const config = { targetProjectId: activeProject.targetProjectId };
         const args = [sessionId, projectId, activeProject.id, config] as const;
         const savedJson = await perfTrack(
           'save',
@@ -1361,17 +1358,12 @@ function InterlinearizerLoaderInner({
         }
         // The cached active project takes the saved languages and the response's refreshed
         // `updatedAt`, so the picker sort and the metadata modal stay current without a reload. A
-        // payload of unexpected shape leaves the cached Modified time as it was.
+        // payload of unexpected shape leaves the cached values as they were.
         const parsed: unknown = JSON.parse(savedJson);
-        const refreshedUpdatedAt =
-          parsed && typeof parsed === 'object' && 'updatedAt' in parsed
-            ? parsed.updatedAt
-            : undefined;
-        setActiveProject({
-          ...activeProject,
-          analysisLanguages: config.analysisLanguages,
-          ...(typeof refreshedUpdatedAt === 'string' && { updatedAt: refreshedUpdatedAt }),
-        });
+        if (isInterlinearProjectSummary(parsed)) {
+          const { analysisLanguages, updatedAt } = parsed;
+          setActiveProject({ ...activeProject, analysisLanguages, updatedAt });
+        }
         return true;
       });
     } catch (e) {

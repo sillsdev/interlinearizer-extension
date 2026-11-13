@@ -507,6 +507,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
         data-has-unsaved-work={hasUnsavedWork}
         data-active-project-name={activeProject?.name}
         data-active-project-updated={activeProject?.updatedAt}
+        data-active-project-languages={activeProject?.analysisLanguages.join(',')}
         data-open-request-id={openRequest?.requestId}
         data-open-request-name={openRequest?.project.name}
       >
@@ -3238,7 +3239,7 @@ describe('InterlinearizerLoader', () => {
         expect.any(String),
         testProjectId,
         'proj-1',
-        expect.objectContaining({ analysisLanguages: expect.any(Array) }),
+        expect.any(Object),
       );
       await waitFor(() =>
         expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({
@@ -3934,7 +3935,7 @@ describe('InterlinearizerLoader', () => {
       mountStoreProbe = false;
     });
 
-    it("has the host save the stored draft to the active project, sending the draft's languages but no analysis", async () => {
+    it('has the host save the stored draft to the active project, sending no analysis or languages', async () => {
       const draftAnalysis = emptyAnalysis();
       draftAnalysis.tokenAnalyses.push({
         ...FIXTURE_STAMPS,
@@ -3955,8 +3956,8 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
       // Nothing was pending, so the stored draft is already current: Save's first command is the
-      // host copy, carrying ids and the draft's languages. The host marks the stored draft clean
-      // itself, so no draft write follows.
+      // host copy, carrying ids and the target. The host takes the languages from the stored
+      // draft and marks it clean itself, so no draft write follows.
       expect(
         mockSendCommand.mock.calls.filter(
           ([command]) => command !== 'interlinearizer.getFullAnalysis',
@@ -3967,17 +3968,22 @@ describe('InterlinearizerLoader', () => {
           expect.any(String),
           testProjectId,
           'proj-1',
-          { analysisLanguages: ['fr'] },
+          { targetProjectId: undefined },
         ],
       ]);
     });
 
-    it('refreshes the cached activeProject updatedAt from the saveDraftToProject response', async () => {
-      // saveDraftToProject returns the persisted project's summary carrying the storage-refreshed updatedAt; every
-      // other command keeps its default (the empty-draft load) so the editor still mounts.
+    it('refreshes the cached activeProject languages and updatedAt from the saveDraftToProject response', async () => {
+      // saveDraftToProject returns the persisted project's summary carrying the draft's languages
+      // and the storage-refreshed updatedAt; every other command keeps its default (the
+      // empty-draft load) so the editor still mounts.
       otherCommands.mockImplementation(async (...args) =>
         args[0] === 'interlinearizer.saveDraftToProject'
-          ? JSON.stringify({ ...STUB_ACTIVE_PROJECT, updatedAt: '2026-02-02T00:00:00Z' })
+          ? JSON.stringify({
+              ...STUB_ACTIVE_PROJECT,
+              analysisLanguages: ['fr', 'en'],
+              updatedAt: '2026-02-02T00:00:00Z',
+            })
           : JSON.stringify(emptyDraft(testProjectId)),
       );
       await act(async () =>
@@ -4002,6 +4008,10 @@ describe('InterlinearizerLoader', () => {
         'data-active-project-updated',
         '2026-02-02T00:00:00Z',
       );
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-active-project-languages',
+        'fr,en',
+      );
     });
 
     it('leaves the cached activeProject untouched when the saveDraftToProject response is malformed', async () => {
@@ -4022,10 +4032,14 @@ describe('InterlinearizerLoader', () => {
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
-      // The previously cached Modified time is preserved rather than being cleared.
+      // The previously cached Modified time and languages are preserved rather than cleared.
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
         'data-active-project-updated',
         '2026-01-01T00:00:00Z',
+      );
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-active-project-languages',
+        seeded.analysisLanguages.join(','),
       );
     });
 

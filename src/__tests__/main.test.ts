@@ -207,10 +207,10 @@ const getRetagProjectGlossesHandler = () =>
     'interlinearizer.retagProjectGlosses',
   );
 
-/** Activates the extension and returns the `interlinearizer.hasGlossesToRetag` handler. */
-const getHasGlossesToRetagHandler = () =>
-  activateAndGetHandler<(id: string, from: string, to: string) => Promise<boolean | undefined>>(
-    'interlinearizer.hasGlossesToRetag',
+/** Activates the extension and returns the `interlinearizer.countProjectGlosses` handler. */
+const getCountProjectGlossesHandler = () =>
+  activateAndGetHandler<(id: string, tags: string[]) => Promise<string | undefined>>(
+    'interlinearizer.countProjectGlosses',
   );
 
 /** Activates the extension and returns the `interlinearizer.importPt9Project` handler. */
@@ -1890,47 +1890,42 @@ describe('main', () => {
     });
   });
 
-  describe('interlinearizer.hasGlossesToRetag command', () => {
+  describe('interlinearizer.countProjectGlosses command', () => {
     const mockGetProject = jest.mocked(projectStorage.getProject);
 
-    /** A stored project whose one word is glossed `fish` in `tag`. */
-    function glossedIn(tag: string) {
-      return {
+    it('returns the counts of each tag as JSON', async () => {
+      mockGetProject.mockResolvedValue({
         ...makeStubProject('proj-id'),
         analysis: {
           ...emptyAnalysis(),
           tokenAnalyses: [
-            { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { [tag]: 'fish' } },
+            { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { fr: 'poisson' } },
           ],
         },
-      };
-    }
+      });
+      const handler = await getCountProjectGlossesHandler();
 
-    it.each([
-      ['a gloss in the old tag', 'fr', true],
-      ['no gloss in the old tag', 'de', false],
-    ])('answers whether a project with %s has glosses to move', async (_case, tag, expected) => {
-      mockGetProject.mockResolvedValue(glossedIn(tag));
-      const handler = await getHasGlossesToRetagHandler();
-
-      expect(await handler('proj-id', 'fr', 'es')).toBe(expected);
+      expect(JSON.parse((await handler('proj-id', ['fr', 'de'])) ?? '')).toStrictEqual({
+        fr: 1,
+        de: 0,
+      });
       expect(mockGetProject).toHaveBeenCalledWith(expect.anything(), 'proj-id');
     });
 
     it('returns undefined when the project does not exist', async () => {
       mockGetProject.mockResolvedValue(undefined);
-      const handler = await getHasGlossesToRetagHandler();
+      const handler = await getCountProjectGlossesHandler();
 
-      expect(await handler('missing', 'fr', 'es')).toBeUndefined();
+      expect(await handler('missing', ['fr'])).toBeUndefined();
     });
 
     it('logs and rethrows a read failure', async () => {
       mockGetProject.mockRejectedValue(new Error('unreadable'));
-      const handler = await getHasGlossesToRetagHandler();
+      const handler = await getCountProjectGlossesHandler();
 
-      await expect(handler('proj-id', 'fr', 'es')).rejects.toThrow('unreadable');
+      await expect(handler('proj-id', ['fr'])).rejects.toThrow('unreadable');
       expect(__mockLogger.error).toHaveBeenCalledWith(
-        "Interlinearizer: failed to read a project's glosses to move",
+        "Interlinearizer: failed to count a project's glosses",
         expect.any(Error),
       );
     });

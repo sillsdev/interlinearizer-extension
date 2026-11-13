@@ -28,6 +28,12 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_confirm_deleteProject_pt9Unaffected%': 'No Paratext 9 data will be affected.',
   '%interlinearizer_confirm_deleteProject_ok%': 'Delete',
   '%interlinearizer_confirm_deleteProject_cancel%': 'Cancel',
+  '%interlinearizer_confirm_removeLanguages_title%': 'Remove languages that have glosses?',
+  '%interlinearizer_confirm_removeLanguages_body%': 'Removing these languages hides their glosses:',
+  '%interlinearizer_confirm_removeLanguages_count%': '{language}: {count} glosses',
+  '%interlinearizer_confirm_removeLanguages_kept%': 'The glosses stay in the project.',
+  '%interlinearizer_confirm_removeLanguages_ok%': 'Remove',
+  '%interlinearizer_confirm_removeLanguages_cancel%': 'Keep editing',
 };
 
 const testProps = {
@@ -330,10 +336,13 @@ describe('ProjectMetadataModal', () => {
     expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled();
   });
 
-  it('disables the Save button while saving is blocked', () => {
+  it('disables the fields and the Save button while saving is blocked', () => {
     render(<ProjectMetadataModal {...testProps} isSaveBlocked />);
 
     expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByLabelText(/^name$/i)).toBeDisabled();
+    expect(screen.getByLabelText(/^description$/i)).toBeDisabled();
+    expect(screen.getByLabelText(/analysis language/i)).toBeDisabled();
   });
 
   it('disables the Save button when the name field is empty', async () => {
@@ -366,6 +375,111 @@ describe('ProjectMetadataModal', () => {
   it('offers no Delete button', () => {
     render(<ProjectMetadataModal {...testProps} />);
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  });
+
+  describe('removing secondary analysis languages', () => {
+    /** Renders the modal for a project in `en, de, fr`, then saves it with only `en`. */
+    async function saveWithoutSecondaries(countGlosses?: jest.Mock) {
+      render(
+        <ProjectMetadataModal
+          {...testProps}
+          analysisLanguages={['en', 'de', 'fr']}
+          countGlosses={countGlosses}
+        />,
+      );
+      const langInput = screen.getByLabelText(/analysis language/i);
+      await userEvent.clear(langInput);
+      await userEvent.type(langInput, 'en');
+      await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    }
+
+    /** Whether Project Info sent its save. */
+    function saved() {
+      return mockSendCommand.mock.calls.some(
+        ([command]) => command === 'interlinearizer.updateProjectMetadata',
+      );
+    }
+
+    it('says how many glosses each removed language has before saving', async () => {
+      const countGlosses = jest.fn().mockResolvedValue({ de: 3, fr: 0 });
+      await saveWithoutSecondaries(countGlosses);
+
+      expect(await screen.findByTestId('remove-languages-counts')).toHaveTextContent(
+        'de: 3 glosses',
+      );
+      expect(screen.getByTestId('remove-languages-counts')).not.toHaveTextContent('fr');
+      expect(countGlosses).toHaveBeenCalledWith(['de', 'fr']);
+      expect(saved()).toBe(false);
+    });
+
+    it('saves once the user confirms the removal', async () => {
+      await saveWithoutSecondaries(jest.fn().mockResolvedValue({ de: 3 }));
+
+      await userEvent.click(await screen.findByTestId('remove-languages-confirm'));
+
+      await waitFor(() =>
+        expect(mockSendCommand).toHaveBeenCalledWith(
+          'interlinearizer.updateProjectMetadata',
+          'il-project-uuid',
+          'Old Name',
+          undefined,
+          ['en'],
+          undefined,
+        ),
+      );
+      expect(screen.queryByTestId('remove-languages-modal-title')).not.toBeInTheDocument();
+    });
+
+    it('goes back to the form without saving when the user cancels', async () => {
+      await saveWithoutSecondaries(jest.fn().mockResolvedValue({ de: 3 }));
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
+
+      expect(screen.queryByTestId('remove-languages-modal-title')).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/analysis language/i)).toHaveValue('en');
+      expect(saved()).toBe(false);
+    });
+
+    it('saves without asking when the removed languages have no glosses', async () => {
+      await saveWithoutSecondaries(jest.fn().mockResolvedValue({}));
+
+      await waitFor(() => expect(saved()).toBe(true));
+      expect(screen.queryByTestId('remove-languages-modal-title')).not.toBeInTheDocument();
+    });
+
+    it('logs a failed count and saves without asking', async () => {
+      await saveWithoutSecondaries(jest.fn().mockRejectedValue(new Error('unreadable')));
+
+      await waitFor(() => expect(saved()).toBe(true));
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: failed to count the glosses of removed languages',
+        expect.any(Error),
+      );
+    });
+
+    it('saves without asking when it has no way to count glosses', async () => {
+      await saveWithoutSecondaries();
+
+      await waitFor(() => expect(saved()).toBe(true));
+    });
+
+    it("doesn't count the glosses of a removed primary language", async () => {
+      const countGlosses = jest.fn().mockResolvedValue({ en: 5 });
+      render(
+        <ProjectMetadataModal
+          {...testProps}
+          analysisLanguages={['en', 'de']}
+          countGlosses={countGlosses}
+        />,
+      );
+      const langInput = screen.getByLabelText(/analysis language/i);
+      await userEvent.clear(langInput);
+      await userEvent.type(langInput, 'de');
+      await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+      await waitFor(() => expect(saved()).toBe(true));
+      expect(countGlosses).not.toHaveBeenCalled();
+    });
   });
 });
 

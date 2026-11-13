@@ -70,6 +70,10 @@ describe('readLanguageCode', () => {
     expect(readLanguageCode('en-us', ['en-us'])).toBe('en-us');
   });
 
+  it('reads a known tag that is not well formed as that tag', () => {
+    expect(readLanguageCode('EN_us', ['en_US'])).toBe('en_US');
+  });
+
   it.each(['', '   ', 'not a tag', 'en_US'])('reads %p as no code', (input) => {
     expect(readLanguageCode(input, [])).toBeUndefined();
   });

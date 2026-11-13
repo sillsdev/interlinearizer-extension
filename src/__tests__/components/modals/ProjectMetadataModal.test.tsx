@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import papi, { logger } from '@papi/frontend';
@@ -99,6 +99,34 @@ describe('ProjectMetadataModal', () => {
     expect(
       screen.getByText('Open this project to change its analysis languages.'),
     ).toBeInTheDocument();
+  });
+
+  it('holds Close and Save while a language change runs', async () => {
+    let finish: () => void = () => {};
+    const onChangeLanguages = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(
+      <ProjectMetadataModal
+        {...testProps}
+        analysisLanguages={['en', 'fr']}
+        onChangeLanguages={onChangeLanguages}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'fr options' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Make primary' }));
+
+    expect(screen.getByRole('button', { name: /^close$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+
+    await act(async () => finish());
+
+    expect(screen.getByRole('button', { name: /^close$/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled();
   });
 
   it('applies a language change at once, apart from Save', async () => {

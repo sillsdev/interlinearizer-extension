@@ -161,6 +161,14 @@ export function ProjectMetadataModal({
 
   const handleSave = useCallback(() => runGuarded(saveMetadata), [runGuarded, saveMetadata]);
 
+  // Guarded with Save, so the modal can't be dismissed or saved while a language change runs.
+  const handleChangeLanguages = useMemo(
+    () =>
+      onChangeLanguages &&
+      ((change: AnalysisLanguagesChange) => runGuarded(() => onChangeLanguages(change))),
+    [onChangeLanguages, runGuarded],
+  );
+
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
@@ -236,7 +244,7 @@ export function ProjectMetadataModal({
               languages={analysisLanguages}
               labelledBy="metadata-languages-label"
               textCounts={languageTextCounts}
-              onChange={onChangeLanguages}
+              onChange={handleChangeLanguages}
               disabled={isSaveBlocked || isSubmitting}
             />
             {!onChangeLanguages && (

@@ -226,6 +226,18 @@ describe('AnalysisLanguageChips', () => {
       expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en', 'de'] });
     });
 
+    it('adds back a hidden code that is not well formed', async () => {
+      const onChange = renderChips(['en'], { en_US: { glosses: 1, freeTranslations: 0 } });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await userEvent.click(
+        within(screen.getByRole('list', { name: 'Hidden text' })).getByRole('button'),
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Add code' }));
+
+      expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en', 'en_US'] });
+    });
+
     it('adds nothing when the user cancels', async () => {
       const onChange = renderChips(['en']);
 

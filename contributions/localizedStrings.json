@@ -45,7 +45,7 @@
       "%interlinearizer_retagGlosses_movedWords%": "Moved {words} word glosses to {to}.",
       "%interlinearizer_retagGlosses_movedMorphemes%": "Moved {morphemes} morpheme glosses to {to}.",
       "%interlinearizer_retagGlosses_movedFreeTranslations%": "Moved {freeTranslations} free translations to {to}.",
-      "%interlinearizer_retagGlosses_skipped%": "{skipped} glosses and free translations stayed in {from} because a different {to} one was already there.",
+      "%interlinearizer_retagGlosses_skipped%": "{skipped} glosses and free translations stayed in {from} because each already had different text in {to}.",
 
       "%interlinearizer_menu_column_view%": "View",
       "%interlinearizer_openAnalysisCatalog%": "Analysis catalog",

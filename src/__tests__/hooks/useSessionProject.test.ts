@@ -4,6 +4,8 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useEvent } from 'platform-bible-react';
 import useSessionProject from '../../hooks/useSessionProject';
+import type { ScopeRecord } from '../../types/analysis-repository';
+import { scopeRecordOf } from '../../utils/change-set';
 import { fakeHost, relayChange, replyProjectMissing, STORED_PROJECT } from '../cache/fake-host';
 import { glossing, ref } from '../cache/session-source';
 import { makeVerseBook, tokenRefOf } from '../test-helpers';
@@ -865,8 +867,21 @@ describe('useSessionProject edits sent to the session', () => {
     expect(fullReads()).toBe(reads);
   });
 
-  it("changes the draft's languages alone, reading the draft again for its unsaved mark", async () => {
-    const { result } = await renderAnswering();
+  it("changes the draft's languages from the reply alone, marking the draft unsaved", async () => {
+    let scope: ScopeRecord | undefined;
+    await fakeHost(async (command) => {
+      if (command === 'interlinearizer.getTextReadStatus') return undefined;
+      if (command !== 'interlinearizer.changeAnalysisLanguages') return EMPTY_REPLY;
+      return JSON.stringify({
+        ...JSON.parse(EMPTY_REPLY),
+        changes: { intent: 'changeAnalysisLanguages', scope },
+      });
+    });
+    const { result } = renderProject();
+    await waitFor(() => expect(result.current.session?.client).toBeDefined());
+    const { draft } = result.current;
+    if (!draft) throw new Error('the draft did not load');
+    scope = { ...scopeRecordOf(draft), analysisLanguages: ['es', 'en'] };
     const reads = fullReads();
     let outcome: unknown;
 
@@ -883,7 +898,8 @@ describe('useSessionProject edits sent to the session', () => {
       },
     );
     expect(outcome).toStrictEqual({});
-    expect(fullReads()).toBe(reads + 1);
+    expect(result.current.draft).toMatchObject({ analysisLanguages: ['es', 'en'], dirty: true });
+    expect(fullReads()).toBe(reads);
   });
 
   it.each([
@@ -934,6 +950,35 @@ describe('useSessionProject edits sent to the session', () => {
     expect(result.current.session?.client).toBeUndefined();
     await waitFor(() => expect(result.current.draft?.analysisLanguages).toStrictEqual(['es']));
     expect(result.current.canUndo).toBe(true);
+  });
+
+  it.each([
+    [
+      'the counts',
+      JSON.stringify({ fr: { glosses: 2, freeTranslations: 1 } }),
+      { fr: { glosses: 2, freeTranslations: 1 } },
+    ],
+    ['no counts for a malformed answer', JSON.stringify(['fr']), {}],
+  ])("hands back %s of the draft's language text", async (_case, answer, counts) => {
+    await fakeHost(async (command) => {
+      if (command === 'interlinearizer.getTextReadStatus') return undefined;
+      if (command === 'interlinearizer.countLanguageText') return answer;
+      return EMPTY_REPLY;
+    });
+    const { result } = renderProject();
+    await waitFor(() => expect(result.current.session?.sessionId).toBeDefined());
+
+    expect(await result.current.countLanguageText()).toStrictEqual(counts);
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.countLanguageText', {
+      sessionId: result.current.session?.sessionId,
+    });
+  });
+
+  it('refuses to count language text while no session is open', async () => {
+    jest.mocked(papi.commands.sendCommand).mockImplementation(() => new Promise(() => {}));
+    const { result } = renderWithoutBook();
+
+    await expect(result.current.countLanguageText()).rejects.toThrow('no session is open');
   });
 
   it('refuses to change languages while no session is open', async () => {

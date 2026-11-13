@@ -199,7 +199,42 @@ describe('changeAnalysisLanguages', () => {
       gloss: { en: 'fish' },
       updatedAt: NOW,
     });
-    expect(draft.analysis.segmentAnalyses[0].freeTranslation).toEqual({});
+    expect(draft.analysis.segmentAnalyses).toEqual([]);
+  });
+
+  it('removes a token analysis and its links once the deletion leaves it holding nothing', async () => {
+    const repository = await repositoryOver({
+      tokenAnalyses: [
+        { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { fr: 'poisson' } },
+      ],
+      tokenAnalysisLinks: [approved('tl-1', 'ta-1', 'GEN 1:1:0')],
+    });
+
+    const { draft } = await change(repository, { analysisLanguages: ['en'], deleteTextOf: 'fr' });
+
+    expect(draft.analysis.tokenAnalyses).toEqual([]);
+    expect(draft.analysis.tokenAnalysisLinks).toEqual([]);
+  });
+
+  it('folds payloads that differed only in the deleted language', async () => {
+    const repository = await repositoryOver({
+      tokenAnalyses: [
+        { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', pos: 'n', gloss: { fr: 'x' } },
+        { id: 'ta-2', ...FIXTURE_STAMPS, surfaceText: 'fish', pos: 'n' },
+      ],
+      tokenAnalysisLinks: [
+        approved('tl-1', 'ta-1', 'GEN 1:1:0'),
+        approved('tl-2', 'ta-2', 'GEN 1:2:0'),
+      ],
+    });
+
+    const { draft } = await change(repository, { analysisLanguages: ['en'], deleteTextOf: 'fr' });
+
+    expect(draft.analysis.tokenAnalyses.map(({ id }) => id)).toEqual(['ta-2']);
+    expect(draft.analysis.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toEqual([
+      'ta-2',
+      'ta-2',
+    ]);
   });
 
   it('folds an analysis the deletion makes identical to another into it', async () => {

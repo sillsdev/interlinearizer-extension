@@ -1,3 +1,4 @@
+import { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { ChevronDown, Plus, Star } from 'lucide-react';
 import {
@@ -9,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import type { AnalysisLanguagesChange } from '../../types/analysis-languages-change';
 import type { TextCountsByTag } from '../../utils/text-counts';
@@ -34,15 +35,19 @@ type AnalysisLanguageChipsProps = Readonly<{
   /** Id of the element labelling the row. */
   labelledBy: string;
   /**
-   * Glosses and free translations of every code that has any. They decide whether an action asks
-   * before hiding or merging text.
+   * Counts the glosses and free translations of every code that has any. The counts decide whether
+   * an action asks before hiding or merging text. Actions wait for the first count, and the text is
+   * counted again after each change. Absent, no action asks.
    */
-  textCounts?: TextCountsByTag;
+  countText?: () => Promise<TextCountsByTag>;
   /** Applies a change. Absent to show the codes without letting them change. */
   onChange?: (change: AnalysisLanguagesChange) => Promise<void>;
   /** Whether the actions are unavailable for a reason outside the row. */
   disabled?: boolean;
 }>;
+
+/** The counts while none have arrived. */
+const NO_COUNTS: TextCountsByTag = {};
 
 /** A code change waiting for the user to confirm merging into a code that already has text. */
 type PendingChange = { from: string; to: string };
@@ -64,7 +69,7 @@ type PickerState = { changing?: string; returnFocusTo?: HTMLElement };
 export default function AnalysisLanguageChips({
   languages,
   labelledBy,
-  textCounts = {},
+  countText,
   onChange,
   disabled = false,
 }: AnalysisLanguageChipsProps) {
@@ -74,13 +79,31 @@ export default function AnalysisLanguageChips({
   const [pendingChange, setPendingChange] = useState<PendingChange | undefined>(undefined);
   const [pendingRemove, setPendingRemove] = useState<string | undefined>(undefined);
   const chipButtons = useRef(new Map<string, HTMLButtonElement>());
+  const [counted, setCounted] = useState<TextCountsByTag | undefined>(countText ? undefined : {});
+  const textCounts = counted ?? NO_COUNTS;
+
+  /** Counts the text again. A failed count asks nothing, because no action deletes text unasked. */
+  const recount = useCallback(async () => {
+    if (!countText) return;
+    try {
+      setCounted(await countText());
+    } catch (e) {
+      logger.warn('Interlinearizer: could not count the text in each analysis language', e);
+      setCounted({});
+    }
+  }, [countText]);
+
+  useEffect(() => {
+    recount();
+  }, [recount]);
 
   const apply = useCallback(
     (change: AnalysisLanguagesChange) =>
       runGuarded(async () => {
         await onChange?.(change);
+        await recount();
       }),
-    [onChange, runGuarded],
+    [onChange, recount, runGuarded],
   );
 
   const commitChange = useCallback(
@@ -141,7 +164,7 @@ export default function AnalysisLanguageChips({
       </ul>
     );
 
-  const isBusy = disabled || isSubmitting;
+  const isBusy = disabled || isSubmitting || counted === undefined;
   const pendingRemoveCounts = pendingRemove === undefined ? undefined : textCounts[pendingRemove];
   const pendingChangeCounts = pendingChange && textCounts[pendingChange.to];
 

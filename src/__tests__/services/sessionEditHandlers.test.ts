@@ -206,7 +206,8 @@ describe('sessionEditHandlers', () => {
     });
     const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
     expect(draft.analysisLanguages).toStrictEqual(['es']);
-    expect(draft.analysis.tokenAnalyses.map((ta) => ta.gloss)).toStrictEqual([{}]);
+    expect(draft.analysis.tokenAnalyses).toStrictEqual([]);
+    expect(draft.analysis.tokenAnalysisLinks).toStrictEqual([]);
     expect(draft.dirty).toBe(true);
   });
 
@@ -230,6 +231,26 @@ describe('sessionEditHandlers', () => {
     ).rejects.toThrow(message);
     expect(host.logger.error).toHaveBeenCalledWith(
       `Interlinearizer: failed to changeAnalysisLanguages in session ${sessionId}`,
+      expect.anything(),
+    );
+  });
+
+  it("counts the draft's text under each tag that has any", async () => {
+    const { edits, sessionId } = await handlersOver();
+
+    const counts = JSON.parse(await edits['interlinearizer.countLanguageText']({ sessionId }));
+
+    expect(counts).toStrictEqual({ en: { glosses: 1, freeTranslations: 0 } });
+  });
+
+  it('logs and rethrows a count for a session that is not open', async () => {
+    const { edits, host } = await handlersOver();
+
+    await expect(
+      edits['interlinearizer.countLanguageText']({ sessionId: 'no-such-session' }),
+    ).rejects.toThrow();
+    expect(host.logger.error).toHaveBeenCalledWith(
+      'Interlinearizer: failed to count language text in session no-such-session',
       expect.anything(),
     );
   });

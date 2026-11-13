@@ -577,6 +577,7 @@ function InterlinearizerLoaderInner({
     discardBook,
     discardAll,
     changeAnalysisLanguages,
+    countLanguageText,
     detachFromProject,
     canUndo,
     canRedo,
@@ -1995,6 +1996,7 @@ function InterlinearizerLoaderInner({
         activeProject={activeProject}
         announceUndoable={announceUndoable}
         changeDraftAnalysisLanguages={changeDraftAnalysisLanguages}
+        countDraftLanguageText={countLanguageText}
         defaultAnalysisLanguage={platformLanguage}
         hasUnsavedWork={hasUnsavedChanges}
         isDraftLoading={isDraftLoading}

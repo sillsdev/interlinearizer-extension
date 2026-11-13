@@ -61,6 +61,8 @@ const LOCALIZED: Record<string, string> = {
 
 /** The change the mocked metadata modal's language button applies; a test may set its own. */
 let mockChange: AnalysisLanguagesChange = { analysisLanguages: ['fr', 'en'] };
+/** What the mocked metadata modal's count button last got. */
+let mockCounted: Promise<TextCountsByTag> | undefined;
 
 /** Draft snapshot returned by the default `getDraftSnapshot`. */
 const MOCK_DRAFT: DraftProject = {
@@ -239,7 +241,7 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
     analysisLanguages,
     storedAnalysisLanguages,
     isSaveBlocked,
-    languageTextCounts,
+    countLanguageText,
     onChangeLanguages,
     onClose,
     onProjectSaved,
@@ -247,7 +249,7 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
     analysisLanguages: string[];
     storedAnalysisLanguages?: string[];
     isSaveBlocked?: boolean;
-    languageTextCounts?: TextCountsByTag;
+    countLanguageText?: () => Promise<TextCountsByTag>;
     onChangeLanguages?: (change: AnalysisLanguagesChange) => Promise<void>;
     onClose: () => void;
     onProjectSaved?: (u: { name?: string; description?: string; updatedAt?: string }) => void;
@@ -256,11 +258,22 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
       data-testid="metadata-modal"
       data-languages={analysisLanguages.join(',')}
       data-stored-languages={storedAnalysisLanguages?.join(',')}
-      data-text-counts={languageTextCounts && JSON.stringify(languageTextCounts)}
+      data-counts-text={countLanguageText !== undefined}
     >
       <button type="button" data-testid="metadata-close" onClick={onClose}>
         Close
       </button>
+      {countLanguageText && (
+        <button
+          type="button"
+          data-testid="metadata-count-text"
+          onClick={() => {
+            mockCounted = countLanguageText();
+          }}
+        >
+          Count
+        </button>
+      )}
       {onChangeLanguages && (
         <button
           type="button"
@@ -324,6 +337,7 @@ type ModalsOverrides = Partial<{
   activeProject: InterlinearProjectSummary | undefined;
   announceUndoable: jest.Mock;
   changeDraftAnalysisLanguages: jest.Mock;
+  countDraftLanguageText: jest.Mock;
   defaultAnalysisLanguage: string;
   isDraftLoading: boolean;
   hasUnsavedWork: boolean;
@@ -356,6 +370,7 @@ function buildProps(overrides: ModalsOverrides = {}) {
     announceUndoable: overrides.announceUndoable ?? jest.fn(),
     changeDraftAnalysisLanguages:
       overrides.changeDraftAnalysisLanguages ?? jest.fn().mockResolvedValue(undefined),
+    countDraftLanguageText: overrides.countDraftLanguageText ?? jest.fn().mockResolvedValue({}),
     defaultAnalysisLanguage: overrides.defaultAnalysisLanguage,
     hasUnsavedWork: overrides.hasUnsavedWork ?? false,
     isDraftLoading: overrides.isDraftLoading ?? false,
@@ -1402,7 +1417,7 @@ describe('ProjectModals', () => {
 
         expect(screen.getByTestId('metadata-save')).toBeEnabled();
         expect(screen.queryByTestId('metadata-change-languages')).toBeNull();
-        expect(screen.getByTestId('metadata-modal')).not.toHaveAttribute('data-text-counts');
+        expect(screen.queryByTestId('metadata-count-text')).toBeNull();
       });
 
       it("doesn't let an open import's languages change", () => {
@@ -1415,15 +1430,22 @@ describe('ProjectModals', () => {
         expect(screen.queryByTestId('metadata-change-languages')).toBeNull();
       });
 
-      it("hands Project Info the text of every code in the open project's draft", () => {
-        renderActive(jest.fn(), jest.fn(), {
-          ...MOCK_DRAFT,
-          analysis: { ...glossedIn('de'), segmentAnalyses: [] },
-        });
+      it("counts the open project's text through the session", async () => {
+        const counts = { de: { glosses: 1, freeTranslations: 0 } };
+        const countDraftLanguageText = jest.fn().mockResolvedValue(counts);
+        render(
+          <ProjectModals
+            {...buildProps({
+              modal: 'metadata',
+              activeProject: MOCK_PROJECT,
+              countDraftLanguageText,
+            })}
+          />,
+        );
 
-        expect(
-          JSON.parse(screen.getByTestId('metadata-modal').getAttribute('data-text-counts') ?? ''),
-        ).toStrictEqual({ de: { glosses: 1, freeTranslations: 0 } });
+        await userEvent.click(screen.getByTestId('metadata-count-text'));
+
+        expect(await mockCounted).toBe(counts);
       });
 
       it('moves glosses in the draft and offers to undo', async () => {

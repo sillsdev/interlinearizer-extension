@@ -10,6 +10,7 @@ import {
   type AnalysisLanguagesChange,
 } from '../types/analysis-languages-change';
 import type { EditStep } from '../types/edit-step';
+import { isTextCountsByTag, type TextCountsByTag } from '../utils/text-counts';
 import type {
   ProjectApi,
   ProjectViewOptions,
@@ -434,12 +435,24 @@ export default function useSessionProject(
         reply = JSON.parse(await call({ sessionId }));
         if (reply) takeReply(reply);
       }
-      // The reply leaves out how a change of languages alone left the draft's unsaved mark.
-      refreshWhole();
       return analysisLanguagesChangeOutcomeOf(reply);
     },
-    [client, sessionId, sendEditOrThrow, takeReply, refreshWhole],
+    [client, sessionId, sendEditOrThrow, takeReply],
   );
+  /**
+   * Counts the draft's glosses and free translations under each language tag that has any.
+   *
+   * @returns The counts, or none when the host's answer is malformed.
+   * @throws If no session is open, or whatever the query throws.
+   */
+  const countLanguageText = useCallback(async (): Promise<TextCountsByTag> => {
+    if (sessionId === undefined)
+      throw new Error('Interlinearizer: no session is open to count its language text');
+    const counts: unknown = JSON.parse(
+      await papi.commands.sendCommand('interlinearizer.countLanguageText', { sessionId }),
+    );
+    return isTextCountsByTag(counts) ? counts : {};
+  }, [sessionId]);
   const getHistoryRevision = useCallback(() => historyRevision.current, []);
   const subscribeToHistoryRevisions = useCallback((listener: () => void) => {
     revisionListeners.current.add(listener);
@@ -468,6 +481,7 @@ export default function useSessionProject(
     discardBook,
     discardAll,
     changeAnalysisLanguages,
+    countLanguageText,
     detachFromProject,
     canUndo,
     canRedo,

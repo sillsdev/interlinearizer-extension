@@ -5,6 +5,7 @@ import type { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { EditStep } from './edit-step';
 import type { SegmentPagesLoad } from './segment-pages';
+import type { TextCountsByTag } from '../utils/text-counts';
 import type {
   AnalysisLanguagesChange,
   AnalysisLanguagesChangeOutcome,
@@ -107,6 +108,12 @@ export type ProjectApi = {
   changeAnalysisLanguages: (
     change: AnalysisLanguagesChange,
   ) => Promise<AnalysisLanguagesChangeOutcome>;
+  /**
+   * Counts the draft's glosses and free translations under each language tag that has any.
+   *
+   * @throws If no session is open, or the query fails.
+   */
+  countLanguageText: () => Promise<TextCountsByTag>;
   /** Records that the project the draft saves to was deleted. */
   detachFromProject: () => Promise<void>;
   canUndo: boolean;

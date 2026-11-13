@@ -23,6 +23,16 @@ export function isLanguageTextCounts(value: unknown): value is LanguageTextCount
   );
 }
 
+/** Whether `value` is a {@link TextCountsByTag}. */
+export function isTextCountsByTag(value: unknown): value is TextCountsByTag {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.values(value).every(isLanguageTextCounts)
+  );
+}
+
 /**
  * Counts the glosses and free translations of `analysis` written in each of `tags`. Blank text
  * doesn't count.

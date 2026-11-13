@@ -40,9 +40,9 @@ type ProjectMetadataModalProps = Readonly<{
   /** BCP 47 tags for the analysis languages, as shown. */
   analysisLanguages: string[];
   /**
-   * The analysis languages Save keeps in the stored project, when they differ from the ones shown.
-   * The open project's languages belong to its draft, which writes them to the project when it is
-   * saved. Absent when the shown languages are the stored ones.
+   * The analysis languages Save keeps in the stored project, when the shown languages are the
+   * draft's. The open project's languages belong to its draft, which writes them to the project
+   * when it is saved. Absent when the shown languages are the stored ones.
    */
   storedAnalysisLanguages?: string[];
   /** ISO 8601 creation timestamp. */
@@ -57,8 +57,8 @@ type ProjectMetadataModalProps = Readonly<{
   pt9ImportedAt?: string;
   /** Whether the fields and Save are disabled for a reason outside the form. */
   isSaveBlocked?: boolean;
-  /** Glosses and free translations of every language code that has any, for the language actions. */
-  languageTextCounts?: TextCountsByTag;
+  /** Counts the glosses and free translations of every language code that has any. */
+  countLanguageText?: () => Promise<TextCountsByTag>;
   /**
    * Applies a change to the analysis languages at once, apart from Save. Absent when the languages
    * can't change here, because the project isn't the one open.
@@ -88,7 +88,7 @@ export function ProjectMetadataModal({
   updatedAt,
   pt9ImportedAt,
   isSaveBlocked = false,
-  languageTextCounts,
+  countLanguageText,
   onChangeLanguages,
   onClose,
   onProjectSaved,
@@ -243,7 +243,7 @@ export function ProjectMetadataModal({
             <AnalysisLanguageChips
               languages={analysisLanguages}
               labelledBy="metadata-languages-label"
-              textCounts={languageTextCounts}
+              countText={countLanguageText}
               onChange={handleChangeLanguages}
               disabled={isSaveBlocked || isSubmitting}
             />

@@ -999,6 +999,17 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Counts the glosses and free translations of a session's draft under each language tag that
+     * has any.
+     *
+     * @returns A JSON string of `{ glosses, freeTranslations }` keyed by tag.
+     * @throws If the session is not open or its draft can't be read (logged before rethrowing).
+     */
+    'interlinearizer.countLanguageText': (
+      args: import('interlinearizer').SessionCommandArgs,
+    ) => Promise<string>;
+
+    /**
      * Names the token analyses a command would remove from a session's draft, applying nothing.
      *
      * @returns A JSON string of the ids; `"[]"` when it would remove none.

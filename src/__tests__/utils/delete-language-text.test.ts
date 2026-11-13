@@ -52,10 +52,11 @@ describe('deleteLanguageText', () => {
     expect(segmentAnalyses.map(({ id }) => id)).toEqual(['sa-1']);
     const [token, untouched] = analysis.tokenAnalyses;
     expect(token.gloss).toEqual({ fr: 'poisson' });
-    expect(token.morphemes?.[0].gloss).toEqual({});
+    expect(token.morphemes?.[0]).not.toHaveProperty('gloss');
     expect(token.updatedAt).toBe(NOW);
     expect(untouched.updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
-    expect(analysis.phraseAnalyses[0]).toMatchObject({ gloss: {}, updatedAt: NOW });
+    expect(analysis.phraseAnalyses[0]).not.toHaveProperty('gloss');
+    expect(analysis.phraseAnalyses[0].updatedAt).toBe(NOW);
     expect(analysis.segmentAnalyses[0]).toMatchObject({
       freeTranslation: { fr: 'Un gros poisson.' },
       updatedAt: NOW,
@@ -71,12 +72,18 @@ describe('deleteLanguageText', () => {
 
     expect(counts).toEqual({ glosses: 0, freeTranslations: 0 });
     expect(tokenAnalyses.map(({ id }) => id)).toEqual(['ta-1']);
-    expect(analysis.tokenAnalyses[0].gloss).toEqual({});
+    expect(analysis.tokenAnalyses[0]).not.toHaveProperty('gloss');
   });
 
   it('changes nothing when no text is under the tag', () => {
     const analysis = analysisOf({
       tokenAnalyses: [{ id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { fr: 'x' } }],
+      phraseAnalyses: [
+        { id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'big fish', gloss: { fr: 'y' } },
+      ],
+      segmentAnalyses: [
+        { id: 'sa-1', ...FIXTURE_STAMPS, surfaceText: 'Fish.', freeTranslation: { fr: 'z' } },
+      ],
     });
 
     const deletion = deleteLanguageText(analysis, 'en', NOW);

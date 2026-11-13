@@ -5,6 +5,7 @@ import type {
   TextAnalysis,
   TokenAnalysis,
 } from 'interlinearizer';
+import { isEmptyMultiString } from './multi-string';
 import type { LanguageTextCounts } from './text-counts';
 
 /** The analyses a deletion changed, mutated in place, and how much text it deleted. */
@@ -15,30 +16,30 @@ export type LanguageTextDeletion = {
   segmentAnalyses: SegmentAnalysis[];
 };
 
+/** What deleting a tag from one text found there. */
+type Deleted = 'none' | 'blank' | 'text';
+
 /**
- * Deletes the text under `tag` from each of `values` in place.
- *
- * @returns Whether any value had text under `tag`, and how many of them had text that wasn't blank.
+ * Deletes `tag` from the `field` text of `owner` in place, dropping the text whole once no language
+ * holds any.
  */
-function deleteTag(
-  values: readonly (MultiString | undefined)[],
+function deleteTag<Field extends string>(
+  owner: { [key in Field]?: MultiString },
+  field: Field,
   tag: string,
-): { changed: boolean; counted: number } {
-  return values.reduce<{ changed: boolean; counted: number }>(
-    (result, value) => {
-      const text = value?.[tag];
-      if (!value || text === undefined) return result;
-      delete value[tag];
-      return { changed: true, counted: result.counted + (text.trim() === '' ? 0 : 1) };
-    },
-    { changed: false, counted: 0 },
-  );
+): Deleted {
+  const text = owner[field];
+  const value = text?.[tag];
+  if (!text || value === undefined) return 'none';
+  delete text[tag];
+  if (isEmptyMultiString(text)) delete owner[field];
+  return value.trim() === '' ? 'blank' : 'text';
 }
 
 /**
  * Deletes the glosses and free translations of `analysis` written under `tag`, mutating the
  * analyses in place and stamping each one changed with `now`. Blank text is deleted too, but not
- * counted.
+ * counted. A gloss or free translation left with no text in any language is dropped whole.
  */
 export function deleteLanguageText(
   analysis: TextAnalysis,
@@ -46,30 +47,34 @@ export function deleteLanguageText(
   now: string,
 ): LanguageTextDeletion {
   const counts: LanguageTextCounts = { glosses: 0, freeTranslations: 0 };
-  const deleteFrom = <T extends { updatedAt?: string }>(
-    record: T,
-    values: readonly (MultiString | undefined)[],
-    kind: keyof LanguageTextCounts,
-  ) => {
-    const { changed, counted } = deleteTag(values, tag);
-    counts[kind] += counted;
-    if (changed) record.updatedAt = now;
-    return changed;
+  const tally = (found: readonly Deleted[], kind: keyof LanguageTextCounts) => {
+    counts[kind] += found.filter((deleted) => deleted === 'text').length;
+    return found.some((deleted) => deleted !== 'none');
   };
 
-  const tokenAnalyses = analysis.tokenAnalyses.filter((tokenAnalysis) =>
-    deleteFrom(
-      tokenAnalysis,
-      [tokenAnalysis.gloss, ...(tokenAnalysis.morphemes ?? []).map(({ gloss }) => gloss)],
-      'glosses',
-    ),
-  );
-  const phraseAnalyses = analysis.phraseAnalyses.filter((phraseAnalysis) =>
-    deleteFrom(phraseAnalysis, [phraseAnalysis.gloss], 'glosses'),
-  );
-  const segmentAnalyses = analysis.segmentAnalyses.filter((segmentAnalysis) =>
-    deleteFrom(segmentAnalysis, [segmentAnalysis.freeTranslation], 'freeTranslations'),
-  );
+  const tokenAnalyses = analysis.tokenAnalyses.filter((tokenAnalysis) => {
+    const found = [
+      deleteTag(tokenAnalysis, 'gloss', tag),
+      ...(tokenAnalysis.morphemes ?? []).map((morpheme) => deleteTag(morpheme, 'gloss', tag)),
+    ];
+    if (!tally(found, 'glosses')) return false;
+    tokenAnalysis.updatedAt = now;
+    return true;
+  });
+
+  const phraseAnalyses = analysis.phraseAnalyses.filter((phraseAnalysis) => {
+    const found = deleteTag(phraseAnalysis, 'gloss', tag);
+    if (!tally([found], 'glosses')) return false;
+    phraseAnalysis.updatedAt = now;
+    return true;
+  });
+
+  const segmentAnalyses = analysis.segmentAnalyses.filter((segmentAnalysis) => {
+    const found = deleteTag(segmentAnalysis, 'freeTranslation', tag);
+    if (!tally([found], 'freeTranslations')) return false;
+    segmentAnalysis.updatedAt = now;
+    return true;
+  });
 
   return { counts, tokenAnalyses, phraseAnalyses, segmentAnalyses };
 }

@@ -2574,6 +2574,17 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
+  await registerSessionCommand('interlinearizer.countLanguageText', {
+    summary:
+      "Count the glosses and free translations of a session's draft under each language tag that has any",
+    params: sessionArgs(),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified counts keyed by tag',
+      schema: { type: 'string' },
+    },
+  });
+
   await registerSessionCommand('interlinearizer.previewRemovals', {
     summary: "Name the token analyses a command would remove from a session's draft",
     params: sessionArgs({

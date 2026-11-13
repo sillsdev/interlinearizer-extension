@@ -1,8 +1,9 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AnalysisLanguageChips from '../../../components/controls/AnalysisLanguageChips';
 import type { TextCountsByTag } from '../../../utils/text-counts';
@@ -42,8 +43,13 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_confirm_removeLanguage_cancel%': 'Cancel',
 };
 
-/** Renders an editable row of `languages`, returning the change handler. */
-function renderChips(languages: string[], textCounts: TextCountsByTag = {}) {
+/**
+ * Renders an editable row of `languages` whose text counts as `textCounts`, once the counts have
+ * arrived.
+ *
+ * @returns The change handler.
+ */
+async function renderChips(languages: string[], textCounts: TextCountsByTag = {}) {
   const onChange = jest.fn(async () => {});
   render(
     <>
@@ -51,11 +57,12 @@ function renderChips(languages: string[], textCounts: TextCountsByTag = {}) {
       <AnalysisLanguageChips
         languages={languages}
         labelledBy="label"
-        textCounts={textCounts}
+        countText={async () => textCounts}
         onChange={onChange}
       />
     </>,
   );
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled());
   return onChange;
 }
 
@@ -93,7 +100,7 @@ describe('AnalysisLanguageChips', () => {
   });
 
   it('makes a code primary', async () => {
-    const onChange = renderChips(['en', 'fr', 'de']);
+    const onChange = await renderChips(['en', 'fr', 'de']);
 
     await choose('de options', 'Make primary');
 
@@ -101,7 +108,7 @@ describe('AnalysisLanguageChips', () => {
   });
 
   it('offers no Make primary on the primary code', async () => {
-    renderChips(['en', 'fr']);
+    await renderChips(['en', 'fr']);
 
     await userEvent.click(screen.getByRole('button', { name: 'en (primary) options' }));
 
@@ -109,7 +116,7 @@ describe('AnalysisLanguageChips', () => {
   });
 
   it('removes a code that has no text without asking', async () => {
-    const onChange = renderChips(['en', 'fr'], { en: { glosses: 3, freeTranslations: 0 } });
+    const onChange = await renderChips(['en', 'fr'], { en: { glosses: 3, freeTranslations: 0 } });
 
     await choose('fr options', 'Remove');
 
@@ -118,7 +125,7 @@ describe('AnalysisLanguageChips', () => {
   });
 
   it('makes the next code primary when the primary is removed', async () => {
-    const onChange = renderChips(['en', 'fr', 'de']);
+    const onChange = await renderChips(['en', 'fr', 'de']);
 
     await choose('en (primary) options', 'Remove');
 
@@ -126,7 +133,7 @@ describe('AnalysisLanguageChips', () => {
   });
 
   it("won't remove the last code", async () => {
-    renderChips(['en']);
+    await renderChips(['en']);
 
     await userEvent.click(screen.getByRole('button', { name: 'en (primary) options' }));
 
@@ -137,7 +144,7 @@ describe('AnalysisLanguageChips', () => {
     const counts = { fr: { glosses: 4, freeTranslations: 2 } };
 
     it('says how much text it has', async () => {
-      renderChips(['en', 'fr'], counts);
+      await renderChips(['en', 'fr'], counts);
 
       await choose('fr options', 'Remove');
 
@@ -146,7 +153,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('keeps the text hidden when the user says so', async () => {
-      const onChange = renderChips(['en', 'fr'], counts);
+      const onChange = await renderChips(['en', 'fr'], counts);
 
       await choose('fr options', 'Remove');
       await userEvent.click(screen.getByRole('button', { name: 'Keep hidden' }));
@@ -155,7 +162,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('deletes the text when the user says so', async () => {
-      const onChange = renderChips(['en', 'fr'], counts);
+      const onChange = await renderChips(['en', 'fr'], counts);
 
       await choose('fr options', 'Remove');
       await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
@@ -164,7 +171,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('keeps the code when the user cancels', async () => {
-      const onChange = renderChips(['en', 'fr'], counts);
+      const onChange = await renderChips(['en', 'fr'], counts);
 
       await choose('fr options', 'Remove');
       await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -176,7 +183,7 @@ describe('AnalysisLanguageChips', () => {
 
   describe('adding a code', () => {
     it('adds a code as the last one', async () => {
-      const onChange = renderChips(['en']);
+      const onChange = await renderChips(['en']);
 
       await userEvent.click(screen.getByRole('button', { name: 'Add' }));
       await pick('tpi', 'Add code');
@@ -188,7 +195,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('adds the typed code on Enter', async () => {
-      const onChange = renderChips(['en']);
+      const onChange = await renderChips(['en']);
 
       await userEvent.click(screen.getByRole('button', { name: 'Add' }));
       await userEvent.type(screen.getByLabelText('Language code'), 'tpi{Enter}');
@@ -197,7 +204,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('ignores Enter while the typed code is refused', async () => {
-      const onChange = renderChips(['en']);
+      const onChange = await renderChips(['en']);
 
       await userEvent.click(screen.getByRole('button', { name: 'Add' }));
       await userEvent.type(screen.getByLabelText('Language code'), 'en{Enter}');
@@ -207,7 +214,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('refuses a code already listed', async () => {
-      renderChips(['en', 'fr']);
+      await renderChips(['en', 'fr']);
 
       await userEvent.click(screen.getByRole('button', { name: 'Add' }));
       await userEvent.type(screen.getByLabelText('Language code'), 'FR');
@@ -217,7 +224,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('refuses a code that is not well formed', async () => {
-      renderChips(['en']);
+      await renderChips(['en']);
 
       await userEvent.click(screen.getByRole('button', { name: 'Add' }));
       await userEvent.type(screen.getByLabelText('Language code'), 'not a code');
@@ -227,7 +234,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('offers the codes whose text is hidden, with their counts', async () => {
-      const onChange = renderChips(['en'], {
+      const onChange = await renderChips(['en'], {
         en: { glosses: 1, freeTranslations: 0 },
         de: { glosses: 0, freeTranslations: 3 },
       });
@@ -246,7 +253,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('adds back a hidden code that is not well formed', async () => {
-      const onChange = renderChips(['en'], { en_US: { glosses: 1, freeTranslations: 0 } });
+      const onChange = await renderChips(['en'], { en_US: { glosses: 1, freeTranslations: 0 } });
 
       await userEvent.click(screen.getByRole('button', { name: 'Add' }));
       await userEvent.click(
@@ -258,7 +265,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('adds nothing when the user cancels', async () => {
-      const onChange = renderChips(['en']);
+      const onChange = await renderChips(['en']);
 
       await userEvent.click(screen.getByRole('button', { name: 'Add' }));
       await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -269,7 +276,7 @@ describe('AnalysisLanguageChips', () => {
 
   describe('changing a code', () => {
     it('moves its text to a code that has none without asking', async () => {
-      const onChange = renderChips(['en', 'fr'], { fr: { glosses: 2, freeTranslations: 0 } });
+      const onChange = await renderChips(['en', 'fr'], { fr: { glosses: 2, freeTranslations: 0 } });
 
       await choose('fr options', 'Change code…');
       expect(screen.getByRole('heading', { name: 'Change fr' })).toBeInTheDocument();
@@ -282,7 +289,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it("won't change a code to itself", async () => {
-      renderChips(['en', 'fr']);
+      await renderChips(['en', 'fr']);
 
       await choose('fr options', 'Change code…');
       await userEvent.type(screen.getByLabelText('Language code'), 'fr');
@@ -291,7 +298,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('asks before merging into a code that has text, and merges once confirmed', async () => {
-      const onChange = renderChips(['en', 'fr'], {
+      const onChange = await renderChips(['en', 'fr'], {
         de: { glosses: 5, freeTranslations: 0 },
       });
 
@@ -311,7 +318,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('leaves the code as it is when the user cancels the merge', async () => {
-      const onChange = renderChips(['en', 'fr'], { de: { glosses: 5, freeTranslations: 0 } });
+      const onChange = await renderChips(['en', 'fr'], { de: { glosses: 5, freeTranslations: 0 } });
 
       await choose('fr options', 'Change code…');
       await pick('de', 'Change code');
@@ -321,7 +328,7 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('merges into a listed code, which keeps the earlier place', async () => {
-      const onChange = renderChips(['en', 'fr', 'de'], {
+      const onChange = await renderChips(['en', 'fr', 'de'], {
         en: { glosses: 1, freeTranslations: 0 },
       });
 
@@ -334,6 +341,72 @@ describe('AnalysisLanguageChips', () => {
         retag: { from: 'de', to: 'en' },
       });
     });
+  });
+
+  it('holds every action until the text is counted', async () => {
+    let answer: (counts: TextCountsByTag) => void = () => {};
+    render(
+      <AnalysisLanguageChips
+        languages={['en']}
+        labelledBy="label"
+        countText={() =>
+          new Promise((resolve) => {
+            answer = resolve;
+          })
+        }
+        onChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
+
+    await act(async () => answer({}));
+
+    expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled();
+  });
+
+  it('counts the text again after each change', async () => {
+    const countText = jest
+      .fn<Promise<TextCountsByTag>, []>()
+      .mockResolvedValueOnce({})
+      .mockResolvedValue({ fr: { glosses: 2, freeTranslations: 0 } });
+    render(
+      <AnalysisLanguageChips
+        languages={['en', 'fr']}
+        labelledBy="label"
+        countText={countText}
+        onChange={jest.fn(async () => {})}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled());
+
+    await choose('fr options', 'Make primary');
+    await waitFor(() => expect(countText).toHaveBeenCalledTimes(2));
+    await choose('fr options', 'Remove');
+
+    expect(screen.getByRole('heading', { name: 'Remove fr?' })).toBeInTheDocument();
+  });
+
+  it('logs a failed count and asks nothing before removing', async () => {
+    const warn = jest.mocked(logger.warn);
+    const onChange = jest.fn(async () => {});
+    render(
+      <AnalysisLanguageChips
+        languages={['en', 'fr']}
+        labelledBy="label"
+        countText={async () => Promise.reject(new Error('gone'))}
+        onChange={onChange}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled());
+
+    await choose('fr options', 'Remove');
+
+    expect(warn).toHaveBeenCalledWith(
+      'Interlinearizer: could not count the text in each analysis language',
+      expect.any(Error),
+    );
+    expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en'] });
   });
 
   it('holds every action while a change is being applied', async () => {

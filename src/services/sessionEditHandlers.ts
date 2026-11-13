@@ -25,6 +25,7 @@ import type { DraftExport } from '../types/analysis-repository';
 import type { CommandReply } from '../types/command-reply';
 import type { EditStep, StepSummary } from '../types/edit-step';
 import { bookOfRef } from '../utils/analysis-book';
+import { countTextOfEveryTag } from '../utils/text-counts';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 import { missingBook } from '../utils/reanchor-analysis';
@@ -950,6 +951,26 @@ export function sessionEditHandlers({
   }
 
   /**
+   * Counts the glosses and free translations of a session's draft under each language tag that has
+   * any.
+   *
+   * @returns A JSON string of the counts, keyed by tag.
+   * @throws If the session is not open or its draft can't be read. The error is logged before
+   *   rethrowing.
+   */
+  async function countLanguageText({
+    sessionId,
+  }: ArgsOf<'interlinearizer.countLanguageText'>): Promise<string> {
+    try {
+      const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+      return JSON.stringify(countTextOfEveryTag(draft.analysis));
+    } catch (e) {
+      logger.error(`Interlinearizer: failed to count language text in session ${sessionId}`, e);
+      throw e;
+    }
+  }
+
+  /**
    * Runs an unsaved-change discard as one edit of a session's analysis, re-anchoring each book it
    * rewrites to the book's current text. A book the text lacks has its links go stale.
    *
@@ -1150,6 +1171,7 @@ export function sessionEditHandlers({
     'interlinearizer.discardBook': discardBook,
     'interlinearizer.discardAll': discardAll,
     'interlinearizer.changeAnalysisLanguages': changeAnalysisLanguages,
+    'interlinearizer.countLanguageText': countLanguageText,
     'interlinearizer.previewRemovals': previewRemovals,
   } satisfies Partial<CommandHandlers>;
 }

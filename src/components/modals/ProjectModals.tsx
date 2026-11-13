@@ -3,7 +3,7 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import type { DraftProject } from 'interlinearizer';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
@@ -13,7 +13,7 @@ import type {
   AnalysisLanguagesChange,
   AnalysisLanguagesChangeOutcome,
 } from '../../types/analysis-languages-change';
-import { countTextOfEveryTag } from '../../utils/text-counts';
+import type { TextCountsByTag } from '../../utils/text-counts';
 import type { GlossRetagCounts } from '../../utils/retag-glosses';
 import type { Settles } from '../../utils/settles';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
@@ -97,6 +97,8 @@ function retagMessage(
  *   it.
  * @param props.changeDraftAnalysisLanguages - Gives the draft new analysis languages as one
  *   undoable step, moving or deleting any text the change names. Resolves what it did to the text.
+ * @param props.countDraftLanguageText - Counts the draft's glosses and free translations under each
+ *   language tag that has any.
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
  *   initial value of the analysis language field; should be the platform UI language.
  * @param props.isDraftLoading - Whether the draft is still loading. Project Info holds the active
@@ -140,6 +142,7 @@ export default function ProjectModals({
   activeProject,
   announceUndoable,
   changeDraftAnalysisLanguages,
+  countDraftLanguageText,
   defaultAnalysisLanguage,
   isDraftLoading,
   hasUnsavedWork,
@@ -162,6 +165,7 @@ export default function ProjectModals({
   changeDraftAnalysisLanguages: (
     change: AnalysisLanguagesChange,
   ) => Promise<AnalysisLanguagesChangeOutcome>;
+  countDraftLanguageText: () => Promise<TextCountsByTag>;
   defaultAnalysisLanguage?: string;
   isDraftLoading: boolean;
   hasUnsavedWork: boolean;
@@ -616,14 +620,6 @@ export default function ProjectModals({
     metadataLanguagesInDraft && draftSnapshot
       ? draftSnapshot.analysisLanguages
       : (resolvedMetadataProject?.analysisLanguages ?? []);
-  const draftAnalysis = draftSnapshot?.analysis;
-  const metadataTextCounts = useMemo(
-    () =>
-      modal === 'metadata' && metadataLanguagesInDraft && draftAnalysis
-        ? countTextOfEveryTag(draftAnalysis)
-        : undefined,
-    [modal, metadataLanguagesInDraft, draftAnalysis],
-  );
 
   return (
     <div>
@@ -680,7 +676,7 @@ export default function ProjectModals({
           updatedAt={resolvedMetadataProject.updatedAt}
           pt9ImportedAt={resolvedMetadataProject.pt9Import?.importedAt}
           isSaveBlocked={isDraftLoading && resolvedMetadataProject.id === activeProject?.id}
-          languageTextCounts={metadataTextCounts}
+          countLanguageText={metadataLanguagesInDraft ? countDraftLanguageText : undefined}
           onChangeLanguages={metadataLanguagesInDraft ? changeDraftLanguages : undefined}
           onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}

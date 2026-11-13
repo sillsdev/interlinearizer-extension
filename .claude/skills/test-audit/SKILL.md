@@ -10,7 +10,7 @@ Audits tests against the checks below. A Jest `describe` block and a TUnit test 
 ## 1. Fix the scope and mode
 
 - **Edit mode**: you invoked this yourself after adding or editing blocks. The scope is those blocks, plus any file-level setup they use. Leave the rest of the file alone.
-- **Audit mode**: the user invoked `/test-audit`. The scope is what they named: a file, a directory, or a branch (its test files in `git diff --name-only <base>...HEAD`). Ask if they named nothing. When the scope has more files than you can read in full, dispatch one subagent per directory and give each this skill's path. Then merge their findings.
+- **Audit mode**: the user invoked `/test-audit`. The scope is what they named: a file, a directory, or a branch (its test files in `git diff --name-only origin/main...<branch>`, or against its PR base when that isn't `main`). Ask if they named nothing. When the scope has more files than you can read in full, dispatch one subagent per directory and give each this skill's path. Then merge their findings.
 
 Done when you can list every block in scope.
 
@@ -53,7 +53,7 @@ Flag a test that checks independent behaviors, where the first failing assertion
 ### Rewritten test objects: share
 
 - A hand-built token, segment, book, project, or change literal where a shared builder already makes one: use the builder, overriding only the fields the test cares about.
-- The same literal repeated across tests in one file: hoist it to a file-level constant or builder.
+- The same literal repeated across tests in one file: hoist it to a file-level constant when no test mutates it, otherwise to a builder that returns a fresh copy.
 - A new builder belongs in the shared helpers only when more than one file needs it. Otherwise keep it in the file.
 
 ### Rewritten test structure: share, but clarity wins

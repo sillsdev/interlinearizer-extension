@@ -85,7 +85,7 @@ Flag a test that renders a component only to reach a hook or context. Tells: a t
 - Each test passes when it runs alone (`--testNamePattern`) and in any order. Flag reliance on state an earlier test left.
 - Setup lives in hooks or the test body. Jest runs every `describe` body when it collects the file, before any test, so state built there is shared by all of them.
 - Fake timers get switched back with `jest.useRealTimers()` in the test or an `afterEach`.
-- TUnit: instance fields are already fresh for each test. Flag mutable `static` state that lets one test see another's writes, and shared resources such as files or databases, because TUnit runs tests in parallel by default. `static readonly` values and thread-safe counters that only hand out unique values are safe.
+- TUnit: instance fields are already fresh for each test. Flag mutable `static` state that lets one test see another's writes, and shared resources such as files or databases, because TUnit runs tests in parallel by default. `readonly` protects only the reference, so a `static readonly` collection or other mutable object is still shared state. `static readonly` values of immutable types and thread-safe counters that only hand out unique values are safe.
 
 ### Queries and interactions (Jest)
 

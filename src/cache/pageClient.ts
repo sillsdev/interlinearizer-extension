@@ -97,7 +97,10 @@ type PageState =
  */
 type PageEvent = 'want' | 'stale' | 'retry' | 'landed' | 'dropped' | 'errored' | 'waited';
 
-/** What an outline read takes: the whole outline, or only its orphaned-card counts when it can. */
+/**
+ * What an outline read takes: the whole outline, or only its orphaned-card counts and stale flags
+ * when it can.
+ */
 type OutlineRead = 'outline' | 'counts';
 
 /** The read that covers both `a` and `b`. */
@@ -333,7 +336,14 @@ export class PageClient {
     if (!reply) return reply;
     if (!heard) this.rememberApplied(changeId);
     perfTime('reply-apply', () => {
-      this.refetch(this.held.apply(reply));
+      const refetch = this.held.apply(reply);
+      this.refetch(refetch);
+      // A placement or outline refetch already reads the stale flags.
+      if (
+        (refetch === 'none' || refetch === 'pages') &&
+        reply.staleGlossBooks.includes(this.held.outline.bookRef)
+      )
+        this.readOutlineAgain('counts');
       this.changed();
       this.replyListeners.forEach((listener) => listener(reply));
     });
@@ -438,6 +448,7 @@ export class PageClient {
       this.refetch('placement');
       return;
     }
+    if (book?.staleGlosses) this.readOutlineAgain('counts');
     const indexes = [
       ...(book?.ranges ?? []).flatMap(({ start, end }) =>
         Array.from({ length: end - start }, (_unused, i) => start + i),
@@ -455,8 +466,8 @@ export class PageClient {
   }
 
   /**
-   * Reads the outline, after any read in flight. A `'counts'` read takes the orphaned-card counts,
-   * or the whole outline when it differs from the held one in more than those counts. An
+   * Reads the outline, after any read in flight. A `'counts'` read takes the orphaned-card counts
+   * and stale flags, or the whole outline when it differs from the held one in more than those. An
    * `'outline'` read takes the whole outline, letting go of every held page.
    *
    * @returns Settles once no read is wanted. Never rejects; a failed read is noted for

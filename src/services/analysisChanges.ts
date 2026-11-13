@@ -97,9 +97,10 @@ async function anyLinkedStale(
  * The description names each segment on which the change put or removed links, at the place where
  * the view shows it. A book whose boundaries the change moved is named whole, as is a book that the
  * host holds no outline for. Among the books that it names, the description flags each one where
- * the change put or removed a stale free translation. The description also names the analyses whose
- * payloads or links the change put or removed, and the cross-book queries that those analyses may
- * change. It names the forms whose pool buckets the change may have changed, too.
+ * the change put or removed a stale free translation, and each one where it put or removed a stale
+ * token link. The description also names the analyses whose payloads or links the change put or
+ * removed, and the cross-book queries that those analyses or the moved boundaries may change. It
+ * names the forms whose pool buckets the change may have changed, too.
  *
  * @throws Whatever the repository's lookups throw.
  */
@@ -121,7 +122,8 @@ export async function describeChange(
     ...segmentPayloads,
   ].map(({ id }) => id);
 
-  const wholeBooks = new Set(booksResegmented(applied));
+  const resegmented = booksResegmented(applied);
+  const wholeBooks = new Set(resegmented);
   const indexesByBook = new Map<string, Set<number>>();
   const books = new Map<string, Book | undefined>();
   const markAt = (bookId: string, indexOf: (book: Book) => number | undefined) => {
@@ -155,19 +157,29 @@ export async function describeChange(
       .filter(({ status }) => status === 'stale')
       .map(({ segmentId }) => bookOfRef(segmentId)),
   );
+  const staleGlossBooks = new Set(
+    tokenLinks
+      .filter(({ status }) => status === 'stale')
+      .map(({ token }) => bookOfRef(token.tokenRef)),
+  );
   const changedBooks: ChangedBook[] = [...new Set([...wholeBooks, ...indexesByBook.keys()])]
     .sort((a, b) => Canon.bookIdToNumber(a) - Canon.bookIdToNumber(b))
     .map((bookId) => {
       const indexes = indexesByBook.get(bookId);
       const book: ChangedBook =
         wholeBooks.has(bookId) || !indexes ? { bookId } : { bookId, ranges: rangesOf(indexes) };
-      return staleTranslationBooks.has(bookId) ? { ...book, staleTranslations: true } : book;
+      return {
+        ...book,
+        ...(staleTranslationBooks.has(bookId) && { staleTranslations: true }),
+        ...(staleGlossBooks.has(bookId) && { staleGlosses: true }),
+      };
     });
 
   const queries: AnalysisQuery[] = [];
   if (tokenPayloads.length > 0 || tokenLinks.length > 0)
     queries.push('getCatalogRows', 'getConcordance');
   if (
+    resegmented.length > 0 ||
     links.some(({ status }) => status === 'stale') ||
     (await anyLinkedStale(repository, [
       ...tokenPayloads.map(({ id }) => id),

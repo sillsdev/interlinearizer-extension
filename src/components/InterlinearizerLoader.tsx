@@ -1790,7 +1790,9 @@ function InterlinearizerLoaderInner({
         onPendingEditsChange={setPendingEdits}
         readOnly={session.readOnly}
       >
-        {book && isLoaded && <StaleAnalysesReporter book={book} onReport={setStaleReport} />}
+        {book && isLoaded && (
+          <StaleAnalysesReporter bookRef={book.bookRef} onReport={setStaleReport} />
+        )}
         {panelGroup}
       </SessionAnalysisProvider>
     );

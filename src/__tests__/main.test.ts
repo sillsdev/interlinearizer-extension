@@ -658,6 +658,7 @@ describe('main', () => {
           'interlinearizer.getProjectsForSource',
           'interlinearizer.getTokenizedBook',
           'interlinearizer.getBookOutline',
+          'interlinearizer.getStaleSummary',
           'interlinearizer.getSegments',
           'interlinearizer.getTextReadStatus',
           'interlinearizer.getCatalogRows',
@@ -2490,6 +2491,9 @@ describe('main', () => {
             segmentationJson?: string,
           ) => Promise<string | undefined>
         >('interlinearizer.getBookOutline'),
+        getStaleSummary: handler<CommandHandlers['interlinearizer.getStaleSummary']>(
+          'interlinearizer.getStaleSummary',
+        ),
         getSegments: handler<
           (
             address: { sessionId: string },
@@ -2687,6 +2691,7 @@ describe('main', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        staleGlossBooks: [],
         canUndo: false,
         canRedo: false,
       };
@@ -2735,6 +2740,7 @@ describe('main', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        staleGlossBooks: [],
         canUndo: false,
         canRedo: false,
       };
@@ -2976,6 +2982,33 @@ describe('main', () => {
         ).toStrictEqual([0, 1]);
       });
 
+      it("summarizes a book's stale analyses under the draft's boundaries", async () => {
+        await seedDraft({ ...staleToken, ...orphaned }, segmentation);
+        jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
+        const { openSession, getStaleSummary } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        const json = await getStaleSummary({ sessionId, bookId: 'GEN' });
+
+        expect(bookService.getOpenBook).toHaveBeenCalledWith(
+          'src-project',
+          'GEN',
+          JSON.stringify(segmentation),
+        );
+        expect(JSON.parse(json ?? '')).toStrictEqual({
+          glosses: [{ analysisId: 'ta-in', tokenRef: 'GEN 1:1:0' }],
+          freeTranslations: [{ analysisId: 'sa-9', segmentId: 'GEN 1:2' }],
+        });
+      });
+
+      it('summarizes nothing for a book the project has no text for', async () => {
+        jest.mocked(bookService.getOpenBook).mockResolvedValue(undefined);
+        const { openSession, getStaleSummary } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        await expect(getStaleSummary({ sessionId, bookId: 'GEN' })).resolves.toBeUndefined();
+      });
+
       it("serves a run of a book's segments under the draft's boundaries, with its analysis", async () => {
         await seedDraft(orphaned, segmentation);
         jest.mocked(bookService.getSegmentedBook).mockResolvedValue(VERSE_BOOK);
@@ -3037,11 +3070,16 @@ describe('main', () => {
         expect(bookService.getSegmentedBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
       });
 
-      it('logs and rethrows an outline or a page asked of a session not open', async () => {
-        const { getBookOutline, getSegments } = await activateSessionCommands();
+      it('logs and rethrows an outline, a page or a stale summary asked of a session not open', async () => {
+        const { getBookOutline, getSegments, getStaleSummary } = await activateSessionCommands();
 
         await expect(getBookOutline({ sessionId: 'gone' }, 'GEN')).rejects.toThrow();
         await expect(getSegments({ sessionId: 'gone' }, 'GEN', 0, 1)).rejects.toThrow();
+        await expect(getStaleSummary({ sessionId: 'gone', bookId: 'GEN' })).rejects.toThrow();
+        expect(__mockLogger.error).toHaveBeenCalledWith(
+          'Interlinearizer: failed to summarize the stale analyses of book GEN of session gone',
+          expect.any(Error),
+        );
         expect(__mockLogger.error).toHaveBeenCalledWith(
           'Interlinearizer: failed to outline book GEN of session gone',
           expect.any(Error),
@@ -4496,6 +4534,7 @@ describe('main', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        staleGlossBooks: [],
         canUndo: true,
         canRedo: false,
         step: { summary: { kind: 'discardBook', book: 'GEN' } },

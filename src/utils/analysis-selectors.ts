@@ -641,12 +641,4 @@ export const selectStaleFreeTranslations = createSelector(
   },
 );
 
-/** Memoized selector listing every stale token link whose payload exists, in link order. */
-export const selectStaleTokenLinks = createSelector(
-  selectTokenAnalysisLinks,
-  selectAnalysisById,
-  (links, byId): readonly TokenAnalysisLink[] =>
-    links.filter((link) => link.status === 'stale' && byId.has(link.analysisId)),
-);
-
 // #endregion

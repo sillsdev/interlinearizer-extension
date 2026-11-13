@@ -6,7 +6,6 @@ import type {
   SenseRef,
   TextAnalysis,
   TokenAnalysis,
-  TokenAnalysisLink,
   TokenSnapshot,
 } from 'interlinearizer';
 import {
@@ -39,7 +38,6 @@ import {
   selectSegmentsWithApprovedTranslation,
   selectStaleFreeTranslations,
   selectStaleMorphemesAnalysisId,
-  selectStaleTokenLinks,
   selectUnapprovedTokenAnalysis,
   type AnalysisState,
 } from '../utils/analysis-selectors';
@@ -742,17 +740,6 @@ export function usePlacedStaleFreeTranslations(book: Book): PlacedStaleFreeTrans
     selectStaleFreeTranslations(state),
   );
   return useMemo(() => placeStaleFreeTranslations(stale, book), [stale, book]);
-}
-
-/**
- * Returns every place in the draft an analysis went stale at, as its stale link, in link order.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export function useStaleTokenLinks(): readonly TokenAnalysisLink[] {
-  useRequiredCallbacks('useStaleTokenLinks');
-
-  return useSessionWholeSelector((state: AnalysisState) => selectStaleTokenLinks(state));
 }
 
 /** The write callbacks for reviewing stale free translations. */

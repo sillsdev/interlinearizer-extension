@@ -24,7 +24,7 @@ import { placedAmong, placedIdsIn } from '../utils/stale-free-translations';
 
 /**
  * What a reply leaves to fetch again: nothing, the held pages, the held pages with the outline's
- * orphaned-card counts, or the outline along with each view's latest range.
+ * orphaned-card counts and stale flags, or the outline along with each view's latest range.
  */
 export type Refetch = 'none' | 'pages' | 'placement' | 'outline';
 
@@ -124,14 +124,22 @@ export class RecordCache {
   }
 
   /**
-   * Takes the orphaned-card counts of a fresh outline, keeping the held pages.
+   * Takes the orphaned-card counts and stale flags of a fresh outline, keeping the held pages.
    *
-   * @returns `true` when it took the counts. `false`, taking nothing, when `outline` differs from
-   *   the held outline in more than its orphaned-card counts.
+   * @returns `true` when it took them. `false`, taking nothing, when `outline` differs from the
+   *   held outline in more than its orphaned-card counts and stale flags.
    */
   takeCounts(outline: BookOutline): boolean {
     const cut = ({ segments, ...rest }: BookOutline) =>
-      JSON.stringify({ ...rest, segments: segments.map((s) => ({ ...s, orphanedCardCount: 0 })) });
+      JSON.stringify({
+        ...rest,
+        segments: segments.map((segment) => ({
+          ...segment,
+          orphanedCardCount: undefined,
+          hasStaleGloss: undefined,
+          hasStaleFreeTranslation: undefined,
+        })),
+      });
     if (cut(outline) !== cut(this.outlineHeld)) return false;
     this.outlineHeld = outline;
     return true;

@@ -7,7 +7,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
 import { useEvent } from 'platform-bible-react';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
-import { getMockedSendCommand, makeSegment, makeWordToken } from '../test-helpers';
+import { EMPTY_GEN_BOOK, getMockedSendCommand, makeSegment, makeWordToken } from '../test-helpers';
 
 /** Mock PlatformError shape */
 type PlatformError = { message: string; platformErrorVersion: number };
@@ -15,10 +15,7 @@ type PlatformError = { message: string; platformErrorVersion: number };
 const mockSendCommand = getMockedSendCommand(papi);
 
 const TEST_BOOK: Book = {
-  id: 'GEN',
-  bookRef: 'GEN',
-  textVersion: 'v1',
-  duplicateVerseIds: [],
+  ...EMPTY_GEN_BOOK,
   segments: [
     makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
     makeSegment('GEN 1:2', 'And the earth.', [makeWordToken('GEN 1:2:0', 'And')]),
@@ -231,6 +228,41 @@ describe('useInterlinearizerBookData', () => {
       const { result } = renderBookData();
 
       expect(result.current.writingSystem).toBe('und');
+    });
+  });
+
+  describe('verse markers that name no verse', () => {
+    const BOOK_WITH_INVALID: Book = { ...TEST_BOOK, invalidVerseIds: ['GEN 1:'] };
+
+    beforeEach(() => {
+      jest.mocked(logger.warn).mockImplementation(() => {});
+      jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
+    });
+
+    it('sends its own warning notification and logs the skipped SIDs', async () => {
+      serveBooks(BOOK_WITH_INVALID);
+
+      renderBookData();
+
+      await waitFor(() =>
+        expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith({
+          message: '%interlinearizer_warning_invalidVerses%',
+          severity: 'warning',
+        }),
+      );
+      expect(jest.mocked(logger.warn)).toHaveBeenCalledWith(expect.stringContaining('GEN 1:'));
+    });
+
+    it('warns only once when the same book is fetched again', async () => {
+      serveBooks(BOOK_WITH_INVALID);
+      const { result, rerender } = renderBookData();
+      await waitFor(() => expect(jest.mocked(papi.notifications.send)).toHaveBeenCalled());
+
+      mockLanguageTag('fr');
+      rerender({ scrRef: GEN_1_1 });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledTimes(1);
     });
   });
 

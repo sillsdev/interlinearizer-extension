@@ -133,6 +133,25 @@ export default function useInterlinearizerBookData({
       .catch(() => {});
   }, [duplicateVerseIds, projectId, bookRef]);
 
+  // Warns once per project/book/invalid-set.
+  const warnedInvalidForBookRef = useRef<string | undefined>(undefined);
+  const invalidVerseIds = book?.invalidVerseIds;
+  useEffect(() => {
+    if (!invalidVerseIds || invalidVerseIds.length === 0) return;
+
+    const bookKey = `${projectId}:${bookRef}:${invalidVerseIds.join(',')}`;
+    if (warnedInvalidForBookRef.current === bookKey) return;
+    warnedInvalidForBookRef.current = bookKey;
+
+    logger.warn(
+      `Interlinearizer: book ${bookRef} in project ${projectId} has ${invalidVerseIds.length} verse marker(s) that name no verse; their text is not shown: ${invalidVerseIds.join(', ')}`,
+    );
+    papi.notifications
+      .send({ message: '%interlinearizer_warning_invalidVerses%', severity: 'warning' })
+      /* v8 ignore next -- a failed warning must not break the load that succeeded */
+      .catch(() => {});
+  }, [invalidVerseIds, projectId, bookRef]);
+
   return {
     book,
     isLoading: !isCurrentLoaded,

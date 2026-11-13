@@ -19,7 +19,13 @@ import {
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import { isWordToken } from '../../types/type-guards';
 import * as perfMarks from '../../utils/perf-marks';
-import { makeSegment, makeVerseBook, makeWordToken, type ScrollGroupTuple } from '../test-helpers';
+import {
+  EMPTY_GEN_BOOK,
+  makeSegment,
+  makeVerseBook,
+  makeWordToken,
+  type ScrollGroupTuple,
+} from '../test-helpers';
 
 /**
  * A two-verse GEN book whose first verse holds two word tokens, so a focus can sit on a non-first
@@ -27,10 +33,8 @@ import { makeSegment, makeVerseBook, makeWordToken, type ScrollGroupTuple } from
  */
 function makeBook(): Book {
   return {
-    id: 'GEN',
-    bookRef: 'GEN',
+    ...EMPTY_GEN_BOOK,
     textVersion: '1',
-    duplicateVerseIds: [],
     segments: [
       makeSegment('GEN 1:1', 'In beginning', [
         makeWordToken('GEN 1:1:0', 'In'),
@@ -261,10 +265,8 @@ describe('FocusProvider seeding', () => {
 
   it('seeds nothing when the active segment has no word token', () => {
     const punctuationOnly: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
+      ...EMPTY_GEN_BOOK,
       textVersion: '1',
-      duplicateVerseIds: [],
       segments: [makeSegment('GEN 1:1', '', [])],
     };
 
@@ -289,10 +291,8 @@ describe('FocusProvider seeding from a child', () => {
     // Child effects run before the provider's, so the resolution rules see the child's write and
     // must leave it alone — neither the book nor the verse has moved since the mount.
     const noWordToken: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
+      ...EMPTY_GEN_BOOK,
       textVersion: '1',
-      duplicateVerseIds: [],
       segments: [makeSegment('GEN 1:1', '', []), ...makeBook().segments.slice(1)],
     };
 
@@ -512,10 +512,8 @@ describe('FocusProvider resolution rules', () => {
     act(() => harness.read().actions.focusToken('GEN 1:1:1', 'strip'));
 
     const retokenized: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
+      ...EMPTY_GEN_BOOK,
       textVersion: '2',
-      duplicateVerseIds: [],
       segments: [makeSegment('GEN 1:1', 'Anew', [makeWordToken('GEN 1:1:9', 'Anew')])],
     };
     harness.setBook(retokenized);
@@ -525,10 +523,8 @@ describe('FocusProvider resolution rules', () => {
 
   it('keeps the focus when its own segment contains the new verse', () => {
     const spanning: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
+      ...EMPTY_GEN_BOOK,
       textVersion: '1',
-      duplicateVerseIds: [],
       segments: [
         {
           ...makeSegment('GEN 1:1', 'In beginning', [
@@ -569,10 +565,8 @@ describe('FocusProvider resolution rules', () => {
     // The active verse resolves no word token, so the seed leaves focus unset and the verse change
     // has no focused segment to test against.
     const noWordToken: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
+      ...EMPTY_GEN_BOOK,
       textVersion: '1',
-      duplicateVerseIds: [],
       segments: [makeSegment('GEN 1:1', '', []), ...makeBook().segments.slice(1)],
     };
     const harness = renderFocus(noWordToken, GEN_1_1);
@@ -707,10 +701,10 @@ describe('FocusProvider resolution rules', () => {
     // request naming a book that has yet to mount has to survive that attempt, or it would be lost
     // to whatever navigation happened to precede the load it is waiting for.
     const matBook: Book = {
+      ...EMPTY_GEN_BOOK,
       id: 'MAT',
       bookRef: 'MAT',
       textVersion: '1',
-      duplicateVerseIds: [],
       segments: [makeSegment('MAT 1:1', 'Alpha', [makeWordToken('MAT 1:1:0', 'Alpha')])],
     };
     const harness = renderFocus(makeBook(), GEN_1_1);

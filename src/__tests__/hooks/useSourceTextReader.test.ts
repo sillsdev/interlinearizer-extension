@@ -8,7 +8,7 @@ import useSourceTextReader, {
   type UseSourceTextReaderArgs,
 } from '../../hooks/useSourceTextReader';
 import { indexBook } from '../../utils/concordance';
-import { getMockedPdpGet, getMockedSendCommand } from '../test-helpers';
+import { EMPTY_GEN_BOOK, getMockedPdpGet, getMockedSendCommand } from '../test-helpers';
 
 // A book's index is the concordance core's concern; this stand-in names the one form it holds by
 // the book and text version it was built from, so a test can read off which reading went in.
@@ -19,7 +19,7 @@ const mockSendCommand = getMockedSendCommand(papi);
 
 /** A stand-in tokenized book, which the stand-in index reads only the code and version of. */
 function book(bookRef: string, textVersion: string): Book {
-  return { id: bookRef, bookRef, textVersion, segments: [], duplicateVerseIds: [] };
+  return { ...EMPTY_GEN_BOOK, id: bookRef, bookRef, textVersion };
 }
 
 /** Wires the host to serve `booksPresent` and each tokenized book from `readBook`. */

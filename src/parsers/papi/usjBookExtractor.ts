@@ -1,3 +1,5 @@
+import { VerseRef } from '@sillsdev/scripture';
+
 /** Plain text of a single verse extracted from a USJ document, ready to be tokenized. */
 export interface RawVerse {
   kind: 'verse';
@@ -73,6 +75,12 @@ export interface RawBook {
    * order and repeated once per dropped marker. Empty for a well-formed book.
    */
   duplicateVerseIds: string[];
+  /**
+   * SIDs of verse markers dropped because the SID names no verse (e.g. `"1SA 9:"` from a `\v` with
+   * no number), in encounter order and repeated once per dropped marker. Empty for a well-formed
+   * book.
+   */
+  invalidVerseIds: string[];
   /**
    * The identification line and everything ahead of the first chapter or verse, one entry per
    * paragraph in document order, empty paragraphs included.
@@ -158,6 +166,8 @@ interface TraversalState {
   seenVerseIds: Set<string>;
   /** SIDs of verse markers skipped as duplicates, in encounter order. */
   duplicateVerseIds: string[];
+  /** SIDs of verse markers skipped because they name no verse, in encounter order. */
+  invalidVerseIds: string[];
   /** The verse currently being accumulated; `undefined` when outside a verse scope. */
   currentVerse: RawVerse | undefined;
   /**
@@ -272,8 +282,10 @@ function verseNumberFromSid(sid: string): string {
  * verse number is the marker's verbatim `number` attribute, or the sid-derived verse portion when
  * the marker omits it.
  *
- * A marker whose SID an earlier marker already claimed opens no verse scope, so its text and any
- * heading within it are discarded rather than folded into the preceding verse.
+ * A marker whose SID an earlier marker already claimed, or whose SID names no verse, opens no verse
+ * scope, so its text and any heading within it are discarded rather than folded into the preceding
+ * verse. Discarding text after a SID that names no verse matches Paratext, which assigns that text
+ * to no verse.
  *
  * @throws {SyntaxError} If the `verse` node is missing its required `sid` attribute.
  */
@@ -281,6 +293,10 @@ function handleVerseNode(node: UsjNode, state: TraversalState): void {
   closeCurrentVerse(state);
   state.scriptureBegun = true;
   if (!node.sid) throw new SyntaxError('Invalid USJ: verse marker missing required sid attribute');
+  if (!VerseRef.tryParse(node.sid).success) {
+    state.invalidVerseIds.push(node.sid);
+    return;
+  }
   if (state.seenVerseIds.has(node.sid)) {
     state.duplicateVerseIds.push(node.sid);
     return;
@@ -454,8 +470,8 @@ function fnv1a32(s: string): string {
  * The identification line and everything ahead of the first chapter or verse are also captured as
  * front matter, one entry per paragraph.
  *
- * A `verse` marker repeating a SID an earlier marker already claimed is skipped rather than fatal,
- * so a book with duplicate verses still extracts.
+ * A `verse` marker repeating a SID an earlier marker already claimed, or whose SID names no verse,
+ * is skipped rather than fatal, so a book with duplicate or unnumbered verses still extracts.
  *
  * @throws {SyntaxError} If no `book` marker with a `code` attribute is found in the document.
  * @throws {SyntaxError} If a `verse` marker is missing its required `sid` attribute.
@@ -466,6 +482,7 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
     bookCode: '',
     seenVerseIds: new Set<string>(),
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     currentVerse: undefined,
     currentVerseIsSynthetic: false,
     pendingHeadings: [],
@@ -488,6 +505,7 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
     contentHash,
     segments: state.segments,
     duplicateVerseIds: state.duplicateVerseIds,
+    invalidVerseIds: state.invalidVerseIds,
     frontMatter: state.frontMatter,
   };
 }

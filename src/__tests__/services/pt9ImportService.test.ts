@@ -573,6 +573,34 @@ describe('importPt9Project', () => {
     expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('MAT 1:1'));
   });
 
+  it('imports a book holding a verse marker with no number, logging the skipped SID', async () => {
+    const unnumbered = {
+      content: [
+        { type: 'book', code: 'MAT', content: [] },
+        { type: 'chapter', number: '1', sid: 'MAT 1' },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [
+            { type: 'verse', sid: 'MAT 1:1', number: '1' },
+            'hello aokaybe abe abc this is a footnote with a note تمان oj',
+            { type: 'verse', sid: 'MAT 1:', number: '' },
+            { type: 'verse', sid: 'MAT 1:2', number: '2' },
+            'oooo dearly',
+          ],
+        },
+      ],
+    };
+    mockPdps({ usj: unnumbered });
+
+    const result = await importPt9Project(token, 'src-project');
+
+    expect(result.outcome).toBe('imported');
+    expect(__mockLogger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('name no verse; their text is excluded from the import: MAT 1:'),
+    );
+  });
+
   it('aborts without writing when the source has no interlinear data and no import exists', async () => {
     mockPdps({ manifest: manifestOf({}) });
 

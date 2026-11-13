@@ -20,11 +20,12 @@ import {
 } from '../../components/SegmentationStore';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { INITIAL_WINDOW_HALF } from '../../hooks/usePhraseWindow';
-import type { SegmentPages } from '../../types/segment-pages';
 import { STRIP_PREFETCH_SEGMENTS } from '../../hooks/useStripSegments';
+import type { SegmentPages } from '../../types/segment-pages';
 import { isWordToken } from '../../types/type-guards';
 import { STRIP_MARGIN_WORDS } from '../../utils/strip-range';
 import {
+  EMPTY_GEN_BOOK,
   FIXTURE_STAMPS,
   makePhraseLink,
   makePunctToken,
@@ -197,10 +198,8 @@ jest.mock('../../components/PhraseBox', () => ({
 /** Factory for a single-chapter book with two segments each having two word tokens. */
 function makeBook(overrides?: Partial<Book>): Book {
   return {
-    id: 'GEN',
-    bookRef: 'GEN',
+    ...EMPTY_GEN_BOOK,
     textVersion: '1',
-    duplicateVerseIds: [],
     segments: [
       makeSegment('GEN 1:1', 'In the', [
         makeWordToken('tok-0', 'In'),
@@ -218,10 +217,8 @@ function makeBook(overrides?: Partial<Book>): Book {
 /** Builds a two-chapter Book fixture used to exercise cross-chapter navigation. */
 function makeTwoChapterBook(): Book {
   return {
-    id: 'GEN',
-    bookRef: 'GEN',
+    ...EMPTY_GEN_BOOK,
     textVersion: '1',
-    duplicateVerseIds: [],
     segments: [
       makeSegment('GEN 1:1', 'Alpha', [makeWordToken('ch1-tok-0', 'Alpha')]),
       makeSegment('GEN 2:1', 'Beta', [makeWordToken('ch2-tok-0', 'Beta')]),
@@ -232,10 +229,8 @@ function makeTwoChapterBook(): Book {
 /** Builds a Book with exactly one word token in one segment. */
 function makeSingleTokenBook(): Book {
   return {
-    id: 'GEN',
-    bookRef: 'GEN',
+    ...EMPTY_GEN_BOOK,
     textVersion: '1',
-    duplicateVerseIds: [],
     segments: [makeSegment('GEN 1:1', 'Word', [makeWordToken('tok-only', 'Word')])],
   };
 }
@@ -243,10 +238,8 @@ function makeSingleTokenBook(): Book {
 /** A book whose GEN 1:1 segment has word tokens and whose GEN 1:2 segment has only punctuation. */
 function makeMixedBook(): Book {
   return {
-    id: 'GEN',
-    bookRef: 'GEN',
+    ...EMPTY_GEN_BOOK,
     textVersion: '1',
-    duplicateVerseIds: [],
     segments: [
       makeSegment('GEN 1:1', 'In the', [makeWordToken('mix-tok-0', 'In')]),
       makeSegment('GEN 1:2', '.', [makePunctToken('mix-punct-0')]),
@@ -257,10 +250,8 @@ function makeMixedBook(): Book {
 /** Builds a Book whose only token is punctuation. */
 function makeWordFreeBook(): Book {
   return {
-    id: 'GEN',
-    bookRef: 'GEN',
+    ...EMPTY_GEN_BOOK,
     textVersion: '1',
-    duplicateVerseIds: [],
     segments: [makeSegment('GEN 1:1', '...', [makePunctToken('wf-punct-0')])],
   };
 }
@@ -268,10 +259,8 @@ function makeWordFreeBook(): Book {
 /** Builds a Book with `count` word tokens spread across one segment per token. */
 function makeLargeBook(count: number): Book {
   return {
-    id: 'GEN',
-    bookRef: 'GEN',
+    ...EMPTY_GEN_BOOK,
     textVersion: '1',
-    duplicateVerseIds: [],
     segments: Array.from({ length: count }, (_, i) => ({
       id: `GEN 1:${i + 1}`,
       startRef: { book: 'GEN', chapter: 1, verse: i + 1 },
@@ -528,10 +517,10 @@ describe('ContinuousView initial render', () => {
     // the mounted book. Seeded with such a ref, so the window has to follow the live focus rather
     // than collapse to phrase 0.
     const otherBook: Book = {
+      ...EMPTY_GEN_BOOK,
       id: 'MAT',
       bookRef: 'MAT',
       textVersion: '1',
-      duplicateVerseIds: [],
       segments: [
         makeSegment('MAT 1:1', 'Alpha', [makeWordToken('mat-tok-0', 'Alpha')]),
         makeSegment('MAT 1:2', 'Beta', [makeWordToken('mat-tok-1', 'Beta')]),
@@ -555,10 +544,10 @@ describe('ContinuousView initial render', () => {
     // different groups in the new book. Centering afterwards proves the new book's groups took
     // setters of their own rather than inheriting dead ones.
     const otherBook: Book = {
+      ...EMPTY_GEN_BOOK,
       id: 'MAT',
       bookRef: 'MAT',
       textVersion: '1',
-      duplicateVerseIds: [],
       segments: [
         makeSegment('MAT 1:1', 'Alpha', [makeWordToken('mat-tok-0', 'Alpha')]),
         makeSegment('MAT 1:2', 'Beta', [makeWordToken('mat-tok-1', 'Beta')]),

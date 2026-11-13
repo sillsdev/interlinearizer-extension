@@ -19,7 +19,14 @@ type Anchor = string | undefined;
 
 /** A book the project no longer has, as a book with no text. */
 export function missingBook(bookCode: string): Book {
-  return { id: bookCode, bookRef: bookCode, textVersion: '', segments: [], duplicateVerseIds: [] };
+  return {
+    id: bookCode,
+    bookRef: bookCode,
+    textVersion: '',
+    segments: [],
+    duplicateVerseIds: [],
+    invalidVerseIds: [],
+  };
 }
 
 /** Returns the verse a token ref belongs to. */

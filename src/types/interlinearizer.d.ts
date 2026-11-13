@@ -1422,6 +1422,14 @@ declare module 'interlinearizer' {
     duplicateVerseIds: string[];
 
     /**
+     * SIDs of verse markers that name no verse (e.g. `"1SA 9:"` from a `\v` with no number), which
+     * are skipped because there is no verse to segment them as. Empty for a well-formed book; when
+     * non-empty, the book is missing those markers' text and any heading within it, as Paratext
+     * assigns that text to no verse.
+     */
+    invalidVerseIds: string[];
+
+    /**
      * Paragraphs ahead of the first chapter or verse — the identification line, headers, titles,
      * and introduction — in document order, kept outside the text layer to recognize analyses other
      * tools made of that text. Absent when the book has none.

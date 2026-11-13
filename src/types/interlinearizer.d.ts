@@ -1128,16 +1128,16 @@ declare module 'papi-shared-types' {
     ) => Promise<string | undefined>;
 
     /**
-     * Counts a stored project's word, phrase, and morpheme glosses under each of `tags`. Only the
-     * counts cross PAPI, never the project's analysis.
+     * Counts a stored project's glosses and free translations in each of `tags`. Only the counts
+     * cross PAPI, never the project's analysis.
      *
      * @param interlinearProjectId - UUID of the interlinearizer project to count in.
-     * @param tags - BCP 47 tags to count the glosses of.
-     * @returns The JSON-stringified counts keyed by tag, every tag in `tags` included, or
-     *   `undefined` if no project with that ID exists.
+     * @param tags - BCP 47 tags to count the text of.
+     * @returns The JSON-stringified `{ glosses, freeTranslations }` counts keyed by tag, every tag
+     *   in `tags` included, or `undefined` if no project with that ID exists.
      * @throws If the project can't be read. The error is logged before rethrowing.
      */
-    'interlinearizer.countProjectGlosses': (
+    'interlinearizer.countProjectText': (
       interlinearProjectId: string,
       tags: string[],
     ) => Promise<string | undefined>;

@@ -51,7 +51,7 @@ import { emptyAnalysis } from './types/empty-factories';
 import { CURRENT_MODEL_VERSION } from './types/model-version';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
-import { countGlossesByTag } from './utils/gloss-counts';
+import { countTextByTag } from './utils/text-counts';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 import { bookSegmentationJson } from './utils/segmentation';
 
@@ -473,24 +473,24 @@ async function retagProjectGlosses(
 }
 
 /**
- * Counts a stored project's word, phrase, and morpheme glosses under each of `tags`. Only the
- * counts cross PAPI, never the project's analysis.
+ * Counts a stored project's glosses and free translations in each of `tags`. Only the counts cross
+ * PAPI, never the project's analysis.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to count in.
- * @param tags - BCP 47 tags to count the glosses of.
- * @returns The JSON-stringified `GlossCountsByTag`, or `undefined` if no project with the given ID
+ * @param tags - BCP 47 tags to count the text of.
+ * @returns The JSON-stringified `TextCountsByTag`, or `undefined` if no project with the given ID
  *   exists.
  * @throws If the project can't be read. The error is logged before rethrowing.
  */
-async function countProjectGlosses(
+async function countProjectText(
   interlinearProjectId: string,
   tags: string[],
 ): Promise<string | undefined> {
   try {
     const project = await projectStorage.getProject(executionToken, interlinearProjectId);
-    return project && JSON.stringify(countGlossesByTag(project.analysis, tags));
+    return project && JSON.stringify(countTextByTag(project.analysis, tags));
   } catch (e) {
-    logger.error("Interlinearizer: failed to count a project's glosses", e);
+    logger.error("Interlinearizer: failed to count a project's text", e);
     throw e;
   }
 }
@@ -2779,12 +2779,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const countProjectGlossesCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.countProjectGlosses',
-    countProjectGlosses,
+  const countProjectTextCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.countProjectText',
+    countProjectText,
     {
       method: {
-        summary: "Count a stored project's word, phrase, and morpheme glosses in each language tag",
+        summary: "Count a stored project's glosses and free translations in each language tag",
         params: [
           {
             name: 'interlinearProjectId',
@@ -2795,7 +2795,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           {
             name: 'tags',
             required: true,
-            summary: 'BCP 47 tags to count the glosses of',
+            summary: 'BCP 47 tags to count the text of',
             schema: { type: 'array', items: { type: 'string' } },
           },
         ],
@@ -3158,7 +3158,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,
     retagProjectGlossesCommandRegistration,
-    countProjectGlossesCommandRegistration,
+    countProjectTextCommandRegistration,
     importPt9ProjectCommandRegistration,
     createEditableCopyCommandRegistration,
     deleteProjectCommandRegistration,

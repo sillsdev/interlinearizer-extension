@@ -30,7 +30,11 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_confirm_deleteProject_cancel%': 'Cancel',
   '%interlinearizer_confirm_removeLanguages_title%': 'Remove languages that have glosses?',
   '%interlinearizer_confirm_removeLanguages_body%': 'Removing these languages hides their glosses:',
-  '%interlinearizer_confirm_removeLanguages_count%': '{language}: {count} glosses',
+  '%interlinearizer_confirm_removeLanguages_count_glosses%': '{language}: {glosses} glosses',
+  '%interlinearizer_confirm_removeLanguages_count_freeTranslations%':
+    '{language}: {freeTranslations} free translations',
+  '%interlinearizer_confirm_removeLanguages_count_both%':
+    '{language}: {glosses} glosses and {freeTranslations} free translations',
   '%interlinearizer_confirm_removeLanguages_kept%': 'The glosses stay in the project.',
   '%interlinearizer_confirm_removeLanguages_ok%': 'Remove',
   '%interlinearizer_confirm_removeLanguages_cancel%': 'Keep editing',
@@ -379,12 +383,12 @@ describe('ProjectMetadataModal', () => {
 
   describe('removing secondary analysis languages', () => {
     /** Renders the modal for a project in `en, de, fr`, then saves it with only `en`. */
-    async function saveWithoutSecondaries(countGlosses?: jest.Mock) {
+    async function saveWithoutSecondaries(countText?: jest.Mock) {
       render(
         <ProjectMetadataModal
           {...testProps}
           analysisLanguages={['en', 'de', 'fr']}
-          countGlosses={countGlosses}
+          countText={countText}
         />,
       );
       const langInput = screen.getByLabelText(/analysis language/i);
@@ -401,19 +405,38 @@ describe('ProjectMetadataModal', () => {
     }
 
     it('says how many glosses each removed language has before saving', async () => {
-      const countGlosses = jest.fn().mockResolvedValue({ de: 3, fr: 0 });
-      await saveWithoutSecondaries(countGlosses);
+      const countText = jest.fn().mockResolvedValue({
+        de: { glosses: 3, freeTranslations: 0 },
+        fr: { glosses: 0, freeTranslations: 0 },
+      });
+      await saveWithoutSecondaries(countText);
 
       expect(await screen.findByTestId('remove-languages-counts')).toHaveTextContent(
         'de: 3 glosses',
       );
       expect(screen.getByTestId('remove-languages-counts')).not.toHaveTextContent('fr');
-      expect(countGlosses).toHaveBeenCalledWith(['de', 'fr']);
+      expect(countText).toHaveBeenCalledWith(['de', 'fr']);
+      expect(saved()).toBe(false);
+    });
+
+    it('warns about a removed language that has only free translations', async () => {
+      await saveWithoutSecondaries(
+        jest.fn().mockResolvedValue({
+          de: { glosses: 0, freeTranslations: 2 },
+          fr: { glosses: 0, freeTranslations: 0 },
+        }),
+      );
+
+      expect(await screen.findByTestId('remove-languages-counts')).toHaveTextContent(
+        'de: 2 free translations',
+      );
       expect(saved()).toBe(false);
     });
 
     it('saves once the user confirms the removal', async () => {
-      await saveWithoutSecondaries(jest.fn().mockResolvedValue({ de: 3 }));
+      await saveWithoutSecondaries(
+        jest.fn().mockResolvedValue({ de: { glosses: 3, freeTranslations: 0 } }),
+      );
 
       await userEvent.click(await screen.findByTestId('remove-languages-confirm'));
 
@@ -431,7 +454,9 @@ describe('ProjectMetadataModal', () => {
     });
 
     it('goes back to the form without saving when the user cancels', async () => {
-      await saveWithoutSecondaries(jest.fn().mockResolvedValue({ de: 3 }));
+      await saveWithoutSecondaries(
+        jest.fn().mockResolvedValue({ de: { glosses: 3, freeTranslations: 0 } }),
+      );
 
       await userEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
 
@@ -452,7 +477,7 @@ describe('ProjectMetadataModal', () => {
 
       await waitFor(() => expect(saved()).toBe(true));
       expect(logger.warn).toHaveBeenCalledWith(
-        'Interlinearizer: failed to count the glosses of removed languages',
+        'Interlinearizer: failed to count the text of removed languages',
         expect.any(Error),
       );
     });
@@ -464,12 +489,12 @@ describe('ProjectMetadataModal', () => {
     });
 
     it("doesn't count the glosses of a removed primary language", async () => {
-      const countGlosses = jest.fn().mockResolvedValue({ en: 5 });
+      const countText = jest.fn().mockResolvedValue({ en: { glosses: 5, freeTranslations: 0 } });
       render(
         <ProjectMetadataModal
           {...testProps}
           analysisLanguages={['en', 'de']}
-          countGlosses={countGlosses}
+          countText={countText}
         />,
       );
       const langInput = screen.getByLabelText(/analysis language/i);
@@ -478,7 +503,7 @@ describe('ProjectMetadataModal', () => {
       await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
       await waitFor(() => expect(saved()).toBe(true));
-      expect(countGlosses).not.toHaveBeenCalled();
+      expect(countText).not.toHaveBeenCalled();
     });
   });
 });

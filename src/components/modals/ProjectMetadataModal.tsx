@@ -4,7 +4,7 @@ import { Button, Input, Label, Textarea } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
-import type { GlossCountsByTag } from '../../utils/gloss-counts';
+import type { LanguageTextCounts, TextCountsByTag } from '../../utils/text-counts';
 import { parseLanguageTags } from '../../utils/language-tags';
 import { ModalShell } from './ModalShell';
 import { RemoveLanguagesConfirm } from './RemoveLanguagesConfirm';
@@ -58,10 +58,10 @@ type ProjectMetadataModalProps = Readonly<{
   /** Whether the fields and Save are disabled for a reason outside the form. */
   isSaveBlocked?: boolean;
   /**
-   * Counts the project's glosses in each of the given languages. When it is given, Save asks before
-   * removing a secondary analysis language that has glosses.
+   * Counts the project's glosses and free translations in each of the given languages. When it is
+   * given, Save asks before removing a secondary analysis language that has either.
    */
-  countGlosses?: (tags: string[]) => Promise<GlossCountsByTag>;
+  countText?: (tags: string[]) => Promise<TextCountsByTag>;
   /** Callback invoked when the modal should be dismissed without saving. */
   onClose: () => void;
   /** Optional callback invoked with updated metadata after a successful save. */
@@ -90,7 +90,7 @@ export function ProjectMetadataModal({
   updatedAt,
   pt9ImportedAt,
   isSaveBlocked = false,
-  countGlosses,
+  countText,
   onClose,
   onProjectSaved,
 }: ProjectMetadataModalProps) {
@@ -103,9 +103,9 @@ export function ProjectMetadataModal({
   const [editLanguages, setEditLanguages] = useState(analysisLanguages.join(', '));
   // Guards Save against double-submit; `isSubmitting` disables the controls while it runs.
   const { isSubmitting, runGuarded } = useSubmitGuard();
-  /** The removed languages that have glosses, while Save waits for the user to confirm. */
-  const [removedGlossCounts, setRemovedGlossCounts] = useState<
-    [language: string, count: number][] | undefined
+  /** The removed languages that have analysis text, while Save waits for the user to confirm. */
+  const [removedTextCounts, setRemovedTextCounts] = useState<
+    [language: string, counts: LanguageTextCounts][] | undefined
   >(undefined);
 
   const readOnly = pt9ImportedAt !== undefined;
@@ -176,9 +176,10 @@ export function ProjectMetadataModal({
   ]);
 
   /**
-   * Saves, unless the edit removes secondary analysis languages that have glosses. In that case it
-   * shows how many glosses each has and waits for the user to confirm. A failed count is logged and
-   * does not hold up the save, because removing a language deletes none of its glosses.
+   * Saves, unless the edit removes secondary analysis languages that have glosses or free
+   * translations. In that case it shows how many each has and waits for the user to confirm. A
+   * failed count is logged and does not hold up the save, because removing a language deletes none
+   * of its text.
    */
   const handleSave = useCallback(
     () =>
@@ -186,32 +187,35 @@ export function ProjectMetadataModal({
         const removed = analysisLanguages
           .slice(1)
           .filter((language) => !parsedLanguages.includes(language));
-        if (countGlosses && removed.length > 0) {
-          let counts: GlossCountsByTag = {};
+        if (countText && removed.length > 0) {
+          let counts: TextCountsByTag = {};
           try {
-            counts = await countGlosses(removed);
+            counts = await countText(removed);
           } catch (e) {
-            logger.warn('Interlinearizer: failed to count the glosses of removed languages', e);
+            logger.warn('Interlinearizer: failed to count the text of removed languages', e);
           }
-          const withGlosses = removed
-            .map((language): [string, number] => [language, counts[language] ?? 0])
-            .filter(([, count]) => count > 0);
-          if (withGlosses.length > 0) {
-            setRemovedGlossCounts(withGlosses);
+          const withText = removed
+            .map((language): [string, LanguageTextCounts] => [
+              language,
+              counts[language] ?? { glosses: 0, freeTranslations: 0 },
+            ])
+            .filter(([, { glosses, freeTranslations }]) => glosses + freeTranslations > 0);
+          if (withText.length > 0) {
+            setRemovedTextCounts(withText);
             return;
           }
         }
         await saveMetadata();
       }),
-    [analysisLanguages, countGlosses, parsedLanguages, runGuarded, saveMetadata],
+    [analysisLanguages, countText, parsedLanguages, runGuarded, saveMetadata],
   );
 
   const handleConfirmRemove = useCallback(() => {
-    setRemovedGlossCounts(undefined);
+    setRemovedTextCounts(undefined);
     runGuarded(saveMetadata);
   }, [runGuarded, saveMetadata]);
 
-  const handleCancelRemove = useCallback(() => setRemovedGlossCounts(undefined), []);
+  const handleCancelRemove = useCallback(() => setRemovedTextCounts(undefined), []);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
@@ -329,9 +333,9 @@ export function ProjectMetadataModal({
         )}
       </div>
 
-      {removedGlossCounts && (
+      {removedTextCounts && (
         <RemoveLanguagesConfirm
-          glossCounts={removedGlossCounts}
+          textCounts={removedTextCounts}
           onConfirm={handleConfirmRemove}
           onCancel={handleCancelRemove}
         />

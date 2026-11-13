@@ -207,10 +207,10 @@ const getRetagProjectGlossesHandler = () =>
     'interlinearizer.retagProjectGlosses',
   );
 
-/** Activates the extension and returns the `interlinearizer.countProjectGlosses` handler. */
-const getCountProjectGlossesHandler = () =>
+/** Activates the extension and returns the `interlinearizer.countProjectText` handler. */
+const getCountProjectTextHandler = () =>
   activateAndGetHandler<(id: string, tags: string[]) => Promise<string | undefined>>(
-    'interlinearizer.countProjectGlosses',
+    'interlinearizer.countProjectText',
   );
 
 /** Activates the extension and returns the `interlinearizer.importPt9Project` handler. */
@@ -1890,7 +1890,7 @@ describe('main', () => {
     });
   });
 
-  describe('interlinearizer.countProjectGlosses command', () => {
+  describe('interlinearizer.countProjectText command', () => {
     const mockGetProject = jest.mocked(projectStorage.getProject);
 
     it('returns the counts of each tag as JSON', async () => {
@@ -1903,29 +1903,29 @@ describe('main', () => {
           ],
         },
       });
-      const handler = await getCountProjectGlossesHandler();
+      const handler = await getCountProjectTextHandler();
 
       expect(JSON.parse((await handler('proj-id', ['fr', 'de'])) ?? '')).toStrictEqual({
-        fr: 1,
-        de: 0,
+        fr: { glosses: 1, freeTranslations: 0 },
+        de: { glosses: 0, freeTranslations: 0 },
       });
       expect(mockGetProject).toHaveBeenCalledWith(expect.anything(), 'proj-id');
     });
 
     it('returns undefined when the project does not exist', async () => {
       mockGetProject.mockResolvedValue(undefined);
-      const handler = await getCountProjectGlossesHandler();
+      const handler = await getCountProjectTextHandler();
 
       expect(await handler('missing', ['fr'])).toBeUndefined();
     });
 
     it('logs and rethrows a read failure', async () => {
       mockGetProject.mockRejectedValue(new Error('unreadable'));
-      const handler = await getCountProjectGlossesHandler();
+      const handler = await getCountProjectTextHandler();
 
       await expect(handler('proj-id', ['fr'])).rejects.toThrow('unreadable');
       expect(__mockLogger.error).toHaveBeenCalledWith(
-        "Interlinearizer: failed to count a project's glosses",
+        "Interlinearizer: failed to count a project's text",
         expect.any(Error),
       );
     });

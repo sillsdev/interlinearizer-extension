@@ -6,22 +6,18 @@ import { ModalShell } from './ModalShell';
 /** Localized string keys requested for this modal's rendered text. */
 const RETAG_GLOSSES_CONFIRM_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_confirm_retag_title%',
-  '%interlinearizer_confirm_retag_body_listed%',
-  '%interlinearizer_confirm_retag_body_removed%',
+  '%interlinearizer_confirm_retag_body%',
   '%interlinearizer_confirm_retag_noUndo%',
   '%interlinearizer_confirm_retag_ok%',
   '%interlinearizer_confirm_retag_cancel%',
 ];
 
 /**
- * Asks whether to move the glosses written under a project's old primary analysis language to its
- * new primary language.
+ * Asks whether to move the glosses written under a stored project's dropped primary analysis
+ * language to its new primary language, warning that the move can't be undone.
  *
  * @param props.from - BCP 47 tag of the old primary language.
  * @param props.to - BCP 47 tag of the new primary language.
- * @param props.fromRemoved - Whether `from` is no longer one of the project's analysis languages,
- *   so its glosses would not show at all.
- * @param props.undoable - Whether the move can be undone.
  * @param props.isSubmitting - When `true`, both buttons are disabled while the caller runs the
  *   choice.
  * @param props.onConfirm - Called to move the glosses.
@@ -31,16 +27,12 @@ const RETAG_GLOSSES_CONFIRM_STRING_KEYS: `%${string}%`[] = [
 export function RetagGlossesConfirm({
   from,
   to,
-  fromRemoved,
-  undoable,
   isSubmitting = false,
   onConfirm,
   onCancel,
 }: Readonly<{
   from: string;
   to: string;
-  fromRemoved: boolean;
-  undoable: boolean;
   isSubmitting?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -50,12 +42,6 @@ export function RetagGlossesConfirm({
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   const tags = { from, to };
-  const body =
-    localizedStrings[
-      fromRemoved
-        ? '%interlinearizer_confirm_retag_body_removed%'
-        : '%interlinearizer_confirm_retag_body_listed%'
-    ];
 
   return (
     <ModalShell
@@ -67,12 +53,12 @@ export function RetagGlossesConfirm({
       width="tw:w-96"
       onClose={isSubmitting ? undefined : onCancel}
     >
-      <p className="tw:text-sm tw:mb-2">{formatReplacementString(body, tags)}</p>
-      {!undoable && (
-        <p className="tw:text-sm tw:mb-2" data-testid="retag-glosses-no-undo">
-          {localizedStrings['%interlinearizer_confirm_retag_noUndo%']}
-        </p>
-      )}
+      <p className="tw:text-sm tw:mb-2">
+        {formatReplacementString(localizedStrings['%interlinearizer_confirm_retag_body%'], tags)}
+      </p>
+      <p className="tw:text-sm tw:mb-2" data-testid="retag-glosses-no-undo">
+        {localizedStrings['%interlinearizer_confirm_retag_noUndo%']}
+      </p>
       <div className="tw:modal-actions tw:mt-4">
         <Button variant="secondary" onClick={onCancel} disabled={isSubmitting}>
           {formatReplacementString(

@@ -41,24 +41,24 @@ import {
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
-import { readBookOutline, readSegmentPage, readStaleSummary } from './services/sessionPages';
 import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
 import { sessionConcordanceHandlers } from './services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
-import { envelopeOf } from './utils/draft-envelope';
+import { readBookOutline, readSegmentPage, readStaleSummary } from './services/sessionPages';
+import { UnreadableBooksError } from './types/analysis-repository';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
-import type { TextReadStatus } from './types/text-read-status';
+import { emptyAnalysis } from './types/empty-factories';
 import {
   toProjectSummary,
   type InterlinearProjectSummary,
   type SavedAsProject,
 } from './types/interlinear-project-summary';
-import { UnreadableBooksError } from './types/analysis-repository';
-import { emptyAnalysis } from './types/empty-factories';
 import { CURRENT_MODEL_VERSION } from './types/model-version';
+import type { TextReadStatus } from './types/text-read-status';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
+import { envelopeOf } from './utils/draft-envelope';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 
 // #region WebView provider

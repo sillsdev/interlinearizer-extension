@@ -121,15 +121,19 @@ export class EditHistory {
     return this.appliedCount;
   }
 
-  /** Records that the draft's current content is empty. */
+  /**
+   * Records that the draft's current content is empty, whether that content is saved before this
+   * call or after it.
+   */
   noteEmpty(): void {
     this.emptyStates.add(this.state);
+    if (this.cleanStates.has(this.state)) this.savedEmptyStates.add(this.state);
   }
 
   /**
    * Forgets every save of content that isn't empty. A state still counts as saved only when
-   * {@link noteEmpty} recorded it as empty before it was saved. A later save of other content
-   * doesn't change that. With `keepCurrent` set, the current state counts as saved too.
+   * {@link noteEmpty} recorded it as empty. A later save of other content doesn't change that. With
+   * `keepCurrent` set, the current state counts as saved too.
    */
   forgetSaves(keepCurrent: boolean): void {
     this.cleanStates = new Set(this.savedEmptyStates);

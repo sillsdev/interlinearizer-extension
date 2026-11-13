@@ -281,7 +281,12 @@ async function applyStaged(
   const { unsavedMark } = options;
   const step = typeof options.step === 'function' ? options.step(changes) : options.step;
   const inverse = await session.history.apply(changes, { unsavedMark, step });
+  if (unsavedMark) await noteIfEmpty(session);
   return { changes, inverse, ...(step && { step }) };
+}
+
+async function noteIfEmpty(session: Session): Promise<void> {
+  if (isEmptyDraft(await session.repository.getWholeDraft())) session.history.noteEmpty();
 }
 
 /** Runs `step`, calling `markApplied` when the session's history applied anything meanwhile. */
@@ -583,7 +588,10 @@ export class AnalysisSessions {
             );
             return { ...answered, ...(applied.step && { step: applied.step }), ...extra };
           }
-          if (editOptions.unsavedMark === 'clear') await session.history.markRestoredClean();
+          if (editOptions.unsavedMark === 'clear') {
+            await session.history.markRestoredClean();
+            await noteIfEmpty(session);
+          }
           return {
             changeId,
             changes: staged,

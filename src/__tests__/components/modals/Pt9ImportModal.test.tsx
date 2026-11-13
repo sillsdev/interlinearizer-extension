@@ -369,6 +369,34 @@ describe('Pt9ImportModal', () => {
     expect(await navigator.clipboard.readText()).toBe(expected);
   });
 
+  it('lists a drop whose verse has no ASCII number after every numbered verse', async () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:10', reason: 'verseNotFound', lexemeIds: ['Word:a'] },
+      { verseRef: 'MAT 1:२', reason: 'verseNotFound', lexemeIds: ['Word:b'] },
+      { verseRef: 'MAT 1:2', reason: 'verseNotFound', lexemeIds: ['Word:c'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByText('Show what was not imported'));
+
+    expect(await screen.findByTestId('pt9-import-drop-lines')).toHaveTextContent(
+      [
+        'MAT 1:2 (en) Word:c — verse not found',
+        'MAT 1:10 (en) Word:a — verse not found',
+        'MAT 1:२ (en) Word:b — verse not found',
+      ].join('\n'),
+      { normalizeWhitespace: false },
+    );
+  });
+
   it('shows only the first lines of a long list and copies every line', async () => {
     const user = userEvent.setup();
     const report = makeReport();

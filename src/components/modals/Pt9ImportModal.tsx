@@ -96,7 +96,8 @@ function compareBookIds(a: string, b: string): number {
 
 /**
  * Orders dropped clusters canonically by their verse key, then by language. A verse such as `2-3`
- * or `2a` sorts by its leading number.
+ * or `2a` sorts by its leading number. A chapter or verse with no ASCII leading number, such as the
+ * Devanagari `२`, sorts after every number.
  */
 function compareDroppedClusters(
   a: ReportTotals['droppedClusters'][number],
@@ -105,12 +106,16 @@ function compareDroppedClusters(
   const place = ({ verseRef }: Pt9ClusterDrop) => {
     const [bookId, chapterVerse = ''] = verseRef.split(' ');
     const [chapter, verse = ''] = chapterVerse.split(':');
-    return [Canon.bookIdToNumber(bookId), Number.parseInt(chapter, 10), Number.parseInt(verse, 10)];
+    return [
+      Canon.bookIdToNumber(bookId),
+      Number.parseInt(chapter, 10),
+      Number.parseInt(verse, 10),
+    ].map((part) => (Number.isNaN(part) ? Infinity : part));
   };
   const placeA = place(a);
   const placeB = place(b);
   const differing = placeA.findIndex((part, i) => part !== placeB[i]);
-  if (differing >= 0) return placeA[differing] - placeB[differing];
+  if (differing >= 0) return placeA[differing] < placeB[differing] ? -1 : 1;
   return a.language.localeCompare(b.language);
 }
 

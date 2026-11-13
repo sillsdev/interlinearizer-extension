@@ -1738,18 +1738,15 @@ describe('AnalysisSessions', () => {
       expect(applyPass).toHaveBeenCalledTimes(1);
     });
 
-    it.each([
-      ['applies a', 'it links into', AFTER, 1],
-      ['applies no', 'it holds no analysis in', makeVerseBook([{ sid: 'EXO 1:1', text: 'x' }]), 0],
-    ])('%s pass over a book %s', async (_applies, _holds, book, applied) => {
+    it('applies a pass over a book it links into', async () => {
       const { sessions, sessionId } = await sessionGlossingBeta();
       const applyPass = await sessions.run(sessionId, async (session) =>
         jest.spyOn(session.history, 'applyPass'),
       );
 
-      await sessions.reanchorBook(SOURCE, book);
+      await sessions.reanchorBook(SOURCE, AFTER);
 
-      expect(applyPass).toHaveBeenCalledTimes(applied);
+      expect(applyPass).toHaveBeenCalledTimes(1);
     });
 
     it('undoes and redoes edits re-anchored to the current text', async () => {

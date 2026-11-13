@@ -284,6 +284,7 @@ describe('InterlinearizerLoader saving', () => {
         expect.any(String),
         'src',
         'proj-1',
+        expect.any(Object),
       ),
     );
   });

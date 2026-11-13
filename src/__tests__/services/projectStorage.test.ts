@@ -589,7 +589,7 @@ describe('projectStorage', () => {
     it('returns the updated project with the new name and description', async () => {
       mockListedProject(storedProject);
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
 
       expect(result).toMatchObject({ id: 'proj-id', name: 'My Name', description: 'My Desc' });
     });
@@ -597,7 +597,7 @@ describe('projectStorage', () => {
     it('writes the updated project to storage', async () => {
       mockListedProject(storedProject);
 
-      await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+      await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
@@ -615,7 +615,7 @@ describe('projectStorage', () => {
     it('refreshes updatedAt to the current time', async () => {
       mockListedProject(storedProject);
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
 
       expect(result?.updatedAt).toBe(UPDATE_TIME);
     });
@@ -623,7 +623,7 @@ describe('projectStorage', () => {
     it("brings the project's listed summary up to date", async () => {
       mockListedProject(storedProject);
 
-      await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+      await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
 
       expect(writtenSummaries()).toEqual([
         expect.objectContaining({ id: 'proj-id', name: 'My Name', updatedAt: UPDATE_TIME }),
@@ -636,7 +636,7 @@ describe('projectStorage', () => {
         key === 'projectSummaries' ? Promise.reject(new Error('disk full')) : Promise.resolve(),
       );
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
 
       expect(result).toMatchObject({ id: 'proj-id', name: 'My Name' });
     });
@@ -644,7 +644,7 @@ describe('projectStorage', () => {
     it('returns undefined for an unlisted project whose record remains', async () => {
       mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
 
       expect(result).toBeUndefined();
     });
@@ -652,7 +652,7 @@ describe('projectStorage', () => {
     it('stamps the current model version over an older one', async () => {
       mockListedProject({ ...storedProject, modelVersion: 0 });
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
 
       expect(result?.modelVersion).toBe(CURRENT_MODEL_VERSION);
     });
@@ -662,9 +662,9 @@ describe('projectStorage', () => {
         JSON.stringify({ ...storedProject, modelVersion: CURRENT_MODEL_VERSION + 1 }),
       );
 
-      await expect(
-        updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']),
-      ).rejects.toThrow(/newer than this build supports/);
+      await expect(updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc')).rejects.toThrow(
+        /newer than this build supports/,
+      );
     });
 
     it('leaves a project written by a newer build unwritten', async () => {
@@ -672,18 +672,24 @@ describe('projectStorage', () => {
         JSON.stringify({ ...storedProject, modelVersion: CURRENT_MODEL_VERSION + 1 }),
       );
 
-      await expect(
-        updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']),
-      ).rejects.toThrow();
+      await expect(updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc')).rejects.toThrow();
 
       expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
+    it("leaves the project's analysis languages as they were", async () => {
+      mockListedProject(storedProject);
+
+      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc');
+
+      expect(result?.analysisLanguages).toEqual(storedProject.analysisLanguages);
     });
 
     it('removes name and description when called with undefined', async () => {
       const withMeta = { ...storedProject, name: 'Old', description: 'Old desc' };
       mockListedProject(withMeta);
 
-      const result = await updateProjectMetadata(token, 'proj-id', undefined, undefined, ['en']);
+      const result = await updateProjectMetadata(token, 'proj-id', undefined, undefined);
 
       expect(result?.name).toBeUndefined();
       expect(result?.description).toBeUndefined();
@@ -699,45 +705,16 @@ describe('projectStorage', () => {
     it('returns undefined when the project does not exist', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      const result = await updateProjectMetadata(token, 'missing', 'Name', 'Desc', ['en']);
+      const result = await updateProjectMetadata(token, 'missing', 'Name', 'Desc');
 
       expect(result).toBeUndefined();
       expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
-    it('overwrites analysisLanguages with the provided value', async () => {
-      mockListedProject(storedProject);
-
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['fr', 'de']);
-
-      expect(result?.analysisLanguages).toEqual(['fr', 'de']);
-      const writtenArg: unknown = __mockWriteUserData.mock.calls[0]?.[2];
-      expect(typeof writtenArg).toBe('string');
-      if (typeof writtenArg === 'string') {
-        const parsed: unknown = JSON.parse(writtenArg);
-        expect(parsed).toMatchObject({ analysisLanguages: ['fr', 'de'] });
-      }
-    });
-
-    it('leaves analysisLanguages unchanged when the current value is passed back', async () => {
-      mockListedProject(storedProject);
-
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['en']);
-
-      expect(result?.analysisLanguages).toEqual(['en']);
-    });
-
     it('sets targetProjectId when a value is provided', async () => {
       mockListedProject(storedProject);
 
-      const result = await updateProjectMetadata(
-        token,
-        'proj-id',
-        'Name',
-        'Desc',
-        ['en'],
-        'tgt-proj',
-      );
+      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', 'tgt-proj');
 
       expect(result?.targetProjectId).toBe('tgt-proj');
     });
@@ -746,7 +723,7 @@ describe('projectStorage', () => {
       const withTarget = { ...storedProject, targetProjectId: 'tgt-proj' };
       mockListedProject(withTarget);
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['en']);
+      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc');
 
       expect(result?.targetProjectId).toBeUndefined();
       const writtenArg: unknown = __mockWriteUserData.mock.calls[0]?.[2];
@@ -1519,15 +1496,15 @@ describe('projectStorage', () => {
         expect(storedProject(stored, 'proj-id')).not.toHaveProperty('segmentation');
       });
 
-      it('sets the analysis languages and target in the same write when config is given', async () => {
+      it("sets the draft's analysis languages and the target in the same write when config is given", async () => {
         const stored = backStorageWithMap();
         storeListedProject(stored, makeStubProject('proj-id'));
-        await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
-
-        await saveDraftToProject(token, 'src-proj', 'proj-id', {
+        await storeDraft(token, 'src-proj', {
+          ...makeDraftSpanningBooks('src-proj', 'GEN'),
           analysisLanguages: ['sw', 'fr'],
-          targetProjectId: 'tgt-9',
         });
+
+        await saveDraftToProject(token, 'src-proj', 'proj-id', { targetProjectId: 'tgt-9' });
 
         expect(
           __mockWriteUserData.mock.calls.filter(([, key]) => key === 'project:proj-id'),
@@ -1541,11 +1518,34 @@ describe('projectStorage', () => {
       it('clears the target when the config given has none', async () => {
         const stored = backStorageWithMap();
         storeListedProject(stored, { ...makeStubProject('proj-id'), targetProjectId: 'tgt-old' });
-        await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+        await storeDraft(token, 'src-proj', {
+          ...makeDraftSpanningBooks('src-proj', 'GEN'),
+          analysisLanguages: ['en'],
+        });
 
-        await saveDraftToProject(token, 'src-proj', 'proj-id', { analysisLanguages: ['en'] });
+        await saveDraftToProject(token, 'src-proj', 'proj-id', {});
 
         expect(storedProject(stored, 'proj-id')).not.toHaveProperty('targetProjectId');
+      });
+
+      it('leaves the configuration unchanged when the draft has no languages', async () => {
+        const stored = backStorageWithMap();
+        storeListedProject(stored, {
+          ...makeStubProject('proj-id'),
+          analysisLanguages: ['de'],
+          targetProjectId: 'tgt-old',
+        });
+        await storeDraft(token, 'src-proj', {
+          ...makeDraftSpanningBooks('src-proj', 'GEN'),
+          analysisLanguages: [],
+        });
+
+        await saveDraftToProject(token, 'src-proj', 'proj-id', { targetProjectId: 'tgt-9' });
+
+        expect(storedProject(stored, 'proj-id')).toMatchObject({
+          analysisLanguages: ['de'],
+          targetProjectId: 'tgt-old',
+        });
       });
 
       it('leaves the configuration unchanged when no config is given', async () => {
@@ -2173,7 +2173,7 @@ describe('projectStorage', () => {
         mockStore({ 'project:import-id': JSON.stringify(importedProject) });
 
         await expect(
-          updateProjectMetadata(token, 'import-id', 'new name', undefined, ['en']),
+          updateProjectMetadata(token, 'import-id', 'new name', undefined),
         ).rejects.toThrow('Paratext 9 import and is read-only');
         expect(__mockWriteUserData).not.toHaveBeenCalled();
       });

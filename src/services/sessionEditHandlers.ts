@@ -13,6 +13,7 @@ import * as catalogCommands from './commands/catalogCommands';
 import type { ChangeBuffer } from './commands/changeBuffer';
 import * as discardCommands from './commands/discardCommands';
 import * as freeTranslationCommands from './commands/freeTranslationCommands';
+import * as languageCommands from './commands/languageCommands';
 import * as morphemeCommands from './commands/morphemeCommands';
 import * as phraseCommands from './commands/phraseCommands';
 import * as staleCommands from './commands/staleCommands';
@@ -22,9 +23,9 @@ import { catalogStepOf, deletionStepOf, phraseStartOf } from './editSteps';
 import type { DraftExport } from '../types/analysis-repository';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from '../types/command-reply';
-import type { DraftContent } from '../types/draft-content';
-import type { EditStep } from '../types/edit-step';
+import type { EditStep, StepSummary } from '../types/edit-step';
 import { bookOfRef } from '../utils/analysis-book';
+import { countTextOfEveryTag } from '../utils/text-counts';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 import { missingBook } from '../utils/reanchor-analysis';
@@ -855,18 +856,121 @@ export function sessionEditHandlers({
   }
 
   /**
-   * The content of the project that the session's draft saves to, or `undefined` when it has none.
+   * The project that the session's draft saves to, as a discard restores it, or `undefined` when it
+   * has none.
    *
    * @throws If the project is not stored, or reading it fails.
    */
-  async function savedContentOf(session: Session): Promise<DraftContent | undefined> {
+  async function savedContentOf(
+    session: Session,
+  ): Promise<discardCommands.SavedProject | undefined> {
     const { interlinearProjectId } = session.scope;
     if (interlinearProjectId === undefined) return undefined;
     const project = await getProject(interlinearProjectId);
     if (!project) {
       throw new Error(`Interlinearizer: interlinear project ${interlinearProjectId} is not stored`);
     }
-    return { analysis: project.analysis, segmentation: project.segmentation };
+    const { analysis, segmentation, analysisLanguages } = project;
+    return { analysis, segmentation, analysisLanguages };
+  }
+
+  /**
+   * Gives a session's draft new analysis languages, primary first, as one undoable step that leaves
+   * the draft unsaved. The step can also move or delete one tag's glosses and free translations:
+   *
+   * - With `retag`, those under `retag.from` move to `retag.to`. One that already has different text
+   *   there stays where it is.
+   * - With `deleteTextOf`, those under that tag are deleted.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `glossRetag` (what moved) when `retag`
+   *   was given, and `deletedText` (what was deleted) when `deleteTextOf` was.
+   * @throws If the languages are empty, `retag` moves a tag to itself, both `retag` and
+   *   `deleteTextOf` are given, a move or deletion is asked while a book of the draft can't be
+   *   read, the session is read-only or not open, or the edit is refused or fails. The error is
+   *   logged before rethrowing.
+   */
+  async function changeAnalysisLanguages({
+    sessionId,
+    analysisLanguages,
+    retag,
+    deleteTextOf,
+    changeId,
+  }: ArgsOf<'interlinearizer.changeAnalysisLanguages'>): Promise<string> {
+    const intent = 'changeAnalysisLanguages';
+    try {
+      if (analysisLanguages.length === 0)
+        throw new Error('Interlinearizer: a draft needs an analysis language');
+      if (retag && retag.from === retag.to)
+        throw new Error(`Interlinearizer: glosses cannot move from ${retag.to} to itself`);
+      if (retag && deleteTextOf !== undefined)
+        throw new Error('Interlinearizer: a language change either moves text or deletes it');
+      const target: EditTarget = { sessionId, changeId };
+      const reply = await sessions.edit(
+        sessionId,
+        intent,
+        async (buffer, session) => {
+          const { draft, unreadableBooks } = await session.repository.exportAll();
+          // A book that can't be read would keep its text under the old tag.
+          if ((retag || deleteTextOf !== undefined) && unreadableBooks.length > 0)
+            throw new Error(
+              `Interlinearizer: cannot move or delete language text while ${unreadableBooks.join(', ')} cannot be read`,
+            );
+          const outcome = await languageCommands.changeAnalysisLanguages(buffer, draft.analysis, {
+            analysisLanguages,
+            retag,
+            deleteTextOf,
+            now: editStamp().now,
+          });
+          const { glossRetag, deletedText } = outcome;
+          let summary: StepSummary = { kind: 'changeAnalysisLanguages' };
+          if (retag && glossRetag)
+            summary = {
+              kind: 'retagGlosses',
+              from: retag.from,
+              to: retag.to,
+              words: glossRetag.words,
+              morphemes: glossRetag.morphemes,
+              freeTranslations: glossRetag.freeTranslations,
+            };
+          else if (deleteTextOf !== undefined && deletedText)
+            summary = { kind: 'deleteLanguageText', tag: deleteTextOf, ...deletedText };
+          target.step = { summary };
+          return glossRetag || deletedText ? outcome : undefined;
+        },
+        { changeId, step: () => target.step },
+      );
+      return JSON.stringify(reply);
+    } catch (e) {
+      logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
+      throw e;
+    }
+  }
+
+  /**
+   * Counts the glosses and free translations of a session's draft under each language tag that has
+   * any.
+   *
+   * @returns A JSON string of the counts, keyed by tag.
+   * @throws If the session is not open, or its draft or any book of it can't be read. The error is
+   *   logged before rethrowing.
+   */
+  async function countLanguageText({
+    sessionId,
+  }: ArgsOf<'interlinearizer.countLanguageText'>): Promise<string> {
+    try {
+      const { draft, unreadableBooks } = await sessions.run(sessionId, (session) =>
+        session.repository.exportAll(),
+      );
+      // Counts that left out a book would read its text as absent.
+      if (unreadableBooks.length > 0)
+        throw new Error(
+          `Interlinearizer: cannot count language text while ${unreadableBooks.join(', ')} cannot be read`,
+        );
+      return JSON.stringify(countTextOfEveryTag(draft.analysis));
+    } catch (e) {
+      logger.error(`Interlinearizer: failed to count language text in session ${sessionId}`, e);
+      throw e;
+    }
   }
 
   /**
@@ -889,7 +993,7 @@ export function sessionEditHandlers({
     stage: (
       buffer: ChangeBuffer,
       stored: DraftExport,
-      saved: DraftContent | undefined,
+      saved: discardCommands.SavedProject | undefined,
     ) => discardCommands.DiscardOutcome,
     unsavedMark: (savesToProject: boolean) => EditOptions['unsavedMark'],
   ): Promise<string> {
@@ -1069,6 +1173,8 @@ export function sessionEditHandlers({
     'interlinearizer.moveBoundary': moveBoundary,
     'interlinearizer.discardBook': discardBook,
     'interlinearizer.discardAll': discardAll,
+    'interlinearizer.changeAnalysisLanguages': changeAnalysisLanguages,
+    'interlinearizer.countLanguageText': countLanguageText,
     'interlinearizer.previewRemovals': previewRemovals,
   } satisfies Partial<CommandHandlers>;
 }

@@ -4,6 +4,8 @@ import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useEvent } from 'platform-bible-react';
 import useSessionProject from '../../hooks/useSessionProject';
+import type { ScopeRecord } from '../../types/analysis-repository';
+import { scopeRecordOf } from '../../utils/change-set';
 import { fakeHost, relayChange, replyProjectMissing, STORED_PROJECT } from '../cache/fake-host';
 import { glossing, ref } from '../cache/session-source';
 import { makeVerseBook, tokenRefOf } from '../test-helpers';
@@ -33,6 +35,19 @@ function renderProject(
         onProjectMissing,
       }),
     { initialProps },
+  );
+}
+
+/** Renders the hook with no book open, so that no pages load. */
+function renderWithoutBook() {
+  return renderHook(() =>
+    useSessionProject('src', {
+      saveTargetId: undefined,
+      importProjectId: undefined,
+      importVersion: undefined,
+      bookId: undefined,
+      scrRef: SCR_REF,
+    }),
   );
 }
 
@@ -850,6 +865,164 @@ describe('useSessionProject edits sent to the session', () => {
 
     expect(result.current.draftVersion).toBe(version);
     expect(fullReads()).toBe(reads);
+  });
+
+  it("changes the draft's languages from the reply alone, marking the draft unsaved", async () => {
+    let scope: ScopeRecord | undefined;
+    await fakeHost(async (command) => {
+      if (command === 'interlinearizer.getTextReadStatus') return undefined;
+      if (command !== 'interlinearizer.changeAnalysisLanguages') return EMPTY_REPLY;
+      return JSON.stringify({
+        ...JSON.parse(EMPTY_REPLY),
+        changes: { intent: 'changeAnalysisLanguages', scope },
+      });
+    });
+    const { result } = renderProject();
+    await waitFor(() => expect(result.current.session?.client).toBeDefined());
+    const { draft } = result.current;
+    if (!draft) throw new Error('the draft did not load');
+    scope = { ...scopeRecordOf(draft), analysisLanguages: ['es', 'en'] };
+    const reads = fullReads();
+    let outcome: unknown;
+
+    await act(async () => {
+      outcome = await result.current.changeAnalysisLanguages({ analysisLanguages: ['es', 'en'] });
+    });
+
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+      'interlinearizer.changeAnalysisLanguages',
+      {
+        sessionId: result.current.session?.sessionId,
+        changeId: expect.any(String),
+        analysisLanguages: ['es', 'en'],
+      },
+    );
+    expect(outcome).toStrictEqual({});
+    expect(result.current.draft).toMatchObject({ analysisLanguages: ['es', 'en'], dirty: true });
+    expect(fullReads()).toBe(reads);
+  });
+
+  it.each([
+    [
+      'moves glosses',
+      { analysisLanguages: ['es'], retag: { from: 'en', to: 'es' } },
+      { glossRetag: { words: 2, morphemes: 1, freeTranslations: 0, skipped: 0 } },
+    ],
+    [
+      'deletes glosses',
+      { analysisLanguages: ['es'], deleteTextOf: 'en' },
+      { deletedText: { glosses: 2, freeTranslations: 1 } },
+    ],
+  ])('hands back what the languages change did when it %s', async (_case, change, outcome) => {
+    await fakeHost(async (command) => {
+      if (command === 'interlinearizer.getTextReadStatus') return undefined;
+      if (command === 'interlinearizer.changeAnalysisLanguages')
+        return JSON.stringify({ ...JSON.parse(EMPTY_REPLY), ...outcome });
+      return EMPTY_REPLY;
+    });
+    const { result } = renderProject();
+    await waitFor(() => expect(result.current.session?.client).toBeDefined());
+    let handedBack: unknown;
+
+    await act(async () => {
+      handedBack = await result.current.changeAnalysisLanguages(change);
+    });
+
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+      'interlinearizer.changeAnalysisLanguages',
+      expect.objectContaining(change),
+    );
+    expect(handedBack).toStrictEqual(outcome);
+  });
+
+  it("changes the draft's languages before the book's pages load", async () => {
+    await fakeHost();
+    const { result } = renderWithoutBook();
+    await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.changeAnalysisLanguages({
+        analysisLanguages: ['es'],
+        retag: { from: 'en', to: 'es' },
+      });
+    });
+
+    expect(result.current.session?.client).toBeUndefined();
+    await waitFor(() => expect(result.current.draft?.analysisLanguages).toStrictEqual(['es']));
+    expect(result.current.canUndo).toBe(true);
+  });
+
+  it.each([
+    ['undoes', 'undo', ['en']],
+    ['redoes', 'redo', ['es']],
+  ] as const)(
+    "%s a language change before the book's pages load",
+    async (_case, move, languages) => {
+      await fakeHost();
+      const { result } = renderWithoutBook();
+      await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+      await act(async () => {
+        await result.current.changeAnalysisLanguages({ analysisLanguages: ['es'] });
+      });
+
+      await act(async () => {
+        await result.current.undo();
+        if (move === 'redo') await result.current.redo();
+      });
+
+      expect(result.current.session?.client).toBeUndefined();
+      await waitFor(() => expect(result.current.draft?.analysisLanguages).toStrictEqual(languages));
+    },
+  );
+
+  it.each([
+    [
+      'the counts',
+      JSON.stringify({ fr: { glosses: 2, freeTranslations: 1 } }),
+      { fr: { glosses: 2, freeTranslations: 1 } },
+    ],
+    ['no counts for a malformed answer', JSON.stringify(['fr']), {}],
+  ])("hands back %s of the draft's language text", async (_case, answer, counts) => {
+    await fakeHost(async (command) => {
+      if (command === 'interlinearizer.getTextReadStatus') return undefined;
+      if (command === 'interlinearizer.countLanguageText') return answer;
+      return EMPTY_REPLY;
+    });
+    const { result } = renderProject();
+    await waitFor(() => expect(result.current.session?.sessionId).toBeDefined());
+
+    expect(await result.current.countLanguageText()).toStrictEqual(counts);
+    expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.countLanguageText', {
+      sessionId: result.current.session?.sessionId,
+    });
+  });
+
+  it("finds nothing to undo before the book's pages load when no edit was made", async () => {
+    await fakeHost();
+    const { result } = renderWithoutBook();
+    await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+
+    await act(async () => {
+      await result.current.undo();
+    });
+
+    expect(result.current.canUndo).toBe(false);
+  });
+
+  it('refuses to count language text while no session is open', async () => {
+    jest.mocked(papi.commands.sendCommand).mockImplementation(() => new Promise(() => {}));
+    const { result } = renderWithoutBook();
+
+    await expect(result.current.countLanguageText()).rejects.toThrow('no session is open');
+  });
+
+  it('refuses to change languages while no session is open', async () => {
+    jest.mocked(papi.commands.sendCommand).mockImplementation(() => new Promise(() => {}));
+    const { result } = renderWithoutBook();
+
+    await expect(
+      result.current.changeAnalysisLanguages({ analysisLanguages: ['es'] }),
+    ).rejects.toThrow('no session is open');
   });
 
   it('logs a draft it cannot read again after a discard', async () => {

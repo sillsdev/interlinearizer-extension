@@ -4,7 +4,9 @@ import { Button, Input, Label, Textarea } from 'platform-bible-react';
 import { formatReplacementString } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
-import { parseLanguageTags } from '../../utils/language-tags';
+import type { AnalysisLanguagesChange } from '../../types/analysis-languages-change';
+import type { TextCountsByTag } from '../../utils/text-counts';
+import AnalysisLanguageChips from '../controls/AnalysisLanguageChips';
 import { ModalShell } from './ModalShell';
 
 /** Localized string keys requested for this modal's rendered text. */
@@ -15,7 +17,7 @@ const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_description_label%',
   '%interlinearizer_modal_metadata_description_placeholder%',
   '%interlinearizer_modal_metadata_analysis_language_label%',
-  '%interlinearizer_modal_metadata_language_placeholder%',
+  '%interlinearizer_modal_metadata_languages_openToEdit%',
   '%interlinearizer_modal_metadata_created_label%',
   '%interlinearizer_modal_metadata_modified_label%',
   '%interlinearizer_modal_metadata_save%',
@@ -35,7 +37,7 @@ type ProjectMetadataModalProps = Readonly<{
   sourceShortName: string;
   /** Optional Platform.Bible project ID of the target text for bilateral alignment projects. */
   targetProjectId?: string;
-  /** BCP 47 tags for the analysis languages. */
+  /** BCP 47 tags for the analysis languages, as shown. */
   analysisLanguages: string[];
   /** ISO 8601 creation timestamp. */
   createdAt: string;
@@ -47,21 +49,26 @@ type ProjectMetadataModalProps = Readonly<{
    * as static text and there is no Save.
    */
   pt9ImportedAt?: string;
+  /** Whether the fields and Save are disabled for a reason outside the form. */
+  isSaveBlocked?: boolean;
+  /** Counts the glosses and free translations of every language code that has any. */
+  countLanguageText?: () => Promise<TextCountsByTag>;
+  /**
+   * Applies a change to the analysis languages at once, apart from Save. Absent when the languages
+   * can't change here, because the project isn't the one open.
+   */
+  onChangeLanguages?: (change: AnalysisLanguagesChange) => Promise<void>;
   /** Callback invoked when the modal should be dismissed without saving. */
   onClose: () => void;
   /** Optional callback invoked with updated metadata after a successful save. */
-  onProjectSaved?: (updated: {
-    name?: string;
-    description?: string;
-    analysisLanguages: string[];
-    updatedAt?: string;
-  }) => void;
+  onProjectSaved?: (updated: { name?: string; description?: string; updatedAt?: string }) => void;
 }>;
 
 /**
- * Modal that displays and allows editing of the active interlinearizer project's metadata. Editable
- * fields are name, description, and analysis language. Read-only fields are the creation and
- * modification dates and, for an import, the last sync.
+ * Modal that displays and allows editing of the active interlinearizer project's metadata. Name and
+ * description are edited and saved together. The open project's analysis languages change one
+ * action at a time, apart from Save. Read-only fields are the creation and modification dates and,
+ * for an import, the last sync.
  */
 export function ProjectMetadataModal({
   interlinearProjectId,
@@ -73,6 +80,9 @@ export function ProjectMetadataModal({
   createdAt,
   updatedAt,
   pt9ImportedAt,
+  isSaveBlocked = false,
+  countLanguageText,
+  onChangeLanguages,
   onClose,
   onProjectSaved,
 }: ProjectMetadataModalProps) {
@@ -82,7 +92,6 @@ export function ProjectMetadataModal({
 
   const [editName, setEditName] = useState(name ?? '');
   const [editDescription, setEditDescription] = useState(description ?? '');
-  const [editLanguages, setEditLanguages] = useState(analysisLanguages.join(', '));
   // Guards Save against double-submit; `isSubmitting` disables the controls while it runs.
   const { isSubmitting, runGuarded } = useSubmitGuard();
 
@@ -96,64 +105,50 @@ export function ProjectMetadataModal({
   );
 
   /**
-   * Parsed analysis-language tags from the comma-separated field. Parsed once per edit, so every
-   * decision that depends on the tags sees the same list.
-   */
-  const parsedLanguages = useMemo(() => parseLanguageTags(editLanguages), [editLanguages]);
-
-  /**
-   * Sends the updated name, description, and analysis languages to the backend, then notifies the
+   * Sends the updated name and description to the backend, then hands the edited fields to the
    * caller and closes the modal. Logs on failure; the backend command handler is responsible for
-   * showing the error notification so this handler does not re-send it.
-   *
-   * The analysis-languages input is interpreted as a comma-separated list of BCP 47 tags; entries
-   * are trimmed and empty entries dropped. Save is disabled when the name is blank or the parsed
-   * list is empty, since neither may be cleared.
+   * showing the error notification so this handler does not re-send it. Save is disabled when the
+   * name is blank, because a name may not be cleared.
    */
-  const handleSave = useCallback(
+  const saveMetadata = useCallback(async () => {
+    const newName = editName.trim();
+    const newDescription = editDescription.trim() || undefined;
+    try {
+      const updatedProjectJson = await papi.commands.sendCommand(
+        'interlinearizer.updateProjectMetadata',
+        interlinearProjectId,
+        newName,
+        newDescription,
+        targetProjectId,
+      );
+      if (!updatedProjectJson) return;
+      // Parse the refreshed `updatedAt` out of the returned project so the caller's cached copy
+      // shows the new Modified time; omit it defensively if the payload is unexpectedly shaped.
+      const parsed: unknown = JSON.parse(updatedProjectJson);
+      const rawUpdatedAt =
+        parsed && typeof parsed === 'object' && 'updatedAt' in parsed
+          ? parsed.updatedAt
+          : undefined;
+      const refreshedUpdatedAt = typeof rawUpdatedAt === 'string' ? rawUpdatedAt : undefined;
+      onProjectSaved?.({
+        name: newName,
+        description: newDescription,
+        ...(refreshedUpdatedAt !== undefined && { updatedAt: refreshedUpdatedAt }),
+      });
+      onClose();
+    } catch (e) {
+      logger.error('Interlinearizer: failed to save project metadata', e);
+    }
+  }, [editName, editDescription, interlinearProjectId, targetProjectId, onProjectSaved, onClose]);
+
+  const handleSave = useCallback(() => runGuarded(saveMetadata), [runGuarded, saveMetadata]);
+
+  // Guarded with Save, so the modal can't be dismissed or saved while a language change runs.
+  const handleChangeLanguages = useMemo(
     () =>
-      runGuarded(async () => {
-        const newName = editName.trim();
-        const newDescription = editDescription.trim() || undefined;
-        try {
-          const updatedProjectJson = await papi.commands.sendCommand(
-            'interlinearizer.updateProjectMetadata',
-            interlinearProjectId,
-            newName,
-            newDescription,
-            parsedLanguages,
-            targetProjectId,
-          );
-          if (!updatedProjectJson) return;
-          // Parse the refreshed `updatedAt` out of the returned project so the caller's cached copy
-          // shows the new Modified time; omit it defensively if the payload is unexpectedly shaped.
-          const parsed: unknown = JSON.parse(updatedProjectJson);
-          const rawUpdatedAt =
-            parsed && typeof parsed === 'object' && 'updatedAt' in parsed
-              ? parsed.updatedAt
-              : undefined;
-          const refreshedUpdatedAt = typeof rawUpdatedAt === 'string' ? rawUpdatedAt : undefined;
-          onProjectSaved?.({
-            name: newName,
-            description: newDescription,
-            analysisLanguages: parsedLanguages,
-            ...(refreshedUpdatedAt !== undefined && { updatedAt: refreshedUpdatedAt }),
-          });
-          onClose();
-        } catch (e) {
-          logger.error('Interlinearizer: failed to save project metadata', e);
-        }
-      }),
-    [
-      editName,
-      editDescription,
-      parsedLanguages,
-      interlinearProjectId,
-      targetProjectId,
-      onProjectSaved,
-      onClose,
-      runGuarded,
-    ],
+      onChangeLanguages &&
+      ((change: AnalysisLanguagesChange) => runGuarded(() => onChangeLanguages(change))),
+    [onChangeLanguages, runGuarded],
   );
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
@@ -178,11 +173,17 @@ export function ProjectMetadataModal({
             label={localizedStrings['%interlinearizer_modal_metadata_description_label%']}
             value={description ?? ''}
           />
-          <MetadataRow
-            label={localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
-            value={analysisLanguages.join(', ')}
-            mono
-          />
+          <div className="tw:flex tw:flex-col tw:gap-0.5">
+            <dt className="tw:section-label" id="metadata-languages-label">
+              {localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
+            </dt>
+            <dd>
+              <AnalysisLanguageChips
+                languages={analysisLanguages}
+                labelledBy="metadata-languages-label"
+              />
+            </dd>
+          </div>
         </dl>
       ) : (
         <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">
@@ -196,6 +197,7 @@ export function ProjectMetadataModal({
               value={editName}
               placeholder={localizedStrings['%interlinearizer_modal_metadata_name_placeholder%']}
               onChange={(e) => setEditName(e.target.value)}
+              disabled={isSaveBlocked || isSubmitting}
             />
           </div>
 
@@ -212,22 +214,26 @@ export function ProjectMetadataModal({
                 localizedStrings['%interlinearizer_modal_metadata_description_placeholder%']
               }
               onChange={(e) => setEditDescription(e.target.value)}
+              disabled={isSaveBlocked || isSubmitting}
             />
           </div>
 
           <div className="tw:flex tw:flex-col tw:gap-1">
-            <Label className="tw:section-label" htmlFor="metadata-edit-language">
+            <span className="tw:section-label" id="metadata-languages-label">
               {localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
-            </Label>
-            <Input
-              id="metadata-edit-language"
-              className="tw:modal-metadata-input tw:font-mono"
-              value={editLanguages}
-              placeholder={
-                localizedStrings['%interlinearizer_modal_metadata_language_placeholder%']
-              }
-              onChange={(e) => setEditLanguages(e.target.value)}
+            </span>
+            <AnalysisLanguageChips
+              languages={analysisLanguages}
+              labelledBy="metadata-languages-label"
+              countText={countLanguageText}
+              onChange={handleChangeLanguages}
+              disabled={isSaveBlocked || isSubmitting}
             />
+            {!onChangeLanguages && (
+              <p className="tw:text-xs tw:text-muted-foreground">
+                {localizedStrings['%interlinearizer_modal_metadata_languages_openToEdit%']}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -257,7 +263,7 @@ export function ProjectMetadataModal({
         {!readOnly && (
           <Button
             onClick={handleSave}
-            disabled={isSubmitting || editName.trim() === '' || parsedLanguages.length === 0}
+            disabled={isSaveBlocked || isSubmitting || editName.trim() === ''}
           >
             {localizedStrings['%interlinearizer_modal_metadata_save%']}
           </Button>
@@ -272,23 +278,12 @@ export function ProjectMetadataModal({
  *
  * @param props.label - Localized field label shown as `<dt>`.
  * @param props.value - Value string shown as `<dd>`.
- * @param props.mono - When true, renders the value in a monospace font.
  */
-function MetadataRow({
-  label,
-  value,
-  mono,
-}: Readonly<{ label: string; value: string; mono?: boolean }>) {
+function MetadataRow({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="tw:flex tw:flex-col tw:gap-0.5">
       <dt className="tw:section-label">{label}</dt>
-      <dd
-        className={['tw:text-sm tw:break-words tw:text-foreground', mono ? 'tw:font-mono' : '']
-          .filter(Boolean)
-          .join(' ')}
-      >
-        {value}
-      </dd>
+      <dd className="tw:text-sm tw:break-words tw:text-foreground">{value}</dd>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import papi, { logger } from '@papi/frontend';
@@ -16,7 +16,14 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_metadata_description_label%': 'Description',
   '%interlinearizer_modal_metadata_description_placeholder%': 'e.g. Word-level English glosses',
   '%interlinearizer_modal_metadata_analysis_language_label%': 'Analysis Language',
-  '%interlinearizer_modal_metadata_language_placeholder%': 'e.g. en',
+  '%interlinearizer_modal_metadata_languages_openToEdit%':
+    'Open this project to change its analysis languages.',
+  '%interlinearizer_languageChips_menu%': '{tag} options',
+  '%interlinearizer_languageChips_menu_primary%': '{tag} (primary) options',
+  '%interlinearizer_languageChips_change%': 'Change code…',
+  '%interlinearizer_languageChips_makePrimary%': 'Make primary',
+  '%interlinearizer_languageChips_remove%': 'Remove',
+  '%interlinearizer_languageChips_add%': 'Add',
   '%interlinearizer_modal_metadata_created_label%': 'Created',
   '%interlinearizer_modal_metadata_modified_label%': 'Modified',
   '%interlinearizer_modal_metadata_save%': 'Save',
@@ -65,9 +72,81 @@ describe('ProjectMetadataModal', () => {
     expect(screen.queryByText('il-project-uuid')).not.toBeInTheDocument();
   });
 
-  it('displays the analysis writing system in an editable input', () => {
-    render(<ProjectMetadataModal {...testProps} />);
-    expect(screen.getByLabelText(/analysis language/i)).toHaveValue('en');
+  it('shows each analysis language as a chip, primary first', () => {
+    render(
+      <ProjectMetadataModal
+        {...testProps}
+        analysisLanguages={['en', 'fr']}
+        onChangeLanguages={jest.fn()}
+      />,
+    );
+
+    const list = screen.getByRole('list', { name: 'Analysis Language' });
+    expect(within(list).getByRole('button', { name: 'en (primary) options' })).toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: 'fr options' })).toBeInTheDocument();
+    expect(screen.queryByText(/open this project/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the languages without actions when they can't change here, and says why", () => {
+    render(<ProjectMetadataModal {...testProps} analysisLanguages={['en', 'fr']} />);
+
+    const list = screen.getByRole('list', { name: 'Analysis Language' });
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent),
+    ).toEqual(['en', 'fr']);
+    expect(within(list).queryByRole('button')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Open this project to change its analysis languages.'),
+    ).toBeInTheDocument();
+  });
+
+  it('holds Close and Save while a language change runs', async () => {
+    let finish: () => void = () => {};
+    const onChangeLanguages = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(
+      <ProjectMetadataModal
+        {...testProps}
+        analysisLanguages={['en', 'fr']}
+        onChangeLanguages={onChangeLanguages}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'fr options' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Make primary' }));
+
+    expect(screen.getByRole('button', { name: /^close$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+
+    await act(async () => finish());
+
+    expect(screen.getByRole('button', { name: /^close$/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled();
+  });
+
+  it('applies a language change at once, apart from Save', async () => {
+    const onChangeLanguages = jest.fn(async () => {});
+    render(
+      <ProjectMetadataModal
+        {...testProps}
+        analysisLanguages={['en', 'fr']}
+        onChangeLanguages={onChangeLanguages}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'fr options' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Make primary' }));
+
+    expect(onChangeLanguages).toHaveBeenCalledWith({ analysisLanguages: ['fr', 'en'] });
+    expect(mockSendCommand.mock.calls.map(([command]) => command)).not.toContain(
+      'interlinearizer.updateProjectMetadata',
+    );
   });
 
   it('displays the locale-formatted modified date', () => {
@@ -99,7 +178,6 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         'New Name',
         undefined,
-        ['en'],
         undefined,
       ),
     );
@@ -116,7 +194,6 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         'Old Name',
         undefined,
-        ['en'],
         'target-project-id',
       ),
     );
@@ -136,17 +213,10 @@ describe('ProjectMetadataModal', () => {
     const nameInput = screen.getByLabelText(/^name$/i);
     await userEvent.clear(nameInput);
     await userEvent.type(nameInput, 'New Name');
-    const langInput = screen.getByLabelText(/analysis language/i);
-    await userEvent.clear(langInput);
-    await userEvent.type(langInput, 'fr');
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() =>
-      expect(onProjectSaved).toHaveBeenCalledWith({
-        name: 'New Name',
-        description: 'Old Desc',
-        analysisLanguages: ['fr'],
-      }),
+      expect(onProjectSaved).toHaveBeenCalledWith({ name: 'New Name', description: 'Old Desc' }),
     );
   });
 
@@ -199,7 +269,6 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         'Old Name',
         'New Desc',
-        ['en'],
         undefined,
       ),
     );
@@ -218,7 +287,6 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         'Old Name',
         undefined,
-        ['en'],
         undefined,
       ),
     );
@@ -254,26 +322,6 @@ describe('ProjectMetadataModal', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('trims whitespace from the language input before saving', async () => {
-    render(<ProjectMetadataModal {...testProps} />);
-
-    const langInput = screen.getByLabelText(/analysis language/i);
-    await userEvent.clear(langInput);
-    await userEvent.type(langInput, '  fr  ');
-    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
-
-    await waitFor(() =>
-      expect(mockSendCommand).toHaveBeenCalledWith(
-        'interlinearizer.updateProjectMetadata',
-        'il-project-uuid',
-        'Old Name',
-        undefined,
-        ['fr'],
-        undefined,
-      ),
-    );
-  });
-
   it('sends the save command only once when Save is double-clicked before the first resolves', async () => {
     let resolveCommand: (value: string) => void = () => {};
     mockSendCommand.mockImplementation(
@@ -304,6 +352,16 @@ describe('ProjectMetadataModal', () => {
     expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled();
   });
 
+  it('disables the fields, the language actions, and the Save button while saving is blocked', () => {
+    render(<ProjectMetadataModal {...testProps} isSaveBlocked onChangeLanguages={jest.fn()} />);
+
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByLabelText(/^name$/i)).toBeDisabled();
+    expect(screen.getByLabelText(/^description$/i)).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'en (primary) options' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
+  });
+
   it('disables the Save button when the name field is empty', async () => {
     render(<ProjectMetadataModal {...testProps} />);
 
@@ -318,15 +376,6 @@ describe('ProjectMetadataModal', () => {
     const nameInput = screen.getByLabelText(/^name$/i);
     await userEvent.clear(nameInput);
     await userEvent.type(nameInput, '   ');
-
-    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
-  });
-
-  it('disables the Save button when the language field is empty', async () => {
-    render(<ProjectMetadataModal {...testProps} />);
-
-    const langInput = screen.getByLabelText(/analysis language/i);
-    await userEvent.clear(langInput);
 
     expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
   });
@@ -357,6 +406,7 @@ describe('ProjectMetadataModal read-only (Paratext 9 import)', () => {
     const staticFields = screen.getByTestId('metadata-readonly-fields');
     expect(staticFields).toHaveTextContent('Paratext 9 Interlinear');
     expect(staticFields).toHaveTextContent('Imported from Paratext 9.');
+    expect(within(staticFields).getByRole('listitem')).toHaveTextContent('en');
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });

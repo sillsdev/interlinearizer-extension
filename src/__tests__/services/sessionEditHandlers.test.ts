@@ -121,6 +121,193 @@ describe('sessionEditHandlers', () => {
     );
   });
 
+  it("restores the project's analysis languages when every change is discarded, undoably", async () => {
+    const { edits, sessionId, sessions } = await handlersOver({
+      getProject: async () => makeStubProject('proj-1'),
+    });
+    await saveToProject(sessions, sessionId);
+    await edits['interlinearizer.changeAnalysisLanguages']({
+      sessionId,
+      analysisLanguages: ['fr'],
+    });
+    const wholeDraft = () =>
+      sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+
+    await edits['interlinearizer.discardAll']({ sessionId });
+
+    expect(await wholeDraft()).toMatchObject({ analysisLanguages: ['en'], dirty: false });
+
+    await sessions.undo(sessionId);
+
+    expect(await wholeDraft()).toMatchObject({ analysisLanguages: ['fr'], dirty: true });
+  });
+
+  it("changes the draft's languages alone as a step that marks the draft unsaved", async () => {
+    const { edits, sessionId, sessions } = await handlersOver();
+
+    const reply = JSON.parse(
+      await edits['interlinearizer.changeAnalysisLanguages']({
+        sessionId,
+        analysisLanguages: ['es', 'en'],
+      }),
+    );
+
+    expect(reply.step).toStrictEqual({ summary: { kind: 'changeAnalysisLanguages' } });
+    expect(reply.glossRetag).toBeUndefined();
+    const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(draft.analysisLanguages).toStrictEqual(['es', 'en']);
+    expect(draft.analysis.tokenAnalyses.map((ta) => ta.gloss)).toStrictEqual([{ en: 'God' }]);
+    expect(draft.dirty).toBe(true);
+  });
+
+  it("moves a tag's glosses with the languages as one step that marks the draft unsaved", async () => {
+    const { edits, sessionId, sessions } = await handlersOver();
+
+    const reply = JSON.parse(
+      await edits['interlinearizer.changeAnalysisLanguages']({
+        sessionId,
+        analysisLanguages: ['es'],
+        retag: { from: 'en', to: 'es' },
+      }),
+    );
+
+    const moved = { words: 1, morphemes: 0, freeTranslations: 0, skipped: 0 };
+    expect(reply.glossRetag).toStrictEqual(moved);
+    expect(reply.step).toStrictEqual({
+      summary: {
+        kind: 'retagGlosses',
+        from: 'en',
+        to: 'es',
+        words: 1,
+        morphemes: 0,
+        freeTranslations: 0,
+      },
+    });
+    const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(draft.analysisLanguages).toStrictEqual(['es']);
+    expect(draft.analysis.tokenAnalyses.map((ta) => ta.gloss)).toStrictEqual([{ es: 'God' }]);
+    expect(draft.dirty).toBe(true);
+  });
+
+  it("deletes a tag's glosses with the languages as one step that marks the draft unsaved", async () => {
+    const { edits, sessionId, sessions } = await handlersOver();
+
+    const reply = JSON.parse(
+      await edits['interlinearizer.changeAnalysisLanguages']({
+        sessionId,
+        analysisLanguages: ['es'],
+        deleteTextOf: 'en',
+      }),
+    );
+
+    expect(reply.deletedText).toStrictEqual({ glosses: 1, freeTranslations: 0 });
+    expect(reply.step).toStrictEqual({
+      summary: { kind: 'deleteLanguageText', tag: 'en', glosses: 1, freeTranslations: 0 },
+    });
+    const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(draft.analysisLanguages).toStrictEqual(['es']);
+    expect(draft.analysis.tokenAnalyses).toStrictEqual([]);
+    expect(draft.analysis.tokenAnalysisLinks).toStrictEqual([]);
+    expect(draft.dirty).toBe(true);
+  });
+
+  it.each([
+    ['no languages', { analysisLanguages: [] }, 'needs an analysis language'],
+    [
+      'a move onto the same tag',
+      { analysisLanguages: ['en'], retag: { from: 'en', to: 'en' } },
+      'cannot move from en to itself',
+    ],
+    [
+      'both a move and a deletion',
+      { analysisLanguages: ['es'], retag: { from: 'en', to: 'es' }, deleteTextOf: 'fr' },
+      'either moves text or deletes it',
+    ],
+  ])('refuses and logs a change of languages with %s', async (_case, args, message) => {
+    const { edits, sessionId, host } = await handlersOver();
+
+    await expect(
+      edits['interlinearizer.changeAnalysisLanguages']({ sessionId, ...args }),
+    ).rejects.toThrow(message);
+    expect(host.logger.error).toHaveBeenCalledWith(
+      `Interlinearizer: failed to changeAnalysisLanguages in session ${sessionId}`,
+      expect.anything(),
+    );
+  });
+
+  it.each([
+    ['a move', { retag: { from: 'en', to: 'es' } }],
+    ['a deletion', { deleteTextOf: 'en' }],
+  ])('refuses %s of language text while a book cannot be read', async (_case, change) => {
+    const { edits, sessionId, sessions } = await handlersOver();
+    const { repository } = await sessions.run(sessionId, async (session) => session);
+    const read = repository.exportAll.bind(repository);
+    jest
+      .spyOn(repository, 'exportAll')
+      .mockImplementation(async () => ({ ...(await read()), unreadableBooks: ['GEN'] }));
+
+    await expect(
+      edits['interlinearizer.changeAnalysisLanguages']({
+        sessionId,
+        analysisLanguages: ['es'],
+        ...change,
+      }),
+    ).rejects.toThrow('while GEN cannot be read');
+    const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(draft.analysisLanguages).toStrictEqual(['en']);
+  });
+
+  it('changes the language list alone while a book cannot be read', async () => {
+    const { edits, sessionId, sessions } = await handlersOver();
+    const { repository } = await sessions.run(sessionId, async (session) => session);
+    const read = repository.exportAll.bind(repository);
+    jest
+      .spyOn(repository, 'exportAll')
+      .mockImplementation(async () => ({ ...(await read()), unreadableBooks: ['GEN'] }));
+
+    await edits['interlinearizer.changeAnalysisLanguages']({
+      sessionId,
+      analysisLanguages: ['es', 'en'],
+    });
+
+    const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+    expect(draft.analysisLanguages).toStrictEqual(['es', 'en']);
+  });
+
+  it("counts the draft's text under each tag that has any", async () => {
+    const { edits, sessionId } = await handlersOver();
+
+    const counts = JSON.parse(await edits['interlinearizer.countLanguageText']({ sessionId }));
+
+    expect(counts).toStrictEqual({ en: { glosses: 1, freeTranslations: 0 } });
+  });
+
+  it('refuses to count while a book cannot be read', async () => {
+    const { edits, sessionId, sessions, host } = await handlersOver();
+    const { repository } = await sessions.run(sessionId, async (session) => session);
+    const read = repository.exportAll.bind(repository);
+    jest
+      .spyOn(repository, 'exportAll')
+      .mockImplementation(async () => ({ ...(await read()), unreadableBooks: ['GEN'] }));
+
+    await expect(edits['interlinearizer.countLanguageText']({ sessionId })).rejects.toThrow(
+      'while GEN cannot be read',
+    );
+    expect(host.logger.error).toHaveBeenCalled();
+  });
+
+  it('logs and rethrows a count for a session that is not open', async () => {
+    const { edits, host } = await handlersOver();
+
+    await expect(
+      edits['interlinearizer.countLanguageText']({ sessionId: 'no-such-session' }),
+    ).rejects.toThrow();
+    expect(host.logger.error).toHaveBeenCalledWith(
+      'Interlinearizer: failed to count language text in session no-such-session',
+      expect.anything(),
+    );
+  });
+
   it('logs an edit that fails before rethrowing it', async () => {
     const { edits, host } = await handlersOver();
 

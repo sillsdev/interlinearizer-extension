@@ -197,7 +197,6 @@ const getUpdateProjectMetadataHandler = () =>
       id: string,
       name: string | undefined,
       description: string | undefined,
-      analysisLanguages: string[],
     ) => Promise<string | undefined>
   >('interlinearizer.updateProjectMetadata');
 
@@ -707,6 +706,7 @@ describe('main', () => {
           'interlinearizer.redo',
           'interlinearizer.undoFromNotification',
           'interlinearizer.updateProjectMetadata',
+          'interlinearizer.changeAnalysisLanguages',
           'interlinearizer.deleteProject',
         ]),
       );
@@ -1786,33 +1786,13 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockResolvedValue({ ...stubProject, name: 'My Name' });
       const handler = await getUpdateProjectMetadataHandler();
 
-      await handler('proj-id', 'My Name', 'My Desc', ['en']);
+      await handler('proj-id', 'My Name', 'My Desc');
 
       expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
         expect.anything(),
         'proj-id',
         'My Name',
         'My Desc',
-        ['en'],
-        undefined,
-      );
-    });
-
-    it('passes analysisLanguages to projectStorage.updateProjectMetadata', async () => {
-      mockUpdateProjectMetadata.mockResolvedValue({
-        ...stubProject,
-        analysisLanguages: ['fr', 'de'],
-      });
-      const handler = await getUpdateProjectMetadataHandler();
-
-      await handler('proj-id', undefined, undefined, ['fr', 'de']);
-
-      expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
-        expect.anything(),
-        'proj-id',
-        undefined,
-        undefined,
-        ['fr', 'de'],
         undefined,
       );
     });
@@ -1821,7 +1801,7 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockResolvedValue(undefined);
       const handler = await getUpdateProjectMetadataHandler();
 
-      const result = await handler('missing', undefined, undefined, ['en']);
+      const result = await handler('missing', undefined, undefined);
 
       expect(result).toBeUndefined();
     });
@@ -1830,7 +1810,7 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockRejectedValue(new Error('disk full'));
       const handler = await getUpdateProjectMetadataHandler();
 
-      await expect(handler('proj-id', 'My Name', 'My Desc', ['en'])).rejects.toThrow('disk full');
+      await expect(handler('proj-id', 'My Name', 'My Desc')).rejects.toThrow('disk full');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to update project metadata',
         expect.any(Error),

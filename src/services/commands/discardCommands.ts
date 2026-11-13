@@ -15,6 +15,9 @@ import { analysisHasFreeTranslations } from '../../utils/free-translations';
 import { sameSegmentation, segmentationForBook } from '../../utils/segmentation';
 import type { ChangeBuffer, RecordKind, RecordOf } from './changeBuffer';
 
+/** What the project that a draft saves to holds, as a discard restores it. */
+export type SavedProject = DraftContent & Readonly<{ analysisLanguages: readonly string[] }>;
+
 /** What an unsaved-change discard tells its caller beside the changes it staged. */
 export type DiscardOutcome = {
   /** Whether any segment of the draft, as the discard leaves it, has a free translation. */
@@ -43,12 +46,14 @@ function stageKind<Kind extends RecordKind>(
 
 /**
  * Stages turning the stored draft's content into `restored`, as the WebView's save of `restored`
- * would store it: a book whose stored analysis could not be read keeps it as stored.
+ * would store it: a book whose stored analysis could not be read keeps it as stored. The draft
+ * takes `restoredLanguages` as its analysis languages when they are given.
  */
 function stageDiscard(
   buffer: ChangeBuffer,
   { draft, unreadableBooks }: DraftExport,
   restored: DraftContent,
+  restoredLanguages?: readonly string[],
 ): DiscardOutcome {
   const target: TextAnalysis = unreadableBooks.reduce(
     (analysis, bookCode) => removeBookFromAnalysis(analysis, bookCode),
@@ -81,11 +86,17 @@ function stageDiscard(
   };
 
   const changedBooks = new Set(booksLinkedIn(putLinks));
-  if (!sameSegmentation(draft.segmentation, restored.segmentation)) {
+  const segmentationChanged = !sameSegmentation(draft.segmentation, restored.segmentation);
+  const languagesChanged =
+    restoredLanguages !== undefined && !deepEqual(draft.analysisLanguages, restoredLanguages);
+  if (segmentationChanged || languagesChanged) {
     const scope = scopeRecordOf(draft);
     if (restored.segmentation) scope.segmentation = restored.segmentation;
     else delete scope.segmentation;
+    if (restoredLanguages) scope.analysisLanguages = [...restoredLanguages];
     buffer.putScope(scope);
+  }
+  if (segmentationChanged) {
     const anchoredBooks = [draft.segmentation, restored.segmentation].flatMap((delta) =>
       [
         ...(delta?.removedVerseStarts ?? []),
@@ -114,13 +125,14 @@ function stageDiscard(
  * @param stored - The stored draft, with the books whose analysis could not be read; those keep
  *   their stored analysis.
  * @param bookCode - The book discarded.
- * @param saved - The content of the project that the draft saves to; absent when it has no project.
+ * @param saved - The project that the draft saves to; absent when it has no project. Its analysis
+ *   languages are left alone, because they span every book.
  */
 export function discardBook(
   buffer: ChangeBuffer,
   stored: DraftExport,
   bookCode: string,
-  saved: DraftContent | undefined,
+  saved: SavedProject | undefined,
 ): DiscardOutcome {
   const { analysis, segmentation } = stored.draft;
   return stageDiscard(buffer, stored, {
@@ -130,22 +142,24 @@ export function discardBook(
 }
 
 /**
- * Stages discarding every unsaved change to the stored draft. Its records and boundaries become
- * those of `saved`, or none without it.
+ * Stages discarding every unsaved change to the stored draft. Its records, boundaries, and analysis
+ * languages become those of `saved`. Without `saved`, it has no records or boundaries, and keeps
+ * its languages.
  *
  * @param buffer - Where the changes are staged.
  * @param stored - The stored draft, with the books whose analysis could not be read; those keep
  *   their stored analysis.
- * @param saved - The content of the project that the draft saves to; absent when it has no project.
+ * @param saved - The project that the draft saves to; absent when it has no project.
  */
 export function discardAll(
   buffer: ChangeBuffer,
   stored: DraftExport,
-  saved: DraftContent | undefined,
+  saved: SavedProject | undefined,
 ): DiscardOutcome {
   return stageDiscard(
     buffer,
     stored,
     saved ?? { analysis: emptyAnalysis(), segmentation: undefined },
+    saved?.analysisLanguages,
   );
 }

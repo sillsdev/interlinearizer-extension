@@ -404,8 +404,6 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisLanguages - New BCP 47 analysis language tags. Required and must be non-empty;
- *   pass the current value to leave it unchanged.
  * @param targetProjectId - New target-project ID; omit to clear the target binding.
  * @returns The updated project as a JSON string, or `undefined` if no project with the given ID
  *   exists.
@@ -416,7 +414,6 @@ async function updateProjectMetadata(
   interlinearProjectId: string,
   name: string | undefined,
   description: string | undefined,
-  analysisLanguages: string[],
   targetProjectId?: string,
 ): Promise<string | undefined> {
   try {
@@ -425,7 +422,6 @@ async function updateProjectMetadata(
       interlinearProjectId,
       name,
       description,
-      analysisLanguages,
       targetProjectId,
     );
     return updated ? JSON.stringify(updated) : undefined;
@@ -627,8 +623,8 @@ async function savingInSession<T>(
  *   session's history marks the draft saved.
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param interlinearProjectId - UUID of the interlinearizer project to save into.
- * @param config - The configuration to set on the project in the same write; omit to leave the
- *   project's configuration unchanged.
+ * @param config - The target to set on the project in the same write, along with the draft's
+ *   analysis languages; omit to leave the project's configuration unchanged.
  * @returns The saved project's `InterlinearProjectSummary` (carrying the refreshed `updatedAt`) as
  *   a JSON string, or `undefined` if no project with the given ID exists.
  * @throws If `sessionId` names no open session, if the draft cannot be read for some book, if the
@@ -639,7 +635,7 @@ async function saveDraftToProject(
   sessionId: string,
   sourceProjectId: string,
   interlinearProjectId: string,
-  config?: ProjectConfig,
+  config?: Pick<ProjectConfig, 'targetProjectId'>,
 ): Promise<string | undefined> {
   try {
     return await perfTimeAsync('saveDraftToProject', async () => {
@@ -1548,14 +1544,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             name: 'config',
             required: false,
             summary:
-              "The project's analysis languages and target to set in the same write, a missing target clearing the binding; omit to leave its configuration unchanged",
+              "The project's target to set in the same write, along with the draft's analysis languages, a missing target clearing the binding; omit to leave its configuration unchanged",
             schema: {
               type: 'object',
               properties: {
-                analysisLanguages: { type: 'array', items: { type: 'string' } },
                 targetProjectId: { type: 'string' },
               },
-              required: ['analysisLanguages'],
             },
           },
         ],
@@ -2550,6 +2544,48 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: discardResult,
   });
 
+  await registerSessionCommand('interlinearizer.changeAnalysisLanguages', {
+    summary:
+      "Give a session's draft new analysis languages, optionally moving or deleting one tag's glosses and free translations",
+    params: sessionArgs(
+      {
+        name: 'analysisLanguages',
+        required: true,
+        summary: 'BCP 47 tags, primary first; never empty',
+        schema: { type: 'array', items: { type: 'string' } },
+      },
+      {
+        name: 'retag',
+        required: false,
+        summary: 'Glosses and free translations to move from one tag to another',
+        schema: {
+          type: 'object',
+          properties: { from: { type: 'string' }, to: { type: 'string' } },
+          required: ['from', 'to'],
+        },
+      },
+      {
+        name: 'deleteTextOf',
+        required: false,
+        summary: 'The tag whose glosses and free translations are deleted',
+        schema: { type: 'string' },
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
+  await registerSessionCommand('interlinearizer.countLanguageText', {
+    summary:
+      "Count the glosses and free translations of a session's draft under each language tag that has any",
+    params: sessionArgs(),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified counts keyed by tag',
+      schema: { type: 'string' },
+    },
+  });
+
   await registerSessionCommand('interlinearizer.previewRemovals', {
     summary: "Name the token analyses a command would remove from a session's draft",
     params: sessionArgs({
@@ -2801,8 +2837,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     updateProjectMetadata,
     {
       method: {
-        summary:
-          'Update the name, description, and analysis language of an existing interlinearizer project',
+        summary: 'Update the name, description, and target of an existing interlinearizer project',
         params: [
           {
             name: 'interlinearProjectId',
@@ -2821,13 +2856,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             required: false,
             summary: 'New user-facing description; omit to clear',
             schema: { type: 'string' },
-          },
-          {
-            name: 'analysisLanguages',
-            required: true,
-            summary:
-              'New BCP 47 analysis language tags; must be non-empty (pass current value to leave unchanged)',
-            schema: { type: 'array', items: { type: 'string' } },
           },
           {
             name: 'targetProjectId',

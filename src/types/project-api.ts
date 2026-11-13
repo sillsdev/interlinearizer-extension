@@ -5,6 +5,11 @@ import type { WholeAnalysis } from '../cache/wholeAnalysis';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { EditStep } from './edit-step';
 import type { SegmentPagesLoad } from './segment-pages';
+import type { TextCountsByTag } from '../utils/text-counts';
+import type {
+  AnalysisLanguagesChange,
+  AnalysisLanguagesChangeOutcome,
+} from './analysis-languages-change';
 
 /**
  * Whether a copy of the draft into a project landed, `'partial'` when it left part of the draft
@@ -97,6 +102,21 @@ export type ProjectApi = {
    * @throws If the session refuses or fails the discard.
    */
   discardAll: () => Promise<void>;
+  /**
+   * Gives the draft new analysis languages as one undoable step, moving or deleting any text the
+   * change names. Moved text that already has different text where it moves to stays where it is.
+   *
+   * @throws If no session is open, or the session refuses or fails the edit.
+   */
+  changeAnalysisLanguages: (
+    change: AnalysisLanguagesChange,
+  ) => Promise<AnalysisLanguagesChangeOutcome>;
+  /**
+   * Counts the draft's glosses and free translations under each language tag that has any.
+   *
+   * @throws If no session is open, or the query fails.
+   */
+  countLanguageText: () => Promise<TextCountsByTag>;
   /** Records that the project the draft saves to was deleted. */
   detachFromProject: () => Promise<void>;
   canUndo: boolean;

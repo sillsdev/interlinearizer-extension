@@ -1455,6 +1455,22 @@ declare module 'interlinearizer' {
     frontMatter?: FrontMatterParagraph[];
   }
 
+  /** `T` with every field at every depth readonly, arrays included. */
+  export type DeepReadonly<T> = T extends readonly (infer U)[]
+    ? readonly DeepReadonly<U>[]
+    : T extends object
+      ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+      : T;
+
+  /** A {@link Book} that is shared with its other holders, so nothing in it may be changed. */
+  export type ReadonlyBook = DeepReadonly<Book>;
+
+  /** A {@link Segment} of a {@link ReadonlyBook}. */
+  export type ReadonlySegment = DeepReadonly<Segment>;
+
+  /** A {@link Token} of a {@link ReadonlyBook}. */
+  export type ReadonlyToken = DeepReadonly<Token>;
+
   /** A paragraph ahead of a book's first chapter, tokenized but outside the text layer. */
   export interface FrontMatterParagraph {
     /** USFM marker of the paragraph, e.g. `"mt1"`, or `"id"` for the identification line. */

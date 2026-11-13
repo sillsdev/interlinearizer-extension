@@ -3,8 +3,8 @@ import type {
   AnalysisChange,
   AnalysisLink,
   AnalysisQuery,
-  Book,
   ChangedBook,
+  ReadonlyBook,
   SegmentationDelta,
   SegmentRange,
 } from 'interlinearizer';
@@ -23,7 +23,7 @@ export type AppliedChange = Readonly<{ changes: ChangeSet; inverse: ChangeSet }>
  * Looks up a book as the session's boundaries now segment it. Answers `undefined` when the host
  * holds no outline for the book.
  */
-export type HeldBook = (bookId: string) => Book | undefined;
+export type HeldBook = (bookId: string) => ReadonlyBook | undefined;
 
 /** The books whose boundaries differ between two deltas. */
 export function booksResegmentedBetween(
@@ -54,7 +54,7 @@ export function booksResegmented({ changes, inverse }: AppliedChange): string[] 
  * is the segment itself when the book holds it, else the segment where a stale translation is
  * placed. `undefined` when the view would show the translation nowhere.
  */
-function freeTranslationIndex(book: Book, segmentId: string): number | undefined {
+function freeTranslationIndex(book: ReadonlyBook, segmentId: string): number | undefined {
   const { segmentOrder } = bookIndexesOf(book.segments);
   const own = segmentOrder.get(segmentId);
   if (own !== undefined) return own;
@@ -128,8 +128,8 @@ export async function describeChange(
   const resegmented = booksResegmented(applied);
   const wholeBooks = new Set(resegmented);
   const indexesByBook = new Map<string, Set<number>>();
-  const books = new Map<string, Book | undefined>();
-  const markAt = (bookId: string, indexOf: (book: Book) => number | undefined) => {
+  const books = new Map<string, ReadonlyBook | undefined>();
+  const markAt = (bookId: string, indexOf: (book: ReadonlyBook) => number | undefined) => {
     if (wholeBooks.has(bookId)) return;
     if (!books.has(bookId)) books.set(bookId, heldBook(bookId));
     const book = books.get(bookId);

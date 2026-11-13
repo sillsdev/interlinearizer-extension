@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import papiBackendMock from '@papi/backend';
-import type { Book, SegmentationDelta } from 'interlinearizer';
+import type { Book, ReadonlyBook, SegmentationDelta } from 'interlinearizer';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
@@ -126,7 +126,7 @@ function settle() {
   });
 }
 
-function parseBook(book: Book | undefined): Book {
+function parseBook(book: ReadonlyBook | undefined): ReadonlyBook {
   if (!book) throw new Error('Expected a tokenized book');
   return book;
 }
@@ -1219,7 +1219,9 @@ describe('onBookRead', () => {
   const unsubscribers: Array<() => boolean> = [];
 
   /** A listener for books read, registered for the test and removed once it ends. */
-  function listenForBooks(onCall?: (sourceProjectId: string, book: Book, edited: boolean) => void) {
+  function listenForBooks(
+    onCall?: (sourceProjectId: string, book: ReadonlyBook, edited: boolean) => void,
+  ) {
     const listener = jest.fn(onCall);
     unsubscribers.push(onBookRead(listener));
     return listener;

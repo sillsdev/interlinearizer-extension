@@ -1,6 +1,6 @@
 import papi, { logger } from '@papi/backend';
 import { Canon } from '@sillsdev/scripture';
-import type { Book, Segment, SegmentationDelta } from 'interlinearizer';
+import type { Book, ReadonlyBook, ReadonlySegment, SegmentationDelta } from 'interlinearizer';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
@@ -27,11 +27,11 @@ interface HeldBook {
   bookId: string;
   writingSystem: string;
   /** `undefined` when the project has no text for the book. */
-  book: Promise<Book | undefined>;
+  book: Promise<ReadonlyBook | undefined>;
   /** The book once tokenized; absent until then, and when the project has no text for it. */
-  tokenized?: Book;
+  tokenized?: ReadonlyBook;
   /** The book segmented by the boundaries last asked for, keyed by the JSON of the book's own. */
-  segmented?: { key: string; segments: Segment[] };
+  segmented?: { key: string; segments: readonly ReadonlySegment[] };
   watch: BookTextWatch;
 }
 
@@ -119,7 +119,7 @@ function reportEdit(sourceProjectId: string, bookId: string): void {
  * Receives the source project and tokenized text of each book that a whole-text read takes in, and
  * of the open book once it is edited. Also receives whether the text is an edit's.
  */
-type BookReadListener = (sourceProjectId: string, book: Book, edited: boolean) => void;
+type BookReadListener = (sourceProjectId: string, book: ReadonlyBook, edited: boolean) => void;
 
 const bookReadListeners = new Set<BookReadListener>();
 
@@ -154,7 +154,7 @@ function finishRead(
   sourceProjectId: string,
   bookId: string,
   readNumber: number,
-  book: Book | undefined,
+  book: ReadonlyBook | undefined,
   edited: boolean,
 ): void {
   const finished = finishedReads.get(sourceProjectId) ?? new Map<string, number>();
@@ -354,10 +354,10 @@ async function keepBook(
  */
 function segmentsOf(
   held: HeldBook,
-  book: Book,
+  book: ReadonlyBook,
   segmentation: SegmentationDelta | undefined,
   call: 'getBookOutline' | 'getSegmentedBook' | 'heldBook',
-): Segment[] {
+): readonly ReadonlySegment[] {
   const delta = segmentationForBook(segmentation, held.bookId);
   const key = delta ? JSON.stringify(delta) : '';
   if (held.segmented?.key !== key) {
@@ -422,8 +422,7 @@ export function onTextReadProgress(listener: TextReadProgressListener): () => bo
 
 /**
  * Reads a book of the source project, segmented by the boundaries that `segmentation` sets in it.
- * The book becomes the project's open book, whose edits {@link onBookTextChanged} reports. The
- * book's segments are shared, so the caller must not change them.
+ * The book becomes the project's open book, whose edits {@link onBookTextChanged} reports.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or tokenized.
@@ -432,7 +431,7 @@ export async function getOpenBook(
   sourceProjectId: string,
   bookId: string,
   segmentation?: SegmentationDelta,
-): Promise<Book | undefined> {
+): Promise<ReadonlyBook | undefined> {
   const held = await keepBook(sourceProjectId, bookId, true);
   const book = await held.book;
   if (!book) return undefined;
@@ -441,8 +440,7 @@ export async function getOpenBook(
 
 /**
  * The source project's book, segmented by the boundaries that `segmentation` sets in it, when the
- * project keeps a tokenized copy as its open or latest book. Reads nothing. The book's segments are
- * shared, so the caller must not change them.
+ * project keeps a tokenized copy as its open or latest book. Reads nothing.
  *
  * @returns `undefined` when the project keeps no tokenized copy of the book.
  */
@@ -450,7 +448,7 @@ export function heldBook(
   sourceProjectId: string,
   bookId: string,
   segmentation?: SegmentationDelta,
-): Book | undefined {
+): ReadonlyBook | undefined {
   const held = [openBooks.get(sourceProjectId), latestBooks.get(sourceProjectId)].find(
     (kept) => kept?.bookId === bookId && kept.tokenized,
   );
@@ -474,7 +472,7 @@ async function keptBook(sourceProjectId: string, bookId: string): Promise<HeldBo
 
 /**
  * Reads a book of the source project, tokenized one segment per verse: the book that a session's
- * pages resegment. The book is shared, so the caller must not change it.
+ * pages resegment.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book's text or the project's language tag cannot be read, or the text cannot be
@@ -483,14 +481,13 @@ async function keptBook(sourceProjectId: string, bookId: string): Promise<HeldBo
 export async function getVerseBook(
   sourceProjectId: string,
   bookId: string,
-): Promise<Book | undefined> {
+): Promise<ReadonlyBook | undefined> {
   return (await keptBook(sourceProjectId, bookId)).book;
 }
 
 /**
  * Reads a book of the source project, tokenized one segment per verse. The book becomes the
- * project's open book, whose edits {@link onBookTextChanged} reports. The book is shared, so the
- * caller must not change it.
+ * project's open book, whose edits {@link onBookTextChanged} reports.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book's text or the project's language tag cannot be read, or the text cannot be
@@ -499,14 +496,13 @@ export async function getVerseBook(
 export async function getOpenVerseBook(
   sourceProjectId: string,
   bookId: string,
-): Promise<Book | undefined> {
+): Promise<ReadonlyBook | undefined> {
   return (await keepBook(sourceProjectId, bookId, true)).book;
 }
 
 /**
  * Reads a book of the source project, segmented by the boundaries that `segmentation` sets in it,
- * as a session's pages segment it. The book's segments are shared, so the caller must not change
- * them.
+ * as a session's pages segment it.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or tokenized.
@@ -515,7 +511,7 @@ export async function getSegmentedBook(
   sourceProjectId: string,
   bookId: string,
   segmentation?: SegmentationDelta,
-): Promise<Book | undefined> {
+): Promise<ReadonlyBook | undefined> {
   const held = await keptBook(sourceProjectId, bookId);
   const book = await held.book;
   if (!book) return undefined;

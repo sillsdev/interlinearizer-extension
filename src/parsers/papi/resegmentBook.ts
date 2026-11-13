@@ -1,9 +1,10 @@
 import type {
   Book,
+  ReadonlyBook,
+  ReadonlySegment,
+  ReadonlyToken,
   ScriptureRef,
-  Segment,
   SegmentationDelta,
-  Token,
   VerseStart,
 } from 'interlinearizer';
 
@@ -13,7 +14,7 @@ import { effectiveStarts, isDefaultSegmentationForBook } from '../../utils/segme
 const MERGE_SEPARATOR = ' ';
 
 /** A token paired with the original verse {@link Segment} it came from. */
-type SourcedToken = { token: Token; verse: Segment };
+type SourcedToken = { token: ReadonlyToken; verse: ReadonlySegment };
 
 /**
  * Rebuilds one custom {@link Segment} from a run of tokens that may span multiple original verses.
@@ -25,7 +26,7 @@ type SourcedToken = { token: Token; verse: Segment };
  *
  * @param run - The run's tokens in document order, each tagged with its source verse. Non-empty.
  */
-function buildSegment(run: SourcedToken[]): Segment {
+function buildSegment(run: SourcedToken[]): ReadonlySegment {
   const firstSourced = run[0];
   const lastSourced = run[run.length - 1];
   const firstVerse = firstSourced.verse;
@@ -43,7 +44,7 @@ function buildSegment(run: SourcedToken[]): Segment {
   let baselineText = '';
   let cursor = 0;
   let runIndex = 0;
-  const tokens: Token[] = [];
+  const tokens: ReadonlyToken[] = [];
   const verseStarts: VerseStart[] = [];
   while (runIndex < run.length) {
     const { verse } = run[runIndex];
@@ -118,7 +119,15 @@ function buildSegment(run: SourcedToken[]): Segment {
  * Headings and token-less verses (empty verse markers) pass through as their own segments in
  * document order, so they survive a custom segmentation exactly as they do the default one.
  */
-export function resegmentBook(book: Book, delta: SegmentationDelta | undefined): Book {
+export function resegmentBook(book: Book, delta: SegmentationDelta | undefined): Book;
+export function resegmentBook(
+  book: ReadonlyBook,
+  delta: SegmentationDelta | undefined,
+): ReadonlyBook;
+export function resegmentBook(
+  book: ReadonlyBook,
+  delta: SegmentationDelta | undefined,
+): ReadonlyBook {
   if (isDefaultSegmentationForBook(book, delta)) return book;
 
   const starts = effectiveStarts(book, delta);
@@ -127,7 +136,7 @@ export function resegmentBook(book: Book, delta: SegmentationDelta | undefined):
   // materialized into segments in document order as they close, interleaved with any headings and
   // token-less verses (empty verse markers): neither takes part in a boundary, so each stands as its
   // own segment, reused verbatim.
-  const segments: Segment[] = [];
+  const segments: ReadonlySegment[] = [];
   let current: SourcedToken[] = [];
 
   /** Materializes the open run (if any) into a segment and resets it. */

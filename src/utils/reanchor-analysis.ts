@@ -2,10 +2,11 @@ import type {
   AnalysisLink,
   Book,
   PhraseAnalysisLink,
-  Segment,
+  ReadonlyBook,
+  ReadonlySegment,
+  ReadonlyToken,
   SegmentAnalysis,
   TextAnalysis,
-  Token,
   TokenSnapshot,
 } from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
@@ -141,7 +142,7 @@ function pairUnambiguously(a: string[], b: string[]): (number | undefined)[] {
 function alignForms(
   stored: string[],
   storedRefs: string[],
-  tokens: Token[],
+  tokens: ReadonlyToken[],
   live: boolean[],
   kin: (string | undefined)[],
 ): Anchor[] {
@@ -185,7 +186,7 @@ function alignForms(
 function alignKept(
   stored: string[],
   storedRefs: string[],
-  tokens: Token[],
+  tokens: ReadonlyToken[],
   live: boolean[],
 ): Anchor[] {
   const a = stored.map(normalizeSurfaceForm);
@@ -300,8 +301,8 @@ function formsOutOfOrder(
  * A verse the book holds but that carries no tokens gets an empty group rather than no entry, so
  * emptying a verse's text orphans its analyses instead of leaving them pointing at nothing.
  */
-function tokensByVerse(book: Book): Map<string, Token[]> {
-  const byVerse = new Map<string, Token[]>();
+function tokensByVerse(book: ReadonlyBook): Map<string, ReadonlyToken[]> {
+  const byVerse = new Map<string, ReadonlyToken[]>();
   book.segments.forEach((segment) => {
     if (segment.tokens.length === 0) {
       if (!byVerse.has(segment.id)) byVerse.set(segment.id, []);
@@ -332,7 +333,7 @@ function tokensByVerse(book: Book): Map<string, Token[]> {
  */
 function buildAnchorMap(
   snapshots: TokenSnapshot[],
-  book: Book,
+  book: ReadonlyBook,
   deferred: TokenSnapshot[] = [],
   isLive: (key: string) => boolean = () => true,
   kinOf: (key: string) => string | undefined = () => undefined,
@@ -360,7 +361,7 @@ function buildAnchorMap(
 /** Records in `anchorMap` where each snapshot now belongs among the verse token lists given. */
 function anchorByVerse(
   snapshots: TokenSnapshot[],
-  byVerse: Map<string, Token[]>,
+  byVerse: Map<string, ReadonlyToken[]>,
   bookRef: string,
   anchorMap: Map<string, Anchor>,
   isLive: (key: string) => boolean,
@@ -373,7 +374,7 @@ function anchorByVerse(
 
   // Keyed by the verse's token list rather than its ref so the alignment below needs no second
   // lookup, which would have to answer for a verse this grouping already dropped.
-  const grouped = new Map<Token[], TokenSnapshot[]>();
+  const grouped = new Map<ReadonlyToken[], TokenSnapshot[]>();
   uniqueSnapshots.forEach((snapshot, key) => {
     const tokens = byVerse.get(verseOfTokenRef(snapshot.tokenRef));
     if (!tokens) {
@@ -438,7 +439,7 @@ function reanchorSnapshot(
  * Re-points each snapshot at the token it now names in `book`, returning a snapshot that cannot be
  * placed, or that names a verse the book does not hold, as it was.
  */
-export function reanchorSnapshots(snapshots: TokenSnapshot[], book: Book): TokenSnapshot[] {
+export function reanchorSnapshots(snapshots: TokenSnapshot[], book: ReadonlyBook): TokenSnapshot[] {
   const anchorMap = buildAnchorMap(snapshots, book);
   return snapshots.map((snapshot) => reanchorSnapshot(snapshot, anchorMap).snapshot);
 }
@@ -453,7 +454,7 @@ export function reanchorSnapshots(snapshots: TokenSnapshot[], book: Book): Token
  * moved to cover different ones.
  */
 function baselineDriftCheck(
-  segmentsById: Map<string, Segment>,
+  segmentsById: Map<string, ReadonlySegment>,
   segmentAnalyses: SegmentAnalysis[],
   bookRef: string,
 ): (segmentId: string, analysisId: string) => boolean {
@@ -474,12 +475,12 @@ function baselineDriftCheck(
  * marker reading exactly as the translation's baseline, or `undefined` for none or several.
  */
 function movedHeadingLookup(
-  book: Book,
+  book: ReadonlyBook,
   segmentAnalyses: SegmentAnalysis[],
 ): (segmentId: string, analysisId: string) => string | undefined {
   // Strips the ordinal a heading id takes when an earlier heading of its verse and marker took the id.
   const unnumbered = (segmentId: string) => segmentId.replace(/#\d+$/, '');
-  const headingsById = new Map<string, Segment[]>();
+  const headingsById = new Map<string, ReadonlySegment[]>();
   book.segments.forEach((segment) => {
     if (!segment.heading) return;
     const id = unnumbered(segment.id);
@@ -577,7 +578,7 @@ const MAX_REANCHOR_PASSES = 8;
  */
 export function reanchorAnalysisToBook(
   analysis: TextAnalysis,
-  book: Book,
+  book: ReadonlyBook,
   now: string,
   storedSplits: TokenSnapshot[] = [],
 ): TextAnalysis {
@@ -595,7 +596,7 @@ export function reanchorAnalysisToBook(
 /** Makes one pass of {@link reanchorAnalysisToBook}, which a further pass may take further. */
 function reanchorOnce(
   analysis: TextAnalysis,
-  book: Book,
+  book: ReadonlyBook,
   now: string,
   storedSplits: TokenSnapshot[],
 ): TextAnalysis {

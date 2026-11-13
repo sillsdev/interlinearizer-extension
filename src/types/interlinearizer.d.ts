@@ -1003,7 +1003,7 @@ declare module 'papi-shared-types' {
      * Counts the glosses and free translations of a session's draft under each language tag that
      * has any.
      *
-     * @returns A JSON string of `{ glosses, freeTranslations }` keyed by tag.
+     * @returns A JSON string of the counts, keyed by tag.
      * @throws If the session is not open, or its draft or any book of it can't be read (logged
      *   before rethrowing).
      */

@@ -1999,6 +1999,7 @@ function InterlinearizerLoaderInner({
         announceUndoable={announceUndoable}
         changeDraftAnalysisLanguages={changeDraftAnalysisLanguages}
         countDraftLanguageText={countLanguageText}
+        subscribeToDraftEdits={subscribeToHistoryRevisions}
         defaultAnalysisLanguage={platformLanguage}
         hasUnsavedWork={hasUnsavedChanges}
         isDraftLoading={isDraftLoading}

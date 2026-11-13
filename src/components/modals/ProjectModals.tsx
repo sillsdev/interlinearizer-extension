@@ -99,6 +99,8 @@ function retagMessage(
  *   undoable step, moving or deleting any text the change names. Resolves what it did to the text.
  * @param props.countDraftLanguageText - Counts the draft's glosses and free translations under each
  *   language tag that has any.
+ * @param props.subscribeToDraftEdits - Calls a listener after each edit, undo, or redo of the
+ *   draft, until the returned function is called.
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
  *   initial value of the analysis language field; should be the platform UI language.
  * @param props.isDraftLoading - Whether the draft is still loading. Project Info holds the active
@@ -143,6 +145,7 @@ export default function ProjectModals({
   announceUndoable,
   changeDraftAnalysisLanguages,
   countDraftLanguageText,
+  subscribeToDraftEdits,
   defaultAnalysisLanguage,
   isDraftLoading,
   hasUnsavedWork,
@@ -166,6 +169,7 @@ export default function ProjectModals({
     change: AnalysisLanguagesChange,
   ) => Promise<AnalysisLanguagesChangeOutcome>;
   countDraftLanguageText: () => Promise<TextCountsByTag>;
+  subscribeToDraftEdits: (listener: () => void) => () => void;
   defaultAnalysisLanguage?: string;
   isDraftLoading: boolean;
   hasUnsavedWork: boolean;
@@ -678,6 +682,7 @@ export default function ProjectModals({
           pt9ImportedAt={resolvedMetadataProject.pt9Import?.importedAt}
           isSaveBlocked={isDraftLoading && resolvedMetadataProject.id === activeProject?.id}
           countLanguageText={metadataLanguagesInDraft ? countDraftLanguageText : undefined}
+          subscribeToDraftEdits={metadataLanguagesInDraft ? subscribeToDraftEdits : undefined}
           onChangeLanguages={metadataLanguagesInDraft ? changeDraftLanguages : undefined}
           onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}

@@ -41,6 +41,11 @@ type AnalysisLanguageChipsProps = Readonly<{
    * Absent, no action asks.
    */
   countText?: () => Promise<TextCountsByTag>;
+  /**
+   * Calls `listener` after each edit, undo, or redo of the draft, until the returned function is
+   * called. The text is counted again each time.
+   */
+  subscribeToEdits?: (listener: () => void) => () => void;
   /** Applies a change. Absent to show the codes without letting them change. */
   onChange?: (change: AnalysisLanguagesChange) => Promise<void>;
   /** Whether the actions are unavailable for a reason outside the row. */
@@ -71,6 +76,7 @@ export default function AnalysisLanguageChips({
   languages,
   labelledBy,
   countText,
+  subscribeToEdits,
   onChange,
   disabled = false,
 }: AnalysisLanguageChipsProps) {
@@ -99,6 +105,14 @@ export default function AnalysisLanguageChips({
   useEffect(() => {
     recount();
   }, [recount]);
+
+  useEffect(
+    () =>
+      subscribeToEdits?.(() => {
+        recount();
+      }),
+    [recount, subscribeToEdits],
+  );
 
   const apply = useCallback(
     (change: AnalysisLanguagesChange) =>

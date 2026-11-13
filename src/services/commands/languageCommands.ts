@@ -72,6 +72,7 @@ async function removeEmptied(
   segmentAnalyses: readonly SegmentAnalysis[],
 ): Promise<TokenAnalysis[]> {
   const emptiedTokens = tokenAnalyses.filter(isEmptyTokenAnalysis);
+  const emptiedIds = new Set(emptiedTokens.map(({ id }) => id));
   const emptiedSegments = segmentAnalyses.filter(isEmptySegmentAnalysis);
   if (emptiedTokens.length + emptiedSegments.length > 0) {
     const links = await buffer.findLinksToAnalyses(
@@ -82,7 +83,7 @@ async function removeEmptied(
     emptiedTokens.forEach((analysis) => buffer.delete('tokenAnalyses', analysis));
     emptiedSegments.forEach((analysis) => buffer.delete('segmentAnalyses', analysis));
   }
-  return tokenAnalyses.filter((analysis) => !emptiedTokens.includes(analysis));
+  return tokenAnalyses.filter(({ id }) => !emptiedIds.has(id));
 }
 
 /**

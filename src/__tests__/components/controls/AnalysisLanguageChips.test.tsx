@@ -387,6 +387,32 @@ describe('AnalysisLanguageChips', () => {
     expect(screen.getByRole('heading', { name: 'Remove fr?' })).toBeInTheDocument();
   });
 
+  it('counts the text again after an edit made elsewhere', async () => {
+    const listeners = new Set<() => void>();
+    const countText = jest
+      .fn<Promise<TextCountsByTag>, []>()
+      .mockResolvedValueOnce({})
+      .mockResolvedValue({ en: { glosses: 1, freeTranslations: 0 } });
+    render(
+      <AnalysisLanguageChips
+        languages={['en', 'fr']}
+        labelledBy="label"
+        countText={countText}
+        subscribeToEdits={(listener) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        }}
+        onChange={jest.fn(async () => {})}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled());
+
+    await act(async () => listeners.forEach((listener) => listener()));
+    await choose('en (primary) options', 'Remove');
+
+    expect(screen.getByRole('heading', { name: 'Remove en?' })).toBeInTheDocument();
+  });
+
   it('logs a failed count and offers no Remove or Change until a count succeeds', async () => {
     const warn = jest.mocked(logger.warn);
     const onChange = jest.fn(async () => {});

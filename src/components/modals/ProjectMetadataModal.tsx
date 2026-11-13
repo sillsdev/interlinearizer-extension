@@ -54,6 +54,11 @@ type ProjectMetadataModalProps = Readonly<{
   /** Counts the glosses and free translations of every language code that has any. */
   countLanguageText?: () => Promise<TextCountsByTag>;
   /**
+   * Calls `listener` after each edit, undo, or redo of the draft, until the returned function is
+   * called.
+   */
+  subscribeToDraftEdits?: (listener: () => void) => () => void;
+  /**
    * Applies a change to the analysis languages at once, apart from Save. Absent when the languages
    * can't change here, because the project isn't the one open.
    */
@@ -82,6 +87,7 @@ export function ProjectMetadataModal({
   pt9ImportedAt,
   isSaveBlocked = false,
   countLanguageText,
+  subscribeToDraftEdits,
   onChangeLanguages,
   onClose,
   onProjectSaved,
@@ -226,6 +232,7 @@ export function ProjectMetadataModal({
               languages={analysisLanguages}
               labelledBy="metadata-languages-label"
               countText={countLanguageText}
+              subscribeToEdits={subscribeToDraftEdits}
               onChange={handleChangeLanguages}
               disabled={isSaveBlocked || isSubmitting}
             />

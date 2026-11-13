@@ -335,6 +335,7 @@ type ModalsOverrides = Partial<{
   announceUndoable: jest.Mock;
   changeDraftAnalysisLanguages: jest.Mock;
   countDraftLanguageText: jest.Mock;
+  subscribeToDraftEdits: jest.Mock;
   defaultAnalysisLanguage: string;
   isDraftLoading: boolean;
   hasUnsavedWork: boolean;
@@ -368,6 +369,7 @@ function buildProps(overrides: ModalsOverrides = {}) {
     changeDraftAnalysisLanguages:
       overrides.changeDraftAnalysisLanguages ?? jest.fn().mockResolvedValue(undefined),
     countDraftLanguageText: overrides.countDraftLanguageText ?? jest.fn().mockResolvedValue({}),
+    subscribeToDraftEdits: overrides.subscribeToDraftEdits ?? jest.fn(() => () => {}),
     defaultAnalysisLanguage: overrides.defaultAnalysisLanguage,
     hasUnsavedWork: overrides.hasUnsavedWork ?? false,
     isDraftLoading: overrides.isDraftLoading ?? false,

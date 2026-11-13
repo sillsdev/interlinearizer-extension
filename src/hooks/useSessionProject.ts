@@ -444,7 +444,7 @@ export default function useSessionProject(
   /**
    * Counts the draft's glosses and free translations under each language tag that has any.
    *
-   * @returns The counts, or none when the host's answer is malformed.
+   * @returns The counts, or `{}` when the host's answer is malformed.
    * @throws If no session is open, or whatever the query throws.
    */
   const countLanguageText = useCallback(async (): Promise<TextCountsByTag> => {

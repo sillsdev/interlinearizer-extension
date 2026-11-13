@@ -130,7 +130,9 @@ function unanimous(values: Iterable<string | undefined>): string | undefined {
  * genuinely different parse on the same token becomes a separate competing record.
  *
  * Each language's status stands alone, as it does in Paratext 9. Where languages disagree on a
- * token's or phrase's status, each status gets its own record.
+ * token's or phrase's status, each status gets its own record. Two such records that carry
+ * identical payloads still fold into one link when the import dedupes payloads; a link's status
+ * names no language.
  *
  * A sense reference is kept only where every contributing language agrees on the sense. At most one
  * record per token may be approved, so later would-be-approved records are demoted to candidate.

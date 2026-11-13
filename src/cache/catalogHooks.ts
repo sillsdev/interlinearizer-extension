@@ -1,6 +1,5 @@
-import papi, { logger } from '@papi/frontend';
-import type { AnalysisQuery } from 'interlinearizer';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import papi from '@papi/frontend';
+import { useMemo } from 'react';
 import {
   restoreUntagged,
   type CatalogPageRow,
@@ -11,8 +10,7 @@ import type { StaleSummary } from '../types/segment-pages';
 import type { TextReadStatus } from '../types/text-read-status';
 import type { CatalogFacets, CatalogRow } from '../utils/analysis-query';
 import type { AnalysisDeletionOutcome } from '../utils/analysis-selectors';
-import useLatestRef from '../hooks/useLatestRef';
-import useSessionChange from '../hooks/useSessionChange';
+import { useNamedFetch } from './namedQueryHooks';
 import { usePageSession } from './pageHooks';
 
 /** A row as the host sends it, its books listed. */
@@ -23,93 +21,6 @@ function fromWire<T extends CatalogRow>(
   row: WireRow<T>,
 ): Omit<T, 'books'> & { books: ReadonlySet<string> } {
   return { ...row, books: new Set(row.books) };
-}
-
-/**
- * How many of the session's reported changes have named `query` since the caller mounted. Each one
- * re-renders the caller.
- */
-function useNamedChanges(sessionId: string, query: AnalysisQuery): number {
-  const [count, setCount] = useState(0);
-  useSessionChange(sessionId, (change) => {
-    if (change.queries.includes(query)) setCount((was) => was + 1);
-  });
-  return count;
-}
-
-/** What {@link useNamedFetch} answers for its key. */
-type NamedFetch<T> = Readonly<{
-  /** The answer to show; `undefined` until one arrives. */
-  value: T | undefined;
-  /** Whether the latest fetch failed. Stays set while a retry is fetched. */
-  failed: boolean;
-  /** Whether a retry after a failed fetch has yet to answer. */
-  retrying: boolean;
-  /** Fetches for the key again. */
-  retry: () => void;
-}>;
-
-/**
- * Fetches with `fetch` for each `key` of the session, and again whenever a change to the session
- * names `query`, or `retry` is called. Logs a failed fetch as one of `what`. Nothing is fetched
- * while `key` is `undefined`.
- *
- * @returns `undefined` while `key` is `undefined`. Otherwise the latest answer for `key`, with
- *   whether the latest fetch failed. Until an answer for `key` arrives, and after a failed fetch,
- *   the answer is `undefined`, or, with `keepPrevious`, the last answer.
- */
-function useNamedFetch<T>(
-  query: AnalysisQuery,
-  what: string,
-  key: string | undefined,
-  fetch: () => Promise<T>,
-  keepPrevious = false,
-): NamedFetch<T> | undefined {
-  const { sessionId } = usePageSession();
-  const changes = useNamedChanges(sessionId, query);
-  const fetchRef = useLatestRef(fetch);
-  const sessionKey = key === undefined ? undefined : JSON.stringify([sessionId, key]);
-  const [attempt, setAttempt] = useState(0);
-  const [answer, setAnswer] = useState<
-    Readonly<{ key: string; value: T | undefined; failed: boolean; attempt: number }> | undefined
-  >(undefined);
-  useEffect(() => {
-    if (sessionKey === undefined) return undefined;
-    let isCurrent = true;
-    (async () => {
-      try {
-        const value = await fetchRef.current();
-        if (isCurrent) setAnswer({ key: sessionKey, value, failed: false, attempt });
-      } catch (e) {
-        logger.warn(`Interlinearizer: could not fetch ${what}`, e);
-        if (isCurrent)
-          setAnswer((was) => ({
-            key: sessionKey,
-            value: keepPrevious ? was?.value : undefined,
-            failed: true,
-            attempt,
-          }));
-      }
-    })();
-    return () => {
-      isCurrent = false;
-    };
-  }, [sessionKey, changes, attempt, what, fetchRef, keepPrevious]);
-  const retry = useCallback(() => setAttempt((was) => was + 1), []);
-  if (sessionKey === undefined) return undefined;
-  if (answer?.key === sessionKey)
-    return {
-      value: answer.value,
-      failed: answer.failed,
-      retrying: answer.failed && answer.attempt !== attempt,
-      retry,
-    };
-  return {
-    value: keepPrevious ? answer?.value : undefined,
-    failed: false,
-    retrying: false,
-    retry,
-  };
 }
 
 /** A page of the session's catalog, as the panel reads it. */

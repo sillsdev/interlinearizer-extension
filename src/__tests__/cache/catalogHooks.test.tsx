@@ -7,6 +7,7 @@ import { useMemo, type ReactNode } from 'react';
 import {
   useCatalogRowsByIds,
   useCatalogView,
+  useDeletionPreview,
   useHomographRows,
   useSelectionSummary,
   useTextReadStatus,
@@ -185,6 +186,29 @@ describe('useCatalogView', () => {
     expect(result.current.retry).toBeInstanceOf(Function);
   });
 
+  it('keeps the same retry while a retry of the page fails', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.getCatalogRows');
+    const retries: unknown[] = [];
+    const { result } = renderHook(
+      () => {
+        const fetched = useCatalogView(REQUEST, 10);
+        retries.push(fetched.retry);
+        return fetched;
+      },
+      { wrapper },
+    );
+    await settle();
+    const { retry } = result.current;
+    const failedAt = retries.length;
+
+    act(() => retry?.());
+    await settle();
+
+    expect(timesSent('interlinearizer.getCatalogRows')).toBe(2);
+    expect(retries.slice(failedAt).every((each) => each === retry)).toBe(true);
+  });
+
   it('keeps the last page when fetching it again fails', async () => {
     const wrapper = await wrapperOver();
     const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
@@ -291,6 +315,93 @@ describe('useSelectionSummary', () => {
   });
 });
 
+describe('useDeletionPreview', () => {
+  it('is loading until the host answers', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+
+    expect(result.current).toStrictEqual({ status: 'loading' });
+    await settle();
+  });
+
+  it('states what deleting the analysis would do', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+
+    await waitFor(() =>
+      expect(result.current).toStrictEqual({
+        status: 'ready',
+        outcome: { kind: 'blank', usageCount: 1, unappliedCount: 0 },
+      }),
+    );
+  });
+
+  it('reports an analysis no longer stored as missing', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useDeletionPreview('ta-gone'), { wrapper });
+
+    await waitFor(() => expect(result.current).toStrictEqual({ status: 'missing' }));
+  });
+
+  it('reports a preview the host could not give', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.previewDeletion');
+
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interlinearizer: could not fetch the deletion preview',
+      expect.any(Error),
+    );
+  });
+
+  it('asks again when retried', async () => {
+    const wrapper = await wrapperOver();
+    const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+    failing('interlinearizer.previewDeletion');
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+    jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => serve?.(...call));
+
+    const { current } = result;
+    act(() => {
+      if (current.status === 'failed') current.retry();
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+  });
+
+  it('shows a retried preview as loading until the host answers', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.previewDeletion');
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+
+    const { current } = result;
+    act(() => {
+      if (current.status === 'failed') current.retry();
+    });
+
+    expect(result.current.status).toBe('loading');
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+  });
+
+  it('fetches again when a change to the session names the catalog', async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    await settle();
+
+    relayChange(changeNaming(sessionIdOf('interlinearizer.previewDeletion'), ['getCatalogRows']));
+    await settle();
+
+    expect(timesSent('interlinearizer.previewDeletion')).toBe(2);
+  });
+});
+
 describe('a change of analysis language', () => {
   it('fetches the catalog page again in the new language', async () => {
     const wrapper = await wrapperOver();
@@ -342,5 +453,15 @@ describe('a change of analysis language', () => {
     await setLanguage('interlinearizer.getHomographRows', 'fr');
 
     await waitFor(() => expect(result.current?.[0]?.gloss).toBe(''));
+  });
+
+  it('previews the deletion again', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await setLanguage('interlinearizer.previewDeletion', 'fr');
+
+    await waitFor(() => expect(timesSent('interlinearizer.previewDeletion')).toBe(2));
   });
 });

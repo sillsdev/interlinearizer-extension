@@ -12,6 +12,8 @@ import {
   type CatalogPageRequest,
 } from './catalogPages';
 import { placeHeadings, type CatalogRow, type CatalogScope } from '../utils/analysis-query';
+import { bookOfRef } from '../utils/analysis-book';
+import { selectAnalysisDeletionOutcome } from '../utils/analysis-selectors';
 
 /** What a view asks of a session's catalog: a {@link CatalogPageRequest}, against one book. */
 export type CatalogRowsRequest = CatalogPageRequest & {
@@ -24,6 +26,7 @@ export type SessionCatalogHost = Readonly<{
   sessions: AnalysisSessions;
   logger: Readonly<{ error: (message: string, error: unknown) => void }>;
   getOpenVerseBook: typeof bookService.getOpenVerseBook;
+  getVerseBook: typeof bookService.getVerseBook;
   /**
    * Whether the source's text holds a normalized word form, `undefined` until the whole text has
    * been read.
@@ -43,6 +46,7 @@ export function sessionCatalogHandlers({
   sessions,
   logger,
   getOpenVerseBook,
+  getVerseBook,
   isFormInText,
 }: SessionCatalogHost) {
   /**
@@ -177,8 +181,60 @@ export function sessionCatalogHandlers({
     });
   }
 
+  /**
+   * Reports what deleting a token analysis in a session's draft would do to the tokens that approve
+   * it, whichever book they sit in. An outcome that depends on a token whose book cannot be read is
+   * `uncertain`.
+   *
+   * @returns A JSON string of the `AnalysisDeletionOutcome`; `"null"` when no analysis carries the
+   *   id.
+   * @throws If the session is not open or its analysis cannot be read. The error is logged before
+   *   rethrowing.
+   */
+  async function previewDeletion({
+    sessionId,
+    analysisId,
+  }: ArgsOf<'interlinearizer.previewDeletion'>): Promise<string> {
+    try {
+      return await sessions.run(sessionId, async (session) => {
+        const { analysis } = await session.repository.getWholeDraft();
+        const bookIds = new Set(
+          analysis.tokenAnalysisLinks
+            .filter((link) => link.analysisId === analysisId && link.status === 'approved')
+            .map((link) => bookOfRef(link.token.tokenRef)),
+        );
+        const liveText = new Map<string, string>();
+        const readBooks = new Set<string>();
+        await Promise.all(
+          [...bookIds].map(async (bookId) => {
+            const book = await getVerseBook(session.scope.sourceProjectId, bookId).catch((e) => {
+              logger.error(`Interlinearizer: could not read ${bookId} to preview a deletion`, e);
+              return undefined;
+            });
+            if (!book) return;
+            readBooks.add(bookId);
+            book.segments.forEach((segment) =>
+              segment.tokens.forEach((token) => liveText.set(token.ref, token.surfaceText)),
+            );
+          }),
+        );
+        const outcome = selectAnalysisDeletionOutcome(
+          { analysis, analysisLanguage: session.analysisLanguage },
+          analysisId,
+          (tokenRef) => liveText.get(tokenRef),
+          (tokenRef) => readBooks.has(bookOfRef(tokenRef)),
+        );
+        return outcome ? JSON.stringify(outcome) : 'null';
+      });
+    } catch (e) {
+      logger.error(`Interlinearizer: failed to preview a deletion in session ${sessionId}`, e);
+      throw e;
+    }
+  }
+
   return {
     'interlinearizer.getCatalogRows': getCatalogRows,
+    'interlinearizer.previewDeletion': previewDeletion,
     'interlinearizer.getSelectionSummary': getSelectionSummary,
     'interlinearizer.countUsages': countUsages,
     'interlinearizer.getCatalogRowsByIds': getCatalogRowsByIds,

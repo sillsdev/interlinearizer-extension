@@ -7,7 +7,7 @@ import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type { AssignmentStatus, Book, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { ResolvedSense } from 'interlinearizer/lexicon';
 import {
   createRef,
@@ -155,6 +155,8 @@ type PanelOptions = Partial<{
   focusedTokenRef: string;
   /** The source text as the host reads it whole. Defaults to one not yet read. */
   text: FakeText;
+  /** The book the host pages and reads tokens from. Defaults to {@link GENESIS}. */
+  book: Book;
   /** Whether every book has been checked for stale places. Defaults to only the opened ones. */
   /** Senses of the connected lexicon, keyed by sense id. Omitted, no lexicon is connected. */
   senses: Record<string, ResolvedSense>;
@@ -175,13 +177,22 @@ let AnalysisProvider: (props: AnalysisProviderProps) => ReactNode = () => {
  * Prepares the analysis provider over `analysis`, an empty analysis by default, on a source whose
  * whole text the host reads as `text`.
  */
-async function prepare(analysis: TextAnalysis | undefined, text?: FakeText): Promise<void> {
-  AnalysisProvider = await prepareAnalysis(analysis ?? emptyAnalysis(), GENESIS, text);
+async function prepare(
+  analysis: TextAnalysis | undefined,
+  text?: FakeText,
+  book: Book = GENESIS,
+): Promise<void> {
+  AnalysisProvider = await prepareAnalysis(analysis ?? emptyAnalysis(), book, text);
 }
 
-/** Renders `ui` once the analysis provider over `analysis` and `text` is prepared. */
-async function renderOver(analysis: TextAnalysis | undefined, ui: ReactElement, text?: FakeText) {
-  await prepare(analysis, text);
+/** Renders `ui` once the analysis provider over `analysis`, `text` and `book` is prepared. */
+async function renderOver(
+  analysis: TextAnalysis | undefined,
+  ui: ReactElement,
+  text?: FakeText,
+  book?: Book,
+) {
+  await prepare(analysis, text, book);
   const rendered = render(ui);
   await settle();
   return rendered;
@@ -240,6 +251,7 @@ function renderPanel(overrides: PanelOptions = {}) {
     overrides.analysis,
     overrides.senses ? withLexicon(panel, overrides.senses).ui : panel,
     overrides.text,
+    overrides.book,
   );
 }
 
@@ -4578,14 +4590,24 @@ describe('AnalysisCatalogPanel', () => {
 
   describe('deleting a row', () => {
     const announceUndoable = jest.fn();
+    /** A text reading "ἀρχῇ" at GEN 1:1:0, GEN 1:3:4 and GEN 2:7:2, and "λόγος" at GEN 1:1:5. */
+    const DELETION_TEXT = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'ἀρχῇ λόγος' },
+      { sid: 'GEN 1:3', text: 'καὶ ἀρχῇ' },
+      { sid: 'GEN 2:7', text: 'ἡ ἀρχῇ' },
+    ]);
     /** One analysis nothing else shares a form with, so deleting it leaves its token blank. */
     const LONE: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
         { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
       ],
-      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'GEN 1:3:4')],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:5')],
     };
+
+    /** Renders the panel over {@link DELETION_TEXT}, announcing through {@link announceUndoable}. */
+    const renderDeleting = (overrides: PanelOptions) =>
+      renderPanel({ announceUndoable, book: DELETION_TEXT, ...overrides });
 
     /** Expands the row and deletes it. */
     async function deleteRow(analysisId: string): Promise<void> {
@@ -4630,37 +4652,99 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['ta-1']);
     });
 
+    /** Serves `preview` in place of the host's answer to `previewDeletion`. */
+    function previewServedBy(preview: () => ReturnType<typeof papi.commands.sendCommand>): void {
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.previewDeletion') return preview();
+        return serve?.(...call);
+      });
+    }
+
+    /** Expands the row and asks to delete it, leaving the confirmation open. */
+    async function openDeleteConfirmation(analysisId: string): Promise<void> {
+      await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-delete'));
+    }
+
+    it('withholds Delete until the host states what the deletion would do', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(() => new Promise(() => {}));
+
+      await openDeleteConfirmation('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-confirm')).toBeDisabled();
+      expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteConfirmLoading%',
+      );
+    });
+
+    it('offers Delete and a retry when the host cannot state what the deletion would do', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(() => Promise.reject(new Error('offline')));
+
+      await openDeleteConfirmation('ta-1');
+
+      expect(await screen.findByTestId('catalog-delete-confirm-retry')).toBeInTheDocument();
+      expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteConfirmFailed%',
+      );
+      expect(screen.getByTestId('catalog-delete-confirm')).toBeEnabled();
+    });
+
+    it('deletes without announcing when the host cannot state what the deletion did', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(() => Promise.reject(new Error('offline')));
+      await openDeleteConfirmation('ta-1');
+      await screen.findByTestId('catalog-delete-confirm-retry');
+
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+      await waitFor(() => expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument());
+      expect(announceUndoable).not.toHaveBeenCalled();
+    });
+
+    it('states what the deletion would do once a retry succeeds', async () => {
+      await renderDeleting({ analysis: LONE });
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      previewServedBy(() => Promise.reject(new Error('offline')));
+      await openDeleteConfirmation('ta-1');
+      const retry = await screen.findByTestId('catalog-delete-confirm-retry');
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mockImplementation(async (...call) => serve?.(...call));
+
+      await userEvent.click(retry);
+
+      await waitFor(() =>
+        expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_deleteConfirmBlank%',
+        ),
+      );
+      expect(screen.queryByTestId('catalog-delete-confirm-retry')).not.toBeInTheDocument();
+    });
+
+    it('withholds Delete for an analysis already deleted', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(async () => 'null');
+
+      await openDeleteConfirmation('ta-1');
+
+      await waitFor(() =>
+        expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_deleteConfirmMissing%',
+        ),
+      );
+      expect(screen.getByTestId('catalog-delete-confirm')).toBeDisabled();
+    });
+
     it('states that the uses are left blank when no homograph survives', async () => {
-      await renderPanel({ announceUndoable, analysis: LONE });
+      await renderDeleting({ analysis: LONE });
 
       await deleteRow('ta-1');
 
       expect(announceUndoable).toHaveBeenCalledWith(
         expect.stringContaining('%interlinearizer_analysisCatalog_deleteBlank%'),
-      );
-    });
-
-    it('states the fallback the uses take when a homograph survives', async () => {
-      const analysis: TextAnalysis = {
-        ...emptyAnalysis(),
-        tokenAnalyses: [
-          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
-          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
-        ],
-        tokenAnalysisLinks: [
-          link('ta-1', 'GEN 1:1:0'),
-          link('ta-1', 'GEN 1:3:4'),
-          link('ta-2', 'GEN 2:7:2'),
-        ],
-      };
-      await renderPanel({ announceUndoable, analysis });
-
-      await deleteRow('ta-1');
-
-      // The two outcomes must be told apart: this copy is all the reader learns of what the delete
-      // did, and promising a fallback that does not exist is worse than saying nothing.
-      expect(announceUndoable).toHaveBeenCalledWith(
-        expect.stringContaining('%interlinearizer_analysisCatalog_deleteFallback%'),
       );
     });
 
@@ -4678,26 +4762,41 @@ describe('AnalysisCatalogPanel', () => {
       ],
     };
 
-    it('describes rather than names the fallback when a use has drifted off its analyzed form', async () => {
-      await renderPanel({
-        announceUndoable,
-        analysis: TWO_HOMOGRAPHS,
-        // Analyzed as "ἀρχῇ", but the baseline beneath it now reads otherwise.
-        liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? 'ἀρχή' : 'ἀρχῇ'),
-      });
+    it('states the fallback the uses take when a homograph survives', async () => {
+      await renderDeleting({ analysis: TWO_HOMOGRAPHS });
 
       await deleteRow('ta-1');
 
+      // The two outcomes must be told apart: this copy is all the reader learns of what the delete
+      // did, and promising a fallback that does not exist is worse than saying nothing.
       expect(announceUndoable).toHaveBeenCalledWith(
-        expect.stringContaining('%interlinearizer_analysisCatalog_deleteFallbackUncertain%'),
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteFallback%'),
       );
     });
 
-    it('describes rather than names the fallback when a use sits in an unloaded book', async () => {
-      await renderPanel({
-        announceUndoable,
+    it('states in the confirmation what the deletion would do', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_deleteConfirmFallback%': '{count} uses go to {gloss}.',
+      });
+      await renderDeleting({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+      expect(await screen.findByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+        '2 uses go to beginning.',
+      );
+    });
+
+    it('describes rather than names the fallback when a use has drifted off its analyzed form', async () => {
+      await renderDeleting({
         analysis: TWO_HOMOGRAPHS,
-        liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? undefined : 'ἀρχῇ'),
+        // Analyzed as "ἀρχῇ", but the text at GEN 1:3:4 now reads otherwise.
+        book: makeVerseBook([
+          { sid: 'GEN 1:1', text: 'ἀρχῇ λόγος' },
+          { sid: 'GEN 1:3', text: 'καὶ ἀρχή' },
+          { sid: 'GEN 2:7', text: 'ἡ ἀρχῇ' },
+        ]),
       });
 
       await deleteRow('ta-1');
@@ -4708,8 +4807,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('states that nothing else changes when the analysis is used nowhere', async () => {
-      const analysis: TextAnalysis = { ...LONE, tokenAnalysisLinks: [] };
-      await renderPanel({ announceUndoable, analysis });
+      await renderDeleting({ analysis: { ...LONE, tokenAnalysisLinks: [] } });
 
       await deleteRow('ta-1');
 
@@ -4719,8 +4817,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('says nothing about unapplied assignments when there are none', async () => {
-      const analysis: TextAnalysis = { ...LONE, tokenAnalysisLinks: [] };
-      await renderPanel({ announceUndoable, analysis });
+      await renderDeleting({ analysis: { ...LONE, tokenAnalysisLinks: [] } });
 
       await deleteRow('ta-1');
 
@@ -4729,20 +4826,29 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    // An imported analysis no token approves still shows on screen nowhere, so the outcome sentence
-    // rightly says nothing changes — this further sentence is what tells the reader data goes with it.
-    it('warns that unapplied assignments are deleted too', async () => {
-      const analysis: TextAnalysis = {
-        ...LONE,
-        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0', 'candidate')],
-      };
-      await renderPanel({ announceUndoable, analysis });
+    // The token is offered the record, so deleting it can change what the token shows.
+    it('warns that unapplied assignments are deleted when no token uses the analysis', async () => {
+      await renderDeleting({
+        analysis: { ...LONE, tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:5', 'candidate')] },
+      });
 
       await deleteRow('ta-1');
 
       expect(announceUndoable).toHaveBeenCalledWith(
-        expect.stringContaining('%interlinearizer_analysisCatalog_deleteBlankNone%'),
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteBlankNoneUnapplied%'),
       );
+    });
+
+    it('warns that unapplied assignments are deleted along with the uses', async () => {
+      await renderDeleting({
+        analysis: {
+          ...LONE,
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:5'), link('ta-1', 'GEN 1:3:4', 'candidate')],
+        },
+      });
+
+      await deleteRow('ta-1');
+
       expect(announceUndoable).toHaveBeenCalledWith(
         expect.stringContaining('%interlinearizer_analysisCatalog_deleteUnapplied%'),
       );
@@ -4769,7 +4875,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('describes a fallback that carries no gloss rather than naming it', async () => {
-      await renderPanel({ announceUndoable, analysis: UNGLOSSED_FALLBACK });
+      await renderDeleting({ analysis: UNGLOSSED_FALLBACK });
 
       await deleteRow('ta-1');
 

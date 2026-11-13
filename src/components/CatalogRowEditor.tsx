@@ -2,8 +2,10 @@ import type { MorphemeAnalysis, SenseRef } from 'interlinearizer';
 import { Button, Input, Label, Popover, PopoverAnchor } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useDeletionPreview } from '../cache/catalogHooks';
 import { morphemeCarriesAnnotation } from '../utils/analysis-identity';
 import type { CatalogRow } from '../utils/analysis-query';
+import { DELETION_PREVIEW_STRING_KEYS, deletionPreview } from '../utils/deletion-announcement';
 import { multiStringText } from '../utils/multi-string';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import type { Settles } from '../utils/settles';
@@ -37,6 +39,11 @@ export const ROW_EDITOR_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_deleteConfirmTitle%',
   '%interlinearizer_analysisCatalog_deleteConfirmPrompt%',
   '%interlinearizer_analysisCatalog_deleteConfirmCancel%',
+  '%interlinearizer_analysisCatalog_deleteConfirmLoading%',
+  '%interlinearizer_analysisCatalog_deleteConfirmFailed%',
+  '%interlinearizer_analysisCatalog_deleteConfirmRetry%',
+  '%interlinearizer_analysisCatalog_deleteConfirmMissing%',
+  ...DELETION_PREVIEW_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link CatalogRowEditor}. */
@@ -603,16 +610,86 @@ export default function CatalogRowEditor({
 }
 
 /**
+ * Asks the reader to confirm deleting the analysis `analysisId` names, stating what the deletion
+ * would do. Delete waits until the host states the outcome or fails to. It stays withheld for an
+ * analysis already deleted.
+ */
+function DeleteConfirmation({
+  analysisId,
+  surfaceText,
+  onCancel,
+  onConfirm,
+  localizedStrings,
+}: Readonly<{
+  analysisId: string;
+  surfaceText: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  localizedStrings: LanguageStrings;
+}>) {
+  const preview = useDeletionPreview(analysisId);
+  return (
+    <ModalShell
+      onClose={onCancel}
+      title={localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmTitle%']}
+      titleTestId="catalog-delete-confirm-title"
+      width="tw:w-96"
+    >
+      <p className="tw:mb-4 tw:text-sm" data-testid="catalog-delete-confirm-prompt">
+        {formatReplacementString(
+          localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmPrompt%'],
+          { form: surfaceText },
+        )}
+      </p>
+      <p className="tw:mb-4 tw:text-sm" data-testid="catalog-delete-confirm-outcome">
+        {preview.status === 'ready' && deletionPreview(preview.outcome, localizedStrings)}
+        {preview.status === 'loading' &&
+          localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmLoading%']}
+        {preview.status === 'failed' &&
+          localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmFailed%']}
+        {preview.status === 'missing' &&
+          localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmMissing%']}
+      </p>
+      <div className="tw:modal-actions">
+        {preview.status === 'failed' && (
+          <Button
+            data-testid="catalog-delete-confirm-retry"
+            onClick={preview.retry}
+            variant="secondary"
+          >
+            {localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmRetry%']}
+          </Button>
+        )}
+        <Button data-testid="catalog-delete-confirm-cancel" onClick={onCancel} variant="secondary">
+          {localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmCancel%']}
+        </Button>
+        <Button
+          data-testid="catalog-delete-confirm"
+          disabled={preview.status === 'loading' || preview.status === 'missing'}
+          onClick={onConfirm}
+          variant="destructive"
+        >
+          {localizedStrings['%interlinearizer_analysisCatalog_delete%']}
+        </Button>
+      </div>
+    </ModalShell>
+  );
+}
+
+/**
  * The controls that act on a whole analysis rather than on one of its fields.
  *
  * Renders nothing for a read-only analysis, which neither control applies to.
  */
 export function CatalogRowActions({
+  analysisId,
   surfaceText,
   onMergeRequest,
   onDeleteRequest,
   localizedStrings,
 }: Readonly<{
+  /** Id of the analysis the controls act on. */
+  analysisId: string;
   /** Surface form the delete confirmation names the analysis by. */
   surfaceText: string;
   /** Opens the merge picker. Absent when the analysis shares its form with no other record. */
@@ -656,38 +733,16 @@ export function CatalogRowActions({
         {localizedStrings['%interlinearizer_analysisCatalog_delete%']}
       </Button>
       {confirmingDelete && (
-        <ModalShell
-          onClose={cancelDelete}
-          title={localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmTitle%']}
-          titleTestId="catalog-delete-confirm-title"
-          width="tw:w-96"
-        >
-          <p className="tw:mb-4 tw:text-sm" data-testid="catalog-delete-confirm-prompt">
-            {formatReplacementString(
-              localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmPrompt%'],
-              { form: surfaceText },
-            )}
-          </p>
-          <div className="tw:modal-actions">
-            <Button
-              data-testid="catalog-delete-confirm-cancel"
-              onClick={cancelDelete}
-              variant="secondary"
-            >
-              {localizedStrings['%interlinearizer_analysisCatalog_deleteConfirmCancel%']}
-            </Button>
-            <Button
-              data-testid="catalog-delete-confirm"
-              onClick={() => {
-                setConfirmingDelete(false);
-                onDeleteRequest();
-              }}
-              variant="destructive"
-            >
-              {localizedStrings['%interlinearizer_analysisCatalog_delete%']}
-            </Button>
-          </div>
-        </ModalShell>
+        <DeleteConfirmation
+          analysisId={analysisId}
+          localizedStrings={localizedStrings}
+          onCancel={cancelDelete}
+          onConfirm={() => {
+            setConfirmingDelete(false);
+            onDeleteRequest();
+          }}
+          surfaceText={surfaceText}
+        />
       )}
     </div>
   );

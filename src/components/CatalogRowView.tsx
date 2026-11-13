@@ -365,6 +365,7 @@ function CatalogRowView({
           {/* Below the usages, so what a merge or delete is about to take is in view above the
               button taking it. */}
           <CatalogRowActions
+            analysisId={row.analysisId}
             localizedStrings={localizedStrings}
             onDeleteRequest={handleDeleteRequest}
             onMergeRequest={onMergeRequest ? handleMergeRequest : undefined}

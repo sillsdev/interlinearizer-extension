@@ -16,7 +16,6 @@ import {
   addBoundaryBefore,
   reanchorSegmentation,
   removeBoundaryAt,
-  segmentationForBook,
 } from '../../utils/segmentation';
 
 function isBackendMock(m: unknown): m is { __mockProjectDataProvidersGet: jest.Mock } {
@@ -183,11 +182,9 @@ async function tokenizedBook(): Promise<Book> {
  * session's draft sets as `draft`.
  */
 async function hostSegments(draft: SegmentationDelta | undefined): Promise<string> {
-  const delta = segmentationForBook(draft, 'GEN');
-  const segmentationJson = delta && JSON.stringify(delta);
-  const open = await getOpenBook('src', 'GEN', segmentationJson);
+  const open = await getOpenBook('src', 'GEN', draft);
   if (!open) throw new Error('Expected an open book');
-  const paged = await getSegmentedBook('src', 'GEN', segmentationJson);
+  const paged = await getSegmentedBook('src', 'GEN', draft);
   if (!paged) throw new Error('Expected a paged book');
   return JSON.stringify({
     outline: buildBookOutline(open, open.segments),

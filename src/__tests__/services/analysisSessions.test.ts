@@ -1228,7 +1228,7 @@ describe('AnalysisSessions', () => {
         buffer.create('tokenAnalysisLinks', makeTokenLink('ta', 'EXO 1:1:0'));
       });
 
-      expect(host.heldBook).toHaveBeenCalledWith(SOURCE, 'EXO', undefined);
+      expect(host.heldBook).toHaveBeenCalledWith(SOURCE, 'EXO', segmentation);
       expect(host.reportChange).toHaveBeenCalledWith(
         expect.objectContaining({ books: [{ bookId: 'GEN' }, { bookId: 'EXO' }] }),
       );

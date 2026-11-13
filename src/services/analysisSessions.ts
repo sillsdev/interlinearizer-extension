@@ -740,12 +740,11 @@ export class AnalysisSessions {
 
   /**
    * Re-anchors the draft of the source project's session to `book`'s current text, in the session's
-   * turn and as no undo step. Where the draft links into the book or holds boundary edits in it,
-   * what a later undo or redo restores is re-anchored to it too. A book the text lacks is passed as
-   * a book with no segments. Does nothing when the source has no session open or only a read-only
-   * one, or when the session last re-anchored the book to the same text. When `edited`, what the
-   * pass changes is reported with the edit to the book's text, by {@link reportScriptureEdit},
-   * rather than on its own.
+   * turn and as no undo step. What a later undo or redo restores into the book is re-anchored to
+   * that text too. A book the text lacks is passed as a book with no segments. Does nothing when
+   * the source has no session open or only a read-only one, or when the session last re-anchored
+   * the book to the same text. When `edited`, what the pass changes is reported with the edit to
+   * the book's text, by {@link reportScriptureEdit}, rather than on its own.
    *
    * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
    * @throws Whatever describing the applied changes throws; the changes stay applied.

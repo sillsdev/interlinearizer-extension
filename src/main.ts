@@ -52,6 +52,7 @@ import { CURRENT_MODEL_VERSION } from './types/model-version';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
+import { hasGlossesToRetag } from './utils/retag-glosses';
 import { bookSegmentationJson } from './utils/segmentation';
 
 // #region WebView provider
@@ -467,6 +468,31 @@ async function retagProjectGlosses(
     await papi.notifications
       .send({ message: '%interlinearizer_error_update_project_failed%', severity: 'error' })
       .catch(() => {});
+    throw e;
+  }
+}
+
+/**
+ * Checks a stored project for glosses that {@link retagProjectGlosses} would move. Only the answer
+ * crosses the bus, never the project's analysis.
+ *
+ * @param interlinearProjectId - UUID of the interlinearizer project to check.
+ * @param from - BCP 47 tag the glosses would move from.
+ * @param to - BCP 47 tag the glosses would move to.
+ * @returns `true` if any gloss would move, `false` if none would, or `undefined` if no project with
+ *   the given ID exists.
+ * @throws If the project can't be read. The error is logged before rethrowing.
+ */
+async function hasProjectGlossesToRetag(
+  interlinearProjectId: string,
+  from: string,
+  to: string,
+): Promise<boolean | undefined> {
+  try {
+    const project = await projectStorage.getProject(executionToken, interlinearProjectId);
+    return project && hasGlossesToRetag(project.analysis, from, to);
+  } catch (e) {
+    logger.error("Interlinearizer: failed to read a project's glosses to move", e);
     throw e;
   }
 }
@@ -2757,6 +2783,41 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const hasGlossesToRetagCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.hasGlossesToRetag',
+    hasProjectGlossesToRetag,
+    {
+      method: {
+        summary: "Check whether moving a stored project's glosses to another tag would move any",
+        params: [
+          {
+            name: 'interlinearProjectId',
+            required: true,
+            summary: 'UUID of the interlinearizer project',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'from',
+            required: true,
+            summary: 'BCP 47 tag the glosses would move from',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'to',
+            required: true,
+            summary: 'BCP 47 tag the glosses would move to',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'Whether any gloss would move, or undefined when no such project exists',
+          schema: { type: 'boolean' },
+        },
+      },
+    },
+  );
+
   const updateProjectMetadataCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.updateProjectMetadata',
     updateProjectMetadata,
@@ -3107,6 +3168,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     readPerfCommandRegistration,
     updateProjectMetadataCommandRegistration,
     retagProjectGlossesCommandRegistration,
+    hasGlossesToRetagCommandRegistration,
     importPt9ProjectCommandRegistration,
     createEditableCopyCommandRegistration,
     deleteProjectCommandRegistration,

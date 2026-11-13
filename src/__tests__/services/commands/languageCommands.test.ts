@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import type { TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type { PhraseAnalysisLink, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { changeAnalysisLanguages } from '../../../services/commands/languageCommands';
 import { DraftRepository } from '../../../services/draftRepository';
@@ -16,6 +16,20 @@ function approved(id: string, analysisId: string, tokenRef: string): TokenAnalys
     ...FIXTURE_STAMPS,
     status: 'approved',
     token: { tokenRef, surfaceText: 'fish' },
+  };
+}
+
+/** An approved link from the phrase "big fish" in `verseRef` to `analysisId`. */
+function phraseLink(id: string, analysisId: string, verseRef: string): PhraseAnalysisLink {
+  return {
+    id,
+    analysisId,
+    ...FIXTURE_STAMPS,
+    status: 'approved',
+    tokens: [
+      { tokenRef: `${verseRef}:0`, surfaceText: 'big' },
+      { tokenRef: `${verseRef}:1`, surfaceText: 'fish' },
+    ],
   };
 }
 
@@ -108,6 +122,28 @@ describe('changeAnalysisLanguages', () => {
     expect(draft.analysis.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toEqual([
       'ta-es',
       'ta-es',
+    ]);
+  });
+
+  it('folds a phrase analysis the move makes identical to another into it', async () => {
+    const repository = await repositoryOver({
+      phraseAnalyses: [
+        { id: 'pa-en', ...FIXTURE_STAMPS, surfaceText: 'big fish', gloss: { en: 'ballena' } },
+        { id: 'pa-es', ...FIXTURE_STAMPS, surfaceText: 'big fish', gloss: { es: 'ballena' } },
+      ],
+      phraseAnalysisLinks: [
+        phraseLink('pl-1', 'pa-en', 'GEN 1:1'),
+        phraseLink('pl-2', 'pa-es', 'GEN 1:2'),
+      ],
+    });
+
+    const { counts, draft } = await change(repository, ['es'], 'en');
+
+    expect(counts).toEqual({ words: 1, morphemes: 0, skipped: 0 });
+    expect(draft.analysis.phraseAnalyses.map(({ id }) => id)).toEqual(['pa-es']);
+    expect(draft.analysis.phraseAnalysisLinks.map(({ analysisId }) => analysisId)).toEqual([
+      'pa-es',
+      'pa-es',
     ]);
   });
 });

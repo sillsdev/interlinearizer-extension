@@ -1357,18 +1357,18 @@ describe('ProjectModals', () => {
       }
 
       /**
-       * Answers `getProject` with `stored`, which by default is proj-2 holding a gloss in `fr`, and
-       * `retagProjectGlosses` with `retagged`. An error is thrown instead of answered.
+       * Answers `hasGlossesToRetag` with `hasGlosses`, which by default reports glosses to move,
+       * and `retagProjectGlosses` with `retagged`. An error is thrown instead of answered.
        */
       function mockStoredProject({
-        stored = JSON.stringify({ ...MOCK_PROJECT_2, analysis: glossedIn('fr') }),
+        hasGlosses = true,
         retagged,
       }: {
-        stored?: string | Error;
+        hasGlosses?: boolean | Error;
         retagged?: string | Error;
       } = {}) {
-        const replies: Record<string, string | Error | undefined> = {
-          'interlinearizer.getProject': stored,
+        const replies: Record<string, string | boolean | Error | undefined> = {
+          'interlinearizer.hasGlossesToRetag': hasGlosses,
           'interlinearizer.retagProjectGlosses': retagged,
         };
         jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call: unknown[]) => {
@@ -1570,17 +1570,17 @@ describe('ProjectModals', () => {
 
       it("doesn't ask about a project that isn't open when it has no gloss to move", async () => {
         mockSavedLanguages = ['es'];
-        mockStoredProject({
-          stored: JSON.stringify({ ...MOCK_PROJECT_2, analysis: glossedIn('de') }),
-        });
+        mockStoredProject({ hasGlosses: false });
         await renderOther();
 
         await userEvent.click(screen.getByTestId('metadata-save'));
 
         await waitFor(() =>
           expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-            'interlinearizer.getProject',
+            'interlinearizer.hasGlossesToRetag',
             'proj-2',
+            'fr',
+            'es',
           ),
         );
         expect(screen.queryByTestId('retag-glosses-modal-title')).toBeNull();
@@ -1588,7 +1588,7 @@ describe('ProjectModals', () => {
 
       it("asks about a project that isn't open when it can't be read", async () => {
         mockSavedLanguages = ['es'];
-        mockStoredProject({ stored: new Error('unreadable') });
+        mockStoredProject({ hasGlosses: new Error('unreadable') });
         await renderOther();
 
         await userEvent.click(screen.getByTestId('metadata-save'));

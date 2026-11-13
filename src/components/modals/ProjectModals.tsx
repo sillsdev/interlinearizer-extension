@@ -4,20 +4,13 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import type { DraftProject } from 'interlinearizer';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useCallback, useEffect, useState } from 'react';
-import type { DraftCopyResult, NewDraftConfig } from '../../types/project-api';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
-import {
-  isInterlinearProjectSummary,
-  isSavedAsProject,
-  isTextAnalysis,
-} from '../../types/type-guards';
-import {
-  hasGlossesToRetag,
-  isGlossRetagCounts,
-  type GlossRetagCounts,
-} from '../../utils/retag-glosses';
+import type { DraftCopyResult, NewDraftConfig } from '../../types/project-api';
+import { isInterlinearProjectSummary, isSavedAsProject } from '../../types/type-guards';
+import { hasGlossesToRetag, isGlossRetagCounts } from '../../utils/retag-glosses';
+import type { GlossRetagCounts } from '../../utils/retag-glosses';
 import type { Settles } from '../../utils/settles';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
 import { DiscardDraftConfirm } from './DiscardDraftConfirm';
@@ -325,21 +318,18 @@ export default function ProjectModals({
   );
 
   /**
-   * Asks whether to move the glosses of a project that isn't open, unless its stored analysis has
-   * none that would move. A project that can't be read is asked about anyway.
+   * Asks whether to move the glosses of a project that isn't open, unless it has no gloss that
+   * would move. A project that can't be read is asked about anyway.
    */
   const offerStoredRetag = useCallback(async (retag: PendingRetag) => {
     try {
-      const projectJson = await papi.commands.sendCommand(
-        'interlinearizer.getProject',
+      const hasGlosses = await papi.commands.sendCommand(
+        'interlinearizer.hasGlossesToRetag',
         retag.interlinearProjectId,
+        retag.from,
+        retag.to,
       );
-      const project: unknown = projectJson ? JSON.parse(projectJson) : undefined;
-      const analysis =
-        project && typeof project === 'object' && 'analysis' in project
-          ? project.analysis
-          : undefined;
-      if (isTextAnalysis(analysis) && !hasGlossesToRetag(analysis, retag.from, retag.to)) return;
+      if (hasGlosses === false) return;
     } catch (e) {
       logger.warn(
         "Interlinearizer: couldn't read a project to see whether it has glosses to move",

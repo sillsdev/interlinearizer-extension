@@ -1,4 +1,4 @@
-import type { Book } from 'interlinearizer';
+import type { ReadonlyBook } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import type { EditStep } from '../types/edit-step';
 import type { AppliedChange } from './analysisChanges';
@@ -15,7 +15,7 @@ export const MAX_UNDO_STEPS = 100;
  */
 export type ReanchorBooks = (
   changes: ChangeSet,
-  books: readonly Book[],
+  books: readonly ReadonlyBook[],
 ) => Promise<ChangeSet | undefined>;
 
 /** How an edit applies. */
@@ -74,7 +74,7 @@ export class EditHistory {
    * Each book's latest text a pass has re-anchored to, while some step predates that pass, in the
    * order the passes ran.
    */
-  private readonly passes = new Map<string, { book: Book; ordinal: number }>();
+  private readonly passes = new Map<string, { book: ReadonlyBook; ordinal: number }>();
 
   /** How many passes have ever been recorded. */
   private passCount = 0;
@@ -210,7 +210,10 @@ export class EditHistory {
    *   there are no changes to apply.
    * @throws Whatever applying the changes throws; nothing is applied or recorded.
    */
-  async applyPass(book: Book, changes: ChangeSet | undefined): Promise<AppliedChange | undefined> {
+  async applyPass(
+    book: ReadonlyBook,
+    changes: ChangeSet | undefined,
+  ): Promise<AppliedChange | undefined> {
     const applied = changes && {
       changes,
       inverse: (await this.repository.apply(changes, { keepDirty: true })).inverse,
@@ -285,7 +288,7 @@ export class EditHistory {
    * any earlier pass over the book, so that what an undo or redo restores is re-anchored to it too.
    * Nothing is recorded when the book's text is the same text its last pass re-anchored to.
    */
-  private recordPass(book: Book): void {
+  private recordPass(book: ReadonlyBook): void {
     if (this.undoable.length === 0 && this.redoable.length === 0) return;
     if (this.passes.get(book.bookRef)?.book.textVersion === book.textVersion) return;
     this.passCount += 1;

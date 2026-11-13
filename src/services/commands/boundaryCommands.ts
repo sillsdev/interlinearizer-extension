@@ -1,4 +1,4 @@
-import type { Book, SegmentationDelta } from 'interlinearizer';
+import type { ReadonlyBook, SegmentationDelta } from 'interlinearizer';
 import { bookIndexesOf } from '../../utils/book-indexes';
 import { phrasesStraddlingBoundary } from '../../utils/phrase-arc';
 import {
@@ -17,7 +17,7 @@ type BoundaryEdit = {
    * The book the boundary falls in, tokenized one segment per verse, as the text is now. The edit
    * reads it without changing it.
    */
-  verseBook: Book;
+  verseBook: ReadonlyBook;
 };
 
 /** What a boundary edit that may break phrases needs. */

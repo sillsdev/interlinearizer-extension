@@ -1,4 +1,4 @@
-import type { Book, DraftProject, SegmentAnalysisLink } from 'interlinearizer';
+import type { DraftProject, ReadonlyBook, SegmentAnalysisLink } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import { booksLinkedIn } from '../utils/analysis-book';
@@ -27,7 +27,10 @@ async function readBooks(
 }
 
 /** The changes that re-anchor `draft` to each of `books` in turn, `undefined` when there are none. */
-function reanchorInTurn(draft: DraftProject, books: readonly Book[]): ChangeSet | undefined {
+function reanchorInTurn(
+  draft: DraftProject,
+  books: readonly ReadonlyBook[],
+): ChangeSet | undefined {
   let current = draft;
   let changes: ChangeSet | undefined;
   books.forEach((book) => {
@@ -56,7 +59,7 @@ function reanchorInTurn(draft: DraftProject, books: readonly Book[]): ChangeSet 
 export async function reanchorStoredBook(
   repository: AnalysisRepository,
   history: EditHistory,
-  book: Book,
+  book: ReadonlyBook,
 ): Promise<AppliedChange | undefined> {
   const draft = await readBooks(repository, [book.bookRef]);
   return history.applyPass(book, reanchorInTurn(draft, [book]));

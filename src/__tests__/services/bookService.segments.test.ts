@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import papiBackendMock from '@papi/backend';
-import type { Book, SegmentationDelta } from 'interlinearizer';
+import type { ReadonlyBook, SegmentationDelta } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { UsjDocument } from 'parsers/papi/usjBookExtractor';
 import { createRng, type Rng } from '../../../perf/dataset/rng';
@@ -131,7 +131,7 @@ function usjOf(text: BookText): UsjDocument {
 /** `delta` with one boundary edit made: a split before any token, or a merge at a segment's start. */
 function editBoundaries(
   rng: Rng,
-  book: Book,
+  book: ReadonlyBook,
   delta: SegmentationDelta | undefined,
 ): SegmentationDelta | undefined {
   const verseSegments = book.segments.filter((segment) => !segment.heading);
@@ -171,7 +171,7 @@ function serveText(initial: BookText): (text: BookText) => Promise<void> {
   };
 }
 
-async function tokenizedBook(): Promise<Book> {
+async function tokenizedBook(): Promise<ReadonlyBook> {
   const book = await getVerseBook('src', 'GEN');
   if (!book) throw new Error('Expected a tokenized book');
   return book;
@@ -193,7 +193,7 @@ async function hostSegments(draft: SegmentationDelta | undefined): Promise<strin
 }
 
 /** The tokenized book resegmented whole for `draft`, as JSON in the shape of {@link hostSegments}. */
-function webViewSegments(book: Book, draft: SegmentationDelta | undefined): string {
+function webViewSegments(book: ReadonlyBook, draft: SegmentationDelta | undefined): string {
   const { segments } = resegmentBook(book, reanchorSegmentation(book, draft));
   return JSON.stringify({ outline: buildBookOutline(book, segments), segments });
 }
@@ -208,7 +208,11 @@ describe("the host's segments", () => {
       const rng = createRng('host-segments', seed);
       const text = generateText(rng);
       const editScripture = serveText(text);
-      const check = async (state: string, book: Book, draft: SegmentationDelta | undefined) => {
+      const check = async (
+        state: string,
+        book: ReadonlyBook,
+        draft: SegmentationDelta | undefined,
+      ) => {
         if ((await hostSegments(draft)) !== webViewSegments(book, draft))
           mismatches.push(`seed ${seed}, ${state}`);
       };

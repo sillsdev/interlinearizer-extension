@@ -77,8 +77,15 @@ export async function sessionOver(
     reportChange: (change) => listeners.forEach((listener) => listener(change)),
   });
   const { sessionId } = await sessions.open('src');
-  const fetchPage = (start: number, end: number, read: Book = book): Promise<SegmentPage> =>
-    sessions.run(sessionId, (session) => readSegmentPage(session.repository, read, start, end));
+  // Sent through JSON, as the host sends a page, so that the cache holds segments of its own.
+  const fetchPage = async (start: number, end: number, read: Book = book): Promise<SegmentPage> =>
+    JSON.parse(
+      JSON.stringify(
+        await sessions.run(sessionId, (session) =>
+          readSegmentPage(session.repository, read, start, end),
+        ),
+      ),
+    );
   const fetchOutline = (read: Book = book) =>
     sessions.run(sessionId, (session) => readBookOutline(session.repository, read, read));
   const outline = await fetchOutline();

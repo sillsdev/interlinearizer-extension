@@ -1,10 +1,10 @@
-import type { Segment, Token } from 'interlinearizer';
+import type { ReadonlySegment, ReadonlyToken } from 'interlinearizer';
 import { isWordToken } from '../types/type-guards';
 
 /** Book-wide lookup indexes derived from a book's flat segment list. */
 export interface BookIndexes {
   /** Maps every segment id to the segment; used to resolve a focused token's verse. */
-  segmentById: ReadonlyMap<string, Segment>;
+  segmentById: ReadonlyMap<string, ReadonlySegment>;
   /** Maps every segment id to its index in document order; used to test segment adjacency. */
   segmentOrder: ReadonlyMap<string, number>;
   /**
@@ -30,7 +30,7 @@ export interface BookIndexes {
   /** Maps every token ref to the id of the segment that contains it. */
   tokenSegmentMap: ReadonlyMap<string, string>;
   /** Maps every word token ref to the token; the input for resolving focus context. */
-  wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  wordTokenByRef: ReadonlyMap<string, ReadonlyToken & { type: 'word' }>;
   /**
    * Every word token ref in document order — the inverse of {@link BookIndexes.tokenDocOrder}
    * (`wordRefByOrder[tokenDocOrder.get(ref)] === ref`). Used to enumerate the word refs inside a
@@ -45,7 +45,7 @@ export type TokenIndexes = {
   fullTokenOrder: Map<string, number>;
   gapTextByWordRef: Map<string, string>;
   tokenSegmentMap: Map<string, string>;
-  wordTokenByRef: Map<string, Token & { type: 'word' }>;
+  wordTokenByRef: Map<string, ReadonlyToken & { type: 'word' }>;
 };
 
 /**
@@ -55,7 +55,7 @@ export type TokenIndexes = {
  * numbering start.
  */
 export function indexSegmentTokens(
-  segment: Segment,
+  segment: ReadonlySegment,
   indexes: TokenIndexes,
   firstWord: number,
   firstToken: number,
@@ -63,7 +63,7 @@ export function indexSegmentTokens(
 ): { nextWord: number; nextToken: number } {
   let wordOrder = firstWord;
   let tokenOrder = firstToken;
-  let previousWord: Token | undefined;
+  let previousWord: ReadonlyToken | undefined;
   segment.tokens.forEach((token) => {
     indexes.tokenSegmentMap.set(token.ref, segment.id);
     indexes.fullTokenOrder.set(token.ref, tokenOrder);
@@ -87,8 +87,8 @@ export function indexSegmentTokens(
  * Builds the book-wide lookup indexes over a book's `segments`. Every segmentation of one text
  * gives the same token orders; custom boundaries regroup a book's tokens without reordering them.
  */
-export function buildBookIndexes(segments: readonly Segment[]): BookIndexes {
-  const segmentById = new Map<string, Segment>();
+export function buildBookIndexes(segments: readonly ReadonlySegment[]): BookIndexes {
+  const segmentById = new Map<string, ReadonlySegment>();
   const segmentOrder = new Map<string, number>();
   const indexes: TokenIndexes = {
     tokenDocOrder: new Map(),
@@ -109,13 +109,13 @@ export function buildBookIndexes(segments: readonly Segment[]): BookIndexes {
   return { segmentById, segmentOrder, ...indexes, wordRefByOrder };
 }
 
-const bookIndexesCache = new WeakMap<readonly Segment[], BookIndexes>();
+const bookIndexesCache = new WeakMap<readonly ReadonlySegment[], BookIndexes>();
 
 /**
  * The book-wide lookup indexes over `segments`, built once per array and shared by every caller.
  * The array must not change once indexed.
  */
-export function bookIndexesOf(segments: readonly Segment[]): BookIndexes {
+export function bookIndexesOf(segments: readonly ReadonlySegment[]): BookIndexes {
   const cached = bookIndexesCache.get(segments);
   if (cached) return cached;
   const indexes = buildBookIndexes(segments);

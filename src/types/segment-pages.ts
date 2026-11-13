@@ -152,13 +152,18 @@ export type PageAnalysis = Readonly<{
   phraseSpans: Readonly<Record<string, readonly PhraseSpanToken[]>>;
 }>;
 
-/** A run of a book's segments, at the indexes its outline lists them at. */
-export type SegmentPage = Readonly<{
+/**
+ * A run of a book's segments, at the indexes its outline lists them at.
+ *
+ * The host builds its pages with readonly segments, because they are shared with the books it
+ * keeps.
+ */
+export type SegmentPage<S = Segment> = Readonly<{
   /** The `textVersion` of the book the segments were cut from. */
   textVersion: string;
   /** Outline index of the first segment. */
   start: number;
-  segments: readonly Segment[];
+  segments: readonly S[];
   /** Present only when a session asked for the page. */
   analysis?: PageAnalysis;
 }>;

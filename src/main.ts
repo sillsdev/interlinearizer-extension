@@ -58,7 +58,7 @@ import { CURRENT_MODEL_VERSION } from './types/model-version';
 import type { TextReadStatus } from './types/text-read-status';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
-import { envelopeOf } from './utils/draft-envelope';
+import { envelopeOf } from './types/draft-envelope';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 
 // #region WebView provider

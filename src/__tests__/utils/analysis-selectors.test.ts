@@ -30,7 +30,6 @@ import {
   selectSegmentFreeTranslation,
   selectSegmentsWithApprovedTranslation,
   selectStaleFreeTranslations,
-  selectStaleTokenLinks,
   selectFreeTranslationsBySegment,
   selectStaleMorphemesAnalysisId,
   selectUnapprovedTokenAnalysis,
@@ -386,30 +385,6 @@ describe('selectStaleFreeTranslations', () => {
     });
 
     expect(selectStaleFreeTranslations(store.getState().analysis)).toEqual([]);
-  });
-});
-
-describe('selectStaleTokenLinks', () => {
-  it('lists a stale link', () => {
-    const ta = logos('ta-1', 'word');
-    const stale = makeLink(ta, 'tok-1', 'stale');
-    const store = createAnalysisStore(tokenState([ta], [stale]));
-
-    expect(selectStaleTokenLinks(store.getState().analysis)).toEqual([stale]);
-  });
-
-  it('leaves out a link of any other status', () => {
-    const ta = logos('ta-1', 'word');
-    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));
-
-    expect(selectStaleTokenLinks(store.getState().analysis)).toEqual([]);
-  });
-
-  it('leaves out a stale link whose payload is missing', () => {
-    const ta = logos('ta-1', 'word');
-    const store = createAnalysisStore(tokenState([], [makeLink(ta, 'tok-1', 'stale')]));
-
-    expect(selectStaleTokenLinks(store.getState().analysis)).toEqual([]);
   });
 });
 

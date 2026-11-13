@@ -7,7 +7,14 @@ import type {
 } from 'interlinearizer';
 import type { AnalysisRepository } from '../types/analysis-repository';
 import type { AppliedChange } from './analysisChanges';
-import type { BookOutline, PhraseSpanToken, PoolRead, SegmentPage } from '../types/segment-pages';
+import type {
+  BookOutline,
+  PhraseSpanToken,
+  PoolRead,
+  SegmentPage,
+  StaleGlossPlace,
+  StaleSummary,
+} from '../types/segment-pages';
 import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { bookIndexesOf } from '../utils/book-indexes';
@@ -71,21 +78,25 @@ type StalePlacement = {
 };
 
 /**
- * Places the stale free translations of `book` as the view does. A stale link whose payload is not
- * stored is passed over.
+ * Places the stale free translations of `book` as the view does, reading the book's stale segment
+ * links from `repository` unless given them. A stale link whose payload is not stored is passed
+ * over.
  *
  * @throws Whatever the repository's lookups throw.
  */
 async function readStalePlacement(
   repository: AnalysisRepository,
   book: Book,
+  segmentAnalysisLinks?: SegmentAnalysisLink[],
 ): Promise<StalePlacement> {
-  const { segmentAnalysisLinks } = await repository.findLinksInBooks([book.bookRef], ['stale']);
+  const staleLinks =
+    segmentAnalysisLinks ??
+    (await repository.findLinksInBooks([book.bookRef], ['stale'])).segmentAnalysisLinks;
   const payloads = await repository.getSegmentAnalyses(
-    segmentAnalysisLinks.map(({ analysisId }) => analysisId),
+    staleLinks.map(({ analysisId }) => analysisId),
   );
   const stored = new Set(payloads.map(({ id }) => id));
-  const links = segmentAnalysisLinks.filter(({ analysisId }) => stored.has(analysisId));
+  const links = staleLinks.filter(({ analysisId }) => stored.has(analysisId));
   // Placing walks the whole book; a book holding no stale translation skips the walk.
   if (links.length === 0) return { placed: NOTHING_PLACED, links, payloads };
   const stale = links.map((link) => ({
@@ -95,6 +106,50 @@ async function readStalePlacement(
     link,
   }));
   return { placed: placeStaleFreeTranslations(stale, book), links, payloads };
+}
+
+/** A book's stale analyses, summarized, with its stale free translations placed. */
+type StaleRead = { summary: StaleSummary; placed: PlacedStaleFreeTranslations<StaleLink> };
+
+/**
+ * Reads the stale analyses that `book` holds. A stale link whose payload is not stored is passed
+ * over.
+ *
+ * @throws Whatever the repository's lookups throw.
+ */
+async function readStale(repository: AnalysisRepository, book: Book): Promise<StaleRead> {
+  const { tokenAnalysisLinks, segmentAnalysisLinks } = await repository.findLinksInBooks(
+    [book.bookRef],
+    ['stale'],
+  );
+  const stored = new Set(
+    (await repository.getTokenAnalyses(tokenAnalysisLinks.map(({ analysisId }) => analysisId))).map(
+      ({ id }) => id,
+    ),
+  );
+  const places = new Map<string, StaleGlossPlace>();
+  tokenAnalysisLinks.forEach(({ analysisId, token: { tokenRef } }) => {
+    if (stored.has(analysisId))
+      places.set(JSON.stringify([analysisId, tokenRef]), { analysisId, tokenRef });
+  });
+  const { tokenDocOrder } = bookIndexesOf(book.segments);
+  const orderOf = ({ tokenRef }: StaleGlossPlace) =>
+    tokenDocOrder.get(tokenRef) ?? Number.MAX_SAFE_INTEGER;
+  const { placed } = await readStalePlacement(repository, book, segmentAnalysisLinks);
+  const { bySegment, orphanedAfter, orphanedAhead } = placed;
+  return {
+    summary: {
+      glosses: [...places.values()].sort((a, b) => orderOf(a) - orderOf(b)),
+      freeTranslations: book.segments.flatMap(({ id: segmentId }, index) =>
+        [
+          ...(index === 0 ? orphanedAhead : []),
+          ...(bySegment.get(segmentId) ?? []),
+          ...(orphanedAfter.get(segmentId) ?? []),
+        ].map(({ analysisId }) => ({ analysisId, segmentId })),
+      ),
+    },
+    placed,
+  };
 }
 
 /** For each of `links`, by id, the word tokens of the link that `book` holds, with where each sits. */
@@ -122,10 +177,10 @@ function spansOf(
 
 /**
  * Outlines a book, counting the orphaned free-translation cards that the view shows beside each
- * segment. Each count takes in the cards after its segment; the first also takes in those ahead of
- * it.
+ * segment and flagging the segments where it shows a stale analysis. Each count takes in the cards
+ * after its segment; the first also takes in those ahead of it.
  *
- * @param repository - The draft whose stale free translations are counted.
+ * @param repository - The draft whose stale analyses are counted and flagged.
  * @param book - The book, segmented by the draft's boundaries.
  * @throws Whatever the repository's lookups throw.
  */
@@ -133,15 +188,37 @@ export async function readBookOutline(
   repository: AnalysisRepository,
   book: Book,
 ): Promise<BookOutline> {
-  const { placed } = await readStalePlacement(repository, book);
+  const { summary, placed } = await readStale(repository, book);
+  const { tokenSegmentMap } = bookIndexesOf(book.segments);
+  const glossSegments = new Set(
+    summary.glosses.map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)),
+  );
+  const translationSegments = new Set(summary.freeTranslations.map(({ segmentId }) => segmentId));
   const outline = buildBookOutline(book, book.segments);
   return {
     ...outline,
     segments: outline.segments.map((segment, index) => ({
       ...segment,
       orphanedCardCount: orphanedCardCountAt(placed, segment.id, index),
+      hasStaleGloss: glossSegments.has(segment.id),
+      hasStaleFreeTranslation: translationSegments.has(segment.id),
     })),
   };
+}
+
+/**
+ * Summarizes the stale analyses that `book` holds. A stale link whose payload is not stored is
+ * passed over.
+ *
+ * @param repository - The draft whose stale analyses are summarized.
+ * @param book - The book, segmented by the draft's boundaries.
+ * @throws Whatever the repository's lookups throw.
+ */
+export async function readStaleSummary(
+  repository: AnalysisRepository,
+  book: Book,
+): Promise<StaleSummary> {
+  return (await readStale(repository, book)).summary;
 }
 
 /**

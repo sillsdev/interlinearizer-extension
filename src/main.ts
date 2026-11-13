@@ -35,7 +35,7 @@ import {
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
-import { readBookOutline, readSegmentPage } from './services/sessionPages';
+import { readBookOutline, readSegmentPage, readStaleSummary } from './services/sessionPages';
 import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
@@ -817,10 +817,10 @@ async function sessionBoundaries(session: Session, bookId: string): Promise<stri
 }
 
 /**
- * Outlines a book of a session's source, segmented by the draft's boundaries, counting each
- * segment's orphaned free-translation cards. Before the outline, the draft is re-anchored to the
- * book's text unless the session last re-anchored the book to the same text. A failed re-anchor is
- * logged.
+ * Outlines a book of a session's source, segmented by the draft's boundaries. The outline counts
+ * each segment's orphaned free-translation cards and flags the segments that show a stale gloss or
+ * free translation. Before the outline, the draft is re-anchored to the book's text unless the
+ * session last re-anchored the book to the same text. A failed re-anchor is logged.
  *
  * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or segmented, the session is not open, or its analysis cannot
@@ -850,6 +850,36 @@ async function getBookOutline(
     });
   } catch (e) {
     logger.error(`Interlinearizer: failed to outline book ${bookId} of session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/**
+ * Summarizes the stale analyses that a book of a session's source holds, segmented by the draft's
+ * boundaries.
+ *
+ * @returns The `StaleSummary` as JSON, or `undefined` when the project has no text for the book.
+ * @throws If the book cannot be read or segmented, the session is not open, or its analysis cannot
+ *   be read. The error is logged before rethrowing.
+ */
+async function getStaleSummary({
+  sessionId,
+  bookId,
+}: ArgsOf<'interlinearizer.getStaleSummary'>): Promise<string | undefined> {
+  try {
+    return await sessions.run(sessionId, async (session) => {
+      const book = await bookService.getOpenBook(
+        session.scope.sourceProjectId,
+        bookId,
+        await sessionBoundaries(session, bookId),
+      );
+      return book && JSON.stringify(await readStaleSummary(session.repository, book));
+    });
+  } catch (e) {
+    logger.error(
+      `Interlinearizer: failed to summarize the stale analyses of book ${bookId} of session ${sessionId}`,
+      e,
+    );
     throw e;
   }
 }
@@ -1839,6 +1869,29 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   /** Documents a session command's one argument, which holds `fields` beside `sessionId`. */
   const sessionArgs = (...fields: ParamDoc[]) =>
     argsParam("The session, and the command's own fields", [sessionIdParam, ...fields]);
+
+  const getStaleSummaryCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getStaleSummary',
+    getStaleSummary,
+    {
+      method: {
+        summary:
+          "Summarize the stale analyses that a book of a session's source holds, segmented by the draft's boundaries, as a JSON string",
+        params: sessionArgs({
+          name: 'bookId',
+          required: true,
+          summary: 'Book code, such as GEN',
+          schema: { type: 'string' },
+        }),
+        result: {
+          name: 'return value',
+          summary:
+            'JSON-stringified StaleSummary, or undefined when the project has no text for the book',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
 
   const openSessionCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openSession',
@@ -3158,6 +3211,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getTokenizedBookCommandRegistration,
     getBookOutlineCommandRegistration,
     getSegmentsCommandRegistration,
+    getStaleSummaryCommandRegistration,
     getTextReadStatusCommandRegistration,
     startDraftOverCommandRegistration,
     openSessionCommandRegistration,

@@ -284,6 +284,7 @@ const EMPTY_REPLY = JSON.stringify({
   poolAnalyses: [],
   resegmentedBooks: [],
   staleTranslationBooks: [],
+  staleGlossBooks: [],
   canUndo: true,
   canRedo: false,
   hasFreeTranslations: true,

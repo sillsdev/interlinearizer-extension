@@ -71,7 +71,7 @@ jest.mock('../../hooks/useStaleAnalysisDismissal');
 
 /** What the loader last handed the stale-analyses reporter, `undefined` until it mounts one. */
 let capturedReporterProps:
-  { book: Book; onReport: (report: StaleAnalysesReport | undefined) => void } | undefined;
+  { bookRef: string; onReport: (report: StaleAnalysesReport | undefined) => void } | undefined;
 
 // Stubbed to record where the loader mounts it, which is all these tests ask of it.
 jest.mock('../../components/StaleAnalysesReporter', () => ({
@@ -3634,7 +3634,7 @@ describe('InterlinearizerLoader', () => {
     it('reports on the loaded book from inside the draft’s store', async () => {
       await renderOnLoadedBook();
 
-      expect(capturedReporterProps?.book).toBe(GEN_1_1_BOOK);
+      expect(capturedReporterProps?.bookRef).toBe(GEN_1_1_BOOK.bookRef);
     });
 
     it('reports on no book while one is loading', async () => {

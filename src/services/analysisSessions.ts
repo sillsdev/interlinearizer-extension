@@ -232,6 +232,7 @@ async function replyTo(
     staleTranslationBooks: books
       .filter(({ staleTranslations }) => staleTranslations)
       .map(({ bookId }) => bookId),
+    staleGlossBooks: books.filter(({ staleGlosses }) => staleGlosses).map(({ bookId }) => bookId),
     canUndo: session.history.canUndo,
     canRedo: session.history.canRedo,
   };
@@ -593,6 +594,7 @@ export class AnalysisSessions {
             poolAnalyses: [],
             resegmentedBooks: [],
             staleTranslationBooks: [],
+            staleGlossBooks: [],
             canUndo: session.history.canUndo,
             canRedo: session.history.canRedo,
             ...extra,

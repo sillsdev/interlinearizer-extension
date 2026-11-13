@@ -1,0 +1,23 @@
+{
+  "modelVersion": 1,
+  "latest": [
+    {
+      "$type": "CreateSegmentAnalysisChange",
+      "ProjectId": "33333333-3333-3333-3333-333333333333",
+      "SurfaceText": "In the beginning",
+      "Confidence": "high",
+      "Producer": "human",
+      "SourceUser": "kevin",
+      "FreeTranslation": {
+        "en": "In the beginning",
+        "fr": "Au commencement"
+      },
+      "LiteralTranslation": {
+        "en": "In beginning",
+        "fr": "En commencement"
+      },
+      "EntityId": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "legacy": []
+}

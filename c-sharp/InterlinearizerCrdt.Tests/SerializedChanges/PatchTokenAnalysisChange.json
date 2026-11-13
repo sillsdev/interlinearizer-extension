@@ -1,0 +1,102 @@
+{
+  "modelVersion": 1,
+  "latest": [
+    {
+      "$type": "PatchTokenAnalysisChange",
+      "Pos": null,
+      "Features": {
+        "Case": "Gen",
+        "Number": null,
+        "Gender": "Fem"
+      },
+      "Gloss": {
+        "fr": null,
+        "de": "Anfang"
+      },
+      "GlossSenseRef": null,
+      "EntityId": "11111111-1111-1111-1111-111111111111"
+    },
+    {
+      "$type": "PatchTokenAnalysisChange",
+      "SurfaceText": "\u1F00\u03C1\u03C7\u1FC7",
+      "Confidence": "guess",
+      "Producer": "parser",
+      "SourceUser": "kevin",
+      "Morphemes": [
+        {
+          "Id": "6433d4a4-7a4c-3ae9-0169-0cb5d1f5c894",
+          "Form": "\u1F00\u03C1\u03C7",
+          "WritingSystem": "grc",
+          "EntryRef": {
+            "EntryId": "entry-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "SenseRef": {
+            "SenseId": "sense-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "AllomorphRef": {
+            "AllomorphId": "allo-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "GrammarRef": {
+            "MsaId": "msa-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "Gloss": {
+            "en": "\u1F00\u03C1\u03C7-gloss",
+            "fr": "\u1F00\u03C1\u03C7-glose"
+          }
+        },
+        {
+          "Id": "a58e115f-c1ea-b579-7cce-865251ae50dc",
+          "Form": "\u1FC7",
+          "WritingSystem": "grc",
+          "EntryRef": {
+            "EntryId": "entry-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "SenseRef": {
+            "SenseId": "sense-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "AllomorphRef": {
+            "AllomorphId": "allo-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "GrammarRef": {
+            "MsaId": "msa-1",
+            "Authority": "lexicon",
+            "ProjectId": "lex-project"
+          },
+          "Gloss": {
+            "en": "\u1FC7-gloss",
+            "fr": "\u1FC7-glose"
+          }
+        }
+      ],
+      "MorphemesStale": true,
+      "Pos": "noun",
+      "Features": {
+        "Case": "Dat"
+      },
+      "Gloss": {
+        "en": "beginning"
+      },
+      "GlossSenseRef": {
+        "SenseId": "sense-1",
+        "Authority": "lexicon",
+        "ProjectId": "lex-project"
+      },
+      "EntityId": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "legacy": []
+}

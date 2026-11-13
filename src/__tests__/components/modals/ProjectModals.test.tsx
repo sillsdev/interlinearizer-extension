@@ -1262,6 +1262,13 @@ describe('ProjectModals', () => {
       expect(screen.getByTestId('delete-confirm')).toHaveAttribute('data-pt9-import', 'true');
     });
 
+    it('does not tell the delete confirmation that an active import is the draft Save target', () => {
+      render(
+        <ProjectModals {...buildProps({ modal: 'delete', activeProject: MOCK_IMPORT_PROJECT })} />,
+      );
+      expect(screen.getByTestId('delete-confirm')).toHaveAttribute('data-active-project', 'false');
+    });
+
     it('resets and detaches the active project once it is deleted', async () => {
       const setModal = jest.fn();
       const resetActiveProject = jest.fn();

@@ -615,4 +615,26 @@ describe('SelectInterlinearProjectModal Paratext 9 import entry', () => {
       screen.getByRole('dialog', { name: 'Delete Paratext 9 Interlinear?' }),
     ).toHaveTextContent('No Paratext 9 data will be affected.');
   });
+
+  it('does not say the open draft is kept when deleting the active import', async () => {
+    serveProjects([
+      makeProjectSummary({
+        id: 'import-id',
+        name: 'Paratext 9 Interlinear',
+        pt9Import: {
+          fileHashes: { 'Lexicon.xml': 'aaaa1111' },
+          importedAt: '2026-08-01T00:00:00.000Z',
+        },
+      }),
+    ]);
+    render(<SelectInterlinearProjectModal {...defaultProps} activeProjectId="import-id" />);
+    await screen.findByTestId('readonly-chip');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Project actions' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Delete Paratext 9 Interlinear?' }),
+    ).not.toHaveTextContent('The open draft is kept as unsaved changes.');
+  });
 });

@@ -98,10 +98,10 @@ describe('sessionEditHandlers', () => {
       analysis: {
         ...makeStubProject().analysis,
         tokenAnalyses: [
-          { id: 'ta-deity', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'Deity' } },
+          { id: 'ta-land', ...FIXTURE_STAMPS, surfaceText: 'earth', gloss: { en: 'land' } },
         ],
         tokenAnalysisLinks: [
-          makeTokenLink('ta-deity', ref('God'), { surfaceText: 'God', id: 'tl-deity' }),
+          makeTokenLink('ta-land', ref('earth'), { surfaceText: 'earth', id: 'tl-land' }),
         ],
       },
     };
@@ -113,7 +113,7 @@ describe('sessionEditHandlers', () => {
 
     expect(getProject).toHaveBeenCalledWith('proj-1');
     const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
-    expect(draft.analysis.tokenAnalyses.map((ta) => ta.gloss)).toStrictEqual([{ en: 'Deity' }]);
+    expect(draft.analysis.tokenAnalyses.map((ta) => ta.gloss)).toStrictEqual([{ en: 'land' }]);
   });
 
   it('refuses a discard when the project that the draft saves to is not stored', async () => {
@@ -139,27 +139,27 @@ describe('sessionEditHandlers', () => {
   });
 
   describe("a catalog edit's outcome", () => {
-    const laterGod = BOOK.segments[2].tokens.find((token) => token.surfaceText === 'God')?.ref;
-    /** `ta-god` glossed "God" at the first God, and `ta-deity` glossed "Deity" at the later one. */
-    const TWO_GODS: Partial<TextAnalysis> = {
+    const laterAnd = BOOK.segments[2].tokens.find((token) => token.surfaceText === 'And')?.ref;
+    /** `ta-and` glossed "and" at the first And, and `ta-then` glossed "then" at the later one. */
+    const TWO_ANDS: Partial<TextAnalysis> = {
       tokenAnalyses: [
-        { id: 'ta-god', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'God' } },
-        { id: 'ta-deity', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'Deity' } },
+        { id: 'ta-and', ...FIXTURE_STAMPS, surfaceText: 'And', gloss: { en: 'and' } },
+        { id: 'ta-then', ...FIXTURE_STAMPS, surfaceText: 'And', gloss: { en: 'then' } },
       ],
       tokenAnalysisLinks: [
-        makeTokenLink('ta-god', ref('God'), { surfaceText: 'God', id: 'tl-god' }),
-        makeTokenLink('ta-deity', laterGod ?? '', { surfaceText: 'God', id: 'tl-deity' }),
+        makeTokenLink('ta-and', ref('And'), { surfaceText: 'And', id: 'tl-and' }),
+        makeTokenLink('ta-then', laterAnd ?? '', { surfaceText: 'And', id: 'tl-then' }),
       ],
     };
 
     it('is an edit in place when the record stands', async () => {
-      const { edits, sessionId } = await handlersOver({}, BOOK, TWO_GODS);
+      const { edits, sessionId } = await handlersOver({}, BOOK, TWO_ANDS);
 
       const reply = JSON.parse(
         await edits['interlinearizer.writeAnalysisGloss']({
           sessionId,
-          analysisId: 'ta-deity',
-          value: 'Lord',
+          analysisId: 'ta-then',
+          value: 'so',
         }),
       );
 
@@ -167,31 +167,31 @@ describe('sessionEditHandlers', () => {
     });
 
     it("is a merge, with the survivor's gloss and uses, when the record collapses into a sibling", async () => {
-      const { edits, sessionId } = await handlersOver({}, BOOK, TWO_GODS);
+      const { edits, sessionId } = await handlersOver({}, BOOK, TWO_ANDS);
 
       const reply = JSON.parse(
         await edits['interlinearizer.writeAnalysisGloss']({
           sessionId,
-          analysisId: 'ta-deity',
-          value: 'God',
+          analysisId: 'ta-then',
+          value: 'and',
         }),
       );
 
       expect(reply.outcome).toStrictEqual({
         kind: 'merged',
-        survivingAnalysisId: 'ta-god',
-        survivingGloss: 'God',
+        survivingAnalysisId: 'ta-and',
+        survivingGloss: 'and',
         survivingUsageCount: 2,
       });
     });
 
     it('is a removal when the edit empties the record', async () => {
-      const { edits, sessionId } = await handlersOver({}, BOOK, TWO_GODS);
+      const { edits, sessionId } = await handlersOver({}, BOOK, TWO_ANDS);
 
       const reply = JSON.parse(
         await edits['interlinearizer.writeAnalysisGloss']({
           sessionId,
-          analysisId: 'ta-deity',
+          analysisId: 'ta-then',
           value: '',
         }),
       );
@@ -201,20 +201,20 @@ describe('sessionEditHandlers', () => {
   });
 
   describe('previewBreakdownEdit', () => {
-    const laterGod = BOOK.segments[2].tokens.find((token) => token.surfaceText === 'God')?.ref;
-    const MORPHEMES = [{ id: 'm-1', form: 'God', writingSystem: 'en', gloss: { en: 'deity' } }];
+    const laterAnd = BOOK.segments[2].tokens.find((token) => token.surfaceText === 'And')?.ref;
+    const MORPHEMES = [{ id: 'm-1', form: 'And', writingSystem: 'en', gloss: { en: 'and' } }];
 
     it('says that a token alone holding a glossed breakdown would lose it on a reset', async () => {
       const { edits, sessionId } = await handlersOver({}, BOOK, {
         tokenAnalyses: [
-          { id: 'ta-god', ...FIXTURE_STAMPS, surfaceText: 'God', morphemes: MORPHEMES },
+          { id: 'ta-and', ...FIXTURE_STAMPS, surfaceText: 'And', morphemes: MORPHEMES },
         ],
-        tokenAnalysisLinks: [makeTokenLink('ta-god', ref('God'), { surfaceText: 'God' })],
+        tokenAnalysisLinks: [makeTokenLink('ta-and', ref('And'), { surfaceText: 'And' })],
       });
 
       const preview = await edits['interlinearizer.previewBreakdownEdit']({
         sessionId,
-        tokenRef: ref('God'),
+        tokenRef: ref('And'),
       });
 
       expect(JSON.parse(preview)).toStrictEqual({ solelyOwned: true, resetLosesAnnotation: true });
@@ -223,17 +223,17 @@ describe('sessionEditHandlers', () => {
     it('says that a token sharing its payload loses nothing, its edit forking the payload', async () => {
       const { edits, sessionId } = await handlersOver({}, BOOK, {
         tokenAnalyses: [
-          { id: 'ta-god', ...FIXTURE_STAMPS, surfaceText: 'God', morphemes: MORPHEMES },
+          { id: 'ta-and', ...FIXTURE_STAMPS, surfaceText: 'And', morphemes: MORPHEMES },
         ],
         tokenAnalysisLinks: [
-          makeTokenLink('ta-god', ref('God'), { surfaceText: 'God', id: 'tl-1' }),
-          makeTokenLink('ta-god', laterGod ?? '', { surfaceText: 'God', id: 'tl-2' }),
+          makeTokenLink('ta-and', ref('And'), { surfaceText: 'And', id: 'tl-1' }),
+          makeTokenLink('ta-and', laterAnd ?? '', { surfaceText: 'And', id: 'tl-2' }),
         ],
       });
 
       const preview = await edits['interlinearizer.previewBreakdownEdit']({
         sessionId,
-        tokenRef: ref('God'),
+        tokenRef: ref('And'),
       });
 
       expect(JSON.parse(preview)).toStrictEqual({
@@ -246,18 +246,18 @@ describe('sessionEditHandlers', () => {
       const { edits, sessionId } = await handlersOver({}, BOOK, {
         tokenAnalyses: [
           {
-            id: 'ta-god',
+            id: 'ta-and',
             ...FIXTURE_STAMPS,
-            surfaceText: 'God',
-            morphemes: [{ id: 'm-1', form: 'God', writingSystem: 'en' }],
+            surfaceText: 'And',
+            morphemes: [{ id: 'm-1', form: 'And', writingSystem: 'en' }],
           },
         ],
-        tokenAnalysisLinks: [makeTokenLink('ta-god', ref('God'), { surfaceText: 'God' })],
+        tokenAnalysisLinks: [makeTokenLink('ta-and', ref('And'), { surfaceText: 'And' })],
       });
 
       const preview = await edits['interlinearizer.previewBreakdownEdit']({
         sessionId,
-        tokenRef: ref('God'),
+        tokenRef: ref('And'),
       });
 
       expect(JSON.parse(preview)).toStrictEqual({ solelyOwned: true, resetLosesAnnotation: false });

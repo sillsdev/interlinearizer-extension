@@ -120,23 +120,23 @@ describe('useConcordanceOccurrences', () => {
   it("serves the first occurrences of a form, glossed in the session's language", async () => {
     const wrapper = await wrapperOver(readText([], [BOOK]));
 
-    const { result } = renderHook(() => useConcordanceOccurrences('god', 1), { wrapper });
+    const { result } = renderHook(() => useConcordanceOccurrences('beginning', 1), { wrapper });
 
     await waitFor(() =>
       expect(result.current).toStrictEqual({
-        total: 2,
-        tallies: [{ analysisId: 'ta-god', gloss: 'God', count: 1 }],
+        total: 1,
+        tallies: [{ analysisId: 'ta-beginning', gloss: 'start', count: 1 }],
         occurrences: [
           {
-            tokenRef: ref('God'),
+            tokenRef: ref('beginning'),
             book: 'GEN',
             chapter: 1,
             verse: 1,
-            surfaceText: 'God',
+            surfaceText: 'beginning',
             contextText: 'In the beginning God',
-            charStart: 17,
-            charEnd: 20,
-            analysisId: 'ta-god',
+            charStart: 7,
+            charEnd: 16,
+            analysisId: 'ta-beginning',
           },
         ],
       }),
@@ -155,8 +155,8 @@ describe('useConcordanceOccurrences', () => {
 
   it('glosses the tallies in the language that the session switches to', async () => {
     const wrapper = await wrapperOver(readText([], [BOOK]));
-    const { result } = renderHook(() => useConcordanceOccurrences('god', 1), { wrapper });
-    await waitFor(() => expect(result.current?.tallies[0].gloss).toBe('God'));
+    const { result } = renderHook(() => useConcordanceOccurrences('beginning', 1), { wrapper });
+    await waitFor(() => expect(result.current?.tallies[0].gloss).toBe('start'));
 
     await setLanguage('interlinearizer.getConcordance', 'fr');
 
@@ -165,7 +165,7 @@ describe('useConcordanceOccurrences', () => {
 
   it('keeps the last occurrences when a fetch fails', async () => {
     const wrapper = await wrapperOver(readText([], [BOOK]));
-    const { result } = renderHook(() => useConcordanceOccurrences('god', 1), { wrapper });
+    const { result } = renderHook(() => useConcordanceOccurrences('beginning', 1), { wrapper });
     await settle();
     const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
     jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('offline'));
@@ -173,7 +173,7 @@ describe('useConcordanceOccurrences', () => {
     relayChange(changeNaming(sessionIdOf('interlinearizer.getConcordance'), ['getConcordance']));
     await settle();
 
-    expect(result.current?.total).toBe(2);
+    expect(result.current?.total).toBe(1);
     expect(warn).toHaveBeenCalledWith(
       "Interlinearizer: could not fetch a form's occurrences",
       expect.any(Error),

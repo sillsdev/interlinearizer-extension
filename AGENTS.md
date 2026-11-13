@@ -269,6 +269,10 @@ Any `console.error` or `console.warn` call fails the test that is running when i
 
 `@papi/backend` and `@papi/frontend` mocks are mutually exclusive: backend tests use `papi-backend.ts`, WebView tests use `papi-frontend.ts` + `papi-frontend-react.ts`. Each mock file ends with `export {}` so TypeScript treats it as a module.
 
+### Test data
+
+Keep fixture names, ids, glosses and invented text neutral: no divine names, and nothing sensitive or crude. A quoted scripture snippet may keep its own wording, but the records that a test builds over it pick a neutral word from it, such as `beginning` rather than `God`. Quote a verse that is bland on its own, never one whose wording is sensitive out of context.
+
 ### Testing hooks
 
 Test context hooks and dispatchers directly with `renderHook` + a `wrapper`, not a throwaway button-and-click component. See `sessionProviderOver` in [AnalysisStore.test.tsx](src/__tests__/components/AnalysisStore.test.tsx) for the provider-wrapping pattern: return the hooks under test from the callback, drive dispatchers inside `act(...)`, and assert on state read off `result.current`. Reserve rendered components for behavior that genuinely needs the DOM — re-render / render-count assertions and mount/unmount lifecycle.

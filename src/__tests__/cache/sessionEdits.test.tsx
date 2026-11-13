@@ -401,7 +401,7 @@ describe('useAnalysisRowDispatch', () => {
 });
 
 describe('useBreakdownPreview', () => {
-  it('logs a preview the session cannot answer, and takes a reset to lose annotation', async () => {
+  it('logs a preview the session cannot answer, and takes the edit to lose annotation', async () => {
     jest.mocked(papi.commands.sendCommand).mockRejectedValue(new Error('closed'));
     jest.spyOn(logger, 'warn').mockImplementation(() => {});
     const { wrapper } = await sessionWrapper();
@@ -409,7 +409,7 @@ describe('useBreakdownPreview', () => {
     const { result } = renderHook(() => useBreakdownPreview('GEN 1:1:0', true), { wrapper });
 
     await waitFor(() =>
-      expect(result.current).toStrictEqual({ solelyOwned: false, resetLosesAnnotation: true }),
+      expect(result.current).toStrictEqual({ solelyOwned: true, resetLosesAnnotation: true }),
     );
     expect(logger.warn).toHaveBeenCalledWith(
       'Interlinearizer: could not preview a breakdown edit at GEN 1:1:0',

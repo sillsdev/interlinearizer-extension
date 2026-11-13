@@ -501,12 +501,16 @@ export function useRemovalPreviews(): {
   }, [sessionId]);
 }
 
-/** What a breakdown edit is taken to do when the session cannot say: lose what a reset drops. */
-const UNKNOWN_BREAKDOWN: BreakdownPreview = { solelyOwned: false, resetLosesAnnotation: true };
+/**
+ * What a breakdown edit is taken to do when the session cannot say: rewrite a payload that only the
+ * edited token links, losing what a reset or re-split drops.
+ */
+const UNKNOWN_BREAKDOWN: BreakdownPreview = { solelyOwned: true, resetLosesAnnotation: true };
 
 /**
  * Asks the session what a breakdown edit at `tokenRef` would do, each time `isOpen` turns on. A
- * failed ask is logged and answered as a reset that loses annotation.
+ * failed ask is logged and answered as an edit to a solely owned payload whose reset loses
+ * annotation.
  *
  * @returns The answer; `undefined` while `isOpen` is off, and until the answer arrives.
  * @throws When called outside a {@link PageClientProvider}.

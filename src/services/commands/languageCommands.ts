@@ -1,6 +1,11 @@
 import type { PhraseAnalysis, SegmentAnalysis, TextAnalysis, TokenAnalysis } from 'interlinearizer';
-import { deleteLanguageText } from '../../utils/delete-language-text';
 import type { AnalysisLanguagesChangeOutcome } from '../../types/analysis-languages-change';
+import {
+  analysesAreIdentical,
+  normalizeSurfaceForm,
+  phraseAnalysesAreIdentical,
+} from '../../utils/analysis-identity';
+import { deleteLanguageText } from '../../utils/delete-language-text';
 import { retagGlosses } from '../../utils/retag-glosses';
 import type { ChangeBuffer } from './changeBuffer';
 import { mergeIntoIdenticalPhrase } from './phraseCommands';
@@ -21,12 +26,41 @@ export type ChangeAnalysisLanguagesRequest = {
   now: string;
 };
 
+/** The analyses in `changed` that are identical to another analysis in `all`. */
+function withIdenticalTwin<T extends { id: string; surfaceText: string }>(
+  changed: readonly T[],
+  all: readonly T[],
+  isIdentical: (a: T, b: T) => boolean,
+): T[] {
+  const byForm = new Map<string, T[]>();
+  all.forEach((analysis) => {
+    const form = normalizeSurfaceForm(analysis.surfaceText);
+    const bucket = byForm.get(form);
+    if (bucket) bucket.push(analysis);
+    else byForm.set(form, [analysis]);
+  });
+  const changedIds = new Set(changed.map(({ id }) => id));
+  const twinned = new Set<string>();
+  byForm.forEach((bucket) =>
+    bucket.forEach((analysis) => {
+      if (
+        changedIds.has(analysis.id) &&
+        bucket.some((other) => other.id !== analysis.id && isIdentical(other, analysis))
+      )
+        twinned.add(analysis.id);
+    }),
+  );
+  return changed.filter(({ id }) => twinned.has(id));
+}
+
 /**
- * Stages the analyses that a move or deletion changed. Any token or phrase analysis that the change
- * made identical to another payload is then folded into that payload.
+ * Stages the analyses that a move or deletion changed in `all`, the draft's analysis as the change
+ * leaves it. Any token or phrase analysis that the change made identical to another payload is then
+ * folded into that payload.
  */
 async function stageTextChange(
   buffer: ChangeBuffer,
+  all: TextAnalysis,
   {
     tokenAnalyses,
     phraseAnalyses,
@@ -51,14 +85,13 @@ async function stageTextChange(
     const [analysis] = await buffer.getPhraseAnalyses([analysisId]);
     if (analysis) await mergeIntoIdenticalPhrase(buffer, analysis);
   };
-  await tokenAnalyses.reduce<Promise<unknown>>(
-    (previous, { id }) => previous.then(() => foldToken(id)),
-    Promise.resolve(),
-  );
-  await phraseAnalyses.reduce<Promise<unknown>>(
-    (previous, { id }) => previous.then(() => foldPhrase(id)),
-    Promise.resolve(),
-  );
+  // Each fold reads the whole staged change, so only analyses that can fold are visited.
+  await withIdenticalTwin(tokenAnalyses, all.tokenAnalyses, analysesAreIdentical).reduce<
+    Promise<unknown>
+  >((previous, { id }) => previous.then(() => foldToken(id)), Promise.resolve());
+  await withIdenticalTwin(phraseAnalyses, all.phraseAnalyses, phraseAnalysesAreIdentical).reduce<
+    Promise<unknown>
+  >((previous, { id }) => previous.then(() => foldPhrase(id)), Promise.resolve());
 }
 
 /**
@@ -82,12 +115,12 @@ export async function changeAnalysisLanguages(
 
   if (deleteTextOf !== undefined) {
     const { counts, ...changed } = deleteLanguageText(stored, deleteTextOf, now);
-    await stageTextChange(buffer, changed, now);
+    await stageTextChange(buffer, stored, changed, now);
     outcome.deletedText = counts;
   }
   if (retag !== undefined) {
     const { counts, ...changed } = retagGlosses(stored, retag.from, retag.to, now);
-    await stageTextChange(buffer, changed, now);
+    await stageTextChange(buffer, stored, changed, now);
     outcome.glossRetag = counts;
   }
   return outcome;

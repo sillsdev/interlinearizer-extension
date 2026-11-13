@@ -268,15 +268,15 @@ describe('convertPt9Project', () => {
     expect(languages).toStrictEqual(['en', 'fr']);
   });
 
-  it('does not count an approval the cross-language merge withdraws', () => {
-    // de's unapproved verse withdraws en's approval of hello and in; de itself glosses nothing.
+  it('counts an approval that another language left unapproved', () => {
+    // en's approvals of "hello" and "in" survive de's unapproved verse. de itself glosses nothing.
     const languages = languagesOf('hello in the world', [
       verseOf('en', [mkCluster(0, 5, [['Word:hello']]), mkCluster(6, 2, [['Word:in']])]),
       verseOf('de', [mkCluster(0, 5, [['Word:hello']]), mkCluster(6, 2, [['Word:in']])], false),
       verseOf('fr', [mkCluster(13, 5, [['Word:world']])]),
     ]);
 
-    expect(languages).toStrictEqual(['fr', 'en', 'de']);
+    expect(languages).toStrictEqual(['en', 'fr', 'de']);
   });
 
   it('keeps tied tags in discovery order and merges records across them', () => {
@@ -284,7 +284,7 @@ describe('convertPt9Project', () => {
     const result = convertPt9Project({
       data: dataOf([
         bookWith('fr', 'GEN', 'hello', 'S1', 'AA'),
-        bookWith('en', 'GEN', 'hello', 'S1'),
+        bookWith('en', 'GEN', 'hello', 'S1', 'AA'),
       ]),
       books,
       importedAt: STAMP,
@@ -293,8 +293,6 @@ describe('convertPt9Project', () => {
     expect(result.analysisLanguages).toStrictEqual(['fr', 'en']);
     expect(result.report.merge.sameTagCollisions).toStrictEqual([]);
     expect(result.analysis.tokenAnalyses).toHaveLength(1);
-    // fr's verse is hashed, en's is not: strict all-hashed merging yields suggested.
-    expect(result.analysis.tokenAnalysisLinks[0].status).toBe('suggested');
     expect(result.report.merge.mergedTokenRecords).toBe(1);
   });
 

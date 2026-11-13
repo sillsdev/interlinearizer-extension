@@ -135,23 +135,45 @@ describe('mergeLanguageAnalyses - token records', () => {
   });
 
   describe('status agreement', () => {
-    it('approves a merged record only when every contribution is approved', () => {
-      const { result } = merge([wordRecord(), wordRecord({ tag: 'fr', status: 'suggested' })]);
-      expect(result.tokenAnalysisLinks[0].status).toBe('suggested');
+    it('keeps an approved language approved beside a language that left the word suggested', () => {
+      const { result } = merge([
+        wordRecord(),
+        wordRecord({
+          tag: 'fr',
+          status: 'suggested',
+          word: { key: HELLO_KEY, keyId: 'Word:hello', senseId: 'S1', glossText: 'salut' },
+        }),
+      ]);
+
+      expect(result.tokenAnalyses.map((a) => a.gloss)).toStrictEqual([
+        { en: 'greeting' },
+        { fr: 'salut' },
+      ]);
+      expect(result.tokenAnalysisLinks.map((l) => l.status)).toStrictEqual([
+        'approved',
+        'suggested',
+      ]);
     });
 
-    it('rejects a merged record only when every contribution is rejected', () => {
-      const rejected = merge([
+    it('merges languages that both rejected the word into one rejected record', () => {
+      const { result } = merge([
         wordRecord({ status: 'rejected' }),
         wordRecord({ tag: 'fr', status: 'rejected' }),
       ]);
-      expect(rejected.result.tokenAnalysisLinks[0].status).toBe('rejected');
 
-      const mixed = merge([
+      expect(result.tokenAnalysisLinks.map((l) => l.status)).toStrictEqual(['rejected']);
+    });
+
+    it('keeps a rejected language rejected beside a language that approved the word', () => {
+      const { result } = merge([
         wordRecord({ status: 'rejected' }),
         wordRecord({ tag: 'fr', status: 'approved' }),
       ]);
-      expect(mixed.result.tokenAnalysisLinks[0].status).toBe('suggested');
+
+      expect(result.tokenAnalysisLinks.map((l) => l.status)).toStrictEqual([
+        'rejected',
+        'approved',
+      ]);
     });
   });
 
@@ -299,6 +321,34 @@ describe('mergeLanguageAnalyses - token records', () => {
       expect(result.tokenAnalyses[0].morphemes?.map((m) => m.form)).toStrictEqual(['hel', 'lo']);
     });
 
+    it('fuses a parse-only contribution only onto a word record of its own status', () => {
+      const { result } = merge([
+        wordRecord({ parse: helloParse() }),
+        wordRecord({ tag: 'fr', status: 'suggested', word: undefined, parse: helloParse() }),
+      ]);
+
+      expect(result.tokenAnalysisLinks.map((l) => l.status)).toStrictEqual([
+        'approved',
+        'suggested',
+      ]);
+      expect(result.tokenAnalyses[1].gloss).toBeUndefined();
+      expect(result.tokenAnalyses[1].morphemes).toHaveLength(2);
+    });
+
+    it('fuses a parse-only contribution onto the sole same-status word record lacking a parse', () => {
+      const { result } = merge([
+        wordRecord(),
+        wordRecord({
+          status: 'suggested',
+          word: { key: { Type: 'Word', Form: 'other' }, keyId: 'Word:other', senseId: undefined },
+        }),
+        wordRecord({ tag: 'fr', word: undefined, parse: helloParse() }),
+      ]);
+
+      expect(result.tokenAnalyses).toHaveLength(2);
+      expect(result.tokenAnalyses[0].morphemes).toHaveLength(2);
+    });
+
     it('keeps a parse-only record standalone when the fuse target is ambiguous', () => {
       const { result } = merge([
         wordRecord(),
@@ -342,6 +392,18 @@ describe('mergeLanguageAnalyses - token records', () => {
       ]);
 
       expect(result.tokenAnalyses).toHaveLength(1);
+    });
+
+    it('keeps two parse-only contributions with the same signature apart when their statuses differ', () => {
+      const { result } = merge([
+        wordRecord({ word: undefined, parse: helloParse() }),
+        wordRecord({ tag: 'fr', status: 'suggested', word: undefined, parse: helloParse() }),
+      ]);
+
+      expect(result.tokenAnalysisLinks.map((l) => l.status)).toStrictEqual([
+        'approved',
+        'suggested',
+      ]);
     });
   });
 
@@ -540,14 +602,33 @@ describe('mergeLanguageAnalyses - phrases', () => {
     ]);
   });
 
-  it('keeps rejected and mixed phrase statuses by the agreement rule', () => {
-    const rejected = merge([], [phraseRecord({ status: 'rejected' })]);
-    expect(rejected.result.phraseAnalysisLinks[0].status).toBe('rejected');
+  it('keeps a rejected phrase rejected', () => {
+    const { result } = merge([], [phraseRecord({ status: 'rejected' })]);
+    expect(result.phraseAnalysisLinks[0].status).toBe('rejected');
+  });
 
-    const mixed = merge(
+  it('keeps an approved language approved beside a language that left the phrase suggested', () => {
+    const { result } = merge(
       [],
-      [phraseRecord({ status: 'rejected' }), phraseRecord({ tag: 'fr', status: 'approved' })],
+      [
+        phraseRecord(),
+        phraseRecord({
+          tag: 'fr',
+          status: 'suggested',
+          phrase: {
+            key: { Type: 'Phrase', Form: 'in the' },
+            keyId: 'Phrase:in the',
+            senseId: 'S5',
+            glossText: 'dans',
+          },
+        }),
+      ],
     );
-    expect(mixed.result.phraseAnalysisLinks[0].status).toBe('suggested');
+
+    expect(result.phraseAnalyses.map((a) => a.gloss)).toStrictEqual([{ en: 'in' }, { fr: 'dans' }]);
+    expect(result.phraseAnalysisLinks.map((l) => l.status)).toStrictEqual([
+      'approved',
+      'suggested',
+    ]);
   });
 });

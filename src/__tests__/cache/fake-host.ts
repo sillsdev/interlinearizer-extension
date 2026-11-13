@@ -9,7 +9,7 @@ import { DraftRepository } from '../../services/draftRepository';
 import { sessionCatalogHandlers } from '../../services/sessionCatalogHandlers';
 import { sessionConcordanceHandlers } from '../../services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from '../../services/sessionEditHandlers';
-import { envelopeOf } from '../../utils/draft-envelope';
+import { envelopeOf } from '../../types/draft-envelope';
 import { readBookOutline, readSegmentPage, readStaleSummary } from '../../services/sessionPages';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';

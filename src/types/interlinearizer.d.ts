@@ -351,6 +351,15 @@ declare module 'papi-shared-types' {
     'interlinearizer.getTextReadStatus': (address: { sessionId: string }) => Promise<string>;
 
     /**
+     * Reads again each book of the session source's whole text whose latest read failed. Does
+     * nothing until every book has been read once. A change names `getTextReadStatus` as each book
+     * is filed.
+     *
+     * @throws If the session is not open.
+     */
+    'interlinearizer.retryTextRead': (address: { sessionId: string }) => Promise<void>;
+
+    /**
      * Starts the source project's draft over from `from`, closing the source's session first. A
      * session opened afterward has nothing to undo. Stored analysis that could not be read is
      * discarded.
@@ -416,7 +425,7 @@ declare module 'papi-shared-types' {
 
     /**
      * Sets the language a session's glosses are read and written in. A new language is reported as
-     * a change that names the catalog.
+     * a change that names the catalog and the concordance.
      *
      * @throws If the session is not open (logged before rethrowing).
      */
@@ -999,6 +1008,22 @@ declare module 'papi-shared-types' {
     'interlinearizer.previewRemovals': (
       args: import('interlinearizer').SessionCommandArgs & {
         request: import('interlinearizer').RemovalPreviewRequest;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Serves one page of a session's concordance: of the forms of its source's whole text, the most
+     * frequent first, or of one form's occurrences, either joined to the draft's approved
+     * analyses.
+     *
+     * @returns A JSON string of the `ConcordancePage`, or of the `ConcordanceOccurrencePage` when
+     *   the request names a form; `"null"` until the whole text has been read.
+     * @throws If the session is not open, or its analysis or its source's language tag cannot be
+     *   read (logged before rethrowing).
+     */
+    'interlinearizer.getConcordance': (
+      args: import('interlinearizer').SessionCommandArgs & {
+        request: import('../services/sessionConcordanceHandlers').ConcordanceRequest;
       },
     ) => Promise<string>;
 

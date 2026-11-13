@@ -1,4 +1,5 @@
 import papi, { logger } from '@papi/backend';
+import { Canon } from '@sillsdev/scripture';
 import type { Book, Segment, SegmentationDelta } from 'interlinearizer';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
@@ -9,6 +10,7 @@ import type { TextReadStatus } from '../types/text-read-status';
 import { isSegmentationDelta } from '../types/type-guards';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { presentBookIds } from '../utils/books-present';
+import { indexBook, type BookConcordance } from '../utils/concordance';
 import { FormIndex, formsOfBook } from '../utils/form-index';
 import { perfTime, perfTrack } from '../utils/perf-marks';
 import { reanchorSegmentation } from '../utils/segmentation';
@@ -60,7 +62,10 @@ const outlineCounts = new Map<string, number>();
  */
 const READ_CONCURRENCY = 4;
 
-/** A source project's whole text, read book by book into a form index, each book watched for edits. */
+/**
+ * A source project's whole text, read book by book. Each book's forms and occurrences are filed,
+ * and the book is watched for edits.
+ */
 interface TextRead {
   /**
    * The text's books in canonical order, with the tag their text is written in; rejects when they,
@@ -80,6 +85,13 @@ interface TextRead {
   /** Books whose latest read found text. */
   textBookIds: Set<string>;
   forms: FormIndex;
+  /** The occurrences of each book whose latest read found text, by book id. */
+  concordances: Map<string, BookConcordance>;
+  /**
+   * {@link concordances} in canonical order, kept until they change so that the same books keep the
+   * same array.
+   */
+  orderedConcordances?: readonly BookConcordance[];
   /** Stops watching each book the read has started, by book id. */
   watches: Map<string, () => Promise<void>>;
 }
@@ -560,8 +572,8 @@ function rereadHeldBook(sourceProjectId: string, bookId: string): void {
 }
 
 /**
- * Reads `bookId` of `read`'s text into its form index, and watches the book until the read ends or
- * reads it again. The book's text is passed to {@link onBookRead}'s listeners, as an edit's when
+ * Files the forms and occurrences of `bookId` in `read`, and watches the book until the read ends
+ * or reads it again. The book's text is passed to {@link onBookRead}'s listeners, as an edit's when
  * `edited`, unless the whole-text read has ended, or a later read of the book supersedes this one.
  * An edit to the book lets go of its kept copies, and is reported once the book is read again.
  *
@@ -601,13 +613,20 @@ async function readTextBook(
   // A later read of the book reads newer text, so this one files only a book none has filed.
   if (read.watches.get(bookId) !== stop && read.readBookIds.has(bookId)) return false;
   const wasAnswering = textBookIdsOf(read) !== undefined;
+  read.orderedConcordances = undefined;
   if (delivered) {
     read.forms.setBook(bookId, delivered.forms);
     read.failedBookIds.delete(bookId);
-    if (delivered.book) read.textBookIds.add(bookId);
-    else read.textBookIds.delete(bookId);
+    if (delivered.book) {
+      read.textBookIds.add(bookId);
+      read.concordances.set(bookId, indexBook(delivered.book));
+    } else {
+      read.textBookIds.delete(bookId);
+      read.concordances.delete(bookId);
+    }
   } else {
     read.failedBookIds.add(bookId);
+    read.concordances.delete(bookId);
   }
   read.readBookIds.add(bookId);
   reportProgress(sourceProjectId, read, wasAnswering);
@@ -665,6 +684,25 @@ export async function listBooks(
   return { bookIds: presentBookIds(booksPresent), writingSystem };
 }
 
+/**
+ * Reads each of `bookIds` of `read`'s text, at most {@link READ_CONCURRENCY} at a time, stopping
+ * once the read ends.
+ */
+async function readTextBooks(
+  sourceProjectId: string,
+  read: TextRead,
+  bookIds: readonly string[],
+): Promise<void> {
+  const unread = [...bookIds];
+  const readNext = async (): Promise<void> => {
+    const bookId = unread.shift();
+    if (bookId === undefined || textReads.get(sourceProjectId) !== read) return;
+    await readTextBook(sourceProjectId, read, bookId, false);
+    await readNext();
+  };
+  await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
+}
+
 /** Reads each book of `read`'s text once the books are listed. Resolves once the read ends. */
 async function readText(sourceProjectId: string, read: TextRead): Promise<void> {
   const isCurrent = () => textReads.get(sourceProjectId) === read;
@@ -675,14 +713,7 @@ async function readText(sourceProjectId: string, read: TextRead): Promise<void> 
   });
   if (!listed || !isCurrent()) return;
   read.writingSystem = listed.writingSystem;
-  const unread = [...listed.bookIds];
-  const readNext = async (): Promise<void> => {
-    const bookId = unread.shift();
-    if (bookId === undefined || !isCurrent()) return;
-    await readTextBook(sourceProjectId, read, bookId, false);
-    await readNext();
-  };
-  await Promise.all(Array.from({ length: READ_CONCURRENCY }, readNext));
+  await readTextBooks(sourceProjectId, read, listed.bookIds);
   if (!isCurrent()) return;
   read.isRead = true;
   reportProgress(sourceProjectId, read, false);
@@ -701,6 +732,7 @@ function beginTextRead(sourceProjectId: string): TextRead {
     failedBookIds: new Set(),
     textBookIds: new Set(),
     forms: new FormIndex(),
+    concordances: new Map(),
     watches: new Map(),
   };
   textReads.set(sourceProjectId, read);
@@ -710,9 +742,9 @@ function beginTextRead(sourceProjectId: string): TextRead {
 
 /**
  * Reports how far reading the source project's whole text has got, starting the read when the
- * project has none. The read keeps a form index that {@link isFormInText} answers from, and watches
- * each book it has read, reporting its edits through {@link onBookTextChanged}, until the read
- * ends.
+ * project has none. The read keeps a form index, which {@link isFormInText} answers from, and each
+ * book's occurrences, which {@link getConcordanceBooks} serves. Until the read ends, it watches each
+ * book it has read and reports the book's edits through {@link onBookTextChanged}.
  *
  * @returns Once the text's books are known, the `TextReadStatus` as JSON.
  * @throws If the books or the provider of their text cannot be got. The read is dropped, so the
@@ -739,6 +771,38 @@ export function isFormInText(sourceProjectId: string, form: string): boolean | u
   const read = textReads.get(sourceProjectId);
   if (!read?.isRead || read.failedBookIds.size > 0) return undefined;
   return read.forms.has(normalizeSurfaceForm(form));
+}
+
+/**
+ * The occurrences of each book of the source project's text, in canonical order, leaving out books
+ * that hold no text and books whose latest read failed. Answers with the same array until a book's
+ * occurrences change or the read ends.
+ *
+ * @returns `undefined` until every book has been read.
+ */
+export function getConcordanceBooks(
+  sourceProjectId: string,
+): readonly BookConcordance[] | undefined {
+  const read = textReads.get(sourceProjectId);
+  if (!read?.isRead) return undefined;
+  read.orderedConcordances ??= [...read.concordances.values()].sort(
+    (a, b) => Canon.bookIdToNumber(a.book) - Canon.bookIdToNumber(b.book),
+  );
+  return read.orderedConcordances;
+}
+
+/**
+ * Reads again each book whose latest read of the source project's whole text failed, so that a
+ * failure that has passed need not wait for an edit to the book. Does nothing until every book has
+ * been read once.
+ *
+ * @returns Once each of those books has been read again.
+ */
+export async function retryFailedBooks(sourceProjectId: string): Promise<void> {
+  const read = textReads.get(sourceProjectId);
+  if (!read?.isRead || read.failedBookIds.size === 0) return;
+  await readTextBooks(sourceProjectId, read, [...read.failedBookIds]);
+  if (textReads.get(sourceProjectId) === read) reportTextRead(sourceProjectId, read);
 }
 
 /**

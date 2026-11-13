@@ -94,6 +94,31 @@ function compareBookIds(a: string, b: string): number {
   return Canon.bookIdToNumber(a) - Canon.bookIdToNumber(b);
 }
 
+/**
+ * Orders dropped clusters canonically by their verse key, then by language. A verse such as `2-3`
+ * or `2a` sorts by its leading number. A chapter or verse with no ASCII leading number, such as the
+ * Devanagari `२`, sorts after every number.
+ */
+function compareDroppedClusters(
+  a: ReportTotals['droppedClusters'][number],
+  b: ReportTotals['droppedClusters'][number],
+): number {
+  const place = ({ verseRef }: Pt9ClusterDrop) => {
+    const [bookId, chapterVerse = ''] = verseRef.split(' ');
+    const [chapter, verse = ''] = chapterVerse.split(':');
+    return [
+      Canon.bookIdToNumber(bookId),
+      Number.parseInt(chapter, 10),
+      Number.parseInt(verse, 10),
+    ].map((part) => (Number.isNaN(part) ? Infinity : part));
+  };
+  const placeA = place(a);
+  const placeB = place(b);
+  const differing = placeA.findIndex((part, i) => part !== placeB[i]);
+  if (differing >= 0) return placeA[differing] < placeB[differing] ? -1 : 1;
+  return a.language.localeCompare(b.language);
+}
+
 /** Orders files by the book each declares, canonically, with files declaring none last. */
 function compareUnreadableFiles(a: Pt9UnreadableFile, b: Pt9UnreadableFile): number {
   const bookNumber = (file: Pt9UnreadableFile) =>
@@ -196,7 +221,7 @@ function foldReport(report: Pt9ImportReport): ReportTotals {
     clustersConverted,
     phrasesConverted,
     drops,
-    droppedClusters,
+    droppedClusters: droppedClusters.sort(compareDroppedClusters),
   };
 }
 

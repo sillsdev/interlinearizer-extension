@@ -3,7 +3,7 @@
 import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { TextAnalysis } from 'interlinearizer';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo } from 'react';
 import {
   useCatalogRowsByIds,
   useCatalogView,
@@ -13,17 +13,19 @@ import {
   useStaleSummary,
   useTextReadStatus,
 } from '../../cache/catalogHooks';
-import { emptyAnalysis } from '../../types/empty-factories';
-import { prepareAnalysis, settle } from '../components/analysis-provider';
-import { FIXTURE_STAMPS, makeTokenLink } from '../test-helpers';
-import { BOOK, ref } from './session-source';
-import { readText, relayChange } from './fake-host';
-
-const ANALYSIS: TextAnalysis = {
-  ...emptyAnalysis(),
-  tokenAnalyses: [{ id: 'ta-god', ...FIXTURE_STAMPS, surfaceText: 'God', gloss: { en: 'God' } }],
-  tokenAnalysisLinks: [makeTokenLink('ta-god', ref('God'), { surfaceText: 'God', id: 'tl-god' })],
-};
+import { settle } from '../components/analysis-provider';
+import { makeTokenLink } from '../test-helpers';
+import { relayChange } from './fake-host';
+import { ref } from './session-source';
+import {
+  ANALYSIS,
+  changeNaming,
+  failing,
+  sessionIdOf,
+  setLanguage,
+  timesSent,
+  wrapperOver,
+} from './hook-sessions';
 
 const REQUEST = {
   currentBook: 'GEN',
@@ -33,52 +35,6 @@ const REQUEST = {
   sourceLanguageTag: 'en',
 };
 
-/** A wrapper giving the hooks a session over `analysis` that a fake host serves. */
-async function wrapperOver(text = readText([]), analysis: TextAnalysis = ANALYSIS) {
-  const Provider = await prepareAnalysis(analysis, BOOK, text);
-  return function Wrapper({ children }: Readonly<{ children: ReactNode }>) {
-    return <Provider>{children}</Provider>;
-  };
-}
-
-/** Sets the language of the session that the view last sent `command` under, as the view does. */
-async function setLanguage(command: string, analysisLanguage: string): Promise<void> {
-  await papi.commands.sendCommand('interlinearizer.setAnalysisLanguage', {
-    sessionId: sessionIdOf(command),
-    analysisLanguage,
-  });
-}
-
-/** How many times the view has sent `command`. */
-function timesSent(command: string): number {
-  return jest.mocked(papi.commands.sendCommand).mock.calls.filter(([sent]) => sent === command)
-    .length;
-}
-
-/** The session id the view last sent `command` under. */
-function sessionIdOf(command: string): string {
-  const args = jest
-    .mocked(papi.commands.sendCommand)
-    .mock.calls.findLast(([sent]) => sent === command)?.[1];
-  const sessionId = typeof args === 'object' && args ? Reflect.get(args, 'sessionId') : undefined;
-  if (typeof sessionId !== 'string') throw new Error(`${command} named no session`);
-  return sessionId;
-}
-
-/** A change to the session that names `queries`, and touched nothing else. */
-function changeNaming(sessionId: string, queries: string[]) {
-  return { sessionId, changeId: 'c', books: [], analysisIds: [], forms: [], queries };
-}
-
-/** Makes the host fail `command` from now on, answering the rest as before. */
-function failing(command: string): void {
-  const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
-  jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
-    if (call[0] === command) throw new Error('offline');
-    return serve?.(...call);
-  });
-}
-
 describe('useCatalogView', () => {
   it("serves a page of the session's catalog, each row's books as a set", async () => {
     const wrapper = await wrapperOver();
@@ -87,7 +43,7 @@ describe('useCatalogView', () => {
     await settle();
 
     expect(result.current.view?.rows.map((row) => [row.analysisId, row.books])).toStrictEqual([
-      ['ta-god', new Set(['GEN'])],
+      ['ta-beginning', new Set(['GEN'])],
     ]);
   });
 
@@ -160,7 +116,7 @@ describe('useCatalogView', () => {
     const shown = result.current.view?.keptIds;
     await settle();
 
-    expect(shown).toStrictEqual(['ta-god']);
+    expect(shown).toStrictEqual(['ta-beginning']);
   });
 
   it('logs a page that could not be fetched', async () => {
@@ -213,13 +169,13 @@ describe('useCatalogView', () => {
   it('keeps the last page when fetching it again fails', async () => {
     const wrapper = await wrapperOver();
     const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
-    await waitFor(() => expect(result.current.view?.keptIds).toStrictEqual(['ta-god']));
+    await waitFor(() => expect(result.current.view?.keptIds).toStrictEqual(['ta-beginning']));
     failing('interlinearizer.getCatalogRows');
 
     relayChange(changeNaming(sessionIdOf('interlinearizer.getCatalogRows'), ['getCatalogRows']));
     await settle();
 
-    expect(result.current.view?.keptIds).toStrictEqual(['ta-god']);
+    expect(result.current.view?.keptIds).toStrictEqual(['ta-beginning']);
   });
 });
 
@@ -281,16 +237,16 @@ describe('useSelectionSummary', () => {
   it('summarizes the selected analyses', async () => {
     const wrapper = await wrapperOver();
 
-    const { result } = renderHook(() => useSelectionSummary(['ta-god']), { wrapper });
+    const { result } = renderHook(() => useSelectionSummary(['ta-beginning']), { wrapper });
 
     await waitFor(() =>
-      expect(result.current).toStrictEqual({ usageCount: 1, glossedIds: ['ta-god'] }),
+      expect(result.current).toStrictEqual({ usageCount: 1, glossedIds: ['ta-beginning'] }),
     );
   });
 
   it('drops the last summary when fetching it again fails', async () => {
     const wrapper = await wrapperOver();
-    const { result } = renderHook(() => useSelectionSummary(['ta-god']), { wrapper });
+    const { result } = renderHook(() => useSelectionSummary(['ta-beginning']), { wrapper });
     await waitFor(() => expect(result.current).toBeDefined());
     failing('interlinearizer.getSelectionSummary');
 
@@ -306,7 +262,7 @@ describe('useSelectionSummary', () => {
     const wrapper = await wrapperOver();
     failing('interlinearizer.getSelectionSummary');
 
-    renderHook(() => useSelectionSummary(['ta-god']), { wrapper });
+    renderHook(() => useSelectionSummary(['ta-beginning']), { wrapper });
     await settle();
 
     expect(logger.warn).toHaveBeenCalledWith(
@@ -320,7 +276,7 @@ describe('useDeletionPreview', () => {
   it('is loading until the host answers', async () => {
     const wrapper = await wrapperOver();
 
-    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
 
     expect(result.current).toStrictEqual({ status: 'loading' });
     await settle();
@@ -329,7 +285,7 @@ describe('useDeletionPreview', () => {
   it('states what deleting the analysis would do', async () => {
     const wrapper = await wrapperOver();
 
-    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
 
     await waitFor(() =>
       expect(result.current).toStrictEqual({
@@ -351,7 +307,7 @@ describe('useDeletionPreview', () => {
     const wrapper = await wrapperOver();
     failing('interlinearizer.previewDeletion');
 
-    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
 
     await waitFor(() => expect(result.current.status).toBe('failed'));
     expect(logger.warn).toHaveBeenCalledWith(
@@ -364,7 +320,7 @@ describe('useDeletionPreview', () => {
     const wrapper = await wrapperOver();
     const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
     failing('interlinearizer.previewDeletion');
-    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
     await waitFor(() => expect(result.current.status).toBe('failed'));
     jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => serve?.(...call));
 
@@ -379,7 +335,7 @@ describe('useDeletionPreview', () => {
   it('shows a retried preview as loading until the host answers', async () => {
     const wrapper = await wrapperOver();
     failing('interlinearizer.previewDeletion');
-    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
     await waitFor(() => expect(result.current.status).toBe('failed'));
 
     const { current } = result;
@@ -393,7 +349,7 @@ describe('useDeletionPreview', () => {
 
   it('fetches again when a change to the session names the catalog', async () => {
     const wrapper = await wrapperOver();
-    renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
     await settle();
 
     relayChange(changeNaming(sessionIdOf('interlinearizer.previewDeletion'), ['getCatalogRows']));
@@ -407,7 +363,7 @@ describe('a change of analysis language', () => {
   it('fetches the catalog page again in the new language', async () => {
     const wrapper = await wrapperOver();
     const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
-    await waitFor(() => expect(result.current.view?.rows[0]?.gloss).toBe('God'));
+    await waitFor(() => expect(result.current.view?.rows[0]?.gloss).toBe('start'));
 
     await setLanguage('interlinearizer.getCatalogRows', 'fr');
 
@@ -416,8 +372,8 @@ describe('a change of analysis language', () => {
 
   it('summarizes the selection again in the new language', async () => {
     const wrapper = await wrapperOver();
-    const { result } = renderHook(() => useSelectionSummary(['ta-god']), { wrapper });
-    await waitFor(() => expect(result.current?.glossedIds).toStrictEqual(['ta-god']));
+    const { result } = renderHook(() => useSelectionSummary(['ta-beginning']), { wrapper });
+    await waitFor(() => expect(result.current?.glossedIds).toStrictEqual(['ta-beginning']));
 
     await setLanguage('interlinearizer.getSelectionSummary', 'fr');
 
@@ -426,8 +382,8 @@ describe('a change of analysis language', () => {
 
   it("drops the old language's summary when fetching it in the new language fails", async () => {
     const wrapper = await wrapperOver();
-    const { result } = renderHook(() => useSelectionSummary(['ta-god']), { wrapper });
-    await waitFor(() => expect(result.current?.glossedIds).toStrictEqual(['ta-god']));
+    const { result } = renderHook(() => useSelectionSummary(['ta-beginning']), { wrapper });
+    await waitFor(() => expect(result.current?.glossedIds).toStrictEqual(['ta-beginning']));
     failing('interlinearizer.getSelectionSummary');
 
     await act(() => setLanguage('interlinearizer.getSelectionSummary', 'fr'));
@@ -438,18 +394,18 @@ describe('a change of analysis language', () => {
 
   it('fetches the rows by id again in the new language', async () => {
     const wrapper = await wrapperOver();
-    const { result } = renderHook(() => useCatalogRowsByIds(['ta-god'], 'GEN'), { wrapper });
-    await waitFor(() => expect(result.current?.get('ta-god')?.gloss).toBe('God'));
+    const { result } = renderHook(() => useCatalogRowsByIds(['ta-beginning'], 'GEN'), { wrapper });
+    await waitFor(() => expect(result.current?.get('ta-beginning')?.gloss).toBe('start'));
 
     await setLanguage('interlinearizer.getCatalogRowsByIds', 'fr');
 
-    await waitFor(() => expect(result.current?.get('ta-god')?.gloss).toBe(''));
+    await waitFor(() => expect(result.current?.get('ta-beginning')?.gloss).toBe(''));
   });
 
   it('fetches the homographs again in the new language', async () => {
     const wrapper = await wrapperOver();
-    const { result } = renderHook(() => useHomographRows('ta-god', 'GEN'), { wrapper });
-    await waitFor(() => expect(result.current?.[0]?.gloss).toBe('God'));
+    const { result } = renderHook(() => useHomographRows('ta-beginning', 'GEN'), { wrapper });
+    await waitFor(() => expect(result.current?.[0]?.gloss).toBe('start'));
 
     await setLanguage('interlinearizer.getHomographRows', 'fr');
 
@@ -458,7 +414,7 @@ describe('a change of analysis language', () => {
 
   it('previews the deletion again', async () => {
     const wrapper = await wrapperOver();
-    const { result } = renderHook(() => useDeletionPreview('ta-god'), { wrapper });
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
     await waitFor(() => expect(result.current.status).toBe('ready'));
 
     await setLanguage('interlinearizer.previewDeletion', 'fr');
@@ -471,7 +427,11 @@ describe('useStaleSummary', () => {
   const STALE: TextAnalysis = {
     ...ANALYSIS,
     tokenAnalysisLinks: [
-      makeTokenLink('ta-god', ref('God'), { surfaceText: 'God', id: 'tl-god', status: 'stale' }),
+      makeTokenLink('ta-beginning', ref('beginning'), {
+        surfaceText: 'beginning',
+        id: 'tl-beginning',
+        status: 'stale',
+      }),
     ],
   };
 
@@ -482,7 +442,7 @@ describe('useStaleSummary', () => {
 
     await waitFor(() =>
       expect(result.current).toStrictEqual({
-        glosses: [{ analysisId: 'ta-god', tokenRef: ref('God') }],
+        glosses: [{ analysisId: 'ta-beginning', tokenRef: ref('beginning') }],
         freeTranslations: [],
       }),
     );

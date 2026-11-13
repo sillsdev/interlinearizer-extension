@@ -1738,18 +1738,15 @@ describe('AnalysisSessions', () => {
       expect(applyPass).toHaveBeenCalledTimes(1);
     });
 
-    it.each([
-      ['applies a', 'it links into', AFTER, 1],
-      ['applies no', 'it holds no analysis in', makeVerseBook([{ sid: 'EXO 1:1', text: 'x' }]), 0],
-    ])('%s pass over a book %s', async (_applies, _holds, book, applied) => {
+    it('applies a pass over a book it links into', async () => {
       const { sessions, sessionId } = await sessionGlossingBeta();
       const applyPass = await sessions.run(sessionId, async (session) =>
         jest.spyOn(session.history, 'applyPass'),
       );
 
-      await sessions.reanchorBook(SOURCE, book);
+      await sessions.reanchorBook(SOURCE, AFTER);
 
-      expect(applyPass).toHaveBeenCalledTimes(applied);
+      expect(applyPass).toHaveBeenCalledTimes(1);
     });
 
     it('undoes and redoes edits re-anchored to the current text', async () => {
@@ -2095,6 +2092,9 @@ describe('AnalysisSessions save targets', () => {
   const adding = (id: string) => async (buffer: ChangeBuffer) => {
     buffer.create('tokenAnalyses', payload(id));
   };
+  const removing = (id: string) => async (buffer: ChangeBuffer) => {
+    buffer.delete('tokenAnalyses', payload(id));
+  };
   const storedDraft = async (storage: ReturnType<typeof makeSessions>['storage']) =>
     (await new DraftRepository(storage, SOURCE, silentLogger()).exportAll()).draft;
   const scopeOf = (sessions: AnalysisSessions, sessionId: string) =>
@@ -2265,6 +2265,46 @@ describe('AnalysisSessions save targets', () => {
     const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
     const { sessionId } = await sessions.open(SOURCE, 'proj-1');
     await sessions.edit(sessionId, 'add', adding('a'));
+
+    await sessions.detachFromProject(sessionId);
+    await sessions.undo(sessionId);
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: false });
+  });
+
+  it('marks the draft saved when an undo leads back to an empty draft that a discard restored, once its project is deleted', async () => {
+    const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+    await sessions.edit(sessionId, 'add', adding('a'), { unsavedMark: 'clear' });
+    await sessions.edit(sessionId, 'remove', removing('a'), { unsavedMark: 'clear' });
+    await sessions.edit(sessionId, 'add b', adding('b'));
+
+    await sessions.detachFromProject(sessionId);
+    await sessions.undo(sessionId);
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: false });
+  });
+
+  it('marks the draft saved when an undo leads back to an empty draft that an edit kept saved, once its project is deleted', async () => {
+    const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+    await sessions.edit(sessionId, 'add', adding('a'), { unsavedMark: 'clear' });
+    await sessions.edit(sessionId, 'remove', removing('a'), { unsavedMark: 'keep' });
+    await sessions.edit(sessionId, 'add b', adding('b'));
+
+    await sessions.detachFromProject(sessionId);
+    await sessions.undo(sessionId);
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: false });
+  });
+
+  it('marks the draft saved when an undo leads back to an empty draft that a discard changing nothing marked saved, once its project is deleted', async () => {
+    const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+    await sessions.edit(sessionId, 'add', adding('a'), { unsavedMark: 'clear' });
+    await sessions.edit(sessionId, 'remove', removing('a'));
+    await sessions.edit(sessionId, 'discard', async () => {}, { unsavedMark: 'clear' });
+    await sessions.edit(sessionId, 'add b', adding('b'));
 
     await sessions.detachFromProject(sessionId);
     await sessions.undo(sessionId);

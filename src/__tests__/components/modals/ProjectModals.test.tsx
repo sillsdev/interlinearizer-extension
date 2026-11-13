@@ -292,12 +292,14 @@ jest.mock('../../../components/modals/DeleteProjectConfirm', () => ({
     projectId,
     projectName,
     isPt9Import,
+    isActiveProject,
     onCancel,
     onDeleted,
   }: {
     projectId: string;
     projectName?: string;
     isPt9Import: boolean;
+    isActiveProject: boolean;
     onCancel: () => void;
     onDeleted: (id: string) => void;
   }) => (
@@ -305,6 +307,7 @@ jest.mock('../../../components/modals/DeleteProjectConfirm', () => ({
       data-testid="delete-confirm"
       data-project-name={projectName}
       data-pt9-import={String(isPt9Import)}
+      data-active-project={String(isActiveProject)}
     >
       <button type="button" data-testid="delete-confirm-cancel" onClick={onCancel}>
         Cancel
@@ -1516,6 +1519,7 @@ describe('ProjectModals', () => {
       const confirm = screen.getByTestId('delete-confirm');
       expect(confirm).toHaveAttribute('data-project-name', MOCK_PROJECT.name);
       expect(confirm).toHaveAttribute('data-pt9-import', 'false');
+      expect(confirm).toHaveAttribute('data-active-project', 'true');
     });
 
     it('tells the delete confirmation when the active project is a Paratext 9 import', () => {
@@ -1523,6 +1527,13 @@ describe('ProjectModals', () => {
         <ProjectModals {...buildProps({ modal: 'delete', activeProject: MOCK_IMPORT_PROJECT })} />,
       );
       expect(screen.getByTestId('delete-confirm')).toHaveAttribute('data-pt9-import', 'true');
+    });
+
+    it('does not tell the delete confirmation that an active import is the draft Save target', () => {
+      render(
+        <ProjectModals {...buildProps({ modal: 'delete', activeProject: MOCK_IMPORT_PROJECT })} />,
+      );
+      expect(screen.getByTestId('delete-confirm')).toHaveAttribute('data-active-project', 'false');
     });
 
     it('resets and detaches the active project once it is deleted', async () => {

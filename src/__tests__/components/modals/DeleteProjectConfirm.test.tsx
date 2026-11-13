@@ -13,6 +13,7 @@ const defaultProps = {
   projectId: 'proj-uuid',
   projectName: 'French glosses',
   isPt9Import: false,
+  isActiveProject: false,
   onCancel: jest.fn(),
   onDeleted: jest.fn(),
 };
@@ -54,6 +55,22 @@ describe('DeleteProjectConfirm', () => {
 
     expect(
       screen.queryByText(/%interlinearizer_confirm_deleteProject_pt9Unaffected%/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('tells the user that the open draft is kept when deleting the active project', () => {
+    render(<DeleteProjectConfirm {...defaultProps} isActiveProject />);
+
+    expect(
+      screen.getByText(/%interlinearizer_confirm_deleteProject_draftKept%/),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the draft unmentioned when deleting a project that is not the active one', () => {
+    render(<DeleteProjectConfirm {...defaultProps} />);
+
+    expect(
+      screen.queryByText(/%interlinearizer_confirm_deleteProject_draftKept%/),
     ).not.toBeInTheDocument();
   });
 

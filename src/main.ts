@@ -37,6 +37,7 @@ import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
 import { readBookOutline, readSegmentPage, readStaleSummary } from './services/sessionPages';
 import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
+import { sessionConcordanceHandlers } from './services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
@@ -888,6 +889,24 @@ async function getTextReadStatus({ sessionId }: SessionAddress): Promise<string>
 }
 
 /**
+ * Reads again each book of a session source's whole text whose latest read failed.
+ *
+ * @throws If the session is not open. The error is logged before rethrowing.
+ */
+async function retryTextRead({ sessionId }: SessionAddress): Promise<void> {
+  try {
+    const sourceProjectId = await sessions.run(
+      sessionId,
+      async ({ scope }) => scope.sourceProjectId,
+    );
+    await bookService.retryFailedBooks(sourceProjectId);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to read the text of session ${sessionId} again`, e);
+    throw e;
+  }
+}
+
+/**
  * Builds the draft that starting over from `from` writes for the source project: a copy of a stored
  * project's analysis and configuration, or an empty draft with a New dialog's configuration.
  *
@@ -1262,6 +1281,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getOpenVerseBook: bookService.getOpenVerseBook,
     getVerseBook: bookService.getVerseBook,
     isFormInText: bookService.isFormInText,
+  });
+  const concordance = sessionConcordanceHandlers({
+    sessions: activeSessions,
+    logger,
+    getConcordanceBooks: bookService.getConcordanceBooks,
+    getWritingSystem: bookService.getWritingSystem,
   });
   const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book, edited) =>
     activeSessions
@@ -1736,6 +1761,18 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const retryTextReadCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.retryTextRead',
+    retryTextRead,
+    {
+      method: {
+        summary: "Read again each book of a session's whole source text whose latest read failed",
+        params: [sessionAddressParam],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
   const startDraftOverCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.startDraftOver',
     startDraftOver,
@@ -1982,10 +2019,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  const sessionCommands = { ...edits, ...catalog };
+  const sessionCommands = { ...edits, ...catalog, ...concordance };
   const sessionRegistrations: UnsubscriberAsync[] = [];
 
-  /** Registers the session command `commandName`, served by its edit or catalog handler. */
+  /**
+   * Registers the session command `commandName`, served by its edit, catalog or concordance
+   * handler.
+   */
   async function registerSessionCommand(
     commandName: keyof typeof sessionCommands,
     method: MethodDocumentationWithoutName,
@@ -2647,6 +2687,24 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   });
 
+  await registerSessionCommand('interlinearizer.getConcordance', {
+    summary:
+      "Serve one page of a session's concordance: of the forms of its source's whole text, or of one form's occurrences",
+    params: sessionArgs({
+      name: 'request',
+      required: true,
+      summary:
+        'ConcordanceRequest naming the page, and either the current book or the form whose occurrences are paged',
+      schema: { type: 'object' },
+    }),
+    result: {
+      name: 'return value',
+      summary:
+        'JSON-stringified ConcordancePage, or ConcordanceOccurrencePage for a form; "null" until the whole text has been read',
+      schema: { type: 'string' },
+    },
+  });
+
   const checkIndexesCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.checkIndexes',
     checkIndexes,
@@ -3097,6 +3155,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getSegmentsCommandRegistration,
     getStaleSummaryCommandRegistration,
     getTextReadStatusCommandRegistration,
+    retryTextReadCommandRegistration,
     startDraftOverCommandRegistration,
     openSessionCommandRegistration,
     closeSessionCommandRegistration,

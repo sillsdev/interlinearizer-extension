@@ -203,6 +203,8 @@ The handlers that turn each command's arguments into a call on its family live i
 
 The analysis catalog is served by [sessionCatalogHandlers](src/services/sessionCatalogHandlers.ts): `getCatalogRows` (a page by offset, the ids of every row it keeps, and the filter facets), `getSelectionSummary`, `countUsages`, `getCatalogRowsByIds`, `getHomographRows` and `previewDeletion`. Each reads the session's whole draft, and [catalogPages](src/services/catalogPages.ts) derives the answers. `previewDeletion` also reads the text of each book where a token approves the analysis, so its outcome is `uncertain` only where it depends on a token whose book's text cannot be read, or where the tokens would fall back to different analyses. "Word not in the text" comes from the whole-text read's form index. The panel reads these queries through [catalogHooks](src/cache/catalogHooks.ts), which fetch again whenever a reported change names the query. A switch to a new analysis language reports a change that names `getCatalogRows`, because every catalog query reads the session's language. JSON writes the untagged filter choice, `undefined`, as `null`, so both ends pass filters and facets through `restoreUntagged`. The fake host serves the catalog queries too, along with a whole-text read that each test configures.
 
+The concordance is served by [sessionConcordanceHandlers](src/services/sessionConcordanceHandlers.ts): `getConcordance` pages either the forms of the whole text, most frequent first, or one form's occurrences with the analyses they are approved to. The whole-text read in `BookService` keeps each book's occurrences, and the handler joins them with the draft's approved links. It answers `null` until every book has been read. While any book's latest read has failed, the panel offers to send `retryTextRead`, which reads those books again. The panel reads it through `useConcordanceView` and `useConcordanceOccurrences` in [concordanceHooks](src/cache/concordanceHooks.ts), which fetch again whenever a reported change names `getConcordance` or `getTextReadStatus`. A switch to a new analysis language reports a change that names `getConcordance` too, because a form's occurrences are glossed in the session's language.
+
 `getStaleSummary` lists the stale gloss places and stale free translations of one book, segmented by the draft's boundaries. [sessionPages](src/services/sessionPages.ts) derives it beside the outline. The stale notice reads it through `useStaleSummary` in catalogHooks, which fetches again whenever a reported change names the query. A change names it when it puts or removes a stale link, changes a payload a stale link names, or moves boundaries, since moving them can move where a stale translation shows.
 
 ### Components
@@ -261,11 +263,17 @@ When it isn't worth handling, throw a clear error naming the unsupported case. A
 
 Jest with ts-jest, jsdom environment. PAPI is fully mocked in `__mocks__/`. Coverage is enforced at 100% on all `src/**` files (branches, functions, lines, statements), aside for select explicit exclusions.
 
+After adding or editing a Jest `describe` block or a TUnit test class, run the [test-audit skill](.claude/skills/test-audit/SKILL.md) on what you edited.
+
 `resetMocks: true` is set globally — mock implementations are cleared before every test, so each test must set up its own mocks (typically in `beforeEach`). Never rely on implementation state leaking from a prior test.
 
 Any `console.error` or `console.warn` call fails the test that is running when it lands, or the file when it lands after the last test ([jest.environment.ts](jest.environment.ts)). A log from a cleanup hook fails the test that the hook ran after. A log from loading a test file, or from its `afterAll`, fails the file. A test that expects a log silences it with `jest.spyOn(console, 'error').mockImplementation(...)`. A test that leaves async work running, such as a lookup that sets state once it resolves, waits for that work with `findBy*` or `waitFor`, or unmounts to abandon it.
 
 `@papi/backend` and `@papi/frontend` mocks are mutually exclusive: backend tests use `papi-backend.ts`, WebView tests use `papi-frontend.ts` + `papi-frontend-react.ts`. Each mock file ends with `export {}` so TypeScript treats it as a module.
+
+### Test data
+
+Keep fixture names, ids, glosses and invented text neutral: no divine names, and nothing sensitive or crude. A quoted scripture snippet may keep its own wording, but the records that a test builds over it pick a neutral word from it, such as `beginning` rather than `God`. Quote a verse that is bland on its own, never one whose wording is sensitive out of context.
 
 ### Testing hooks
 

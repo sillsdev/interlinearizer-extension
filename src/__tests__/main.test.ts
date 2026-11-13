@@ -661,11 +661,13 @@ describe('main', () => {
           'interlinearizer.getStaleSummary',
           'interlinearizer.getSegments',
           'interlinearizer.getTextReadStatus',
+          'interlinearizer.retryTextRead',
           'interlinearizer.getCatalogRows',
           'interlinearizer.countUsages',
           'interlinearizer.getSelectionSummary',
           'interlinearizer.getCatalogRowsByIds',
           'interlinearizer.getHomographRows',
+          'interlinearizer.getConcordance',
           'interlinearizer.openSession',
           'interlinearizer.closeSession',
           'interlinearizer.setAnalysisLanguage',
@@ -2507,6 +2509,9 @@ describe('main', () => {
         getTextReadStatus: handler<(address: string | { sessionId: string }) => Promise<string>>(
           'interlinearizer.getTextReadStatus',
         ),
+        retryTextRead: handler<CommandHandlers['interlinearizer.retryTextRead']>(
+          'interlinearizer.retryTextRead',
+        ),
         sessionIdFor: handler<(sourceProjectId: string) => Promise<string | undefined>>(
           'interlinearizer.sessionIdFor',
         ),
@@ -3108,6 +3113,27 @@ describe('main', () => {
 
         await expect(getTextReadStatus({ sessionId })).resolves.toBe('{"booksRead":1}');
         expect(bookService.getTextReadStatus).toHaveBeenCalledWith('src-project');
+      });
+
+      it("reads again the session source's failed books", async () => {
+        const { openSession, retryTextRead } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        await retryTextRead({ sessionId });
+
+        expect(bookService.retryFailedBooks).toHaveBeenCalledWith('src-project');
+      });
+
+      it('logs and rethrows when a retried read names no open session', async () => {
+        const { retryTextRead } = await activateSessionCommands();
+
+        await expect(retryTextRead({ sessionId: 'no-session' })).rejects.toThrow(
+          'no session no-session is open',
+        );
+        expect(__mockLogger.error).toHaveBeenCalledWith(
+          'Interlinearizer: failed to read the text of session no-session again',
+          expect.any(Error),
+        );
       });
 
       it("starts no read of the session source's text on open", async () => {

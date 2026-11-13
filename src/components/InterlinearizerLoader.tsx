@@ -63,7 +63,6 @@ import AnalysisCatalogPanel, {
   type AnalysisCatalogPanelHandle,
 } from './AnalysisCatalogPanel';
 import BookNotInProjectView from './BookNotInProjectView';
-import { SourceTextProvider } from './SourceTextContext';
 import ConcordancePanel, { CONCORDANCE_PANEL_STRING_KEYS } from './ConcordancePanel';
 import type { SidePanelView } from './SidePanelTabs';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
@@ -913,10 +912,6 @@ function InterlinearizerLoaderInner({
     'sidePanelLayout',
     DEFAULT_SIDE_PANEL_LAYOUT,
   );
-
-  /** Whether the concordance has been shown in this tab. */
-  const [concordanceWanted, setConcordanceWanted] = useState(sidePanel === 'concordance');
-  if (sidePanel === 'concordance' && !concordanceWanted) setConcordanceWanted(true);
 
   const [modal, setModal] = useState<ModalState>('none');
 
@@ -1993,17 +1988,7 @@ function InterlinearizerLoaderInner({
       )}
 
       <div className="tw:flex tw:flex-1 tw:min-h-0">
-        {/* Above the keyed stores in the view area, so the source text is read once per tab. */}
-        <SourceTextProvider
-          enabled={concordanceWanted}
-          liveBook={verseBook}
-          onWanted={session?.requestTextRead}
-          projectId={projectId}
-          shown={sidePanel === 'concordance'}
-          writingSystem={writingSystem}
-        >
-          <LexiconSensesProvider registry={lexiconRegistry}>{viewArea}</LexiconSensesProvider>
-        </SourceTextProvider>
+        <LexiconSensesProvider registry={lexiconRegistry}>{viewArea}</LexiconSensesProvider>
       </div>
 
       <ProjectModals

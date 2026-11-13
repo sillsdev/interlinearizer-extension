@@ -7,21 +7,17 @@ import { useGloss, useGlossDispatch } from '../../components/AnalysisStore';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { emptyPt9ImportReport } from '../../converters/pt9/report';
 import type { SegmentationDispatch } from '../../components/SegmentationStore';
-import useConcordanceEntries from '../../hooks/useConcordanceEntries';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useLexiconRegistry from '../../hooks/useLexiconRegistry';
 import useLostBoundaryDismissal from '../../hooks/useLostBoundaryDismissal';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import useProjectBookIds from '../../hooks/useProjectBookIds';
-import useSourceTextReader from '../../hooks/useSourceTextReader';
 import useStaleAnalysisDismissal from '../../hooks/useStaleAnalysisDismissal';
 import { fakeHost, replyProjectMissing, STORED_PROJECT } from '../cache/fake-host';
 import { BOOK, ref } from '../cache/session-source';
 import { makeScrollGroupHook, makeWebViewState } from '../test-helpers';
-import { makeSourceText, mockKeyAsValueLocalizedStrings } from './test-helpers';
+import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
-jest.mock('../../hooks/useConcordanceEntries');
-jest.mock('../../hooks/useSourceTextReader');
 jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
@@ -142,8 +138,6 @@ function mockLoaderHooks(): void {
     resolveSense: async () => undefined,
     openChooser: undefined,
   });
-  jest.mocked(useSourceTextReader).mockReturnValue(makeSourceText());
-  jest.mocked(useConcordanceEntries).mockReturnValue([]);
   jest
     .mocked(useData)
     .mockReturnValue(
@@ -411,58 +405,6 @@ describe('InterlinearizerLoader opening a Paratext 9 import', () => {
     expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
       'interlinearizer.getProject',
       expect.anything(),
-    );
-  });
-});
-
-describe('InterlinearizerLoader stale filter', () => {
-  /** The latest wanted-text listener that the loader handed the source-text reader. */
-  const latestOnWanted = () => jest.mocked(useSourceTextReader).mock.lastCall?.[0].onWanted;
-
-  it("asks nothing of the session's whole-text read until the text is wanted", async () => {
-    await fakeHost();
-    render(
-      <InterlinearizerLoader
-        projectId="src"
-        webViewId="web-view-1"
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState({ sidePanel: 'catalog' })}
-        updateWebViewDefinition={jest.fn(() => true)}
-      />,
-    );
-
-    await waitFor(() => expect(latestOnWanted()).toBeDefined());
-    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
-      'interlinearizer.getTextReadStatus',
-      expect.anything(),
-    );
-  });
-
-  it("starts the session's whole-text read once the text is wanted", async () => {
-    jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
-    await fakeHost(async (command) =>
-      command === 'interlinearizer.getTextReadStatus'
-        ? JSON.stringify({ booksRead: 1, bookCount: 1, failedBookIds: [] })
-        : undefined,
-    );
-    render(
-      <InterlinearizerLoader
-        projectId="src"
-        webViewId="web-view-1"
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState({ sidePanel: 'catalog' })}
-        updateWebViewDefinition={jest.fn(() => true)}
-      />,
-    );
-
-    await waitFor(() => expect(latestOnWanted()).toBeDefined());
-    act(() => latestOnWanted()?.());
-
-    await waitFor(() =>
-      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-        'interlinearizer.getTextReadStatus',
-        expect.objectContaining({ sessionId: expect.any(String) }),
-      ),
     );
   });
 });

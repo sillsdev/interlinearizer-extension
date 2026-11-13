@@ -27,8 +27,6 @@ import InterlinearizerLoader, {
   UNDO_NOTIFICATION_DURATION_MS,
 } from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
-import useConcordanceEntries from '../../hooks/useConcordanceEntries';
-import useSourceTextReader from '../../hooks/useSourceTextReader';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import type { AnalysisLanguagesChange } from '../../types/analysis-languages-change';
 import type { SegmentPages } from '../../types/segment-pages';
@@ -59,10 +57,8 @@ import {
   type ScrollGroupTuple,
   silentLogger,
 } from '../test-helpers';
-import { makeSourceText, mockKeyAsValueLocalizedStrings } from './test-helpers';
+import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
-jest.mock('../../hooks/useConcordanceEntries');
-jest.mock('../../hooks/useSourceTextReader');
 jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useLexiconRegistry');
 jest.mock('../../hooks/useLostBoundaryDismissal');
@@ -676,12 +672,6 @@ function renderLoader(
   return { ...result, updateWebViewDefinition };
 }
 
-/** Has the source text report itself unread, as it is until something asks for it. */
-function mockUnreadSourceText(): void {
-  jest.mocked(useSourceTextReader).mockReturnValue(makeSourceText());
-  jest.mocked(useConcordanceEntries).mockReturnValue([]);
-}
-
 /** Configures useInterlinearizerBookData to return the given state. */
 function mockBookData(
   overrides: Partial<{
@@ -904,7 +894,6 @@ describe('InterlinearizerLoader', () => {
     });
     mockSettings();
     mockSourceShortName('WEB');
-    mockUnreadSourceText();
   });
 
   it('shows nav controls when interface mode is power', async () => {
@@ -4284,10 +4273,6 @@ describe('InterlinearizerLoader', () => {
   });
 
   describe('concordance command', () => {
-    beforeEach(() => {
-      jest.mocked(useSourceTextReader).mockReturnValue(makeSourceText({ status: 'ready' }));
-    });
-
     it('opens the concordance beside the interlinear view', async () => {
       await flushHost(async () => {
         renderLoader();
@@ -4378,105 +4363,12 @@ describe('InterlinearizerLoader', () => {
 
       expect(screen.getByTestId('concordance-panel')).toBeInTheDocument();
     });
-
-    it('reads nothing for the concordance until it is first shown', async () => {
-      await flushHost(async () => {
-        renderLoader();
-      });
-      await userEvent.click(screen.getByTestId('tab-toolbar-analysis-catalog'));
-
-      expect(useSourceTextReader).toHaveBeenLastCalledWith(
-        expect.objectContaining({ enabled: false }),
-      );
-    });
-
-    it('reads the text of this project, the loaded book live, once the concordance is shown', async () => {
-      mockBookData();
-      await flushHost(async () => {
-        renderLoader();
-      });
-
-      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-
-      expect(useSourceTextReader).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          projectId: testProjectId,
-          liveBook: GEN_1_1_BOOK,
-          enabled: true,
-        }),
-      );
-    });
-
-    it('builds the concordance as shown once it is shown', async () => {
-      mockBookData({ writingSystem: 'hbo' });
-      await flushHost(async () => {
-        renderLoader();
-      });
-
-      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-      await flushHost();
-
-      expect(useConcordanceEntries).toHaveBeenLastCalledWith(
-        expect.objectContaining({ shown: true, writingSystem: 'hbo' }),
-      );
-    });
-
-    it('keeps the source text across a discard that replaces the draft', async () => {
-      let readerMounts = 0;
-      const text = makeSourceText({ status: 'ready' });
-      jest.mocked(useSourceTextReader).mockImplementation(() => {
-        // Held in state so a remount of whatever calls the hook shows up as a fresh count.
-        useReactState(() => {
-          readerMounts += 1;
-          return readerMounts;
-        });
-        return text;
-      });
-      await flushHost(async () => {
-        renderLoader();
-      });
-      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-
-      await userEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
-      await userEvent.click(screen.getByTestId('discard-changes-confirm-all'));
-
-      expect(editsSent()).toEqual(['interlinearizer.discardAll']);
-      expect(readerMounts).toBe(1);
-    });
-
-    it('keeps reading the text once the side panel switches away from the concordance', async () => {
-      await flushHost(async () => {
-        renderLoader();
-      });
-      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-
-      await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
-      await userEvent.click(screen.getByTestId('analysis-catalog-close'));
-
-      expect(useSourceTextReader).toHaveBeenLastCalledWith(
-        expect.objectContaining({ enabled: true }),
-      );
-    });
-
-    it('marks the concordance hidden once the catalog takes the side panel', async () => {
-      await flushHost(async () => {
-        renderLoader();
-      });
-      await userEvent.click(screen.getByTestId('tab-toolbar-concordance'));
-
-      await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
-
-      expect(useConcordanceEntries).toHaveBeenLastCalledWith(
-        expect.objectContaining({ shown: false }),
-      );
-    });
   });
 
   describe('side panel strings', () => {
     let resolveStrings: () => Promise<void>;
 
     beforeEach(() => {
-      jest.mocked(useSourceTextReader).mockReturnValue(makeSourceText({ status: 'ready' }));
       resolveStrings = mockLocalizedStringsResolvedOnDemand();
     });
 
@@ -5292,7 +5184,6 @@ function prepareStoreProbeTest(): void {
   mockLostBoundaries([]);
   mockStaleAnalyses();
   mockProjectBookIds(undefined);
-  mockUnreadSourceText();
   jest
     .mocked(useData)
     .mockReturnValue(

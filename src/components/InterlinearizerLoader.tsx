@@ -788,8 +788,8 @@ function InterlinearizerLoaderInner({
     isInterfaceModeLoading ||
     isShowMorphologyLoading ||
     isShowFreeTranslationLoading;
-  // True during a cross-book swap: the live `scrRef` already names the new book but the loaded `book`
-  // is still the previous one (the new one hasn't arrived yet). Treating this window as loading
+  // True during a cross-book swap: the live `scrRef` already names the new book but the held pages are
+  // still the previous book's (the new outline hasn't arrived yet). Treating this window as loading
   // swaps the old view for the Loading… curtain immediately, so nothing of either book shows until
   // the new one has mounted and fades in.
   const isCrossBookSwap = !!pages && scrRef.book !== pages.bookRef;

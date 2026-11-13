@@ -107,7 +107,7 @@ type WindowRange = Readonly<{ start: number; end: number }>;
 export interface UseSegmentWindowArgs {
   /** Every segment of the book, in document order: the list the window slices. */
   segments: readonly OutlineSegment[];
-  /** Maps every token ref to the id of the segment that contains it. */
+  /** Each token held, or spanned by a phrase, to the id of its segment. */
   tokenSegmentMap: ReadonlyMap<string, string>;
   /** Current scripture reference; the active verse it names is the recenter anchor. */
   scrRef: SerializedVerseRef;

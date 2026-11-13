@@ -136,8 +136,6 @@ const METRIC_LABELS: Record<string, string> = {
   'app-startup': 'App startup',
   'usj-fetch': 'Fetch book text',
   tokenize: 'Tokenize book',
-  'book-fetch': 'Fetch tokenized book',
-  'book-parse': 'Parse tokenized book',
   'outline-fetch': 'Fetch book outline',
   'outline-parse': 'Parse book outline',
   'page-fetch': 'Fetch a page of segments',

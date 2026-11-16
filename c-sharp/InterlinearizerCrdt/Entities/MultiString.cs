@@ -26,7 +26,9 @@ public class MultiString : Dictionary<string, string>
 
     /// <summary>
     /// <paramref name="map"/>, or null when it has no keys, because absence is how a missing value
-    /// is stored.
+    /// is stored. Every change that writes an analysis's map whole stores it through this, as
+    /// <see cref="Patch"/> does for a per-key merge. A map nested in an owned value, such as a
+    /// morpheme's gloss, is stored as given.
     /// </summary>
     public static T? NullIfEmpty<T>(T? map) where T : class, IReadOnlyDictionary<string, string> =>
         map is { Count: > 0 } ? map : null;
@@ -58,7 +60,9 @@ public class MultiString : Dictionary<string, string>
 
 /// <summary>
 /// Per-key changes to a <see cref="MultiString"/> or feature map: a key's new value, or null to
-/// remove the key. Keys left out are left alone.
+/// remove the key. Keys left out are left alone. A patch change carries one as a plain nullable
+/// field rather than a <see cref="Changes.PatchField{T}"/>, because a null patch already means
+/// unset.
 /// </summary>
 public class MultiStringPatch : Dictionary<string, string?>
 {

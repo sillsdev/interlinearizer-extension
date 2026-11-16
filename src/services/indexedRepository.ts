@@ -23,7 +23,10 @@ export type IndexedDraft = {
   index: AnalysisIndex;
 };
 
-/** The reads of a repository that keeps an {@link AnalysisIndex} over its records. */
+/**
+ * The reads of a repository that answers lookups from an {@link AnalysisIndex} over its records,
+ * built on first use.
+ */
 export abstract class IndexedRepository implements Pick<
   AnalysisRepository,
   | 'getWholeDraft'

@@ -401,10 +401,13 @@ export default function InterlinearizerLoader({
 }
 
 /**
- * Loads book data and settings, manages modal state for project creation/selection/metadata, then
- * renders error and loading states or delegates to {@link Interlinearizer} when data is ready. Reads
- * the scripture reference and scroll-group linkage from {@link useInterlinearNav} rather than
+ * Loads the open book's outline and segment pages from the draft's session, along with settings.
+ * Renders error and loading states, or delegates to {@link Interlinearizer} when data is ready.
+ * Reads the scripture reference and scroll-group linkage from {@link useInterlinearNav} rather than
  * calling the host hook directly.
+ *
+ * Owns the modal state for project creation, selection, and metadata, and routes top-menu commands
+ * to the matching modal. Persists the active interlinear project in the WebView's state.
  */
 function InterlinearizerLoaderInner({
   projectId,

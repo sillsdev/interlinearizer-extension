@@ -11,9 +11,9 @@ public record SourcesDirectory(string Path);
 /// <summary>
 /// The source projects the host has open, one DI scope each. A scope holds the Harmony services
 /// over the source's own database, which keeps every interlinear project made over it, and lives
-/// from <see cref="Open"/> to <see cref="Close"/>, rather than one scope per request. Work on a
-/// source must run through <see cref="Exclusive"/>, because the scope's EF context allows no
-/// overlapping operations.
+/// from <see cref="Open"/> to <see cref="Close"/>, rather than one scope per request, as FieldWorks
+/// Lite keeps its projects open. Work on a source must run through <see cref="Exclusive"/>, because
+/// the scope's EF context allows no overlapping operations.
 /// </summary>
 public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory directory) : IAsyncDisposable
 {
@@ -53,7 +53,7 @@ public sealed class OpenSources(IServiceProvider rootServices, SourcesDirectory 
 
     /// <summary>
     /// The file the database of <paramref name="sourceProjectId"/> is kept in, named after the id
-    /// in upper case.
+    /// in upper case. Nothing else names the file, so a source always opens the same database.
     /// </summary>
     /// <exception cref="ArgumentException">If the source's id cannot name a file.</exception>
     public string DbPath(string sourceProjectId) => Path.Combine(directory.Path, Key(sourceProjectId) + ".sqlite");

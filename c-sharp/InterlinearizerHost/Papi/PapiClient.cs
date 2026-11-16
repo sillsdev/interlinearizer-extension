@@ -7,7 +7,8 @@ namespace Interlinearizer.Host.Papi;
 
 /// <summary>
 /// A minimal connection to the Platform.Bible network: JSON-RPC 2.0 over the main process's local
-/// WebSocket. Its public methods take the same shape as the ones Platform.Bible's own .NET process
+/// WebSocket. It exists because Platform.Bible's own client is not packaged for extensions to use.
+/// Its public methods take the same shape as the ones Platform.Bible's own .NET process
 /// offers its services, so a service written against this class can move into that process with
 /// only its constructor's parameter type changed.
 /// </summary>

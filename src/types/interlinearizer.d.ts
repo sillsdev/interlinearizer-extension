@@ -336,6 +336,8 @@ declare module 'papi-shared-types' {
      * session opened afterward has nothing to undo. Stored analysis that could not be read is
      * discarded.
      *
+     * The host builds and writes the draft from `from`, so no draft crosses PAPI.
+     *
      * @throws If `from` names a project that is not stored, or if reading that project, closing the
      *   session, or writing the draft fails. The error is logged and an error notification is sent
      *   before rethrowing; the stored draft is left as it was.

@@ -9,6 +9,10 @@ namespace Interlinearizer.Host;
 /// The interlinearizer's .NET process. The extension starts it on activation. It connects to
 /// Platform.Bible, registers its services, and exits once the connection closes, since the platform
 /// cleans up the processes extensions start only in packaged builds.
+/// <para>
+/// Its services come from the one container built here. No scope is made per request, because
+/// the JSON-RPC layer offers none.
+/// </para>
 /// </summary>
 internal static class Program
 {

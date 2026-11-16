@@ -376,6 +376,27 @@ describe('sessionEditHandlers', () => {
 
       expect(reply.outcome).toStrictEqual({ kind: 'removed' });
     });
+
+    it('is a removal when unlinking the sense empties the record', async () => {
+      const { edits, sessionId } = await handlersOver({}, BOOK, {
+        ...TWO_ANDS,
+        tokenAnalyses: [
+          { id: 'ta-and', ...FIXTURE_STAMPS, surfaceText: 'And', gloss: { en: 'and' } },
+          {
+            id: 'ta-then',
+            ...FIXTURE_STAMPS,
+            surfaceText: 'And',
+            glossSenseRef: { authority: 'x-test', senseId: 'sense-then' },
+          },
+        ],
+      });
+
+      const reply = JSON.parse(
+        await edits['interlinearizer.unlinkAnalysisSense']({ sessionId, analysisId: 'ta-then' }),
+      );
+
+      expect(reply.outcome).toStrictEqual({ kind: 'removed' });
+    });
   });
 
   describe('previewBreakdownEdit', () => {

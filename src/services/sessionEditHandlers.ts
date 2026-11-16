@@ -141,7 +141,7 @@ export function sessionEditHandlers({
   function runCatalogEdit(
     target: EditTarget,
     intent: string,
-    kind: 'catalogEdit' | 'catalogMerge',
+    kind: Parameters<typeof catalogStepOf>[1],
     analysisId: string,
     edit: (buffer: ChangeBuffer, session: Session) => Promise<string | undefined>,
   ): Promise<string> {
@@ -498,6 +498,185 @@ export function sessionEditHandlers({
       analysisId,
       (buffer, session) =>
         catalogCommands.writeAnalysisMorphemeGloss(buffer, {
+          analysisId,
+          morphemeId,
+          value,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
+   * Links a token analysis to a lexicon sense, for every token linked to it.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws As {@link runSessionEdit} does.
+   */
+  function linkAnalysisSense({
+    sessionId,
+    analysisId,
+    senseRef,
+    changeId,
+  }: ArgsOf<'interlinearizer.linkAnalysisSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'linkAnalysisSense',
+      'catalogLinkSense',
+      analysisId,
+      (buffer) =>
+        catalogCommands.linkAnalysisSense(buffer, {
+          analysisId,
+          senseRef,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
+   * Drops a token analysis's lexicon sense link, for every token linked to it, first keeping
+   * `keepGloss` as the gloss in the session's analysis language when it is not blank.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws As {@link runSessionEdit} does.
+   */
+  function unlinkAnalysisSense({
+    sessionId,
+    analysisId,
+    keepGloss,
+    changeId,
+  }: ArgsOf<'interlinearizer.unlinkAnalysisSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'unlinkAnalysisSense',
+      'catalogUnlinkSense',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.unlinkAnalysisSense(buffer, {
+          analysisId,
+          keepGloss,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
+   * Links one morpheme of a token analysis to a lexicon sense, for every token linked to it.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws As {@link runSessionEdit} does.
+   */
+  function linkAnalysisMorphemeSense({
+    sessionId,
+    analysisId,
+    morphemeId,
+    entryRef,
+    senseRef,
+    changeId,
+  }: ArgsOf<'interlinearizer.linkAnalysisMorphemeSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'linkAnalysisMorphemeSense',
+      'catalogLinkSense',
+      analysisId,
+      (buffer) =>
+        catalogCommands.linkAnalysisMorphemeSense(buffer, {
+          analysisId,
+          morphemeId,
+          entryRef,
+          senseRef,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
+   * Drops every lexicon reference of one morpheme of a token analysis, for every token linked to
+   * it, first keeping `keepGloss` as the morpheme's gloss in the session's analysis language when
+   * it is not blank.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws As {@link runSessionEdit} does.
+   */
+  function unlinkAnalysisMorphemeSense({
+    sessionId,
+    analysisId,
+    morphemeId,
+    keepGloss,
+    changeId,
+  }: ArgsOf<'interlinearizer.unlinkAnalysisMorphemeSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'unlinkAnalysisMorphemeSense',
+      'catalogUnlinkSense',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.unlinkAnalysisMorphemeSense(buffer, {
+          analysisId,
+          morphemeId,
+          keepGloss,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
+   * Writes a linked sense's gloss as a token analysis's gloss in the session's analysis language,
+   * keeping the link.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws If `value` is blank, or as {@link runSessionEdit} does.
+   */
+  function adoptAnalysisSenseGloss({
+    sessionId,
+    analysisId,
+    value,
+    changeId,
+  }: ArgsOf<'interlinearizer.adoptAnalysisSenseGloss'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'adoptAnalysisSenseGloss',
+      'catalogAdoptGloss',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.adoptAnalysisSenseGloss(buffer, {
+          analysisId,
+          value,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
+   * Writes a linked sense's gloss as one morpheme's gloss in the session's analysis language,
+   * keeping the link.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws If `value` is blank, or as {@link runSessionEdit} does.
+   */
+  function adoptAnalysisMorphemeSenseGloss({
+    sessionId,
+    analysisId,
+    morphemeId,
+    value,
+    changeId,
+  }: ArgsOf<'interlinearizer.adoptAnalysisMorphemeSenseGloss'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'adoptAnalysisMorphemeSenseGloss',
+      'catalogAdoptGloss',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.adoptAnalysisMorphemeSenseGloss(buffer, {
           analysisId,
           morphemeId,
           value,
@@ -1236,6 +1415,12 @@ export function sessionEditHandlers({
     'interlinearizer.writeAnalysisMorphemes': writeAnalysisMorphemes,
     'interlinearizer.confirmAnalysisMorphemes': confirmAnalysisMorphemes,
     'interlinearizer.writeAnalysisMorphemeGloss': writeAnalysisMorphemeGloss,
+    'interlinearizer.linkAnalysisSense': linkAnalysisSense,
+    'interlinearizer.unlinkAnalysisSense': unlinkAnalysisSense,
+    'interlinearizer.linkAnalysisMorphemeSense': linkAnalysisMorphemeSense,
+    'interlinearizer.unlinkAnalysisMorphemeSense': unlinkAnalysisMorphemeSense,
+    'interlinearizer.adoptAnalysisSenseGloss': adoptAnalysisSenseGloss,
+    'interlinearizer.adoptAnalysisMorphemeSenseGloss': adoptAnalysisMorphemeSenseGloss,
     'interlinearizer.deleteAnalyses': deleteAnalyses,
     'interlinearizer.mergeAnalysesInto': mergeAnalysesInto,
     'interlinearizer.createPhrase': createPhrase,

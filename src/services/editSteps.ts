@@ -3,7 +3,7 @@ import type { EditStep } from '../types/edit-step';
 import type { ChangeBuffer } from './commands/changeBuffer';
 
 /**
- * Reads, ahead of a catalog edit or merge on the row of `analysisId`, what the edit's step will
+ * Reads, ahead of an edit that acts on the catalog row of `analysisId`, what the edit's step will
  * summarize.
  *
  * @returns A function that takes the id of the analysis that holds the row after the edit, or
@@ -12,7 +12,12 @@ import type { ChangeBuffer } from './commands/changeBuffer';
  */
 export async function catalogStepOf(
   buffer: ChangeBuffer,
-  kind: 'catalogEdit' | 'catalogMerge',
+  kind:
+    | 'catalogEdit'
+    | 'catalogMerge'
+    | 'catalogLinkSense'
+    | 'catalogUnlinkSense'
+    | 'catalogAdoptGloss',
   analysisId: string,
 ): Promise<(survivingAnalysisId: string | undefined) => EditStep> {
   const [analysis] = await buffer.getTokenAnalyses([analysisId]);

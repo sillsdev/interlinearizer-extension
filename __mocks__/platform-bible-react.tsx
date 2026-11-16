@@ -459,6 +459,7 @@ export const Button = forwardRef<
     'aria-expanded'?: boolean;
     'aria-haspopup'?: boolean | 'true' | 'false' | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog';
     'aria-controls'?: string;
+    'aria-current'?: 'true' | 'false';
     'aria-hidden'?: boolean;
     'data-testid'?: string;
     /**
@@ -487,6 +488,7 @@ export const Button = forwardRef<
     'aria-expanded': ariaExpanded,
     'aria-haspopup': ariaHaspopup,
     'aria-controls': ariaControls,
+    'aria-current': ariaCurrent,
     'aria-hidden': ariaHidden,
     'data-testid': testId,
     'data-token-ref': tokenRef,
@@ -510,6 +512,7 @@ export const Button = forwardRef<
       aria-expanded={ariaExpanded}
       aria-haspopup={ariaHaspopup}
       aria-controls={ariaControls}
+      aria-current={ariaCurrent}
       aria-hidden={ariaHidden}
       data-testid={testId}
       data-token-ref={tokenRef}

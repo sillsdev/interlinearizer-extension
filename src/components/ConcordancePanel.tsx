@@ -1,7 +1,7 @@
 import { X } from 'lucide-react';
 import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAnalysisLanguage } from './AnalysisStore';
 import ConcordanceRowView, { CONCORDANCE_ROW_STRING_KEYS } from './ConcordanceRowView';
 import { useInterlinearNav } from './InterlinearNavContext';
@@ -11,6 +11,7 @@ import { useTextReadStatus } from '../cache/catalogHooks';
 import { useConcordanceView, useRetryTextRead } from '../cache/concordanceHooks';
 import useRowWindow from '../hooks/useRowWindow';
 import type { ConcordanceOccurrence } from '../utils/concordance';
+import { perfMark, perfMeasure } from '../utils/perf-marks';
 
 /**
  * Localized string keys the panel needs, the rows' among them so the list resolves once rather than
@@ -65,12 +66,19 @@ export default function ConcordancePanel({
   localizedStrings,
   currentBookName,
 }: ConcordancePanelProps) {
+  useLayoutEffect(() => perfMark('concordance-start'), []);
   const readStatus = useTextReadStatus(true);
   const analysisLanguage = useAnalysisLanguage();
 
   // Asked for as many rows as the window mounts, so the window can grow past what has arrived.
   const [fetchCount, setFetchCount] = useState(INITIAL_FETCH_COUNT);
   const view = useConcordanceView(currentBook, fetchCount);
+  const hasRows = Boolean(view);
+  // Times the wait from opening the panel to its first page, including any wait for the whole-text
+  // read.
+  useLayoutEffect(() => {
+    if (hasRows) perfMeasure('concordance-entries', 'concordance-start');
+  }, [hasRows]);
   const total = view?.total ?? 0;
   // Capped past the rows that have arrived. Otherwise a sentinel left in reach while they are
   // asked for would grow the window, and the count asked for, to the whole concordance.

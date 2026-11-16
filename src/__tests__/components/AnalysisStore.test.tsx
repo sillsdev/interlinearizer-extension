@@ -5,11 +5,10 @@ import { act, render, renderHook, waitFor } from '@testing-library/react';
 import type { TextAnalysis } from 'interlinearizer';
 import type { ComponentProps, ReactNode } from 'react';
 import { PageClient } from '../../cache/pageClient';
-import { WholeAnalysis } from '../../cache/wholeAnalysis';
 import * as perfMarks from '../../utils/perf-marks';
 import {
   SessionAnalysisProvider,
-  useAnalysis,
+  useBreakdownPreview,
   useAnalysisLanguage,
   useAnalysisReadOnly,
   useFreeTranslationsBySegment,
@@ -38,8 +37,6 @@ import {
   useSuggestionAfterClearing,
   useMorphemeDeleteDispatch,
   useMorphemeGlossDispatch,
-  useMorphemePayloadIsSolelyOwned,
-  useMorphemeResetLosesAnnotation,
   usePhraseDispatch,
   usePhraseGlossDispatch,
   useSegmentFreeTranslationDispatch,
@@ -47,6 +44,7 @@ import {
   useStaleLocationDispatch,
 } from '../../components/AnalysisStore';
 import * as tokenCommands from '../../services/commands/tokenCommands';
+import { sessionEditHandlers } from '../../services/sessionEditHandlers';
 import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink, tokenRefOf } from '../test-helpers';
 import { BOOK, NOW, ref, sessionOver } from '../cache/session-source';
 
@@ -77,6 +75,12 @@ function isGlossArgs(
   );
 }
 
+/** Whether `args` carry the fields that the WebView sends with `previewBreakdownEdit`. */
+function isPreviewArgs(args: unknown): args is { sessionId: string; tokenRef: string } {
+  if (typeof args !== 'object' || !args) return false;
+  return ['sessionId', 'tokenRef'].every((key) => typeof Reflect.get(args, key) === 'string');
+}
+
 /** The provider props that a test may set; the session's own are filled in. */
 type ProviderProps = Partial<
   Pick<
@@ -103,10 +107,6 @@ async function sessionProviderOver(
   await client.open();
   client.load(held.start, held.end, 'list');
   await client.settled();
-  const whole = new WholeAnalysis(() =>
-    made.sessions.run(made.sessionId, (session) => session.repository.getWholeDraft()),
-  );
-  await whole.refresh();
   jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call: unknown[]) => {
     const [command, args] = call;
     if (command !== 'interlinearizer.writeGloss' || !isGlossArgs(args))
@@ -134,7 +134,6 @@ async function sessionProviderOver(
     return (
       <SessionAnalysisProvider
         client={client}
-        whole={whole}
         sessionId={made.sessionId}
         analysisLanguage={analysisLanguage}
         {...props}
@@ -144,7 +143,7 @@ async function sessionProviderOver(
     );
   }
   const wrapper = ({ children }: { children: ReactNode }) => <Provider>{children}</Provider>;
-  return { ...made, client, whole, Provider, wrapper };
+  return { ...made, client, Provider, wrapper };
 }
 
 describe('AnalysisStore', () => {
@@ -411,20 +410,46 @@ describe('AnalysisStore payload sharing', () => {
     ],
   };
 
+  /** Serves `interlinearizer.previewBreakdownEdit` from the session that `made` opened. */
+  function servePreviews(made: Awaited<ReturnType<typeof sessionProviderOver>>) {
+    const edits = sessionEditHandlers({
+      sessions: made.sessions,
+      logger: { error: jest.fn() },
+      getSegmentedBook: async () => BOOK,
+      getVerseBook: async () => BOOK,
+      getProject: async () => undefined,
+    });
+    jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call: unknown[]) => {
+      const [command, args] = call;
+      if (command !== 'interlinearizer.previewBreakdownEdit' || !isPreviewArgs(args))
+        throw new Error(`unexpected ${String(command)}`);
+      return edits['interlinearizer.previewBreakdownEdit'](args);
+    });
+  }
+
   it('counts a token on a page not held as sharing the payload', async () => {
-    const { wrapper } = await sessionProviderOver(sharedBreakdown, { start: 0, end: 1 });
+    const made = await sessionProviderOver(sharedBreakdown, { start: 0, end: 1 });
+    servePreviews(made);
 
-    const { result } = renderHook(() => useMorphemePayloadIsSolelyOwned(ref('God')), { wrapper });
+    const { result } = renderHook(() => useBreakdownPreview(ref('God'), true), {
+      wrapper: made.wrapper,
+    });
 
-    expect(result.current).toBe(false);
+    await waitFor(() =>
+      expect(result.current).toStrictEqual({ solelyOwned: false, resetLosesAnnotation: false }),
+    );
   });
 
-  it('loses no annotation resetting a breakdown that a token on a page not held shares', async () => {
-    const { wrapper } = await sessionProviderOver(sharedBreakdown, { start: 0, end: 1 });
+  it('asks nothing while the breakdown editor is closed', async () => {
+    const made = await sessionProviderOver(sharedBreakdown);
+    servePreviews(made);
 
-    const { result } = renderHook(() => useMorphemeResetLosesAnnotation(ref('God')), { wrapper });
+    const { result } = renderHook(() => useBreakdownPreview(ref('God'), false), {
+      wrapper: made.wrapper,
+    });
 
-    expect(result.current).toBe(false);
+    expect(result.current).toBeUndefined();
+    expect(papi.commands.sendCommand).not.toHaveBeenCalled();
   });
 });
 
@@ -564,10 +589,11 @@ const READS: [string, () => unknown, unknown][] = [
   ],
   [
     'usePlacedStaleFreeTranslations',
-    () => usePlacedStaleFreeTranslations(BOOK).bySegment,
-    new Map([['GEN 1:2', [{ analysisId: 'sa-old', segmentId: 'GEN 1:2', text: 'old' }]]]),
+    () => usePlacedStaleFreeTranslations().bySegment,
+    new Map([
+      ['GEN 1:2', [{ linkId: 'sl-old', analysisId: 'sa-old', segmentId: 'GEN 1:2', text: 'old' }]],
+    ]),
   ],
-  ['useAnalysis', () => useAnalysis().phraseAnalyses.map((pa) => pa.id), ['pa-1']],
   ['useAnalysisLanguage', () => useAnalysisLanguage(), 'en'],
   ['useAnalysisReadOnly', () => useAnalysisReadOnly(), false],
 ];
@@ -618,7 +644,6 @@ const PROVIDER_HOOKS: [string, () => unknown][] = [
   ['useGloss', () => useGloss('t')],
   ['useGlossDispatch', () => useGlossDispatch()],
   ['useMorphemes', () => useMorphemes('t')],
-  ['useAnalysis', () => useAnalysis()],
   ['useAnalysisReadOnly', () => useAnalysisReadOnly()],
   ['useReportGlossEditing', () => useReportGlossEditing(false, () => {})],
 ];

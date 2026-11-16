@@ -28,5 +28,6 @@ export function buildBookOutline(book: Book, segments: readonly Segment[]): Book
     bookRef: book.bookRef,
     textVersion: book.textVersion,
     segments: segments.map(outlineSegment),
+    duplicateVerseIds: book.duplicateVerseIds,
   };
 }

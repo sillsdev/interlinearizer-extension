@@ -1,8 +1,7 @@
 /// <reference types="jest" />
 
 import papi, { logger } from '@papi/frontend';
-import { act, renderHook } from '@testing-library/react';
-import type { TextAnalysis } from 'interlinearizer';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { PageClient } from '../../cache/pageClient';
 import { PageClientProvider } from '../../cache/pageHooks';
@@ -19,11 +18,10 @@ import {
   useSegmentFreeTranslationDispatch,
   useStaleFreeTranslationDispatch,
   useRemovalPreviews,
+  useBreakdownPreview,
   useStaleLocationDispatch,
 } from '../../cache/sessionEdits';
-import { WholeAnalysis } from '../../cache/wholeAnalysis';
-import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
-import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from '../test-helpers';
+import { makePhraseLink } from '../test-helpers';
 import { sessionOver } from './session-source';
 
 const SNAPSHOTS = [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }];
@@ -36,9 +34,8 @@ async function sessionWrapper() {
     getSegments: made.fetchPage,
   });
   await client.open();
-  const whole = new WholeAnalysis(async () => emptyDraft('src'));
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <PageClientProvider client={client} whole={whole} sessionId="s-1" analysisLanguage="en">
+    <PageClientProvider client={client} sessionId="s-1" analysisLanguage="en">
       {children}
     </PageClientProvider>
   );
@@ -268,8 +265,8 @@ describe('session edit hooks', () => {
   });
 });
 
-/** A reply to an edit, recorded as a catalog step leaving `survivingAnalysisId`. */
-function catalogReply(survivingAnalysisId: string | undefined, extra: object = {}): string {
+/** A catalog edit's reply, carrying `extra`. */
+function catalogReply(extra: object = {}): string {
   return JSON.stringify({
     changeId: 'c',
     changes: { intent: 'x' },
@@ -280,52 +277,24 @@ function catalogReply(survivingAnalysisId: string | undefined, extra: object = {
     staleGlossBooks: [],
     canUndo: false,
     canRedo: false,
-    step: {
-      summary: {
-        kind: 'catalogEdit',
-        form: 'In',
-        analysisId: 'ta-in',
-        ...(survivingAnalysisId !== undefined && { survivingAnalysisId }),
-      },
-    },
     ...extra,
   });
 }
 
-/** The whole analysis after an edit: "In" glossed "at" under `held`, approved once. */
-const wholeHolding = (held: string): TextAnalysis => ({
-  ...emptyAnalysis(),
-  tokenAnalyses: [{ id: held, ...FIXTURE_STAMPS, surfaceText: 'In', gloss: { en: 'at' } }],
-  tokenAnalysisLinks: [makeTokenLink(held, 'GEN 1:1:0')],
-});
-
-/** A provider whose whole analysis holds `after`. */
-async function catalogWrapper(after: TextAnalysis) {
-  const made = await sessionOver();
-  const client = new PageClient({
-    getOutline: () => made.fetchOutline(),
-    getSegments: made.fetchPage,
-  });
-  await client.open();
-  const whole = new WholeAnalysis(async () => ({ ...emptyDraft('src'), analysis: after }));
-  await whole.refresh();
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <PageClientProvider client={client} whole={whole} sessionId="s-1" analysisLanguage="en">
-      {children}
-    </PageClientProvider>
-  );
-  return { wrapper };
-}
+const MERGED = {
+  kind: 'merged',
+  survivingAnalysisId: 'ta-other',
+  survivingGloss: 'at',
+  survivingUsageCount: 1,
+} as const;
 
 describe('useAnalysisRowDispatch', () => {
-  it('reads an edit that leaves its record standing as made in place', async () => {
-    jest.mocked(papi.commands.sendCommand).mockResolvedValue(catalogReply('ta-in'));
-    const { wrapper } = await catalogWrapper(wholeHolding('ta-in'));
+  it('hands back where the reply says a gloss edit left its record', async () => {
+    jest.mocked(papi.commands.sendCommand).mockResolvedValue(catalogReply({ outcome: MERGED }));
+    const { wrapper } = await sessionWrapper();
     const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
-    await expect(result.current.writeGloss('ta-in', 'at')).resolves.toStrictEqual({
-      kind: 'edited',
-    });
+    await expect(result.current.writeGloss('ta-in', 'at')).resolves.toStrictEqual(MERGED);
     expect(papi.commands.sendCommand).toHaveBeenCalledWith('interlinearizer.writeAnalysisGloss', {
       sessionId: 's-1',
       changeId: expect.any(String),
@@ -336,7 +305,7 @@ describe('useAnalysisRowDispatch', () => {
 
   it('reads an edit the session applied nothing for as made in place', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
-    const { wrapper } = await catalogWrapper(wholeHolding('ta-in'));
+    const { wrapper } = await sessionWrapper();
     const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await expect(result.current.writeMorphemes('ta-in', ['I', 'n'], 'en')).resolves.toStrictEqual({
@@ -348,36 +317,25 @@ describe('useAnalysisRowDispatch', () => {
     );
   });
 
-  it("reads a collapse into a sibling as a merge, with the survivor's gloss and uses", async () => {
-    jest.mocked(papi.commands.sendCommand).mockResolvedValue(catalogReply('ta-other'));
-    const { wrapper } = await catalogWrapper(wholeHolding('ta-other'));
+  it('hands back where the reply says a morpheme gloss edit left its record', async () => {
+    jest.mocked(papi.commands.sendCommand).mockResolvedValue(catalogReply({ outcome: MERGED }));
+    const { wrapper } = await sessionWrapper();
     const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
-    await expect(result.current.writeMorphemeGloss('ta-in', 'm-1', 'at')).resolves.toStrictEqual({
-      kind: 'merged',
-      survivingAnalysisId: 'ta-other',
-      survivingGloss: 'at',
-      survivingUsageCount: 1,
-    });
+    await expect(result.current.writeMorphemeGloss('ta-in', 'm-1', 'at')).resolves.toStrictEqual(
+      MERGED,
+    );
     expect(papi.commands.sendCommand).toHaveBeenCalledWith(
       'interlinearizer.writeAnalysisMorphemeGloss',
       expect.objectContaining({ analysisId: 'ta-in', morphemeId: 'm-1', value: 'at' }),
     );
   });
 
-  it('reads an edit that left its record empty as a removal', async () => {
-    jest.mocked(papi.commands.sendCommand).mockResolvedValue(catalogReply(undefined));
-    const { wrapper } = await catalogWrapper(emptyAnalysis());
-    const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
-
-    await expect(result.current.writeGloss('ta-in', '')).resolves.toStrictEqual({
-      kind: 'removed',
-    });
-  });
-
-  it('reads where a merge left its survivor', async () => {
-    jest.mocked(papi.commands.sendCommand).mockResolvedValue(catalogReply('ta-in'));
-    const { wrapper } = await catalogWrapper(wholeHolding('ta-in'));
+  it('hands back where the reply says a merge left its survivor', async () => {
+    jest
+      .mocked(papi.commands.sendCommand)
+      .mockResolvedValue(catalogReply({ outcome: { kind: 'edited' } }));
+    const { wrapper } = await sessionWrapper();
     const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
     const content = { gloss: 'at', morphemes: [] };
 
@@ -397,8 +355,8 @@ describe('useAnalysisRowDispatch', () => {
   it('names the records a gloss clear left empty', async () => {
     jest
       .mocked(papi.commands.sendCommand)
-      .mockResolvedValue(catalogReply(undefined, { emptiedAnalysisIds: ['ta-in'] }));
-    const { wrapper } = await catalogWrapper(emptyAnalysis());
+      .mockResolvedValue(catalogReply({ emptiedAnalysisIds: ['ta-in'] }));
+    const { wrapper } = await sessionWrapper();
     const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await expect(result.current.clearGlosses(['ta-in', 'ta-2'])).resolves.toStrictEqual(['ta-in']);
@@ -410,7 +368,7 @@ describe('useAnalysisRowDispatch', () => {
 
   it('names no records for a gloss clear the session applied nothing for', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
-    const { wrapper } = await catalogWrapper(emptyAnalysis());
+    const { wrapper } = await sessionWrapper();
     const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await expect(result.current.clearGlosses(['ta-in'])).resolves.toStrictEqual([]);
@@ -418,7 +376,7 @@ describe('useAnalysisRowDispatch', () => {
 
   it('deletes records through the session', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
-    const { wrapper } = await catalogWrapper(emptyAnalysis());
+    const { wrapper } = await sessionWrapper();
     const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await result.current.deleteAnalyses(['ta-in']);
@@ -431,12 +389,30 @@ describe('useAnalysisRowDispatch', () => {
 
   it('logs and rejects an edit the session refuses', async () => {
     jest.mocked(papi.commands.sendCommand).mockRejectedValue(new Error('refused'));
-    const { wrapper } = await catalogWrapper(emptyAnalysis());
+    const { wrapper } = await sessionWrapper();
     const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
 
     await expect(result.current.deleteAnalyses(['ta-in'])).rejects.toThrow('refused');
     expect(logger.error).toHaveBeenCalledWith(
       'Interlinearizer: failed to deleteAnalyses',
+      expect.any(Error),
+    );
+  });
+});
+
+describe('useBreakdownPreview', () => {
+  it('logs a preview the session cannot answer, and takes the edit to lose annotation', async () => {
+    jest.mocked(papi.commands.sendCommand).mockRejectedValue(new Error('closed'));
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    const { wrapper } = await sessionWrapper();
+
+    const { result } = renderHook(() => useBreakdownPreview('GEN 1:1:0', true), { wrapper });
+
+    await waitFor(() =>
+      expect(result.current).toStrictEqual({ solelyOwned: true, resetLosesAnnotation: true }),
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interlinearizer: could not preview a breakdown edit at GEN 1:1:0',
       expect.any(Error),
     );
   });
@@ -469,7 +445,7 @@ describe('useRemovalPreviews', () => {
     ],
   ])('asks the session what %s would remove', async (_name, preview, request) => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue('["ta-in"]');
-    const { wrapper } = await catalogWrapper(emptyAnalysis());
+    const { wrapper } = await sessionWrapper();
     const { result } = renderHook(() => useRemovalPreviews(), { wrapper });
 
     await expect(preview(result.current)).resolves.toStrictEqual(['ta-in']);

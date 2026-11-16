@@ -10,7 +10,7 @@ import type { AnalysisSessions, EditOutcome, Session } from './analysisSessions'
 import type * as bookService from './bookService';
 import * as boundaryCommands from './commands/boundaryCommands';
 import * as catalogCommands from './commands/catalogCommands';
-import type { ChangeBuffer } from './commands/changeBuffer';
+import { ChangeBuffer } from './commands/changeBuffer';
 import * as discardCommands from './commands/discardCommands';
 import * as freeTranslationCommands from './commands/freeTranslationCommands';
 import * as languageCommands from './commands/languageCommands';
@@ -27,6 +27,7 @@ import type { EditStep, StepSummary } from '../types/edit-step';
 import { bookOfRef } from '../utils/analysis-book';
 import { countTextOfEveryTag } from '../utils/text-counts';
 import { bookIndexesOf } from '../utils/book-indexes';
+import { readEditOutcome, type AnalysisEditOutcome } from '../utils/edit-outcome';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 import { missingBook } from '../utils/reanchor-analysis';
 
@@ -103,6 +104,55 @@ export function sessionEditHandlers({
       forkId: crypto.randomUUID(),
       now: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Where the catalog edit staged in `buffer` left `analysisId`, given the analysis that the edit
+   * says holds its content afterward.
+   */
+  async function catalogOutcomeOf(
+    buffer: ChangeBuffer,
+    analysisId: string,
+    survivingAnalysisId: string | undefined,
+    analysisLanguage: string,
+  ): Promise<AnalysisEditOutcome> {
+    const ids =
+      survivingAnalysisId === undefined ? [analysisId] : [analysisId, survivingAnalysisId];
+    const tokenAnalysisLinks =
+      survivingAnalysisId === undefined
+        ? []
+        : (await buffer.findLinksToAnalyses([survivingAnalysisId])).tokenAnalysisLinks;
+    return readEditOutcome(
+      { tokenAnalyses: await buffer.getTokenAnalyses(ids), tokenAnalysisLinks },
+      survivingAnalysisId,
+      analysisId,
+      analysisLanguage,
+    );
+  }
+
+  /**
+   * Runs a catalog edit aimed at `analysisId`. The edit stages its changes and resolves to the
+   * analysis that holds the edited content afterward. The undo step is placed at that analysis.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws As {@link runSessionEdit} does.
+   */
+  function runCatalogEdit(
+    target: EditTarget,
+    intent: string,
+    kind: 'catalogEdit' | 'catalogMerge',
+    analysisId: string,
+    edit: (buffer: ChangeBuffer, session: Session) => Promise<string | undefined>,
+  ): Promise<string> {
+    return runSessionEdit(target, intent, async (buffer, session) => {
+      const stepOf = await catalogStepOf(buffer, kind, analysisId);
+      const survivor = await edit(buffer, session);
+      target.step = stepOf(survivor);
+      return {
+        outcome: await catalogOutcomeOf(buffer, analysisId, survivor, session.analysisLanguage),
+      };
+    });
   }
 
   /**
@@ -326,7 +376,8 @@ export function sessionEditHandlers({
    * Writes a token analysis's gloss in the session's analysis language, for every token linked to
    * it; a blank value clears it.
    *
-   * @returns A JSON string of the {@link CommandReply}.
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
    * @throws As {@link runSessionEdit} does.
    */
   function writeAnalysisGloss({
@@ -335,18 +386,19 @@ export function sessionEditHandlers({
     value,
     changeId,
   }: ArgsOf<'interlinearizer.writeAnalysisGloss'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'writeAnalysisGloss', async (buffer, session) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-      target.step = stepOf(
-        await catalogCommands.writeAnalysisGloss(buffer, {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'writeAnalysisGloss',
+      'catalogEdit',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.writeAnalysisGloss(buffer, {
           analysisId,
           value,
           analysisLanguage: session.analysisLanguage,
           now: editStamp().now,
         }),
-      );
-    });
+    );
   }
 
   /**
@@ -376,7 +428,8 @@ export function sessionEditHandlers({
    * Re-splits a token analysis's breakdown into `forms`, for every token linked to it; no forms
    * removes the breakdown.
    *
-   * @returns A JSON string of the {@link CommandReply}.
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
    * @throws As {@link runSessionEdit} does.
    */
   function writeAnalysisMorphemes({
@@ -386,18 +439,19 @@ export function sessionEditHandlers({
     writingSystem,
     changeId,
   }: ArgsOf<'interlinearizer.writeAnalysisMorphemes'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'writeAnalysisMorphemes', async (buffer) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-      target.step = stepOf(
-        await catalogCommands.writeAnalysisMorphemes(buffer, {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'writeAnalysisMorphemes',
+      'catalogEdit',
+      analysisId,
+      (buffer) =>
+        catalogCommands.writeAnalysisMorphemes(buffer, {
           analysisId,
           morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
           writingSystem,
           now: editStamp().now,
         }),
-      );
-    });
+    );
   }
 
   /**
@@ -426,7 +480,8 @@ export function sessionEditHandlers({
    * Writes the gloss of one morpheme of a token analysis in the session's analysis language, for
    * every token linked to it; a blank value clears it.
    *
-   * @returns A JSON string of the {@link CommandReply}.
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
    * @throws As {@link runSessionEdit} does.
    */
   function writeAnalysisMorphemeGloss({
@@ -436,19 +491,20 @@ export function sessionEditHandlers({
     value,
     changeId,
   }: ArgsOf<'interlinearizer.writeAnalysisMorphemeGloss'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'writeAnalysisMorphemeGloss', async (buffer, session) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-      target.step = stepOf(
-        await catalogCommands.writeAnalysisMorphemeGloss(buffer, {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'writeAnalysisMorphemeGloss',
+      'catalogEdit',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.writeAnalysisMorphemeGloss(buffer, {
           analysisId,
           morphemeId,
           value,
           analysisLanguage: session.analysisLanguage,
           now: editStamp().now,
         }),
-      );
-    });
+    );
   }
 
   /**
@@ -473,7 +529,8 @@ export function sessionEditHandlers({
    * Folds token analyses into a survivor and writes the settled content onto it, in the session's
    * analysis language.
    *
-   * @returns A JSON string of the {@link CommandReply}.
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
    * @throws As {@link runSessionEdit} does.
    */
   function mergeAnalysesInto({
@@ -483,19 +540,20 @@ export function sessionEditHandlers({
     content,
     changeId,
   }: ArgsOf<'interlinearizer.mergeAnalysesInto'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'mergeAnalysesInto', async (buffer, session) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogMerge', survivorAnalysisId);
-      target.step = stepOf(
-        await catalogCommands.mergeAnalysesInto(buffer, {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'mergeAnalysesInto',
+      'catalogMerge',
+      survivorAnalysisId,
+      (buffer, session) =>
+        catalogCommands.mergeAnalysesInto(buffer, {
           survivorAnalysisId,
           mergedAnalysisIds,
           content,
           analysisLanguage: session.analysisLanguage,
           now: editStamp().now,
         }),
-      );
-    });
+    );
   }
 
   /**
@@ -1143,6 +1201,33 @@ export function sessionEditHandlers({
     }
   }
 
+  /**
+   * Reads what a breakdown edit at a token would do to the payload that it approves, applying
+   * nothing.
+   *
+   * @returns A JSON string of the {@link morphemeCommands.BreakdownPreview}.
+   * @throws If the session is not open or its analysis cannot be read. The error is logged before
+   *   rethrowing.
+   */
+  async function previewBreakdownEdit({
+    sessionId,
+    tokenRef,
+  }: ArgsOf<'interlinearizer.previewBreakdownEdit'>): Promise<string> {
+    try {
+      return JSON.stringify(
+        await sessions.run(sessionId, (session) =>
+          morphemeCommands.previewBreakdownEdit(new ChangeBuffer(session.repository), tokenRef),
+        ),
+      );
+    } catch (e) {
+      logger.error(
+        `Interlinearizer: failed to preview a breakdown edit in session ${sessionId}`,
+        e,
+      );
+      throw e;
+    }
+  }
+
   return {
     'interlinearizer.writeGloss': writeGloss,
     'interlinearizer.approveAnalysisForToken': approveAnalysisForToken,
@@ -1176,5 +1261,6 @@ export function sessionEditHandlers({
     'interlinearizer.changeAnalysisLanguages': changeAnalysisLanguages,
     'interlinearizer.countLanguageText': countLanguageText,
     'interlinearizer.previewRemovals': previewRemovals,
+    'interlinearizer.previewBreakdownEdit': previewBreakdownEdit,
   } satisfies Partial<CommandHandlers>;
 }

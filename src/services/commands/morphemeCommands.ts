@@ -1,4 +1,4 @@
-import { reconcileMorphemes } from '../../utils/analysis-identity';
+import { morphemeCarriesAnnotation, reconcileMorphemes } from '../../utils/analysis-identity';
 import { isEmptyTokenAnalysis } from '../../utils/token-analysis-content';
 import type { ChangeBuffer } from './changeBuffer';
 import {
@@ -10,6 +10,36 @@ import {
   resolveApprovedAnalysis,
   type TokenEdit,
 } from './tokenCommands';
+
+/** What a breakdown edit at a token would do to the payload that the token approves. */
+export type BreakdownPreview = Readonly<{
+  /**
+   * Whether the token approves a payload that no other token links, so that an edit rewrites the
+   * payload rather than forking it.
+   */
+  solelyOwned: boolean;
+  /**
+   * Whether removing the breakdown would discard glosses or lexicon references that no other token
+   * holds.
+   */
+  resetLosesAnnotation: boolean;
+}>;
+
+/** Reads what a breakdown edit at `tokenRef` would do to the payload that it approves. */
+export async function previewBreakdownEdit(
+  buffer: ChangeBuffer,
+  tokenRef: string,
+): Promise<BreakdownPreview> {
+  const resolved = await resolveApprovedAnalysis(buffer, tokenRef);
+  const solelyOwned =
+    resolved !== undefined &&
+    !(await isSharedByOtherTokens(buffer, resolved.link, resolved.analysis.id));
+  return {
+    solelyOwned,
+    resetLosesAnnotation:
+      solelyOwned && (resolved.analysis.morphemes?.some(morphemeCarriesAnnotation) ?? false),
+  };
+}
 
 /** What writing a token's morpheme breakdown needs. */
 export type WriteMorphemesRequest = TokenEdit & {

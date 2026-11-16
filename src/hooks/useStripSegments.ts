@@ -22,7 +22,7 @@ export interface UseStripSegmentsArgs {
   focusTokenRef: string | undefined;
   /** The focus the strip is moving to, whose pages load while the strip fades out. */
   nextFocusTokenRef: string | undefined;
-  /** Maps every token ref to the id of the segment that contains it. */
+  /** Each token held, or spanned by a phrase, to the id of its segment. */
   tokenSegmentMap: ReadonlyMap<string, string>;
 }
 

@@ -9,7 +9,7 @@ import {
   closeAllProjects,
   getOpenBook,
   getSegmentedBook,
-  getTokenizedBook,
+  getVerseBook,
 } from '../../services/bookService';
 import { buildBookOutline } from '../../utils/book-outline';
 import {
@@ -172,9 +172,9 @@ function serveText(initial: BookText): (text: BookText) => Promise<void> {
 }
 
 async function tokenizedBook(): Promise<Book> {
-  const json = await getTokenizedBook('src', 'GEN');
-  if (!json) throw new Error('Expected a tokenized book');
-  return JSON.parse(json);
+  const book = await getVerseBook('src', 'GEN');
+  if (!book) throw new Error('Expected a tokenized book');
+  return book;
 }
 
 /**

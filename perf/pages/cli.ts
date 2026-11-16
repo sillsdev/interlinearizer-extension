@@ -181,9 +181,7 @@ function expectedPages(analysis: TextAnalysis, book: Book) {
     list.push(link);
     segmentLinksById.set(link.segmentId, list);
   });
-  const staleLinkByAnalysisId = new Map(
-    analysis.segmentAnalysisLinks.filter((l) => l.status === 'stale').map((l) => [l.analysisId, l]),
-  );
+  const segmentLinkById = new Map(analysis.segmentAnalysisLinks.map((l) => [l.id, l]));
 
   return (start: number, end: number) => {
     const segments = book.segments.slice(start, end);
@@ -194,8 +192,8 @@ function expectedPages(analysis: TextAnalysis, book: Book) {
         tokens.flatMap(({ ref }) => phrasesByRef.get(ref) ?? []).map((l) => [l.id, l]),
       ).values(),
     ];
-    const ids = (list: readonly { analysisId: string }[] | undefined) =>
-      list?.map(({ analysisId }) => analysisId);
+    const ids = (list: readonly { linkId: string }[] | undefined) =>
+      list?.map(({ linkId }) => linkId);
     const bySegment: Record<string, readonly string[]> = {};
     const orphanedAfter: Record<string, readonly string[]> = {};
     segments.forEach(({ id }) => {
@@ -204,14 +202,14 @@ function expectedPages(analysis: TextAnalysis, book: Book) {
       const orphaned = ids(placed.orphanedAfter.get(id));
       if (orphaned) orphanedAfter[id] = orphaned;
     });
-    const orphanedAhead = start === 0 ? placed.orphanedAhead.map((t) => t.analysisId) : [];
+    const orphanedAhead = start === 0 ? placed.orphanedAhead.map((t) => t.linkId) : [];
     const placedLinks = [
       ...Object.values(bySegment),
       ...Object.values(orphanedAfter),
       orphanedAhead,
     ]
       .flat()
-      .flatMap((analysisId) => staleLinkByAnalysisId.get(analysisId) ?? []);
+      .flatMap((linkId) => segmentLinkById.get(linkId) ?? []);
     const segmentLinks = [
       ...new Map(
         [...segments.flatMap(({ id }) => segmentLinksById.get(id) ?? []), ...placedLinks].map(
@@ -311,7 +309,7 @@ async function checkPages(
   for (const book of books) {
     const expectedFor = expectedPages(analysis, book);
     // eslint-disable-next-line no-await-in-loop -- one book's reads at a time
-    const outline = await readBookOutline(repository, book);
+    const outline = await readBookOutline(repository, book, book);
     const counts = outline.segments.map((s) => s.orphanedCardCount);
     if (
       JSON.stringify(counts) !==
@@ -884,7 +882,7 @@ async function checkEvents(
     );
   const fetchOutline = () =>
     sessions.run(sessionId, async (session) =>
-      readBookOutline(session.repository, await sessionBook(session)),
+      readBookOutline(session.repository, await sessionBook(session), viewBook),
     );
   const client = new PageClient({ getOutline: fetchOutline, getSegments: fetchPage });
   hear = (change) => client.hear(change);

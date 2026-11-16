@@ -4,7 +4,6 @@ import path from 'path';
 import { performance } from 'perf_hooks';
 import { tokenizeBook } from '../../src/parsers/papi/bookTokenizer';
 import { extractBookFromUsj, type UsjDocument } from '../../src/parsers/papi/usjBookExtractor';
-import { WholeAnalysis } from '../../src/cache/wholeAnalysis';
 import { AnalysisSessions, type SessionHost } from '../../src/services/analysisSessions';
 import { DraftRepository } from '../../src/services/draftRepository';
 import type { KeyValueStorage, WarningLogger } from '../../src/types/analysis-repository';
@@ -156,34 +155,18 @@ async function runOnce(draftJson: string, book: Book, scenario: Scenario) {
   const pass = performance.now() - started;
   await sessions.closeAll();
   const report = reported.at(-1);
-  if (!report?.passChanges) throw new Error('the scenario reported no passes');
+  if (!report?.keepsUnsavedMark) throw new Error('the scenario reported no passes');
 
   started = performance.now();
   const serialized = JSON.stringify(report);
   const serialize = performance.now() - started;
   started = performance.now();
-  const parsed: SessionAnalysisChange = JSON.parse(serialized);
+  JSON.parse(serialized);
   const parse = performance.now() - started;
-
-  const whole = new WholeAnalysis(async () => draft);
-  await whole.refresh();
-  collectGarbage();
-  started = performance.now();
-  parsed.passChanges?.forEach((changes) => whole.take(changes, 'kept'));
-  const apply = performance.now() - started;
 
   return {
     bytes: Buffer.byteLength(serialized),
-    passes: report.passChanges.length,
-    records: report.passChanges.reduce(
-      (n, changes) =>
-        n +
-        [changes.tokenAnalysisLinks, changes.phraseAnalysisLinks, changes.segmentAnalysisLinks]
-          .map((c) => (c?.puts?.length ?? 0) + (c?.deletes?.length ?? 0))
-          .reduce((a, b) => a + b, 0),
-      0,
-    ),
-    times: { ...steps, pass, serialize, parse, apply },
+    times: { ...steps, pass, serialize, parse },
   };
 }
 
@@ -193,14 +176,14 @@ async function measureScenario(draftJson: string, book: Book, scenario: Scenario
     // eslint-disable-next-line no-await-in-loop -- each run is timed on its own
     runs.push(await runOnce(draftJson, book, scenario));
   }
-  const [{ bytes, passes, records }] = runs;
+  const [{ bytes }] = runs;
   const times: Record<string, Timing> = {};
   Object.keys(runs[0].times).forEach((key) => {
     times[key] = summarize(
       runs.map((r) => Object.entries(r.times).find(([k]) => k === key)?.[1] ?? 0),
     );
   });
-  return { bytes, passes, records, times };
+  return { bytes, times };
 }
 
 /** The linked books of `draftJson`, most links first, with their link counts. */
@@ -224,6 +207,7 @@ async function linksByBook(draftJson: string): Promise<[string, number][]> {
   return counts.sort((a, b) => b[1] - a[1]);
 }
 
+const kib = (bytes: number) => `${(bytes / 2 ** 10).toFixed(1)} KiB`;
 const mb = (bytes: number) => `${(bytes / 2 ** 20).toFixed(2)} MiB`;
 
 async function measureTier(tierName: string, meta: UsjCaptureMeta) {
@@ -255,10 +239,10 @@ async function measureTier(tierName: string, meta: UsjCaptureMeta) {
       },
     );
   }
-  Object.entries(scenarios).forEach(([name, { bytes, passes, records, times }]) => {
+  Object.entries(scenarios).forEach(([name, { bytes, times }]) => {
     const ms = (key: string) => `${key} ${times[key].medianMs.toFixed(0)} ms`;
     console.log(
-      `  ${name.padEnd(16)} ${mb(bytes)} (${passes} passes, ${records} records)  ${['pass', 'readBooks', 'reanchorInTurn', 'changesOfPass', 'serialize', 'parse', 'apply'].map(ms).join(', ')}`,
+      `  ${name.padEnd(16)} ${kib(bytes)}  ${['pass', 'readBooks', 'reanchorInTurn', 'changesOfPass', 'serialize', 'parse'].map(ms).join(', ')}`,
     );
   });
   return scenarios;

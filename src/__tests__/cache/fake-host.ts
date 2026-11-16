@@ -10,6 +10,7 @@ import { DraftRepository } from '../../services/draftRepository';
 import { sessionCatalogHandlers } from '../../services/sessionCatalogHandlers';
 import { sessionConcordanceHandlers } from '../../services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from '../../services/sessionEditHandlers';
+import { envelopeOf } from '../../types/draft-envelope';
 import { readBookOutline, readSegmentPage, readStaleSummary } from '../../services/sessionPages';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
@@ -141,14 +142,16 @@ export function relayChange(change: unknown): void {
 /**
  * A host that answers the WebView's commands from a real {@link sessionOver} session store over
  * `analysis` and `book`, segmenting the book by each session's draft as the host does. The book it
- * pages is the one `textOf` names at each call, `book` by default. Any command that `intercept`
- * answers gets that answer instead. A command that the host does not serve resolves to what
- * `others` returns, `undefined` by default. An edit that `others` leaves unanswered runs through
- * the host's own handlers, except `writeGloss`, whose record ids come from the gloss value it
- * writes. The catalog and concordance queries run through the host's own handlers.
- * `getTextReadStatus` answers from `others` first, then from `text`, which stands for the
- * whole-text read and is unread by default. Every change that a session reports is relayed to the
- * views.
+ * pages is the one `textOf` names at each call, `book` by default; it has no text for any other.
+ * Any command that `intercept` answers gets that answer instead. A command that the host does not
+ * serve resolves to what `others` returns, `undefined` by default. An edit that `others` leaves
+ * unanswered runs through the host's own handlers, except `writeGloss`, whose record ids come from
+ * the gloss value it writes. The catalog and concordance queries run through the host's own
+ * handlers. `getTextReadStatus` answers from `others` first, then from `text`, which stands for the
+ * whole-text read and is unread by default. A session on a draft that lists no analysis language
+ * glosses in the first language that `getInterfaceLanguages` lists, or in `und` when it lists none.
+ * `getInterfaceLanguages` lists `en` by default. Every change that a session reports is relayed to
+ * the views.
  */
 export async function fakeHost(
   others: (command: string, args: unknown[]) => Promise<string | undefined> = async () => undefined,
@@ -158,14 +161,16 @@ export async function fakeHost(
     book = BOOK,
     textOf = () => book,
     text = unreadText(),
+    getInterfaceLanguages,
   }: Readonly<{
     analysis?: Partial<TextAnalysis>;
     book?: Book;
     textOf?: () => Book;
     text?: FakeText;
+    getInterfaceLanguages?: () => Promise<string[]>;
   }> = {},
 ) {
-  const made = await sessionOver(analysis, undefined, book);
+  const made = await sessionOver(analysis, undefined, book, getInterfaceLanguages);
   const { sessions, storage } = made;
   made.onChange(relayChange);
   const edits = sessionEditHandlers({
@@ -215,18 +220,25 @@ export async function fakeHost(
         return JSON.stringify(await sessions.open(field(first, 'sourceProjectId')));
       case 'interlinearizer.closeSession':
         return sessions.close(field(first, 'sessionId'));
-      case 'interlinearizer.getFullAnalysis':
+      case 'interlinearizer.getDraftEnvelope':
         return JSON.stringify(
-          await sessions.run(field(first, 'sessionId'), (session) =>
-            session.repository.getWholeDraft(),
+          await sessions.run(
+            field(first, 'sessionId'),
+            async ({ repository, analysisLanguage }) => {
+              const envelope = envelopeOf(await repository.getWholeDraft());
+              return envelope.analysisLanguages.length > 0
+                ? envelope
+                : { ...envelope, analysisLanguages: [analysisLanguage] };
+            },
           ),
         );
       case 'interlinearizer.getBookOutline': {
+        if (rest[0] !== textOf().bookRef) return undefined;
         const sessionId = field(first, 'sessionId');
         const segmentedBook = await segmented(sessionId);
         return JSON.stringify(
           await sessions.run(sessionId, (session) =>
-            readBookOutline(session.repository, segmentedBook),
+            readBookOutline(session.repository, segmentedBook, textOf()),
           ),
         );
       }
@@ -240,6 +252,7 @@ export async function fakeHost(
         );
       }
       case 'interlinearizer.getSegments': {
+        if (rest[0] !== textOf().bookRef) return undefined;
         const sessionId = field(first, 'sessionId');
         const [, start, end] = rest;
         const segmentedBook = await segmented(sessionId);

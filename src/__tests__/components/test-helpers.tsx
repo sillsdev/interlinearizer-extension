@@ -4,7 +4,6 @@ import type { SenseRef } from 'interlinearizer';
 import type { ResolvedSense } from 'interlinearizer/lexicon';
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { PageClient } from '../../cache/pageClient';
-import { WholeAnalysis } from '../../cache/wholeAnalysis';
 import { SessionAnalysisProvider } from '../../components/AnalysisStore';
 import { LexiconSensesProvider } from '../../components/LexiconSenses';
 import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
@@ -56,11 +55,9 @@ export function EmptyAnalysisProvider({
   const [client] = useState(
     () => new PageClient({ getOutline: unreachableHost, getSegments: unreachableHost }),
   );
-  const [whole] = useState(() => new WholeAnalysis(unreachableHost));
   return (
     <SessionAnalysisProvider
       client={client}
-      whole={whole}
       sessionId="empty"
       analysisLanguage={analysisLanguage}
       readOnly={readOnly}

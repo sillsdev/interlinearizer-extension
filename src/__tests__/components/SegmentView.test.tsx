@@ -726,7 +726,9 @@ describe('SegmentView', () => {
         displayMode="baseline-text"
         viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
         onSelect={handleSelect}
-        staleFreeTranslations={[{ analysisId: 'sa-1', segmentId: 'GEN 1:1', text: 'Au début' }]}
+        staleFreeTranslations={[
+          { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:1', text: 'Au début' },
+        ]}
       />,
       withEmptyAnalysis,
     );

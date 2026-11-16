@@ -1,6 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Canon, type SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book, Token } from 'interlinearizer';
+import type { Token } from 'interlinearizer';
 import { LocateFixed, Merge } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
@@ -197,8 +197,6 @@ function MergeRowButton({ secondSegmentStartRef, localizedStrings }: MergeRowBut
 type SegmentListViewProps = Readonly<{
   /** The book's segments, windowed and rendered as their pages load. */
   pages: SegmentPages;
-  /** The whole segmented book, which the book's stale free translations are placed against. */
-  book: Book;
   /** Current scripture reference; its verse is the recenter anchor and active-verse highlight. */
   scrRef: SerializedVerseRef;
   /** When true, the horizontal token strip is shown above this list (changes display mode). */
@@ -238,11 +236,14 @@ type SegmentListViewProps = Readonly<{
   editPhraseSegmentId: string | undefined;
   /** Word token ref → the verbatim baseline text separating it from the previous word. */
   gapTextByWordRef: ReadonlyMap<string, string>;
-  /** Maps every token ref to the id of the segment that contains it. */
+  /** Each token held, or spanned by a phrase, to the id of its segment. */
   tokenSegmentMap: ReadonlyMap<string, string>;
-  /** Maps every word token ref to its flat book-level index; used to sort phrase tokens. */
+  /**
+   * Each word token held, or spanned by a phrase, to its flat book-level index; used to sort phrase
+   * tokens.
+   */
   tokenDocOrder: ReadonlyMap<string, number>;
-  /** Maps every word token ref to the token; the input for resolving focus context. */
+  /** Each word token held, or spanned by a phrase, by ref; the input for resolving focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
 }>;
 
@@ -254,7 +255,6 @@ type SegmentListViewProps = Readonly<{
  */
 export default function SegmentListView({
   pages,
-  book,
   scrRef,
   continuousScroll,
   displayContinuousScroll,
@@ -358,7 +358,7 @@ export default function SegmentListView({
     bySegment: staleFreeTranslationsBySegment,
     orphanedAfter,
     orphanedAhead,
-  } = usePlacedStaleFreeTranslations(book);
+  } = usePlacedStaleFreeTranslations();
   const segmentsWithApprovedTranslation = useSegmentsWithApprovedTranslation();
 
   /**
@@ -618,7 +618,7 @@ export default function SegmentListView({
   const orphanedCards = (translations: readonly StaleFreeTranslation[] | undefined) =>
     translations?.map((translation) => (
       <OrphanedFreeTranslationCard
-        key={translation.analysisId}
+        key={translation.linkId}
         translation={translation}
         localizedStrings={localizedStrings}
       />

@@ -12,13 +12,12 @@ import {
 } from 'react';
 import type { AnalysisState } from '../utils/analysis-selectors';
 import type { CommandReply } from '../types/command-reply';
+import type { PlacedFreeTranslations } from '../types/segment-pages';
 import type { PoolIndex } from '../utils/suggestion-engine';
 import type { PageClient } from './pageClient';
-import type { WholeAnalysis } from './wholeAnalysis';
 
 type PageContext = Readonly<{
   client: PageClient;
-  whole: WholeAnalysis;
   sessionId: string;
   analysisLanguage: string;
 }>;
@@ -28,21 +27,19 @@ const PageClientContext = createContext<PageContext | undefined>(undefined);
 /** Serves a session, and the client that holds its open book's pages, to the page hooks beneath it. */
 export function PageClientProvider({
   client,
-  whole,
   sessionId,
   analysisLanguage,
   children,
 }: {
   client: PageClient;
-  whole: WholeAnalysis;
   sessionId: string;
   /** BCP 47 tag that glosses and free translations are read in. */
   analysisLanguage: string;
   children: ReactNode;
 }) {
   const value = useMemo(
-    () => ({ client, whole, sessionId, analysisLanguage }),
-    [client, whole, sessionId, analysisLanguage],
+    () => ({ client, sessionId, analysisLanguage }),
+    [client, sessionId, analysisLanguage],
   );
   return <PageClientContext.Provider value={value}>{children}</PageClientContext.Provider>;
 }
@@ -131,24 +128,17 @@ export function usePagePoolSelector<T>(
 }
 
 /**
- * Reads `select` over the session's whole analysis, re-rendering the caller only when the answer
- * changes, as `isEqual` judges it.
+ * Reads `select` over the records that the page client holds and the stale free translations that
+ * its pages place. Re-renders the caller only when the answer changes, as `isEqual` judges it.
  *
  * @throws When called outside a {@link PageClientProvider}.
  */
-export function useWholeSelector<T>(
-  select: (state: AnalysisState) => T,
+export function usePagePlacementSelector<T>(
+  select: (state: AnalysisState, placed: PlacedFreeTranslations) => T,
   isEqual: (a: T, b: T) => boolean = Object.is,
 ): T {
-  const { whole, analysisLanguage } = usePageContext();
-  const source = useMemo(
-    () => ({
-      subscribe: (listener: () => void) => whole.subscribe(listener),
-      read: () => whole.current,
-    }),
-    [whole],
-  );
-  return useSourceSelector(source, analysisLanguage, select, isEqual);
+  const { client } = usePageContext();
+  return usePageSelector((state) => select(state, client.heldPlacement()), isEqual);
 }
 
 /**
@@ -177,12 +167,9 @@ export function useSessionEdit(): (
  *
  * @throws When called outside a {@link PageClientProvider}.
  */
-export function usePageSession(): Pick<PageContext, 'whole' | 'sessionId' | 'analysisLanguage'> {
-  const { whole, sessionId, analysisLanguage } = usePageContext();
-  return useMemo(
-    () => ({ whole, sessionId, analysisLanguage }),
-    [whole, sessionId, analysisLanguage],
-  );
+export function usePageSession(): Pick<PageContext, 'sessionId' | 'analysisLanguage'> {
+  const { sessionId, analysisLanguage } = usePageContext();
+  return useMemo(() => ({ sessionId, analysisLanguage }), [sessionId, analysisLanguage]);
 }
 
 /**

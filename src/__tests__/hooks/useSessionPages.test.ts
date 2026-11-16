@@ -63,6 +63,7 @@ describe('useSessionPages', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.pages?.outline).toStrictEqual(made.outline?.segments);
     expect(result.current.pages?.segmentAt(0)?.id).toBe(BOOK.segments[0].id);
+    expect(result.current.pages?.heldRuns()[0]?.segments[0]?.id).toBe(BOOK.segments[0].id);
     expect(papi.commands.sendCommand).toHaveBeenCalledWith(
       'interlinearizer.getBookOutline',
       { sessionId: made.sessionId },

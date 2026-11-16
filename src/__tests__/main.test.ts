@@ -1257,6 +1257,7 @@ describe('main', () => {
         'interlinearizer.createProject',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -1674,6 +1675,7 @@ describe('main', () => {
         'interlinearizer.deleteProject',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -1715,6 +1717,7 @@ describe('main', () => {
         'interlinearizer.getProjectsForSource',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -1753,6 +1756,7 @@ describe('main', () => {
         'interlinearizer.updateProjectMetadata',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -1808,6 +1812,7 @@ describe('main', () => {
         'interlinearizer.getProject',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -1854,6 +1859,7 @@ describe('main', () => {
         'interlinearizer.saveDraftToProject',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -1971,6 +1977,7 @@ describe('main', () => {
         'interlinearizer.saveDraftAsProject',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -4996,6 +5003,7 @@ describe('main', () => {
         'interlinearizer.createEditableCopy',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 

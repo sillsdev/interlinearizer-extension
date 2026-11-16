@@ -155,13 +155,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Writes a token's gloss in the session's analysis language; a blank value clears it.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function writeGloss({
     sessionId,
     tokenRef,
@@ -183,13 +176,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Approves a stored token analysis for a token, in place of any approval the token held.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function approveAnalysisForToken({
     sessionId,
     tokenRef,
@@ -210,13 +196,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Writes a token's morpheme breakdown, each form in `writingSystem`.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function writeMorphemes({
     sessionId,
     tokenRef,
@@ -239,13 +218,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Removes a token's morpheme breakdown.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function deleteMorphemes({
     sessionId,
     tokenRef,
@@ -258,14 +230,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Glosses one morpheme of a token's breakdown in the session's analysis language; a blank value
-   * clears the morpheme's gloss.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function writeMorphemeGloss({
     sessionId,
     tokenRef,
@@ -287,13 +251,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Gives up the place an analysis went stale at, leaving its other places alone.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function discardStaleAnalysis({
     sessionId,
     analysisId,
@@ -307,14 +264,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Moves an analysis from a place it went stale at onto a token, approving it there in place of
-   * whatever that token held.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function reapplyStaleAnalysis({
     sessionId,
     analysisId,
@@ -330,14 +279,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Keeps a stale free translation as a claim about a segment's current text, approving it for that
-   * segment.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function keepStaleFreeTranslation({
     sessionId,
     analysisId,
@@ -355,13 +296,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Drops a stale free translation, even one whose verse the book no longer holds.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function discardStaleFreeTranslation({
     sessionId,
     analysisId,
@@ -372,14 +306,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Writes a token analysis's gloss in the session's analysis language, for every token linked to
-   * it; a blank value clears it.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
-   *   record.
-   * @throws As {@link runSessionEdit} does.
-   */
   function writeAnalysisGloss({
     sessionId,
     analysisId,
@@ -401,13 +327,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Clears the glosses of several token analyses in the session's analysis language.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `emptiedAnalysisIds`: the token
-   *   analyses that the clear left empty, and so removed.
-   * @throws As {@link runSessionEdit} does.
-   */
   function clearAnalysisGlosses({
     sessionId,
     analysisIds,
@@ -424,14 +343,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Re-splits a token analysis's breakdown into `forms`, for every token linked to it; no forms
-   * removes the breakdown.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
-   *   record.
-   * @throws As {@link runSessionEdit} does.
-   */
   function writeAnalysisMorphemes({
     sessionId,
     analysisId,
@@ -454,13 +365,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Keeps a token analysis's stale breakdown as it stands, for every token linked to it. The undo
-   * step is placed at `tokenRef` when given, and otherwise names the analysis's catalog row.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws As {@link runSessionEdit} does.
-   */
   function confirmAnalysisMorphemes({
     sessionId,
     analysisId,
@@ -476,14 +380,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Writes the gloss of one morpheme of a token analysis in the session's analysis language, for
-   * every token linked to it; a blank value clears it.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
-   *   record.
-   * @throws As {@link runSessionEdit} does.
-   */
   function writeAnalysisMorphemeGloss({
     sessionId,
     analysisId,
@@ -507,13 +403,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Links a token analysis to a lexicon sense, for every token linked to it.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
-   *   record.
-   * @throws As {@link runSessionEdit} does.
-   */
   function linkAnalysisSense({
     sessionId,
     analysisId,
@@ -534,14 +423,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Drops a token analysis's lexicon sense link, for every token linked to it, first keeping
-   * `keepGloss` as the gloss in the session's analysis language when it is not blank.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
-   *   record.
-   * @throws As {@link runSessionEdit} does.
-   */
   function unlinkAnalysisSense({
     sessionId,
     analysisId,
@@ -563,13 +444,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Links one morpheme of a token analysis to a lexicon sense, for every token linked to it.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
-   *   record.
-   * @throws As {@link runSessionEdit} does.
-   */
   function linkAnalysisMorphemeSense({
     sessionId,
     analysisId,
@@ -594,15 +468,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Drops every lexicon reference of one morpheme of a token analysis, for every token linked to
-   * it, first keeping `keepGloss` as the morpheme's gloss in the session's analysis language when
-   * it is not blank.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
-   *   record.
-   * @throws As {@link runSessionEdit} does.
-   */
   function unlinkAnalysisMorphemeSense({
     sessionId,
     analysisId,
@@ -626,14 +491,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Writes a linked sense's gloss as a token analysis's gloss in the session's analysis language,
-   * keeping the link.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
-   *   record.
-   * @throws If `value` is blank, or as {@link runSessionEdit} does.
-   */
   function adoptAnalysisSenseGloss({
     sessionId,
     analysisId,
@@ -655,14 +512,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Writes a linked sense's gloss as one morpheme's gloss in the session's analysis language,
-   * keeping the link.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
-   *   record.
-   * @throws If `value` is blank, or as {@link runSessionEdit} does.
-   */
   function adoptAnalysisMorphemeSenseGloss({
     sessionId,
     analysisId,
@@ -686,12 +535,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Removes token analyses with every token link to them.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws As {@link runSessionEdit} does.
-   */
   function deleteAnalyses({
     sessionId,
     analysisIds,
@@ -704,14 +547,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Folds token analyses into a survivor and writes the settled content onto it, in the session's
-   * analysis language.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
-   *   record.
-   * @throws As {@link runSessionEdit} does.
-   */
   function mergeAnalysesInto({
     sessionId,
     survivorAnalysisId,
@@ -787,15 +622,6 @@ export function sessionEditHandlers({
     }
   }
 
-  /**
-   * Adds an approved phrase occurrence over `tokens`, sharing a content-identical stored payload
-   * where one exists.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
-   *   the first token's book, the session is read-only or not open, or the edit is refused or
-   *   fails. The error is logged before rethrowing.
-   */
   function createPhrase({
     sessionId,
     tokens,
@@ -812,15 +638,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Gives a phrase occurrence a new token run, keeping its gloss. An empty run removes the
-   * occurrence.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If `tokens` is not within one segment of the text, the project has no text for the
-   *   first token's book, the session is read-only or not open, or the edit is refused or fails.
-   *   The error is logged before rethrowing.
-   */
   function updatePhrase({
     sessionId,
     phraseId,
@@ -838,13 +655,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Removes a phrase occurrence, with its payload unless another occurrence shares that payload.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function deletePhrase({
     sessionId,
     phraseId,
@@ -857,15 +667,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token run.
-   * The absorbed occurrence, when named, is removed.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
-   *   the first token's book, the session is read-only or not open, or the edit is refused or
-   *   fails. The error is logged before rethrowing.
-   */
   function mergePhrases({
     sessionId,
     targetPhraseId,
@@ -889,13 +690,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Writes a phrase occurrence's gloss in the session's analysis language; a blank value clears it.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function writePhraseGloss({
     sessionId,
     phraseId,
@@ -914,14 +708,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the occurrence would be approved over tokens not within one segment of the text, the
-   *   project has no text for their book, the session is read-only or not open, or the edit is
-   *   refused or fails. The error is logged before rethrowing.
-   */
   function approvePhrase({
     sessionId,
     phraseId,
@@ -946,14 +732,6 @@ export function sessionEditHandlers({
     return readBookOf(session, tokenRef, getVerseBook);
   }
 
-  /**
-   * Splits a phrase occurrence just after a token, in the document order of the token's book. A
-   * half left with a single token leaves that token in no phrase.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the project has no text for the token's book, the session is read-only or not open,
-   *   or the edit is refused or fails. The error is logged before rethrowing.
-   */
   function splitPhrase({
     sessionId,
     phraseId,
@@ -973,15 +751,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Writes a segment's free translation in the session's analysis language. A blank value clears
-   * the translation. A non-blank write to a segment with no approved translation adopts the stale
-   * translation that `adoptStaleAnalysisId` names.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function writeSegmentFreeTranslation({
     sessionId,
     segmentId,
@@ -1010,13 +779,6 @@ export function sessionEditHandlers({
     return { now: new Date().toISOString(), newId: () => crypto.randomUUID() };
   }
 
-  /**
-   * Merges the segment beginning at a token into the one before it.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the project has no text for the token's book, the session is read-only or not open,
-   *   or the edit fails. The error is logged before rethrowing.
-   */
   function mergeSegments({
     sessionId,
     secondSegmentStartRef,
@@ -1033,14 +795,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Splits a segment so a new one begins at a token, first splitting every approved phrase the new
-   * boundary would cut.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the project has no text for the token's book, the session is read-only or not open,
-   *   or the edit is refused or fails. The error is logged before rethrowing.
-   */
   function splitSegment({
     sessionId,
     tokenRef,
@@ -1061,15 +815,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Moves a segment boundary from one token to another, first splitting every approved phrase the
-   * moved boundary would cut.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the project has no text for the book of the token the boundary moves to, the session
-   *   is read-only or not open, or the edit is refused or fails. The error is logged before
-   *   rethrowing.
-   */
   function moveBoundary({
     sessionId,
     fromRef,
@@ -1111,21 +856,6 @@ export function sessionEditHandlers({
     return { analysis, segmentation, analysisLanguages };
   }
 
-  /**
-   * Gives a session's draft new analysis languages, primary first, as one undoable step that leaves
-   * the draft unsaved. The step can also move or delete one tag's glosses and free translations:
-   *
-   * - With `retag`, those under `retag.from` move to `retag.to`. One that already has different text
-   *   there stays where it is.
-   * - With `deleteTextOf`, those under that tag are deleted.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `glossRetag` (what moved) when `retag`
-   *   was given, and `deletedText` (what was deleted) when `deleteTextOf` was.
-   * @throws If the languages are empty, `retag` moves a tag to itself, both `retag` and
-   *   `deleteTextOf` are given, a move or deletion is asked while a book of the draft can't be
-   *   read, the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   async function changeAnalysisLanguages({
     sessionId,
     analysisLanguages,
@@ -1183,14 +913,6 @@ export function sessionEditHandlers({
     }
   }
 
-  /**
-   * Counts the glosses and free translations of a session's draft under each language tag that has
-   * any. A book whose stored analysis can't be read counts as having none.
-   *
-   * @returns A JSON string of the counts, keyed by tag.
-   * @throws If the session is not open, or its draft can't be read. The error is logged before
-   *   rethrowing.
-   */
   async function countLanguageText({
     sessionId,
   }: ArgsOf<'interlinearizer.countLanguageText'>): Promise<string> {
@@ -1259,15 +981,6 @@ export function sessionEditHandlers({
     }
   }
 
-  /**
-   * Discards the unsaved changes to one book of a session's draft, restoring the book as the
-   * draft's project holds it, or emptying the book when the draft has no project. A book whose
-   * stored analysis could not be read keeps it. A draft saving to a project stays as saved or
-   * unsaved as it was; one saving to none is marked unsaved when the discard changes anything.
-   *
-   * @returns As {@link runDiscard} does.
-   * @throws As {@link runDiscard} does.
-   */
   function discardBook({
     sessionId,
     bookCode,
@@ -1281,14 +994,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Discards every unsaved change to a session's draft, restoring what the draft's project holds,
-   * or emptying the draft when it has no project. A book whose stored analysis could not be read
-   * keeps it. The draft is marked saved.
-   *
-   * @returns As {@link runDiscard} does.
-   * @throws As {@link runDiscard} does.
-   */
   function discardAll({
     sessionId,
     changeId,
@@ -1353,13 +1058,6 @@ export function sessionEditHandlers({
     }
   }
 
-  /**
-   * Names the token analyses a command would remove from a session's draft, applying nothing.
-   *
-   * @returns A JSON string of the ids; `"[]"` when it would remove none.
-   * @throws If the session is not open, the request names an intent it can't preview, or staging
-   *   the command fails. The error is logged before rethrowing.
-   */
   async function previewRemovals({
     sessionId,
     request,
@@ -1373,14 +1071,6 @@ export function sessionEditHandlers({
     }
   }
 
-  /**
-   * Reads what a breakdown edit at a token would do to the payload that it approves, applying
-   * nothing.
-   *
-   * @returns A JSON string of the {@link morphemeCommands.BreakdownPreview}.
-   * @throws If the session is not open or its analysis cannot be read. The error is logged before
-   *   rethrowing.
-   */
   async function previewBreakdownEdit({
     sessionId,
     tokenRef,

@@ -3,7 +3,6 @@ import type {
   ExecutionActivationContext,
   ExecutionToken,
   IWebViewProvider,
-  MethodDocumentationWithoutName,
   OpenWebViewOptions,
   SavedWebViewDefinition,
   WebViewDefinition,
@@ -45,8 +44,6 @@ import { sessionConcordanceHandlers } from './services/sessionConcordanceHandler
 import { sessionEditHandlers } from './services/sessionEditHandlers';
 import { readBookOutline, readSegmentPage, readStaleSummary } from './services/sessionPages';
 import { UnreadableBooksError } from './types/analysis-repository';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
-import type { CommandReply } from './types/command-reply';
 import { emptyAnalysis } from './types/empty-factories';
 import {
   toProjectSummary,
@@ -56,6 +53,7 @@ import {
 import { CURRENT_MODEL_VERSION } from './types/model-version';
 import type { TextReadStatus } from './types/text-read-status';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
+import { commandDocs, extensionCommands, type ExtensionCommand } from './commandDocs';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
 import { envelopeOf } from './types/draft-envelope';
 import type { InterlinearizerWebViewState } from './types/webview-state';
@@ -303,36 +301,12 @@ function rememberActiveProject(
   });
 }
 
-/**
- * Opens the Interlinearizer for the project associated with the given WebView. Called from the
- * WebView context menu, which passes the tab's WebView ID as the argument.
- *
- * @param webViewId - ID of an open WebView whose project to use; if omitted falls back to a picker.
- * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
- * @throws If `papi.webViews.getOpenWebViewDefinition` rejects.
- * @throws If the project picker dialog or the WebView open fails.
- */
 async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
   if (!webViewId) return openInterlinearizer();
   const webViewDefinition = await papi.webViews.getOpenWebViewDefinition(webViewId);
   return openInterlinearizer(webViewDefinition?.projectId);
 }
 
-/**
- * Creates a new interlinearizer project for the given source project. Called from the WebView via
- * `papi.commands.sendCommand` after the user fills in the create-project modal. Returns the
- * persisted project serialized as a JSON string.
- *
- * @param sourceProjectId - Platform.Bible project ID of the source text to interlinearize.
- * @param analysisLanguages - BCP 47 tags for languages used in glosses and annotations (e.g.
- *   `['en']`). Required and must be non-empty.
- * @param targetProjectId - Optional Platform.Bible project ID of the target text for bilateral
- *   alignment projects. Omit for analysis-only projects.
- * @param name - Optional user-facing name for the project.
- * @param description - Optional user-facing description for the project.
- * @throws If storage fails. The error is logged and an error notification is sent before rethrowing
- *   so the frontend `catch` block can suppress it without sending a second notification.
- */
 async function createInterlinearProject(
   sourceProjectId: string,
   analysisLanguages: string[],
@@ -362,18 +336,6 @@ async function createInterlinearProject(
   }
 }
 
-/**
- * Deletes an interlinearizer project by UUID. No-ops silently if the project does not exist. Called
- * from the WebView via `papi.commands.sendCommand` when the user deletes a project from the
- * select-project modal.
- *
- * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
- * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
- * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason while reading the
- *   summaries, or if `papi.storage.writeUserData` rejects when updating them. All storage errors
- *   are logged and shown as a notification before being re-thrown so the caller can handle failure
- *   UX.
- */
 async function deleteInterlinearProject(interlinearProjectId: string): Promise<void> {
   try {
     await projectStorage.deleteProject(executionToken, interlinearProjectId);
@@ -389,18 +351,6 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
   }
 }
 
-/**
- * Updates the metadata of an existing interlinearizer project.
- *
- * @param interlinearProjectId - UUID of the interlinearizer project to update.
- * @param name - New user-facing name, or `undefined` to clear it.
- * @param description - New user-facing description, or `undefined` to clear it.
- * @param targetProjectId - New target-project ID; omit to clear the target binding.
- * @returns The updated project as a JSON string, or `undefined` if no project with the given ID
- *   exists.
- * @throws If storage fails. The error is logged and an error notification is sent before
- *   rethrowing.
- */
 async function updateProjectMetadata(
   interlinearProjectId: string,
   name: string | undefined,
@@ -439,15 +389,8 @@ const STALE_KEPT_MESSAGES: Record<NonNullable<Pt9ImportResult['staleReason']>, `
 };
 
 /**
- * Imports or syncs the source project's Paratext 9 interlinear data and returns the run's outcome
- * as a JSON string. A run that keeps the stored import sends a warning notification. A first import
- * that converts nothing sends an error notification but still returns, so the caller can name the
- * files that it left out.
- *
- * @param sourceProjectId - Platform.Bible project ID whose Paratext 9 interlinear files to import.
- * @throws If the import fails or the source has nothing to import. The error is logged and an error
- *   notification is sent before rethrowing so the frontend `catch` block can suppress it without
- *   sending a second notification.
+ * Imports or syncs the source's Paratext 9 interlinear data. A run that keeps the stored import
+ * sends a warning notification.
  */
 async function importPt9Project(sourceProjectId: string): Promise<string> {
   try {
@@ -477,17 +420,6 @@ async function importPt9Project(sourceProjectId: string): Promise<string> {
   }
 }
 
-/**
- * Creates an editable copy of a Paratext 9 import project. Returns the created project as a JSON
- * string.
- *
- * @param interlinearProjectId - UUID of the Paratext 9 import to copy.
- * @param name - User-facing name for the copy, chosen in the copy dialog.
- * @param description - Optional user-facing description for the copy.
- * @throws If the project does not exist, is not a Paratext 9 import, or storage fails. The error is
- *   logged and an error notification is sent before rethrowing so the frontend `catch` block can
- *   suppress it without sending a second notification.
- */
 async function createEditableCopy(
   interlinearProjectId: string,
   name: string,
@@ -513,18 +445,6 @@ async function createEditableCopy(
   }
 }
 
-/**
- * Loads the interlinearizer project with the given ID, including its full `TextAnalysis`. The
- * WebView calls this when the active project changes to load the stored analysis into the
- * interlinearizer.
- *
- * @param interlinearProjectId - UUID of the interlinearizer project to fetch.
- * @returns JSON-stringified `InterlinearProject`, or `undefined` if no project with that ID exists.
- * @throws {SyntaxError} If the project's storage value contains invalid JSON.
- * @throws {Error} If the stored record was written by a newer build.
- * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. The error is logged
- *   before rethrowing.
- */
 async function getInterlinearProject(interlinearProjectId: string): Promise<string | undefined> {
   try {
     const project = await projectStorage.getProject(executionToken, interlinearProjectId);
@@ -606,22 +526,8 @@ async function savingInSession<T>(
 }
 
 /**
- * Copies the source project's stored draft into an existing interlinearizer project: Save, and Save
- * As onto an existing project. The copy runs after the session's earlier edits. A draft that cannot
- * be read for some book is not copied, and the user is told which books and how to recover.
- *
- * @param sessionId - The session editing the draft. The copy runs in the session's turn, and the
- *   session's history marks the draft saved.
- * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
- * @param interlinearProjectId - UUID of the interlinearizer project to save into.
- * @param config - The target to set on the project in the same write, along with the draft's
- *   analysis languages; omit to leave the project's configuration unchanged. A draft that lists no
- *   analysis languages leaves the configuration unchanged too, target included.
- * @returns The saved project's `InterlinearProjectSummary` (carrying the refreshed `updatedAt`) as
- *   a JSON string, or `undefined` if no project with the given ID exists.
- * @throws If `sessionId` names no open session, if the draft cannot be read for some book, if the
- *   project is a Paratext 9 import, which is read-only, if the stored draft is unreadable, or if
- *   storage fails. The error is logged and an error notification is sent before rethrowing.
+ * Copies the source's draft into an existing interlinearizer project. A draft that cannot be read
+ * for some book is not copied, and the user is told which books and how to recover.
  */
 async function saveDraftToProject(
   sessionId: string,
@@ -659,21 +565,8 @@ async function saveDraftToProject(
 }
 
 /**
- * Creates an interlinearizer project holding a copy of the source project's stored draft: Save As
- * to a new project. The copy runs after the session's earlier edits. A book of the draft that
+ * Creates an interlinearizer project holding a copy of the source's draft. A book of the draft that
  * cannot be read is left out, and the user is told which.
- *
- * @param sessionId - The session editing the draft. The copy runs in the session's turn, and when
- *   no book is left out, the session's history marks the draft saved.
- * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
- * @param analysisLanguages - BCP 47 tags for the new project's analysis languages.
- * @param targetProjectId - Optional Platform.Bible project ID of the target text.
- * @param name - Optional user-facing name for the project.
- * @param description - Optional user-facing description for the project.
- * @returns The created project's summary and the books it left out, as a JSON
- *   {@link SavedAsProject}.
- * @throws If `sessionId` names no open session, the stored draft is unreadable, or storage fails.
- *   The error is logged and an error notification is sent before rethrowing.
  */
 async function saveDraftAsProject(
   sessionId: string,
@@ -728,14 +621,9 @@ async function sessionBoundaries(session: Session): Promise<SegmentationDelta | 
 }
 
 /**
- * Outlines a book of a session's source, segmented by the draft's boundaries. The outline counts
- * each segment's orphaned free-translation cards and flags the segments that show a stale gloss or
- * free translation. Before the outline, the draft is re-anchored to the book's text unless the
- * session last re-anchored the book to the same text. A failed re-anchor is logged.
- *
- * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or segmented, the session is not open, or its analysis cannot
- *   be read. The error is logged before rethrowing.
+ * Outlines a book of the session's source. The draft is first re-anchored to the book's text,
+ * unless the session last re-anchored that book to the same text. A failed re-anchor is only
+ * logged.
  */
 async function getBookOutline(
   { sessionId }: SessionAddress,
@@ -766,14 +654,6 @@ async function getBookOutline(
   }
 }
 
-/**
- * Summarizes the stale analyses that a book of a session's source holds, segmented by the draft's
- * boundaries.
- *
- * @returns The `StaleSummary` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or segmented, the session is not open, or its analysis cannot
- *   be read. The error is logged before rethrowing.
- */
 async function getStaleSummary({
   sessionId,
   bookId,
@@ -796,14 +676,6 @@ async function getStaleSummary({
   }
 }
 
-/**
- * Serves the segments at outline indexes `[start, end)` of a book of a session's source, segmented
- * by the draft's boundaries, with the analysis that the draft holds for them.
- *
- * @returns The `SegmentPage` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or segmented, the session is not open, or its analysis cannot
- *   be read. The error is logged before rethrowing.
- */
 async function getSegments(
   { sessionId }: SessionAddress,
   bookId: string,
@@ -833,12 +705,8 @@ async function getSegments(
 }
 
 /**
- * Reports how far reading the whole text of a session's source has got, starting the session's read
- * when it has none. While session reads are skipped, the read never finishes.
- *
- * @returns Once the text's books are known, the `TextReadStatus` as JSON.
- * @throws If the books or the provider of their text cannot be got, or the session is not open. The
- *   error is logged before rethrowing.
+ * Reports how far the session's read of its whole source text has got. While session reads are
+ * skipped, the read never finishes.
  */
 async function getTextReadStatus({ sessionId }: SessionAddress): Promise<string> {
   try {
@@ -859,11 +727,6 @@ async function getTextReadStatus({ sessionId }: SessionAddress): Promise<string>
   }
 }
 
-/**
- * Reads again each book of a session source's whole text whose latest read failed.
- *
- * @throws If the session is not open. The error is logged before rethrowing.
- */
 async function retryTextRead({ sessionId }: SessionAddress): Promise<void> {
   try {
     const sourceProjectId = await sessions.run(
@@ -916,14 +779,6 @@ async function startedDraft(sourceProjectId: string, from: DraftStart): Promise<
   return draft;
 }
 
-/**
- * Starts the source project's draft over from `from`, closing the source's session first. A session
- * opened afterward has nothing to undo. Stored analysis that could not be read is discarded.
- *
- * @throws As {@link startedDraft} does, and if closing the session or writing the draft fails. The
- *   error is logged and an error notification is sent before rethrowing; the stored draft is left
- *   as it was.
- */
 async function startDraftOver({
   sourceProjectId,
   from,
@@ -942,13 +797,6 @@ async function startDraftOver({
   }
 }
 
-/**
- * Returns the summary of the interlinearizer project with the given ID, without its analysis.
- *
- * @returns JSON-stringified `InterlinearProjectSummary`, or `undefined` if no project with that ID
- *   is listed.
- * @throws As {@link projectStorage.getProjectSummary} does. The error is logged before rethrowing.
- */
 async function getProjectSummary(interlinearProjectId: string): Promise<string | undefined> {
   try {
     const summary = await projectStorage.getProjectSummary(executionToken, interlinearProjectId);
@@ -959,25 +807,9 @@ async function getProjectSummary(interlinearProjectId: string): Promise<string |
   }
 }
 
-/** A parameter in a command's documentation. */
-type ParamDoc = Extract<MethodDocumentationWithoutName['params'][number], { name: string }>;
-
 /** The one argument that the command `C` takes. */
 type ArgsOf<C extends keyof CommandHandlers> = Parameters<CommandHandlers[C]>[0];
 
-/**
- * Opens a session read-only on the Paratext 9 import `importProjectId` when given, otherwise on the
- * source project's draft, which saves to `interlinearProjectId` when given. When the source has no
- * project of the id named, the session opens on the draft, which then saves to no project. A draft
- * that holds analysis is then marked unsaved, unless the missing project was an import. Closes the
- * source's earlier session, if any. Warns the user of each book whose stored analysis could not be
- * read.
- *
- * @returns A JSON string of an {@link OpenedSession}.
- * @throws If both ids are given, an id names a project of the wrong kind, or finding the project,
- *   loading the analysis, or marking the draft unsaved fails. The error is logged before
- *   rethrowing.
- */
 async function openSession({
   sourceProjectId,
   interlinearProjectId,
@@ -1001,7 +833,6 @@ async function openSession({
   }
 }
 
-/** @throws Whatever closing the session throws. The error is logged before rethrowing. */
 async function closeSession({ sessionId }: ArgsOf<'interlinearizer.closeSession'>): Promise<void> {
   try {
     await sessions.close(sessionId);
@@ -1011,11 +842,6 @@ async function closeSession({ sessionId }: ArgsOf<'interlinearizer.closeSession'
   }
 }
 
-/**
- * Sets the language a session's glosses are read and written in.
- *
- * @throws If the session is not open. The error is logged before rethrowing.
- */
 async function setAnalysisLanguage({
   sessionId,
   analysisLanguage,
@@ -1028,12 +854,6 @@ async function setAnalysisLanguage({
   }
 }
 
-/**
- * Sets which project a session's draft saves to, if any.
- *
- * @throws If the session is read-only or not open, the project is missing or an import, or reading
- *   the source's projects fails. The error is logged before rethrowing.
- */
 async function setSaveTarget({
   sessionId,
   interlinearProjectId,
@@ -1046,12 +866,6 @@ async function setSaveTarget({
   }
 }
 
-/**
- * Leaves a session's draft with no project to save to, once its project is deleted.
- *
- * @throws If the session is read-only or not open, or reading the draft or marking it unsaved
- *   fails. The error is logged before rethrowing.
- */
 async function detachFromProject({
   sessionId,
 }: ArgsOf<'interlinearizer.detachFromProject'>): Promise<void> {
@@ -1063,13 +877,6 @@ async function detachFromProject({
   }
 }
 
-/**
- * Reverts a session's latest edit not yet undone.
- *
- * @returns A JSON string of the {@link CommandReply}, or `undefined` when there is none.
- * @throws If the session is read-only or not open, or the undo fails. The error is logged before
- *   rethrowing.
- */
 async function undoEdit({
   sessionId,
   changeId,
@@ -1083,13 +890,6 @@ async function undoEdit({
   }
 }
 
-/**
- * Redoes a session's latest undone edit.
- *
- * @returns A JSON string of the {@link CommandReply}, or `undefined` when there is none.
- * @throws If the session is read-only or not open, or the redo fails. The error is logged before
- *   rethrowing.
- */
 async function redoEdit({
   sessionId,
   changeId,
@@ -1103,14 +903,6 @@ async function redoEdit({
   }
 }
 
-/**
- * Reports where a session's derived indexes differ from ones built afresh from its records, for
- * debugging. Also reports where its stored shards differ from its records.
- *
- * @returns A JSON string of the differences; `"[]"` when there are none.
- * @throws If the session is not open, the stored draft is not valid JSON, or storage rejects a
- *   read. The error is logged before rethrowing.
- */
 async function checkIndexes({
   sessionId,
 }: ArgsOf<'interlinearizer.checkIndexes'>): Promise<string> {
@@ -1124,14 +916,6 @@ async function checkIndexes({
   }
 }
 
-/**
- * Reads a session's draft envelope: the draft without its analysis or boundaries. When the draft
- * lists no analysis language, the reply lists the session's; the session's first edit stores it.
- *
- * @returns A JSON string of the `DraftEnvelope`.
- * @throws If the session is not open, or its draft cannot be loaded. The error is logged before
- *   rethrowing.
- */
 async function getDraftEnvelope({
   sessionId,
 }: ArgsOf<'interlinearizer.getDraftEnvelope'>): Promise<string> {
@@ -1150,19 +934,6 @@ async function getDraftEnvelope({
   }
 }
 
-/**
- * Returns a summary of every interlinearizer project for the given source project as a JSON string.
- * The WebView deserializes this to populate its project picker and to decide whether to prompt
- * "create new" or "select existing" when the user opens the project menu.
- *
- * Neither the read nor the response grows with the size of the projects' analyses.
- *
- * @param sourceProjectId - Platform.Bible project ID of the source text to query.
- * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
- * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
- * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. Callers can use this to
- *   distinguish a storage outage from a legitimately empty list.
- */
 async function getProjectsForSource(sourceProjectId: string): Promise<string> {
   try {
     return await perfTimeAsync('getProjectsForSource', async () => {
@@ -1348,29 +1119,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   await keep(papi.webViewProviders.registerWebViewProvider(mainWebViewType, mainWebViewProvider));
 
-  await keep(
-    papi.commands.registerCommand('interlinearizer.openForWebView', openInterlinearizerForWebView, {
-      method: {
-        summary: 'Open the Interlinearizer for the project associated with a WebView',
-        params: [
-          {
-            name: 'webViewId',
-            required: false,
-            summary: 'The WebView ID whose project to open; if omitted a picker dialog is shown',
-            schema: { type: 'string' },
-          },
-        ],
-        // `undefined` (returned on cancel) is not a JSON type and cannot appear in a JSON-RPC
-        // response, so the schema only describes the shape when a value is present.
-        result: {
-          name: 'return value',
-          summary: 'The ID of the opened WebView, if opened; omitted when the user cancels',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
   /** Returns whether the supplied project-setting value is a boolean. */
   /* v8 ignore next 3 */
   function isBoolean(newValue: unknown): Promise<boolean> {
@@ -1396,1782 +1144,89 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     papi.projectSettings.registerValidator('interlinearizer.showFreeTranslation', isBooleanOrAuto),
   );
 
-  await keep(
-    papi.commands.registerCommand('interlinearizer.createProject', createInterlinearProject, {
-      method: {
-        summary: 'Create a new interlinearizer project',
-        params: [
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Platform.Bible project ID of the source text to interlinearize',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'analysisLanguages',
-            required: true,
-            summary:
-              'BCP 47 tags for gloss / annotation languages (e.g. ["en"]); must be non-empty',
-            schema: { type: 'array', items: { type: 'string' } },
-          },
-          {
-            name: 'targetProjectId',
-            required: false,
-            summary:
-              'Optional Platform.Bible project ID of the target text for bilateral alignment projects',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'name',
-            required: false,
-            summary: 'Optional user-facing name for the project',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'description',
-            required: false,
-            summary: 'Optional user-facing description for the project',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary:
-            'JSON-stringified InterlinearProject for the new project; rejects (throws) on storage failure',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.getProject', getInterlinearProject, {
-      method: {
-        summary: 'Return the interlinearizer project with the given UUID as a JSON string',
-        params: [
-          {
-            name: 'interlinearProjectId',
-            required: true,
-            summary: 'UUID of the interlinearizer project to fetch',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified InterlinearProject, or undefined if not found',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.getProjectSummary', getProjectSummary, {
-      method: {
-        summary:
-          'Return the summary of the interlinearizer project with the given UUID as a JSON string, without its analysis',
-        params: [
-          {
-            name: 'interlinearProjectId',
-            required: true,
-            summary: 'UUID of the interlinearizer project to summarize',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified InterlinearProjectSummary, or undefined if not listed',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.saveDraftToProject', saveDraftToProject, {
-      method: {
-        summary: "Copy a source project's stored draft into an existing interlinearizer project",
-        params: [
-          {
-            name: 'sessionId',
-            required: true,
-            summary:
-              'The session editing the draft; the copy runs in its turn, and its history marks the draft saved',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Platform.Bible project ID whose draft to copy',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'interlinearProjectId',
-            required: true,
-            summary: 'UUID of the interlinearizer project to save into',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'config',
-            required: false,
-            summary:
-              "The project's target to set in the same write, along with the draft's analysis languages, a missing target clearing the binding; omit to leave its configuration unchanged",
-            schema: {
-              type: 'object',
-              properties: {
-                targetProjectId: { type: 'string' },
-              },
-            },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary:
-            'JSON-stringified project summary with the refreshed updatedAt, or undefined if not found',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.saveDraftAsProject', saveDraftAsProject, {
-      method: {
-        summary: "Create an interlinearizer project holding a copy of a source project's draft",
-        params: [
-          {
-            name: 'sessionId',
-            required: true,
-            summary:
-              'The session editing the draft; the copy runs in its turn, and when no book is left out, its history marks the draft saved',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Platform.Bible project ID whose draft to copy',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'analysisLanguages',
-            required: true,
-            summary:
-              'BCP 47 tags for gloss / annotation languages (e.g. ["en"]); must be non-empty',
-            schema: { type: 'array', items: { type: 'string' } },
-          },
-          {
-            name: 'targetProjectId',
-            required: false,
-            summary:
-              'Optional Platform.Bible project ID of the target text for bilateral alignment projects',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'name',
-            required: false,
-            summary: 'Optional user-facing name for the project',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'description',
-            required: false,
-            summary: 'Optional user-facing description for the project',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary:
-            "JSON-stringified { project, omittedBooks }: the new project's summary and the books left out of it; rejects (throws) on storage failure",
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.getProjectsForSource', getProjectsForSource, {
-      method: {
-        summary: 'Return all interlinearizer projects for a source project as a JSON string',
-        params: [
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Platform.Bible project ID of the source text to query',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified InterlinearProjectSummary[] for the given source',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  /** The parameter naming the session whose source a query reads. */
-  const sessionAddressParam = {
-    name: 'address',
-    required: true as const,
-    summary: '{ sessionId } of the session whose source to read',
-    schema: {
-      type: 'object' as const,
-      properties: { sessionId: { type: 'string' as const } },
-      required: ['sessionId'],
-    },
-  };
-
-  /** Parameters naming the book a segment query reads. */
-  const bookParams = [
-    sessionAddressParam,
-    {
-      name: 'bookId',
-      required: true,
-      summary: 'Book code, such as GEN',
-      schema: { type: 'string' },
-    },
-  ] as const;
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.getBookOutline', getBookOutline, {
-      method: {
-        summary:
-          "Return the outline of a book of a session's source, segmented by the draft's boundaries, as a JSON string",
-        params: [...bookParams],
-        result: {
-          name: 'return value',
-          summary:
-            'JSON-stringified BookOutline, or undefined when the project has no text for the book',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.getSegments', getSegments, {
-      method: {
-        summary:
-          "Return a run of the segments of a book of a session's source, with the draft's analysis of them, as a JSON string",
-        params: [
-          ...bookParams,
-          {
-            name: 'start',
-            required: true,
-            summary: 'Outline index of the first segment to return',
-            schema: { type: 'integer' },
-          },
-          {
-            name: 'end',
-            required: true,
-            summary: 'Outline index after the last segment to return',
-            schema: { type: 'integer' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary:
-            'JSON-stringified SegmentPage, or undefined when the project has no text for the book',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.getTextReadStatus', getTextReadStatus, {
-      method: {
-        summary:
-          "Return how far reading a session's whole source text has got, starting the session's read when it has none, as a JSON string",
-        params: [sessionAddressParam],
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified TextReadStatus',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.retryTextRead', retryTextRead, {
-      method: {
-        summary: "Read again each book of a session's whole source text whose latest read failed",
-        params: [sessionAddressParam],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.startDraftOver', startDraftOver, {
-      method: {
-        summary:
-          "Start a source project's draft over, from a stored project or empty, closing the source's session first",
-        params: [
-          {
-            name: 'args',
-            required: true,
-            summary: 'The source project, and what its draft starts over from',
-            schema: {
-              type: 'object',
-              properties: {
-                sourceProjectId: {
-                  description: 'Platform.Bible source project ID whose draft to start over',
-                  type: 'string',
-                },
-                from: {
-                  description:
-                    'Either { interlinearProjectId } to copy a stored project (Open), or the New configuration { analysisLanguages, suggestedDescription? }',
-                  type: 'object',
-                },
-              },
-              required: ['sourceProjectId', 'from'],
-            },
-          },
-        ],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-      },
-    }),
-  );
-
-  /** The field naming the session that a session command acts on. */
-  const sessionIdParam = {
-    name: 'sessionId',
-    required: true,
-    summary: 'ID of the session, as openSession returned it',
-    schema: { type: 'string' },
-  } as const;
-
-  /** The field naming the change that a session command makes. */
-  const changeIdParam = {
-    name: 'changeId',
-    required: false,
-    summary:
-      'Names the change; a command sent again under the id of a change the session has applied replies as it did then, applying nothing. Omit to have the session name it',
-    schema: { type: 'string' },
-  } as const;
-
-  /** Documents a command's one argument, an object holding `fields`. */
-  const argsParam = (summary: string, fields: ParamDoc[]): ParamDoc[] => [
-    {
-      name: 'args',
-      required: true,
-      summary,
-      schema: {
-        type: 'object',
-        properties: Object.fromEntries(
-          fields.map(({ name, summary: description, schema }) => [
-            name,
-            { description, ...schema },
-          ]),
-        ),
-        required: fields.filter(({ required }) => required).map(({ name }) => name),
-      },
-    },
-  ];
-
-  /** Documents a session command's one argument, which holds `fields` beside `sessionId`. */
-  const sessionArgs = (...fields: ParamDoc[]) =>
-    argsParam("The session, and the command's own fields", [sessionIdParam, ...fields]);
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.getStaleSummary', getStaleSummary, {
-      method: {
-        summary:
-          "Summarize the stale analyses that a book of a session's source holds, segmented by the draft's boundaries, as a JSON string",
-        params: sessionArgs({
-          name: 'bookId',
-          required: true,
-          summary: 'Book code, such as GEN',
-          schema: { type: 'string' },
-        }),
-        result: {
-          name: 'return value',
-          summary:
-            'JSON-stringified StaleSummary, or undefined when the project has no text for the book',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.openSession', openSession, {
-      method: {
-        summary:
-          "Open a session on a source project's draft, or read-only on its Paratext 9 import, closing the source's earlier session",
-        params: argsParam('The source project, and the interlinear project to open with it', [
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Platform.Bible source project ID whose analysis to open',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'interlinearProjectId',
-            required: false,
-            summary: 'UUID of the interlinear project the draft saves to; omit for the draft alone',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'importProjectId',
-            required: false,
-            summary: 'UUID of the Paratext 9 import to read instead of the draft',
-            schema: { type: 'string' },
-          },
-        ]),
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified OpenedSession',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.closeSession', closeSession, {
-      method: {
-        summary: 'Close a session once the commands sent to it settle',
-        params: sessionArgs(),
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.setAnalysisLanguage', setAnalysisLanguage, {
-      method: {
-        summary: "Set the language a session's glosses are read and written in",
-        params: sessionArgs({
-          name: 'analysisLanguage',
-          required: true,
-          summary: 'BCP 47 tag of the language',
-          schema: { type: 'string' },
-        }),
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.setSaveTarget', setSaveTarget, {
-      method: {
-        summary: "Set which project a session's draft saves to, if any",
-        params: sessionArgs({
-          name: 'interlinearProjectId',
-          required: false,
-          summary: 'The interlinear project to save to; absent for none',
-          schema: { type: 'string' },
-        }),
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.detachFromProject', detachFromProject, {
-      method: {
-        summary: "Leave a session's draft with no project to save to, once its project is deleted",
-        params: sessionArgs(),
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-      },
-    }),
-  );
-
-  /** The result of a command that replies with the changes it applied, if any. */
-  const appliedChangesResult = {
-    name: 'return value',
-    summary:
-      'JSON-stringified CommandReply: the ChangeSet the undo or redo applied and the pool buckets it touched; omitted when there was nothing to apply',
-    schema: { type: 'string' },
-  } as const;
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.undoEdit', undoEdit, {
-      method: {
-        summary: "Revert a session's latest edit not yet undone",
-        params: sessionArgs(changeIdParam),
-        result: appliedChangesResult,
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.redoEdit', redoEdit, {
-      method: {
-        summary: "Make a session's latest undone edit again",
-        params: sessionArgs(changeIdParam),
-        result: appliedChangesResult,
-      },
-    }),
-  );
-
-  /** The fields giving the token that a token edit acts on, and that token's current text. */
-  const tokenParams = [
-    {
-      name: 'tokenRef',
-      required: true,
-      summary: 'Token.ref of the token edited',
-      schema: { type: 'string' },
-    },
-    {
-      name: 'surfaceText',
-      required: true,
-      summary: "The token's current surface text",
-      schema: { type: 'string' },
-    },
-  ] as const;
-
-  const editResult = {
-    name: 'return value',
-    summary:
-      'JSON-stringified CommandReply: the ChangeSet the edit applied and the pool buckets it touched',
-    schema: { type: 'string' },
-  } as const;
-
-  const sessionCommands = { ...edits, ...catalog, ...concordance };
-
-  /**
-   * Registers the session command `commandName`, served by its edit, catalog or concordance
-   * handler.
-   */
-  async function registerSessionCommand(
-    commandName: keyof typeof sessionCommands,
-    method: MethodDocumentationWithoutName,
-  ): Promise<void> {
-    await keep(
-      papi.commands.registerCommand(commandName, sessionCommands[commandName], { method }),
-    );
-  }
-
-  await registerSessionCommand('interlinearizer.writeGloss', {
-    summary: "Write a token's gloss in a session's analysis language; a blank value clears it",
-    params: sessionArgs(
-      ...tokenParams,
-      {
-        name: 'value',
-        required: true,
-        summary: 'The gloss',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.approveAnalysisForToken', {
-    summary: 'Approve a stored token analysis for a token, in place of any approval the token held',
-    params: sessionArgs(
-      ...tokenParams,
-      {
-        name: 'analysisId',
-        required: true,
-        summary: 'Id of the stored token analysis to approve',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.writeMorphemes', {
-    summary: "Write a token's morpheme breakdown",
-    params: sessionArgs(
-      ...tokenParams,
-      {
-        name: 'forms',
-        required: true,
-        summary: 'The morpheme forms, in order',
-        schema: { type: 'array', items: { type: 'string' } },
-      },
-      {
-        name: 'writingSystem',
-        required: true,
-        summary: 'BCP 47 tag of the writing system the forms are in',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.deleteMorphemes', {
-    summary: "Remove a token's morpheme breakdown",
-    params: sessionArgs(tokenParams[0], changeIdParam),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.writeMorphemeGloss', {
-    summary:
-      "Gloss one morpheme of a token's breakdown in a session's analysis language; a blank value clears the morpheme's gloss",
-    params: sessionArgs(
-      tokenParams[0],
-      {
-        name: 'morphemeId',
-        required: true,
-        summary: 'MorphemeAnalysis.id of the morpheme glossed',
-        schema: { type: 'string' },
-      },
-      {
-        name: 'value',
-        required: true,
-        summary: 'The gloss',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  const staleAnalysisParam = {
-    name: 'analysisId',
-    required: true,
-    summary: 'Id of the token analysis the stale link names',
-    schema: { type: 'string' },
-  } as const;
-
-  await registerSessionCommand('interlinearizer.discardStaleAnalysis', {
-    summary: 'Give up the place an analysis went stale at, leaving its other places alone',
-    params: sessionArgs(
-      staleAnalysisParam,
-      {
-        name: 'tokenRef',
-        required: true,
-        summary: 'Token.ref the stale link names',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.reapplyStaleAnalysis', {
-    summary:
-      'Move an analysis from a place it went stale at onto a token, approving it there in place of whatever the token held',
-    params: sessionArgs(
-      staleAnalysisParam,
-      {
-        name: 'staleTokenRef',
-        required: true,
-        summary: 'Token.ref the stale link names',
-        schema: { type: 'string' },
-      },
-      ...tokenParams,
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  const staleTranslationParam = {
-    name: 'analysisId',
-    required: true,
-    summary: 'Id of the stale segment analysis',
-    schema: { type: 'string' },
-  } as const;
-
-  await registerSessionCommand('interlinearizer.keepStaleFreeTranslation', {
-    summary:
-      "Keep a stale free translation as a claim about a segment's current text, approving it for that segment",
-    params: sessionArgs(
-      staleTranslationParam,
-      {
-        name: 'segmentId',
-        required: true,
-        summary: 'Segment.id of the segment it is kept for',
-        schema: { type: 'string' },
-      },
-      {
-        name: 'surfaceText',
-        required: true,
-        summary: "The segment's current baseline text",
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.discardStaleFreeTranslation', {
-    summary: 'Drop a stale free translation, one whose verse the book no longer holds included',
-    params: sessionArgs(staleTranslationParam, changeIdParam),
-    result: editResult,
-  });
-
-  /** The field naming the token analysis that a catalog-wide edit acts on. */
-  const catalogAnalysisParam = {
-    name: 'analysisId',
-    required: true,
-    summary: 'Id of the token analysis edited, for every token linked to it',
-    schema: { type: 'string' },
-  } as const;
-
-  const analysisIdsParam = {
-    name: 'analysisIds',
-    required: true,
-    summary: 'Ids of the token analyses',
-    schema: { type: 'array', items: { type: 'string' } },
-  } as const;
-
-  await registerSessionCommand('interlinearizer.writeAnalysisGloss', {
-    summary:
-      "Write a token analysis's gloss in a session's analysis language, for every token linked to it; a blank value clears it",
-    params: sessionArgs(
-      catalogAnalysisParam,
-      { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.clearAnalysisGlosses', {
-    summary: "Clear the glosses of several token analyses in a session's analysis language",
-    params: sessionArgs(analysisIdsParam, changeIdParam),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.writeAnalysisMorphemes', {
-    summary:
-      "Re-split a token analysis's breakdown, for every token linked to it; no forms removes the breakdown",
-    params: sessionArgs(
-      catalogAnalysisParam,
-      {
-        name: 'forms',
-        required: true,
-        summary: "The breakdown's forms in order",
-        schema: { type: 'array', items: { type: 'string' } },
-      },
-      {
-        name: 'writingSystem',
-        required: true,
-        summary: 'Writing system the morphemes are tagged with',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.confirmAnalysisMorphemes', {
-    summary: "Keep a token analysis's stale breakdown as it stands, for every token linked to it",
-    params: sessionArgs(
-      catalogAnalysisParam,
-      {
-        name: 'tokenRef',
-        required: false,
-        summary:
-          "Token.ref the undo step is placed at; omit to name the analysis's catalog row instead",
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.writeAnalysisMorphemeGloss', {
-    summary:
-      "Write the gloss of one morpheme of a token analysis in a session's analysis language, for every token linked to it; a blank value clears it",
-    params: sessionArgs(
-      catalogAnalysisParam,
-      {
-        name: 'morphemeId',
-        required: true,
-        summary: 'MorphemeAnalysis.id of the morpheme glossed',
-        schema: { type: 'string' },
-      },
-      { name: 'value', required: true, summary: 'The gloss', schema: { type: 'string' } },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  const senseRefParam = {
-    name: 'senseRef',
-    required: true,
-    summary: 'SenseRef of the lexicon sense linked',
-    schema: { type: 'object' },
-  } as const;
-  const keepGlossParam = {
-    name: 'keepGloss',
-    required: false,
-    summary:
-      "Gloss to write in the session's analysis language before the link is dropped; omit or leave blank to keep none",
-    schema: { type: 'string' },
-  } as const;
-  const morphemeIdParam = {
-    name: 'morphemeId',
-    required: true,
-    summary: 'MorphemeAnalysis.id of the morpheme edited',
-    schema: { type: 'string' },
-  } as const;
-  const adoptValueParam = {
-    name: 'value',
-    required: true,
-    summary: "The linked sense's gloss, which is never blank",
-    schema: { type: 'string' },
-  } as const;
-
-  await registerSessionCommand('interlinearizer.linkAnalysisSense', {
-    summary:
-      'Link a token analysis to a lexicon sense, for every token linked to it, replacing any sense it had',
-    params: sessionArgs(catalogAnalysisParam, senseRefParam, changeIdParam),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.unlinkAnalysisSense', {
-    summary:
-      "Drop a token analysis's lexicon sense link, for every token linked to it, optionally keeping a gloss",
-    params: sessionArgs(catalogAnalysisParam, keepGlossParam, changeIdParam),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.linkAnalysisMorphemeSense', {
-    summary:
-      'Link one morpheme of a token analysis to a lexicon sense, for every token linked to it; a different entry drops its allomorph and grammar references',
-    params: sessionArgs(
-      catalogAnalysisParam,
-      morphemeIdParam,
-      {
-        name: 'entryRef',
-        required: true,
-        summary: 'EntryRef of the lexicon entry that owns the sense',
-        schema: { type: 'object' },
-      },
-      senseRefParam,
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.unlinkAnalysisMorphemeSense', {
-    summary:
-      'Drop every lexicon reference of one morpheme of a token analysis, for every token linked to it, optionally keeping a gloss',
-    params: sessionArgs(catalogAnalysisParam, morphemeIdParam, keepGlossParam, changeIdParam),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.adoptAnalysisSenseGloss', {
-    summary:
-      "Write a linked sense's gloss as a token analysis's gloss in a session's analysis language, keeping the link",
-    params: sessionArgs(catalogAnalysisParam, adoptValueParam, changeIdParam),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.adoptAnalysisMorphemeSenseGloss', {
-    summary:
-      "Write a linked sense's gloss as one morpheme's gloss in a session's analysis language, keeping the link",
-    params: sessionArgs(catalogAnalysisParam, morphemeIdParam, adoptValueParam, changeIdParam),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.deleteAnalyses', {
-    summary: 'Remove token analyses with every token link to them',
-    params: sessionArgs(analysisIdsParam, changeIdParam),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.mergeAnalysesInto', {
-    summary:
-      "Fold token analyses into a survivor and write the settled content onto it, in a session's analysis language",
-    params: sessionArgs(
-      {
-        name: 'survivorAnalysisId',
-        required: true,
-        summary: 'Id of the token analysis kept',
-        schema: { type: 'string' },
-      },
-      {
-        name: 'mergedAnalysisIds',
-        required: true,
-        summary: 'Ids of the token analyses folded in, most-preferred first',
-        schema: { type: 'array', items: { type: 'string' } },
-      },
-      {
-        name: 'content',
-        required: true,
-        summary: 'MergedContent the survivor says once the merge settles',
-        schema: { type: 'object' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  /** The field naming the phrase occurrence that a phrase edit acts on. */
-  const phraseIdParam = {
-    name: 'phraseId',
-    required: true,
-    summary: 'PhraseAnalysisLink.id of the phrase occurrence edited',
-    schema: { type: 'string' },
-  } as const;
-
-  const tokenSnapshotsSchema = {
-    type: 'array' as const,
-    items: {
-      type: 'object' as const,
-      properties: {
-        tokenRef: { type: 'string' as const },
-        surfaceText: { type: 'string' as const },
-      },
-      required: ['tokenRef', 'surfaceText'],
-    },
-  };
-
-  await registerSessionCommand('interlinearizer.createPhrase', {
-    summary:
-      'Add an approved phrase occurrence, sharing a content-identical stored payload where one exists',
-    params: sessionArgs(
-      {
-        name: 'tokens',
-        required: true,
-        summary: "The phrase's token snapshots, in document order",
-        schema: tokenSnapshotsSchema,
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.updatePhrase', {
-    summary: 'Give a phrase occurrence a new token run, keeping its gloss; an empty run removes it',
-    params: sessionArgs(
-      phraseIdParam,
-      {
-        name: 'tokens',
-        required: true,
-        summary: 'The new token snapshots, in document order',
-        schema: tokenSnapshotsSchema,
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.deletePhrase', {
-    summary: 'Remove a phrase occurrence, with its payload unless another occurrence shares it',
-    params: sessionArgs(phraseIdParam, changeIdParam),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.mergePhrases', {
-    summary:
-      'Grow a phrase occurrence to a merged token run, removing the absorbed occurrence when named',
-    params: sessionArgs(
-      {
-        name: 'targetPhraseId',
-        required: true,
-        summary: 'PhraseAnalysisLink.id of the phrase occurrence that grows',
-        schema: { type: 'string' },
-      },
-      {
-        name: 'tokens',
-        required: true,
-        summary: 'The merged token snapshots, in document order',
-        schema: tokenSnapshotsSchema,
-      },
-      {
-        name: 'absorbedPhraseId',
-        required: false,
-        summary:
-          'PhraseAnalysisLink.id of the neighboring occurrence merged in; omit when the neighbor is in no phrase',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.writePhraseGloss', {
-    summary:
-      "Write a phrase occurrence's gloss in a session's analysis language; a blank value clears it",
-    params: sessionArgs(
-      phraseIdParam,
-      {
-        name: 'value',
-        required: true,
-        summary: 'The gloss',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.approvePhrase', {
-    summary: 'Approve a phrase occurrence, unless any of its tokens is in an approved phrase',
-    params: sessionArgs(phraseIdParam, changeIdParam),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.splitPhrase', {
-    summary:
-      "Split a phrase occurrence just after a token, in the document order of the token's book",
-    params: sessionArgs(
-      phraseIdParam,
-      {
-        name: 'splitAfterTokenRef',
-        required: true,
-        summary: 'Token.ref of the token the first half ends with',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.writeSegmentFreeTranslation', {
-    summary:
-      "Write a segment's free translation in a session's analysis language; a blank value clears it",
-    params: sessionArgs(
-      {
-        name: 'segmentId',
-        required: true,
-        summary: 'Segment.id of the segment translated',
-        schema: { type: 'string' },
-      },
-      {
-        name: 'surfaceText',
-        required: true,
-        summary: "The segment's current baseline text",
-        schema: { type: 'string' },
-      },
-      {
-        name: 'value',
-        required: true,
-        summary: 'The free translation',
-        schema: { type: 'string' },
-      },
-      {
-        name: 'adoptStaleAnalysisId',
-        required: false,
-        summary:
-          'Id of the stale translation the value was typed over, adopted when the segment has no approved one; omit when there is none',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.mergeSegments', {
-    summary: 'Merge the segment beginning at a token into the one before it',
-    params: sessionArgs(
-      {
-        name: 'secondSegmentStartRef',
-        required: true,
-        summary: 'Token.ref of the first token of the segment merged away',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.splitSegment', {
-    summary:
-      'Split a segment so a new one begins at a token, first splitting every approved phrase the boundary would cut',
-    params: sessionArgs(
-      {
-        name: 'tokenRef',
-        required: true,
-        summary: 'Token.ref of the token the new segment begins with',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.moveBoundary', {
-    summary:
-      'Move a segment boundary from one token to another, first splitting every approved phrase the moved boundary would cut',
-    params: sessionArgs(
-      {
-        name: 'fromRef',
-        required: true,
-        summary: 'Token.ref of the token that stops beginning a segment',
-        schema: { type: 'string' },
-      },
-      {
-        name: 'toRef',
-        required: true,
-        summary: 'Token.ref of the token that begins a segment instead',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  const discardResult = {
-    name: 'return value',
-    summary:
-      'JSON-stringified CommandReply with hasFreeTranslations: the ChangeSet the discard applied and the pool buckets it touched; whether any segment of the draft the discard leaves has a free translation',
-    schema: { type: 'string' },
-  } as const;
-
-  await registerSessionCommand('interlinearizer.discardBook', {
-    summary:
-      "Discard the unsaved changes to one book of a session's draft, restoring what the project it saves to holds for the book",
-    params: sessionArgs(
-      {
-        name: 'bookCode',
-        required: true,
-        summary: 'Three-letter code of the book discarded',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: discardResult,
-  });
-
-  await registerSessionCommand('interlinearizer.discardAll', {
-    summary:
-      "Discard every unsaved change to a session's draft, restoring what the project it saves to holds",
-    params: sessionArgs(changeIdParam),
-    result: discardResult,
-  });
-
-  await registerSessionCommand('interlinearizer.changeAnalysisLanguages', {
-    summary:
-      "Give a session's draft new analysis languages, optionally moving or deleting one tag's glosses and free translations",
-    params: sessionArgs(
-      {
-        name: 'analysisLanguages',
-        required: true,
-        summary: 'BCP 47 tags, primary first; never empty',
-        schema: { type: 'array', items: { type: 'string' } },
-      },
-      {
-        name: 'retag',
-        required: false,
-        summary: 'Glosses and free translations to move from one tag to another',
-        schema: {
-          type: 'object',
-          properties: { from: { type: 'string' }, to: { type: 'string' } },
-          required: ['from', 'to'],
-        },
-      },
-      {
-        name: 'deleteTextOf',
-        required: false,
-        summary: 'The tag whose glosses and free translations are deleted',
-        schema: { type: 'string' },
-      },
-      changeIdParam,
-    ),
-    result: editResult,
-  });
-
-  await registerSessionCommand('interlinearizer.countLanguageText', {
-    summary:
-      "Count the glosses and free translations of a session's draft under each language tag that has any",
-    params: sessionArgs(),
-    result: {
-      name: 'return value',
-      summary: 'JSON-stringified counts keyed by tag',
-      schema: { type: 'string' },
-    },
-  });
-
-  await registerSessionCommand('interlinearizer.previewRemovals', {
-    summary: "Name the token analyses a command would remove from a session's draft",
-    params: sessionArgs({
-      name: 'request',
-      required: true,
-      summary: 'RemovalPreviewRequest naming the command by intent, with its arguments',
-      schema: { type: 'object' },
-    }),
-    result: {
-      name: 'return value',
-      summary: 'JSON-stringified ids of the token analyses; "[]" when it would remove none',
-      schema: { type: 'string' },
-    },
-  });
-
-  await registerSessionCommand('interlinearizer.previewBreakdownEdit', {
-    summary:
-      'Read what a breakdown edit at a token would do to the payload that the token approves',
-    params: sessionArgs({
-      name: 'tokenRef',
-      required: true,
-      summary: 'Token.ref of the token whose breakdown would be edited',
-      schema: { type: 'string' },
-    }),
-    result: {
-      name: 'return value',
-      summary: 'JSON-stringified BreakdownPreview',
-      schema: { type: 'string' },
-    },
-  });
-
-  const currentBookParam = {
-    name: 'currentBook',
-    required: true,
-    summary: 'Book code the per-book usage count is taken against',
-    schema: { type: 'string' },
-  } as const;
-
-  const catalogRowsResult = {
-    name: 'return value',
-    summary: "JSON-stringified CatalogRow[], each row's books listed",
-    schema: { type: 'string' },
-  } as const;
-
-  await registerSessionCommand('interlinearizer.getCatalogRows', {
-    summary: "Serve one page of a session's analysis catalog, with the filter choices to offer",
-    params: sessionArgs({
-      name: 'request',
-      required: true,
-      summary: 'CatalogRowsRequest naming the search, sort, filters, page and current book',
-      schema: { type: 'object' },
-    }),
-    result: {
-      name: 'return value',
-      summary: "JSON-stringified CatalogPage, each row's books listed",
-      schema: { type: 'string' },
-    },
-  });
-
-  await registerSessionCommand('interlinearizer.getSelectionSummary', {
-    summary:
-      "Summarize the selected analyses of a session's draft: their use count, the glossed ones, and the merge they allow",
-    params: sessionArgs({
-      name: 'analysisIds',
-      required: true,
-      summary: 'IDs of the selected token analyses, in listing order',
-      schema: { type: 'array', items: { type: 'string' } },
-    }),
-    result: {
-      name: 'return value',
-      summary: 'JSON-stringified SelectionSummary',
-      schema: { type: 'string' },
-    },
-  });
-
-  await registerSessionCommand('interlinearizer.countUsages', {
-    summary: "Count the distinct tokens in a session's draft that approve any of the analyses",
-    params: sessionArgs({
-      name: 'analysisIds',
-      required: true,
-      summary: 'IDs of the token analyses',
-      schema: { type: 'array', items: { type: 'string' } },
-    }),
-    result: { name: 'return value', summary: 'How many tokens', schema: { type: 'number' } },
-  });
-
-  await registerSessionCommand('interlinearizer.getCatalogRowsByIds', {
-    summary: "Serve the catalog rows of the named analyses in a session's draft, in that order",
-    params: sessionArgs(currentBookParam, {
-      name: 'analysisIds',
-      required: true,
-      summary: 'IDs of the token analyses; an unstored one is left out',
-      schema: { type: 'array', items: { type: 'string' } },
-    }),
-    result: catalogRowsResult,
-  });
-
-  await registerSessionCommand('interlinearizer.getHomographRows', {
-    summary:
-      "Serve the catalog rows in a session's draft sharing an analysis's normalized surface form, most used first",
-    params: sessionArgs(currentBookParam, {
-      name: 'analysisId',
-      required: true,
-      summary: 'ID of the token analysis',
-      schema: { type: 'string' },
-    }),
-    result: {
-      name: 'return value',
-      summary: `JSON-stringified CatalogRow[], each row's books listed; "[]" when no analysis carries the id`,
-      schema: { type: 'string' },
-    },
-  });
-
-  await registerSessionCommand('interlinearizer.previewDeletion', {
-    summary:
-      "Report what deleting a token analysis in a session's draft would do to the tokens that approve it",
-    params: sessionArgs({
-      name: 'analysisId',
-      required: true,
-      summary: 'ID of the token analysis',
-      schema: { type: 'string' },
-    }),
-    result: {
-      name: 'return value',
-      summary: 'JSON-stringified AnalysisDeletionOutcome; "null" when no analysis carries the id',
-      schema: { type: 'string' },
-    },
-  });
-
-  await registerSessionCommand('interlinearizer.getConcordance', {
-    summary:
-      "Serve one page of a session's concordance: of the forms of its source's whole text, or of one form's occurrences",
-    params: sessionArgs({
-      name: 'request',
-      required: true,
-      summary:
-        'ConcordanceRequest naming the page, and either the current book or the form whose occurrences are paged',
-      schema: { type: 'object' },
-    }),
-    result: {
-      name: 'return value',
-      summary:
-        'JSON-stringified ConcordancePage, or ConcordanceOccurrencePage for a form; "null" until the whole text has been read',
-      schema: { type: 'string' },
-    },
-  });
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.checkIndexes', checkIndexes, {
-      method: {
-        summary:
-          "Report where a session's derived indexes, or stored shards, differ from its records, for debugging",
-        params: sessionArgs(),
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified IndexDifference[]; "[]" when none differ',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.getDraftEnvelope', getDraftEnvelope, {
-      method: {
-        summary: "Read a session's draft without its analysis or boundaries",
-        params: sessionArgs(),
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified DraftEnvelope',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.setPerfMarks',
-      async (enabled: boolean) => setHostPerfMarks(enabled),
-      {
-        method: {
-          summary: "Turn the extension host's timing entries on or off for the performance harness",
-          params: [
-            {
-              name: 'enabled',
-              required: true,
-              summary: 'Whether the host records timing entries',
-              schema: { type: 'boolean' },
-            },
-          ],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.setSkipSessionReads',
-      async (skip: boolean) => setSessionReadsSkipped(skip),
-      {
-        method: {
-          summary:
-            'Turn on or off skipping the whole-text read that a session starts, for the performance harness',
-          params: [
-            {
-              name: 'skip',
-              required: true,
-              summary: 'Whether sessions read no text, even when a feature needs it',
-              schema: { type: 'boolean' },
-            },
-          ],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.sessionIdFor',
-      async (sourceProjectId: string) => sessions.sessionIdFor(sourceProjectId),
-      {
-        method: {
-          summary:
-            "Return the id of the session open on a source project, for the performance harness to address the view's session",
-          params: [
-            {
-              name: 'sourceProjectId',
-              required: true,
-              summary: 'Source project whose open session to name',
-              schema: { type: 'string' },
-            },
-          ],
-          result: {
-            name: 'return value',
-            summary: 'The session id, or undefined when the source has no session open',
-            schema: { type: 'string' },
-          },
-        },
-      },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.readPerf',
-      async () => {
-        const reading = readHostPerf();
-        return reading && JSON.stringify(reading);
-      },
-      {
-        method: {
-          summary: 'Take the timing entries the extension host recorded since the last reading',
-          params: [],
-          result: {
-            name: 'return value',
-            summary: 'JSON-stringified { entries, pid }, or undefined while timing entries are off',
-            schema: { type: 'string' },
-          },
-        },
-      },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.updateProjectMetadata', updateProjectMetadata, {
-      method: {
-        summary: 'Update the name, description, and target of an existing interlinearizer project',
-        params: [
-          {
-            name: 'interlinearProjectId',
-            required: true,
-            summary: 'UUID of the interlinearizer project to update',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'name',
-            required: false,
-            summary: 'New user-facing name; omit to clear',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'description',
-            required: false,
-            summary: 'New user-facing description; omit to clear',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'targetProjectId',
-            required: false,
-            summary: 'New target-project ID; omit to clear the target binding',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary:
-            'JSON-stringified updated InterlinearProject, or undefined if no project with that ID exists; rejects (throws) on storage failure',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.importPt9Project',
-      importPt9Project,
-      {
-        method: {
-          summary:
-            "Import or sync the source project's Paratext 9 interlinear data into its single frozen import project",
-          params: [
-            {
-              name: 'sourceProjectId',
-              required: true,
-              summary: 'Platform.Bible project ID whose Paratext 9 interlinear files to import',
-              schema: { type: 'string' },
-            },
-          ],
-          result: {
-            name: 'return value',
-            summary:
-              "JSON-stringified { outcome: 'imported' | 'staleKept', projectId, report?, summary? }; rejects (throws) when the source has nothing to import or the import fails",
-            schema: { type: 'string' },
-          },
-        },
-      },
-      // Import time grows with the project's data, so any fixed timeout reports a false failure on a
-      // large project while the host finishes the import.
-      { timeoutMilliseconds: 0 },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.createEditableCopy', createEditableCopy, {
-      method: {
-        summary:
-          'Create an editable project from a Paratext 9 import, carrying its analysis and no import provenance',
-        params: [
-          {
-            name: 'interlinearProjectId',
-            required: true,
-            summary: 'UUID of the Paratext 9 import to copy',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'name',
-            required: true,
-            summary: 'User-facing name for the copy',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'description',
-            required: false,
-            summary: 'User-facing description for the copy',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary:
-            'JSON-stringified created InterlinearProject; rejects (throws) when the project is missing or not a Paratext 9 import',
-          schema: { type: 'string' },
-        },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand('interlinearizer.deleteProject', deleteInterlinearProject, {
-      method: {
-        summary: 'Delete an interlinearizer project by UUID',
-        params: [
-          {
-            name: 'interlinearProjectId',
-            required: true,
-            summary: 'UUID of the interlinearizer project to delete',
-            schema: { type: 'string' },
-          },
-        ],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-      },
-    }),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.openSelectProjectModal',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary: 'Open the project-selector modal in the Interlinearizer WebView',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.openNewProjectModal',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary: 'Open the create-project modal in the Interlinearizer WebView',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.openProjectInfoModal',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary:
-            'Open the interlinear-info modal for the active project in the Interlinearizer WebView',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.openDeleteProjectModal',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary: 'Ask to delete the active project in the Interlinearizer WebView',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.openAnalysisCatalog',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary: 'Open the analysis catalog panel in the Interlinearizer WebView',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.openConcordance',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary: 'Open the concordance panel in the Interlinearizer WebView',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.undo',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary: 'Undo the latest edit to the draft in the Interlinearizer WebView',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
-
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.redo',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary: 'Redo the most recently undone edit to the draft in the Interlinearizer WebView',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
-
   const undoFromNotificationEmitter = await keep(
     papi.network.createNetworkEventEmitterAsync('interlinearizer.onUndoFromNotification'),
   );
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.undoFromNotification',
-      async (notificationId) => {
-        undoFromNotificationEmitter.emit({ notificationId });
-      },
-      {
-        method: {
-          summary: "Undo the draft edit a notification's Undo button offered to undo",
-          params: [
-            {
-              name: 'notificationId',
-              required: true,
-              summary: 'ID of the notification whose Undo button was clicked',
-              schema: { type: ['string', 'number'] },
-            },
-          ],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
 
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.openLexiconChooser',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary: 'Open the lexicon chooser for this project from the Interlinearizer WebView',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
+  // The WebView handles these commands; registering them makes them known to the platform.
+  /* v8 ignore next */
+  const handledInWebView = async () => {};
 
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.save',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary:
-            'Save the current draft to the active project (handled in the Interlinearizer WebView)',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
+  const handlers: { [C in ExtensionCommand]: CommandHandlers[C] } = {
+    ...edits,
+    ...catalog,
+    ...concordance,
+    'interlinearizer.openForWebView': openInterlinearizerForWebView,
+    'interlinearizer.createProject': createInterlinearProject,
+    'interlinearizer.getProject': getInterlinearProject,
+    'interlinearizer.getProjectSummary': getProjectSummary,
+    'interlinearizer.saveDraftToProject': saveDraftToProject,
+    'interlinearizer.saveDraftAsProject': saveDraftAsProject,
+    'interlinearizer.getProjectsForSource': getProjectsForSource,
+    'interlinearizer.getBookOutline': getBookOutline,
+    'interlinearizer.getSegments': getSegments,
+    'interlinearizer.getTextReadStatus': getTextReadStatus,
+    'interlinearizer.retryTextRead': retryTextRead,
+    'interlinearizer.startDraftOver': startDraftOver,
+    'interlinearizer.getStaleSummary': getStaleSummary,
+    'interlinearizer.openSession': openSession,
+    'interlinearizer.closeSession': closeSession,
+    'interlinearizer.setAnalysisLanguage': setAnalysisLanguage,
+    'interlinearizer.setSaveTarget': setSaveTarget,
+    'interlinearizer.detachFromProject': detachFromProject,
+    'interlinearizer.undoEdit': undoEdit,
+    'interlinearizer.redoEdit': redoEdit,
+    'interlinearizer.checkIndexes': checkIndexes,
+    'interlinearizer.getDraftEnvelope': getDraftEnvelope,
+    'interlinearizer.setPerfMarks': async (enabled: boolean) => setHostPerfMarks(enabled),
+    'interlinearizer.setSkipSessionReads': async (skip: boolean) => setSessionReadsSkipped(skip),
+    'interlinearizer.sessionIdFor': async (sourceProjectId: string) =>
+      sessions.sessionIdFor(sourceProjectId),
+    'interlinearizer.readPerf': async () => {
+      const reading = readHostPerf();
+      return reading && JSON.stringify(reading);
+    },
+    'interlinearizer.updateProjectMetadata': updateProjectMetadata,
+    'interlinearizer.importPt9Project': importPt9Project,
+    'interlinearizer.createEditableCopy': createEditableCopy,
+    'interlinearizer.deleteProject': deleteInterlinearProject,
+    'interlinearizer.openSelectProjectModal': handledInWebView,
+    'interlinearizer.openNewProjectModal': handledInWebView,
+    'interlinearizer.openProjectInfoModal': handledInWebView,
+    'interlinearizer.openDeleteProjectModal': handledInWebView,
+    'interlinearizer.openAnalysisCatalog': handledInWebView,
+    'interlinearizer.openConcordance': handledInWebView,
+    'interlinearizer.undo': handledInWebView,
+    'interlinearizer.redo': handledInWebView,
+    'interlinearizer.undoFromNotification': async (notificationId) => {
+      undoFromNotificationEmitter.emit({ notificationId });
+    },
+    'interlinearizer.openLexiconChooser': handledInWebView,
+    'interlinearizer.save': handledInWebView,
+    'interlinearizer.openSaveAsModal': handledInWebView,
+    'interlinearizer.openDiscardChangesModal': handledInWebView,
+  };
 
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.openSaveAsModal',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary: 'Open the Save As modal in the Interlinearizer WebView',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
+  const commandOptions: Partial<
+    Record<ExtensionCommand, Parameters<typeof papi.commands.registerCommand>[3]>
+  > = {
+    // Import time grows with the project's data, so any fixed timeout reports a false failure on a
+    // large project while the host finishes the import.
+    'interlinearizer.importPt9Project': { timeoutMilliseconds: 0 },
+  };
 
-  await keep(
-    papi.commands.registerCommand(
-      'interlinearizer.openDiscardChangesModal',
-      // Handled entirely in the WebView; backend registration makes the command known to the platform.
-      /* v8 ignore next */ async () => {},
-      {
-        method: {
-          summary:
-            'Open the dialog that discards the unsaved analysis of the current book or the whole draft (handled in the WebView)',
-          params: [],
-          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-        },
-      },
-    ),
-  );
+  // Registered one at a time, so a failed registration leaves none in flight to leak.
+  await extensionCommands.reduce(async (previous, commandName) => {
+    await previous;
+    await keep(
+      papi.commands.registerCommand(
+        commandName,
+        handlers[commandName],
+        { method: commandDocs[commandName] },
+        commandOptions[commandName],
+      ),
+    );
+  }, Promise.resolve());
 
   logger.debug('Interlinearizer extension finished activating!');
 }

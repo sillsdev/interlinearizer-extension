@@ -81,8 +81,8 @@ export function useConcordanceOccurrences(
 /**
  * How far the session's whole-text read has got. Asking while the text is `wanted` starts the read.
  *
- * @returns `'error'` when the read could not start; `undefined` while the text is not `wanted`, and
- *   until the first answer arrives.
+ * @returns `'error'` when the latest fetch of the status failed; `undefined` while the text is not
+ *   `wanted`, and until the first answer arrives.
  */
 export function useTextReadStatus(wanted: boolean): TextReadStatus | 'error' | undefined {
   const { sessionId } = usePageSession();

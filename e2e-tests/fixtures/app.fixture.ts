@@ -115,8 +115,7 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
           ) {
             await electronApp.evaluate(({ BrowserWindow }, url) => {
               const win = BrowserWindow.getAllWindows().find(
-                (w: { isDestroyed(): boolean; loadURL(url: string): Promise<void> }) =>
-                  !w.isDestroyed(),
+                (w: { isDestroyed(): boolean }) => !w.isDestroyed(),
               );
               if (win) win.loadURL(url).catch(() => {});
             }, rendererUrl);

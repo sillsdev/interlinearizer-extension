@@ -90,16 +90,7 @@ Everything else lives in the code's doc comments and tests. A feature rarely nee
 
 [Interlinearizer](src/components/Interlinearizer.tsx) — renders the interlinear view from the loaded book data.
 
-The WebView is injected into the main bundle via Webpack's `?inline` query:
-
-```ts
-import interlinearizerReact from './interlinearizer.web-view?inline';
-import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-```
-
-[src/webpack-env.d.ts](src/webpack-env.d.ts) declares the `*?inline`, `*?raw`, and `*.scss` module types that make these imports type-safe.
-
-Two separate Webpack configs handle this: `webpack.config.web-view.ts` builds the React component into `temp-build/`, then `webpack.config.main.ts` copies it into `dist/` alongside contributions, public assets, and type declarations.
+The main bundle inlines the built WebView through `?inline` imports, so the WebView build runs first ([webpack.config.ts](webpack.config.ts)). Otherwise main bundles a stale or missing WebView.
 
 The WebView root component is assigned to `globalThis.webViewComponent` (not exported) — this is the PAPI WebView contract. Tests must `require()` the module and read `globalThis.webViewComponent` to get the component.
 
@@ -124,16 +115,16 @@ Saved projects are listed through [ProjectSummaries](src/services/projectSummari
 - **Pages, not drafts**: the draft stays on the host. The WebView holds only its envelope ([useSessionProject](src/hooks/useSessionProject.ts)) and the pages its views show ([PageClient](src/cache/pageClient.ts) over a [RecordCache](src/cache/recordCache.ts)). No WebView code reads the whole analysis or the whole text, and no draft crosses PAPI, so the view's cost follows what it shows rather than the size of the draft.
   - New and Open have the host write the new draft through `DraftRepository.startOver`. `startOver` stays off `AnalysisRepository`, because what New and Open mean for another backend is undecided.
 - **Text read on demand**: opening a session reads none of the source's text. The session reads the whole text only once a feature needs it (the Stale filter, "Word not in the text", or the concordance), so a session that uses none of them never pays for reading every book.
-- **Edits and undo**: each session runs its commands one at a time. A command stages its changes in a [ChangeBuffer](src/services/commands/changeBuffer.ts), and the session applies them as one `ChangeSet` through its [EditHistory](src/services/editHistory.ts), making one undo step. Each edit carries a `changeId`, so a resent command replays its first reply rather than applying twice. Re-anchor passes keep the analysis on the text as the text changes. They go through the history too, without being undo steps, so an undo re-anchors what it restores. A boundary or discard edit returns the books it changes in `reanchorTo`, so the session re-anchors them in the same undo step. Without it, the analysis stays on the old segments, and later passes skip the book because its text has not changed.
+- **Edits and undo**: each session runs its commands one at a time. A command stages its changes in a [ChangeBuffer](src/services/commands/changeBuffer.ts), and the session applies them as one `ChangeSet` through its [EditHistory](src/services/editHistory.ts), making one undo step. An edit sent under a `changeId` the session has already applied gets its first reply back and is not applied again; `PageClient` sends every command under a fresh one. Re-anchor passes keep the analysis on the text as the text changes. They go through the history too, without being undo steps, so an undo re-anchors what it restores. A boundary or discard edit returns, in `reanchorTo`, the books it changes, so the session re-anchors them in the same undo step. A book left out keeps its analysis on the old segments, and later passes skip it because its text has not changed.
 - **Change reports**: each change a session applies goes out as `onAnalysisChanged` ([describeChange](src/services/analysisChanges.ts)), naming the books, segments, and cross-book queries it affects. The WebView fetches again only what a report names. So a change that alters a query's answer must name that query, or the view goes stale. For example, a switch of analysis language names the catalog and concordance queries, because both read the session's language.
 - **JSON across PAPI**: arguments and replies cross PAPI as JSON, which writes `undefined` as `null`. A field where `undefined` carries meaning, such as the catalog's untagged filter choice, must be restored on arrival (`restoreUntagged`), or it silently becomes another value.
 
-Host commands live in [src/services/commands/](src/services/commands/), one module per family; their outcome tests run through [command-runs](src/__tests__/services/commands/command-runs.ts). The WebView reaches the session through handler modules:
+Host commands live in [src/services/commands/](src/services/commands/), one module per family; their outcome tests run through [command-runs](src/__tests__/services/commands/command-runs.ts). The WebView reaches the session through these modules:
 
 - [sessionEditHandlers](src/services/sessionEditHandlers.ts): edits and their previews.
 - [sessionCatalogHandlers](src/services/sessionCatalogHandlers.ts): the analysis catalog, read through [catalogHooks](src/cache/catalogHooks.ts).
 - [sessionConcordanceHandlers](src/services/sessionConcordanceHandlers.ts): the concordance, read through [concordanceHooks](src/cache/concordanceHooks.ts).
-- [sessionPages](src/services/sessionPages.ts): outlines, segment pages, and stale summaries, the last read through [staleHooks](src/cache/staleHooks.ts).
+- [sessionPages](src/services/sessionPages.ts): outlines, segment pages, and stale summaries, which `main.ts` serves directly; stale summaries are read through [staleHooks](src/cache/staleHooks.ts).
 
 ### Components
 

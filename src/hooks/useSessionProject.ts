@@ -37,8 +37,8 @@ const NO_ENVELOPE = new DraftEnvelopeStore(async () => {
  * start the draft over, then open a fresh session, which has nothing to undo. Undo, redo, discards
  * and boundary edits are commands to the session.
  *
- * Of the draft, the view holds only its envelope. The analysis stays on the host, which serves it a
- * page at a time.
+ * Of the draft, the view holds only its envelope. The analysis stays on the host, which serves the
+ * view one page at a time.
  */
 export default function useSessionProject(
   sourceProjectId: string,

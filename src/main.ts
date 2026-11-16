@@ -20,7 +20,6 @@ import {
   formatReplacementString,
   type LocalizeKey,
   type PlatformEventEmitter,
-  type UnsubscriberAsync,
 } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
@@ -1003,6 +1002,20 @@ async function openSession({
 }
 
 /**
+ * Closes a session once the commands sent to it settle.
+ *
+ * @throws Whatever closing the session throws. The error is logged before rethrowing.
+ */
+async function closeSession({ sessionId }: ArgsOf<'interlinearizer.closeSession'>): Promise<void> {
+  try {
+    await sessions.close(sessionId);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to close session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/**
  * Sets the language a session's glosses are read and written in.
  *
  * @throws If the session is not open. The error is logged before rethrowing.
@@ -1184,6 +1197,19 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   executionToken = context.executionToken;
   rememberedActiveProjects.clear();
+
+  /**
+   * Adds the resolved `registration` to `context`, so a failure later in activation still disposes
+   * the registration.
+   */
+  async function keep<T extends Parameters<typeof context.registrations.add>[number]>(
+    registration: Promise<T>,
+  ): Promise<T> {
+    const registered = await registration;
+    context.registrations.add(registered);
+    return registered;
+  }
+
   context.registrations.add(
     startCSharpHost(executionToken, context.elevatedPrivileges.createProcess),
   );
@@ -1324,15 +1350,10 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     bookTextUnsubscriber,
   );
 
-  const mainWebViewProviderRegistration = await papi.webViewProviders.registerWebViewProvider(
-    mainWebViewType,
-    mainWebViewProvider,
-  );
+  await keep(papi.webViewProviders.registerWebViewProvider(mainWebViewType, mainWebViewProvider));
 
-  const openForWebViewCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.openForWebView',
-    openInterlinearizerForWebView,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.openForWebView', openInterlinearizerForWebView, {
       method: {
         summary: 'Open the Interlinearizer for the project associated with a WebView',
         params: [
@@ -1351,7 +1372,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
   /** Returns whether the supplied project-setting value is a boolean. */
@@ -1369,25 +1390,18 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     return Promise.resolve(typeof newValue === 'boolean' || newValue === 'auto');
   }
 
-  const continuousScrollValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.continuousScroll',
-    isBoolean,
+  await keep(papi.projectSettings.registerValidator('interlinearizer.continuousScroll', isBoolean));
+
+  await keep(
+    papi.projectSettings.registerValidator('interlinearizer.showMorphology', isBooleanOrAuto),
   );
 
-  const showMorphologyValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.showMorphology',
-    isBooleanOrAuto,
+  await keep(
+    papi.projectSettings.registerValidator('interlinearizer.showFreeTranslation', isBooleanOrAuto),
   );
 
-  const showFreeTranslationValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.showFreeTranslation',
-    isBooleanOrAuto,
-  );
-
-  const createProjectCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.createProject',
-    createInterlinearProject,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.createProject', createInterlinearProject, {
       method: {
         summary: 'Create a new interlinearizer project',
         params: [
@@ -1431,13 +1445,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const getProjectCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getProject',
-    getInterlinearProject,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.getProject', getInterlinearProject, {
       method: {
         summary: 'Return the interlinearizer project with the given UUID as a JSON string',
         params: [
@@ -1454,13 +1466,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const getProjectSummaryCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getProjectSummary',
-    getProjectSummary,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.getProjectSummary', getProjectSummary, {
       method: {
         summary:
           'Return the summary of the interlinearizer project with the given UUID as a JSON string, without its analysis',
@@ -1478,13 +1488,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const saveDraftToProjectCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.saveDraftToProject',
-    saveDraftToProject,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.saveDraftToProject', saveDraftToProject, {
       method: {
         summary: "Copy a source project's stored draft into an existing interlinearizer project",
         params: [
@@ -1527,13 +1535,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const saveDraftAsProjectCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.saveDraftAsProject',
-    saveDraftAsProject,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.saveDraftAsProject', saveDraftAsProject, {
       method: {
         summary: "Create an interlinearizer project holding a copy of a source project's draft",
         params: [
@@ -1584,13 +1590,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const getProjectsForSourceCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getProjectsForSource',
-    getProjectsForSource,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.getProjectsForSource', getProjectsForSource, {
       method: {
         summary: 'Return all interlinearizer projects for a source project as a JSON string',
         params: [
@@ -1607,7 +1611,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
   /** The parameter naming the session whose source a query reads. */
@@ -1633,10 +1637,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   ] as const;
 
-  const getBookOutlineCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getBookOutline',
-    getBookOutline,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.getBookOutline', getBookOutline, {
       method: {
         summary:
           "Return the outline of a book of a session's source, segmented by the draft's boundaries, as a JSON string",
@@ -1648,13 +1650,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const getSegmentsCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getSegments',
-    getSegments,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.getSegments', getSegments, {
       method: {
         summary:
           "Return a run of the segments of a book of a session's source, with the draft's analysis of them, as a JSON string",
@@ -1680,13 +1680,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const getTextReadStatusCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getTextReadStatus',
-    getTextReadStatus,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.getTextReadStatus', getTextReadStatus, {
       method: {
         summary:
           "Return how far reading a session's whole source text has got, starting the session's read when it has none, as a JSON string",
@@ -1697,25 +1695,21 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const retryTextReadCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.retryTextRead',
-    retryTextRead,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.retryTextRead', retryTextRead, {
       method: {
         summary: "Read again each book of a session's whole source text whose latest read failed",
         params: [sessionAddressParam],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
-    },
+    }),
   );
 
-  const startDraftOverCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.startDraftOver',
-    startDraftOver,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.startDraftOver', startDraftOver, {
       method: {
         summary:
           "Start a source project's draft over, from a stored project or empty, closing the source's session first",
@@ -1743,7 +1737,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         ],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
-    },
+    }),
   );
 
   /** The field naming the session that a session command acts on. */
@@ -1786,10 +1780,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const sessionArgs = (...fields: ParamDoc[]) =>
     argsParam("The session, and the command's own fields", [sessionIdParam, ...fields]);
 
-  const getStaleSummaryCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getStaleSummary',
-    getStaleSummary,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.getStaleSummary', getStaleSummary, {
       method: {
         summary:
           "Summarize the stale analyses that a book of a session's source holds, segmented by the draft's boundaries, as a JSON string",
@@ -1806,13 +1798,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const openSessionCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.openSession',
-    openSession,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.openSession', openSession, {
       method: {
         summary:
           "Open a session on a source project's draft, or read-only on its Paratext 9 import, closing the source's earlier session",
@@ -1842,25 +1832,21 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const closeSessionCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.closeSession',
-    ({ sessionId }: ArgsOf<'interlinearizer.closeSession'>) => sessions.close(sessionId),
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.closeSession', closeSession, {
       method: {
         summary: 'Close a session once the commands sent to it settle',
         params: sessionArgs(),
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
-    },
+    }),
   );
 
-  const setAnalysisLanguageCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.setAnalysisLanguage',
-    setAnalysisLanguage,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.setAnalysisLanguage', setAnalysisLanguage, {
       method: {
         summary: "Set the language a session's glosses are read and written in",
         params: sessionArgs({
@@ -1871,13 +1857,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         }),
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
-    },
+    }),
   );
 
-  const setSaveTargetCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.setSaveTarget',
-    setSaveTarget,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.setSaveTarget', setSaveTarget, {
       method: {
         summary: "Set which project a session's draft saves to, if any",
         params: sessionArgs({
@@ -1888,19 +1872,17 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         }),
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
-    },
+    }),
   );
 
-  const detachFromProjectCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.detachFromProject',
-    detachFromProject,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.detachFromProject', detachFromProject, {
       method: {
         summary: "Leave a session's draft with no project to save to, once its project is deleted",
         params: sessionArgs(),
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
-    },
+    }),
   );
 
   /** The result of a command that replies with the changes it applied, if any. */
@@ -1911,28 +1893,24 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  const undoEditCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.undoEdit',
-    undoEdit,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.undoEdit', undoEdit, {
       method: {
         summary: "Revert a session's latest edit not yet undone",
         params: sessionArgs(changeIdParam),
         result: appliedChangesResult,
       },
-    },
+    }),
   );
 
-  const redoEditCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.redoEdit',
-    redoEdit,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.redoEdit', redoEdit, {
       method: {
         summary: "Make a session's latest undone edit again",
         params: sessionArgs(changeIdParam),
         result: appliedChangesResult,
       },
-    },
+    }),
   );
 
   /** The fields giving the token that a token edit acts on, and that token's current text. */
@@ -1959,7 +1937,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   } as const;
 
   const sessionCommands = { ...edits, ...catalog, ...concordance };
-  const sessionRegistrations: UnsubscriberAsync[] = [];
 
   /**
    * Registers the session command `commandName`, served by its edit, catalog or concordance
@@ -1969,8 +1946,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     commandName: keyof typeof sessionCommands,
     method: MethodDocumentationWithoutName,
   ): Promise<void> {
-    sessionRegistrations.push(
-      await papi.commands.registerCommand(commandName, sessionCommands[commandName], { method }),
+    await keep(
+      papi.commands.registerCommand(commandName, sessionCommands[commandName], { method }),
     );
   }
 
@@ -2750,10 +2727,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   });
 
-  const checkIndexesCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.checkIndexes',
-    checkIndexes,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.checkIndexes', checkIndexes, {
       method: {
         summary:
           "Report where a session's derived indexes, or stored shards, differ from its records, for debugging",
@@ -2764,13 +2739,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const getDraftEnvelopeCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getDraftEnvelope',
-    getDraftEnvelope,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.getDraftEnvelope', getDraftEnvelope, {
       method: {
         summary: "Read a session's draft without its analysis or boundaries",
         params: sessionArgs(),
@@ -2780,95 +2753,101 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const setPerfMarksCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.setPerfMarks',
-    async (enabled: boolean) => setHostPerfMarks(enabled),
-    {
-      method: {
-        summary: "Turn the extension host's timing entries on or off for the performance harness",
-        params: [
-          {
-            name: 'enabled',
-            required: true,
-            summary: 'Whether the host records timing entries',
-            schema: { type: 'boolean' },
-          },
-        ],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.setPerfMarks',
+      async (enabled: boolean) => setHostPerfMarks(enabled),
+      {
+        method: {
+          summary: "Turn the extension host's timing entries on or off for the performance harness",
+          params: [
+            {
+              name: 'enabled',
+              required: true,
+              summary: 'Whether the host records timing entries',
+              schema: { type: 'boolean' },
+            },
+          ],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const setSkipSessionReadsCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.setSkipSessionReads',
-    async (skip: boolean) => setSessionReadsSkipped(skip),
-    {
-      method: {
-        summary:
-          'Turn on or off skipping the whole-text read that a session starts, for the performance harness',
-        params: [
-          {
-            name: 'skip',
-            required: true,
-            summary: 'Whether sessions read no text, even when a feature needs it',
-            schema: { type: 'boolean' },
-          },
-        ],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.setSkipSessionReads',
+      async (skip: boolean) => setSessionReadsSkipped(skip),
+      {
+        method: {
+          summary:
+            'Turn on or off skipping the whole-text read that a session starts, for the performance harness',
+          params: [
+            {
+              name: 'skip',
+              required: true,
+              summary: 'Whether sessions read no text, even when a feature needs it',
+              schema: { type: 'boolean' },
+            },
+          ],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const sessionIdForCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.sessionIdFor',
-    async (sourceProjectId: string) => sessions.sessionIdFor(sourceProjectId),
-    {
-      method: {
-        summary:
-          "Return the id of the session open on a source project, for the performance harness to address the view's session",
-        params: [
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Source project whose open session to name',
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.sessionIdFor',
+      async (sourceProjectId: string) => sessions.sessionIdFor(sourceProjectId),
+      {
+        method: {
+          summary:
+            "Return the id of the session open on a source project, for the performance harness to address the view's session",
+          params: [
+            {
+              name: 'sourceProjectId',
+              required: true,
+              summary: 'Source project whose open session to name',
+              schema: { type: 'string' },
+            },
+          ],
+          result: {
+            name: 'return value',
+            summary: 'The session id, or undefined when the source has no session open',
             schema: { type: 'string' },
           },
-        ],
-        result: {
-          name: 'return value',
-          summary: 'The session id, or undefined when the source has no session open',
-          schema: { type: 'string' },
         },
       },
-    },
+    ),
   );
 
-  const readPerfCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.readPerf',
-    async () => {
-      const reading = readHostPerf();
-      return reading && JSON.stringify(reading);
-    },
-    {
-      method: {
-        summary: 'Take the timing entries the extension host recorded since the last reading',
-        params: [],
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified { entries, pid }, or undefined while timing entries are off',
-          schema: { type: 'string' },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.readPerf',
+      async () => {
+        const reading = readHostPerf();
+        return reading && JSON.stringify(reading);
+      },
+      {
+        method: {
+          summary: 'Take the timing entries the extension host recorded since the last reading',
+          params: [],
+          result: {
+            name: 'return value',
+            summary: 'JSON-stringified { entries, pid }, or undefined while timing entries are off',
+            schema: { type: 'string' },
+          },
         },
       },
-    },
+    ),
   );
 
-  const updateProjectMetadataCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.updateProjectMetadata',
-    updateProjectMetadata,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.updateProjectMetadata', updateProjectMetadata, {
       method: {
         summary: 'Update the name, description, and target of an existing interlinearizer project',
         params: [
@@ -2904,41 +2883,41 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const importPt9ProjectCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.importPt9Project',
-    importPt9Project,
-    {
-      method: {
-        summary:
-          "Import or sync the source project's Paratext 9 interlinear data into its single frozen import project",
-        params: [
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Platform.Bible project ID whose Paratext 9 interlinear files to import',
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.importPt9Project',
+      importPt9Project,
+      {
+        method: {
+          summary:
+            "Import or sync the source project's Paratext 9 interlinear data into its single frozen import project",
+          params: [
+            {
+              name: 'sourceProjectId',
+              required: true,
+              summary: 'Platform.Bible project ID whose Paratext 9 interlinear files to import',
+              schema: { type: 'string' },
+            },
+          ],
+          result: {
+            name: 'return value',
+            summary:
+              "JSON-stringified { outcome: 'imported' | 'staleKept', projectId, report?, summary? }; rejects (throws) when the source has nothing to import or the import fails",
             schema: { type: 'string' },
           },
-        ],
-        result: {
-          name: 'return value',
-          summary:
-            "JSON-stringified { outcome: 'imported' | 'staleKept', projectId, report?, summary? }; rejects (throws) when the source has nothing to import or the import fails",
-          schema: { type: 'string' },
         },
       },
-    },
-    // Import time grows with the project's data, so any fixed timeout reports a false failure on a
-    // large project while the host finishes the import.
-    { timeoutMilliseconds: 0 },
+      // Import time grows with the project's data, so any fixed timeout reports a false failure on a
+      // large project while the host finishes the import.
+      { timeoutMilliseconds: 0 },
+    ),
   );
 
-  const createEditableCopyCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.createEditableCopy',
-    createEditableCopy,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.createEditableCopy', createEditableCopy, {
       method: {
         summary:
           'Create an editable project from a Paratext 9 import, carrying its analysis and no import provenance',
@@ -2969,13 +2948,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           schema: { type: 'string' },
         },
       },
-    },
+    }),
   );
 
-  const deleteProjectCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.deleteProject',
-    deleteInterlinearProject,
-    {
+  await keep(
+    papi.commands.registerCommand('interlinearizer.deleteProject', deleteInterlinearProject, {
       method: {
         summary: 'Delete an interlinearizer project by UUID',
         params: [
@@ -2988,242 +2965,216 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         ],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
-    },
+    }),
   );
 
-  const openSelectProjectModalCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.openSelectProjectModal',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary: 'Open the project-selector modal in the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.openSelectProjectModal',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary: 'Open the project-selector modal in the Interlinearizer WebView',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const openNewProjectModalCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.openNewProjectModal',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary: 'Open the create-project modal in the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.openNewProjectModal',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary: 'Open the create-project modal in the Interlinearizer WebView',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const openProjectInfoModalCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.openProjectInfoModal',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary:
-          'Open the interlinear-info modal for the active project in the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.openProjectInfoModal',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary:
+            'Open the interlinear-info modal for the active project in the Interlinearizer WebView',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const openDeleteProjectModalCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.openDeleteProjectModal',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary: 'Ask to delete the active project in the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.openDeleteProjectModal',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary: 'Ask to delete the active project in the Interlinearizer WebView',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const openAnalysisCatalogCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.openAnalysisCatalog',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary: 'Open the analysis catalog panel in the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.openAnalysisCatalog',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary: 'Open the analysis catalog panel in the Interlinearizer WebView',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const openConcordanceCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.openConcordance',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary: 'Open the concordance panel in the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.openConcordance',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary: 'Open the concordance panel in the Interlinearizer WebView',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const undoCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.undo',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary: 'Undo the latest edit to the draft in the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.undo',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary: 'Undo the latest edit to the draft in the Interlinearizer WebView',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const redoCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.redo',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary: 'Redo the most recently undone edit to the draft in the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.redo',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary: 'Redo the most recently undone edit to the draft in the Interlinearizer WebView',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const undoFromNotificationEmitter = await papi.network.createNetworkEventEmitterAsync(
-    'interlinearizer.onUndoFromNotification',
+  const undoFromNotificationEmitter = await keep(
+    papi.network.createNetworkEventEmitterAsync('interlinearizer.onUndoFromNotification'),
   );
-  const undoFromNotificationCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.undoFromNotification',
-    async (notificationId) => {
-      undoFromNotificationEmitter.emit({ notificationId });
-    },
-    {
-      method: {
-        summary: "Undo the draft edit a notification's Undo button offered to undo",
-        params: [
-          {
-            name: 'notificationId',
-            required: true,
-            summary: 'ID of the notification whose Undo button was clicked',
-            schema: { type: ['string', 'number'] },
-          },
-        ],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.undoFromNotification',
+      async (notificationId) => {
+        undoFromNotificationEmitter.emit({ notificationId });
       },
-    },
-  );
-
-  const openLexiconChooserCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.openLexiconChooser',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary: 'Open the lexicon chooser for this project from the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      {
+        method: {
+          summary: "Undo the draft edit a notification's Undo button offered to undo",
+          params: [
+            {
+              name: 'notificationId',
+              required: true,
+              summary: 'ID of the notification whose Undo button was clicked',
+              schema: { type: ['string', 'number'] },
+            },
+          ],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const saveCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.save',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary:
-          'Save the current draft to the active project (handled in the Interlinearizer WebView)',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.openLexiconChooser',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary: 'Open the lexicon chooser for this project from the Interlinearizer WebView',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const openSaveAsModalCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.openSaveAsModal',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary: 'Open the Save As modal in the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.save',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary:
+            'Save the current draft to the active project (handled in the Interlinearizer WebView)',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  const discardChangesCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.openDiscardChangesModal',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary:
-          'Open the dialog that discards the unsaved analysis of the current book or the whole draft (handled in the WebView)',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.openSaveAsModal',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary: 'Open the Save As modal in the Interlinearizer WebView',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
       },
-    },
+    ),
   );
 
-  context.registrations.add(
-    ...sessionRegistrations,
-    mainWebViewProviderRegistration,
-    openForWebViewCommandRegistration,
-    continuousScrollValidatorRegistration,
-    showMorphologyValidatorRegistration,
-    showFreeTranslationValidatorRegistration,
-    createProjectCommandRegistration,
-    getProjectCommandRegistration,
-    saveDraftToProjectCommandRegistration,
-    saveDraftAsProjectCommandRegistration,
-    getProjectsForSourceCommandRegistration,
-    getProjectSummaryCommandRegistration,
-    getBookOutlineCommandRegistration,
-    getSegmentsCommandRegistration,
-    getStaleSummaryCommandRegistration,
-    getTextReadStatusCommandRegistration,
-    retryTextReadCommandRegistration,
-    startDraftOverCommandRegistration,
-    openSessionCommandRegistration,
-    closeSessionCommandRegistration,
-    setAnalysisLanguageCommandRegistration,
-    setSaveTargetCommandRegistration,
-    detachFromProjectCommandRegistration,
-    undoEditCommandRegistration,
-    redoEditCommandRegistration,
-    checkIndexesCommandRegistration,
-    getDraftEnvelopeCommandRegistration,
-    setPerfMarksCommandRegistration,
-    setSkipSessionReadsCommandRegistration,
-    sessionIdForCommandRegistration,
-    readPerfCommandRegistration,
-    updateProjectMetadataCommandRegistration,
-    importPt9ProjectCommandRegistration,
-    createEditableCopyCommandRegistration,
-    deleteProjectCommandRegistration,
-    openSelectProjectModalCommandRegistration,
-    openNewProjectModalCommandRegistration,
-    openProjectInfoModalCommandRegistration,
-    openDeleteProjectModalCommandRegistration,
-    openAnalysisCatalogCommandRegistration,
-    openConcordanceCommandRegistration,
-    undoCommandRegistration,
-    redoCommandRegistration,
-    undoFromNotificationEmitter,
-    undoFromNotificationCommandRegistration,
-    openLexiconChooserCommandRegistration,
-    saveCommandRegistration,
-    openSaveAsModalCommandRegistration,
-    discardChangesCommandRegistration,
+  await keep(
+    papi.commands.registerCommand(
+      'interlinearizer.openDiscardChangesModal',
+      // Handled entirely in the WebView; backend registration makes the command known to the platform.
+      /* v8 ignore next */ async () => {},
+      {
+        method: {
+          summary:
+            'Open the dialog that discards the unsaved analysis of the current book or the whole draft (handled in the WebView)',
+          params: [],
+          result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        },
+      },
+    ),
   );
 
   logger.debug('Interlinearizer extension finished activating!');

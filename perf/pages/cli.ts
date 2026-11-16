@@ -726,7 +726,11 @@ async function checkEvents(
     return w.slice(1).map((t, i) => [w[i], t]);
   });
   const now = () => new Date().toISOString();
-  const saved = { analysis: draft.analysis, segmentation: draft.segmentation };
+  const saved = {
+    analysis: draft.analysis,
+    segmentation: draft.segmentation,
+    analysisLanguages: draft.analysisLanguages,
+  };
   const ids = () => ({
     analysisId: crypto.randomUUID(),
     linkId: crypto.randomUUID(),

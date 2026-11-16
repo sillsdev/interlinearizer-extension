@@ -1,9 +1,12 @@
 /// <reference types="jest" />
 
 import type { SegmentationDelta, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
-import type { DraftContent } from '../../../types/draft-content';
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
-import { discardAll, discardBook } from '../../../services/commands/discardCommands';
+import {
+  discardAll,
+  discardBook,
+  type SavedProject,
+} from '../../../services/commands/discardCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import type { DraftExport } from '../../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
@@ -50,9 +53,10 @@ const merged = (...refs: string[]): SegmentationDelta => ({
 
 describe('discardAll', () => {
   it('names the books of the links it restores, in order', () => {
-    const saved: DraftContent = {
+    const saved: SavedProject = {
       analysis: analysisLinking(link('tl-gen', 'GEN 1:1:0'), link('tl-exo', 'EXO 1:1:0')),
       segmentation: undefined,
+      analysisLanguages: [],
     };
 
     const { changedBooks } = discardAll(freshBuffer(), storedHolding(emptyAnalysis()), saved);
@@ -70,7 +74,11 @@ describe('discardAll', () => {
 
   it('names the books whose boundaries it changes', () => {
     const stored = storedHolding(emptyAnalysis(), merged('GEN 1:2:0', 'EXO 1:2:0'));
-    const saved: DraftContent = { analysis: emptyAnalysis(), segmentation: merged('EXO 1:2:0') };
+    const saved: SavedProject = {
+      analysis: emptyAnalysis(),
+      segmentation: merged('EXO 1:2:0'),
+      analysisLanguages: [],
+    };
 
     const { changedBooks } = discardAll(freshBuffer(), stored, saved);
 
@@ -78,12 +86,13 @@ describe('discardAll', () => {
   });
 
   it('names a book whose boundaries its restore adds', () => {
-    const saved: DraftContent = {
+    const saved: SavedProject = {
       analysis: emptyAnalysis(),
       segmentation: {
         removedVerseStarts: [],
         addedStarts: [{ tokenRef: 'EXO 1:1:4', surfaceText: 'And' }],
       },
+      analysisLanguages: [],
     };
 
     const { changedBooks } = discardAll(freshBuffer(), storedHolding(emptyAnalysis()), saved);
@@ -98,6 +107,7 @@ describe('discardAll', () => {
     const { changedBooks } = discardAll(buffer, storedHolding(analysis, merged('GEN 1:2:0')), {
       analysis: JSON.parse(JSON.stringify(analysis)),
       segmentation: merged('GEN 1:2:0'),
+      analysisLanguages: [],
     });
 
     expect(buffer.toChangeSet('discardAll')).toStrictEqual({ intent: 'discardAll' });
@@ -124,6 +134,7 @@ describe('discardAll', () => {
         ],
       },
       segmentation: undefined,
+      analysisLanguages: [],
     });
 
     expect(buffer.toChangeSet('discardAll')).toStrictEqual({ intent: 'discardAll' });
@@ -135,9 +146,34 @@ describe('discardAll', () => {
     discardAll(buffer, storedHolding(emptyAnalysis()), {
       analysis: emptyAnalysis(),
       segmentation: merged('GEN 1:2:0'),
+      analysisLanguages: [],
     });
 
     expect(buffer.toChangeSet('discardAll').scope?.segmentation).toStrictEqual(merged('GEN 1:2:0'));
+  });
+
+  it("stages the scope with the saved project's analysis languages, keeping its boundaries", () => {
+    const buffer = freshBuffer();
+
+    discardAll(buffer, storedHolding(emptyAnalysis(), merged('GEN 1:2:0')), {
+      analysis: emptyAnalysis(),
+      segmentation: merged('GEN 1:2:0'),
+      analysisLanguages: ['en'],
+    });
+
+    const { scope } = buffer.toChangeSet('discardAll');
+    expect(scope?.analysisLanguages).toStrictEqual(['en']);
+    expect(scope?.segmentation).toStrictEqual(merged('GEN 1:2:0'));
+  });
+
+  it('keeps the analysis languages when the draft saves to no project', () => {
+    const buffer = freshBuffer();
+    const stored = storedHolding(emptyAnalysis(), merged('GEN 1:2:0'));
+    stored.draft.analysisLanguages = ['fr'];
+
+    discardAll(buffer, stored, undefined);
+
+    expect(buffer.toChangeSet('discardAll').scope?.analysisLanguages).toStrictEqual(['fr']);
   });
 
   it('stages a scope with no boundaries when the restore has none', () => {
@@ -161,9 +197,10 @@ describe('discardAll', () => {
 
 describe('discardBook', () => {
   it('names the book when it restores its links', () => {
-    const saved: DraftContent = {
+    const saved: SavedProject = {
       analysis: analysisLinking(link('tl-gen', 'GEN 1:1:0'), link('tl-exo', 'EXO 1:1:0')),
       segmentation: undefined,
+      analysisLanguages: [],
     };
 
     const { changedBooks } = discardBook(
@@ -183,9 +220,22 @@ describe('discardBook', () => {
     const { changedBooks } = discardBook(buffer, storedHolding(analysis), 'GEN', {
       analysis: JSON.parse(JSON.stringify(analysis)),
       segmentation: undefined,
+      analysisLanguages: [],
     });
 
     expect(buffer.toChangeSet('discardBook')).toStrictEqual({ intent: 'discardBook' });
     expect(changedBooks).toStrictEqual([]);
+  });
+
+  it('leaves the analysis languages alone, because they span every book', () => {
+    const buffer = freshBuffer();
+
+    discardBook(buffer, storedHolding(emptyAnalysis()), 'GEN', {
+      analysis: emptyAnalysis(),
+      segmentation: undefined,
+      analysisLanguages: ['en'],
+    });
+
+    expect(buffer.toChangeSet('discardBook')).not.toHaveProperty('scope');
   });
 });

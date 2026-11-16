@@ -31,6 +31,8 @@ import { EditHistory, type EditOptions, type HistoryMove } from './editHistory';
 import { reanchorRestored, reanchorStoredBook } from './reanchorPasses';
 import { readTouchedPoolBuckets } from './sessionPages';
 import type { AnalysisEditOutcome } from '../utils/edit-outcome';
+import type { GlossRetagCounts } from '../utils/retag-glosses';
+import type { LanguageTextCounts } from '../utils/text-counts';
 
 /** BCP 47 tag for a language that cannot be determined. */
 export const UNDETERMINED_LANGUAGE = 'und';
@@ -87,11 +89,18 @@ export type EditOutcome = {
   emptiedAnalysisIds?: string[];
   /** Where a catalog edit left the record it was aimed at. */
   outcome?: AnalysisEditOutcome;
+  /** What changing the analysis languages moved, when it was asked to move glosses. */
+  glossRetag?: GlossRetagCounts;
+  /** What changing the analysis languages deleted, when it was asked to delete text. */
+  deletedText?: LanguageTextCounts;
 };
 
 /** What a session answers an edit with. */
 export type EditReply = CommandReply &
-  Pick<EditOutcome, 'hasFreeTranslations' | 'emptiedAnalysisIds' | 'outcome'>;
+  Pick<
+    EditOutcome,
+    'hasFreeTranslations' | 'emptiedAnalysisIds' | 'outcome' | 'glossRetag' | 'deletedText'
+  >;
 
 /** An open session, as seen by the commands sent to it. */
 export type Session = {

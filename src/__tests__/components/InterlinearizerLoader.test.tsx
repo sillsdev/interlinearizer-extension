@@ -28,6 +28,7 @@ import InterlinearizerLoader, {
 } from '../../components/InterlinearizerLoader';
 import * as perfMarks from '../../utils/perf-marks';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
+import type { AnalysisLanguagesChange } from '../../types/analysis-languages-change';
 import type { SegmentPages } from '../../types/segment-pages';
 import { DraftRepository } from '../../services/draftRepository';
 import { ANALYSIS_CHANGED_EVENT, fakeHost } from '../cache/fake-host';
@@ -359,6 +360,7 @@ type MockProject = {
   analysisLanguages: string[];
   name?: string;
   description?: string;
+  targetProjectId?: string;
   pt9Import?: { fileHashes: Record<string, string>; importedAt: string };
 };
 
@@ -491,6 +493,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     modal,
     setModal,
     activeProject,
+    changeDraftAnalysisLanguages,
     defaultAnalysisLanguage,
     hasUnsavedWork,
     onImportPt9,
@@ -503,6 +506,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     setModal: (m: string) => void;
     sourceShortName: string;
     activeProject: MockProject | undefined;
+    changeDraftAnalysisLanguages: (change: AnalysisLanguagesChange) => Promise<unknown>;
     defaultAnalysisLanguage?: string;
     hasUnsavedWork: boolean;
     getDraftSnapshot: () => DraftProject | undefined;
@@ -526,9 +530,29 @@ jest.mock('../../components/modals/ProjectModals', () => ({
         data-has-unsaved-work={hasUnsavedWork}
         data-active-project-name={activeProject?.name}
         data-active-project-updated={activeProject?.updatedAt}
+        data-active-project-languages={activeProject?.analysisLanguages.join(',')}
         data-open-request-id={openRequest?.requestId}
         data-open-request-name={openRequest?.project.name}
       >
+        <button
+          type="button"
+          data-testid="change-draft-languages"
+          onClick={() => changeDraftAnalysisLanguages({ analysisLanguages: ['fr', 'en'] })}
+        >
+          Change languages
+        </button>
+        <button
+          type="button"
+          data-testid="retag-draft-languages"
+          onClick={() =>
+            changeDraftAnalysisLanguages({
+              analysisLanguages: ['de', 'fr'],
+              retag: { from: 'en', to: 'fr' },
+            })
+          }
+        >
+          Retag languages
+        </button>
         {modal === 'select' && (
           <div data-testid="select-modal">
             <button
@@ -3261,6 +3285,7 @@ describe('InterlinearizerLoader', () => {
         expect.any(String),
         testProjectId,
         'proj-1',
+        expect.any(Object),
       );
       await waitFor(() =>
         expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({
@@ -3921,7 +3946,7 @@ describe('InterlinearizerLoader', () => {
       mountStoreProbe = false;
     });
 
-    it('has the host save the stored draft to the active project, sending no analysis', async () => {
+    it('has the host save the stored draft to the active project, sending no analysis or languages', async () => {
       const draftAnalysis = emptyAnalysis();
       draftAnalysis.tokenAnalyses.push({
         ...FIXTURE_STAMPS,
@@ -3929,32 +3954,46 @@ describe('InterlinearizerLoader', () => {
         surfaceText: 'In',
         gloss: { en: 'in' },
       });
-      await seedDraft({ ...emptyDraft(testProjectId), analysis: draftAnalysis });
-      await act(async () =>
-        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
-      );
+      await seedDraft({
+        ...emptyDraft(testProjectId),
+        analysisLanguages: ['fr'],
+        analysis: draftAnalysis,
+      });
+      const activeProject = { ...STUB_ACTIVE_PROJECT, targetProjectId: 'target-1' };
+      await act(async () => renderLoader({ useWebViewState: makeWebViewState({ activeProject }) }));
 
       mockSendCommand.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
       // Nothing was pending, so the stored draft is already current: Save's first command is the
-      // host copy, carrying only ids. The host marks the stored draft clean itself, so no draft
-      // write follows.
+      // host copy, carrying ids and the target. The host takes the languages from the stored
+      // draft and marks it clean itself, so no draft write follows.
       expect(
         mockSendCommand.mock.calls.filter(
           ([command]) => command !== 'interlinearizer.getDraftEnvelope',
         ),
       ).toEqual([
-        ['interlinearizer.saveDraftToProject', expect.any(String), testProjectId, 'proj-1'],
+        [
+          'interlinearizer.saveDraftToProject',
+          expect.any(String),
+          testProjectId,
+          'proj-1',
+          { targetProjectId: 'target-1' },
+        ],
       ]);
     });
 
-    it('refreshes the cached activeProject updatedAt from the saveDraftToProject response', async () => {
-      // saveDraftToProject returns the persisted project's summary carrying the storage-refreshed updatedAt; every
-      // other command keeps its default (the empty-draft load) so the editor still mounts.
+    it('refreshes the cached activeProject languages and updatedAt from the saveDraftToProject response', async () => {
+      // saveDraftToProject returns the persisted project's summary, carrying the draft's languages
+      // and the storage-refreshed updatedAt. Every other command keeps its default (the empty-draft
+      // load), so the editor still mounts.
       otherCommands.mockImplementation(async (...args) =>
         args[0] === 'interlinearizer.saveDraftToProject'
-          ? JSON.stringify({ ...STUB_ACTIVE_PROJECT, updatedAt: '2026-02-02T00:00:00Z' })
+          ? JSON.stringify({
+              ...STUB_ACTIVE_PROJECT,
+              analysisLanguages: ['fr', 'en'],
+              updatedAt: '2026-02-02T00:00:00Z',
+            })
           : JSON.stringify(emptyDraft(testProjectId)),
       );
       await act(async () =>
@@ -3979,6 +4018,10 @@ describe('InterlinearizerLoader', () => {
         'data-active-project-updated',
         '2026-02-02T00:00:00Z',
       );
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-active-project-languages',
+        'fr,en',
+      );
     });
 
     it('leaves the cached activeProject untouched when the saveDraftToProject response is malformed', async () => {
@@ -3999,10 +4042,13 @@ describe('InterlinearizerLoader', () => {
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
-      // The previously cached Modified time is preserved rather than being cleared.
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
         'data-active-project-updated',
         '2026-01-01T00:00:00Z',
+      );
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-active-project-languages',
+        seeded.analysisLanguages.join(','),
       );
     });
 
@@ -5199,6 +5245,21 @@ describe('undo and redo', () => {
     expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
   });
 
+  it('undoes and redoes on Ctrl+Z and Ctrl+Y while a dialog that allows undo is open', async () => {
+    await renderAndGloss();
+    render(<div data-slot="dialog-content" data-allows-undo />);
+
+    await flushHost(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(0);
+
+    await flushHost(() => {
+      fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+    });
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
+  });
+
   it('leaves the draft alone on Ctrl+Z while an editor open over it blocks undo', async () => {
     await renderAndGloss();
     render(<div data-blocks-undo />);
@@ -5714,6 +5775,33 @@ describe('undo and redo', () => {
       );
     });
 
+    it('undoes from the notification under a dialog that allows undo', async () => {
+      await renderAndDelete();
+      render(<div data-slot="dialog-content" data-allows-undo />);
+
+      clickNotificationUndo('toast-1');
+
+      await flushHost();
+
+      expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
+    });
+
+    it('leaves the draft alone from the notification when a second dialog over one that allows undo blocks it', async () => {
+      await renderAndDelete();
+      render(
+        <>
+          <div data-slot="dialog-content" data-allows-undo />
+          <div data-slot="dialog-content" />
+        </>,
+      );
+
+      clickNotificationUndo('toast-1');
+
+      await flushHost();
+
+      expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(0);
+    });
+
     it('ignores an Undo click on a notification it did not send', async () => {
       await renderAndDelete();
 
@@ -5960,6 +6048,79 @@ describe('analysis language switch', () => {
       }),
     );
 
+    expect(capturedStoreProps?.analysisLanguage).toBe('en');
+  });
+
+  it('reads the draft in the language its glosses were moved to', async () => {
+    await mockDraftLanguages(['de', 'en', 'fr']);
+    await act(async () =>
+      renderLoader({
+        useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'en' } }),
+      }),
+    );
+
+    await flushHost(async () => {
+      fireEvent.click(screen.getByTestId('retag-draft-languages'));
+    });
+
+    expect(editsSent()).toContain('interlinearizer.changeAnalysisLanguages');
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
+  });
+
+  it("returns to the earlier language when the glosses' move is undone", async () => {
+    await mockDraftLanguages(['de', 'en', 'fr']);
+    await act(async () =>
+      renderLoader({
+        useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'en' } }),
+      }),
+    );
+    await flushHost(async () => {
+      fireEvent.click(screen.getByTestId('retag-draft-languages'));
+    });
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
+
+    await flushHost(async () => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    expect(capturedStoreProps?.analysisLanguage).toBe('en');
+  });
+
+  it("returns to the moved-to language when the glosses' move is redone", async () => {
+    await mockDraftLanguages(['de', 'en', 'fr']);
+    await act(async () =>
+      renderLoader({
+        useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'en' } }),
+      }),
+    );
+    await flushHost(async () => {
+      fireEvent.click(screen.getByTestId('retag-draft-languages'));
+    });
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
+    await flushHost(async () => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    await flushHost(async () => {
+      fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+    });
+
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
+  });
+
+  it('keeps the chosen language when only the list of languages changes', async () => {
+    await mockDraftLanguages(['en', 'fr']);
+    await act(async () =>
+      renderLoader({
+        useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'en' } }),
+      }),
+    );
+
+    await flushHost(async () => {
+      fireEvent.click(screen.getByTestId('change-draft-languages'));
+    });
+
+    expect(editsSent()).toContain('interlinearizer.changeAnalysisLanguages');
     expect(capturedStoreProps?.analysisLanguage).toBe('en');
   });
 

@@ -215,20 +215,20 @@ declare module 'papi-shared-types' {
 
     /**
      * Copies the source project's stored draft, its analysis and custom segment boundaries, into an
-     * existing interlinearizer project. Called from the WebView on Save and on Save As onto an
-     * existing project. The copy reads the stored draft after the session's earlier edits, so no
-     * analysis crosses the bus.
+     * existing interlinearizer project. The copy reads the stored draft after the session's earlier
+     * edits, so no analysis crosses the bus.
      *
      * @param sessionId - The session editing the draft. The copy runs in the session's turn, and
      *   the session's history marks the draft saved.
      * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
      * @param interlinearProjectId - UUID of the interlinearizer project to save into.
-     * @param config - The configuration to set on the project in the same write, so Save As onto an
-     *   existing project makes its declared configuration match the glosses it now holds; omit to
-     *   leave the configuration unchanged, as Save does.
+     * @param config - The target to set on the project in the same write. The project also takes
+     *   the analysis languages of the draft being copied, so its declared configuration matches the
+     *   glosses it receives. An absent `targetProjectId` clears the project's target binding. Omit
+     *   `config` to leave the configuration unchanged. A draft that lists no analysis languages
+     *   leaves it unchanged too, target included.
      * @returns The saved project's `InterlinearProjectSummary` (with its refreshed `updatedAt`) as
-     *   a JSON string, or `undefined` if no project with the given ID exists. The WebView uses the
-     *   refreshed `updatedAt` to keep the cached Modified time current after a Save.
+     *   a JSON string, or `undefined` if no project with the given ID exists.
      * @throws If `sessionId` names no open session, if the project is a Paratext 9 import, which is
      *   read-only, or if the stored draft cannot be read whole, or if storage fails. Error is
      *   logged and an error notification is sent before rethrowing so callers do not need to send a
@@ -238,7 +238,7 @@ declare module 'papi-shared-types' {
       sessionId: string,
       sourceProjectId: string,
       interlinearProjectId: string,
-      config?: import('interlinearizer').ProjectConfig,
+      config?: Pick<import('interlinearizer').ProjectConfig, 'targetProjectId'>,
     ) => Promise<string | undefined>;
 
     /**
@@ -952,6 +952,40 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Gives a session's draft new analysis languages, primary first, as one undoable step that
+     * leaves the draft unsaved. With `retag`, the step also moves the glosses and free translations
+     * under `retag.from` to `retag.to`; one that already has different text there stays where it
+     * is. With `deleteTextOf`, it deletes the glosses and free translations under that tag
+     * instead.
+     *
+     * @returns A JSON string of the `CommandReply`, with `glossRetag` (how many glosses and free
+     *   translations moved and how many were skipped) when `retag` was given, and `deletedText`
+     *   (how many glosses and free translations were deleted) when `deleteTextOf` was.
+     * @throws If the languages are empty, `retag` moves a tag to itself, both `retag` and
+     *   `deleteTextOf` are given, a move or deletion is asked while a book of the draft can't be
+     *   read, the session is read-only or not open, or the edit is refused or fails (logged before
+     *   rethrowing).
+     */
+    'interlinearizer.changeAnalysisLanguages': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisLanguages: string[];
+        retag?: { from: string; to: string };
+        deleteTextOf?: string;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Counts the glosses and free translations of a session's draft under each language tag that
+     * has any. A book whose stored analysis can't be read counts as having none.
+     *
+     * @returns A JSON string of the counts, keyed by tag.
+     * @throws If the session is not open, or its draft can't be read (logged before rethrowing).
+     */
+    'interlinearizer.countLanguageText': (
+      args: import('interlinearizer').SessionCommandArgs,
+    ) => Promise<string>;
+
+    /**
      * Names the token analyses a command would remove from a session's draft, applying nothing.
      *
      * @returns A JSON string of the ids; `"[]"` when it would remove none.
@@ -1111,8 +1145,6 @@ declare module 'papi-shared-types' {
      * @param interlinearProjectId - UUID of the interlinearizer project to update.
      * @param name - New user-facing name; omit or pass `undefined` to clear.
      * @param description - New user-facing description; omit or pass `undefined` to clear.
-     * @param analysisLanguages - New BCP 47 analysis language tags. Must be a non-empty array; pass
-     *   the current value to leave it unchanged (the field is required and cannot be cleared).
      * @param targetProjectId - New target-project ID; omit or pass `undefined` to clear (removes
      *   the target-side text binding).
      * @returns The updated project as a JSON string, or `undefined` if no project with that ID
@@ -1124,7 +1156,6 @@ declare module 'papi-shared-types' {
       interlinearProjectId: string,
       name: string | undefined,
       description: string | undefined,
-      analysisLanguages: string[],
       targetProjectId?: string,
     ) => Promise<string | undefined>;
 

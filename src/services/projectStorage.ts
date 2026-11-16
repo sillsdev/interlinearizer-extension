@@ -901,19 +901,22 @@ export async function updateAnalysis(
  * Copies the source project's stored draft into an existing interlinearizer project: the draft's
  * analysis replaces the project's, and the draft's custom segment boundaries replace the project's,
  * cleared when the draft has none. Refreshes `updatedAt` to the current time. The project's name
- * and description are untouched; its configuration changes only when `config` is given.
+ * and description are untouched.
+ *
+ * The project's configuration changes only when `config` is given and the draft has analysis
+ * languages. The project then takes the draft's languages with the given target, so they match the
+ * glosses it receives.
  *
  * The caller must first have written the draft it means to save; whatever the draft holds when its
  * queued read runs is what the project receives. The copy is refused while any book's stored draft
- * analysis cannot be read, since the draft would replace the project's analysis for that book with
- * nothing. Once the project is written, the stored draft is marked clean unless a draft write was
- * sent after it was read.
+ * analysis cannot be read, because the draft would replace the project's analysis for that book
+ * with nothing. Once the project is written, the stored draft is marked clean unless a draft write
+ * was sent after it was read.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID whose draft to copy.
  * @param id - The interlinearizer project UUID to save into.
- * @param config - The analysis languages and target to persist alongside, as in
- *   {@link updateAnalysis}.
+ * @param config - The target to persist alongside, a missing target clearing the binding.
  * @returns The saved project, or `undefined` if no project with the given ID exists or it is
  *   unlisted.
  * @throws {UnreadableBooksError} If any book's stored draft analysis cannot be read; nothing is
@@ -928,7 +931,7 @@ export async function saveDraftToProject(
   token: ExecutionToken,
   sourceProjectId: string,
   id: string,
-  config?: ProjectConfig,
+  config?: Pick<ProjectConfig, 'targetProjectId'>,
 ): Promise<InterlinearProject | undefined> {
   const { draft, unreadableBooks, writesBefore } = await readDraftForCopy(token, sourceProjectId);
   if (unreadableBooks.length > 0)
@@ -942,7 +945,10 @@ export async function saveDraftToProject(
     draft.analysis,
     // eslint-disable-next-line no-null/no-null -- null clears the project's stored boundaries
     draft.segmentation ?? null,
-    config,
+    // A draft never written has no languages, and a project needs at least one.
+    config && draft.analysisLanguages.length > 0
+      ? { analysisLanguages: draft.analysisLanguages, targetProjectId: config.targetProjectId }
+      : undefined,
   );
   if (project) await markCopiedDraftClean(token, sourceProjectId, writesBefore);
   return project;
@@ -956,8 +962,6 @@ export async function saveDraftToProject(
  * @param id - The interlinearizer project UUID to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisLanguages - New BCP 47 analysis language tags. Required and must be non-empty;
- *   pass the current value to leave the field unchanged (it cannot be cleared).
  * @param targetProjectId - New target-project ID. `undefined` removes the target binding (the
  *   project becomes analysis-only); a string overwrites the existing value.
  * @returns The updated project record, or `undefined` if no project with the given ID exists or it
@@ -966,15 +970,13 @@ export async function saveDraftToProject(
  * @throws {Error} If the stored record was written by a newer build; nothing is written.
  * @throws {Error} If the project is a Paratext 9 import (`pt9Import` present); imports are
  *   read-only, their name and description included - the import stamps fixed values.
- * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
- *   reason.
+ * @throws If a storage read or write rejects for a reason other than a missing file.
  */
 export async function updateProjectMetadata(
   token: ExecutionToken,
   id: string,
   name: string | undefined,
   description: string | undefined,
-  analysisLanguages: string[],
   targetProjectId?: string,
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
@@ -996,7 +998,6 @@ export async function updateProjectMetadata(
     } else {
       updated.description = description;
     }
-    updated.analysisLanguages = analysisLanguages;
     if (targetProjectId === undefined) {
       delete updated.targetProjectId;
     } else {

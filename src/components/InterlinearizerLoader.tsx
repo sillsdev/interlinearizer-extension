@@ -35,6 +35,7 @@ import useLatestRef from '../hooks/useLatestRef';
 import useUndoRedoKeys from '../hooks/useUndoRedoKeys';
 import useSessionProject from '../hooks/useSessionProject';
 import { whenSettled } from '../utils/settles';
+import type { AnalysisLanguagesChange } from '../types/analysis-languages-change';
 import type { EditStep } from '../types/edit-step';
 import { formatTemplate } from '../utils/format-template';
 import useDuplicateVerseWarning from '../hooks/useDuplicateVerseWarning';
@@ -281,6 +282,12 @@ const STRING_KEYS = [
   '%interlinearizer_redone_discardBook%',
   '%interlinearizer_undone_discardAll%',
   '%interlinearizer_redone_discardAll%',
+  '%interlinearizer_undone_changeAnalysisLanguages%',
+  '%interlinearizer_redone_changeAnalysisLanguages%',
+  '%interlinearizer_undone_retagGlosses%',
+  '%interlinearizer_redone_retagGlosses%',
+  '%interlinearizer_undone_deleteLanguageText%',
+  '%interlinearizer_redone_deleteLanguageText%',
   '%interlinearizer_error_load_book_heading%',
   '%interlinearizer_loading%',
   '%interlinearizer_error_projectUnavailable%',
@@ -546,6 +553,8 @@ function InterlinearizerLoaderInner({
     commitDraft,
     discardBook,
     discardAll,
+    changeAnalysisLanguages,
+    countLanguageText,
     detachFromProject,
     canUndo,
     canRedo,
@@ -599,6 +608,20 @@ function InterlinearizerLoaderInner({
   const handleAnalysisLanguageChange = useCallback(
     (tag: string) => setChosenLanguages({ ...chosenLanguages, [languageKey]: tag }),
     [chosenLanguages, languageKey, setChosenLanguages],
+  );
+
+  /**
+   * Gives the draft new analysis languages, moving or deleting any text the change names. After a
+   * move, the draft is shown in the language the text moved to.
+   */
+  const changeDraftAnalysisLanguages = useCallback(
+    async (change: AnalysisLanguagesChange) => {
+      const outcome = await changeAnalysisLanguages(change);
+      if (change.retag)
+        setChosenLanguages({ ...chosenLanguages, [DRAFT_LANGUAGE_KEY]: change.retag.to });
+      return outcome;
+    },
+    [changeAnalysisLanguages, chosenLanguages, setChosenLanguages],
   );
 
   /** Whether the session that holds the import on screen has yet to open. */
@@ -855,7 +878,8 @@ function InterlinearizerLoaderInner({
 
   /**
    * Runs an undo or redo, unless the view is not showing the draft or a dialog or editor open over
-   * it describes the draft as it stands.
+   * it describes the draft as it stood when it opened. A dialog that shows the draft as it is now
+   * allows the move.
    *
    * @returns Whether the move ran.
    */
@@ -864,7 +888,9 @@ function InterlinearizerLoaderInner({
       if (
         isImportView ||
         isDraftLoading ||
-        document.querySelector('[data-slot="dialog-content"], [data-blocks-undo]')
+        document.querySelector(
+          '[data-slot="dialog-content"]:not([data-allows-undo]), [data-blocks-undo]',
+        )
       )
         return false;
       move();
@@ -892,6 +918,10 @@ function InterlinearizerLoaderInner({
         navigate(verseOfId(step.location));
       } else if (step?.summary) {
         const { kind, ...replacers } = step.summary;
+        if (step.summary.kind === 'retagGlosses') {
+          const shown = direction === 'undone' ? step.summary.from : step.summary.to;
+          setChosenLanguages({ ...chosenLanguages, [DRAFT_LANGUAGE_KEY]: shown });
+        }
         if ('analysisId' in replacers) {
           const row = direction === 'undone' ? replacers.analysisId : replacers.survivingAnalysisId;
           if (row) catalogPanelRef.current?.revealRow(row);
@@ -914,7 +944,15 @@ function InterlinearizerLoaderInner({
           .catch((e) => logger.error('Interlinearizer: failed to announce an undo', e));
       }
     },
-    [client, localizedStrings, navigate, requestFocusToken, webViewId],
+    [
+      chosenLanguages,
+      client,
+      localizedStrings,
+      navigate,
+      requestFocusToken,
+      setChosenLanguages,
+      webViewId,
+    ],
   );
   const handleUndo = useCallback(
     () => moveThroughHistory(() => whenSettled(undo(), (step) => afterHistoryMove(step, 'undone'))),
@@ -1223,9 +1261,9 @@ function InterlinearizerLoaderInner({
   );
 
   /**
-   * Saves the current draft to the active project. When no project is active there is nothing to
-   * save to yet, so it opens Save As instead. Errors are logged; the backend surfaces the
-   * notification.
+   * Saves the current draft to the active project, analysis languages included. When no project is
+   * active, it opens Save As instead, because there is nothing to save to yet. Errors are logged;
+   * the backend surfaces the notification.
    */
   const handleSave = useCallback(async () => {
     if (!activeProject) {
@@ -1234,16 +1272,13 @@ function InterlinearizerLoaderInner({
     }
     try {
       await commitDraft(async (_snapshot, sessionId) => {
+        const config = { targetProjectId: activeProject.targetProjectId };
+        const args = [sessionId, projectId, activeProject.id, config] as const;
         const savedJson = await perfTrack(
           'save',
-          papi.commands.sendCommand(
-            'interlinearizer.saveDraftToProject',
-            sessionId,
-            projectId,
-            activeProject.id,
-          ),
+          papi.commands.sendCommand('interlinearizer.saveDraftToProject', ...args),
           // The bytes the Save sends over the bus.
-          { bytes: JSON.stringify([sessionId, projectId, activeProject.id]).length },
+          { bytes: JSON.stringify(args).length },
         );
         // `undefined` means the project no longer exists, so nothing was persisted.
         if (!savedJson) {
@@ -1252,16 +1287,13 @@ function InterlinearizerLoaderInner({
             .catch(() => {});
           return false;
         }
-        // Fold the response's refreshed `updatedAt` into the cached active project so the picker
-        // sort and the metadata modal's Modified time stay current without a reload; extract it
-        // defensively so an unexpectedly shaped payload leaves the cache untouched.
+        // The cached active project takes the saved languages and the response's refreshed
+        // `updatedAt`, so it stays current without a reload. A payload of unexpected shape leaves
+        // the cached values as they were.
         const parsed: unknown = JSON.parse(savedJson);
-        const refreshedUpdatedAt =
-          parsed && typeof parsed === 'object' && 'updatedAt' in parsed
-            ? parsed.updatedAt
-            : undefined;
-        if (typeof refreshedUpdatedAt === 'string') {
-          setActiveProject({ ...activeProject, updatedAt: refreshedUpdatedAt });
+        if (isInterlinearProjectSummary(parsed)) {
+          const { analysisLanguages, updatedAt } = parsed;
+          setActiveProject({ ...activeProject, analysisLanguages, updatedAt });
         }
         return true;
       });
@@ -1896,8 +1928,13 @@ function InterlinearizerLoaderInner({
 
       <ProjectModals
         activeProject={activeProject}
+        announceUndoable={announceUndoable}
+        changeDraftAnalysisLanguages={changeDraftAnalysisLanguages}
+        countDraftLanguageText={countLanguageText}
+        subscribeToDraftEdits={subscribeToHistoryRevisions}
         defaultAnalysisLanguage={platformLanguage}
         hasUnsavedWork={hasUnsavedChanges}
+        isDraftLoading={isDraftLoading}
         getDraftSnapshot={getDraftSnapshot}
         detachFromProject={detachFromProject}
         commitDraft={commitDraft}

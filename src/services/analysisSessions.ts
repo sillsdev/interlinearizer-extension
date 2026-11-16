@@ -335,6 +335,8 @@ type OpenSession = {
   anchoredVersions: Map<string, string>;
   /** The `textVersion` of the latest text passed in for each book, whether read or edited. */
   deliveredVersions: Map<string, string>;
+  /** How many texts have been passed in for each book, whether read or edited. */
+  deliveryCounts: Map<string, number>;
   /** Settles once every pass of the whole-text read sent so far has settled; never rejects. */
   readPasses: Promise<void>;
   /** The start of the source's whole-text read, set from the session's first ask for it. */
@@ -427,6 +429,7 @@ export class AnalysisSessions {
         editPasses: new Map(),
         anchoredVersions: new Map(),
         deliveredVersions: new Map(),
+        deliveryCounts: new Map(),
         readPasses: Promise.resolve(),
       };
       if (isEmptyDraft(opened)) session.history.noteEmpty();
@@ -771,8 +774,9 @@ export class AnalysisSessions {
   reanchorBook(sourceProjectId: string, book: ReadonlyBook, edited = false): Promise<void> {
     const entry = this.writableEntry(sourceProjectId);
     if (!entry) return Promise.resolve();
-    const { session, editPasses, anchoredVersions, deliveredVersions } = entry;
+    const { session, editPasses, anchoredVersions, deliveredVersions, deliveryCounts } = entry;
     deliveredVersions.set(book.bookRef, book.textVersion);
+    deliveryCounts.set(book.bookRef, (deliveryCounts.get(book.bookRef) ?? 0) + 1);
     if (edited) {
       return this.run(session.id, async () => {
         if (anchoredVersions.get(book.bookRef) === book.textVersion) return;
@@ -861,7 +865,9 @@ export class AnalysisSessions {
   /**
    * Re-anchors the draft of the source project's session, as {@link reanchorBook} does, to each book
    * the text lacks. A book the text lacks is a linked book that `textBookIds` does not list. The
-   * pass is the whole-text read's, so it waits as {@link reanchorBook} describes.
+   * pass is the whole-text read's, so it waits as {@link reanchorBook} describes. It skips a book
+   * whose text has been passed to {@link reanchorBook} after this call, because `textBookIds`
+   * predates that text.
    *
    * @throws Whatever reading the draft or applying the changes throws; the books before stay
    *   re-anchored.
@@ -869,9 +875,13 @@ export class AnalysisSessions {
   reanchorMissingBooks(sourceProjectId: string, textBookIds: readonly string[]): Promise<void> {
     const entry = this.writableEntry(sourceProjectId);
     if (!entry) return Promise.resolve();
-    const { session, anchoredVersions } = entry;
+    const { session, anchoredVersions, deliveryCounts } = entry;
+    const countsBefore = new Map(deliveryCounts);
     return this.runReadPass(entry, async () => {
-      const missing = booksMissingFrom(await session.repository.findLinkedBooks(), textBookIds);
+      const missing = booksMissingFrom(
+        await session.repository.findLinkedBooks(),
+        textBookIds,
+      ).filter((bookCode) => deliveryCounts.get(bookCode) === countsBefore.get(bookCode));
       await missing.reduce<Promise<void>>(async (previous, bookCode) => {
         await previous;
         await reanchorNow(this.host, session, missingBook(bookCode));

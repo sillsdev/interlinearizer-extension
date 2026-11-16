@@ -18,7 +18,7 @@ const DESCRIPTIVE = new Set(['viewBook', 'dataset', 'skipped', 'error']);
 
 /** Printed ahead of every result measured on the generated datasets. */
 const DATASET_NOTE =
-  "The datasets gloss WEB's English, which has fewer word forms than a real project's language: about 2.8× the links per token payload of a real Paratext 9 import, so costs that scale with payload count, such as the pool index and catalog rows, read 2–3× low.";
+  'The datasets share token payloads about as much as a real Paratext 9 import, at about 24 links per payload. But only 20% of their payloads carry morphemes, against 87% in a real import, and they gloss in one analysis language where a real import may have several. So a real draft of the same size likely costs more.';
 
 /** Explains the rows under a call, printed ahead of any report that has them. */
 const HOST_NOTE =

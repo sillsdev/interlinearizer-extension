@@ -140,6 +140,11 @@ export interface SessionHost {
   /** Ends the source project's whole-text read. */
   stopTextRead(sourceProjectId: string): Promise<void>;
   /**
+   * Holds the source project's whole-text read from fetching or tokenizing books until `until`
+   * settles.
+   */
+  holdTextRead(sourceProjectId: string, until: Promise<unknown>): void;
+  /**
    * The source project's book, segmented by the boundaries that `segmentation` sets in it, or
    * `undefined` when the host holds no tokenized copy of the book. Reads nothing.
    */
@@ -545,12 +550,15 @@ export class AnalysisSessions {
    * @throws Whatever `edit` throws; later commands still run.
    */
   runEdit<T>(sessionId: string, edit: (session: Session) => Promise<T>): Promise<T> {
-    if (this.sessions.get(sessionId)?.session.repository.capabilities.readOnly) {
+    const entry = this.sessions.get(sessionId);
+    if (entry?.session.repository.capabilities.readOnly) {
       return Promise.reject(
         new ReadOnlyAnalysisError(`Interlinearizer: session ${sessionId} is read-only`),
       );
     }
-    return this.run(sessionId, edit);
+    const result = this.run(sessionId, edit);
+    if (entry) this.host.holdTextRead(entry.session.scope.sourceProjectId, result);
+    return result;
   }
 
   /**

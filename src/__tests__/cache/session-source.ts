@@ -72,6 +72,7 @@ export async function sessionOver(
     getInterfaceLanguages,
     startTextRead: async () => {},
     stopTextRead: async () => {},
+    holdTextRead: () => {},
     heldBook: () => book,
     getOpenVerseBook: async () => book,
     reportChange: (change) => listeners.forEach((listener) => listener(change)),

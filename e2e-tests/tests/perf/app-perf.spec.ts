@@ -63,8 +63,12 @@ const REAL_BOOK = process.env.PERF_REAL_BOOK;
 interface Dataset {
   name: string;
   viewBook: string;
-  /** Name of the saved project that Save opens. */
-  savedProjectName: string;
+  /**
+   * Id of the saved project that Save opens.
+   *
+   * @throws If the dataset is not yet seeded.
+   */
+  savedProjectId: () => string;
   counts: Record<string, unknown>;
   bytes: { draftJson: number; largestShard: number };
   /** Stores the dataset in the app's storage; absent when storage already holds it. */
@@ -493,7 +497,10 @@ function tierDataset(projectId: string, tier: TierSpec, created: string[]): Data
   return {
     name: tier.name,
     viewBook: tier.viewBook,
-    savedProjectName: `Perf ${tier.name} 1`,
+    savedProjectId: () => {
+      if (!created[0]) throw new Error(`Tier ${tier.name} has no saved project yet`);
+      return created[0];
+    },
     counts: manifest.counts,
     bytes: manifest.bytes,
     seed: () => seedTier(projectId, tier, draftJson, created),
@@ -516,10 +523,9 @@ async function realDataset(
   const draftJson = JSON.stringify(draft);
   const { analysis } = draft;
   const json = await sendCommand(page, 'interlinearizer.getProjectsForSource', sourceId);
-  const projects: { id: string; name?: string }[] =
-    typeof json === 'string' ? JSON.parse(json) : [];
-  const savedProjectName = projects.find(({ id }) => id === projectId)?.name;
-  if (!savedProjectName) throw new Error(`${sourceId} lists no saved project ${projectId}`);
+  const projects: { id: string }[] = typeof json === 'string' ? JSON.parse(json) : [];
+  if (!projects.some(({ id }) => id === projectId))
+    throw new Error(`${sourceId} lists no saved project ${projectId}`);
   const tokenAnalysisLinks: Record<string, number> = {};
   analysis.tokenAnalysisLinks.forEach(({ status }) => {
     tokenAnalysisLinks[status] = (tokenAnalysisLinks[status] ?? 0) + 1;
@@ -530,7 +536,7 @@ async function realDataset(
   return {
     name: 'real',
     viewBook,
-    savedProjectName,
+    savedProjectId: () => projectId,
     counts: {
       analysisLanguages: draft.analysisLanguages.length,
       tokenAnalyses: analysis.tokenAnalyses.length,
@@ -730,7 +736,7 @@ async function measureTier(
   // Save: writing the draft's analysis to the project it was opened from.
   await clearMeasures(frame);
   await openProjectMenuItem(frame, /Select interlinear/i);
-  await dialog.locator('li > button', { hasText: tier.savedProjectName }).first().click();
+  await dialog.locator(`li[data-project-id="${tier.savedProjectId()}"] > button`).click();
   // Replacing an edited draft asks first; an unedited one opens straight away.
   await frame
     .getByTestId('discard-draft-confirm')
@@ -838,6 +844,10 @@ test('measure the app', async ({ mainPage }) => {
     throw new Error('PERF_REAL_SOURCE needs PERF_REAL_PROJECT and PERF_REAL_BOOK');
   if (REAL_SOURCE && !PACKAGED_APP_PATH)
     throw new Error('PERF_REAL_SOURCE needs PERF_APP_PATH: a dev-core run measures empty storage');
+  if (REAL_BOOK === AWAY_BOOK)
+    throw new Error(
+      `PERF_REAL_BOOK cannot be ${AWAY_BOOK}, the book that the book switch leaves for`,
+    );
   const projectId = REAL_SOURCE ?? (await sourceProjectId(mainPage));
   await makeEditable(mainPage, projectId);
 

@@ -149,6 +149,7 @@ export function SelectInterlinearProjectModal({
             return (
               <li
                 key={project.id}
+                data-project-id={project.id}
                 className={`tw:flex tw:items-center tw:rounded tw:border tw:transition-colors ${
                   isActive
                     ? 'tw:border-primary tw:bg-primary/10 tw:hover:bg-primary/20'

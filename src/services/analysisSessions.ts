@@ -1,8 +1,9 @@
 import type {
   AnalysisChange,
-  Book,
+  AnalysisQuery,
   ChangeId,
   DraftProject,
+  ReadonlyBook,
   SegmentationDelta,
   SessionAnalysisChange,
 } from 'interlinearizer';
@@ -16,7 +17,7 @@ import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { perfTimeAsync } from '../utils/perf-marks';
 import { missingBook } from '../utils/reanchor-analysis';
-import { isEmptyDelta, segmentationForBook } from '../utils/segmentation';
+import { isEmptyDelta } from '../utils/segmentation';
 import {
   booksResegmented,
   describeChange,
@@ -29,6 +30,9 @@ import { settleAll } from './draftRepository';
 import { EditHistory, type EditOptions, type HistoryMove } from './editHistory';
 import { reanchorRestored, reanchorStoredBook } from './reanchorPasses';
 import { readTouchedPoolBuckets } from './sessionPages';
+import type { AnalysisEditOutcome } from '../utils/edit-outcome';
+import type { GlossRetagCounts } from '../utils/retag-glosses';
+import type { LanguageTextCounts } from '../utils/text-counts';
 
 /** BCP 47 tag for a language that cannot be determined. */
 export const UNDETERMINED_LANGUAGE = 'und';
@@ -78,16 +82,25 @@ export type SessionEditOptions = {
 /** What an edit command returns besides what it stages. */
 export type EditOutcome = {
   /** The books to re-anchor the draft to, with the staged changes in place. */
-  reanchorTo?: readonly Book[];
+  reanchorTo?: readonly ReadonlyBook[];
   /** Whether any segment of the draft that a discard leaves has a free translation. */
   hasFreeTranslations?: boolean;
   /** The token analyses that clearing glosses left empty, and so removed. */
   emptiedAnalysisIds?: string[];
+  /** Where a catalog edit left the record it was aimed at. */
+  outcome?: AnalysisEditOutcome;
+  /** What changing the analysis languages moved, when it was asked to move glosses. */
+  glossRetag?: GlossRetagCounts;
+  /** What changing the analysis languages deleted, when it was asked to delete text. */
+  deletedText?: LanguageTextCounts;
 };
 
 /** What a session answers an edit with. */
 export type EditReply = CommandReply &
-  Pick<EditOutcome, 'hasFreeTranslations' | 'emptiedAnalysisIds'>;
+  Pick<
+    EditOutcome,
+    'hasFreeTranslations' | 'emptiedAnalysisIds' | 'outcome' | 'glossRetag' | 'deletedText'
+  >;
 
 /** An open session, as seen by the commands sent to it. */
 export type Session = {
@@ -127,21 +140,21 @@ export interface SessionHost {
   /** Ends the source project's whole-text read. */
   stopTextRead(sourceProjectId: string): Promise<void>;
   /**
-   * The source project's book as `segmentation` segments it, or `undefined` when the host holds no
-   * tokenized copy of the book. Reads nothing.
+   * The source project's book, segmented by the boundaries that `segmentation` sets in it, or
+   * `undefined` when the host holds no tokenized copy of the book. Reads nothing.
    */
   heldBook(
     sourceProjectId: string,
     bookId: string,
     segmentation: SegmentationDelta | undefined,
-  ): Book | undefined;
+  ): ReadonlyBook | undefined;
   /**
    * Reads the source project's book, tokenized one segment per verse, and makes it the book whose
-   * edits are reported. The book is shared, so the caller must not change it.
+   * edits are reported.
    *
    * @returns `undefined` when the project has no text for the book.
    */
-  getOpenVerseBook(sourceProjectId: string, bookId: string): Promise<Book | undefined>;
+  getOpenVerseBook(sourceProjectId: string, bookId: string): Promise<ReadonlyBook | undefined>;
   /** Tells listeners what a change to a session's analysis touched. */
   reportChange(change: SessionAnalysisChange): void;
 }
@@ -161,7 +174,7 @@ async function describeApplied(
   const { segmentation } = await session.repository.getScope();
   const { sourceProjectId } = session.scope;
   return describeChange(session.repository, applied, (bookId) =>
-    host.heldBook(sourceProjectId, bookId, segmentationForBook(segmentation, bookId)),
+    host.heldBook(sourceProjectId, bookId, segmentation),
   );
 }
 
@@ -175,13 +188,13 @@ export function isEmptyDraft({
   );
 }
 
-/** Reports `change` unless it touched nothing, carrying `passChanges` when given. */
+/** Reports `change` unless it touched nothing, saying so when it `keepsUnsavedMark`. */
 function report(
   host: SessionHost,
   session: Session,
   change: AnalysisChange,
   changeId: string,
-  passChanges?: ChangeSet[],
+  keepsUnsavedMark = false,
 ) {
   if (change.books.length === 0 && change.analysisIds.length === 0 && change.queries.length === 0)
     return;
@@ -189,12 +202,9 @@ function report(
     sessionId: session.id,
     changeId,
     ...change,
-    ...(passChanges && { passChanges }),
+    ...(keepsUnsavedMark && { keepsUnsavedMark }),
   });
 }
-
-/** What a pass to a book's edited text changed, kept until the edit is reported. */
-type UnreportedPass = Readonly<{ change: AnalysisChange; changes: ChangeSet }>;
 
 /**
  * Returns what an applied change touched, and reports that unless the change touched nothing. Reads
@@ -228,6 +238,7 @@ async function replyTo(
     staleTranslationBooks: books
       .filter(({ staleTranslations }) => staleTranslations)
       .map(({ bookId }) => bookId),
+    staleGlossBooks: books.filter(({ staleGlosses }) => staleGlosses).map(({ bookId }) => bookId),
     canUndo: session.history.canUndo,
     canRedo: session.history.canRedo,
   };
@@ -243,14 +254,14 @@ async function replyTo(
 async function reanchorNow(
   host: SessionHost,
   session: Session,
-  book: Book,
-  unreported?: UnreportedPass[],
+  book: ReadonlyBook,
+  unreported?: AnalysisChange[],
 ): Promise<void> {
   const applied = await reanchorStoredBook(session.repository, session.history, book);
   if (!applied) return;
   const change = await describeApplied(host, session, applied);
-  if (unreported) unreported.push({ change, changes: applied.changes });
-  else report(host, session, change, crypto.randomUUID(), [applied.changes]);
+  if (unreported) unreported.push(change);
+  else report(host, session, change, crypto.randomUUID(), true);
 }
 
 /**
@@ -262,7 +273,7 @@ async function applyStaged(
   session: Session,
   buffer: ChangeBuffer,
   staged: ChangeSet,
-  reanchorTo: void | readonly Book[],
+  reanchorTo: void | readonly ReadonlyBook[],
   options: Pick<EditOptions, 'unsavedMark'> & Pick<SessionEditOptions, 'step'>,
 ): Promise<AppliedChange & { step?: EditStep }> {
   await buffer.assertLinkedAnalysesStored();
@@ -279,7 +290,12 @@ async function applyStaged(
   const { unsavedMark } = options;
   const step = typeof options.step === 'function' ? options.step(changes) : options.step;
   const inverse = await session.history.apply(changes, { unsavedMark, step });
+  if (unsavedMark) await noteIfEmpty(session);
   return { changes, inverse, ...(step && { step }) };
+}
+
+async function noteIfEmpty(session: Session): Promise<void> {
+  if (isEmptyDraft(await session.repository.getWholeDraft())) session.history.noteEmpty();
 }
 
 /** Runs `step`, calling `markApplied` when the session's history applied anything meanwhile. */
@@ -311,7 +327,7 @@ type OpenSession = {
    */
   replies: Map<string, Promise<EditReply | undefined>>;
   /** What each pass to a book's edited text changed, by book, until the edit is reported. */
-  editPasses: Map<string, UnreportedPass[]>;
+  editPasses: Map<string, AnalysisChange[]>;
   /**
    * The `textVersion` that each book was last re-anchored to as it opened or as its text was read.
    * A book that opened with no text maps to `''`.
@@ -461,13 +477,23 @@ export class AnalysisSessions {
 
   /**
    * Sets the language that the session's glosses are read and written in, unchecked against the
-   * languages its draft lists. A read-only session takes it too, since it changes nothing stored.
+   * languages its draft lists. A read-only session takes it too, since it changes nothing stored. A
+   * switch to a different language is reported as a change that names the catalog and the
+   * concordance. The catalog's rows and a form's occurrences are both read in that language.
    *
    * @throws {Error} If the session is not open.
    */
   setAnalysisLanguage(sessionId: string, analysisLanguage: string): Promise<void> {
     return this.run(sessionId, async (session) => {
+      if (session.analysisLanguage === analysisLanguage) return;
       session.analysisLanguage = analysisLanguage;
+      report(
+        this.host,
+        session,
+        { books: [], analysisIds: [], forms: [], queries: ['getCatalogRows', 'getConcordance'] },
+        crypto.randomUUID(),
+        true,
+      );
     });
   }
 
@@ -571,7 +597,10 @@ export class AnalysisSessions {
             );
             return { ...answered, ...(applied.step && { step: applied.step }), ...extra };
           }
-          if (editOptions.unsavedMark === 'clear') await session.history.markRestoredClean();
+          if (editOptions.unsavedMark === 'clear') {
+            await session.history.markRestoredClean();
+            await noteIfEmpty(session);
+          }
           return {
             changeId,
             changes: staged,
@@ -579,6 +608,7 @@ export class AnalysisSessions {
             poolAnalyses: [],
             resegmentedBooks: [],
             staleTranslationBooks: [],
+            staleGlossBooks: [],
             canUndo: session.history.canUndo,
             canRedo: session.history.canRedo,
             ...extra,
@@ -719,22 +749,21 @@ export class AnalysisSessions {
 
   /**
    * Re-anchors the draft of the source project's session to `book`'s current text, in the session's
-   * turn and as no undo step. Where the draft links into the book or holds boundary edits in it,
-   * what a later undo or redo restores is re-anchored to it too. A book the text lacks is passed as
-   * a book with no segments. Does nothing when the source has no session open or only a read-only
-   * one, or when the session last re-anchored the book to the same text. When `edited`, what the
-   * pass changes is reported with the edit to the book's text, by {@link reportScriptureEdit},
-   * rather than on its own.
+   * turn and as no undo step. What a later undo or redo restores into the book is re-anchored to
+   * that text too. A book the text lacks is passed as a book with no segments. Does nothing when
+   * the source has no session open or only a read-only one, or when the session last re-anchored
+   * the book to the same text. When `edited`, what the pass changes is reported with the edit to
+   * the book's text, by {@link reportScriptureEdit}, rather than on its own.
    *
    * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
    * @throws Whatever describing the applied changes throws; the changes stay applied.
    */
-  reanchorBook(sourceProjectId: string, book: Book, edited = false): Promise<void> {
+  reanchorBook(sourceProjectId: string, book: ReadonlyBook, edited = false): Promise<void> {
     return this.runOnWritable(
       sourceProjectId,
       async ({ session, editPasses, anchoredVersions }) => {
         if (anchoredVersions.get(book.bookRef) === book.textVersion) return;
-        let unreported: UnreportedPass[] | undefined;
+        let unreported: AnalysisChange[] | undefined;
         if (edited) {
           unreported = editPasses.get(book.bookRef) ?? [];
           editPasses.set(book.bookRef, unreported);
@@ -782,15 +811,30 @@ export class AnalysisSessions {
     return this.run(entry.session.id, async (session) => {
       const passes = entry.editPasses.get(bookId) ?? [];
       entry.editPasses.delete(bookId);
+      report(this.host, session, describeScriptureEdit(bookId, passes), crypto.randomUUID(), true);
+    });
+  }
+
+  /**
+   * Reports through the session open on the source project, in that session's turn, that its
+   * whole-text read moved. The report names the read status, and names the catalog too when
+   * `formsChanged`. The report also says that it leaves the draft as saved as it was. Does nothing
+   * when the source has no session open.
+   *
+   * @throws {Error} If the session is closing.
+   */
+  reportTextReadProgress(sourceProjectId: string, formsChanged: boolean): Promise<void> {
+    const entry = this.sessionsBySource.get(sourceProjectId);
+    if (!entry) return Promise.resolve();
+    return this.run(entry.session.id, async (session) => {
+      const queries: AnalysisQuery[] = ['getTextReadStatus'];
+      if (formsChanged) queries.push('getCatalogRows');
       report(
         this.host,
         session,
-        describeScriptureEdit(
-          bookId,
-          passes.map(({ change }) => change),
-        ),
+        { books: [], analysisIds: [], forms: [], queries },
         crypto.randomUUID(),
-        passes.map(({ changes }) => changes),
+        true,
       );
     });
   }

@@ -4,7 +4,6 @@ import path from 'path';
 import { tokenizeBook } from '../../src/parsers/papi/bookTokenizer';
 import { DraftRepository } from '../../src/services/draftRepository';
 import { extractBookFromUsj } from '../../src/parsers/papi/usjBookExtractor';
-import { selectCatalogRows } from '../../src/utils/analysis-selectors';
 import type { ChangeSet, KeyValueStorage } from '../../src/types/analysis-repository';
 import { emptyAnalysis } from '../../src/types/empty-factories';
 import {
@@ -175,19 +174,6 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
     return index;
   };
   time('text.formIndex', measure(opts, noSetup, indexForms));
-  // The host's form index and the WebView's read must agree on which catalog forms are missing.
-  const index = indexForms();
-  const textForms = new Set(books.flatMap((book) => [...indexBook(book).occurrencesByForm.keys()]));
-  const catalogForms = selectCatalogRows(
-    { analysis, analysisLanguage: language },
-    viewBookCode,
-  ).map((row) => row.form);
-  const byWebViewRead = catalogForms.filter((form) => !textForms.has(form));
-  const byHostIndex = catalogForms.filter((form) => !index.has(form));
-  const disagreeing = catalogForms.filter((form) => textForms.has(form) !== index.has(form)).length;
-  console.log(
-    `  forms not in the text: ${byWebViewRead.length} by the WebView's read, ${byHostIndex.length} by the host's index, ${disagreeing} disagreeing`,
-  );
 
   // The host's re-anchor, over one book's links at a time, for every book of the text and every
   // linked book it lacks.
@@ -224,11 +210,6 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
     viewBook: viewBookCode,
     dataset: { counts: manifest.counts, bytes: manifest.bytes },
     timings,
-    formsNotInText: {
-      byWebViewRead: byWebViewRead.length,
-      byHostIndex: byHostIndex.length,
-      disagreeing,
-    },
     applyBooksReached,
     memory: { parsedDraftBytes: analysisBytes },
   };

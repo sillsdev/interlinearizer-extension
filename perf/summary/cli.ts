@@ -52,7 +52,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'app.picker': 'The Select interlinear dialog opens, listing every saved project for the source.',
   'app.save': 'Save from the Project menu writes the analysis to the project it came from.',
   'app.concordance':
-    'The concordance opens in a fresh view, which reads and indexes every book of the source.',
+    'The concordance panel opens in a fresh view and is timed until the first concordance page arrives. That page waits for the host to read every book of the source.',
   'bench.timings.load': 'Tokenizing the view book and parsing the draft.',
   'bench.timings.storage':
     'Splitting the draft into per-book shards to store it, and merging them back.',
@@ -64,10 +64,8 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     "One edit applied through the host's draft repository, with its draft loaded and indexed and its storage in memory, the writes to storage included.",
   'bench.applyBooksReached':
     'How many books each timed apply rewrites, which its time should follow.',
-  'bench.formsNotInText':
-    "How many of the catalog's forms the text lacks, by the WebView's whole-text read and by the host's form index, and how many forms the two disagree on.",
   'app.textRead':
-    "With a view open, the host reads every book of the source and files its word forms, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes each book's USJ, which the platform keeps for every book subscription.",
+    "With a view open, the host reads every book of the source and files its word forms and occurrences, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes the occurrence index and each book's USJ, which the platform keeps for every book subscription.",
   'app.scriptureSave':
     "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
   'app.editDuringRead':
@@ -122,7 +120,6 @@ const SECTION_LABELS: Record<string, string> = {
   editDuringRead: 'Edit one gloss during the whole-text read',
   editAfterRead: 'Edit one gloss after the whole-text read',
   scriptureSaveAfterRead: 'Save a Scripture chapter after the whole-text read',
-  formsNotInText: 'Catalog forms not in the text',
   applyBooksReached: 'Books an apply reaches',
   'timings.load': 'Load',
   'timings.storage': 'Storage',
@@ -139,8 +136,6 @@ const METRIC_LABELS: Record<string, string> = {
   'app-startup': 'App startup',
   'usj-fetch': 'Fetch book text',
   tokenize: 'Tokenize book',
-  'book-fetch': 'Fetch tokenized book',
-  'book-parse': 'Parse tokenized book',
   'outline-fetch': 'Fetch book outline',
   'outline-parse': 'Parse book outline',
   'page-fetch': 'Fetch a page of segments',
@@ -162,14 +157,10 @@ const METRIC_LABELS: Record<string, string> = {
   'projects-fetch': 'Fetch saved projects',
   save: 'Save',
   'save-bytes': 'Request sent',
-  'concordance-read': 'Read every book',
-  'concordance-entries': 'Build entries',
+  'concordance-entries': 'Open to first page',
   'text-read': 'Read every book',
   'text-read-tokenize': 'Tokenize every book, summed',
   formIndex: "Index every book's forms",
-  byWebViewRead: "By the WebView's read",
-  byHostIndex: "By the host's index",
-  disagreeing: 'Disagreeing',
   parseDraft: 'Parse draft',
   storeMount: 'Mount analysis store',
   readShards: 'Parse and merge shards',

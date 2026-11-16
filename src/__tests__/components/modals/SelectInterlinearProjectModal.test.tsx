@@ -27,8 +27,10 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_loading%': 'Loading…',
   '%interlinearizer_confirm_deleteProject_title%': 'Delete {name}?',
   '%interlinearizer_confirm_deleteProject_title_unnamed%': 'Delete unnamed project?',
-  '%interlinearizer_confirm_deleteProject_body%': 'Permanently delete this interlinear data?',
+  '%interlinearizer_confirm_deleteProject_body%':
+    'Permanently delete this saved interlinear project?',
   '%interlinearizer_confirm_deleteProject_pt9Unaffected%': 'No Paratext 9 data will be affected.',
+  '%interlinearizer_confirm_deleteProject_draftKept%': 'The open draft is kept as unsaved changes.',
   '%interlinearizer_confirm_deleteProject_ok%': 'Delete',
   '%interlinearizer_confirm_deleteProject_cancel%': 'Cancel',
 };
@@ -426,9 +428,13 @@ describe('SelectInterlinearProjectModal project deletion', () => {
     serveProjects([STUB_PROJECT, STUB_PROJECT_2]);
   });
 
-  /** Opens the menu on the "French glosses" row and chooses Delete, returning the confirmation. */
-  async function chooseDeleteForFrenchGlosses() {
-    render(<SelectInterlinearProjectModal {...defaultProps} />);
+  /**
+   * Opens the menu on the "French glosses" row and chooses Delete, returning the confirmation.
+   *
+   * @param activeProjectId - The id of the project open as the active Save target, if any.
+   */
+  async function chooseDeleteForFrenchGlosses(activeProjectId?: string) {
+    render(<SelectInterlinearProjectModal {...defaultProps} activeProjectId={activeProjectId} />);
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
     const row = screen.getByRole('button', { name: /french glosses/i }).closest('li');
     if (!row) throw new Error('the project row is not a list item');
@@ -441,10 +447,17 @@ describe('SelectInterlinearProjectModal project deletion', () => {
     const confirm = await chooseDeleteForFrenchGlosses();
 
     expect(confirm).not.toHaveTextContent('No Paratext 9 data will be affected.');
+    expect(confirm).not.toHaveTextContent('The open draft is kept as unsaved changes.');
     expect(mockSendCommand).not.toHaveBeenCalledWith(
       'interlinearizer.deleteProject',
       expect.anything(),
     );
+  });
+
+  it('says the open draft is kept when the project to delete is the active one', async () => {
+    const confirm = await chooseDeleteForFrenchGlosses(STUB_PROJECT_2.id);
+
+    expect(confirm).toHaveTextContent('The open draft is kept as unsaved changes.');
   });
 
   it('deletes the project on confirmation, drops its row, and reports the deletion', async () => {
@@ -601,5 +614,27 @@ describe('SelectInterlinearProjectModal Paratext 9 import entry', () => {
     expect(
       screen.getByRole('dialog', { name: 'Delete Paratext 9 Interlinear?' }),
     ).toHaveTextContent('No Paratext 9 data will be affected.');
+  });
+
+  it('does not say the open draft is kept when deleting the active import', async () => {
+    serveProjects([
+      makeProjectSummary({
+        id: 'import-id',
+        name: 'Paratext 9 Interlinear',
+        pt9Import: {
+          fileHashes: { 'Lexicon.xml': 'aaaa1111' },
+          importedAt: '2026-08-01T00:00:00.000Z',
+        },
+      }),
+    ]);
+    render(<SelectInterlinearProjectModal {...defaultProps} activeProjectId="import-id" />);
+    await screen.findByTestId('readonly-chip');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Project actions' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Delete Paratext 9 Interlinear?' }),
+    ).not.toHaveTextContent('The open draft is kept as unsaved changes.');
   });
 });

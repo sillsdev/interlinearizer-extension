@@ -8,7 +8,13 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type { DraftProject, DraftStart, InterlinearProject, ProjectConfig } from 'interlinearizer';
+import type {
+  DraftProject,
+  DraftStart,
+  InterlinearProject,
+  ProjectConfig,
+  SegmentationDelta,
+} from 'interlinearizer';
 import type { CommandHandlers, NetworkEvents } from 'papi-shared-types';
 import {
   formatReplacementString,
@@ -35,23 +41,25 @@ import {
 import * as projectStorage from './services/projectStorage';
 import * as pt9ImportService from './services/pt9ImportService';
 import type { Pt9ImportResult } from './services/pt9ImportService';
-import { readBookOutline, readSegmentPage } from './services/sessionPages';
+import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
+import { sessionConcordanceHandlers } from './services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
+import { readBookOutline, readSegmentPage, readStaleSummary } from './services/sessionPages';
+import { UnreadableBooksError } from './types/analysis-repository';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
-import type { TextReadStatus } from './types/text-read-status';
+import { emptyAnalysis } from './types/empty-factories';
 import {
   toProjectSummary,
   type InterlinearProjectSummary,
   type SavedAsProject,
 } from './types/interlinear-project-summary';
-import { UnreadableBooksError } from './types/analysis-repository';
-import { emptyAnalysis } from './types/empty-factories';
 import { CURRENT_MODEL_VERSION } from './types/model-version';
+import type { TextReadStatus } from './types/text-read-status';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
+import { envelopeOf } from './types/draft-envelope';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
-import { bookSegmentationJson } from './utils/segmentation';
 
 // #region WebView provider
 
@@ -210,7 +218,7 @@ function createSessions(
     },
     stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
     heldBook: (sourceProjectId, bookId, segmentation) =>
-      bookService.heldBook(sourceProjectId, bookId, segmentation && JSON.stringify(segmentation)),
+      bookService.heldBook(sourceProjectId, bookId, segmentation),
     getOpenVerseBook: bookService.getOpenVerseBook,
     reportChange: (change) => emitter.emit(change),
   });
@@ -391,25 +399,21 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
 }
 
 /**
- * Updates the metadata of an existing interlinearizer project. Called from the WebView when the
- * user saves edits in the project info modal.
+ * Updates the metadata of an existing interlinearizer project.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisLanguages - New BCP 47 analysis language tags. Required and must be non-empty;
- *   pass the current value to leave it unchanged.
  * @param targetProjectId - New target-project ID; omit to clear the target binding.
  * @returns The updated project as a JSON string, or `undefined` if no project with the given ID
  *   exists.
- * @throws If storage fails. The error is logged and an error notification is sent before rethrowing
- *   so the frontend `catch` block can suppress it without sending a second notification.
+ * @throws If storage fails. The error is logged and an error notification is sent before
+ *   rethrowing.
  */
 async function updateProjectMetadata(
   interlinearProjectId: string,
   name: string | undefined,
   description: string | undefined,
-  analysisLanguages: string[],
   targetProjectId?: string,
 ): Promise<string | undefined> {
   try {
@@ -418,7 +422,6 @@ async function updateProjectMetadata(
       interlinearProjectId,
       name,
       description,
-      analysisLanguages,
       targetProjectId,
     );
     return updated ? JSON.stringify(updated) : undefined;
@@ -620,8 +623,9 @@ async function savingInSession<T>(
  *   session's history marks the draft saved.
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param interlinearProjectId - UUID of the interlinearizer project to save into.
- * @param config - The configuration to set on the project in the same write; omit to leave the
- *   project's configuration unchanged.
+ * @param config - The target to set on the project in the same write, along with the draft's
+ *   analysis languages; omit to leave the project's configuration unchanged. A draft that lists no
+ *   analysis languages leaves the configuration unchanged too, target included.
  * @returns The saved project's `InterlinearProjectSummary` (carrying the refreshed `updatedAt`) as
  *   a JSON string, or `undefined` if no project with the given ID exists.
  * @throws If `sessionId` names no open session, if the draft cannot be read for some book, if the
@@ -632,7 +636,7 @@ async function saveDraftToProject(
   sessionId: string,
   sourceProjectId: string,
   interlinearProjectId: string,
-  config?: ProjectConfig,
+  config?: Pick<ProjectConfig, 'targetProjectId'>,
 ): Promise<string | undefined> {
   try {
     return await perfTimeAsync('saveDraftToProject', async () => {
@@ -724,42 +728,19 @@ async function saveDraftAsProject(
   }
 }
 
-/**
- * Returns a book of the source project tokenized under the project's language tag.
- *
- * @returns The tokenized `Book` as JSON, or `undefined` when the project has no text for the book.
- * @throws If the book cannot be read or tokenized. The error is logged before rethrowing.
- */
-async function getTokenizedBook(
-  sourceProjectId: string,
-  bookId: string,
-): Promise<string | undefined> {
-  try {
-    return await perfTimeAsync('getTokenizedBook', () =>
-      bookService.getTokenizedBook(sourceProjectId, bookId),
-    );
-  } catch (e) {
-    logger.error(
-      `Interlinearizer: failed to tokenize book ${bookId} of project ${sourceProjectId}`,
-      e,
-    );
-    throw e;
-  }
-}
-
 /** The session that a page or text-read command reads. */
 type SessionAddress = Readonly<{ sessionId: string }>;
 
-/** The boundaries the session's draft sets in the book, as JSON; `undefined` when it sets none. */
-async function sessionBoundaries(session: Session, bookId: string): Promise<string | undefined> {
-  return bookSegmentationJson((await session.repository.getScope()).segmentation, bookId);
+/** The boundaries that the session's draft sets. */
+async function sessionBoundaries(session: Session): Promise<SegmentationDelta | undefined> {
+  return (await session.repository.getScope()).segmentation;
 }
 
 /**
- * Outlines a book of a session's source, segmented by the draft's boundaries, counting each
- * segment's orphaned free-translation cards. Before the outline, the draft is re-anchored to the
- * book's text unless the session last re-anchored the book to the same text. A failed re-anchor is
- * logged.
+ * Outlines a book of a session's source, segmented by the draft's boundaries. The outline counts
+ * each segment's orphaned free-translation cards and flags the segments that show a stale gloss or
+ * free translation. Before the outline, the draft is re-anchored to the book's text unless the
+ * session last re-anchored the book to the same text. A failed re-anchor is logged.
  *
  * @returns The `BookOutline` as JSON, or `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or segmented, the session is not open, or its analysis cannot
@@ -780,15 +761,46 @@ async function getBookOutline(
         const book = await bookService.getOpenBook(
           session.scope.sourceProjectId,
           bookId,
-          await sessionBoundaries(session, bookId),
+          await sessionBoundaries(session),
         );
-        if (!book) return undefined;
-        const outline = await readBookOutline(session.repository, book);
+        const verseBook = await bookService.getOpenVerseBook(session.scope.sourceProjectId, bookId);
+        if (!book || !verseBook) return undefined;
+        const outline = await readBookOutline(session.repository, book, verseBook);
         return perfTime('getBookOutline:serialize', () => JSON.stringify(outline));
       });
     });
   } catch (e) {
     logger.error(`Interlinearizer: failed to outline book ${bookId} of session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/**
+ * Summarizes the stale analyses that a book of a session's source holds, segmented by the draft's
+ * boundaries.
+ *
+ * @returns The `StaleSummary` as JSON, or `undefined` when the project has no text for the book.
+ * @throws If the book cannot be read or segmented, the session is not open, or its analysis cannot
+ *   be read. The error is logged before rethrowing.
+ */
+async function getStaleSummary({
+  sessionId,
+  bookId,
+}: ArgsOf<'interlinearizer.getStaleSummary'>): Promise<string | undefined> {
+  try {
+    return await sessions.run(sessionId, async (session) => {
+      const book = await bookService.getOpenBook(
+        session.scope.sourceProjectId,
+        bookId,
+        await sessionBoundaries(session),
+      );
+      return book && JSON.stringify(await readStaleSummary(session.repository, book));
+    });
+  } catch (e) {
+    logger.error(
+      `Interlinearizer: failed to summarize the stale analyses of book ${bookId} of session ${sessionId}`,
+      e,
+    );
     throw e;
   }
 }
@@ -813,7 +825,7 @@ async function getSegments(
         const book = await bookService.getSegmentedBook(
           session.scope.sourceProjectId,
           bookId,
-          await sessionBoundaries(session, bookId),
+          await sessionBoundaries(session),
         );
         if (!book) return undefined;
         const page = await readSegmentPage(session.repository, book, start, end);
@@ -852,6 +864,24 @@ async function getTextReadStatus({ sessionId }: SessionAddress): Promise<string>
     return await bookService.getTextReadStatus(sourceProjectId);
   } catch (e) {
     logger.error(`Interlinearizer: failed to read the text of session ${sessionId}`, e);
+    throw e;
+  }
+}
+
+/**
+ * Reads again each book of a session source's whole text whose latest read failed.
+ *
+ * @throws If the session is not open. The error is logged before rethrowing.
+ */
+async function retryTextRead({ sessionId }: SessionAddress): Promise<void> {
+  try {
+    const sourceProjectId = await sessions.run(
+      sessionId,
+      async ({ scope }) => scope.sourceProjectId,
+    );
+    await bookService.retryFailedBooks(sourceProjectId);
+  } catch (e) {
+    logger.error(`Interlinearizer: failed to read the text of session ${sessionId} again`, e);
     throw e;
   }
 }
@@ -1094,28 +1124,27 @@ async function checkIndexes({
 }
 
 /**
- * Reads a session's whole draft, its scope and analysis, as the session's repository holds it. A
- * bridge until the WebView reads only pages. When the draft lists no analysis language, the reply
- * lists the session's; the session's first edit stores it.
+ * Reads a session's draft envelope: the draft without its analysis or boundaries. When the draft
+ * lists no analysis language, the reply lists the session's; the session's first edit stores it.
  *
- * @returns A JSON string of the `DraftProject`.
- * @throws If the session is not open, or its analysis cannot be loaded. The error is logged before
+ * @returns A JSON string of the `DraftEnvelope`.
+ * @throws If the session is not open, or its draft cannot be loaded. The error is logged before
  *   rethrowing.
  */
-async function getFullAnalysis({
+async function getDraftEnvelope({
   sessionId,
-}: ArgsOf<'interlinearizer.getFullAnalysis'>): Promise<string> {
+}: ArgsOf<'interlinearizer.getDraftEnvelope'>): Promise<string> {
   try {
     return JSON.stringify(
       await sessions.run(sessionId, async ({ repository, analysisLanguage }) => {
-        const draft = await repository.getWholeDraft();
-        return draft.analysisLanguages.length > 0
-          ? draft
-          : { ...draft, analysisLanguages: [analysisLanguage] };
+        const envelope = envelopeOf(await repository.getWholeDraft());
+        return envelope.analysisLanguages.length > 0
+          ? envelope
+          : { ...envelope, analysisLanguages: [analysisLanguage] };
       }),
     );
   } catch (e) {
-    logger.error(`Interlinearizer: failed to read the whole draft of session ${sessionId}`, e);
+    logger.error(`Interlinearizer: failed to read the draft envelope of session ${sessionId}`, e);
     throw e;
   }
 }
@@ -1225,6 +1254,19 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getProject: (interlinearProjectId) =>
       projectStorage.getProject(executionToken, interlinearProjectId),
   });
+  const catalog = sessionCatalogHandlers({
+    sessions: activeSessions,
+    logger,
+    getOpenVerseBook: bookService.getOpenVerseBook,
+    getVerseBook: bookService.getVerseBook,
+    isFormInText: bookService.isFormInText,
+  });
+  const concordance = sessionConcordanceHandlers({
+    sessions: activeSessions,
+    logger,
+    getConcordanceBooks: bookService.getConcordanceBooks,
+    getWritingSystem: bookService.getWritingSystem,
+  });
   const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book, edited) =>
     activeSessions
       .reanchorBook(sourceProjectId, book, edited)
@@ -1245,6 +1287,17 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         ),
       ),
   );
+  const textReadProgressUnsubscriber = bookService.onTextReadProgress(
+    (sourceProjectId, formsChanged) =>
+      activeSessions
+        .reportTextReadProgress(sourceProjectId, formsChanged)
+        .catch((e) =>
+          logger.warn(
+            `Interlinearizer: could not report how far the text of project ${sourceProjectId} is read`,
+            e,
+          ),
+        ),
+  );
   const bookTextUnsubscriber = bookService.onBookTextChanged((sourceProjectId, bookId) =>
     activeSessions
       .reportScriptureEdit(sourceProjectId, bookId)
@@ -1253,9 +1306,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           `Interlinearizer: could not report the edit to ${bookId} of project ${sourceProjectId}`,
           e,
         ),
-      )
-      .then(() =>
-        emitter.emit({ sourceProjectId, changeId: crypto.randomUUID(), scriptureEdit: { bookId } }),
       ),
   );
   context.registrations.add(
@@ -1278,6 +1328,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
     bookReadUnsubscriber,
     textReadUnsubscriber,
+    textReadProgressUnsubscriber,
     bookTextUnsubscriber,
   );
 
@@ -1468,14 +1519,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             name: 'config',
             required: false,
             summary:
-              "The project's analysis languages and target to set in the same write, a missing target clearing the binding; omit to leave its configuration unchanged",
+              "The project's target to set in the same write, along with the draft's analysis languages, a missing target clearing the binding; omit to leave its configuration unchanged",
             schema: {
               type: 'object',
               properties: {
-                analysisLanguages: { type: 'array', items: { type: 'string' } },
                 targetProjectId: { type: 'string' },
               },
-              required: ['analysisLanguages'],
             },
           },
         ],
@@ -1563,35 +1612,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary: 'JSON-stringified InterlinearProjectSummary[] for the given source',
-          schema: { type: 'string' },
-        },
-      },
-    },
-  );
-
-  const getTokenizedBookCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getTokenizedBook',
-    getTokenizedBook,
-    {
-      method: {
-        summary: "Return a source project's book tokenized, as a JSON string",
-        params: [
-          {
-            name: 'sourceProjectId',
-            required: true,
-            summary: 'Platform.Bible source project ID whose book to tokenize',
-            schema: { type: 'string' },
-          },
-          {
-            name: 'bookId',
-            required: true,
-            summary: 'Book code, such as GEN',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified Book, or undefined when the project has no text for the book',
           schema: { type: 'string' },
         },
       },
@@ -1688,6 +1708,18 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const retryTextReadCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.retryTextRead',
+    retryTextRead,
+    {
+      method: {
+        summary: "Read again each book of a session's whole source text whose latest read failed",
+        params: [sessionAddressParam],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
   const startDraftOverCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.startDraftOver',
     startDraftOver,
@@ -1761,6 +1793,29 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   /** Documents a session command's one argument, which holds `fields` beside `sessionId`. */
   const sessionArgs = (...fields: ParamDoc[]) =>
     argsParam("The session, and the command's own fields", [sessionIdParam, ...fields]);
+
+  const getStaleSummaryCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getStaleSummary',
+    getStaleSummary,
+    {
+      method: {
+        summary:
+          "Summarize the stale analyses that a book of a session's source holds, segmented by the draft's boundaries, as a JSON string",
+        params: sessionArgs({
+          name: 'bookId',
+          required: true,
+          summary: 'Book code, such as GEN',
+          schema: { type: 'string' },
+        }),
+        result: {
+          name: 'return value',
+          summary:
+            'JSON-stringified StaleSummary, or undefined when the project has no text for the book',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
 
   const openSessionCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openSession',
@@ -1911,17 +1966,23 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  const editRegistrations: UnsubscriberAsync[] = [];
-  async function registerEdit(
-    commandName: keyof typeof edits,
+  const sessionCommands = { ...edits, ...catalog, ...concordance };
+  const sessionRegistrations: UnsubscriberAsync[] = [];
+
+  /**
+   * Registers the session command `commandName`, served by its edit, catalog or concordance
+   * handler.
+   */
+  async function registerSessionCommand(
+    commandName: keyof typeof sessionCommands,
     method: MethodDocumentationWithoutName,
   ): Promise<void> {
-    editRegistrations.push(
-      await papi.commands.registerCommand(commandName, edits[commandName], { method }),
+    sessionRegistrations.push(
+      await papi.commands.registerCommand(commandName, sessionCommands[commandName], { method }),
     );
   }
 
-  await registerEdit('interlinearizer.writeGloss', {
+  await registerSessionCommand('interlinearizer.writeGloss', {
     summary: "Write a token's gloss in a session's analysis language; a blank value clears it",
     params: sessionArgs(
       ...tokenParams,
@@ -1936,7 +1997,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.approveAnalysisForToken', {
+  await registerSessionCommand('interlinearizer.approveAnalysisForToken', {
     summary: 'Approve a stored token analysis for a token, in place of any approval the token held',
     params: sessionArgs(
       ...tokenParams,
@@ -1951,7 +2012,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writeMorphemes', {
+  await registerSessionCommand('interlinearizer.writeMorphemes', {
     summary: "Write a token's morpheme breakdown",
     params: sessionArgs(
       ...tokenParams,
@@ -1972,13 +2033,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.deleteMorphemes', {
+  await registerSessionCommand('interlinearizer.deleteMorphemes', {
     summary: "Remove a token's morpheme breakdown",
     params: sessionArgs(tokenParams[0], changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writeMorphemeGloss', {
+  await registerSessionCommand('interlinearizer.writeMorphemeGloss', {
     summary:
       "Gloss one morpheme of a token's breakdown in a session's analysis language; a blank value clears the morpheme's gloss",
     params: sessionArgs(
@@ -2007,7 +2068,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  await registerEdit('interlinearizer.discardStaleAnalysis', {
+  await registerSessionCommand('interlinearizer.discardStaleAnalysis', {
     summary: 'Give up the place an analysis went stale at, leaving its other places alone',
     params: sessionArgs(
       staleAnalysisParam,
@@ -2022,7 +2083,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.reapplyStaleAnalysis', {
+  await registerSessionCommand('interlinearizer.reapplyStaleAnalysis', {
     summary:
       'Move an analysis from a place it went stale at onto a token, approving it there in place of whatever the token held',
     params: sessionArgs(
@@ -2046,7 +2107,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  await registerEdit('interlinearizer.keepStaleFreeTranslation', {
+  await registerSessionCommand('interlinearizer.keepStaleFreeTranslation', {
     summary:
       "Keep a stale free translation as a claim about a segment's current text, approving it for that segment",
     params: sessionArgs(
@@ -2068,7 +2129,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.discardStaleFreeTranslation', {
+  await registerSessionCommand('interlinearizer.discardStaleFreeTranslation', {
     summary: 'Drop a stale free translation, one whose verse the book no longer holds included',
     params: sessionArgs(staleTranslationParam, changeIdParam),
     result: editResult,
@@ -2089,7 +2150,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'array', items: { type: 'string' } },
   } as const;
 
-  await registerEdit('interlinearizer.writeAnalysisGloss', {
+  await registerSessionCommand('interlinearizer.writeAnalysisGloss', {
     summary:
       "Write a token analysis's gloss in a session's analysis language, for every token linked to it; a blank value clears it",
     params: sessionArgs(
@@ -2100,13 +2161,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.clearAnalysisGlosses', {
+  await registerSessionCommand('interlinearizer.clearAnalysisGlosses', {
     summary: "Clear the glosses of several token analyses in a session's analysis language",
     params: sessionArgs(analysisIdsParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writeAnalysisMorphemes', {
+  await registerSessionCommand('interlinearizer.writeAnalysisMorphemes', {
     summary:
       "Re-split a token analysis's breakdown, for every token linked to it; no forms removes the breakdown",
     params: sessionArgs(
@@ -2128,7 +2189,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.confirmAnalysisMorphemes', {
+  await registerSessionCommand('interlinearizer.confirmAnalysisMorphemes', {
     summary: "Keep a token analysis's stale breakdown as it stands, for every token linked to it",
     params: sessionArgs(
       catalogAnalysisParam,
@@ -2144,7 +2205,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writeAnalysisMorphemeGloss', {
+  await registerSessionCommand('interlinearizer.writeAnalysisMorphemeGloss', {
     summary:
       "Write the gloss of one morpheme of a token analysis in a session's analysis language, for every token linked to it; a blank value clears it",
     params: sessionArgs(
@@ -2187,21 +2248,21 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  await registerEdit('interlinearizer.linkAnalysisSense', {
+  await registerSessionCommand('interlinearizer.linkAnalysisSense', {
     summary:
       'Link a token analysis to a lexicon sense, for every token linked to it, replacing any sense it had',
     params: sessionArgs(catalogAnalysisParam, senseRefParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.unlinkAnalysisSense', {
+  await registerSessionCommand('interlinearizer.unlinkAnalysisSense', {
     summary:
       "Drop a token analysis's lexicon sense link, for every token linked to it, optionally keeping a gloss",
     params: sessionArgs(catalogAnalysisParam, keepGlossParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.linkAnalysisMorphemeSense', {
+  await registerSessionCommand('interlinearizer.linkAnalysisMorphemeSense', {
     summary:
       'Link one morpheme of a token analysis to a lexicon sense, for every token linked to it; a different entry drops its allomorph and grammar references',
     params: sessionArgs(
@@ -2219,34 +2280,34 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.unlinkAnalysisMorphemeSense', {
+  await registerSessionCommand('interlinearizer.unlinkAnalysisMorphemeSense', {
     summary:
       'Drop every lexicon reference of one morpheme of a token analysis, for every token linked to it, optionally keeping a gloss',
     params: sessionArgs(catalogAnalysisParam, morphemeIdParam, keepGlossParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.adoptAnalysisSenseGloss', {
+  await registerSessionCommand('interlinearizer.adoptAnalysisSenseGloss', {
     summary:
       "Write a linked sense's gloss as a token analysis's gloss in a session's analysis language, keeping the link",
     params: sessionArgs(catalogAnalysisParam, adoptValueParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.adoptAnalysisMorphemeSenseGloss', {
+  await registerSessionCommand('interlinearizer.adoptAnalysisMorphemeSenseGloss', {
     summary:
       "Write a linked sense's gloss as one morpheme's gloss in a session's analysis language, keeping the link",
     params: sessionArgs(catalogAnalysisParam, morphemeIdParam, adoptValueParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.deleteAnalyses', {
+  await registerSessionCommand('interlinearizer.deleteAnalyses', {
     summary: 'Remove token analyses with every token link to them',
     params: sessionArgs(analysisIdsParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.mergeAnalysesInto', {
+  await registerSessionCommand('interlinearizer.mergeAnalysesInto', {
     summary:
       "Fold token analyses into a survivor and write the settled content onto it, in a session's analysis language",
     params: sessionArgs(
@@ -2293,7 +2354,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   };
 
-  await registerEdit('interlinearizer.createPhrase', {
+  await registerSessionCommand('interlinearizer.createPhrase', {
     summary:
       'Add an approved phrase occurrence, sharing a content-identical stored payload where one exists',
     params: sessionArgs(
@@ -2308,7 +2369,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.updatePhrase', {
+  await registerSessionCommand('interlinearizer.updatePhrase', {
     summary: 'Give a phrase occurrence a new token run, keeping its gloss; an empty run removes it',
     params: sessionArgs(
       phraseIdParam,
@@ -2323,13 +2384,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.deletePhrase', {
+  await registerSessionCommand('interlinearizer.deletePhrase', {
     summary: 'Remove a phrase occurrence, with its payload unless another occurrence shares it',
     params: sessionArgs(phraseIdParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.mergePhrases', {
+  await registerSessionCommand('interlinearizer.mergePhrases', {
     summary:
       'Grow a phrase occurrence to a merged token run, removing the absorbed occurrence when named',
     params: sessionArgs(
@@ -2357,7 +2418,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writePhraseGloss', {
+  await registerSessionCommand('interlinearizer.writePhraseGloss', {
     summary:
       "Write a phrase occurrence's gloss in a session's analysis language; a blank value clears it",
     params: sessionArgs(
@@ -2373,13 +2434,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.approvePhrase', {
+  await registerSessionCommand('interlinearizer.approvePhrase', {
     summary: 'Approve a phrase occurrence, unless any of its tokens is in an approved phrase',
     params: sessionArgs(phraseIdParam, changeIdParam),
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.splitPhrase', {
+  await registerSessionCommand('interlinearizer.splitPhrase', {
     summary:
       "Split a phrase occurrence just after a token, in the document order of the token's book",
     params: sessionArgs(
@@ -2395,7 +2456,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.writeSegmentFreeTranslation', {
+  await registerSessionCommand('interlinearizer.writeSegmentFreeTranslation', {
     summary:
       "Write a segment's free translation in a session's analysis language; a blank value clears it",
     params: sessionArgs(
@@ -2429,7 +2490,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.mergeSegments', {
+  await registerSessionCommand('interlinearizer.mergeSegments', {
     summary: 'Merge the segment beginning at a token into the one before it',
     params: sessionArgs(
       {
@@ -2443,7 +2504,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.splitSegment', {
+  await registerSessionCommand('interlinearizer.splitSegment', {
     summary:
       'Split a segment so a new one begins at a token, first splitting every approved phrase the boundary would cut',
     params: sessionArgs(
@@ -2458,7 +2519,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
-  await registerEdit('interlinearizer.moveBoundary', {
+  await registerSessionCommand('interlinearizer.moveBoundary', {
     summary:
       'Move a segment boundary from one token to another, first splitting every approved phrase the moved boundary would cut',
     params: sessionArgs(
@@ -2486,7 +2547,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     schema: { type: 'string' },
   } as const;
 
-  await registerEdit('interlinearizer.discardBook', {
+  await registerSessionCommand('interlinearizer.discardBook', {
     summary:
       "Discard the unsaved changes to one book of a session's draft, restoring what the project it saves to holds for the book",
     params: sessionArgs(
@@ -2501,14 +2562,56 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: discardResult,
   });
 
-  await registerEdit('interlinearizer.discardAll', {
+  await registerSessionCommand('interlinearizer.discardAll', {
     summary:
       "Discard every unsaved change to a session's draft, restoring what the project it saves to holds",
     params: sessionArgs(changeIdParam),
     result: discardResult,
   });
 
-  await registerEdit('interlinearizer.previewRemovals', {
+  await registerSessionCommand('interlinearizer.changeAnalysisLanguages', {
+    summary:
+      "Give a session's draft new analysis languages, optionally moving or deleting one tag's glosses and free translations",
+    params: sessionArgs(
+      {
+        name: 'analysisLanguages',
+        required: true,
+        summary: 'BCP 47 tags, primary first; never empty',
+        schema: { type: 'array', items: { type: 'string' } },
+      },
+      {
+        name: 'retag',
+        required: false,
+        summary: 'Glosses and free translations to move from one tag to another',
+        schema: {
+          type: 'object',
+          properties: { from: { type: 'string' }, to: { type: 'string' } },
+          required: ['from', 'to'],
+        },
+      },
+      {
+        name: 'deleteTextOf',
+        required: false,
+        summary: 'The tag whose glosses and free translations are deleted',
+        schema: { type: 'string' },
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
+  await registerSessionCommand('interlinearizer.countLanguageText', {
+    summary:
+      "Count the glosses and free translations of a session's draft under each language tag that has any",
+    params: sessionArgs(),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified counts keyed by tag',
+      schema: { type: 'string' },
+    },
+  });
+
+  await registerSessionCommand('interlinearizer.previewRemovals', {
     summary: "Name the token analyses a command would remove from a session's draft",
     params: sessionArgs({
       name: 'request',
@@ -2519,6 +2622,138 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: {
       name: 'return value',
       summary: 'JSON-stringified ids of the token analyses; "[]" when it would remove none',
+      schema: { type: 'string' },
+    },
+  });
+
+  await registerSessionCommand('interlinearizer.previewBreakdownEdit', {
+    summary:
+      'Read what a breakdown edit at a token would do to the payload that the token approves',
+    params: sessionArgs({
+      name: 'tokenRef',
+      required: true,
+      summary: 'Token.ref of the token whose breakdown would be edited',
+      schema: { type: 'string' },
+    }),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified BreakdownPreview',
+      schema: { type: 'string' },
+    },
+  });
+
+  const currentBookParam = {
+    name: 'currentBook',
+    required: true,
+    summary: 'Book code the per-book usage count is taken against',
+    schema: { type: 'string' },
+  } as const;
+
+  const catalogRowsResult = {
+    name: 'return value',
+    summary: "JSON-stringified CatalogRow[], each row's books listed",
+    schema: { type: 'string' },
+  } as const;
+
+  await registerSessionCommand('interlinearizer.getCatalogRows', {
+    summary: "Serve one page of a session's analysis catalog, with the filter choices to offer",
+    params: sessionArgs({
+      name: 'request',
+      required: true,
+      summary: 'CatalogRowsRequest naming the search, sort, filters, page and current book',
+      schema: { type: 'object' },
+    }),
+    result: {
+      name: 'return value',
+      summary: "JSON-stringified CatalogPage, each row's books listed",
+      schema: { type: 'string' },
+    },
+  });
+
+  await registerSessionCommand('interlinearizer.getSelectionSummary', {
+    summary:
+      "Summarize the selected analyses of a session's draft: their use count, the glossed ones, and the merge they allow",
+    params: sessionArgs({
+      name: 'analysisIds',
+      required: true,
+      summary: 'IDs of the selected token analyses, in listing order',
+      schema: { type: 'array', items: { type: 'string' } },
+    }),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified SelectionSummary',
+      schema: { type: 'string' },
+    },
+  });
+
+  await registerSessionCommand('interlinearizer.countUsages', {
+    summary: "Count the distinct tokens in a session's draft that approve any of the analyses",
+    params: sessionArgs({
+      name: 'analysisIds',
+      required: true,
+      summary: 'IDs of the token analyses',
+      schema: { type: 'array', items: { type: 'string' } },
+    }),
+    result: { name: 'return value', summary: 'How many tokens', schema: { type: 'number' } },
+  });
+
+  await registerSessionCommand('interlinearizer.getCatalogRowsByIds', {
+    summary: "Serve the catalog rows of the named analyses in a session's draft, in that order",
+    params: sessionArgs(currentBookParam, {
+      name: 'analysisIds',
+      required: true,
+      summary: 'IDs of the token analyses; an unstored one is left out',
+      schema: { type: 'array', items: { type: 'string' } },
+    }),
+    result: catalogRowsResult,
+  });
+
+  await registerSessionCommand('interlinearizer.getHomographRows', {
+    summary:
+      "Serve the catalog rows in a session's draft sharing an analysis's normalized surface form, most used first",
+    params: sessionArgs(currentBookParam, {
+      name: 'analysisId',
+      required: true,
+      summary: 'ID of the token analysis',
+      schema: { type: 'string' },
+    }),
+    result: {
+      name: 'return value',
+      summary: `JSON-stringified CatalogRow[], each row's books listed; "[]" when no analysis carries the id`,
+      schema: { type: 'string' },
+    },
+  });
+
+  await registerSessionCommand('interlinearizer.previewDeletion', {
+    summary:
+      "Report what deleting a token analysis in a session's draft would do to the tokens that approve it",
+    params: sessionArgs({
+      name: 'analysisId',
+      required: true,
+      summary: 'ID of the token analysis',
+      schema: { type: 'string' },
+    }),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified AnalysisDeletionOutcome; "null" when no analysis carries the id',
+      schema: { type: 'string' },
+    },
+  });
+
+  await registerSessionCommand('interlinearizer.getConcordance', {
+    summary:
+      "Serve one page of a session's concordance: of the forms of its source's whole text, or of one form's occurrences",
+    params: sessionArgs({
+      name: 'request',
+      required: true,
+      summary:
+        'ConcordanceRequest naming the page, and either the current book or the form whose occurrences are paged',
+      schema: { type: 'object' },
+    }),
+    result: {
+      name: 'return value',
+      summary:
+        'JSON-stringified ConcordancePage, or ConcordanceOccurrencePage for a form; "null" until the whole text has been read',
       schema: { type: 'string' },
     },
   });
@@ -2540,16 +2775,16 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const getFullAnalysisCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getFullAnalysis',
-    getFullAnalysis,
+  const getDraftEnvelopeCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getDraftEnvelope',
+    getDraftEnvelope,
     {
       method: {
-        summary: "Read a session's whole draft; a bridge until the WebView reads only pages",
+        summary: "Read a session's draft without its analysis or boundaries",
         params: sessionArgs(),
         result: {
           name: 'return value',
-          summary: 'JSON-stringified DraftProject',
+          summary: 'JSON-stringified DraftEnvelope',
           schema: { type: 'string' },
         },
       },
@@ -2643,8 +2878,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     updateProjectMetadata,
     {
       method: {
-        summary:
-          'Update the name, description, and analysis language of an existing interlinearizer project',
+        summary: 'Update the name, description, and target of an existing interlinearizer project',
         params: [
           {
             name: 'interlinearProjectId',
@@ -2663,13 +2897,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             required: false,
             summary: 'New user-facing description; omit to clear',
             schema: { type: 'string' },
-          },
-          {
-            name: 'analysisLanguages',
-            required: true,
-            summary:
-              'New BCP 47 analysis language tags; must be non-empty (pass current value to leave unchanged)',
-            schema: { type: 'array', items: { type: 'string' } },
           },
           {
             name: 'targetProjectId',
@@ -2956,7 +3183,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   );
 
   context.registrations.add(
-    ...editRegistrations,
+    ...sessionRegistrations,
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
     continuousScrollValidatorRegistration,
@@ -2968,10 +3195,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     saveDraftAsProjectCommandRegistration,
     getProjectsForSourceCommandRegistration,
     getProjectSummaryCommandRegistration,
-    getTokenizedBookCommandRegistration,
     getBookOutlineCommandRegistration,
     getSegmentsCommandRegistration,
+    getStaleSummaryCommandRegistration,
     getTextReadStatusCommandRegistration,
+    retryTextReadCommandRegistration,
     startDraftOverCommandRegistration,
     openSessionCommandRegistration,
     closeSessionCommandRegistration,
@@ -2981,7 +3209,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     undoEditCommandRegistration,
     redoEditCommandRegistration,
     checkIndexesCommandRegistration,
-    getFullAnalysisCommandRegistration,
+    getDraftEnvelopeCommandRegistration,
     setPerfMarksCommandRegistration,
     setSkipSessionReadsCommandRegistration,
     sessionIdForCommandRegistration,

@@ -1,6 +1,6 @@
 import { logger } from '@papi/frontend';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
+import type { ScriptureRef, Segment } from 'interlinearizer';
 import {
   createContext,
   useCallback,
@@ -13,7 +13,9 @@ import {
 } from 'react';
 import type { ReactNode } from 'react';
 import useLatestRef from '../hooks/useLatestRef';
+import type { OutlineSegment, SegmentPages } from '../types/segment-pages';
 import { isWordToken } from '../types/type-guards';
+import { outlineRangeOf, type PageIndexes } from '../utils/page-indexes';
 import { perfMark, perfMarksEnabled } from '../utils/perf-marks';
 import { isSameVerse, segmentContainsVerse, toSerializedVerseRef } from '../utils/verse-ref';
 import { useInterlinearNav, verseKey } from './InterlinearNavContext';
@@ -180,21 +182,29 @@ function FocusRenderProbe() {
   return undefined;
 }
 
+/** The lookups that {@link FocusProvider} resolves a focus against. */
+export type FocusIndexes = Pick<
+  PageIndexes,
+  'segmentById' | 'tokenSegmentMap' | 'wordTokenByRef'
+> & {
+  /** Every segment of the outline, by id. */
+  outlineSegmentById: ReadonlyMap<
+    string,
+    Pick<OutlineSegment, 'startRef' | 'verseStarts' | 'heading'>
+  >;
+};
+
 /** Props for {@link FocusProvider}. */
 type FocusProviderProps = Readonly<{
-  /** Tokenized book the focused token must resolve within. */
-  book: Book;
+  /** The pages of the book that the focused token must resolve within. */
+  pages: SegmentPages;
   /**
-   * Current scripture reference, already resolved by the loader to a verse some segment of `book`
+   * Current scripture reference, already resolved by the loader to a verse some segment of the book
    * contains whenever the chapter has segments.
    */
   scrRef: SerializedVerseRef;
-  /** Maps every segment id to its segment; resolves the focused token's own verse range. */
-  segmentById: ReadonlyMap<string, Segment>;
-  /** Maps every token ref to the id of the segment that contains it. */
-  tokenSegmentMap: ReadonlyMap<string, string>;
-  /** Maps every word token ref to the token; decides whether this book can hold a given focus. */
-  wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  /** The lookups over the pages loaded, built again as more load. */
+  indexes: FocusIndexes;
   /** The views that read and move focus. */
   children: ReactNode;
 }>;
@@ -204,43 +214,60 @@ type FocusProviderProps = Readonly<{
  * verse in one ordered rule set, so no two rules can race on which reseed wins.
  *
  * Seeded so focus is never `undefined` while the active verse has a word token: an undefined focus
- * disables every link button, since the active-segment test reads the focused segment.
+ * disables every link button, since the active-segment test reads the focused segment. A request or
+ * a reseed whose segment has yet to load waits for its page.
  */
-export function FocusProvider({
-  book,
-  scrRef,
-  segmentById,
-  tokenSegmentMap,
-  wordTokenByRef,
-  children,
-}: FocusProviderProps) {
+export function FocusProvider({ pages, scrRef, indexes, children }: FocusProviderProps) {
   const { navigate, consumeFocusRequest, peekFocusRequest, focusRequestCount, publishedFocus } =
     useInterlinearNav();
+  const { segmentById, tokenSegmentMap, wordTokenByRef, outlineSegmentById } = indexes;
 
   /**
-   * Finds the segment that owns the active verse: the first in document order whose verse range
-   * contains it. Containment rather than an exact start-verse match, so a verse absorbed into a
-   * multi-verse segment — or named by a later portion of a split verse — still resolves to the
-   * segment holding its text.
+   * The outline index of the segment that owns the active verse: the first in document order whose
+   * verse range contains it. Containment rather than an exact start-verse match, so a verse
+   * absorbed into a multi-verse segment — or named by a later portion of a split verse — still
+   * resolves to the segment holding its text.
    *
-   * Finds nothing while the reference names a book the mounted `book` is not, which is the state a
-   * cross-book navigation passes through before the new book's data arrives.
+   * Finds nothing while the reference names a book the mounted pages are not, which is the state a
+   * cross-book navigation passes through before the new book's pages arrive.
    */
-  const findActiveSegment = () => book.segments.find((seg) => segmentContainsVerse(seg, scrRef));
+  const activeIndex = () => pages.outline.findIndex((seg) => segmentContainsVerse(seg, scrRef));
+
+  /**
+   * The first word token of the segment owning the active verse; `'unloaded'` while that segment's
+   * page has yet to load.
+   */
+  const activeSeed = (): string | undefined | 'unloaded' => {
+    const index = activeIndex();
+    if (index === -1) return undefined;
+    const segment = pages.segmentAt(index);
+    return segment ? firstWordTokenRefOf(segment) : 'unloaded';
+  };
 
   /** The word token a request names, or the first word token of the segment it names. */
   const requestedToken = (requested: string) =>
     wordTokenByRef.has(requested) ? requested : firstWordTokenRefOf(segmentById.get(requested));
 
+  /** Whether the segment that a request names has yet to load. */
+  const awaitsPage = (requested: string) => {
+    const range = outlineRangeOf(pages.outline, requested);
+    return range !== undefined && pages.segmentAt(range.start) === undefined;
+  };
+
   const storeRef = useRef<FocusStore | undefined>(undefined);
+  /** Whether a reseed is waiting for the active verse's page to load. */
+  const reseedPendingRef = useRef(false);
   if (storeRef.current === undefined) {
     // Seeded from a pending request so the views mount already framing it; the claim follows.
-    const requested = peekFocusRequest(book.bookRef);
+    const requested = peekFocusRequest(pages.bookRef);
     const target = requested === undefined ? undefined : requestedToken(requested);
+    const seed = activeSeed();
+    /* v8 ignore next -- the pages publish once the active verse's page has loaded */
+    if (seed === 'unloaded') reseedPendingRef.current = true;
     storeRef.current =
       target !== undefined
         ? createFocusStore(target, 'request')
-        : createFocusStore(firstWordTokenRefOf(findActiveSegment()));
+        : createFocusStore(seed === 'unloaded' ? undefined : seed);
   }
   const store = storeRef.current;
 
@@ -260,7 +287,7 @@ export function FocusProvider({
   // passed to a memoized child must not churn when the book's indexes are rebuilt.
   const navigateRef = useLatestRef(navigate);
   const scrRefRef = useLatestRef(scrRef);
-  const segmentByIdRef = useLatestRef(segmentById);
+  const outlineSegmentByIdRef = useLatestRef(outlineSegmentById);
   const tokenSegmentMapRef = useLatestRef(tokenSegmentMap);
 
   const actions = useMemo<FocusActions>(
@@ -270,7 +297,7 @@ export function FocusProvider({
         if (isReaderChoice(origin)) markChosen();
         const segId = tokenSegmentMapRef.current.get(tokenRef);
         /* v8 ignore next 2 -- tokenRef always resolves to a segment in the mounted book */
-        const seg = segId === undefined ? undefined : segmentByIdRef.current.get(segId);
+        const seg = segId === undefined ? undefined : outlineSegmentByIdRef.current.get(segId);
         if (!seg) return;
         const { current } = scrRefRef;
         if (seg.startRef.book !== current.book) return;
@@ -298,14 +325,14 @@ export function FocusProvider({
         }
       },
     }),
-    [store, markChosen, navigateRef, scrRefRef, segmentByIdRef, tokenSegmentMapRef],
+    [store, markChosen, navigateRef, scrRefRef, outlineSegmentByIdRef, tokenSegmentMapRef],
   );
 
   /**
    * The inputs the resolution below classifies on, as of its last run. Compared rather than taken
    * from the dependency list, because the rules test a moved book and a moved verse differently.
    */
-  const prevInputsRef = useRef({ book, verse: verseKey(scrRef) });
+  const prevInputsRef = useRef({ pages, verse: verseKey(scrRef) });
 
   // Resolve focus against the book and the active verse, in priority order: an outside request
   // outranks both reseeds. Runs after commit rather than during render, so a claim is never made in
@@ -314,23 +341,36 @@ export function FocusProvider({
     const prev = prevInputsRef.current;
     const verse = verseKey(scrRef);
     // Refreshed up front so no early return leaves an input stale for a later comparison.
-    prevInputsRef.current = { book, verse };
+    prevInputsRef.current = { pages, verse };
+
+    /** Focuses the active verse's first word token, or waits for its page to load. */
+    const reseed = () => {
+      const seed = activeSeed();
+      reseedPendingRef.current = seed === 'unloaded';
+      if (seed !== 'unloaded') store.write(seed, 'reseed');
+    };
 
     // Attempted on every run rather than only when the count moves, since a request can name the
-    // verse already on screen or a book that had yet to load. Claiming clears it, so a run that
-    // finds nothing left is a no-op.
-    const requested = consumeFocusRequest(book.bookRef);
+    // verse already on screen, a book that had yet to load, or a segment whose page had yet to.
+    // Claiming clears it, so a run that finds nothing left is a no-op.
+    const requested = peekFocusRequest(pages.bookRef);
     if (requested !== undefined) {
       const target = requestedToken(requested);
       if (target !== undefined) {
+        consumeFocusRequest(pages.bookRef);
+        reseedPendingRef.current = false;
         store.write(target, 'request');
         // A write naming the focused token moves nothing, so the claim itself marks the choice.
         markChosen();
         return;
       }
-      // Dropped rather than held for a later attempt: a request outliving the load it was made for
-      // would fire on an unrelated navigation. Logged because the drop is otherwise invisible.
-      logger.warn(`Interlinearizer: focus request "${requested}" matched no word token`);
+      // Once its page has loaded, a request that still matches nothing is dropped rather than held:
+      // a request outliving the load it was made for would fire on an unrelated navigation. Logged
+      // because the drop is otherwise invisible.
+      if (!awaitsPage(requested)) {
+        consumeFocusRequest(pages.bookRef);
+        logger.warn(`Interlinearizer: focus request "${requested}" matched no word token`);
+      }
     }
 
     const { tokenRef: current } = store.getFocus();
@@ -339,8 +379,8 @@ export function FocusProvider({
     // Token refs survive re-segmentation, so a boundary edit keeps a still-resolving focus rather
     // than snapping back to the active verse's first word. Kept focus falls through to the verse
     // rule, which a re-tokenization arriving alongside a navigation still has to answer.
-    if (book !== prev.book && !resolvesInBook) {
-      store.write(firstWordTokenRefOf(findActiveSegment()), 'reseed');
+    if (pages !== prev.pages && !resolvesInBook) {
+      reseed();
       return;
     }
 
@@ -350,16 +390,20 @@ export function FocusProvider({
     // of a split verse stay put.
     if (verse !== prev.verse) {
       const focusedSegId = current ? tokenSegmentMap.get(current) : undefined;
-      const focusedSeg = focusedSegId ? segmentById.get(focusedSegId) : undefined;
-      if (focusedSeg && segmentContainsVerse(focusedSeg, scrRef)) return;
-      /* v8 ignore next -- the active segment is always found when the book includes the verse */
-      store.write(firstWordTokenRefOf(findActiveSegment()), 'reseed');
+      const focusedSeg = focusedSegId ? outlineSegmentById.get(focusedSegId) : undefined;
+      if (focusedSeg && segmentContainsVerse(focusedSeg, scrRef)) {
+        reseedPendingRef.current = false;
+        return;
+      }
+      reseed();
+      return;
     }
-    // findActiveSegment closes over the inputs already listed. The lookup maps and
-    // consumeFocusRequest are read only as resolvers; listing them would re-run the rules on a
-    // phrase edit that moved no focus.
+
+    if (reseedPendingRef.current) reseed();
+    // activeSeed and the request resolvers close over the inputs already listed; consumeFocusRequest
+    // and peekFocusRequest are read only as resolvers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book, scrRef.book, scrRef.chapterNum, scrRef.verseNum, focusRequestCount]);
+  }, [pages, indexes, scrRef.book, scrRef.chapterNum, scrRef.verseNum, focusRequestCount]);
 
   // Withdrawn on unmount, so a surface beside the view never acts on a token of a book since left.
   useEffect(() => {

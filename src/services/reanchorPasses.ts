@@ -1,4 +1,4 @@
-import type { Book, DraftProject, SegmentAnalysisLink } from 'interlinearizer';
+import type { DraftProject, ReadonlyBook, SegmentAnalysisLink } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import { booksLinkedIn } from '../utils/analysis-book';
@@ -27,7 +27,10 @@ async function readBooks(
 }
 
 /** The changes that re-anchor `draft` to each of `books` in turn, `undefined` when there are none. */
-function reanchorInTurn(draft: DraftProject, books: readonly Book[]): ChangeSet | undefined {
+function reanchorInTurn(
+  draft: DraftProject,
+  books: readonly ReadonlyBook[],
+): ChangeSet | undefined {
   let current = draft;
   let changes: ChangeSet | undefined;
   books.forEach((book) => {
@@ -44,8 +47,8 @@ function reanchorInTurn(draft: DraftProject, books: readonly Book[]): ChangeSet 
  * is applied and recorded through `history`, which must apply to `repository`. The draft stays as
  * saved or unsaved as it was, because a pass is bookkeeping rather than an edit.
  *
- * A pass over a book the draft neither links into nor holds boundary edits in changes nothing and
- * goes unrecorded. An undo or redo then re-anchors only the other books. A book the text lacks is
+ * The pass is recorded even over a book the draft neither links into nor holds boundary edits in,
+ * because an undo or redo may restore links or boundary edits there. A book the text lacks is
  * passed as a book with no segments.
  *
  * @returns The changes applied, with their inverse: the changes that undo them. `undefined` when
@@ -56,20 +59,16 @@ function reanchorInTurn(draft: DraftProject, books: readonly Book[]): ChangeSet 
 export async function reanchorStoredBook(
   repository: AnalysisRepository,
   history: EditHistory,
-  book: Book,
+  book: ReadonlyBook,
 ): Promise<AppliedChange | undefined> {
   const draft = await readBooks(repository, [book.bookRef]);
-  const heldAnalysis =
-    booksLinkedIn(draft.analysis).has(book.bookRef) ||
-    segmentationForBook(draft.segmentation, book.bookRef) !== undefined;
-  const changes = reanchorInTurn(draft, [book]);
-  if (!changes && !heldAnalysis) return undefined;
-  return history.applyPass(book, changes);
+  return history.applyPass(book, reanchorInTurn(draft, [book]));
 }
 
 /**
  * Gives the {@link ReanchorBooks} for `repository`: the changes that re-anchor what an undo or redo
- * would restore there, without applying them.
+ * would restore there, without applying them. Skips each book that would hold neither links nor
+ * boundary edits once the changes apply.
  */
 export function reanchorRestored(repository: AnalysisRepository): ReanchorBooks {
   return async (changes, books) => {
@@ -79,6 +78,14 @@ export function reanchorRestored(repository: AnalysisRepository): ReanchorBooks 
       books.map(({ bookRef }) => bookRef),
       changes.segmentAnalysisLinks?.puts,
     );
-    return reanchorInTurn(applyChangeSet(stored, changes).draft, books);
+    const restored = applyChangeSet(stored, changes).draft;
+    const linked = booksLinkedIn(restored.analysis);
+    return reanchorInTurn(
+      restored,
+      books.filter(
+        ({ bookRef }) =>
+          linked.has(bookRef) || segmentationForBook(restored.segmentation, bookRef) !== undefined,
+      ),
+    );
   };
 }

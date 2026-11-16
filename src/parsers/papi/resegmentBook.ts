@@ -1,9 +1,10 @@
 import type {
   Book,
+  ReadonlyBook,
+  ReadonlySegment,
+  ReadonlyToken,
   ScriptureRef,
-  Segment,
   SegmentationDelta,
-  Token,
   VerseStart,
 } from 'interlinearizer';
 
@@ -12,20 +13,20 @@ import { effectiveStarts, isDefaultSegmentationForBook } from '../../utils/segme
 /** Separator inserted between two verses' baseline text when they are merged into one segment. */
 const MERGE_SEPARATOR = ' ';
 
-/** A token paired with the original verse {@link Segment} it came from. */
-type SourcedToken = { token: Token; verse: Segment };
+/** A token paired with the original verse {@link ReadonlySegment} it came from. */
+type SourcedToken = { token: ReadonlyToken; verse: ReadonlySegment };
 
 /**
- * Rebuilds one custom {@link Segment} from a run of tokens that may span multiple original verses.
- * The new `baselineText` is each contributing verse's text spliced to its covered span, joined by
- * {@link MERGE_SEPARATOR} between verses; every token's char offset is shifted into the new string
- * while its `ref` and `surfaceText` are preserved. One `verseStarts` entry is emitted per
- * contributing verse, at its offset in the concatenated baseline, carrying that verse's rendered
- * number (a split's later piece keeps its source verse's number).
+ * Rebuilds one custom {@link ReadonlySegment} from a run of tokens that may span multiple original
+ * verses. The new `baselineText` is each contributing verse's text spliced to its covered span,
+ * joined by {@link MERGE_SEPARATOR} between verses; every token's char offset is shifted into the
+ * new string while its `ref` and `surfaceText` are preserved. One `verseStarts` entry is emitted
+ * per contributing verse, at its offset in the concatenated baseline, carrying that verse's
+ * rendered number (a split's later piece keeps its source verse's number).
  *
  * @param run - The run's tokens in document order, each tagged with its source verse. Non-empty.
  */
-function buildSegment(run: SourcedToken[]): Segment {
+function buildSegment(run: SourcedToken[]): ReadonlySegment {
   const firstSourced = run[0];
   const lastSourced = run[run.length - 1];
   const firstVerse = firstSourced.verse;
@@ -43,7 +44,7 @@ function buildSegment(run: SourcedToken[]): Segment {
   let baselineText = '';
   let cursor = 0;
   let runIndex = 0;
-  const tokens: Token[] = [];
+  const tokens: ReadonlyToken[] = [];
   const verseStarts: VerseStart[] = [];
   while (runIndex < run.length) {
     const { verse } = run[runIndex];
@@ -118,7 +119,15 @@ function buildSegment(run: SourcedToken[]): Segment {
  * Headings and token-less verses (empty verse markers) pass through as their own segments in
  * document order, so they survive a custom segmentation exactly as they do the default one.
  */
-export function resegmentBook(book: Book, delta: SegmentationDelta | undefined): Book {
+export function resegmentBook(book: Book, delta: SegmentationDelta | undefined): Book;
+export function resegmentBook(
+  book: ReadonlyBook,
+  delta: SegmentationDelta | undefined,
+): ReadonlyBook;
+export function resegmentBook(
+  book: ReadonlyBook,
+  delta: SegmentationDelta | undefined,
+): ReadonlyBook {
   if (isDefaultSegmentationForBook(book, delta)) return book;
 
   const starts = effectiveStarts(book, delta);
@@ -127,7 +136,7 @@ export function resegmentBook(book: Book, delta: SegmentationDelta | undefined):
   // materialized into segments in document order as they close, interleaved with any headings and
   // token-less verses (empty verse markers): neither takes part in a boundary, so each stands as its
   // own segment, reused verbatim.
-  const segments: Segment[] = [];
+  const segments: ReadonlySegment[] = [];
   let current: SourcedToken[] = [];
 
   /** Materializes the open run (if any) into a segment and resets it. */

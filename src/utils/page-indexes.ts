@@ -1,5 +1,5 @@
 import type { PhraseAnalysisLink, Segment, SegmentRange, Token } from 'interlinearizer';
-import type { OutlineSegment, SegmentPage } from '../types/segment-pages';
+import type { HeldRun, OutlineSegment, SegmentPages } from '../types/segment-pages';
 import { indexSegmentTokens, type TokenIndexes } from './book-indexes';
 import { straddledRefs } from './phrase-arc';
 import { positionOf } from './verse-ref';
@@ -41,11 +41,11 @@ export type PageIndexes = Readonly<{
  * Builds a view's lookups from the pages that it holds.
  *
  * @param outline - The outline of the book that the pages belong to.
- * @param pages - The pages held, each cut from the same text and boundaries as `outline`.
+ * @param pages - The runs held, each cut from the same text and boundaries as `outline`.
  */
 export function buildPageIndexes(
   outline: readonly OutlineSegment[],
-  pages: readonly SegmentPage[],
+  pages: readonly HeldRun[],
 ): PageIndexes {
   const outlineSegmentById = new Map<string, OutlineSegment>();
   const segmentOrder = new Map<string, number>();
@@ -128,4 +128,15 @@ export function outlineRangeOf(
   const index = outline.findIndex((segment) => segment.id === ref);
   const found = index === -1 ? outline.findLastIndex(holds) : index;
   return found === -1 ? undefined : { start: found, end: found + 1 };
+}
+
+/** The text of the token `tokenRef` as `pages` hold it; `undefined` until its page has loaded. */
+export function heldSurfaceText(
+  pages: Pick<SegmentPages, 'outline' | 'segmentAt'>,
+  tokenRef: string,
+): string | undefined {
+  const range = outlineRangeOf(pages.outline, tokenRef);
+  return (
+    range && pages.segmentAt(range.start)?.tokens.find(({ ref }) => ref === tokenRef)?.surfaceText
+  );
 }

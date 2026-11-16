@@ -112,7 +112,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 
 [src/interlinearizer.web-view.tsx](src/interlinearizer.web-view.tsx) — entry point rendered inside Platform.Bible's WebView iframe; delegates to [InterlinearizerLoader](src/components/InterlinearizerLoader.tsx) when a `projectId` is present. `useWebViewScrollGroupScrRef` and `useWebViewState` are **props injected by the PAPI host** (not hook imports).
 
-[InterlinearizerLoader](src/components/InterlinearizerLoader.tsx) — real top of the React tree: owns modal state, persists the active interlinear project, fetches the tokenized book and its segment pages, and routes top-menu commands to the appropriate modal.
+[InterlinearizerLoader](src/components/InterlinearizerLoader.tsx) — real top of the React tree: owns modal state, persists the active interlinear project, loads the open book's outline and segment pages, and routes top-menu commands to the appropriate modal.
 
 [Interlinearizer](src/components/Interlinearizer.tsx) — renders the interlinear view from the loaded book data.
 
@@ -147,7 +147,7 @@ Saved projects are listed through [ProjectSummaries](src/services/projectSummari
 
 [AnalysisSessions](src/services/analysisSessions.ts) keeps the host's sessions, behind the `openSession`, `closeSession`, and `setAnalysisLanguage` commands. A session is a handle on either one source project's draft, paired with the interlinear project it saves to, or a read-only Paratext 9 import. A source has at most one session: opening another closes it.
 
-Opening a session starts building its repository's indexes ahead of the session's first command. It reads none of the source's text. The session starts a fresh whole-text read the first time a feature needs the whole text: the view's `getTextReadStatus` asks for it once the Stale filter, "Word not in the text" or the concordance wants the text. The read lasts until the session closes. `setSaveTarget` changes the project that a draft's session saves to, and `detachFromProject` leaves it none once that project is deleted. New and Open send `startDraftOver` the configuration or the id of the project to copy. It closes the source's session and writes the draft on the host through `DraftRepository.startOver`, so no draft crosses PAPI. `startOver` is not part of `AnalysisRepository`, because what New and Open mean for another backend is undecided. The WebView then opens a fresh session.
+Opening a session starts building its repository's indexes ahead of the session's first command. It reads none of the source's text. The session starts a fresh whole-text read the first time a feature needs the whole text: the view's `getTextReadStatus` asks for it once the Stale filter, "Word not in the text" or the concordance wants the text. The read lasts until the session closes. Each time the read files a book, the session reports a change that names `getTextReadStatus`, and `getCatalogRows` as well once the read can answer which forms the text holds; the report says that it leaves the draft as saved as it was. `setSaveTarget` changes the project that a draft's session saves to, and `detachFromProject` leaves it none once that project is deleted. New and Open send `startDraftOver` the configuration or the id of the project to copy. It closes the source's session and writes the draft on the host through `DraftRepository.startOver`, so no draft crosses PAPI. `startOver` is not part of `AnalysisRepository`, because what New and Open mean for another backend is undecided. The WebView then opens a fresh session.
 
 #### Running commands
 
@@ -162,18 +162,19 @@ An edit, undo, or redo replies with a `CommandReply`, which carries:
 - the `ChangeSet` it applied;
 - the books whose boundaries it moved;
 - the books where it put or removed a stale free translation that the view places;
+- the books where it put or removed a stale token link;
 - for an undo or redo, whether it left the draft unsaved;
 - the pool buckets of the forms it touched, which [sessionPages](src/services/sessionPages.ts) reads.
 
 A command sent again under a `changeId` the session has applied gets its first reply and applies nothing. Each undo step carries the place it was made at, or a summary of a step made at no one place, as [editSteps](src/services/editSteps.ts) derives them; an undo or redo hands its step back.
 
-Each change a session applies, re-anchor passes included, is described by [describeChange](src/services/analysisChanges.ts) and goes out as the session form of `onAnalysisChanged`. That event carries the change's segment ranges by book, a flag on each book where the change put or removed a stale free translation, analysis ids, touched forms, and cross-book queries. A report of re-anchor passes also carries the change sets they applied, which the view applies to its whole-draft copy; any other report it hears makes it fetch that copy again. A book the host keeps no tokenized copy of is named whole.
+Each change a session applies, re-anchor passes included, is described by [describeChange](src/services/analysisChanges.ts) and goes out as the session form of `onAnalysisChanged`. That event carries the change's segment ranges by book, a flag on each book where the change put or removed a stale free translation and another where it put or removed a stale token link, analysis ids, touched forms, and cross-book queries. A report of re-anchor passes, or of the whole-text read's progress, says that it leaves the draft as saved as it was. Any other report that the view hears makes it read the draft's envelope again through `getDraftEnvelope`. The envelope is the draft without its analysis or boundaries. A book the host keeps no tokenized copy of is named whole.
 
 #### The WebView's sessions
 
-[useSessionProject](src/hooks/useSessionProject.ts) keeps the draft in a session, and the analysis hooks read pages through a `PageClient` and send each edit as a session command.
+[useSessionProject](src/hooks/useSessionProject.ts) keeps the draft in a session, holding only its envelope. The analysis hooks read pages through a `PageClient` and send each edit as a session command. No WebView code reads the whole analysis or the whole text.
 
-`getBookOutline`, `getSegments`, and `getTextReadStatus` take a `{ sessionId }` address. They segment the text by the draft's boundaries, and the pages add the analysis that `sessionPages` reads. Each page also spans each phrase it touches with every member token, wherever it sits. The source-project form of `onAnalysisChanged` names a Scripture edit, so that the view reads the book's text again; it goes once 5d removes `getTokenizedBook`.
+`getBookOutline`, `getSegments`, and `getTextReadStatus` take a `{ sessionId }` address. They segment the text by the draft's boundaries, and the pages add the analysis that `sessionPages` reads. The outline counts each segment's orphaned free-translation cards and flags the segments that show a stale gloss or free translation. When a reply or a reported change flags the book for either, the client reads those counts and flags again rather than the whole outline. Each page also spans each phrase it touches with every member token, wherever it sits. The outline also says what the boundary controls need to know of the draft's boundaries in the book, and which verse markers the book repeats.
 
 [RecordCache](src/cache/recordCache.ts) holds one book's pages and their records, and a [PageClient](src/cache/pageClient.ts) fills it from a session. The client:
 
@@ -184,7 +185,7 @@ Each change a session applies, re-anchor passes included, is described by [descr
 
 A page fetched before a reply never overwrites what the reply wrote. A page that fails every retry waits for a view to ask for it again, for `retryFailed`, or for a later outline read. An outline read that fails waits for either of the last two. Nothing calls `retryFailed` yet.
 
-[page-indexes](src/utils/page-indexes.ts) builds the token-level lookups and the boundary guard from the pages held and their spans, and finds the segment of a target whose page hasn't loaded. Nothing calls it until Phase 4.
+[page-indexes](src/utils/page-indexes.ts) builds the token-level lookups and the boundary guard from the pages held and their spans, and finds the segment of a target whose page hasn't loaded. The view renders the open book from the outline and the pages held, through those lookups. A focus request or a reseed whose segment hasn't loaded waits for its page.
 
 #### Host commands
 
@@ -198,7 +199,13 @@ Each command family's outcome tests run inputs through the command and check wha
 - `runBoundaryCommand` runs a boundary command, which breaks the phrases a new boundary would cut. The session then re-anchors the book's analysis to the new segments in the same undo step.
 - `runDiscardCommand` runs an unsaved-change discard, which re-anchors each book it rewrites in the same undo step.
 
-The handlers that turn each command's arguments into a call on its family live in [sessionEditHandlers](src/services/sessionEditHandlers.ts). `main.ts` registers them, and the test host in [fake-host](src/__tests__/cache/fake-host.ts) serves the WebView's edits through them.
+The handlers that turn each command's arguments into a call on its family live in [sessionEditHandlers](src/services/sessionEditHandlers.ts). A catalog edit's reply also says where the edit left the record it was aimed at. Two previews sit beside the edits and apply nothing. `previewRemovals` names the token analyses an edit would remove. `previewBreakdownEdit` says what a breakdown edit at a token would do to the payload the token approves, and the morpheme editor asks it each time it opens. `main.ts` registers them, and the test host in [fake-host](src/__tests__/cache/fake-host.ts) serves the WebView's edits through them.
+
+The analysis catalog is served by [sessionCatalogHandlers](src/services/sessionCatalogHandlers.ts): `getCatalogRows` (a page by offset, the ids of every row it keeps, and the filter facets), `getSelectionSummary`, `countUsages`, `getCatalogRowsByIds`, `getHomographRows` and `previewDeletion`. Each reads the session's whole draft, and [catalogPages](src/services/catalogPages.ts) derives the answers. `previewDeletion` also reads the text of each book where a token approves the analysis, so its outcome is `uncertain` only where it depends on a token whose book's text cannot be read, or where the tokens would fall back to different analyses. "Word not in the text" comes from the whole-text read's form index. The panel reads these queries through [catalogHooks](src/cache/catalogHooks.ts), which fetch again whenever a reported change names the query. A switch to a new analysis language reports a change that names `getCatalogRows`, because every catalog query reads the session's language. JSON writes the untagged filter choice, `undefined`, as `null`, so both ends pass filters and facets through `restoreUntagged`. The fake host serves the catalog queries too, along with a whole-text read that each test configures.
+
+The concordance is served by [sessionConcordanceHandlers](src/services/sessionConcordanceHandlers.ts): `getConcordance` pages either the forms of the whole text, most frequent first, or one form's occurrences with the analyses they are approved to. The whole-text read in `BookService` keeps each book's occurrences, and the handler joins them with the draft's approved links. It answers `null` until every book has been read. While any book's latest read has failed, the panel offers to send `retryTextRead`, which reads those books again. The panel reads it through `useConcordanceView` and `useConcordanceOccurrences` in [concordanceHooks](src/cache/concordanceHooks.ts), which fetch again whenever a reported change names `getConcordance` or `getTextReadStatus`. concordanceHooks also holds `useTextReadStatus`, through which this panel and the catalog follow the whole-text read's progress. A switch to a new analysis language reports a change that names `getConcordance` too, because a form's occurrences are glossed in the session's language.
+
+`getStaleSummary` lists the stale gloss places and stale free translations of one book, segmented by the draft's boundaries. [sessionPages](src/services/sessionPages.ts) derives it beside the outline. The stale notice reads it through `useStaleSummary` in [staleHooks](src/cache/staleHooks.ts), which fetches again whenever a reported change names the query. A change names it when it puts or removes a stale link, changes a payload a stale link names, or moves boundaries, since moving them can move where a stale translation shows.
 
 ### Components
 
@@ -256,11 +263,17 @@ When it isn't worth handling, throw a clear error naming the unsupported case. A
 
 Jest with ts-jest, jsdom environment. PAPI is fully mocked in `__mocks__/`. Coverage is enforced at 100% on all `src/**` files (branches, functions, lines, statements), aside for select explicit exclusions.
 
+After adding or editing a Jest `describe` block or a TUnit test class, run the [test-audit skill](.claude/skills/test-audit/SKILL.md) on what you edited.
+
 `resetMocks: true` is set globally — mock implementations are cleared before every test, so each test must set up its own mocks (typically in `beforeEach`). Never rely on implementation state leaking from a prior test.
 
 Any `console.error` or `console.warn` call fails the test that is running when it lands, or the file when it lands after the last test ([jest.environment.ts](jest.environment.ts)). A log from a cleanup hook fails the test that the hook ran after. A log from loading a test file, or from its `afterAll`, fails the file. A test that expects a log silences it with `jest.spyOn(console, 'error').mockImplementation(...)`. A test that leaves async work running, such as a lookup that sets state once it resolves, waits for that work with `findBy*` or `waitFor`, or unmounts to abandon it.
 
 `@papi/backend` and `@papi/frontend` mocks are mutually exclusive: backend tests use `papi-backend.ts`, WebView tests use `papi-frontend.ts` + `papi-frontend-react.ts`. Each mock file ends with `export {}` so TypeScript treats it as a module.
+
+### Test data
+
+Keep fixture names, ids, glosses and invented text neutral: no divine names, and nothing sensitive or crude. A quoted scripture snippet may keep its own wording, but the records that a test builds over it pick a neutral word from it, such as `beginning` rather than `God`. Quote a verse that is bland on its own, never one whose wording is sensitive out of context.
 
 ### Testing hooks
 

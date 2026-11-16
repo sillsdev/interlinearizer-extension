@@ -733,12 +733,25 @@ describe('AnalysisSessions', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        staleGlossBooks: [],
         canUndo: false,
         canRedo: false,
       });
 
       await expect(sessions.undo(sessionId)).resolves.toBeUndefined();
       await expect(stored(storage)).resolves.toMatchObject({ dirty: false });
+    });
+
+    it('replies with the books in which it put or removed a stale token link', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const reply = await sessions.edit(sessionId, 'stale', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('a'));
+        buffer.create('tokenAnalysisLinks', makeTokenLink('a', 'GEN 1:1:0', { status: 'stale' }));
+      });
+
+      expect(reply.staleGlossBooks).toStrictEqual(['GEN']);
     });
 
     it('gives the command the session it runs on', async () => {
@@ -1215,7 +1228,7 @@ describe('AnalysisSessions', () => {
         buffer.create('tokenAnalysisLinks', makeTokenLink('ta', 'EXO 1:1:0'));
       });
 
-      expect(host.heldBook).toHaveBeenCalledWith(SOURCE, 'EXO', undefined);
+      expect(host.heldBook).toHaveBeenCalledWith(SOURCE, 'EXO', segmentation);
       expect(host.reportChange).toHaveBeenCalledWith(
         expect.objectContaining({ books: [{ bookId: 'GEN' }, { bookId: 'EXO' }] }),
       );
@@ -1295,7 +1308,7 @@ describe('AnalysisSessions', () => {
       expect(made.host.reportChange).toHaveBeenCalledWith({
         sessionId,
         changeId: expect.any(String),
-        passChanges: expect.any(Array),
+        keepsUnsavedMark: true,
         books: [{ bookId: 'GEN', ranges: [{ start: 0, end: 1 }] }],
         analysisIds: ['ta'],
         forms: [],
@@ -1303,34 +1316,7 @@ describe('AnalysisSessions', () => {
       });
     });
 
-    it('carries the changes a re-anchor pass applied with its report', async () => {
-      const before = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha beta' }]);
-      const after = makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha and beta' }]);
-      const made = makeSessions();
-      made.host.heldBook.mockReturnValue(after);
-      await made.seedDraft({
-        ...emptyDraft(SOURCE),
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalysisLinks: [
-            makeTokenLink('ta', tokenRefOf(before, 'beta'), { id: 'tl', surfaceText: 'beta' }),
-          ],
-        },
-      });
-      await made.sessions.open(SOURCE);
-
-      await made.sessions.reanchorBook(SOURCE, after);
-
-      const { draft } = await new DraftRepository(made.storage, SOURCE, silentLogger()).exportAll();
-      const [[reported]] = made.host.reportChange.mock.calls;
-      expect(reported.passChanges).toStrictEqual([
-        expect.objectContaining({
-          tokenAnalysisLinks: { puts: draft.analysis.tokenAnalysisLinks, deletes: [] },
-        }),
-      ]);
-    });
-
-    it('carries no pass changes with the report of an edit', async () => {
+    it("leaves an edit's report free to mark the draft unsaved", async () => {
       const { host, sessions, sessionId } = await sessionHolding();
 
       await sessions.edit(sessionId, 'link', async (buffer) => {
@@ -1338,7 +1324,7 @@ describe('AnalysisSessions', () => {
         buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma));
       });
 
-      expect(host.reportChange.mock.calls[0][0]).not.toHaveProperty('passChanges');
+      expect(host.reportChange.mock.calls[0][0]).not.toHaveProperty('keepsUnsavedMark');
     });
 
     it('reports nothing for a re-anchor pass that changed nothing', async () => {
@@ -1347,6 +1333,43 @@ describe('AnalysisSessions', () => {
       await sessions.reanchorBook(SOURCE, book);
 
       expect(host.reportChange).not.toHaveBeenCalled();
+    });
+
+    describe('progress of the whole-text read', () => {
+      it('names the read status, keeping the unsaved mark', async () => {
+        const { host, sessions, sessionId } = await sessionHolding();
+
+        await sessions.reportTextReadProgress(SOURCE, false);
+
+        expect(host.reportChange).toHaveBeenCalledWith({
+          sessionId,
+          changeId: expect.any(String),
+          keepsUnsavedMark: true,
+          books: [],
+          analysisIds: [],
+          forms: [],
+          queries: ['getTextReadStatus'],
+        });
+      });
+
+      it('names the catalog too when the forms in the text may have changed', async () => {
+        const { host, sessions } = await sessionHolding();
+
+        await sessions.reportTextReadProgress(SOURCE, true);
+
+        expect(host.reportChange.mock.calls[0][0].queries).toEqual([
+          'getTextReadStatus',
+          'getCatalogRows',
+        ]);
+      });
+
+      it('reports nothing for a source with no session open', async () => {
+        const { host, sessions } = makeSessions();
+
+        await sessions.reportTextReadProgress(SOURCE, true);
+
+        expect(host.reportChange).not.toHaveBeenCalled();
+      });
     });
 
     describe('an edit to a book of the text', () => {
@@ -1380,35 +1403,12 @@ describe('AnalysisSessions', () => {
         expect(host.reportChange).toHaveBeenCalledWith({
           sessionId,
           changeId: expect.any(String),
-          passChanges: expect.any(Array),
+          keepsUnsavedMark: true,
           books: [{ bookId: 'GEN' }],
           analysisIds: ['ta'],
           forms: [],
           queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
         });
-      });
-
-      it('carries the changes each pass to the edited text applied with the edit', async () => {
-        const { host, sessions, storage } = await sessionLinkingBeta();
-
-        await sessions.reanchorBook(SOURCE, after, true);
-        await sessions.reportScriptureEdit(SOURCE, 'GEN');
-
-        const { draft } = await new DraftRepository(storage, SOURCE, silentLogger()).exportAll();
-        expect(host.reportChange.mock.calls[0][0].passChanges).toStrictEqual([
-          expect.objectContaining({
-            tokenAnalysisLinks: { puts: draft.analysis.tokenAnalysisLinks, deletes: [] },
-          }),
-        ]);
-      });
-
-      it('carries no changes with an edit whose passes applied none', async () => {
-        const { host, sessions } = await sessionHolding();
-
-        await sessions.reanchorBook(SOURCE, book, true);
-        await sessions.reportScriptureEdit(SOURCE, 'GEN');
-
-        expect(host.reportChange.mock.calls[0][0].passChanges).toStrictEqual([]);
       });
 
       it('reports an edit whose pass changed nothing, naming the book whole', async () => {
@@ -1420,7 +1420,7 @@ describe('AnalysisSessions', () => {
         expect(host.reportChange).toHaveBeenCalledWith({
           sessionId,
           changeId: expect.any(String),
-          passChanges: expect.any(Array),
+          keepsUnsavedMark: true,
           books: [{ bookId: 'GEN' }],
           analysisIds: [],
           forms: [],
@@ -1688,18 +1688,15 @@ describe('AnalysisSessions', () => {
       expect(applyPass).toHaveBeenCalledTimes(1);
     });
 
-    it.each([
-      ['applies a', 'it links into', AFTER, 1],
-      ['applies no', 'it holds no analysis in', makeVerseBook([{ sid: 'EXO 1:1', text: 'x' }]), 0],
-    ])('%s pass over a book %s', async (_applies, _holds, book, applied) => {
+    it('applies a pass over a book it links into', async () => {
       const { sessions, sessionId } = await sessionGlossingBeta();
       const applyPass = await sessions.run(sessionId, async (session) =>
         jest.spyOn(session.history, 'applyPass'),
       );
 
-      await sessions.reanchorBook(SOURCE, book);
+      await sessions.reanchorBook(SOURCE, AFTER);
 
-      expect(applyPass).toHaveBeenCalledTimes(applied);
+      expect(applyPass).toHaveBeenCalledTimes(1);
     });
 
     it('undoes and redoes edits re-anchored to the current text', async () => {
@@ -2045,6 +2042,9 @@ describe('AnalysisSessions save targets', () => {
   const adding = (id: string) => async (buffer: ChangeBuffer) => {
     buffer.create('tokenAnalyses', payload(id));
   };
+  const removing = (id: string) => async (buffer: ChangeBuffer) => {
+    buffer.delete('tokenAnalyses', payload(id));
+  };
   const storedDraft = async (storage: ReturnType<typeof makeSessions>['storage']) =>
     (await new DraftRepository(storage, SOURCE, silentLogger()).exportAll()).draft;
   const scopeOf = (sessions: AnalysisSessions, sessionId: string) =>
@@ -2215,6 +2215,46 @@ describe('AnalysisSessions save targets', () => {
     const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
     const { sessionId } = await sessions.open(SOURCE, 'proj-1');
     await sessions.edit(sessionId, 'add', adding('a'));
+
+    await sessions.detachFromProject(sessionId);
+    await sessions.undo(sessionId);
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: false });
+  });
+
+  it('marks the draft saved when an undo leads back to an empty draft that a discard restored, once its project is deleted', async () => {
+    const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+    await sessions.edit(sessionId, 'add', adding('a'), { unsavedMark: 'clear' });
+    await sessions.edit(sessionId, 'remove', removing('a'), { unsavedMark: 'clear' });
+    await sessions.edit(sessionId, 'add b', adding('b'));
+
+    await sessions.detachFromProject(sessionId);
+    await sessions.undo(sessionId);
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: false });
+  });
+
+  it('marks the draft saved when an undo leads back to an empty draft that an edit kept saved, once its project is deleted', async () => {
+    const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+    await sessions.edit(sessionId, 'add', adding('a'), { unsavedMark: 'clear' });
+    await sessions.edit(sessionId, 'remove', removing('a'), { unsavedMark: 'keep' });
+    await sessions.edit(sessionId, 'add b', adding('b'));
+
+    await sessions.detachFromProject(sessionId);
+    await sessions.undo(sessionId);
+
+    await expect(storedDraft(storage)).resolves.toMatchObject({ dirty: false });
+  });
+
+  it('marks the draft saved when an undo leads back to an empty draft that a discard changing nothing marked saved, once its project is deleted', async () => {
+    const { sessions, storage } = makeSessions([makeStubProject('proj-1')]);
+    const { sessionId } = await sessions.open(SOURCE, 'proj-1');
+    await sessions.edit(sessionId, 'add', adding('a'), { unsavedMark: 'clear' });
+    await sessions.edit(sessionId, 'remove', removing('a'));
+    await sessions.edit(sessionId, 'discard', async () => {}, { unsavedMark: 'clear' });
+    await sessions.edit(sessionId, 'add b', adding('b'));
 
     await sessions.detachFromProject(sessionId);
     await sessions.undo(sessionId);

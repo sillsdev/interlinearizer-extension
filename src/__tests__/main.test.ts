@@ -197,7 +197,6 @@ const getUpdateProjectMetadataHandler = () =>
       id: string,
       name: string | undefined,
       description: string | undefined,
-      analysisLanguages: string[],
     ) => Promise<string | undefined>
   >('interlinearizer.updateProjectMetadata');
 
@@ -349,60 +348,20 @@ describe('main', () => {
         return emitters;
       }
 
-      it('emits the project and book of an edit to a watched book', async () => {
-        const emitters = emittersByEvent();
-        await activate(createTestActivationContext());
-        const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
-
-        listener('src-project', 'GEN');
-        await nextTick();
-
-        expect(emitters.get('interlinearizer.onAnalysisChanged')?.emit).toHaveBeenCalledWith({
-          sourceProjectId: 'src-project',
-          changeId: expect.any(String),
-          scriptureEdit: { bookId: 'GEN' },
-        });
-      });
-
-      it('gives each emitted change its own id', async () => {
-        const emitters = emittersByEvent();
-        await activate(createTestActivationContext());
-        const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
-
-        listener('src-project', 'GEN');
-        listener('src-project', 'GEN');
-        await nextTick();
-
-        const emit = emitters.get('interlinearizer.onAnalysisChanged')?.emit;
-        expect(emit?.mock.calls[0][0].changeId).not.toBe(emit?.mock.calls[1][0].changeId);
-      });
-
-      it("emits an edit once the source's session has reported it", async () => {
-        const emitters = emittersByEvent();
-        let settle: () => void = () => {};
+      it("reports an edit to a watched book to the source's session", async () => {
         const reportScriptureEdit = jest
           .spyOn(AnalysisSessions.prototype, 'reportScriptureEdit')
-          .mockReturnValue(
-            new Promise<void>((resolve) => {
-              settle = resolve;
-            }),
-          );
+          .mockResolvedValue();
         await activate(createTestActivationContext());
         const [listener] = jest.mocked(bookService.onBookTextChanged).mock.calls[0];
-        const emit = emitters.get('interlinearizer.onAnalysisChanged')?.emit;
 
         listener('src-project', 'GEN');
-        await nextTick();
-        expect(emit).not.toHaveBeenCalled();
-        settle();
         await nextTick();
 
         expect(reportScriptureEdit).toHaveBeenCalledWith('src-project', 'GEN');
-        expect(emit).toHaveBeenCalledTimes(1);
       });
 
-      it("logs a report to the source's session that fails, and emits the edit all the same", async () => {
-        const emitters = emittersByEvent();
+      it("logs a report to the source's session that fails", async () => {
         jest
           .spyOn(AnalysisSessions.prototype, 'reportScriptureEdit')
           .mockRejectedValue(new Error('closed'));
@@ -415,9 +374,6 @@ describe('main', () => {
         expect(__mockLogger.warn).toHaveBeenCalledWith(
           'Interlinearizer: could not report the edit to GEN of project src-project',
           expect.any(Error),
-        );
-        expect(emitters.get('interlinearizer.onAnalysisChanged')?.emit).toHaveBeenCalledWith(
-          expect.objectContaining({ scriptureEdit: { bookId: 'GEN' } }),
         );
       });
 
@@ -488,10 +444,16 @@ describe('main', () => {
 
       it('disposes the emitter and stops listening on deactivation', async () => {
         const emitters = emittersByEvent();
-        const unsubscribers = [jest.fn(() => true), jest.fn(() => true), jest.fn(() => true)];
+        const unsubscribers = [
+          jest.fn(() => true),
+          jest.fn(() => true),
+          jest.fn(() => true),
+          jest.fn(() => true),
+        ];
         jest.mocked(bookService.onBookTextChanged).mockReturnValue(unsubscribers[0]);
         jest.mocked(bookService.onBookRead).mockReturnValue(unsubscribers[1]);
         jest.mocked(bookService.onTextRead).mockReturnValue(unsubscribers[2]);
+        jest.mocked(bookService.onTextReadProgress).mockReturnValue(unsubscribers[3]);
         const context = createTestActivationContext();
         await activate(context);
 
@@ -562,6 +524,36 @@ describe('main', () => {
       });
     });
 
+    describe('whole-text read progress', () => {
+      it("reports the read's progress through the source's session", async () => {
+        const reportTextReadProgress = jest
+          .spyOn(AnalysisSessions.prototype, 'reportTextReadProgress')
+          .mockResolvedValue(undefined);
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onTextReadProgress).mock.calls[0];
+
+        listener('src-project', true);
+
+        expect(reportTextReadProgress).toHaveBeenCalledWith('src-project', true);
+      });
+
+      it('logs a progress report that fails', async () => {
+        jest
+          .spyOn(AnalysisSessions.prototype, 'reportTextReadProgress')
+          .mockRejectedValue(new Error('closing'));
+        await activate(createTestActivationContext());
+        const [listener] = jest.mocked(bookService.onTextReadProgress).mock.calls[0];
+
+        listener('src-project', false);
+        await nextTick();
+
+        expect(__mockLogger.warn).toHaveBeenCalledWith(
+          'Interlinearizer: could not report how far the text of project src-project is read',
+          expect.any(Error),
+        );
+      });
+    });
+
     it('registers the WebView provider with a callable getWebView handler', async () => {
       const context = createTestActivationContext();
       await activate(context);
@@ -620,10 +612,17 @@ describe('main', () => {
           'interlinearizer.saveDraftToProject',
           'interlinearizer.saveDraftAsProject',
           'interlinearizer.getProjectsForSource',
-          'interlinearizer.getTokenizedBook',
           'interlinearizer.getBookOutline',
+          'interlinearizer.getStaleSummary',
           'interlinearizer.getSegments',
           'interlinearizer.getTextReadStatus',
+          'interlinearizer.retryTextRead',
+          'interlinearizer.getCatalogRows',
+          'interlinearizer.countUsages',
+          'interlinearizer.getSelectionSummary',
+          'interlinearizer.getCatalogRowsByIds',
+          'interlinearizer.getHomographRows',
+          'interlinearizer.getConcordance',
           'interlinearizer.openSession',
           'interlinearizer.closeSession',
           'interlinearizer.setAnalysisLanguage',
@@ -632,7 +631,7 @@ describe('main', () => {
           'interlinearizer.undoEdit',
           'interlinearizer.redoEdit',
           'interlinearizer.checkIndexes',
-          'interlinearizer.getFullAnalysis',
+          'interlinearizer.getDraftEnvelope',
           'interlinearizer.writeGloss',
           'interlinearizer.approveAnalysisForToken',
           'interlinearizer.writeMorphemes',
@@ -663,6 +662,8 @@ describe('main', () => {
           'interlinearizer.redo',
           'interlinearizer.undoFromNotification',
           'interlinearizer.updateProjectMetadata',
+          'interlinearizer.changeAnalysisLanguages',
+          'interlinearizer.countLanguageText',
           'interlinearizer.deleteProject',
         ]),
       );
@@ -1742,33 +1743,13 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockResolvedValue({ ...stubProject, name: 'My Name' });
       const handler = await getUpdateProjectMetadataHandler();
 
-      await handler('proj-id', 'My Name', 'My Desc', ['en']);
+      await handler('proj-id', 'My Name', 'My Desc');
 
       expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
         expect.anything(),
         'proj-id',
         'My Name',
         'My Desc',
-        ['en'],
-        undefined,
-      );
-    });
-
-    it('passes analysisLanguages to projectStorage.updateProjectMetadata', async () => {
-      mockUpdateProjectMetadata.mockResolvedValue({
-        ...stubProject,
-        analysisLanguages: ['fr', 'de'],
-      });
-      const handler = await getUpdateProjectMetadataHandler();
-
-      await handler('proj-id', undefined, undefined, ['fr', 'de']);
-
-      expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
-        expect.anything(),
-        'proj-id',
-        undefined,
-        undefined,
-        ['fr', 'de'],
         undefined,
       );
     });
@@ -1777,7 +1758,7 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockResolvedValue(undefined);
       const handler = await getUpdateProjectMetadataHandler();
 
-      const result = await handler('missing', undefined, undefined, ['en']);
+      const result = await handler('missing', undefined, undefined);
 
       expect(result).toBeUndefined();
     });
@@ -1786,7 +1767,7 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockRejectedValue(new Error('disk full'));
       const handler = await getUpdateProjectMetadataHandler();
 
-      await expect(handler('proj-id', 'My Name', 'My Desc', ['en'])).rejects.toThrow('disk full');
+      await expect(handler('proj-id', 'My Name', 'My Desc')).rejects.toThrow('disk full');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to update project metadata',
         expect.any(Error),
@@ -2044,35 +2025,6 @@ describe('main', () => {
         message: '%interlinearizer_error_create_project_failed%',
         severity: 'error',
       });
-    });
-  });
-
-  describe('interlinearizer.getTokenizedBook command', () => {
-    const mockGetTokenizedBook = jest.mocked(bookService.getTokenizedBook);
-    const getHandler = () =>
-      activateAndGetHandler<(sourceProjectId: string, bookId: string) => Promise<unknown>>(
-        'interlinearizer.getTokenizedBook',
-      );
-
-    it('returns the tokenized book the service serves', async () => {
-      mockGetTokenizedBook.mockResolvedValue('{"bookRef":"GEN"}');
-      const handler = await getHandler();
-
-      const result = await handler('src-project', 'GEN');
-
-      expect(mockGetTokenizedBook).toHaveBeenCalledWith('src-project', 'GEN');
-      expect(result).toBe('{"bookRef":"GEN"}');
-    });
-
-    it('logs the error and rethrows when the book cannot be tokenized', async () => {
-      mockGetTokenizedBook.mockRejectedValue(new Error('bad text'));
-      const handler = await getHandler();
-
-      await expect(handler('src-project', 'GEN')).rejects.toThrow('bad text');
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to tokenize book GEN of project src-project',
-        expect.any(Error),
-      );
     });
   });
 
@@ -2343,8 +2295,8 @@ describe('main', () => {
         checkIndexes: handler<CommandHandlers['interlinearizer.checkIndexes']>(
           'interlinearizer.checkIndexes',
         ),
-        getFullAnalysis: handler<CommandHandlers['interlinearizer.getFullAnalysis']>(
-          'interlinearizer.getFullAnalysis',
+        getDraftEnvelope: handler<CommandHandlers['interlinearizer.getDraftEnvelope']>(
+          'interlinearizer.getDraftEnvelope',
         ),
         saveDraftToProject: handler<CommandHandlers['interlinearizer.saveDraftToProject']>(
           'interlinearizer.saveDraftToProject',
@@ -2467,6 +2419,9 @@ describe('main', () => {
             segmentationJson?: string,
           ) => Promise<string | undefined>
         >('interlinearizer.getBookOutline'),
+        getStaleSummary: handler<CommandHandlers['interlinearizer.getStaleSummary']>(
+          'interlinearizer.getStaleSummary',
+        ),
         getSegments: handler<
           (
             address: { sessionId: string },
@@ -2478,6 +2433,9 @@ describe('main', () => {
         >('interlinearizer.getSegments'),
         getTextReadStatus: handler<(address: string | { sessionId: string }) => Promise<string>>(
           'interlinearizer.getTextReadStatus',
+        ),
+        retryTextRead: handler<CommandHandlers['interlinearizer.retryTextRead']>(
+          'interlinearizer.retryTextRead',
         ),
         sessionIdFor: handler<(sourceProjectId: string) => Promise<string | undefined>>(
           'interlinearizer.sessionIdFor',
@@ -2664,6 +2622,7 @@ describe('main', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        staleGlossBooks: [],
         canUndo: false,
         canRedo: false,
       };
@@ -2712,6 +2671,7 @@ describe('main', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        staleGlossBooks: [],
         canUndo: false,
         canRedo: false,
       };
@@ -2752,23 +2712,27 @@ describe('main', () => {
       );
     });
 
-    it("replies with the session's whole draft as its edits leave it", async () => {
+    it("replies with the session's draft envelope as its edits leave it", async () => {
       await seedDraft(CATS_BREAKDOWN);
-      const { openSession, deleteMorphemes, getFullAnalysis } = await activateSessionCommands();
+      const { openSession, deleteMorphemes, getDraftEnvelope } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
       await deleteMorphemes({ sessionId, tokenRef: 'GEN 1:1:0' });
 
-      await expect(getFullAnalysis({ sessionId }).then(JSON.parse)).resolves.toMatchObject({
+      const envelope = JSON.parse(await getDraftEnvelope({ sessionId }));
+
+      expect(envelope).toMatchObject({
         sourceProjectId: 'src-project',
         analysisLanguages: ['en'],
-        analysis: emptyAnalysis(),
+        dirty: true,
       });
+      expect(envelope).not.toHaveProperty('analysis');
+      expect(envelope).not.toHaveProperty('segmentation');
     });
 
     it("closes the source's session before starting its draft over", async () => {
       await seedDraft(CATS_BREAKDOWN);
       jest.mocked(projectStorage.startDraftOver).mockResolvedValue();
-      const { openSession, getFullAnalysis } = await activateSessionCommands();
+      const { openSession, getDraftEnvelope } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
       const startDraftOver = findRegisteredHandler('interlinearizer.startDraftOver');
 
@@ -2777,7 +2741,7 @@ describe('main', () => {
         from: { analysisLanguages: ['fr'] },
       });
 
-      await expect(getFullAnalysis({ sessionId })).rejects.toThrow(
+      await expect(getDraftEnvelope({ sessionId })).rejects.toThrow(
         `no session ${sessionId} is open`,
       );
     });
@@ -2787,22 +2751,22 @@ describe('main', () => {
         .mocked(projectStorage.openDraftRepository)
         .mockReturnValue(await stubRepository(emptyDraft('src-project')));
       __mockSettingsGet.mockResolvedValue(['fr']);
-      const { openSession, getFullAnalysis } = await activateSessionCommands();
+      const { openSession, getDraftEnvelope } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
-      await expect(getFullAnalysis({ sessionId }).then(JSON.parse)).resolves.toMatchObject({
+      await expect(getDraftEnvelope({ sessionId }).then(JSON.parse)).resolves.toMatchObject({
         analysisLanguages: ['fr'],
       });
     });
 
-    it('logs the error and rethrows when the whole draft cannot be read', async () => {
-      const { getFullAnalysis } = await activateSessionCommands();
+    it('logs the error and rethrows when the draft envelope cannot be read', async () => {
+      const { getDraftEnvelope } = await activateSessionCommands();
 
-      await expect(getFullAnalysis({ sessionId: 'not-a-session' })).rejects.toThrow(
+      await expect(getDraftEnvelope({ sessionId: 'not-a-session' })).rejects.toThrow(
         'no session not-a-session is open',
       );
       expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to read the whole draft of session not-a-session',
+        'Interlinearizer: failed to read the draft envelope of session not-a-session',
         expect.any(Error),
       );
     });
@@ -2941,16 +2905,35 @@ describe('main', () => {
 
         const json = await getBookOutline({ sessionId }, 'GEN');
 
-        expect(bookService.getOpenBook).toHaveBeenCalledWith(
-          'src-project',
-          'GEN',
-          JSON.stringify(segmentation),
-        );
+        expect(bookService.getOpenBook).toHaveBeenCalledWith('src-project', 'GEN', segmentation);
         expect(
           JSON.parse(json ?? '').segments.map(
             ({ orphanedCardCount }: { orphanedCardCount: number }) => orphanedCardCount,
           ),
         ).toStrictEqual([0, 1]);
+      });
+
+      it("summarizes a book's stale analyses under the draft's boundaries", async () => {
+        await seedDraft({ ...staleToken, ...orphaned }, segmentation);
+        jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
+        const { openSession, getStaleSummary } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        const json = await getStaleSummary({ sessionId, bookId: 'GEN' });
+
+        expect(bookService.getOpenBook).toHaveBeenCalledWith('src-project', 'GEN', segmentation);
+        expect(JSON.parse(json ?? '')).toStrictEqual({
+          glosses: [{ analysisId: 'ta-in', tokenRef: 'GEN 1:1:0' }],
+          freeTranslations: [{ analysisId: 'sa-9', segmentId: 'GEN 1:2' }],
+        });
+      });
+
+      it('summarizes nothing for a book the project has no text for', async () => {
+        jest.mocked(bookService.getOpenBook).mockResolvedValue(undefined);
+        const { openSession, getStaleSummary } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        await expect(getStaleSummary({ sessionId, bookId: 'GEN' })).resolves.toBeUndefined();
       });
 
       it("serves a run of a book's segments under the draft's boundaries, with its analysis", async () => {
@@ -2964,12 +2947,12 @@ describe('main', () => {
         expect(bookService.getSegmentedBook).toHaveBeenCalledWith(
           'src-project',
           'GEN',
-          JSON.stringify(segmentation),
+          segmentation,
         );
         expect(page).toMatchObject({
           start: 1,
           segments: [VERSE_BOOK.segments[1]],
-          analysis: { staleFreeTranslations: { orphanedAfter: { 'GEN 1:2': ['sa-9'] } } },
+          analysis: { staleFreeTranslations: { orphanedAfter: { 'GEN 1:2': ['sl-9'] } } },
         });
       });
 
@@ -2990,7 +2973,10 @@ describe('main', () => {
       });
 
       it('logs a failed re-anchor and still outlines the book', async () => {
-        jest.mocked(bookService.getOpenVerseBook).mockRejectedValue(new Error('unreadable'));
+        jest
+          .mocked(bookService.getOpenVerseBook)
+          .mockRejectedValueOnce(new Error('unreadable'))
+          .mockResolvedValue(VERSE_BOOK);
         jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
         const { openSession, getBookOutline } = await activateSessionCommands();
         const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
@@ -3014,11 +3000,16 @@ describe('main', () => {
         expect(bookService.getSegmentedBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
       });
 
-      it('logs and rethrows an outline or a page asked of a session not open', async () => {
-        const { getBookOutline, getSegments } = await activateSessionCommands();
+      it('logs and rethrows an outline, a page or a stale summary asked of a session not open', async () => {
+        const { getBookOutline, getSegments, getStaleSummary } = await activateSessionCommands();
 
         await expect(getBookOutline({ sessionId: 'gone' }, 'GEN')).rejects.toThrow();
         await expect(getSegments({ sessionId: 'gone' }, 'GEN', 0, 1)).rejects.toThrow();
+        await expect(getStaleSummary({ sessionId: 'gone', bookId: 'GEN' })).rejects.toThrow();
+        expect(__mockLogger.error).toHaveBeenCalledWith(
+          'Interlinearizer: failed to summarize the stale analyses of book GEN of session gone',
+          expect.any(Error),
+        );
         expect(__mockLogger.error).toHaveBeenCalledWith(
           'Interlinearizer: failed to outline book GEN of session gone',
           expect.any(Error),
@@ -3046,6 +3037,27 @@ describe('main', () => {
 
         await expect(getTextReadStatus({ sessionId })).resolves.toBe('{"booksRead":1}');
         expect(bookService.getTextReadStatus).toHaveBeenCalledWith('src-project');
+      });
+
+      it("reads again the session source's failed books", async () => {
+        const { openSession, retryTextRead } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        await retryTextRead({ sessionId });
+
+        expect(bookService.retryFailedBooks).toHaveBeenCalledWith('src-project');
+      });
+
+      it('logs and rethrows when a retried read names no open session', async () => {
+        const { retryTextRead } = await activateSessionCommands();
+
+        await expect(retryTextRead({ sessionId: 'no-session' })).rejects.toThrow(
+          'no session no-session is open',
+        );
+        expect(__mockLogger.error).toHaveBeenCalledWith(
+          'Interlinearizer: failed to read the text of session no-session again',
+          expect.any(Error),
+        );
       });
 
       it("starts no read of the session source's text on open", async () => {
@@ -3183,11 +3195,7 @@ describe('main', () => {
         }),
       );
 
-      expect(bookService.heldBook).toHaveBeenCalledWith(
-        'src-project',
-        'GEN',
-        JSON.stringify(segmentation),
-      );
+      expect(bookService.heldBook).toHaveBeenCalledWith('src-project', 'GEN', segmentation);
       expect(emitter.emit).toHaveBeenCalledWith({
         sessionId,
         changeId: 'change-1',
@@ -3643,18 +3651,17 @@ describe('main', () => {
       expect(bookService.getSegmentedBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
     });
 
-    it("checks a phrase against the segments the draft's boundaries in its book make", async () => {
+    it("checks a phrase against the segments the draft's boundaries make", async () => {
       await seedDraft({}, { removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'], addedStarts: [] });
       const { openSession, createPhrase } = await activateSessionCommands();
       const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
 
       await createPhrase({ sessionId, tokens: inThe });
 
-      expect(bookService.getSegmentedBook).toHaveBeenCalledWith(
-        'src-project',
-        'GEN',
-        JSON.stringify({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] }),
-      );
+      expect(bookService.getSegmentedBook).toHaveBeenCalledWith('src-project', 'GEN', {
+        removedVerseStarts: ['GEN 1:2:0', 'EXO 1:2:0'],
+        addedStarts: [],
+      });
     });
 
     const godAnd: TokenSnapshot[] = [
@@ -4632,6 +4639,7 @@ describe('main', () => {
         poolAnalyses: [],
         resegmentedBooks: [],
         staleTranslationBooks: [],
+        staleGlossBooks: [],
         canUndo: true,
         canRedo: false,
         step: { summary: { kind: 'discardBook', book: 'GEN' } },

@@ -239,6 +239,24 @@ describe('RecordCache with phrases and stale translations', () => {
     expect(cache.holds(0)).toBe(true);
   });
 
+  it('takes the stale flags of an outline that cuts the book as the held one does, keeping its pages', async () => {
+    const { fetchPage, outline } = await sessionOver(phrased);
+    const cache = new RecordCache(outline);
+    cache.absorb(await fetchPage(0, 3), cache.beginFetch());
+    const reflagged = {
+      ...outline,
+      segments: outline.segments.map((segment) => ({
+        ...segment,
+        hasStaleGloss: !segment.hasStaleGloss,
+        hasStaleFreeTranslation: !segment.hasStaleFreeTranslation,
+      })),
+    };
+
+    expect(cache.takeCounts(reflagged)).toBe(true);
+    expect(cache.outline).toBe(reflagged);
+    expect(cache.holds(0)).toBe(true);
+  });
+
   it('takes nothing from an outline that cuts the book otherwise', async () => {
     const { fetchPage, outline } = await sessionOver(phrased);
     const cache = new RecordCache(outline);

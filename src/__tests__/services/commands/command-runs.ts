@@ -13,6 +13,7 @@ import {
   discardAll,
   discardBook,
   type DiscardOutcome,
+  type SavedProject,
 } from '../../../services/commands/discardCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { draftAnalysisKey } from '../../../services/storageKeys';
@@ -242,9 +243,9 @@ export type DiscardCommandOutcome = CommandOutcome & {
 
 /**
  * Runs one unsaved-change discard over a draft holding `seed`, restoring `saved`, the content of
- * the project the draft saves to. Stages the host's command over the stored draft, applies its
- * changes, asserts that the repository's indexes still match its records, then reloads the draft
- * from storage.
+ * the project the draft saves to. The project holds the draft's analysis languages. Stages the
+ * host's command over the stored draft, applies its changes, asserts that the repository's indexes
+ * still match its records, then reloads the draft from storage.
  */
 export async function runDiscardCommand(
   seed: DiscardSeed,
@@ -256,7 +257,8 @@ export async function runDiscardCommand(
   seed.unreadableBooks?.forEach((bookCode) =>
     host.records.set(draftAnalysisKey('src', bookCode), 'not json'),
   );
-  const savedCopy = (): DraftContent | undefined => saved && JSON.parse(JSON.stringify(saved));
+  const savedCopy = (): SavedProject | undefined =>
+    saved && { ...JSON.parse(JSON.stringify(saved)), analysisLanguages: ['en'] };
   const repository = new DraftRepository(host.storage, 'src', logger);
   const stored = await repository.exportAll();
   const buffer = new ChangeBuffer(repository);

@@ -46,11 +46,15 @@ export interface UseRowWindowResult<T> {
  * A caller with a row it must be able to point the reader at passes that row's index as
  * `mustMount`, which the window covers however far down the listing it falls, and goes on covering
  * once released until the listing changes.
+ *
+ * A caller passing `onReachEnd` has it called each time the sentinel comes within reach while every
+ * row is mounted.
  */
 export default function useRowWindow<T>(
   rows: readonly T[],
   listing?: unknown,
   mustMount?: number,
+  onReachEnd?: () => void,
 ): UseRowWindowResult<T> {
   const [count, setCount] = useState(INITIAL_ROW_COUNT);
 
@@ -87,18 +91,20 @@ export default function useRowWindow<T>(
   // *transitions*: after an extend the sentinel may still sit inside the arming margin, where a
   // stale observer would stay silent however far the reader scrolls.
   useEffect(() => {
-    if (!scrollEl || !sentinelEl || count >= rows.length) return undefined;
+    const reachEnd =
+      count >= rows.length
+        ? onReachEnd
+        : () => setCount((current) => Math.min(rows.length, current + EXTEND_CHUNK));
+    if (!scrollEl || !sentinelEl || !reachEnd) return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setCount((current) => Math.min(rows.length, current + EXTEND_CHUNK));
-        }
+        if (entries.some((entry) => entry.isIntersecting)) reachEnd();
       },
       { root: scrollEl, rootMargin: `${SENTINEL_ROOT_MARGIN_PX}px`, threshold: 0 },
     );
     observer.observe(sentinelEl);
     return () => observer.disconnect();
-  }, [scrollEl, sentinelEl, count, rows.length]);
+  }, [scrollEl, sentinelEl, count, rows.length, onReachEnd]);
 
   const windowRows = useMemo(() => rows.slice(0, count), [rows, count]);
 

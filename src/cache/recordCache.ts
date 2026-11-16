@@ -24,7 +24,7 @@ import { placedAmong, placedIdsIn } from '../utils/stale-free-translations';
 
 /**
  * What a reply leaves to fetch again: nothing, the held pages, the held pages with the outline's
- * orphaned-card counts, or the outline along with each view's latest range.
+ * orphaned-card counts and stale flags, or the outline along with each view's latest range.
  */
 export type Refetch = 'none' | 'pages' | 'placement' | 'outline';
 
@@ -51,6 +51,8 @@ export class RecordCache {
   /** How many replies have been applied. */
   private revision = 0;
 
+  private layout = 0;
+
   private outlineHeld: BookOutline;
 
   private readonly segments = new Map<number, Segment>();
@@ -67,9 +69,9 @@ export class RecordCache {
     [],
   );
 
-  private readonly segmentLinks = new RecordTable<SegmentAnalysisLink, 'segmentId' | 'analysisId'>(
+  private readonly segmentLinks = new RecordTable<SegmentAnalysisLink, 'segmentId'>(
     'segmentLink',
-    { segmentId: ({ segmentId }) => [segmentId], analysisId: ({ analysisId }) => [analysisId] },
+    { segmentId: ({ segmentId }) => [segmentId] },
     [],
   );
 
@@ -110,6 +112,11 @@ export class RecordCache {
     this.firstWordAt = firstWordsOf(outline);
   }
 
+  /** A number that changes whenever the segments held, or the phrase links over them, change. */
+  get layoutRevision(): number {
+    return this.layout;
+  }
+
   /** The outline that the held pages were cut by. */
   get outline(): BookOutline {
     return this.outlineHeld;
@@ -119,19 +126,28 @@ export class RecordCache {
   replaceOutline(outline: BookOutline): void {
     this.outlineHeld = outline;
     this.firstWordAt = firstWordsOf(outline);
+    this.layout += 1;
     this.segments.clear();
     this.spanTokens.clear();
   }
 
   /**
-   * Takes the orphaned-card counts of a fresh outline, keeping the held pages.
+   * Takes the orphaned-card counts and stale flags of a fresh outline, keeping the held pages.
    *
-   * @returns `true` when it took the counts. `false`, taking nothing, when `outline` differs from
-   *   the held outline in more than its orphaned-card counts.
+   * @returns `true` when it took them. `false`, taking nothing, when `outline` differs from the
+   *   held outline in more than its orphaned-card counts and stale flags.
    */
   takeCounts(outline: BookOutline): boolean {
     const cut = ({ segments, ...rest }: BookOutline) =>
-      JSON.stringify({ ...rest, segments: segments.map((s) => ({ ...s, orphanedCardCount: 0 })) });
+      JSON.stringify({
+        ...rest,
+        segments: segments.map((segment) => ({
+          ...segment,
+          orphanedCardCount: undefined,
+          hasStaleGloss: undefined,
+          hasStaleFreeTranslation: undefined,
+        })),
+      });
     if (cut(outline) !== cut(this.outlineHeld)) return false;
     this.outlineHeld = outline;
     return true;
@@ -161,7 +177,7 @@ export class RecordCache {
           reads(this.tokenLinks.find('tokenRef', refs)) ||
           reads(this.phraseLinks.find('tokenRef', refs)) ||
           reads(this.segmentLinks.find('segmentId', [segment.id])) ||
-          placed.some((id) => ids.has(id))
+          reads(this.segmentLinks.get(placed))
         );
       })
       .map(([index]) => index);
@@ -183,6 +199,7 @@ export class RecordCache {
    */
   absorb(page: SegmentPage, request: PageRequest): void {
     const isFresh = (key: string) => (this.writtenAt.get(key) ?? -1) <= request.sentAt;
+    this.layout += 1;
     page.segments.forEach((segment, offset) => this.holdSegment(page.start + offset, segment));
     const { analysis } = page;
     /* v8 ignore next -- defensive: a session's pages always carry their analysis */
@@ -255,6 +272,7 @@ export class RecordCache {
     staleTranslationBooks,
   }: CommandReply): Refetch {
     this.revision += 1;
+    if (changes.phraseAnalysisLinks) this.layout += 1;
     const reachesUnheld = (changes.phraseAnalysisLinks?.puts ?? []).some(({ tokens }) =>
       tokens.some(({ tokenRef }) => !this.spanTokens.has(tokenRef)),
     );
@@ -299,6 +317,16 @@ export class RecordCache {
     };
   }
 
+  /** The stale free translations placed among the held pages, each named by its stale link's id. */
+  heldPlacement(): PlacedFreeTranslations {
+    return placedAmong(
+      this.placement,
+      [...this.segments.values()].map(({ id }) => id),
+      this.segments.has(0),
+      (id) => id,
+    );
+  }
+
   /**
    * Serves the segments at outline indexes `[start, end)` with their analysis, as the host would
    * page them. Returns `undefined` unless every one of those segments is held.
@@ -322,16 +350,15 @@ export class RecordCache {
       from === 0,
       (id) => id,
     );
-    const placed = placedIdsIn(staleFreeTranslations);
-    const segmentAnalysisLinks = this.segmentLinks.get(
-      [
-        ...this.segmentLinks.find(
+    const segmentAnalysisLinks = this.segmentLinks.get([
+      ...this.segmentLinks
+        .find(
           'segmentId',
           segments.map(({ id }) => id),
-        ),
-        ...this.segmentLinks.find('analysisId', [...placed]),
-      ].map(({ id }) => id),
-    );
+        )
+        .map(({ id }) => id),
+      ...placedIdsIn(staleFreeTranslations),
+    ]);
     const poolBuckets: Record<string, readonly PoolEntryRef[]> = {};
     tokens.filter(isWordToken).forEach(({ surfaceText }) => {
       const form = normalizeSurfaceForm(surfaceText);

@@ -4,28 +4,10 @@ import type { SenseRef } from 'interlinearizer';
 import type { ResolvedSense, SenseCandidate } from 'interlinearizer/lexicon';
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { PageClient } from '../../cache/pageClient';
-import { WholeAnalysis } from '../../cache/wholeAnalysis';
 import { SessionAnalysisProvider } from '../../components/AnalysisStore';
 import { LexiconSensesProvider } from '../../components/LexiconSenses';
-import type { SourceText } from '../../hooks/useSourceTextReader';
 import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
 import { ViewOptions } from '../../types/view-options';
-
-/** Builds the source text as its reading hook hands it over, unread by default. */
-export function makeSourceText(overrides: Partial<SourceText> = {}): SourceText {
-  return {
-    status: 'idle',
-    booksRead: 0,
-    bookCount: 0,
-    readings: undefined,
-    liveVersions: new Map(),
-    failedBookIds: [],
-    textForms: undefined,
-    refresh: jest.fn(),
-    request: jest.fn(),
-    ...overrides,
-  };
-}
 
 /**
  * Stubs {@link useLocalizedStrings} to echo each requested key back as its own value, so components
@@ -73,11 +55,9 @@ export function EmptyAnalysisProvider({
   const [client] = useState(
     () => new PageClient({ getOutline: unreachableHost, getSegments: unreachableHost }),
   );
-  const [whole] = useState(() => new WholeAnalysis(unreachableHost));
   return (
     <SessionAnalysisProvider
       client={client}
-      whole={whole}
       sessionId="empty"
       analysisLanguage={analysisLanguage}
       readOnly={readOnly}

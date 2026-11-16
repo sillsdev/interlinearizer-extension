@@ -30,6 +30,26 @@ export type OutlineSegment = Readonly<{
    * asked for the outline.
    */
   orphanedCardCount?: number;
+  /** Whether a token of the segment holds a stale analysis. Present only when a session asked. */
+  hasStaleGloss?: boolean;
+  /**
+   * Whether the view shows a stale free translation at the segment, on an orphaned card or not.
+   * Present only when a session asked.
+   */
+  hasStaleFreeTranslation?: boolean;
+}>;
+
+/** What a book's boundary controls need to know of the draft's boundaries in it. */
+export type OutlineBoundaries = Readonly<{
+  /**
+   * Each merged-away verse start, by its verse's first word token. That token keys the boundary
+   * slot, whereas the verse start itself may be punctuation, such as an opening quote.
+   */
+  formerBoundaries: Readonly<Record<string, string>>;
+  /** The verse starts that no merge can remove, there being no text before them to merge into. */
+  unmergeableStarts: readonly string[];
+  /** The boundaries that the draft sets and the book's text no longer carries. */
+  lostBoundaries: readonly string[];
 }>;
 
 /** Every segment of a book in document order, segmented by the boundaries the request named. */
@@ -38,6 +58,24 @@ export type BookOutline = Readonly<{
   /** The `textVersion` of the book the outline was built from. */
   textVersion: string;
   segments: readonly OutlineSegment[];
+  /** The verse markers that the book repeats; the text under each repeat is not shown. */
+  duplicateVerseIds: readonly string[];
+  /** Present only when a session asked for the outline. */
+  boundaries?: OutlineBoundaries;
+}>;
+
+/** A place in a book where a token's analysis went stale. */
+export type StaleGlossPlace = Readonly<{ analysisId: string; tokenRef: string }>;
+
+/** The stale analyses that a book holds. */
+export type StaleSummary = Readonly<{
+  /** Each place, once, in document order; a place whose token the book no longer holds comes last. */
+  glosses: readonly StaleGlossPlace[];
+  /**
+   * Each stale free translation, with the segment showing it or, for one whose verse is gone, the
+   * segment it is shown beside, in the order the view shows them.
+   */
+  freeTranslations: readonly Readonly<{ analysisId: string; segmentId: string }>[];
 }>;
 
 /** One payload of a pool bucket, with how many tokens approve it. */
@@ -73,7 +111,7 @@ export type PhraseSpanToken = Readonly<{
   gapText?: string;
 }>;
 
-/** Stale free translations by where the view shows them, each named by its payload's id. */
+/** Stale free translations by where the view shows them, each named by its stale link's id. */
 export type PlacedFreeTranslations = Readonly<{
   /**
    * Those that each segment shows for review beside its own translation, by segment id, in document
@@ -114,15 +152,27 @@ export type PageAnalysis = Readonly<{
   phraseSpans: Readonly<Record<string, readonly PhraseSpanToken[]>>;
 }>;
 
-/** A run of a book's segments, at the indexes its outline lists them at. */
-export type SegmentPage = Readonly<{
+/**
+ * A run of a book's segments, at the indexes its outline lists them at.
+ *
+ * The segment type is a parameter so that a page can hold readonly segments.
+ */
+export type SegmentPage<S = Segment> = Readonly<{
   /** The `textVersion` of the book the segments were cut from. */
   textVersion: string;
   /** Outline index of the first segment. */
   start: number;
-  segments: readonly Segment[];
+  segments: readonly S[];
   /** Present only when a session asked for the page. */
   analysis?: PageAnalysis;
+}>;
+
+/** A run of held segments, with the phrase links over them and each link's word tokens. */
+export type HeldRun = Readonly<{
+  /** Outline index of the first segment. */
+  start: number;
+  segments: readonly Segment[];
+  analysis?: Pick<PageAnalysis, 'phraseAnalysisLinks' | 'phraseSpans'>;
 }>;
 
 /**
@@ -135,8 +185,17 @@ export interface SegmentPages {
   outline: readonly OutlineSegment[];
   /** The boundary-edit count the outline was segmented at. */
   segmentationVersion: number;
+  /** What the book's boundary controls need to know of the draft's boundaries. */
+  boundaries: OutlineBoundaries;
+  /** The verse markers that the book repeats; the text under each repeat is not shown. */
+  duplicateVerseIds: readonly string[];
   /** The segment at `index` of the outline, `undefined` until its page has loaded. */
   segmentAt: (index: number) => Segment | undefined;
+  /**
+   * Each run of the segments loaded. The same list until a page loads or a phrase link over the
+   * runs changes.
+   */
+  heldRuns: () => readonly HeldRun[];
   /**
    * Asks for the segments at outline indexes `[start, end)`, clamped to the outline. The latest
    * range that each `caller` asked for is reloaded whenever a new outline loads.

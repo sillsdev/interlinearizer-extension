@@ -1,12 +1,10 @@
+import { createSelector } from '@reduxjs/toolkit';
 import type {
-  Book,
   MergedContent,
   MorphemeAnalysis,
   PhraseAnalysisLink,
   SenseRef,
-  TextAnalysis,
   TokenAnalysis,
-  TokenAnalysisLink,
   TokenSnapshot,
 } from 'interlinearizer';
 import {
@@ -21,15 +19,10 @@ import {
 import type { ReactNode } from 'react';
 import { perfMarksEnabled, perfMeasureFromFirst } from '../utils/perf-marks';
 import {
-  selectAnalysis,
   selectAnalysisLanguage,
-  selectAnalysisDeletionOutcome,
   selectApprovedGloss,
   selectApprovedGlossSenseRef,
   selectApprovedMorphemes,
-  selectCatalogRows,
-  selectMorphemePayloadIsSolelyOwned,
-  selectMorphemeResetLosesAnnotation,
   selectPhraseLinkById,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
@@ -41,30 +34,28 @@ import {
   selectSegmentsWithApprovedTranslation,
   selectStaleFreeTranslations,
   selectStaleMorphemesAnalysisId,
-  selectStaleTokenLinks,
   selectUnapprovedTokenAnalysis,
-  type AnalysisDeletionOutcome,
   type AnalysisState,
 } from '../utils/analysis-selectors';
 import useLatestRef from '../hooks/useLatestRef';
 import type { AnalysisEditOutcome } from '../utils/edit-outcome';
 import type { Settles } from '../utils/settles';
 import type { PageClient } from '../cache/pageClient';
-import type { WholeAnalysis } from '../cache/wholeAnalysis';
 import {
   PageClientProvider,
+  usePagePlacementSelector,
   usePagePoolSelector,
   useRepliesApplied,
   usePageSelector,
-  useWholeSelector as useSessionWholeSelector,
-  useWholeStateGetter as useSessionWholeStateGetter,
 } from '../cache/pageHooks';
-import { useGlossCommand, useRemovalPreviews } from '../cache/sessionEdits';
-import type { CatalogRow, HeadingPlacement } from '../utils/analysis-query';
 import {
-  placeStaleFreeTranslations,
-  type PlacedStaleFreeTranslations,
-} from '../utils/stale-free-translations';
+  useBreakdownPreview as useSessionBreakdownPreview,
+  useGlossCommand,
+  useRemovalPreviews,
+} from '../cache/sessionEdits';
+import type { BreakdownPreview } from '../services/commands/morphemeCommands';
+import type { PlacedFreeTranslations } from '../types/segment-pages';
+import { resolvePlaced, type PlacedStaleFreeTranslations } from '../utils/stale-free-translations';
 import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils/suggestion-engine';
 
 export {
@@ -143,8 +134,6 @@ type SessionAnalysisProviderProps = Readonly<{
   children: ReactNode;
   /** Holds the open book's pages, and sends the session's edits. */
   client: PageClient;
-  /** The session's whole analysis, for the answers that span books. */
-  whole: WholeAnalysis;
   sessionId: string;
   /** The BCP 47 tag that glosses and free translations are read in. */
   analysisLanguage: string;
@@ -161,19 +150,13 @@ type SessionAnalysisProviderProps = Readonly<{
 export function SessionAnalysisProvider({
   children,
   client,
-  whole,
   sessionId,
   analysisLanguage,
   onPendingEditsChange,
   readOnly = false,
 }: SessionAnalysisProviderProps) {
   return (
-    <PageClientProvider
-      client={client}
-      whole={whole}
-      sessionId={sessionId}
-      analysisLanguage={analysisLanguage}
-    >
+    <PageClientProvider client={client} sessionId={sessionId} analysisLanguage={analysisLanguage}>
       <SessionCallbacks onPendingEditsChange={onPendingEditsChange} readOnly={readOnly}>
         {children}
       </SessionCallbacks>
@@ -406,58 +389,20 @@ export function useStaleMorphemesAnalysisId(tokenRef: string): string | undefine
 }
 
 /**
- * Returns whether resetting `tokenRef`'s morpheme breakdown would discard glosses or lexicon
- * references no other token still holds, so the morpheme editor can confirm before discarding them.
- * A payload shared with other tokens does not qualify: it is forked rather than emptied, leaving
- * the co-linked tokens their morphemes.
+ * What a breakdown edit at `tokenRef` would do to the payload that it approves, asked of the
+ * session each time `isOpen` turns on. A shared payload is forked rather than emptied, leaving the
+ * co-linked tokens their morphemes, so neither a reset nor a re-split loses anything there.
  *
+ * @returns The answer; `undefined` while `isOpen` is off, and until the answer arrives.
  * @throws When called outside a {@link SessionAnalysisProvider}.
  */
-export function useMorphemeResetLosesAnnotation(tokenRef: string): boolean {
-  useRequiredCallbacks('useMorphemeResetLosesAnnotation');
+export function useBreakdownPreview(
+  tokenRef: string,
+  isOpen: boolean,
+): BreakdownPreview | undefined {
+  useRequiredCallbacks('useBreakdownPreview');
 
-  return useSessionWholeSelector((state: AnalysisState) =>
-    selectMorphemeResetLosesAnnotation(state, tokenRef),
-  );
-}
-
-/**
- * Returns whether `tokenRef` alone holds its analysis payload, so a breakdown edit destroys the
- * glosses it strands rather than leaving them with co-linked tokens. See
- * {@link selectMorphemePayloadIsSolelyOwned} for what counts as sharing.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export function useMorphemePayloadIsSolelyOwned(tokenRef: string): boolean {
-  useRequiredCallbacks('useMorphemePayloadIsSolelyOwned');
-
-  return useSessionWholeSelector((state: AnalysisState) =>
-    selectMorphemePayloadIsSolelyOwned(state, tokenRef),
-  );
-}
-
-/**
- * Returns one row per distinct token analysis in the draft, each carrying the usage data the
- * analysis catalog lists it by, in the analysis's own order. Narrowing and ordering are the
- * caller's, so a keystroke re-runs only that pass.
- *
- * The result keeps its reference while the analyses and their links keep theirs, so an unrelated
- * write — a free translation, a phrase link — leaves the list unrendered. It changes with
- * `currentBook`, which the per-book usage count is taken against, with `headingPlacements`, which
- * places each heading's usages among its verse's text, and with the analysis language its glosses
- * are read in.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export function useCatalogRows(
-  currentBook: string,
-  headingPlacements: ReadonlyMap<string, HeadingPlacement>,
-): readonly CatalogRow[] {
-  useRequiredCallbacks('useCatalogRows');
-
-  return useSessionWholeSelector((state: AnalysisState) =>
-    selectCatalogRows(state, currentBook, headingPlacements),
-  );
+  return useSessionBreakdownPreview(tokenRef, isOpen);
 }
 
 /**
@@ -492,7 +437,7 @@ export type AnalysisRowDispatch = {
   ) => Settles<AnalysisEditOutcome>;
   /**
    * Removes the records and every link to them, leaving their tokens on whatever the suggestion
-   * pool still offers. See {@link useAnalysisDeletionOutcome} for what deleting one will cost.
+   * pool still offers.
    */
   deleteAnalyses: (analysisIds: readonly string[]) => Settles<void>;
   /**
@@ -570,33 +515,6 @@ export function useGlossClearReclaims(): (
 }
 
 /**
- * Returns a stable getter for what deleting a record would do to the tokens that approve it — left
- * blank, or falling back to a surviving homograph — so the deletion's announcement can name the
- * concrete consequence. Returns `undefined` for an id that resolves to no record.
- *
- * A getter rather than a subscription: the outcome is read once, just before the delete, and
- * subscribing every row to it would recompute the suggestion pool per row on every store change.
- *
- * The getter is given the live-text lookup per call, so it reads the book as it stands at the
- * moment of the delete.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export function useAnalysisDeletionOutcome(): (
-  analysisId: string,
-  liveSurfaceText: (tokenRef: string) => string | undefined,
-) => AnalysisDeletionOutcome | undefined {
-  useRequiredCallbacks('useAnalysisDeletionOutcome');
-  const getState = useSessionWholeStateGetter();
-
-  return useCallback(
-    (analysisId: string, liveSurfaceText: (tokenRef: string) => string | undefined) =>
-      selectAnalysisDeletionOutcome(getState(), analysisId, liveSurfaceText),
-    [getState],
-  );
-}
-
-/**
  * Returns the active BCP 47 analysis-language tag.
  *
  * @throws When called outside a {@link SessionAnalysisProvider}.
@@ -605,18 +523,6 @@ export function useAnalysisLanguage(): string {
   useRequiredCallbacks('useAnalysisLanguage');
 
   return usePageSelector((state: AnalysisState) => selectAnalysisLanguage(state));
-}
-
-/**
- * Returns the current `TextAnalysis` snapshot, re-rendering on every analysis change. Intended for
- * components that need the full analysis (e.g. an analysis-selection popup).
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export function useAnalysis(): TextAnalysis {
-  useRequiredCallbacks('useAnalysis');
-
-  return useSessionWholeSelector((state: AnalysisState) => selectAnalysis(state));
 }
 
 /**
@@ -786,29 +692,24 @@ export function useSegmentsWithApprovedTranslation(): ReadonlySet<string> {
   return usePageSelector((state: AnalysisState) => selectSegmentsWithApprovedTranslation(state));
 }
 
+/** The stale free translations held, filed where the pages place each. */
+const selectPlacedStaleFreeTranslations = createSelector(
+  [
+    (state: AnalysisState) => selectStaleFreeTranslations(state),
+    (_state: AnalysisState, placed: PlacedFreeTranslations) => placed,
+  ],
+  (stale, placed) => resolvePlaced(placed, stale),
+);
+
 /**
- * Returns `book`'s stale free translations, filed by where the view shows each.
+ * Returns the stale free translations of the segments held, filed by where the view shows each.
  *
  * @throws When called outside a {@link SessionAnalysisProvider}.
  */
-export function usePlacedStaleFreeTranslations(book: Book): PlacedStaleFreeTranslations {
+export function usePlacedStaleFreeTranslations(): PlacedStaleFreeTranslations {
   useRequiredCallbacks('usePlacedStaleFreeTranslations');
 
-  const stale = useSessionWholeSelector((state: AnalysisState) =>
-    selectStaleFreeTranslations(state),
-  );
-  return useMemo(() => placeStaleFreeTranslations(stale, book), [stale, book]);
-}
-
-/**
- * Returns every place in the draft an analysis went stale at, as its stale link, in link order.
- *
- * @throws When called outside a {@link SessionAnalysisProvider}.
- */
-export function useStaleTokenLinks(): readonly TokenAnalysisLink[] {
-  useRequiredCallbacks('useStaleTokenLinks');
-
-  return useSessionWholeSelector((state: AnalysisState) => selectStaleTokenLinks(state));
+  return usePagePlacementSelector(selectPlacedStaleFreeTranslations);
 }
 
 /** The write callbacks for reviewing stale free translations. */

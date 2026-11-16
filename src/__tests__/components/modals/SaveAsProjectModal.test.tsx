@@ -49,6 +49,7 @@ const STUB_PROJECT_2 = makeProjectSummary({
 const defaultProps = {
   sourceProjectId: 'src-proj',
   hasUnsavedWork: true,
+  draftAnalysisLanguages: [],
   onSaveNew: jest.fn(),
   onOverwrite: jest.fn(),
   onClose: jest.fn(),
@@ -127,20 +128,35 @@ describe('SaveAsProjectModal', () => {
     expect(onSaveNew).toHaveBeenCalledWith('My Project', ['und'], 'My Description');
   });
 
-  it('prefills the analysis languages from the defaults', async () => {
-    render(<SaveAsProjectModal {...defaultProps} defaultAnalysisLanguages={['en', 'fr']} />);
+  it('prefills the analysis language from the default when the draft names none', async () => {
+    render(<SaveAsProjectModal {...defaultProps} defaultAnalysisLanguage="en" />);
 
-    await waitFor(() => expect(screen.getByLabelText('Analysis language')).toHaveValue('en, fr'));
+    await waitFor(() => expect(screen.getByLabelText('Analysis language')).toHaveValue('en'));
+  });
+
+  it("saves with the draft's analysis languages, asking for none, when the draft names some", async () => {
+    const onSaveNew = jest.fn();
+    render(
+      <SaveAsProjectModal
+        {...defaultProps}
+        draftAnalysisLanguages={['en', 'fr']}
+        defaultAnalysisLanguage="sw"
+        onSaveNew={onSaveNew}
+      />,
+    );
+    await waitFor(() => expect(screen.getByLabelText('Name')).toBeEnabled());
+
+    expect(screen.queryByLabelText('Analysis language')).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Name'), 'My Project');
+    await userEvent.click(screen.getByTestId('save-as-new'));
+
+    expect(onSaveNew).toHaveBeenCalledWith('My Project', ['en', 'fr'], undefined);
   });
 
   it('calls onSaveNew with the analysis languages as typed', async () => {
     const onSaveNew = jest.fn();
     render(
-      <SaveAsProjectModal
-        {...defaultProps}
-        defaultAnalysisLanguages={['en']}
-        onSaveNew={onSaveNew}
-      />,
+      <SaveAsProjectModal {...defaultProps} defaultAnalysisLanguage="en" onSaveNew={onSaveNew} />,
     );
     await waitFor(() => expect(screen.getByLabelText('Name')).toBeEnabled());
 
@@ -155,11 +171,7 @@ describe('SaveAsProjectModal', () => {
   it('saves a blank analysis language as und', async () => {
     const onSaveNew = jest.fn();
     render(
-      <SaveAsProjectModal
-        {...defaultProps}
-        defaultAnalysisLanguages={['en']}
-        onSaveNew={onSaveNew}
-      />,
+      <SaveAsProjectModal {...defaultProps} defaultAnalysisLanguage="en" onSaveNew={onSaveNew} />,
     );
     await waitFor(() => expect(screen.getByLabelText('Name')).toBeEnabled());
 

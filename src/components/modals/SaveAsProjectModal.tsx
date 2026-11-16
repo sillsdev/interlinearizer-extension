@@ -41,7 +41,8 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
  * Fields for saving the draft as a new project.
  *
  * The fields start from `initialName`, `initialDescription`, and `initialLanguages`. Later changes
- * to those props never overwrite what the fields hold.
+ * to those props never overwrite what the fields hold. The analysis-language field shows only when
+ * `initialLanguages` is given.
  */
 function SaveAsNewForm({
   initialName,
@@ -61,7 +62,7 @@ function SaveAsNewForm({
   initialName: string;
   initialDescription: string;
   /** Comma-separated BCP 47 tags. */
-  initialLanguages: string;
+  initialLanguages?: string;
   isLoading: boolean;
   isSubmitting: boolean;
   nameLabel: string;
@@ -71,7 +72,7 @@ function SaveAsNewForm({
   languageLabel: string;
   languagePlaceholder: string;
   saveLabel: string;
-  onSave: (name: string, description: string, languages: string) => void;
+  onSave: (name: string, description: string, languages: string | undefined) => void;
 }>) {
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
@@ -102,17 +103,21 @@ function SaveAsNewForm({
         onChange={(e) => setDescription(e.target.value)}
         placeholder={descriptionPlaceholder}
       />
-      <Label className="tw:mb-1" htmlFor="save-as-analysis-language">
-        {languageLabel}
-      </Label>
-      <Input
-        id="save-as-analysis-language"
-        className="tw:mb-3 tw:w-full"
-        disabled={isLoading}
-        value={languages}
-        onChange={(e) => setLanguages(e.target.value)}
-        placeholder={languagePlaceholder}
-      />
+      {languages !== undefined && (
+        <>
+          <Label className="tw:mb-1" htmlFor="save-as-analysis-language">
+            {languageLabel}
+          </Label>
+          <Input
+            id="save-as-analysis-language"
+            className="tw:mb-3 tw:w-full"
+            disabled={isLoading}
+            value={languages}
+            onChange={(e) => setLanguages(e.target.value)}
+            placeholder={languagePlaceholder}
+          />
+        </>
+      )}
       <div className="tw:flex tw:justify-end tw:mb-4">
         <Button
           onClick={() => onSave(name, description, languages)}
@@ -128,9 +133,10 @@ function SaveAsNewForm({
 
 /**
  * Save As dialog. Lets the user save the current draft either to a brand-new project (name,
- * description, and analysis languages) or by overwriting an existing project for this source (with
- * an inline confirm). This component is presentational: it collects the choice and delegates the
- * actual persistence to the caller via {@link onSaveNew} / {@link onOverwrite}.
+ * description, and, for a draft that names none, analysis languages) or by overwriting an existing
+ * project for this source (with an inline confirm). This component is presentational: it collects
+ * the choice and delegates the actual persistence to the caller via {@link onSaveNew} /
+ * {@link onOverwrite}.
  *
  * Writing to the project the draft is already open against is an ordinary save rather than a
  * clobber, so that row's Overwrite needs no confirmation. When the draft holds nothing unsaved,
@@ -148,11 +154,13 @@ function SaveAsNewForm({
  *   project of the source bears. With no active project, the field starts blank. A later change to
  *   this name leaves the field as it is.
  * @param props.defaultDescription - Description prefilled into the new-project field.
- * @param props.defaultAnalysisLanguages - BCP 47 tags prefilled into the new-project analysis
- *   language field, which starts at `und` when there are none. Glosses the draft holds under a tag
- *   the new project leaves out stay stored but are not shown.
- * @param props.onSaveNew - Called with the trimmed name, the parsed analysis languages (`['und']`
- *   when the field is left blank), and the trimmed description to save the draft as a new project.
+ * @param props.draftAnalysisLanguages - The draft's analysis languages, which a new project takes.
+ *   When there are none, the new-project form asks for them instead.
+ * @param props.defaultAnalysisLanguage - BCP 47 tag prefilled into that analysis-language field,
+ *   which starts at `und` without one.
+ * @param props.onSaveNew - Called with the trimmed name, the analysis languages (the draft's, or
+ *   those parsed from the field, `['und']` when it is left blank), and the trimmed description to
+ *   save the draft as a new project.
  * @param props.onOverwrite - Called with the chosen existing project to overwrite it with the
  *   draft.
  * @param props.onClose - Called when the user dismisses the dialog without saving.
@@ -164,7 +172,8 @@ export function SaveAsProjectModal({
   hasUnsavedWork,
   activeProjectName,
   defaultDescription,
-  defaultAnalysisLanguages,
+  draftAnalysisLanguages,
+  defaultAnalysisLanguage,
   onSaveNew,
   onOverwrite,
   onClose,
@@ -174,7 +183,8 @@ export function SaveAsProjectModal({
   hasUnsavedWork: boolean;
   activeProjectName?: string;
   defaultDescription?: string;
-  defaultAnalysisLanguages?: readonly string[];
+  draftAnalysisLanguages: readonly string[];
+  defaultAnalysisLanguage?: string;
   onSaveNew: (
     name: string,
     analysisLanguages: string[],
@@ -213,20 +223,21 @@ export function SaveAsProjectModal({
 
   /**
    * Saves the draft as a new project with the trimmed name and description (a blank description →
-   * undefined) and the parsed analysis languages (none → `['und']`), blocking re-entry while the
-   * save is in flight so a double-click cannot create duplicate projects.
+   * undefined) and the draft's analysis languages, or those parsed from the field (none →
+   * `['und']`) when the draft names none, blocking re-entry while the save is in flight so a
+   * double-click cannot create duplicate projects.
    */
   const handleSaveNew = useCallback(
-    (name: string, description: string, languages: string) =>
+    (name: string, description: string, languages: string | undefined) =>
       runGuarded(async () => {
-        const analysisLanguages = parseLanguageTags(languages);
-        await onSaveNew(
-          name.trim(),
-          analysisLanguages.length > 0 ? analysisLanguages : ['und'],
-          description.trim() || undefined,
-        );
+        let analysisLanguages = [...draftAnalysisLanguages];
+        if (languages !== undefined) {
+          const parsed = parseLanguageTags(languages);
+          analysisLanguages = parsed.length > 0 ? parsed : ['und'];
+        }
+        await onSaveNew(name.trim(), analysisLanguages, description.trim() || undefined);
       }),
-    [onSaveNew, runGuarded],
+    [draftAnalysisLanguages, onSaveNew, runGuarded],
   );
 
   /**
@@ -271,7 +282,7 @@ export function SaveAsProjectModal({
         initialName={initialName}
         initialDescription={defaultDescription ?? ''}
         initialLanguages={
-          defaultAnalysisLanguages?.length ? defaultAnalysisLanguages.join(', ') : 'und'
+          draftAnalysisLanguages.length === 0 ? (defaultAnalysisLanguage ?? 'und') : undefined
         }
         isLoading={isLoading}
         isSubmitting={isSubmitting}

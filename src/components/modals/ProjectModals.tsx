@@ -9,6 +9,7 @@ import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import type { DraftCopyResult, NewDraftConfig } from '../../types/project-api';
 import { isInterlinearProjectSummary, isSavedAsProject } from '../../types/type-guards';
+import { deepEqual } from '../../utils/analysis-identity';
 import type {
   AnalysisLanguagesChange,
   AnalysisLanguagesChangeOutcome,
@@ -513,12 +514,28 @@ export default function ProjectModals({
    * some of the draft's books out, the draft stays unsaved. Backend commands surface their own
    * error notifications; here we only log.
    *
+   * Languages that differ from the draft's are first given to the draft as an undoable step, which
+   * the save then takes along. Otherwise the next Save would write the draft's languages back over
+   * the project's.
+   *
    * @param name - Trimmed project name; never blank.
    * @param analysisLanguages - BCP 47 tags for the new project; never empty.
    * @param description - Trimmed project description, or `undefined`.
    */
   const handleSaveAsNew = useCallback(
     async (name: string, analysisLanguages: string[], description?: string) => {
+      const draftLanguages = getDraftSnapshot()?.analysisLanguages ?? [];
+      if (!deepEqual(draftLanguages, analysisLanguages)) {
+        try {
+          await changeDraftAnalysisLanguages({ analysisLanguages });
+        } catch (e) {
+          logger.error("Interlinearizer: failed to change the draft's analysis languages", e);
+          await papi.notifications
+            .send({ message: '%interlinearizer_error_changeAnalysisLanguages%', severity: 'error' })
+            .catch(() => {});
+          return;
+        }
+      }
       try {
         const saved = await commitDraft(async (snapshot, sessionId) => {
           const { targetProjectId } = snapshot;
@@ -546,7 +563,14 @@ export default function ProjectModals({
         logger.error('Interlinearizer: failed to save draft as new project', e);
       }
     },
-    [commitDraft, projectId, setActiveProject, setModal],
+    [
+      changeDraftAnalysisLanguages,
+      commitDraft,
+      getDraftSnapshot,
+      projectId,
+      setActiveProject,
+      setModal,
+    ],
   );
 
   /**
@@ -627,10 +651,6 @@ export default function ProjectModals({
   }, [metadataSourceIsSelect, setModal]);
 
   const draftSnapshot = getDraftSnapshot();
-  const draftLanguages = draftSnapshot?.analysisLanguages ?? [];
-  let saveAsLanguages: readonly string[] | undefined = draftLanguages;
-  if (draftLanguages.length === 0)
-    saveAsLanguages = defaultAnalysisLanguage ? [defaultAnalysisLanguage] : undefined;
   // The open project's languages come from its draft, which holds any unsaved change to them. An
   // import is never edited in the draft.
   const metadataLanguagesInDraft =
@@ -676,7 +696,8 @@ export default function ProjectModals({
           hasUnsavedWork={hasUnsavedWork}
           activeProjectName={activeProject?.name}
           defaultDescription={draftSnapshot?.suggestedDescription}
-          defaultAnalysisLanguages={saveAsLanguages}
+          draftAnalysisLanguages={draftSnapshot?.analysisLanguages ?? []}
+          defaultAnalysisLanguage={defaultAnalysisLanguage}
           onSaveNew={handleSaveAsNew}
           onOverwrite={handleOverwrite}
           onClose={handleSaveAsClose}

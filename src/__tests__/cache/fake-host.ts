@@ -10,8 +10,12 @@ import { DraftRepository } from '../../services/draftRepository';
 import { sessionCatalogHandlers } from '../../services/sessionCatalogHandlers';
 import { sessionConcordanceHandlers } from '../../services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from '../../services/sessionEditHandlers';
-import { envelopeOf } from '../../types/draft-envelope';
-import { readBookOutline, readSegmentPage, readStaleSummary } from '../../services/sessionPages';
+import {
+  readBookOutline,
+  readDraftEnvelope,
+  readSegmentPage,
+  readStaleSummary,
+} from '../../services/sessionPages';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import type { TextReadStatus } from '../../types/text-read-status';
@@ -222,17 +226,8 @@ export async function fakeHost(
         return sessions.close(field(first, 'sessionId'));
       case 'interlinearizer.getDraftEnvelope':
         return JSON.stringify(
-          await sessions.run(
-            field(first, 'sessionId'),
-            async ({ repository, analysisLanguage }) => {
-              const envelope = envelopeOf(
-                await repository.getScope(),
-                (await repository.getDraftState()).dirty,
-              );
-              return envelope.analysisLanguages.length > 0
-                ? envelope
-                : { ...envelope, analysisLanguages: [analysisLanguage] };
-            },
+          await sessions.run(field(first, 'sessionId'), ({ repository, analysisLanguage }) =>
+            readDraftEnvelope(repository, analysisLanguage),
           ),
         );
       case 'interlinearizer.getBookOutline': {

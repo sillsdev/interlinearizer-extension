@@ -15,7 +15,7 @@ import type {
   IndexDifference,
   ScopeRecord,
 } from '../types/analysis-repository';
-import { isEmptyDelta } from '../utils/segmentation';
+import { isEmptyDraft } from '../utils/empty-draft';
 import { scopeRecordOf } from '../utils/change-set';
 import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { jsonCopy } from '../utils/json-copy';
@@ -57,10 +57,10 @@ export abstract class IndexedRepository implements Pick<
   }
 
   async getDraftState(): Promise<DraftState> {
-    const { draft, index } = await this.indexed();
+    const { draft } = await this.indexed();
     return {
       dirty: draft.dirty,
-      empty: index.partitionKeys().length === 0 && isEmptyDelta(draft.segmentation),
+      empty: isEmptyDraft(draft),
       hasFreeTranslations: analysisHasFreeTranslations(draft.analysis),
       unreadableBooks: this.unreadableBooks(),
     };

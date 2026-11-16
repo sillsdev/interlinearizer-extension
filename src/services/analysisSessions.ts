@@ -2,7 +2,6 @@ import type {
   AnalysisChange,
   AnalysisQuery,
   ChangeId,
-  DraftProject,
   ReadonlyBook,
   SegmentationDelta,
   SessionAnalysisChange,
@@ -16,7 +15,6 @@ import { booksMissingFrom } from '../utils/analysis-book';
 import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { perfTimeAsync } from '../utils/perf-marks';
 import { missingBook } from '../utils/reanchor-analysis';
-import { isEmptyDelta } from '../utils/segmentation';
 import {
   booksResegmented,
   describeChange,
@@ -185,16 +183,6 @@ async function describeApplied(
   const { sourceProjectId } = session.scope;
   return describeChange(session.repository, applied, (bookId) =>
     host.heldBook(sourceProjectId, bookId, segmentation),
-  );
-}
-
-/** Whether `draft` holds no analysis and no boundary edits. */
-export function isEmptyDraft({
-  analysis,
-  segmentation,
-}: Pick<DraftProject, 'analysis' | 'segmentation'>): boolean {
-  return (
-    Object.values(analysis).every((records) => records.length === 0) && isEmptyDelta(segmentation)
   );
 }
 

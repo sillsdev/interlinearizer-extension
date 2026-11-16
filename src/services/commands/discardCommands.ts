@@ -51,6 +51,9 @@ type StoredPart = {
   unreadableBooks: string[];
 };
 
+/** Payload ids, one list per kind. */
+type PayloadIds = { token: string[]; phrase: string[]; segment: string[] };
+
 /** The records of `links`, each once, with the payloads stored under `payloadIds`. */
 async function readRecords(
   reader: DiscardReader,
@@ -58,11 +61,14 @@ async function readRecords(
     TextAnalysis,
     'tokenAnalysisLinks' | 'phraseAnalysisLinks' | 'segmentAnalysisLinks'
   >[],
-  payloadIds: string[],
+  payloadIds: PayloadIds,
 ): Promise<TextAnalysis> {
-  const tokenAnalyses = await reader.getTokenAnalyses(payloadIds);
-  const phraseAnalyses = await reader.getPhraseAnalyses(payloadIds);
-  const segmentAnalyses = await reader.getSegmentAnalyses(payloadIds);
+  const tokenAnalyses =
+    payloadIds.token.length > 0 ? await reader.getTokenAnalyses(payloadIds.token) : [];
+  const phraseAnalyses =
+    payloadIds.phrase.length > 0 ? await reader.getPhraseAnalyses(payloadIds.phrase) : [];
+  const segmentAnalyses =
+    payloadIds.segment.length > 0 ? await reader.getSegmentAnalyses(payloadIds.segment) : [];
   const once = <T extends { id: string }>(records: T[]): T[] => [
     ...new Map(records.map((record) => [record.id, record])).values(),
   ];
@@ -76,16 +82,33 @@ async function readRecords(
   };
 }
 
-/** The ids of the payloads that `analysis` holds or that its links name. */
-function payloadIdsOf(analysis: TextAnalysis): string[] {
-  return [
-    ...analysis.tokenAnalyses,
-    ...analysis.phraseAnalyses,
-    ...analysis.segmentAnalyses,
-    ...analysis.tokenAnalysisLinks.map(({ analysisId }) => ({ id: analysisId })),
-    ...analysis.phraseAnalysisLinks.map(({ analysisId }) => ({ id: analysisId })),
-    ...analysis.segmentAnalysisLinks.map(({ analysisId }) => ({ id: analysisId })),
-  ].map(({ id }) => id);
+/** The ids of the payloads that `analyses` hold or that their links name, each once. */
+function payloadIdsOf(...analyses: TextAnalysis[]): PayloadIds {
+  const named = (
+    payloads: (analysis: TextAnalysis) => { id: string }[],
+    links: (analysis: TextAnalysis) => { analysisId: string }[],
+  ) => [
+    ...new Set(
+      analyses.flatMap((analysis) => [
+        ...payloads(analysis).map(({ id }) => id),
+        ...links(analysis).map(({ analysisId }) => analysisId),
+      ]),
+    ),
+  ];
+  return {
+    token: named(
+      (analysis) => analysis.tokenAnalyses,
+      (analysis) => analysis.tokenAnalysisLinks,
+    ),
+    phrase: named(
+      (analysis) => analysis.phraseAnalyses,
+      (analysis) => analysis.phraseAnalysisLinks,
+    ),
+    segment: named(
+      (analysis) => analysis.segmentAnalyses,
+      (analysis) => analysis.segmentAnalysisLinks,
+    ),
+  };
 }
 
 /**
@@ -101,10 +124,12 @@ async function readBookPart(
   const { unreadableBooks } = await reader.getDraftState();
   const bookLinks = await reader.findLinksInBooks([bookCode]);
   const savedBook = (saved && splitAnalysisByBook(saved).get(bookCode)) ?? emptyAnalysis();
-  const payloadIds = [
-    ...new Set([...payloadIdsOf({ ...emptyAnalysis(), ...bookLinks }), ...payloadIdsOf(savedBook)]),
-  ];
-  const linksToPayloads = await reader.findLinksToAnalyses(payloadIds);
+  const payloadIds = payloadIdsOf({ ...emptyAnalysis(), ...bookLinks }, savedBook);
+  const linksToPayloads = await reader.findLinksToAnalyses([
+    ...payloadIds.token,
+    ...payloadIds.phrase,
+    ...payloadIds.segment,
+  ]);
   return {
     scope,
     analysis: await readRecords(reader, [bookLinks, linksToPayloads], payloadIds),

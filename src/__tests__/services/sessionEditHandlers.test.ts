@@ -250,9 +250,9 @@ describe('sessionEditHandlers', () => {
   ])('refuses %s of language text while a book cannot be read', async (_case, change) => {
     const { edits, sessionId, sessions } = await handlersOver();
     const { repository } = await sessions.run(sessionId, async (session) => session);
-    const read = repository.exportAll.bind(repository);
+    const read = repository.getDraftState.bind(repository);
     jest
-      .spyOn(repository, 'exportAll')
+      .spyOn(repository, 'getDraftState')
       .mockImplementation(async () => ({ ...(await read()), unreadableBooks: ['GEN'] }));
 
     await expect(
@@ -269,9 +269,9 @@ describe('sessionEditHandlers', () => {
   it('changes the language list alone while a book cannot be read', async () => {
     const { edits, sessionId, sessions } = await handlersOver();
     const { repository } = await sessions.run(sessionId, async (session) => session);
-    const read = repository.exportAll.bind(repository);
+    const read = repository.getDraftState.bind(repository);
     jest
-      .spyOn(repository, 'exportAll')
+      .spyOn(repository, 'getDraftState')
       .mockImplementation(async () => ({ ...(await read()), unreadableBooks: ['GEN'] }));
 
     await edits['interlinearizer.changeAnalysisLanguages']({

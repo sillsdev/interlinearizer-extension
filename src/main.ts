@@ -24,12 +24,7 @@ import {
 } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-import {
-  AnalysisSessions,
-  isEmptyDraft,
-  type OpenedSession,
-  type Session,
-} from './services/analysisSessions';
+import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
 import * as bookService from './services/bookService';
 import { startCSharpHost } from './services/csharpHost';
 import {
@@ -44,7 +39,12 @@ import type { Pt9ImportResult } from './services/pt9ImportService';
 import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
 import { sessionConcordanceHandlers } from './services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
-import { readBookOutline, readSegmentPage, readStaleSummary } from './services/sessionPages';
+import {
+  readBookOutline,
+  readDraftEnvelope,
+  readSegmentPage,
+  readStaleSummary,
+} from './services/sessionPages';
 import { UnreadableBooksError } from './types/analysis-repository';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
@@ -58,7 +58,7 @@ import { CURRENT_MODEL_VERSION } from './types/model-version';
 import type { TextReadStatus } from './types/text-read-status';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
-import { envelopeOf } from './types/draft-envelope';
+import { isEmptyDraft } from './utils/empty-draft';
 import type { InterlinearizerWebViewState } from './types/webview-state';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 
@@ -1128,15 +1128,9 @@ async function getDraftEnvelope({
 }: ArgsOf<'interlinearizer.getDraftEnvelope'>): Promise<string> {
   try {
     return JSON.stringify(
-      await sessions.run(sessionId, async ({ repository, analysisLanguage }) => {
-        const envelope = envelopeOf(
-          await repository.getScope(),
-          (await repository.getDraftState()).dirty,
-        );
-        return envelope.analysisLanguages.length > 0
-          ? envelope
-          : { ...envelope, analysisLanguages: [analysisLanguage] };
-      }),
+      await sessions.run(sessionId, ({ repository, analysisLanguage }) =>
+        readDraftEnvelope(repository, analysisLanguage),
+      ),
     );
   } catch (e) {
     logger.error(`Interlinearizer: failed to read the draft envelope of session ${sessionId}`, e);

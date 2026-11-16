@@ -1145,7 +1145,8 @@ export function sessionEditHandlers({
         sessionId,
         intent,
         async (buffer, session) => {
-          const { draft, unreadableBooks } = await session.repository.exportAll();
+          const draft = await session.repository.getWholeDraft();
+          const { unreadableBooks } = await session.repository.getDraftState();
           // A book that can't be read would keep the text this change moves or deletes.
           if ((retag || deleteTextOf !== undefined) && unreadableBooks.length > 0)
             throw new Error(

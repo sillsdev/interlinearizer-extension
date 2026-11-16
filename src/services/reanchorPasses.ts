@@ -30,7 +30,7 @@ async function readBooks(
 /**
  * The changes that re-anchor `draft` to each of `books` in turn, `undefined` when there are none.
  * The changes do not depend on the order in which the repository returns links. Where links tie,
- * the one that an approval tie would pick wins.
+ * the most recently updated wins, then the one with the smaller id.
  */
 function reanchorInTurn(
   draft: DraftProject,

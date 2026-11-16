@@ -225,7 +225,10 @@ export async function fakeHost(
           await sessions.run(
             field(first, 'sessionId'),
             async ({ repository, analysisLanguage }) => {
-              const envelope = envelopeOf(await repository.getWholeDraft());
+              const envelope = envelopeOf(
+                await repository.getScope(),
+                (await repository.getDraftState()).dirty,
+              );
               return envelope.analysisLanguages.length > 0
                 ? envelope
                 : { ...envelope, analysisLanguages: [analysisLanguage] };

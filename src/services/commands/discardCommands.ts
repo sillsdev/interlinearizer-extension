@@ -1,30 +1,138 @@
 import type { TextAnalysis } from 'interlinearizer';
 import type { DraftContent } from '../../types/draft-content';
-import type { DraftExport } from '../../types/analysis-repository';
+import type { AnalysisRepository, ScopeRecord } from '../../types/analysis-repository';
 import { emptyAnalysis } from '../../types/empty-factories';
 import {
   booksLinkedIn,
   bookOfRef,
+  mergeAnalyses,
   removeBookFromAnalysis,
   restoreBookInAnalysis,
   restoreBookInSegmentation,
+  splitAnalysisByBook,
 } from '../../utils/analysis-book';
 import { deepEqual } from '../../utils/analysis-identity';
-import { scopeRecordOf } from '../../utils/change-set';
-import { analysisHasFreeTranslations } from '../../utils/free-translations';
 import { sameSegmentation, segmentationForBook } from '../../utils/segmentation';
 import type { ChangeBuffer, RecordKind, RecordOf } from './changeBuffer';
 
 /** What the project that a draft saves to holds, as a discard restores that project. */
 export type SavedProject = DraftContent & Readonly<{ analysisLanguages: readonly string[] }>;
 
+/** The reads of the stored draft that a discard stages from. */
+export type DiscardReader = Pick<
+  AnalysisRepository,
+  | 'getScope'
+  | 'getDraftState'
+  | 'getTokenAnalyses'
+  | 'getPhraseAnalyses'
+  | 'getSegmentAnalyses'
+  | 'findLinksInBooks'
+  | 'findLinksToAnalyses'
+  | 'findLinkedBooks'
+  | 'findUnlinkedPayloads'
+>;
+
 /** What an unsaved-change discard tells its caller beside the changes it staged. */
 export type DiscardOutcome = {
-  /** Whether any segment of the draft, as the discard leaves it, has a free translation. */
-  hasFreeTranslations: boolean;
   /** Books whose links or boundaries the discard rewrote, which want re-anchoring to their text. */
   changedBooks: string[];
 };
+
+/**
+ * The part of the stored draft that a discard can change: its own record, the records in
+ * `analysis`, and the books whose stored analysis could not be read.
+ */
+type StoredPart = {
+  scope: ScopeRecord;
+  analysis: TextAnalysis;
+  unreadableBooks: string[];
+};
+
+/** The records of `links`, each once, with the payloads stored under `payloadIds`. */
+async function readRecords(
+  reader: DiscardReader,
+  links: readonly Pick<
+    TextAnalysis,
+    'tokenAnalysisLinks' | 'phraseAnalysisLinks' | 'segmentAnalysisLinks'
+  >[],
+  payloadIds: string[],
+): Promise<TextAnalysis> {
+  const [tokenAnalyses, phraseAnalyses, segmentAnalyses] = await Promise.all([
+    reader.getTokenAnalyses(payloadIds),
+    reader.getPhraseAnalyses(payloadIds),
+    reader.getSegmentAnalyses(payloadIds),
+  ]);
+  const once = <T extends { id: string }>(records: T[]): T[] => [
+    ...new Map(records.map((record) => [record.id, record])).values(),
+  ];
+  return {
+    tokenAnalyses,
+    phraseAnalyses,
+    segmentAnalyses,
+    tokenAnalysisLinks: once(links.flatMap((part) => part.tokenAnalysisLinks)),
+    phraseAnalysisLinks: once(links.flatMap((part) => part.phraseAnalysisLinks)),
+    segmentAnalysisLinks: once(links.flatMap((part) => part.segmentAnalysisLinks)),
+  };
+}
+
+/** The ids of the payloads that `analysis` holds or that its links name. */
+function payloadIdsOf(analysis: TextAnalysis): string[] {
+  return [
+    ...analysis.tokenAnalyses,
+    ...analysis.phraseAnalyses,
+    ...analysis.segmentAnalyses,
+    ...analysis.tokenAnalysisLinks.map(({ analysisId }) => ({ id: analysisId })),
+    ...analysis.phraseAnalysisLinks.map(({ analysisId }) => ({ id: analysisId })),
+    ...analysis.segmentAnalysisLinks.map(({ analysisId }) => ({ id: analysisId })),
+  ].map(({ id }) => id);
+}
+
+/**
+ * Reads what discarding `bookCode` can change: the book's links, the payloads they name or `saved`
+ * holds for the book, and every link to those payloads.
+ */
+async function readBookPart(
+  reader: DiscardReader,
+  bookCode: string,
+  saved: TextAnalysis | undefined,
+): Promise<StoredPart> {
+  const [scope, { unreadableBooks }, bookLinks] = await Promise.all([
+    reader.getScope(),
+    reader.getDraftState(),
+    reader.findLinksInBooks([bookCode]),
+  ]);
+  const savedBook = (saved && splitAnalysisByBook(saved).get(bookCode)) ?? emptyAnalysis();
+  const payloadIds = [
+    ...new Set([...payloadIdsOf({ ...emptyAnalysis(), ...bookLinks }), ...payloadIdsOf(savedBook)]),
+  ];
+  const linksToPayloads = await reader.findLinksToAnalyses(payloadIds);
+  return {
+    scope,
+    analysis: await readRecords(reader, [bookLinks, linksToPayloads], payloadIds),
+    unreadableBooks,
+  };
+}
+
+/** Reads every stored record, without any single read spanning the draft. */
+async function readWhole(reader: DiscardReader): Promise<StoredPart> {
+  const [scope, { unreadableBooks }, linkedBooks, unlinked] = await Promise.all([
+    reader.getScope(),
+    reader.getDraftState(),
+    reader.findLinkedBooks(),
+    reader.findUnlinkedPayloads(),
+  ]);
+  const books = await Promise.all(
+    linkedBooks.map(async (bookCode) => {
+      const links = await reader.findLinksInBooks([bookCode]);
+      return readRecords(reader, [links], payloadIdsOf({ ...emptyAnalysis(), ...links }));
+    }),
+  );
+  return {
+    scope,
+    analysis: mergeAnalyses([...books, { ...emptyAnalysis(), ...unlinked }]),
+    unreadableBooks,
+  };
+}
 
 /**
  * Stages the puts and removals of `kind` that turn `current`'s records into `target`'s, returning
@@ -45,13 +153,13 @@ function stageKind<Kind extends RecordKind>(
 }
 
 /**
- * Stages turning the stored draft's content into `restored`, as saving `restored` would store it: a
+ * Stages turning the stored part's content into `restored`, as saving `restored` would store it: a
  * book whose stored analysis could not be read keeps it as stored. The draft takes
  * `restoredLanguages` as its analysis languages when they are given.
  */
 function stageDiscard(
   buffer: ChangeBuffer,
-  { draft, unreadableBooks }: DraftExport,
+  { scope: stored, analysis: current, unreadableBooks }: StoredPart,
   restored: DraftContent,
   restoredLanguages?: readonly string[],
 ): DiscardOutcome {
@@ -59,7 +167,6 @@ function stageDiscard(
     (analysis, bookCode) => removeBookFromAnalysis(analysis, bookCode),
     restored.analysis,
   );
-  const current = draft.analysis;
   stageKind(buffer, 'segmentAnalyses', current.segmentAnalyses, target.segmentAnalyses);
   stageKind(buffer, 'tokenAnalyses', current.tokenAnalyses, target.tokenAnalyses);
   stageKind(buffer, 'phraseAnalyses', current.phraseAnalyses, target.phraseAnalyses);
@@ -86,79 +193,80 @@ function stageDiscard(
   };
 
   const changedBooks = new Set(booksLinkedIn(putLinks));
-  const segmentationChanged = !sameSegmentation(draft.segmentation, restored.segmentation);
+  const segmentationChanged = !sameSegmentation(stored.segmentation, restored.segmentation);
   const languagesChanged =
-    restoredLanguages !== undefined && !deepEqual(draft.analysisLanguages, restoredLanguages);
+    restoredLanguages !== undefined && !deepEqual(stored.analysisLanguages, restoredLanguages);
   if (segmentationChanged || languagesChanged) {
-    const scope = scopeRecordOf(draft);
+    const scope = { ...stored };
     if (restored.segmentation) scope.segmentation = restored.segmentation;
     else delete scope.segmentation;
     if (restoredLanguages) scope.analysisLanguages = [...restoredLanguages];
     buffer.putScope(scope);
   }
   if (segmentationChanged) {
-    const anchoredBooks = [draft.segmentation, restored.segmentation].flatMap((delta) =>
+    const anchoredBooks = [stored.segmentation, restored.segmentation].flatMap((delta) =>
       [
         ...(delta?.removedVerseStarts ?? []),
         ...(delta?.addedStarts ?? []).map(({ tokenRef }) => tokenRef),
       ].map(bookOfRef),
     );
     new Set(anchoredBooks).forEach((bookCode) => {
-      const before = segmentationForBook(draft.segmentation, bookCode);
+      const before = segmentationForBook(stored.segmentation, bookCode);
       if (!sameSegmentation(before, segmentationForBook(restored.segmentation, bookCode)))
         changedBooks.add(bookCode);
     });
   }
 
-  return {
-    hasFreeTranslations: analysisHasFreeTranslations(restored.analysis),
-    changedBooks: [...changedBooks].sort(),
-  };
+  return { changedBooks: [...changedBooks].sort() };
 }
 
 /**
  * Stages discarding the unsaved changes to one book of the stored draft. The book's records and
  * boundaries become those of `saved`, or none without it. A payload the book shares with another
  * book keeps its stored version. The draft keeps its analysis languages, because they span every
- * book.
+ * book. A book whose stored analysis could not be read keeps it.
  *
  * @param buffer - Where the changes are staged.
- * @param stored - The stored draft, with the books whose analysis could not be read; those keep
- *   their stored analysis.
+ * @param reader - Reads the stored draft.
  * @param bookCode - The book discarded.
  * @param saved - The project that the draft saves to; absent when it has no project.
+ * @throws Whatever reading the stored draft throws.
  */
-export function discardBook(
+export async function discardBook(
   buffer: ChangeBuffer,
-  stored: DraftExport,
+  reader: DiscardReader,
   bookCode: string,
   saved: SavedProject | undefined,
-): DiscardOutcome {
-  const { analysis, segmentation } = stored.draft;
+): Promise<DiscardOutcome> {
+  const stored = await readBookPart(reader, bookCode, saved?.analysis);
   return stageDiscard(buffer, stored, {
-    analysis: restoreBookInAnalysis(analysis, saved?.analysis, bookCode),
-    segmentation: restoreBookInSegmentation(segmentation, saved?.segmentation, bookCode),
+    analysis: restoreBookInAnalysis(stored.analysis, saved?.analysis, bookCode),
+    segmentation: restoreBookInSegmentation(
+      stored.scope.segmentation,
+      saved?.segmentation,
+      bookCode,
+    ),
   });
 }
 
 /**
  * Stages discarding every unsaved change to the stored draft. Its records, boundaries, and analysis
  * languages become those of `saved`. Without `saved`, it has no records or boundaries, and keeps
- * its languages.
+ * its languages. A book whose stored analysis could not be read keeps it.
  *
  * @param buffer - Where the changes are staged.
- * @param stored - The stored draft, with the books whose analysis could not be read; those keep
- *   their stored analysis.
+ * @param reader - Reads the stored draft.
  * @param saved - The project that the draft saves to; absent when it has no project.
+ * @throws Whatever reading the stored draft throws.
  */
-export function discardAll(
+export async function discardAll(
   buffer: ChangeBuffer,
-  stored: DraftExport,
+  reader: DiscardReader,
   saved: SavedProject | undefined,
-): DiscardOutcome {
+): Promise<DiscardOutcome> {
   return stageDiscard(
     buffer,
-    stored,
+    await readWhole(reader),
     saved ?? { analysis: emptyAnalysis(), segmentation: undefined },
     saved?.analysisLanguages,
   );

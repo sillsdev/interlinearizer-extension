@@ -743,7 +743,11 @@ async function checkEvents(
 
   const commands: [
     string,
-    (buffer: ChangeBuffer, current: DraftProject) => Promise<void | EditOutcome>,
+    (
+      buffer: ChangeBuffer,
+      current: DraftProject,
+      reader: discardCommands.DiscardReader,
+    ) => Promise<void | EditOutcome>,
   ][] = [
     [
       'writeGloss',
@@ -854,10 +858,10 @@ async function checkEvents(
     ],
     [
       'discardBook',
-      async (buffer, current) => {
-        const { changedBooks } = discardCommands.discardBook(
+      async (buffer, _current, reader) => {
+        const { changedBooks } = await discardCommands.discardBook(
           buffer,
-          { draft: current, unreadableBooks: [] },
+          reader,
           viewBook.bookRef,
           saved,
         );
@@ -934,7 +938,12 @@ async function checkEvents(
       name = intent;
       send = (id) =>
         sessions
-          .edit(sessionId, intent, (buffer) => command(buffer, before), { changeId: id })
+          .edit(
+            sessionId,
+            intent,
+            (buffer, session) => command(buffer, before, session.repository),
+            { changeId: id },
+          )
           // A random edit that the approval rule refuses applies nothing, as the host intends.
           .catch((e) => {
             if (e instanceof ApprovalRuleError) return undefined;

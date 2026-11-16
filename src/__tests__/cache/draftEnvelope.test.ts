@@ -9,7 +9,7 @@ import { scopeRecordOf } from '../../utils/change-set';
 
 /** The envelope of a draft for the source `src`, saved unless `dirty`. */
 function envelopeOf(dirty = false, analysisLanguages = ['en']): DraftEnvelope {
-  return { ...draftEnvelopeOf(emptyDraft('src')), analysisLanguages, dirty };
+  return { ...draftEnvelopeOf(scopeRecordOf(emptyDraft('src')), dirty), analysisLanguages };
 }
 
 /** The scope record of a draft for the source `src` that lists `analysisLanguages`. */

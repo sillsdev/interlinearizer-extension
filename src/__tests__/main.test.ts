@@ -2490,9 +2490,9 @@ describe('main', () => {
 
     it('warns which books of the draft could not be read when it opens a session', async () => {
       const repository = await seedDraft({});
-      const read = repository.exportAll.bind(repository);
+      const read = repository.getDraftState.bind(repository);
       jest
-        .spyOn(repository, 'exportAll')
+        .spyOn(repository, 'getDraftState')
         .mockImplementation(async () => ({ ...(await read()), unreadableBooks: ['JHN'] }));
       __mockGetLocalizedString.mockResolvedValue('Opened without: {books}');
       const { openSession } = await activateSessionCommands();
@@ -4507,6 +4507,25 @@ describe('main', () => {
 
       expect(first.hasFreeTranslations).toBe(true);
       expect(retried).toStrictEqual(first);
+    });
+
+    it('opens a session, reads its envelope, and discards without reading the draft whole', async () => {
+      const repository = await seedDraft(glossedIn);
+      storeProjectHolding(glossedIn);
+      const exportAll = jest.spyOn(repository, 'exportAll');
+      const getWholeDraft = jest.spyOn(repository, 'getWholeDraft');
+      const { openSession, getDraftEnvelope, discardBook, discardAll } =
+        await activateSessionCommands();
+
+      const { sessionId } = JSON.parse(
+        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'proj-1' }),
+      );
+      await getDraftEnvelope({ sessionId });
+      await discardBook({ sessionId, bookCode: 'GEN' });
+      await discardAll({ sessionId });
+
+      expect(exportAll).not.toHaveBeenCalled();
+      expect(getWholeDraft).not.toHaveBeenCalled();
     });
 
     it('stales what it restores into a book the text lacks', async () => {

@@ -217,6 +217,7 @@ function createSessions(
       if (!sessionReadsAreSkipped()) await bookService.startTextRead(sourceProjectId);
     },
     stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
+    holdTextRead: bookService.holdTextRead,
     heldBook: (sourceProjectId, bookId, segmentation) =>
       bookService.heldBook(sourceProjectId, bookId, segmentation),
     getOpenVerseBook: bookService.getOpenVerseBook,

@@ -140,6 +140,11 @@ export interface SessionHost {
   /** Ends the source project's whole-text read. */
   stopTextRead(sourceProjectId: string): Promise<void>;
   /**
+   * Holds the source project's whole-text read from fetching or tokenizing books until `until`
+   * settles.
+   */
+  holdTextRead(sourceProjectId: string, until: Promise<unknown>): void;
+  /**
    * The source project's book, segmented by the boundaries that `segmentation` sets in it, or
    * `undefined` when the host holds no tokenized copy of the book. Reads nothing.
    */
@@ -333,6 +338,12 @@ type OpenSession = {
    * A book that opened with no text maps to `''`.
    */
   anchoredVersions: Map<string, string>;
+  /** The `textVersion` of the latest text passed in for each book, whether read or edited. */
+  deliveredVersions: Map<string, string>;
+  /** How many texts have been passed in for each book, whether read or edited. */
+  deliveryCounts: Map<string, number>;
+  /** Settles once every pass of the whole-text read sent so far has settled; never rejects. */
+  readPasses: Promise<void>;
   /** The start of the source's whole-text read, set from the session's first ask for it. */
   textRead?: Promise<void>;
 };
@@ -422,6 +433,9 @@ export class AnalysisSessions {
         replies: new Map(),
         editPasses: new Map(),
         anchoredVersions: new Map(),
+        deliveredVersions: new Map(),
+        deliveryCounts: new Map(),
+        readPasses: Promise.resolve(),
       };
       if (isEmptyDraft(opened)) session.history.noteEmpty();
       this.sessions.set(session.id, entry);
@@ -536,12 +550,15 @@ export class AnalysisSessions {
    * @throws Whatever `edit` throws; later commands still run.
    */
   runEdit<T>(sessionId: string, edit: (session: Session) => Promise<T>): Promise<T> {
-    if (this.sessions.get(sessionId)?.session.repository.capabilities.readOnly) {
+    const entry = this.sessions.get(sessionId);
+    if (entry?.session.repository.capabilities.readOnly) {
       return Promise.reject(
         new ReadOnlyAnalysisError(`Interlinearizer: session ${sessionId} is read-only`),
       );
     }
-    return this.run(sessionId, edit);
+    const result = this.run(sessionId, edit);
+    if (entry) this.host.holdTextRead(entry.session.scope.sourceProjectId, result);
+    return result;
   }
 
   /**
@@ -755,23 +772,38 @@ export class AnalysisSessions {
    * the book to the same text. When `edited`, what the pass changes is reported with the edit to
    * the book's text, by {@link reportScriptureEdit}, rather than on its own.
    *
+   * A pass not `edited` is the whole-text read's. It joins the session's turn only once the read's
+   * pass before it settles, so that a command sent meanwhile waits for one pass at most. It does
+   * nothing when a later text of the book has been passed since, or when a close is sent to the
+   * session before the pass reaches its turn.
+   *
    * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
    * @throws Whatever describing the applied changes throws; the changes stay applied.
    */
   reanchorBook(sourceProjectId: string, book: ReadonlyBook, edited = false): Promise<void> {
-    return this.runOnWritable(
-      sourceProjectId,
-      async ({ session, editPasses, anchoredVersions }) => {
+    const entry = this.writableEntry(sourceProjectId);
+    if (!entry) return Promise.resolve();
+    const { session, editPasses, anchoredVersions, deliveredVersions, deliveryCounts } = entry;
+    deliveredVersions.set(book.bookRef, book.textVersion);
+    deliveryCounts.set(book.bookRef, (deliveryCounts.get(book.bookRef) ?? 0) + 1);
+    if (edited) {
+      return this.run(session.id, async () => {
         if (anchoredVersions.get(book.bookRef) === book.textVersion) return;
-        let unreported: AnalysisChange[] | undefined;
-        if (edited) {
-          unreported = editPasses.get(book.bookRef) ?? [];
-          editPasses.set(book.bookRef, unreported);
-        }
+        const unreported = editPasses.get(book.bookRef) ?? [];
+        editPasses.set(book.bookRef, unreported);
         await reanchorNow(this.host, session, book, unreported);
         anchoredVersions.set(book.bookRef, book.textVersion);
-      },
-    );
+      });
+    }
+    return this.runReadPass(entry, async () => {
+      if (
+        deliveredVersions.get(book.bookRef) !== book.textVersion ||
+        anchoredVersions.get(book.bookRef) === book.textVersion
+      )
+        return;
+      await reanchorNow(this.host, session, book);
+      anchoredVersions.set(book.bookRef, book.textVersion);
+    });
   }
 
   /**
@@ -841,14 +873,24 @@ export class AnalysisSessions {
 
   /**
    * Re-anchors the draft of the source project's session, as {@link reanchorBook} does, to each book
-   * the text lacks. A book the text lacks is a linked book that `textBookIds` does not list.
+   * the text lacks. A book the text lacks is a linked book that `textBookIds` does not list. The
+   * pass is the whole-text read's, so it waits as {@link reanchorBook} describes. It skips a book
+   * whose text has been passed to {@link reanchorBook} after this call, because `textBookIds`
+   * predates that text.
    *
    * @throws Whatever reading the draft or applying the changes throws; the books before stay
    *   re-anchored.
    */
   reanchorMissingBooks(sourceProjectId: string, textBookIds: readonly string[]): Promise<void> {
-    return this.runOnWritable(sourceProjectId, async ({ session, anchoredVersions }) => {
-      const missing = booksMissingFrom(await session.repository.findLinkedBooks(), textBookIds);
+    const entry = this.writableEntry(sourceProjectId);
+    if (!entry) return Promise.resolve();
+    const { session, anchoredVersions, deliveryCounts } = entry;
+    const countsBefore = new Map(deliveryCounts);
+    return this.runReadPass(entry, async () => {
+      const missing = booksMissingFrom(
+        await session.repository.findLinkedBooks(),
+        textBookIds,
+      ).filter((bookCode) => deliveryCounts.get(bookCode) === countsBefore.get(bookCode));
       await missing.reduce<Promise<void>>(async (previous, bookCode) => {
         await previous;
         await reanchorNow(this.host, session, missingBook(bookCode));
@@ -858,11 +900,13 @@ export class AnalysisSessions {
   }
 
   /**
-   * Settles once every command sent so far to the source project's session has settled, at once
-   * when the source has no session open. Never rejects.
+   * Settles once every command and pass of the whole-text read sent so far to the source project's
+   * session has settled, at once when the source has no session open. Never rejects.
    */
   async settled(sourceProjectId: string): Promise<void> {
-    await this.sessionsBySource.get(sourceProjectId)?.queue;
+    const entry = this.sessionsBySource.get(sourceProjectId);
+    await entry?.readPasses;
+    await entry?.queue;
   }
 
   /** Moves through the session's history by `move`, as {@link undo} describes. */
@@ -910,14 +954,26 @@ export class AnalysisSessions {
     return reply;
   }
 
-  /** Runs `command` on the source project's session unless it has none open or only a read-only one. */
-  private runOnWritable(
-    sourceProjectId: string,
-    command: (entry: OpenSession) => Promise<void>,
-  ): Promise<void> {
+  /** The source project's open session, unless it has none or only a read-only one. */
+  private writableEntry(sourceProjectId: string): OpenSession | undefined {
     const entry = this.sessionsBySource.get(sourceProjectId);
-    if (!entry || entry.session.repository.capabilities.readOnly) return Promise.resolve();
-    return this.run(entry.session.id, () => command(entry));
+    return entry && !entry.session.repository.capabilities.readOnly ? entry : undefined;
+  }
+
+  /**
+   * Runs `pass` in the session's turn once the whole-text read's passes sent before have settled.
+   * Skips `pass` when a close is sent to the session before `pass` reaches its turn.
+   */
+  private runReadPass(entry: OpenSession, pass: () => Promise<void>): Promise<void> {
+    const result = entry.readPasses.then(() =>
+      entry.state === 'open'
+        ? this.run(entry.session.id, async () => {
+            if (entry.state === 'open') await pass();
+          })
+        : undefined,
+    );
+    entry.readPasses = result.catch(() => {});
+    return result;
   }
 
   /**

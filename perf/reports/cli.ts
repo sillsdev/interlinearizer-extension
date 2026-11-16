@@ -51,6 +51,7 @@ function sessionHost(
     getInterfaceLanguages: async () => ['en'],
     startTextRead: async () => {},
     stopTextRead: async () => {},
+    holdTextRead: () => {},
     heldBook: () => undefined,
     getOpenVerseBook: async () => undefined,
     reportChange,

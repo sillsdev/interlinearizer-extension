@@ -89,6 +89,7 @@ function makeSessions(projects: InterlinearProject[] = []) {
     getInterfaceLanguages: jest.fn(async (): Promise<string[]> => []),
     startTextRead: jest.fn<Promise<void>, [string]>(async () => {}),
     stopTextRead: jest.fn<Promise<void>, [string]>(async () => {}),
+    holdTextRead: jest.fn<void, [string, Promise<unknown>]>(),
     heldBook: jest.fn<Book | undefined, [string, string, SegmentationDelta | undefined]>(
       () => undefined,
     ),
@@ -583,6 +584,37 @@ describe('AnalysisSessions', () => {
       const { sessionId } = await sessions.open(SOURCE);
 
       await expect(sessions.runEdit(sessionId, async () => 'edited')).resolves.toBe('edited');
+    });
+
+    it("holds the source's whole-text read until the edit settles", async () => {
+      const { sessions, host } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const editing = sessions.runEdit(sessionId, async () => {});
+
+      expect(host.holdTextRead).toHaveBeenCalledWith(SOURCE, editing);
+      await editing;
+    });
+
+    it('holds no read for an edit it refuses', async () => {
+      const { sessions, host } = makeSessions([makeImport()]);
+      const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
+
+      await expect(sessions.runEdit(sessionId, async () => {})).rejects.toThrow(
+        ReadOnlyAnalysisError,
+      );
+
+      expect(host.holdTextRead).not.toHaveBeenCalled();
+    });
+
+    it('holds no read for a session that is not open', async () => {
+      const { sessions, host } = makeSessions();
+
+      await expect(sessions.runEdit('not-a-session', async () => {})).rejects.toThrow(
+        'no session not-a-session is open',
+      );
+
+      expect(host.holdTextRead).not.toHaveBeenCalled();
     });
 
     it('refuses a session that is not open', async () => {
@@ -1838,6 +1870,102 @@ describe('AnalysisSessions', () => {
       expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
     });
 
+    describe("the whole-text read's passes", () => {
+      it('let a command sent meanwhile run after the pass ahead of it, before those behind', async () => {
+        const { sessions, sessionId } = await sessionGlossingBeta();
+        const readLinkedBooks = await sessions.run(sessionId, async (session) =>
+          jest.spyOn(session.repository, 'findLinkedBooks'),
+        );
+        const command = deferred();
+        const running = sessions.run(sessionId, () => command.promise);
+        const passes = [
+          sessions.reanchorBook(SOURCE, AFTER),
+          sessions.reanchorMissingBooks(SOURCE, ['GEN']),
+        ];
+        await flushPromises();
+
+        const seen = sessions.run(sessionId, async (session) => {
+          const { draft } = await session.repository.exportAll();
+          return {
+            tokenRef: draft.analysis.tokenAnalysisLinks[0].token.tokenRef,
+            missingPassRan: readLinkedBooks.mock.calls.length !== 0,
+          };
+        });
+        command.resolve();
+        await Promise.all([running, ...passes]);
+
+        await expect(seen).resolves.toEqual({
+          tokenRef: tokenRefOf(AFTER, 'beta'),
+          missingPassRan: false,
+        });
+        expect(readLinkedBooks).toHaveBeenCalled();
+      });
+
+      it("skip a book's text when a later text of the book was passed since", async () => {
+        const { sessions, sessionId, storage } = await sessionGlossingBeta();
+        const edited = genesis('beta alpha');
+        const command = deferred();
+        const running = sessions.run(sessionId, () => command.promise);
+        const passes = [
+          sessions.reanchorMissingBooks(SOURCE, ['GEN']),
+          sessions.reanchorBook(SOURCE, AFTER),
+          sessions.reanchorBook(SOURCE, edited, true),
+        ];
+        command.resolve();
+        await Promise.all([running, ...passes]);
+
+        expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(edited, 'beta'));
+      });
+
+      it.each([
+        ['new text', AFTER],
+        ['the text it had', BEFORE],
+      ])(
+        'leave the links into a missing book that returns with %s while the pass waits',
+        async (_case, returned) => {
+          const { sessions, sessionId, storage } = await sessionGlossingBeta();
+          await sessions.reanchorBook(SOURCE, BEFORE);
+          const command = deferred();
+          const running = sessions.run(sessionId, () => command.promise);
+          const missingPass = sessions.reanchorMissingBooks(SOURCE, []);
+
+          const returning = sessions.reanchorBook(SOURCE, returned, true);
+          command.resolve();
+          await Promise.all([running, missingPass, returning]);
+
+          expect((await storedLink(storage)).status).toBe('approved');
+        },
+      );
+
+      it('skip a pass that reaches its turn after the session closes', async () => {
+        const { sessions, sessionId, storage } = await sessionGlossingBeta();
+        const command = deferred();
+        const running = sessions.run(sessionId, () => command.promise);
+        const passAhead = sessions.reanchorMissingBooks(SOURCE, ['GEN']);
+        const pass = sessions.reanchorBook(SOURCE, AFTER);
+        const closing = sessions.close(sessionId);
+        command.resolve();
+
+        await expect(pass).resolves.toBeUndefined();
+        await Promise.all([running, passAhead, closing]);
+        expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-1'));
+      });
+
+      it('skip a pass already in the turn queue when a close is sent before its turn', async () => {
+        const { sessions, sessionId, storage } = await sessionGlossingBeta();
+        const command = deferred();
+        const running = sessions.run(sessionId, () => command.promise);
+        const pass = sessions.reanchorBook(SOURCE, AFTER);
+        await flushPromises();
+        const closing = sessions.close(sessionId);
+        command.resolve();
+
+        await expect(pass).resolves.toBeUndefined();
+        await Promise.all([running, closing]);
+        expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-1'));
+      });
+    });
+
     it('does nothing for a source with no session open', async () => {
       const { sessions, seedDraft, storage } = makeSessions();
       await seedDraft({
@@ -1985,6 +2113,27 @@ describe('AnalysisSessions', () => {
       await settling;
 
       expect(isSettled).toBe(true);
+    });
+
+    it("settles once the whole-text read's passes sent before have run", async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+      const readLinkedBooks = await sessions.run(sessionId, async (session) =>
+        jest.spyOn(session.repository, 'findLinkedBooks'),
+      );
+      const command = deferred();
+      const sent = [
+        sessions.run(sessionId, () => command.promise),
+        sessions.reanchorMissingBooks(SOURCE, []),
+        sessions.reanchorMissingBooks(SOURCE, []),
+      ];
+
+      const settling = sessions.settled(SOURCE);
+      command.resolve();
+      await settling;
+
+      expect(readLinkedBooks).toHaveBeenCalledTimes(2);
+      await Promise.all(sent);
     });
 
     it('settles even when a command sent before fails', async () => {

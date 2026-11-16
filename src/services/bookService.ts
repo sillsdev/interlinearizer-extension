@@ -106,6 +106,35 @@ const textReads = new Map<string, TextRead>();
  */
 const heldReads = new Set<string>();
 
+/** What each source project's whole-text read waits on before it fetches or tokenizes a book. */
+const readHolds = new Map<string, Set<Promise<unknown>>>();
+
+/**
+ * Holds the source project's whole-text read until `until` settles: the read fetches and tokenizes
+ * no further book meanwhile, so that work it would share the host with goes first. The open book's
+ * text is still read again at once when it changes, so that the view need not wait out the hold.
+ */
+export function holdTextRead(sourceProjectId: string, until: Promise<unknown>): void {
+  const holds = readHolds.get(sourceProjectId) ?? new Set<Promise<unknown>>();
+  readHolds.set(sourceProjectId, holds);
+  const hold = Promise.allSettled([until]).finally(() => {
+    holds.delete(hold);
+    if (holds.size === 0 && readHolds.get(sourceProjectId) === holds)
+      readHolds.delete(sourceProjectId);
+  });
+  holds.add(hold);
+}
+
+/** Settles once no hold on the source project's whole-text read remains. Never rejects. */
+async function readHeldOff(sourceProjectId: string): Promise<void> {
+  let holds = readHolds.get(sourceProjectId);
+  while (holds?.size) {
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.all(holds);
+    holds = readHolds.get(sourceProjectId);
+  }
+}
+
 /** Receives the source project and book of each edit to a watched book's text. */
 type BookTextListener = (sourceProjectId: string, bookId: string) => void;
 
@@ -555,13 +584,17 @@ async function readTextBook(
   );
   read.watches.set(bookId, stop);
   const delivered = await Promise.all([perfTrack('readText:usj', text), readNumber])
-    .then(([usj, number]): { book?: Book; forms: Set<string>; readNumber: number } => {
-      if (!usj) return { forms: new Set<string>(), readNumber: number };
-      return perfTime('readText:tokenize', () => {
-        const book = tokenizeBook(extractBookFromUsj(usj, read.writingSystem));
-        return { book, forms: formsOfBook(book), readNumber: number };
-      });
-    })
+    .then(
+      async ([usj, number]): Promise<{ book?: Book; forms: Set<string>; readNumber: number }> => {
+        if (!usj) return { forms: new Set<string>(), readNumber: number };
+        const isOpenBookEdit = edited && openBooks.get(sourceProjectId)?.bookId === bookId;
+        if (!isOpenBookEdit && readHolds.has(sourceProjectId)) await readHeldOff(sourceProjectId);
+        return perfTime('readText:tokenize', () => {
+          const book = tokenizeBook(extractBookFromUsj(usj, read.writingSystem));
+          return { book, forms: formsOfBook(book), readNumber: number };
+        });
+      },
+    )
     .catch((e) => {
       logger.warn(`Could not read ${bookId} of project ${sourceProjectId}: ${e}`);
       return undefined;
@@ -654,6 +687,10 @@ async function readTextBooks(
   const readNext = async (): Promise<void> => {
     const bookId = unread.shift();
     if (bookId === undefined || textReads.get(sourceProjectId) !== read) return;
+    if (readHolds.has(sourceProjectId)) {
+      await readHeldOff(sourceProjectId);
+      if (textReads.get(sourceProjectId) !== read) return;
+    }
     await readTextBook(sourceProjectId, read, bookId, false);
     await readNext();
   };

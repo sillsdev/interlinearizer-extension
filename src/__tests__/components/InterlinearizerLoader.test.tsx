@@ -545,7 +545,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
           data-testid="retag-draft-languages"
           onClick={() =>
             changeDraftAnalysisLanguages({
-              analysisLanguages: ['fr'],
+              analysisLanguages: ['de', 'fr'],
               retag: { from: 'en', to: 'fr' },
             })
           }
@@ -6010,7 +6010,7 @@ describe('analysis language switch', () => {
   });
 
   it('shows glosses moved to another language in it', async () => {
-    await mockDraftLanguages(['en', 'fr']);
+    await mockDraftLanguages(['de', 'en', 'fr']);
     await act(async () =>
       renderLoader({
         useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'en' } }),
@@ -6029,7 +6029,7 @@ describe('analysis language switch', () => {
     ['en', 'an undo', 'z'],
     ['fr', 'a redo', 'y'],
   ])('shows the glosses in %s after %s of their move', async (shown, _move, lastKey) => {
-    await mockDraftLanguages(['en', 'fr']);
+    await mockDraftLanguages(['de', 'en', 'fr']);
     await act(async () =>
       renderLoader({
         useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'en' } }),

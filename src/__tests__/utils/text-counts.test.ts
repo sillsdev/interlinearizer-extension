@@ -5,6 +5,28 @@ import { countTextOfEveryTag, isLanguageTextCounts } from '../../utils/text-coun
 import { FIXTURE_STAMPS } from '../test-helpers';
 
 describe('countTextOfEveryTag', () => {
+  it('counts a tag named like an inherited property as its own, leaving every object alone', () => {
+    const analysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        {
+          id: 'ta-1',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'fish',
+          gloss: JSON.parse('{"__proto__": "fish", "constructor": "fish"}'),
+        },
+      ],
+    };
+
+    const counts = countTextOfEveryTag(analysis);
+
+    expect(Object.entries(counts)).toStrictEqual([
+      ['__proto__', { glosses: 1, freeTranslations: 0 }],
+      ['constructor', { glosses: 1, freeTranslations: 0 }],
+    ]);
+    expect(Object.prototype).not.toHaveProperty('glosses');
+  });
+
   it('counts each tag that has text that is not blank, and no other', () => {
     const analysis = {
       ...emptyAnalysis(),

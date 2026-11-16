@@ -82,7 +82,7 @@ const PRIVATE_USE_TAG = /^x(-[a-z0-9]{1,8})+$/i;
  */
 const MAX_LANGUAGE_SUBTAG_LENGTH = 3;
 
-/** `tag` in its canonical form, or as it is when it isn't a well-formed BCP 47 tag. */
+/** `tag` in its canonical form, or as it is when `Intl` refuses it. */
 function canonicalOrSelf(tag: string): string {
   try {
     /* v8 ignore next -- a well-formed tag always has a canonical form */
@@ -118,9 +118,9 @@ function inStandardCase(tag: string): string {
  * Any other well-formed code is read as typed, in standard casing. A deprecated alias is kept, not
  * replaced by its preferred code.
  *
- * @returns The tag, or `undefined` when the input is blank, or is neither a known tag nor a
- *   well-formed BCP 47 tag whose language subtag is at most {@link MAX_LANGUAGE_SUBTAG_LENGTH}
- *   letters.
+ * @returns The tag, or `undefined` when the input is blank, or is none of a known tag, a
+ *   private-use `x-…` code, or a language tag `Intl` accepts whose language subtag is at most
+ *   {@link MAX_LANGUAGE_SUBTAG_LENGTH} letters.
  */
 export function readLanguageCode(input: string, knownTags: readonly string[]): string | undefined {
   const typed = input.trim();

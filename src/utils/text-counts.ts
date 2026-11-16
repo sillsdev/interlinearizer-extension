@@ -38,12 +38,14 @@ export function isTextCountsByTag(value: unknown): value is TextCountsByTag {
  * blank, and no other tag.
  */
 export function countTextOfEveryTag(analysis: TextAnalysis): TextCountsByTag {
-  const counts: TextCountsByTag = {};
+  // Kept in a map, so that a tag such as `__proto__` gets its own counts.
+  const counts = new Map<string, LanguageTextCounts>();
   const tally = (text: MultiString | undefined, kind: keyof LanguageTextCounts) =>
     Object.entries(text ?? {}).forEach(([tag, value]) => {
       if (value.trim() === '') return;
-      counts[tag] ??= { glosses: 0, freeTranslations: 0 };
-      counts[tag][kind] += 1;
+      const tagCounts = counts.get(tag) ?? { glosses: 0, freeTranslations: 0 };
+      tagCounts[kind] += 1;
+      counts.set(tag, tagCounts);
     });
   analysis.tokenAnalyses.forEach(({ gloss, morphemes }) => {
     tally(gloss, 'glosses');
@@ -53,5 +55,5 @@ export function countTextOfEveryTag(analysis: TextAnalysis): TextCountsByTag {
   analysis.segmentAnalyses.forEach(({ freeTranslation }) =>
     tally(freeTranslation, 'freeTranslations'),
   );
-  return counts;
+  return Object.fromEntries(counts);
 }

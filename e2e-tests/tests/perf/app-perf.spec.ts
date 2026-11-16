@@ -736,7 +736,9 @@ async function measureTier(
   // Save: writing the draft's analysis to the project it was opened from.
   await clearMeasures(frame);
   await openProjectMenuItem(frame, /Select interlinear/i);
-  await dialog.locator(`li[data-project-id="${tier.savedProjectId()}"] > button`).click();
+  await dialog
+    .locator(`li[data-project-id="${tier.savedProjectId()}"] > button:first-child`)
+    .click();
   // Replacing an edited draft asks first; an unedited one opens straight away.
   await frame
     .getByTestId('discard-draft-confirm')

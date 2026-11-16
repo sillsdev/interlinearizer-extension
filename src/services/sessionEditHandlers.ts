@@ -20,7 +20,6 @@ import * as staleCommands from './commands/staleCommands';
 import * as tokenCommands from './commands/tokenCommands';
 import type { EditOptions } from './editHistory';
 import { catalogStepOf, deletionStepOf, phraseStartOf } from './editSteps';
-import type { DraftExport } from '../types/analysis-repository';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from '../types/command-reply';
 import type { EditStep, StepSummary } from '../types/edit-step';
@@ -1222,9 +1221,9 @@ export function sessionEditHandlers({
     intent: string,
     stage: (
       buffer: ChangeBuffer,
-      stored: DraftExport,
+      reader: discardCommands.DiscardReader,
       saved: discardCommands.SavedProject | undefined,
-    ) => discardCommands.DiscardOutcome,
+    ) => Promise<discardCommands.DiscardOutcome>,
     unsavedMark: (savesToProject: boolean) => EditOptions['unsavedMark'],
   ): Promise<string> {
     try {
@@ -1233,7 +1232,7 @@ export function sessionEditHandlers({
         intent,
         async (buffer, session) => {
           const saved = await savedContentOf(session);
-          const outcome = stage(buffer, await session.repository.exportAll(), saved);
+          const outcome = await stage(buffer, session.repository, saved);
           const { sourceProjectId } = session.scope;
           const reanchorTo = await Promise.all(
             outcome.changedBooks.map(
@@ -1241,7 +1240,7 @@ export function sessionEditHandlers({
                 (await getVerseBook(sourceProjectId, bookCode)) ?? missingBook(bookCode),
             ),
           );
-          return { reanchorTo, hasFreeTranslations: outcome.hasFreeTranslations };
+          return { reanchorTo, reportsFreeTranslations: true };
         },
         {
           unsavedMark: ({ scope }) => unsavedMark(scope.interlinearProjectId !== undefined),
@@ -1276,7 +1275,7 @@ export function sessionEditHandlers({
     return runDiscard(
       { sessionId, changeId, step: { summary: { kind: 'discardBook', book: bookCode } } },
       'discardBook',
-      (buffer, stored, saved) => discardCommands.discardBook(buffer, stored, bookCode, saved),
+      (buffer, reader, saved) => discardCommands.discardBook(buffer, reader, bookCode, saved),
       (savesToProject) => (savesToProject ? 'keep' : undefined),
     );
   }

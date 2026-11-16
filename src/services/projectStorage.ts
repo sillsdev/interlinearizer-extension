@@ -1166,6 +1166,7 @@ export function openDraftRepository(
     apply: (changes, options) => counted((repository) => repository.apply(changes, options)),
     getWholeDraft: () => queued((repository) => repository.getWholeDraft()),
     getScope: () => queued((repository) => repository.getScope()),
+    getDraftState: () => queued((repository) => repository.getDraftState()),
     getTokenAnalyses: (ids) => queued((repository) => repository.getTokenAnalyses(ids)),
     getPhraseAnalyses: (ids) => queued((repository) => repository.getPhraseAnalyses(ids)),
     getSegmentAnalyses: (ids) => queued((repository) => repository.getSegmentAnalyses(ids)),
@@ -1178,6 +1179,7 @@ export function openDraftRepository(
     findLinksInBooks: (bookCodes, statuses) =>
       queued((repository) => repository.findLinksInBooks(bookCodes, statuses)),
     findLinkedBooks: () => queued((repository) => repository.findLinkedBooks()),
+    findUnlinkedPayloads: () => queued((repository) => repository.findUnlinkedPayloads()),
     findTokenAnalysesByForm: (normalizedForms) =>
       queued((repository) => repository.findTokenAnalysesByForm(normalizedForms)),
     findPhraseAnalysesByForm: (normalizedForms) =>

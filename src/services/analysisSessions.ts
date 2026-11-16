@@ -14,7 +14,6 @@ import type { CommandReply } from '../types/command-reply';
 import type { EditStep } from '../types/edit-step';
 import { booksMissingFrom } from '../utils/analysis-book';
 import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
-import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { perfTimeAsync } from '../utils/perf-marks';
 import { missingBook } from '../utils/reanchor-analysis';
 import { isEmptyDelta } from '../utils/segmentation';
@@ -83,8 +82,11 @@ export type SessionEditOptions = {
 export type EditOutcome = {
   /** The books to re-anchor the draft to, with the staged changes in place. */
   reanchorTo?: readonly ReadonlyBook[];
-  /** Whether any segment of the draft that a discard leaves has a free translation. */
-  hasFreeTranslations?: boolean;
+  /**
+   * Asks the reply to say whether any segment of the draft that the edit leaves has a free
+   * translation.
+   */
+  reportsFreeTranslations?: boolean;
   /** The token analyses that clearing glosses left empty, and so removed. */
   emptiedAnalysisIds?: string[];
   /** Where a catalog edit left the record it was aimed at. */
@@ -97,10 +99,13 @@ export type EditOutcome = {
 
 /** What a session answers an edit with. */
 export type EditReply = CommandReply &
-  Pick<
-    EditOutcome,
-    'hasFreeTranslations' | 'emptiedAnalysisIds' | 'outcome' | 'glossRetag' | 'deletedText'
-  >;
+  Pick<EditOutcome, 'emptiedAnalysisIds' | 'outcome' | 'glossRetag' | 'deletedText'> & {
+    /**
+     * Whether any segment of the draft that the edit leaves has a free translation. Present only
+     * when the edit's command asks for it.
+     */
+    hasFreeTranslations?: boolean;
+  };
 
 /** An open session, as seen by the commands sent to it. */
 export type Session = {
@@ -300,7 +305,7 @@ async function applyStaged(
 }
 
 async function noteIfEmpty(session: Session): Promise<void> {
-  if (isEmptyDraft(await session.repository.getWholeDraft())) session.history.noteEmpty();
+  if ((await session.repository.getDraftState()).empty) session.history.noteEmpty();
 }
 
 /** Runs `step`, calling `markApplied` when the session's history applied anything meanwhile. */
@@ -375,9 +380,8 @@ export class AnalysisSessions {
    * has no project of the id named, the session opens on the draft, which then saves to no project.
    * A draft that holds analysis is then marked unsaved, unless the missing project was an import,
    * which the draft never saved to. Opening closes the source's earlier session, if any. The new
-   * session starts on what storage holds, with nothing to undo. Its first command waits while the
-   * repository builds its indexes. Opening reads none of the source's text; {@link startTextRead}
-   * starts that.
+   * session starts on what storage holds, with nothing to undo. Opening builds the repository's
+   * indexes. It reads none of the source's text; {@link startTextRead} starts that.
    *
    * The session starts on the opened draft's first analysis language. When the draft lists none, it
    * starts on the platform's first interface language, or {@link UNDETERMINED_LANGUAGE} when the
@@ -413,9 +417,9 @@ export class AnalysisSessions {
         scope.kind === 'pt9Import'
           ? this.host.openPt9ImportRepository(scope.interlinearProjectId)
           : this.host.openDraftRepository(sourceProjectId);
-      const { draft: opened, unreadableBooks } = await repository.exportAll();
+      const opened = await repository.getDraftState();
       // Kept unsaved, because the draft is all that is left of the missing project's work.
-      if (!found && importProjectId === undefined && !isEmptyDraft(opened) && !opened.dirty)
+      if (!found && importProjectId === undefined && !opened.empty && !opened.dirty)
         await repository.apply({ intent: 'detachFromProject' });
       const session: Session = {
         id: crypto.randomUUID(),
@@ -423,7 +427,7 @@ export class AnalysisSessions {
         repository,
         history: new EditHistory(repository, reanchorRestored(repository)),
         analysisLanguage:
-          opened.analysisLanguages[0] ??
+          (await repository.getScope()).analysisLanguages[0] ??
           ((await this.host.getInterfaceLanguages())[0] || UNDETERMINED_LANGUAGE),
       };
       const entry: OpenSession = {
@@ -437,17 +441,15 @@ export class AnalysisSessions {
         deliveryCounts: new Map(),
         readPasses: Promise.resolve(),
       };
-      if (isEmptyDraft(opened)) session.history.noteEmpty();
+      if (opened.empty) session.history.noteEmpty();
       this.sessions.set(session.id, entry);
       this.sessionsBySource.set(sourceProjectId, entry);
-      // Builds the indexes ahead of the first command; the next lookup retries a failed build.
-      this.run(session.id, () => repository.getScope()).catch(() => {});
       return {
         sessionId: session.id,
         readOnly: repository.capabilities.readOnly,
-        hasFreeTranslations: analysisHasFreeTranslations(opened.analysis),
+        hasFreeTranslations: opened.hasFreeTranslations,
         projectMissing: !found,
-        unreadableBooks,
+        unreadableBooks: opened.unreadableBooks,
       };
     });
   }
@@ -602,8 +604,15 @@ export class AnalysisSessions {
             step,
           };
           const buffer = new ChangeBuffer(session.repository);
-          const { reanchorTo, ...extra } =
+          const { reanchorTo, reportsFreeTranslations, ...outcome } =
             (await perfTimeAsync(`${intent}:stage`, () => command(buffer, session))) ?? {};
+          const freeTranslations = async () =>
+            reportsFreeTranslations
+              ? {
+                  hasFreeTranslations: (await session.repository.getDraftState())
+                    .hasFreeTranslations,
+                }
+              : {};
           const staged = buffer.toChangeSet(intent);
           if (!isEmptyChangeSet(staged)) {
             const applied = await perfTimeAsync(`${intent}:apply`, () =>
@@ -612,12 +621,18 @@ export class AnalysisSessions {
             const answered = await perfTimeAsync(`${intent}:reply`, () =>
               replyTo(this.host, session, applied, changeId),
             );
-            return { ...answered, ...(applied.step && { step: applied.step }), ...extra };
+            return {
+              ...answered,
+              ...(applied.step && { step: applied.step }),
+              ...outcome,
+              ...(await freeTranslations()),
+            };
           }
           if (editOptions.unsavedMark === 'clear') {
             await session.history.markRestoredClean();
             await noteIfEmpty(session);
           }
+          const extra = { ...outcome, ...(await freeTranslations()) };
           return {
             changeId,
             changes: staged,
@@ -752,10 +767,9 @@ export class AnalysisSessions {
   detachFromProject(sessionId: string): Promise<void> {
     return this.runEdit(sessionId, async (session) => {
       session.scope = { kind: 'draft', sourceProjectId: session.scope.sourceProjectId };
-      const draft = await session.repository.getWholeDraft();
-      const empty = isEmptyDraft(draft);
-      session.history.forgetSaves(empty && !draft.dirty);
-      if (!empty && !draft.dirty) await session.repository.apply({ intent: 'detachFromProject' });
+      const { empty, dirty } = await session.repository.getDraftState();
+      session.history.forgetSaves(empty && !dirty);
+      if (!empty && !dirty) await session.repository.apply({ intent: 'detachFromProject' });
     });
   }
 

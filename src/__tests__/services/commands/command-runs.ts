@@ -237,6 +237,8 @@ export type DiscardCommandOutcome = CommandOutcome & {
   resultSegmentation: SegmentationDelta | undefined;
   /** What the command told its caller. */
   commandOutcome: DiscardOutcome;
+  /** Whether any segment of the draft that the discard leaves has a free translation. */
+  hasFreeTranslations: boolean;
   /** What the run leaves stored under each unreadable book's analysis key. */
   unreadableShards: (string | undefined)[];
 };
@@ -260,15 +262,15 @@ export async function runDiscardCommand(
   const savedCopy = (): SavedProject | undefined =>
     saved && { ...JSON.parse(JSON.stringify(saved)), analysisLanguages: ['en'] };
   const repository = new DraftRepository(host.storage, 'src', logger);
-  const stored = await repository.exportAll();
   const buffer = new ChangeBuffer(repository);
   const commandOutcome =
     edit.kind === 'book'
-      ? discardBook(buffer, stored, edit.bookCode, savedCopy())
-      : discardAll(buffer, stored, savedCopy());
+      ? await discardBook(buffer, repository, edit.bookCode, savedCopy())
+      : await discardAll(buffer, repository, savedCopy());
   const changes = buffer.toChangeSet('discard');
   if (!isEmptyChangeSet(changes)) await repository.apply(changes);
   expect(await repository.checkIndexes()).toStrictEqual([]);
+  const { hasFreeTranslations } = await repository.getDraftState();
   const { draft } = await new DraftRepository(host.storage, 'src', logger).exportAll();
 
   return {
@@ -276,6 +278,7 @@ export async function runDiscardCommand(
     changes,
     resultSegmentation: draft.segmentation,
     commandOutcome,
+    hasFreeTranslations,
     unreadableShards: (seed.unreadableBooks ?? []).map((bookCode) =>
       host.records.get(draftAnalysisKey('src', bookCode)),
     ),

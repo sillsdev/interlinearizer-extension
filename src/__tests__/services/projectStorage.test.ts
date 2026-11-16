@@ -2055,6 +2055,16 @@ describe('projectStorage', () => {
         (r: AnalysisRepository) => r.getScope().then(({ analysisLanguages }) => analysisLanguages),
         0,
       ],
+      [
+        'getDraftState',
+        (r: AnalysisRepository) => r.getDraftState().then(({ unreadableBooks }) => unreadableBooks),
+        0,
+      ],
+      [
+        'findUnlinkedPayloads',
+        (r: AnalysisRepository) => r.findUnlinkedPayloads().then((p) => p.tokenAnalyses),
+        0,
+      ],
     ])('answers %s from the stored draft', async (_name, lookup, count) => {
       await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
 

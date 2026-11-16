@@ -399,6 +399,10 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     return this.current;
   }
 
+  protected unreadableBooks(): string[] {
+    return [...this.unreadableShards].sort();
+  }
+
   /**
    * Saves `draft` as {@link startOver} describes.
    *

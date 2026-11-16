@@ -3,6 +3,7 @@
 import type { TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { FIXTURE_STAMPS } from '../test-helpers';
 import {
+  byPreference,
   preferredLink,
   preferredLinkByKey,
   preferredPayload,
@@ -42,6 +43,23 @@ describe('prefersLink', () => {
 
   it('does not prefer the larger id between links written together', () => {
     expect(prefersLink(link('b', EARLIER), link('a', EARLIER))).toBe(false);
+  });
+});
+
+describe('byPreference', () => {
+  it('sorts the preferred link first whatever the order', () => {
+    const latest = link('b', LATER);
+    const smallest = link('a', EARLIER);
+    const largest = link('c', EARLIER);
+
+    expect([largest, smallest, latest].sort(byPreference)).toEqual([latest, smallest, largest]);
+    expect([latest, largest, smallest].sort(byPreference)).toEqual([latest, smallest, largest]);
+  });
+
+  it('ranks a link level with itself', () => {
+    const only = link('a', EARLIER);
+
+    expect(byPreference(only, only)).toBe(0);
   });
 });
 

@@ -1001,11 +1001,7 @@ async function openSession({
   }
 }
 
-/**
- * Closes a session once the commands sent to it settle.
- *
- * @throws Whatever closing the session throws. The error is logged before rethrowing.
- */
+/** @throws Whatever closing the session throws. The error is logged before rethrowing. */
 async function closeSession({ sessionId }: ArgsOf<'interlinearizer.closeSession'>): Promise<void> {
   try {
     await sessions.close(sessionId);

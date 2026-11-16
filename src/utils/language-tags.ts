@@ -76,6 +76,12 @@ export function languageNameForTag(tag: string, locales?: readonly string[]): st
  */
 const PRIVATE_USE_TAG = /^x(-[a-z0-9]{1,8})+$/i;
 
+/**
+ * The longest language subtag a typed code may start with: an ISO 639 code. BCP 47 also allows five
+ * to eight letters, for languages registered by name, but none are in use.
+ */
+const MAX_LANGUAGE_SUBTAG_LENGTH = 3;
+
 /** `tag` in its canonical form, or as it is when it isn't a well-formed BCP 47 tag. */
 function canonicalOrSelf(tag: string): string {
   try {
@@ -113,13 +119,15 @@ function inStandardCase(tag: string): string {
  * replaced by its preferred code.
  *
  * @returns The tag, or `undefined` when the input is blank, or is neither a known tag nor a
- *   well-formed BCP 47 tag.
+ *   well-formed BCP 47 tag whose language subtag is at most {@link MAX_LANGUAGE_SUBTAG_LENGTH}
+ *   letters.
  */
 export function readLanguageCode(input: string, knownTags: readonly string[]): string | undefined {
   const typed = input.trim();
   if (typed === '') return undefined;
   const known = knownTags.find((tag) => tag.toLowerCase() === typed.toLowerCase());
   if (known !== undefined) return known;
+  if (typed.split('-')[0].length > MAX_LANGUAGE_SUBTAG_LENGTH) return undefined;
   let canonical: string | undefined;
   try {
     [canonical] = Intl.getCanonicalLocales(typed);

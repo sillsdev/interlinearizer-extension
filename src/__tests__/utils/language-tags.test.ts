@@ -100,10 +100,17 @@ describe('readLanguageCode', () => {
     expect(readLanguageCode('X-Foo-Bar', [])).toBe('x-foo-bar');
   });
 
-  it.each(['', '   ', 'not a tag', 'en_US', 'x-', 'x-toolongtag'])(
-    'reads %p as no code',
-    (input) => {
-      expect(readLanguageCode(input, [])).toBeUndefined();
-    },
-  );
+  it.each([
+    '',
+    '   ',
+    'not a tag',
+    'en_US',
+    'x-',
+    'x-toolongtag',
+    'aaaa',
+    'aaaaa',
+    'abcdefgh-Latn',
+  ])('reads %p as no code', (input) => {
+    expect(readLanguageCode(input, [])).toBeUndefined();
+  });
 });

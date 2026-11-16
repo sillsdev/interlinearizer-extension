@@ -90,7 +90,7 @@ Everything else lives in the code's doc comments and tests. A feature rarely nee
 
 [Interlinearizer](src/components/Interlinearizer.tsx) — renders the interlinear view from the loaded book data.
 
-The main bundle inlines the built WebView through `?inline` imports, so the WebView build runs first ([webpack.config.ts](webpack.config.ts)). Otherwise main bundles a stale or missing WebView.
+The main bundle inlines the built WebView through `?inline` imports, so the main build depends on the WebView build ([webpack.config.main.ts](webpack/webpack.config.main.ts)). Otherwise main bundles a stale or missing WebView.
 
 The WebView root component is assigned to `globalThis.webViewComponent` (not exported) — this is the PAPI WebView contract. Tests must `require()` the module and read `globalThis.webViewComponent` to get the component.
 
@@ -124,7 +124,7 @@ Host commands live in [src/services/commands/](src/services/commands/), one modu
 - [sessionEditHandlers](src/services/sessionEditHandlers.ts): edits and their previews.
 - [sessionCatalogHandlers](src/services/sessionCatalogHandlers.ts): the analysis catalog, read through [catalogHooks](src/cache/catalogHooks.ts).
 - [sessionConcordanceHandlers](src/services/sessionConcordanceHandlers.ts): the concordance, read through [concordanceHooks](src/cache/concordanceHooks.ts).
-- [sessionPages](src/services/sessionPages.ts): outlines, segment pages, and stale summaries, which `main.ts` serves directly; stale summaries are read through [staleHooks](src/cache/staleHooks.ts).
+- [sessionPages](src/services/sessionPages.ts): outlines, segment pages, and stale summaries. `main.ts` serves all three directly, and stale summaries are read through [staleHooks](src/cache/staleHooks.ts).
 
 ### Components
 

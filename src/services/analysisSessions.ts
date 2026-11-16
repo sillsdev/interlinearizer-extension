@@ -333,6 +333,10 @@ type OpenSession = {
    * A book that opened with no text maps to `''`.
    */
   anchoredVersions: Map<string, string>;
+  /** The `textVersion` of the latest text passed in for each book, whether read or edited. */
+  deliveredVersions: Map<string, string>;
+  /** Settles once every pass of the whole-text read sent so far has settled; never rejects. */
+  readPasses: Promise<void>;
   /** The start of the source's whole-text read, set from the session's first ask for it. */
   textRead?: Promise<void>;
 };
@@ -422,6 +426,8 @@ export class AnalysisSessions {
         replies: new Map(),
         editPasses: new Map(),
         anchoredVersions: new Map(),
+        deliveredVersions: new Map(),
+        readPasses: Promise.resolve(),
       };
       if (isEmptyDraft(opened)) session.history.noteEmpty();
       this.sessions.set(session.id, entry);
@@ -755,23 +761,36 @@ export class AnalysisSessions {
    * the book to the same text. When `edited`, what the pass changes is reported with the edit to
    * the book's text, by {@link reportScriptureEdit}, rather than on its own.
    *
+   * A pass not `edited` is the whole-text read's. It joins the session's turn only once the read's
+   * pass before it settles, so that a command sent meanwhile waits for one pass at most. It does
+   * nothing when a later text of the book has been passed since, or when the session has closed.
+   *
    * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
    * @throws Whatever describing the applied changes throws; the changes stay applied.
    */
   reanchorBook(sourceProjectId: string, book: ReadonlyBook, edited = false): Promise<void> {
-    return this.runOnWritable(
-      sourceProjectId,
-      async ({ session, editPasses, anchoredVersions }) => {
+    const entry = this.writableEntry(sourceProjectId);
+    if (!entry) return Promise.resolve();
+    const { session, editPasses, anchoredVersions, deliveredVersions } = entry;
+    deliveredVersions.set(book.bookRef, book.textVersion);
+    if (edited) {
+      return this.run(session.id, async () => {
         if (anchoredVersions.get(book.bookRef) === book.textVersion) return;
-        let unreported: AnalysisChange[] | undefined;
-        if (edited) {
-          unreported = editPasses.get(book.bookRef) ?? [];
-          editPasses.set(book.bookRef, unreported);
-        }
+        const unreported = editPasses.get(book.bookRef) ?? [];
+        editPasses.set(book.bookRef, unreported);
         await reanchorNow(this.host, session, book, unreported);
         anchoredVersions.set(book.bookRef, book.textVersion);
-      },
-    );
+      });
+    }
+    return this.runReadPass(entry, async () => {
+      if (
+        deliveredVersions.get(book.bookRef) !== book.textVersion ||
+        anchoredVersions.get(book.bookRef) === book.textVersion
+      )
+        return;
+      await reanchorNow(this.host, session, book);
+      anchoredVersions.set(book.bookRef, book.textVersion);
+    });
   }
 
   /**
@@ -841,13 +860,17 @@ export class AnalysisSessions {
 
   /**
    * Re-anchors the draft of the source project's session, as {@link reanchorBook} does, to each book
-   * the text lacks. A book the text lacks is a linked book that `textBookIds` does not list.
+   * the text lacks. A book the text lacks is a linked book that `textBookIds` does not list. The
+   * pass is the whole-text read's, so it waits as {@link reanchorBook} describes.
    *
    * @throws Whatever reading the draft or applying the changes throws; the books before stay
    *   re-anchored.
    */
   reanchorMissingBooks(sourceProjectId: string, textBookIds: readonly string[]): Promise<void> {
-    return this.runOnWritable(sourceProjectId, async ({ session, anchoredVersions }) => {
+    const entry = this.writableEntry(sourceProjectId);
+    if (!entry) return Promise.resolve();
+    const { session, anchoredVersions } = entry;
+    return this.runReadPass(entry, async () => {
       const missing = booksMissingFrom(await session.repository.findLinkedBooks(), textBookIds);
       await missing.reduce<Promise<void>>(async (previous, bookCode) => {
         await previous;
@@ -858,11 +881,13 @@ export class AnalysisSessions {
   }
 
   /**
-   * Settles once every command sent so far to the source project's session has settled, at once
-   * when the source has no session open. Never rejects.
+   * Settles once every command and pass of the whole-text read sent so far to the source project's
+   * session has settled, at once when the source has no session open. Never rejects.
    */
   async settled(sourceProjectId: string): Promise<void> {
-    await this.sessionsBySource.get(sourceProjectId)?.queue;
+    const entry = this.sessionsBySource.get(sourceProjectId);
+    await entry?.readPasses;
+    await entry?.queue;
   }
 
   /** Moves through the session's history by `move`, as {@link undo} describes. */
@@ -910,14 +935,22 @@ export class AnalysisSessions {
     return reply;
   }
 
-  /** Runs `command` on the source project's session unless it has none open or only a read-only one. */
-  private runOnWritable(
-    sourceProjectId: string,
-    command: (entry: OpenSession) => Promise<void>,
-  ): Promise<void> {
+  /** The source project's open session, unless it has none or only a read-only one. */
+  private writableEntry(sourceProjectId: string): OpenSession | undefined {
     const entry = this.sessionsBySource.get(sourceProjectId);
-    if (!entry || entry.session.repository.capabilities.readOnly) return Promise.resolve();
-    return this.run(entry.session.id, () => command(entry));
+    return entry && !entry.session.repository.capabilities.readOnly ? entry : undefined;
+  }
+
+  /**
+   * Runs `pass` in the session's turn once the whole-text read's passes sent before have settled.
+   * Skips it when the session has closed by then.
+   */
+  private runReadPass(entry: OpenSession, pass: () => Promise<void>): Promise<void> {
+    const result = entry.readPasses.then(() =>
+      entry.state === 'open' ? this.run(entry.session.id, pass) : undefined,
+    );
+    entry.readPasses = result.catch(() => {});
+    return result;
   }
 
   /**

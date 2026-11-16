@@ -367,18 +367,17 @@ async function measureAfterRead(
 
     await textReadStatus(page, projectId);
     if (!SKIP_SESSION_READS) {
-      // Only edits that the read outlasts are counted, so a quick read yields fewer samples.
+      // Only edits committed while the read runs are counted, so a quick read yields fewer samples.
       const editsDuringRead = new Samples();
       for (let run = 0; run < RUNS; run += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        if (await isTextRead(page, projectId)) break;
         // eslint-disable-next-line no-await-in-loop
         await clearMeasures(frame);
         // eslint-disable-next-line no-await-in-loop
         await editGloss(frame, run, `read-${run}`);
         // eslint-disable-next-line no-await-in-loop
-        const measures = await waitForMeasure(frame, 'gloss-render');
-        // eslint-disable-next-line no-await-in-loop
-        if (await isTextRead(page, projectId)) break;
-        editsDuringRead.add(measures, ['gloss-render']);
+        editsDuringRead.add(await waitForMeasure(frame, 'gloss-render'), ['gloss-render']);
       }
       result.editDuringRead = editsDuringRead.summary();
       await readWholeText(page, projectId);

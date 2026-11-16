@@ -68,7 +68,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'app.scriptureSave':
     "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
   'app.editDuringRead':
-    "One gloss committed while the session's whole-text read runs, started as a feature needing the text would start it. Only edits that the read outlasts are counted.",
+    "One gloss committed while the session's whole-text read runs, started as a feature needing the text would start it. Only edits committed before the read finishes are counted.",
   'app.editAfterRead': "As the edit above, once the session's whole-text read has finished.",
   'app.scriptureSaveAfterRead':
     "As the Scripture save above, with the session's whole-text read finished, so the host watches every book.",

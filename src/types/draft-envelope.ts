@@ -1,8 +1,9 @@
-import type { DraftEnvelope, DraftProject } from 'interlinearizer';
+import type { DraftEnvelope } from 'interlinearizer';
+import type { ScopeRecord } from './analysis-repository';
 
-/** The envelope of `draft`: every field but its analysis and boundaries. */
-export function envelopeOf(draft: DraftProject): DraftEnvelope {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave them out
-  const { analysis, segmentation, ...envelope } = draft;
-  return envelope;
+/** The envelope of the draft whose own record is `scope`: every field but its boundaries. */
+export function envelopeOf(scope: ScopeRecord, dirty: boolean): DraftEnvelope {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave it out
+  const { segmentation, ...envelope } = scope;
+  return { ...envelope, dirty };
 }

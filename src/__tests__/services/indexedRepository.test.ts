@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import type { TextAnalysis } from 'interlinearizer';
+import type { SegmentationDelta, TextAnalysis } from 'interlinearizer';
 import { AnalysisIndex } from '../../services/analysisIndex';
 import { type IndexedDraft, IndexedRepository } from '../../services/indexedRepository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
@@ -12,10 +12,15 @@ class StubRepository extends IndexedRepository {
 
   private readonly indexedDraft: IndexedDraft;
 
-  constructor(records: TextAnalysis, keep: 'kept' | 'none') {
+  constructor(records: TextAnalysis, keep: 'kept' | 'none', segmentation?: SegmentationDelta) {
     super();
     this.indexedDraft = {
-      draft: { ...emptyDraft('src'), analysisLanguages: ['en'], analysis: records },
+      draft: {
+        ...emptyDraft('src'),
+        analysisLanguages: ['en'],
+        analysis: records,
+        ...(segmentation && { segmentation }),
+      },
       index: new AnalysisIndex(records),
     };
     this.kept = keep === 'kept' ? this.indexedDraft : undefined;
@@ -27,6 +32,11 @@ class StubRepository extends IndexedRepository {
 
   protected keptIndex(): IndexedDraft | undefined {
     return this.kept;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this -- the base class's method, answered with a constant
+  protected unreadableBooks(): string[] {
+    return ['EXO'];
   }
 }
 
@@ -84,6 +94,55 @@ describe('IndexedRepository', () => {
       modelVersion: emptyDraft('src').modelVersion,
       analysisLanguages: ['en'],
     });
+  });
+
+  it("reports the draft's state, with the books its last load could not read", async () => {
+    const records: TextAnalysis = {
+      ...analysis(),
+      segmentAnalyses: [
+        { id: 'sa', ...FIXTURE_STAMPS, surfaceText: 'In', freeTranslation: { en: 'At the start' } },
+      ],
+    };
+
+    await expect(new StubRepository(records, 'none').getDraftState()).resolves.toStrictEqual({
+      dirty: false,
+      empty: false,
+      hasFreeTranslations: true,
+      unreadableBooks: ['EXO'],
+    });
+  });
+
+  it('reports a draft with no records and no boundaries as empty', async () => {
+    await expect(
+      new StubRepository(emptyAnalysis(), 'none').getDraftState(),
+    ).resolves.toMatchObject({ empty: true });
+  });
+
+  it('reports a draft that only moves boundaries as not empty', async () => {
+    const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+
+    await expect(
+      new StubRepository(emptyAnalysis(), 'none', segmentation).getDraftState(),
+    ).resolves.toMatchObject({ empty: false });
+  });
+
+  it('finds the payloads no link names', async () => {
+    const records: TextAnalysis = {
+      ...analysis(),
+      tokenAnalyses: [
+        ...analysis().tokenAnalyses,
+        { id: 'ta-in', ...FIXTURE_STAMPS, surfaceText: 'in' },
+      ],
+      tokenAnalysisLinks: [makeTokenLink('ta-in', 'GEN 1:1:0')],
+    };
+
+    await expect(new StubRepository(records, 'none').findUnlinkedPayloads()).resolves.toStrictEqual(
+      {
+        tokenAnalyses: analysis().tokenAnalyses,
+        phraseAnalyses: [],
+        segmentAnalyses: [],
+      },
+    );
   });
 
   it('reports nothing while it keeps no index', async () => {

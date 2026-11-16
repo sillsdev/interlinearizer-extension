@@ -10,10 +10,12 @@ import type {
 } from 'interlinearizer';
 import type {
   AnalysisLinks,
+  AnalysisPayloads,
   AnalysisRepository,
   ApplyResult,
   ChangeSet,
   DraftExport,
+  DraftState,
   IndexDifference,
   RepositoryCapabilities,
   ScopeRecord,
@@ -86,6 +88,10 @@ export class CSharpRepository implements AnalysisRepository {
     return this.notStored('getScope');
   }
 
+  getDraftState(): Promise<DraftState> {
+    return this.notStored('getDraftState');
+  }
+
   getTokenAnalyses(ids: string[]): Promise<TokenAnalysis[]> {
     return this.command('getTokenAnalyses', { ids });
   }
@@ -122,6 +128,10 @@ export class CSharpRepository implements AnalysisRepository {
 
   findLinkedBooks(): Promise<string[]> {
     return this.command('findLinkedBooks', {});
+  }
+
+  findUnlinkedPayloads(): Promise<AnalysisPayloads> {
+    return this.notStored('findUnlinkedPayloads');
   }
 
   findTokenAnalysesByForm(normalizedForms: string[]): Promise<TokenAnalysis[]> {

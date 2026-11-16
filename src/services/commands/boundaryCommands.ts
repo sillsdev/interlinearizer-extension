@@ -13,10 +13,7 @@ import { splitPhrase } from './phraseCommands';
 
 /** What every boundary edit needs. */
 type BoundaryEdit = {
-  /**
-   * The book the boundary falls in, tokenized one segment per verse, as the text is now. The edit
-   * reads it without changing it.
-   */
+  /** The book the boundary falls in, tokenized one segment per verse, as the text is now. */
   verseBook: ReadonlyBook;
 };
 

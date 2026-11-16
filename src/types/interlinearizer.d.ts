@@ -1455,12 +1455,13 @@ declare module 'interlinearizer' {
     frontMatter?: FrontMatterParagraph[];
   }
 
-  /** `T` with every field at every depth readonly, arrays included. */
-  export type DeepReadonly<T> = T extends readonly (infer U)[]
-    ? readonly DeepReadonly<U>[]
-    : T extends object
-      ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
-      : T;
+  /**
+   * `T` with every field at every depth readonly, arrays and tuples included. For plain data only:
+   * functions lose their call signatures, and a `Map` or `Set` stays mutable through its methods.
+   */
+  export type DeepReadonly<T> = T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T;
 
   /** A {@link Book} that is shared with its other holders, so nothing in it may be changed. */
   export type ReadonlyBook = DeepReadonly<Book>;

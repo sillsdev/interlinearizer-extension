@@ -13,16 +13,16 @@ import { effectiveStarts, isDefaultSegmentationForBook } from '../../utils/segme
 /** Separator inserted between two verses' baseline text when they are merged into one segment. */
 const MERGE_SEPARATOR = ' ';
 
-/** A token paired with the original verse {@link Segment} it came from. */
+/** A token paired with the original verse {@link ReadonlySegment} it came from. */
 type SourcedToken = { token: ReadonlyToken; verse: ReadonlySegment };
 
 /**
- * Rebuilds one custom {@link Segment} from a run of tokens that may span multiple original verses.
- * The new `baselineText` is each contributing verse's text spliced to its covered span, joined by
- * {@link MERGE_SEPARATOR} between verses; every token's char offset is shifted into the new string
- * while its `ref` and `surfaceText` are preserved. One `verseStarts` entry is emitted per
- * contributing verse, at its offset in the concatenated baseline, carrying that verse's rendered
- * number (a split's later piece keeps its source verse's number).
+ * Rebuilds one custom {@link ReadonlySegment} from a run of tokens that may span multiple original
+ * verses. The new `baselineText` is each contributing verse's text spliced to its covered span,
+ * joined by {@link MERGE_SEPARATOR} between verses; every token's char offset is shifted into the
+ * new string while its `ref` and `surfaceText` are preserved. One `verseStarts` entry is emitted
+ * per contributing verse, at its offset in the concatenated baseline, carrying that verse's
+ * rendered number (a split's later piece keeps its source verse's number).
  *
  * @param run - The run's tokens in document order, each tagged with its source verse. Non-empty.
  */

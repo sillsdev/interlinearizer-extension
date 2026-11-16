@@ -1,11 +1,11 @@
 /// <reference types="jest" />
 
 import { render } from '@testing-library/react';
-import { useStaleSummary } from '../../cache/catalogHooks';
+import { useStaleSummary } from '../../cache/staleHooks';
 import StaleAnalysesReporter from '../../components/StaleAnalysesReporter';
 import type { StaleSummary } from '../../types/segment-pages';
 
-jest.mock('../../cache/catalogHooks', () => ({
+jest.mock('../../cache/staleHooks', () => ({
   __esModule: true,
   useStaleSummary: jest.fn(),
 }));

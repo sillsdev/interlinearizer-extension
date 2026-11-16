@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { useStaleSummary } from '../cache/catalogHooks';
+import { useStaleSummary } from '../cache/staleHooks';
 
 /** The stale analyses a loaded book holds, each named by a key that holds while it stays stale. */
 export type StaleAnalysesReport = Readonly<{

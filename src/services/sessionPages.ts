@@ -1,4 +1,5 @@
 import type {
+  DraftEnvelope,
   PhraseAnalysisLink,
   ReadonlyBook,
   ReadonlySegment,
@@ -17,6 +18,7 @@ import type {
   StaleSummary,
 } from '../types/segment-pages';
 import { isWordToken } from '../types/type-guards';
+import { envelopeOf } from '../types/draft-envelope';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { buildBookOutline } from '../utils/book-outline';
@@ -206,6 +208,25 @@ export async function readBookOutline(
       hasStaleFreeTranslation: translationSegments.has(segment.id),
     })),
   };
+}
+
+/**
+ * Reads the draft's envelope: the draft without its analysis or boundaries. When the draft lists no
+ * analysis language, the envelope lists `analysisLanguage`.
+ *
+ * @throws Whatever the repository's lookups throw.
+ */
+export async function readDraftEnvelope(
+  repository: AnalysisRepository,
+  analysisLanguage: string,
+): Promise<DraftEnvelope> {
+  const envelope = envelopeOf(
+    await repository.getScope(),
+    (await repository.getDraftState()).dirty,
+  );
+  return envelope.analysisLanguages.length > 0
+    ? envelope
+    : { ...envelope, analysisLanguages: [analysisLanguage] };
 }
 
 /**

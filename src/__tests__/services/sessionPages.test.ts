@@ -5,6 +5,7 @@ import { resegmentBook } from 'parsers/papi/resegmentBook';
 import { DraftRepository } from '../../services/draftRepository';
 import {
   readBookOutline,
+  readDraftEnvelope,
   readPoolBuckets,
   readSegmentPage,
   readStaleSummary,
@@ -255,6 +256,37 @@ describe('readBookOutline stale flags', () => {
       false,
       true,
     ]);
+  });
+});
+
+describe('readDraftEnvelope', () => {
+  it("lists the draft's own record without its boundaries, with its unsaved mark", async () => {
+    const { storage } = memoryStorage();
+    const repository = new DraftRepository(storage, 'src', silentLogger());
+    await seedRepository(repository, {
+      ...emptyDraft('src'),
+      analysisLanguages: ['en'],
+      dirty: true,
+      segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+    });
+
+    const envelope = await readDraftEnvelope(repository, 'fr');
+
+    expect(envelope).toMatchObject({
+      sourceProjectId: 'src',
+      analysisLanguages: ['en'],
+      dirty: true,
+    });
+    expect(envelope).not.toHaveProperty('segmentation');
+    expect(envelope).not.toHaveProperty('analysis');
+  });
+
+  it('lists the given language for a draft that lists none', async () => {
+    const repository = await repositoryOver();
+
+    await expect(readDraftEnvelope(repository, 'fr')).resolves.toMatchObject({
+      analysisLanguages: ['fr'],
+    });
   });
 });
 

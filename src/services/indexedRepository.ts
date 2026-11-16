@@ -9,11 +9,15 @@ import type {
 } from 'interlinearizer';
 import type {
   AnalysisLinks,
+  AnalysisPayloads,
   AnalysisRepository,
+  DraftState,
   IndexDifference,
   ScopeRecord,
 } from '../types/analysis-repository';
+import { isEmptyDraft } from '../utils/empty-draft';
 import { scopeRecordOf } from '../utils/change-set';
+import { analysisHasFreeTranslations } from '../utils/free-translations';
 import { jsonCopy } from '../utils/json-copy';
 import type { AnalysisIndex } from './analysisIndex';
 
@@ -28,6 +32,7 @@ export abstract class IndexedRepository implements Pick<
   AnalysisRepository,
   | 'getWholeDraft'
   | 'getScope'
+  | 'getDraftState'
   | 'getTokenAnalyses'
   | 'getPhraseAnalyses'
   | 'getSegmentAnalyses'
@@ -37,6 +42,7 @@ export abstract class IndexedRepository implements Pick<
   | 'findLinksToAnalyses'
   | 'findLinksInBooks'
   | 'findLinkedBooks'
+  | 'findUnlinkedPayloads'
   | 'findTokenAnalysesByForm'
   | 'findPhraseAnalysesByForm'
   | 'countApprovals'
@@ -48,6 +54,16 @@ export abstract class IndexedRepository implements Pick<
 
   async getScope(): Promise<ScopeRecord> {
     return jsonCopy(scopeRecordOf((await this.indexed()).draft));
+  }
+
+  async getDraftState(): Promise<DraftState> {
+    const { draft } = await this.indexed();
+    return {
+      dirty: draft.dirty,
+      empty: isEmptyDraft(draft),
+      hasFreeTranslations: analysisHasFreeTranslations(draft.analysis),
+      unreadableBooks: this.unreadableBooks(),
+    };
   }
 
   getTokenAnalyses(ids: string[]): Promise<TokenAnalysis[]> {
@@ -96,6 +112,10 @@ export abstract class IndexedRepository implements Pick<
     return this.query((index) => index.findPhraseAnalysesByForm(normalizedForms));
   }
 
+  findUnlinkedPayloads(): Promise<AnalysisPayloads> {
+    return this.query((index) => index.unlinkedPayloads());
+  }
+
   countApprovals(analysisIds: string[]): Promise<Record<string, number>> {
     return this.query((index) => index.countApprovals(analysisIds));
   }
@@ -123,4 +143,7 @@ export abstract class IndexedRepository implements Pick<
 
   /** The kept index and the draft it is kept over, or `undefined` when none is kept. */
   protected abstract keptIndex(): IndexedDraft | undefined;
+
+  /** The books whose stored analysis the last load could not read, which it loaded as empty. */
+  protected abstract unreadableBooks(): string[];
 }

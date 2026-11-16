@@ -417,8 +417,8 @@ describe('unsaved-change discard', () => {
           segmentAnalysisLinks: [segmentLink('sl-gen', 'sa-gen', 'GEN 1:1')],
         }),
         edit: GEN,
-        expectResult: ({ commandOutcome }) => {
-          expect(commandOutcome.hasFreeTranslations).toBe(true);
+        expectResult: ({ hasFreeTranslations }) => {
+          expect(hasFreeTranslations).toBe(true);
         },
       },
     ],
@@ -433,13 +433,13 @@ describe('unsaved-change discard', () => {
         },
         saved: savedInBothBooks,
         edit: GEN,
-        expectResult: ({ commandOutcome }) => {
-          expect(commandOutcome.hasFreeTranslations).toBe(false);
+        expectResult: ({ hasFreeTranslations }) => {
+          expect(hasFreeTranslations).toBe(false);
         },
       },
     ],
     [
-      'reports a free translation restored into a book that could not be read',
+      'reports no free translation restored into a book that could not be read, which keeps what it stored',
       {
         seed: { analysis: glossedInBothBooks, unreadableBooks: ['GEN'] },
         saved: savedOf({
@@ -447,8 +447,8 @@ describe('unsaved-change discard', () => {
           segmentAnalysisLinks: [segmentLink('sl-gen', 'sa-gen', 'GEN 1:1')],
         }),
         edit: GEN,
-        expectResult: ({ result, commandOutcome }) => {
-          expect(commandOutcome.hasFreeTranslations).toBe(true);
+        expectResult: ({ result, hasFreeTranslations }) => {
+          expect(hasFreeTranslations).toBe(false);
           expect(result.segmentAnalyses).toStrictEqual([]);
         },
       },

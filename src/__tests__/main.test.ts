@@ -2508,9 +2508,9 @@ describe('main', () => {
 
     it('warns which books of the draft could not be read when it opens a session', async () => {
       const repository = await seedDraft({});
-      const read = repository.exportAll.bind(repository);
+      const read = repository.getDraftState.bind(repository);
       jest
-        .spyOn(repository, 'exportAll')
+        .spyOn(repository, 'getDraftState')
         .mockImplementation(async () => ({ ...(await read()), unreadableBooks: ['JHN'] }));
       __mockGetLocalizedString.mockResolvedValue('Opened without: {books}');
       const { openSession } = await activateSessionCommands();
@@ -4684,6 +4684,35 @@ describe('main', () => {
 
       expect(first.hasFreeTranslations).toBe(true);
       expect(retried).toStrictEqual(first);
+    });
+
+    it('reads its envelope and discards changes to a book and then to the whole draft, never reading the draft whole', async () => {
+      const repository = await seedDraft({});
+      storeProjectHolding(glossedIn);
+      const exportAll = jest.spyOn(repository, 'exportAll');
+      const getWholeDraft = jest.spyOn(repository, 'getWholeDraft');
+      const { openSession, getDraftEnvelope, writeGloss, discardBook, discardAll } =
+        await activateSessionCommands();
+
+      const { sessionId } = JSON.parse(
+        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'proj-1' }),
+      );
+      await getDraftEnvelope({ sessionId });
+      const gloss = { sessionId, tokenRef: 'GEN 1:2:0', surfaceText: 'And', value: 'and' };
+      await writeGloss(gloss);
+      const bookReply = JSON.parse(await discardBook({ sessionId, bookCode: 'GEN' }));
+      await writeGloss(gloss);
+      const allReply = JSON.parse(await discardAll({ sessionId }));
+
+      expect(bookReply.changes).toMatchObject({
+        tokenAnalyses: { puts: [{ id: 'ta-in' }] },
+        tokenAnalysisLinks: { puts: [{ id: 'tl-in' }] },
+      });
+      expect(bookReply.changes.tokenAnalysisLinks.deletes).toHaveLength(1);
+      expect(allReply.changes.tokenAnalysisLinks.deletes).toHaveLength(1);
+      expect(allReply.changes.tokenAnalysisLinks.puts ?? []).toStrictEqual([]);
+      expect(exportAll).not.toHaveBeenCalled();
+      expect(getWholeDraft).not.toHaveBeenCalled();
     });
 
     it('stales what it restores into a book the text lacks', async () => {

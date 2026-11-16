@@ -145,6 +145,8 @@ describe('CSharpRepository', () => {
     { method: 'exportForCopy', call: (r) => r.exportForCopy() },
     { method: 'markClean', call: (r) => r.markClean() },
     { method: 'getScope', call: (r) => r.getScope() },
+    { method: 'getDraftState', call: (r) => r.getDraftState() },
+    { method: 'findUnlinkedPayloads', call: (r) => r.findUnlinkedPayloads() },
   ];
 
   it.each(unsupported)('$method throws, since the host stores no draft record', async (c) => {

@@ -167,17 +167,14 @@ describe('AnalysisSessions', () => {
       expect(host.openDraftRepository).toHaveBeenCalledTimes(1);
     });
 
-    it('opens when building the indexes fails, and the first command meets the failure', async () => {
+    it('refuses to open when reading the draft fails, leaving the source with no session', async () => {
       const { sessions } = makeSessions();
       jest
-        .spyOn(DraftRepository.prototype, 'getScope')
+        .spyOn(DraftRepository.prototype, 'getDraftState')
         .mockRejectedValue(new Error('storage is gone'));
 
-      const { sessionId } = await sessions.open(SOURCE);
-
-      await expect(
-        sessions.run(sessionId, ({ repository }) => repository.getScope()),
-      ).rejects.toThrow('storage is gone');
+      await expect(sessions.open(SOURCE)).rejects.toThrow('storage is gone');
+      expect(sessions.sessionIdFor(SOURCE)).toBeUndefined();
     });
 
     it('reports a free translation in the draft', async () => {
@@ -1029,27 +1026,56 @@ describe('AnalysisSessions', () => {
       });
     });
 
-    it('carries whether a free translation is left, as its command returns, when it applied', async () => {
+    it('says the draft it leaves has no free translation, when its command asks and removed the last', async () => {
+      const { sessions, seedDraft } = makeSessions();
+      await seedDraft({ ...emptyDraft(SOURCE), analysis: FREE_TRANSLATED });
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const reply = await sessions.edit(sessionId, 'unlink', async (buffer) => {
+        FREE_TRANSLATED.segmentAnalyses.forEach((record) =>
+          buffer.delete('segmentAnalyses', record),
+        );
+        return { reportsFreeTranslations: true };
+      });
+
+      expect(reply.hasFreeTranslations).toBe(false);
+    });
+
+    it('says the draft it leaves has a free translation, when its command asks and created the first', async () => {
       const { sessions } = makeSessions();
       const { sessionId } = await sessions.open(SOURCE);
 
-      const reply = await sessions.edit(sessionId, 'link', async (buffer) => {
-        linking(buffer, 'GEN 1:1:0');
-        return { hasFreeTranslations: true };
+      const reply = await sessions.edit(sessionId, 'translate', async (buffer) => {
+        FREE_TRANSLATED.segmentAnalyses.forEach((record) =>
+          buffer.create('segmentAnalyses', record),
+        );
+        return { reportsFreeTranslations: true };
       });
 
       expect(reply.hasFreeTranslations).toBe(true);
     });
 
-    it('carries whether a free translation is left, as its command returns, when it staged nothing', async () => {
+    it('says whether the draft it leaves has a free translation, when its command asks and it staged nothing', async () => {
       const { sessions } = makeSessions();
       const { sessionId } = await sessions.open(SOURCE);
 
       const reply = await sessions.edit(sessionId, 'nothing', async () => ({
-        hasFreeTranslations: false,
+        reportsFreeTranslations: true,
       }));
 
       expect(reply.hasFreeTranslations).toBe(false);
+    });
+
+    it('says nothing of free translations when its command does not ask', async () => {
+      const { sessions, seedDraft } = makeSessions();
+      await seedDraft({ ...emptyDraft(SOURCE), analysis: FREE_TRANSLATED });
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const reply = await sessions.edit(sessionId, 'link', async (buffer) => {
+        linking(buffer, 'GEN 1:1:0');
+      });
+
+      expect(reply).not.toHaveProperty('hasFreeTranslations');
     });
 
     it('applies again an edit sent under a change id it has since forgotten', async () => {

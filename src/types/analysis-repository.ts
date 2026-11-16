@@ -63,6 +63,24 @@ export type DraftExport = {
  */
 export type ScopeRecord = Omit<DraftProject, 'analysis' | 'dirty'>;
 
+/** A summary of a stored draft, read without returning its records. */
+export type DraftState = {
+  /** Whether the draft holds changes not saved to its project. */
+  dirty: boolean;
+  /** Whether the draft holds no records and moves no boundaries. */
+  empty: boolean;
+  /** Whether any segment analysis has a free translation. */
+  hasFreeTranslations: boolean;
+  /** As {@link DraftExport.unreadableBooks}. */
+  unreadableBooks: string[];
+};
+
+/** Payloads of every kind, one list per kind. */
+export type AnalysisPayloads = Pick<
+  TextAnalysis,
+  'tokenAnalyses' | 'phraseAnalyses' | 'segmentAnalyses'
+>;
+
 /** Whole-record puts and deletes of one record kind. */
 export type RecordChanges<T> = {
   /** Records to store whole, each replacing any stored under its id. */
@@ -217,6 +235,13 @@ export interface AnalysisRepository {
   getScope(): Promise<ScopeRecord>;
 
   /**
+   * The state of the draft, as {@link AnalysisRepository.exportAll} would load it.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  getDraftState(): Promise<DraftState>;
+
+  /**
    * The token analyses stored under `ids`; an id with none stored under it is skipped.
    *
    * @throws Whatever {@link AnalysisRepository.exportAll} throws.
@@ -281,6 +306,13 @@ export interface AnalysisRepository {
    * @throws Whatever {@link AnalysisRepository.exportAll} throws.
    */
   findLinkedBooks(): Promise<string[]>;
+
+  /**
+   * The payloads of every kind that no link names.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  findUnlinkedPayloads(): Promise<AnalysisPayloads>;
 
   /**
    * The token analyses whose surface text {@link normalizeSurfaceForm} maps to one of

@@ -836,6 +836,8 @@ test('measure the app', async ({ mainPage }) => {
   await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
   if (REAL_SOURCE && !(REAL_PROJECT && REAL_BOOK))
     throw new Error('PERF_REAL_SOURCE needs PERF_REAL_PROJECT and PERF_REAL_BOOK');
+  if (REAL_SOURCE && !PACKAGED_APP_PATH)
+    throw new Error('PERF_REAL_SOURCE needs PERF_APP_PATH: a dev-core run measures empty storage');
   const projectId = REAL_SOURCE ?? (await sourceProjectId(mainPage));
   await makeEditable(mainPage, projectId);
 

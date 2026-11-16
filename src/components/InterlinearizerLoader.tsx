@@ -93,6 +93,7 @@ import type { CatalogFilters } from '../utils/analysis-query';
 import { nextSegmentAmong } from '../utils/stale-free-translations';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import usePanelResizeKeys from '../hooks/usePanelResizeKeys';
+import useInterlinearizerWebViewState from '../hooks/useInterlinearizerWebViewState';
 import { isPt9TooLargeError } from '../utils/pt9-import-error';
 import { readPt9Manifest } from '../utils/pt9-manifest';
 
@@ -478,16 +479,22 @@ function InterlinearizerLoaderInner({
    * items and to route Save to the active project (Save As when none); written here to fold the
    * refreshed `updatedAt` from a successful save back into the snapshot.
    */
-  const [activeProject, setActiveProject, resetActiveProject] = useWebViewState<
-    InterlinearProjectSummary | undefined
-  >('activeProject', undefined);
+  const [activeProject, setActiveProject, resetActiveProject] = useInterlinearizerWebViewState(
+    useWebViewState,
+    'activeProject',
+    undefined,
+  );
 
   /**
    * First-open flag written by the open command when this source has convertible Paratext 9
    * interlinear data and no interlinearizer state stored yet. Cleared when the user answers the
    * offer either way, so a tab restore never re-asks a question that was already answered.
    */
-  const [offerPt9Import, setOfferPt9Import] = useWebViewState<boolean>('offerPt9Import', false);
+  const [offerPt9Import, setOfferPt9Import] = useInterlinearizerWebViewState(
+    useWebViewState,
+    'offerPt9Import',
+    false,
+  );
 
   // What the convertible-data probe knows; the offer waits for `available`. The flag alone only
   // says the source has no interlinearizer state yet, which is true of every brand-new project.

@@ -27,6 +27,7 @@ import { DeleteProjectConfirm } from './DeleteProjectConfirm';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
 import { SaveAsProjectModal } from './SaveAsProjectModal';
 import { SelectInterlinearProjectModal } from './SelectInterlinearProjectModal';
+import useInterlinearizerWebViewState from '../../hooks/useInterlinearizerWebViewState';
 
 /** Which project-related modal is currently open; `'none'` means no modal is visible. */
 export type ModalState =
@@ -201,9 +202,11 @@ export default function ProjectModals({
   sourceShortName: string;
   useWebViewState: UseWebViewStateHook;
 }>) {
-  const [, setActiveProject, resetActiveProject] = useWebViewState<
-    InterlinearProjectSummary | undefined
-  >('activeProject', undefined);
+  const [, setActiveProject, resetActiveProject] = useInterlinearizerWebViewState(
+    useWebViewState,
+    'activeProject',
+    undefined,
+  );
 
   /**
    * The project currently open in the metadata modal. Set when the user chooses Get info in the

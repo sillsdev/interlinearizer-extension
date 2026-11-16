@@ -59,6 +59,7 @@ import type { TextReadStatus } from './types/text-read-status';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
 import { envelopeOf } from './types/draft-envelope';
+import type { InterlinearizerWebViewState } from './types/webview-state';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 
 // #region WebView provider
@@ -70,21 +71,10 @@ import { perfTime, perfTimeAsync } from './utils/perf-marks';
 const mainWebViewType = 'interlinearizer.mainWebView';
 
 /** Options passed to `papi.webViews.openWebView` when opening the Interlinearizer. */
-export interface InterlinearizerOpenOptions extends OpenWebViewOptions {
+export interface InterlinearizerOpenOptions
+  extends OpenWebViewOptions, Partial<InterlinearizerWebViewState> {
   /** Paratext project ID to load in the Interlinearizer WebView. */
   projectId?: string;
-  /**
-   * Whether the WebView should offer converting the source's Paratext 9 interlinear data: set on an
-   * explicit open when the source has no interlinearizer state stored yet. The WebView probes the
-   * source for convertible data and shows the offer only if it finds any. Carried into the
-   * WebView's state, where answering the offer clears it.
-   */
-  offerPt9Import?: boolean;
-  /**
-   * The interlinear project the source's view last had active, set on an explicit open that creates
-   * the tab. Carried into the WebView's state, so the new tab opens on that project.
-   */
-  activeProject?: InterlinearProjectSummary;
 }
 
 /** Tab title used when there is no project to name or the localized title format cannot be read. */
@@ -298,7 +288,8 @@ function rememberActiveProject(
   sourceProjectId: string,
   state: SavedWebViewDefinition['state'],
 ): void {
-  const active = state?.activeProject;
+  const activeProjectKey: keyof InterlinearizerWebViewState = 'activeProject';
+  const active = state?.[activeProjectKey];
   const activeId = isInterlinearProjectSummary(active) ? active.id : undefined;
   if (
     rememberedActiveProjects.has(sourceProjectId) &&

@@ -56,8 +56,8 @@ import {
   useCatalogView,
   useHomographRows,
   useSelectionSummary,
-  useTextReadStatus,
 } from '../cache/catalogHooks';
+import { useTextReadStatus } from '../cache/concordanceHooks';
 import {
   DELETION_ANNOUNCEMENT_STRING_KEYS,
   deletionAnnouncement,

@@ -3,7 +3,7 @@ import type {
   Confidence,
   MorphemeAnalysis,
   MultiString,
-  Segment,
+  ReadonlySegment,
   SenseRef,
   TextAnalysis,
   TokenAnalysis,
@@ -166,7 +166,9 @@ export interface CatalogUsage {
  * Maps each heading among a book's segments, taken in document order, to where it sits, for a
  * {@link CatalogScope} to order heading usages by.
  */
-export function placeHeadings(segments: readonly Segment[]): ReadonlyMap<string, HeadingPlacement> {
+export function placeHeadings(
+  segments: readonly ReadonlySegment[],
+): ReadonlyMap<string, HeadingPlacement> {
   const placements = new Map<string, HeadingPlacement>();
   segments.forEach((segment, order) => {
     if (!segment.heading) return;

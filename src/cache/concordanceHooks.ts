@@ -5,6 +5,7 @@ import type {
   ConcordanceOccurrencePage,
   ConcordancePage,
 } from '../services/sessionConcordanceHandlers';
+import type { TextReadStatus } from '../types/text-read-status';
 import { useNamedFetch } from './namedQueryHooks';
 import { usePageSession } from './pageHooks';
 
@@ -75,6 +76,27 @@ export function useConcordanceOccurrences(
       ),
     true,
   )?.value;
+}
+
+/**
+ * How far the session's whole-text read has got. Asking while the text is `wanted` starts the read.
+ *
+ * @returns `'error'` when the latest fetch of the status failed; `undefined` while the text is not
+ *   `wanted`, and until the first answer arrives.
+ */
+export function useTextReadStatus(wanted: boolean): TextReadStatus | 'error' | undefined {
+  const { sessionId } = usePageSession();
+  const status = useNamedFetch(
+    'getTextReadStatus',
+    "the session's text read",
+    wanted ? 'text' : undefined,
+    async (): Promise<TextReadStatus> =>
+      JSON.parse(
+        await papi.commands.sendCommand('interlinearizer.getTextReadStatus', { sessionId }),
+      ),
+    true,
+  );
+  return status?.failed ? 'error' : status?.value;
 }
 
 /** A callback that reads again each book of the session's text whose latest read failed. */

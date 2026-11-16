@@ -38,8 +38,7 @@ const KIND_INTROS: Record<string, string> = {
 
 /** What each section's scenario does, keyed by result kind and section path. */
 const SECTION_DESCRIPTIONS: Record<string, string> = {
-  'app.wireBytes':
-    'The size of each payload the WebView receives as one websocket message. A tier whose draft is over the per-message cap cannot load in the app.',
+  'app.wireBytes': 'The size of each payload the WebView receives as one websocket message.',
   'app.memory':
     'Heap in use before the view opens, then how far it has grown at each later point. The host heap belongs to the whole platform, not just this extension.',
   'app.cold': "The packaged app restarts before each run, then the view opens on the tier's book.",

@@ -34,7 +34,6 @@ const SHAPE = {
 export const TIERS: TierSpec[] = [
   { name: 'small', books: ['PHP'], viewBook: 'PHP', coverage: 1, ...SHAPE },
   { name: 'medium', books: ['PSA'], viewBook: 'PSA', coverage: 1, ...SHAPE },
-  // Larger than one websocket message can carry, so the app cannot load it.
   { name: 'large', books: 'all', viewBook: 'PSA', coverage: 0.5, ...SHAPE },
   // The whole Bible at the coverage whose draft, and the list of its saved projects, each fit one
   // message.

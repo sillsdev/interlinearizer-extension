@@ -5,9 +5,6 @@ import { expect } from '../../fixtures/cdp.fixture';
 import { CDP_PORT } from '../../global-setup-cdp';
 import { type HostHeap, readHostHeap } from './host-inspector';
 
-/** Paranext-core's cap on one websocket message, which every command argument and result crosses. */
-export const MAX_WEBSOCKET_PAYLOAD_BYTES = 100 * 1024 * 1024;
-
 /** Storage key that asks the WebView for timing entries. */
 export const PERF_MARKS_KEY = 'interlinearizer.perfMarks';
 

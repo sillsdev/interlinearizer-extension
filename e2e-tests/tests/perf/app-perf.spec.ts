@@ -28,7 +28,6 @@ import {
   hostPid,
   heapUsed,
   lastFocusWrite,
-  MAX_WEBSOCKET_PAYLOAD_BYTES,
   type Measure,
   openView,
   PERF_MARKS_KEY,
@@ -526,17 +525,12 @@ async function measureTier(
 ): Promise<void> {
   const manifest = readManifest(tier.name, readCaptureMeta());
   const draftJson = readDraftJson(tier.name);
-  const draftWire = wireBytes(draftJson);
-  const wire: Record<string, number> = { draft: draftWire };
+  const wire: Record<string, number> = {};
   Object.assign(result, {
     viewBook: tier.viewBook,
     dataset: { counts: manifest.counts, bytes: manifest.bytes },
     wireBytes: wire,
   });
-  if (draftWire > MAX_WEBSOCKET_PAYLOAD_BYTES) {
-    result.skipped = `The draft is ${(draftWire / 1e6).toFixed(1)} MB on the wire, over the websocket's per-message cap; the app cannot load it.`;
-    return;
-  }
 
   const seed = () => seedTier(projectId, tier, draftJson, createdProjects);
   await closeView(app.page);

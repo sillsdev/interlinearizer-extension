@@ -172,31 +172,25 @@ jest.mock('../../../components/modals/SaveAsProjectModal', () => ({
   SaveAsProjectModal: ({
     activeProjectId,
     activeProjectName,
-    draftAnalysisLanguages,
-    defaultAnalysisLanguage,
     onSaveNew,
     onOverwrite,
     onClose,
   }: {
     activeProjectId?: string;
     activeProjectName?: string;
-    draftAnalysisLanguages: readonly string[];
-    defaultAnalysisLanguage?: string;
-    onSaveNew: (name: string, analysisLanguages: string[], description?: string) => void;
+    onSaveNew: (name?: string, description?: string) => void;
     onOverwrite: (p: InterlinearProjectSummary) => void;
     onClose: () => void;
   }) => (
     <div
       data-active-project-id={activeProjectId}
       data-active-project-name={activeProjectName}
-      data-draft-analysis-languages={draftAnalysisLanguages.join(',')}
-      data-default-analysis-language={defaultAnalysisLanguage}
       data-testid="saveas-modal"
     >
       <button
         type="button"
         data-testid="saveas-new"
-        onClick={() => onSaveNew('NewName', ['fr'], 'NewDesc')}
+        onClick={() => onSaveNew('NewName', 'NewDesc')}
       >
         Save new
       </button>
@@ -852,118 +846,6 @@ describe('ProjectModals', () => {
   });
 
   describe('save as flow', () => {
-    it("hands Save As the draft's analysis languages and the interface language", () => {
-      render(
-        <ProjectModals
-          {...buildProps({
-            modal: 'saveAs',
-            defaultAnalysisLanguage: 'de',
-            getDraftSnapshot: () => ({ ...MOCK_DRAFT, analysisLanguages: ['sw', 'fr'] }),
-          })}
-        />,
-      );
-
-      const modal = screen.getByTestId('saveas-modal');
-      expect(modal).toHaveAttribute('data-draft-analysis-languages', 'sw,fr');
-      expect(modal).toHaveAttribute('data-default-analysis-language', 'de');
-    });
-
-    it('gives the draft the new languages before saving, so a later Save keeps them', async () => {
-      const order: string[] = [];
-      const changeDraftAnalysisLanguages = jest.fn(async () => {
-        order.push('change');
-        return {};
-      });
-      jest.mocked(papi.commands.sendCommand).mockImplementationOnce(async () => {
-        order.push('save');
-        return savedAs(MOCK_PROJECT);
-      });
-      render(
-        <ProjectModals
-          {...buildProps({
-            modal: 'saveAs',
-            changeDraftAnalysisLanguages,
-            getDraftSnapshot: () => ({ ...MOCK_DRAFT, analysisLanguages: [] }),
-          })}
-        />,
-      );
-
-      await userEvent.click(screen.getByTestId('saveas-new'));
-
-      await waitFor(() => expect(order).toEqual(['change', 'save']));
-      expect(changeDraftAnalysisLanguages).toHaveBeenCalledWith({ analysisLanguages: ['fr'] });
-    });
-
-    it('reads a draft with no snapshot yet as naming no languages', async () => {
-      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(savedAs(MOCK_PROJECT));
-      const changeDraftAnalysisLanguages = jest.fn().mockResolvedValue({});
-      render(
-        <ProjectModals
-          {...buildProps({
-            modal: 'saveAs',
-            changeDraftAnalysisLanguages,
-            getDraftSnapshot: () => undefined,
-          })}
-        />,
-      );
-
-      expect(screen.getByTestId('saveas-modal')).toHaveAttribute(
-        'data-draft-analysis-languages',
-        '',
-      );
-      await userEvent.click(screen.getByTestId('saveas-new'));
-
-      await waitFor(() =>
-        expect(changeDraftAnalysisLanguages).toHaveBeenCalledWith({ analysisLanguages: ['fr'] }),
-      );
-    });
-
-    it("leaves the draft's languages alone when the new project takes them as they are", async () => {
-      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(savedAs(MOCK_PROJECT));
-      const changeDraftAnalysisLanguages = jest.fn().mockResolvedValue({});
-      const setModal = jest.fn();
-      render(
-        <ProjectModals
-          {...buildProps({
-            modal: 'saveAs',
-            changeDraftAnalysisLanguages,
-            setModal,
-            getDraftSnapshot: () => ({ ...MOCK_DRAFT, analysisLanguages: ['fr'] }),
-          })}
-        />,
-      );
-
-      await userEvent.click(screen.getByTestId('saveas-new'));
-
-      await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
-      expect(changeDraftAnalysisLanguages).not.toHaveBeenCalled();
-    });
-
-    it("saves nothing, and says so, when the draft's languages cannot change", async () => {
-      const changeDraftAnalysisLanguages = jest.fn().mockRejectedValue(new Error('refused'));
-      const { commitDraft } = recordingCommitDraft();
-      render(
-        <ProjectModals
-          {...buildProps({
-            modal: 'saveAs',
-            changeDraftAnalysisLanguages,
-            commitDraft,
-            getDraftSnapshot: () => ({ ...MOCK_DRAFT, analysisLanguages: [] }),
-          })}
-        />,
-      );
-
-      await userEvent.click(screen.getByTestId('saveas-new'));
-
-      await waitFor(() =>
-        expect(papi.notifications.send).toHaveBeenCalledWith({
-          message: '%interlinearizer_error_changeAnalysisLanguages%',
-          severity: 'error',
-        }),
-      );
-      expect(commitDraft).not.toHaveBeenCalled();
-    });
-
     it('has the host create a project from the stored draft through commitDraft, and closes', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(savedAs(MOCK_PROJECT));
       const { commitDraft, outcomes } = recordingCommitDraft();
@@ -979,7 +861,7 @@ describe('ProjectModals', () => {
         'interlinearizer.saveDraftAsProject',
         SESSION_ID,
         'source-proj',
-        ['fr'],
+        ['en'],
         undefined,
         'NewName',
         'NewDesc',
@@ -1000,7 +882,7 @@ describe('ProjectModals', () => {
           'interlinearizer.saveDraftAsProject',
           SESSION_ID,
           'source-proj',
-          ['fr'],
+          ['en'],
           undefined,
           'NewName',
           'NewDesc',
@@ -1034,7 +916,7 @@ describe('ProjectModals', () => {
         'interlinearizer.saveDraftAsProject',
         SESSION_ID,
         'source-proj',
-        ['fr'],
+        ['en'],
         undefined,
         'NewName',
         'NewDesc',

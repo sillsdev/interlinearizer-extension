@@ -226,12 +226,12 @@ function SearchView({
 }
 
 /**
- * The control for one analysis or morpheme's lexicon link, set beside the form it links: an icon
- * that shows whether the form is linked, and opens the actions that link, change, or drop the link
- * and that take the sense's gloss as the typed gloss. Where there is nothing to do, a linked form
- * shows only the mark, and an unlinked one shows nothing.
+ * The control for the lexicon link of one analysis or morpheme, set beside its form. Its icon shows
+ * whether the form is linked. The icon opens actions that link, change, or drop the link, and that
+ * adopt the sense's gloss as the typed gloss. Where there is nothing to do, a linked form shows
+ * only the mark, and an unlinked one shows nothing.
  *
- * The link is looked up from `form` as it stands, so a form with no text cannot be linked.
+ * Candidates are searched by `form` as it stands, so a form with no text cannot be linked.
  */
 export default function CatalogSenseControl({
   form,

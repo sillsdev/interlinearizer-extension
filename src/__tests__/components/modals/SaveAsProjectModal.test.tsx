@@ -20,8 +20,6 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_create_name_placeholder%': 'e.g. Greek NT glossing',
   '%interlinearizer_modal_create_description_label%': 'Description',
   '%interlinearizer_modal_create_description_placeholder%': 'e.g. Word-level English glosses',
-  '%interlinearizer_modal_create_language_label%': 'Analysis language',
-  '%interlinearizer_modal_create_language_placeholder%': 'e.g. en',
   '%interlinearizer_modal_saveAs_save_new%': 'Save as new',
   '%interlinearizer_modal_saveAs_existing_section%': 'Overwrite an existing project',
   '%interlinearizer_modal_saveAs_none%': 'No existing projects for this source.',
@@ -49,7 +47,6 @@ const STUB_PROJECT_2 = makeProjectSummary({
 const defaultProps = {
   sourceProjectId: 'src-proj',
   hasUnsavedWork: true,
-  draftAnalysisLanguages: [],
   onSaveNew: jest.fn(),
   onOverwrite: jest.fn(),
   onClose: jest.fn(),
@@ -125,61 +122,7 @@ describe('SaveAsProjectModal', () => {
     await userEvent.type(screen.getByLabelText('Description'), '  My Description  ');
     await userEvent.click(screen.getByTestId('save-as-new'));
 
-    expect(onSaveNew).toHaveBeenCalledWith('My Project', ['und'], 'My Description');
-  });
-
-  it('prefills the analysis language from the default when the draft names none', async () => {
-    render(<SaveAsProjectModal {...defaultProps} defaultAnalysisLanguage="en" />);
-
-    await waitFor(() => expect(screen.getByLabelText('Analysis language')).toHaveValue('en'));
-  });
-
-  it("saves with the draft's analysis languages, asking for none, when the draft names some", async () => {
-    const onSaveNew = jest.fn();
-    render(
-      <SaveAsProjectModal
-        {...defaultProps}
-        draftAnalysisLanguages={['en', 'fr']}
-        defaultAnalysisLanguage="sw"
-        onSaveNew={onSaveNew}
-      />,
-    );
-    await waitFor(() => expect(screen.getByLabelText('Name')).toBeEnabled());
-
-    expect(screen.queryByLabelText('Analysis language')).not.toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText('Name'), 'My Project');
-    await userEvent.click(screen.getByTestId('save-as-new'));
-
-    expect(onSaveNew).toHaveBeenCalledWith('My Project', ['en', 'fr'], undefined);
-  });
-
-  it('calls onSaveNew with the analysis languages as typed', async () => {
-    const onSaveNew = jest.fn();
-    render(
-      <SaveAsProjectModal {...defaultProps} defaultAnalysisLanguage="en" onSaveNew={onSaveNew} />,
-    );
-    await waitFor(() => expect(screen.getByLabelText('Name')).toBeEnabled());
-
-    await userEvent.type(screen.getByLabelText('Name'), 'My Project');
-    await userEvent.clear(screen.getByLabelText('Analysis language'));
-    await userEvent.type(screen.getByLabelText('Analysis language'), ' en-US , sw ');
-    await userEvent.click(screen.getByTestId('save-as-new'));
-
-    expect(onSaveNew).toHaveBeenCalledWith('My Project', ['en-US', 'sw'], undefined);
-  });
-
-  it('saves a blank analysis language as und', async () => {
-    const onSaveNew = jest.fn();
-    render(
-      <SaveAsProjectModal {...defaultProps} defaultAnalysisLanguage="en" onSaveNew={onSaveNew} />,
-    );
-    await waitFor(() => expect(screen.getByLabelText('Name')).toBeEnabled());
-
-    await userEvent.type(screen.getByLabelText('Name'), 'My Project');
-    await userEvent.clear(screen.getByLabelText('Analysis language'));
-    await userEvent.click(screen.getByTestId('save-as-new'));
-
-    expect(onSaveNew).toHaveBeenCalledWith('My Project', ['und'], undefined);
+    expect(onSaveNew).toHaveBeenCalledWith('My Project', 'My Description');
   });
 
   it('calls onSaveNew with an undefined description when the description field is blank', async () => {
@@ -191,7 +134,7 @@ describe('SaveAsProjectModal', () => {
     await userEvent.type(screen.getByLabelText('Description'), '   ');
     await userEvent.click(screen.getByTestId('save-as-new'));
 
-    expect(onSaveNew).toHaveBeenCalledWith('My Project', ['und'], undefined);
+    expect(onSaveNew).toHaveBeenCalledWith('My Project', undefined);
   });
 
   it('disables the save-as-new button while the name is empty', async () => {

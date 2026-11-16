@@ -9,7 +9,6 @@ import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import type { DraftCopyResult, NewDraftConfig } from '../../types/project-api';
 import { isInterlinearProjectSummary, isSavedAsProject } from '../../types/type-guards';
-import { deepEqual } from '../../utils/analysis-identity';
 import type {
   AnalysisLanguagesChange,
   AnalysisLanguagesChangeOutcome,
@@ -110,8 +109,7 @@ function retagMessage(
  * @param props.subscribeToDraftEdits - Calls a listener after each edit, undo, or redo of the
  *   draft, until the returned function is called.
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
- *   initial value of the analysis language field, and to {@link SaveAsProjectModal} when the draft
- *   names no analysis language; should be the platform UI language.
+ *   initial value of the analysis language field; should be the platform UI language.
  * @param props.isDraftLoading - Whether the draft is still loading. Project Info disables the
  *   active project's language actions and Save until the draft loads, because the project's
  *   analysis languages come from the draft.
@@ -508,37 +506,20 @@ export default function ProjectModals({
   const handleCancelReplace = useCallback(() => setPendingReplace(undefined), []);
 
   /**
-   * Saves the current draft as a brand-new project: has the host create the project with the chosen
-   * analysis languages and the draft's target and copy the stored draft's analysis and segment
-   * boundaries into it, then makes it the active Save target and closes. When the project leaves
-   * some of the draft's books out, the draft stays unsaved. Backend commands surface their own
-   * error notifications; here we only log.
-   *
-   * Languages that differ from the draft's are first given to the draft as an undoable step, which
-   * the save then takes along. Otherwise the next Save would write the draft's languages back over
-   * the project's.
+   * Saves the current draft as a brand-new project: has the host create the project with the
+   * draft's languages / target and copy the stored draft's analysis and segment boundaries into it,
+   * then makes it the active Save target and closes. When the project leaves some of the draft's
+   * books out, the draft stays unsaved. Backend commands surface their own error notifications;
+   * here we only log.
    *
    * @param name - Trimmed project name; never blank.
-   * @param analysisLanguages - BCP 47 tags for the new project; never empty.
    * @param description - Trimmed project description, or `undefined`.
    */
   const handleSaveAsNew = useCallback(
-    async (name: string, analysisLanguages: string[], description?: string) => {
-      const draftLanguages = getDraftSnapshot()?.analysisLanguages ?? [];
-      if (!deepEqual(draftLanguages, analysisLanguages)) {
-        try {
-          await changeDraftAnalysisLanguages({ analysisLanguages });
-        } catch (e) {
-          logger.error("Interlinearizer: failed to change the draft's analysis languages", e);
-          await papi.notifications
-            .send({ message: '%interlinearizer_error_changeAnalysisLanguages%', severity: 'error' })
-            .catch(() => {});
-          return;
-        }
-      }
+    async (name: string, description?: string) => {
       try {
         const saved = await commitDraft(async (snapshot, sessionId) => {
-          const { targetProjectId } = snapshot;
+          const { analysisLanguages, targetProjectId } = snapshot;
           const createdJson = await papi.commands.sendCommand(
             'interlinearizer.saveDraftAsProject',
             sessionId,
@@ -563,14 +544,7 @@ export default function ProjectModals({
         logger.error('Interlinearizer: failed to save draft as new project', e);
       }
     },
-    [
-      changeDraftAnalysisLanguages,
-      commitDraft,
-      getDraftSnapshot,
-      projectId,
-      setActiveProject,
-      setModal,
-    ],
+    [commitDraft, projectId, setActiveProject, setModal],
   );
 
   /**
@@ -696,8 +670,6 @@ export default function ProjectModals({
           hasUnsavedWork={hasUnsavedWork}
           activeProjectName={activeProject?.name}
           defaultDescription={draftSnapshot?.suggestedDescription}
-          draftAnalysisLanguages={draftSnapshot?.analysisLanguages ?? []}
-          defaultAnalysisLanguage={defaultAnalysisLanguage}
           onSaveNew={handleSaveAsNew}
           onOverwrite={handleOverwrite}
           onClose={handleSaveAsClose}

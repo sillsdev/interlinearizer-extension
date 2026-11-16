@@ -51,7 +51,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_retagGlosses_movedWords%': '{words} words.',
   '%interlinearizer_retagGlosses_movedMorphemes%': '{morphemes} morphemes.',
   '%interlinearizer_retagGlosses_movedFreeTranslations%': '{freeTranslations} free translations.',
-  '%interlinearizer_retagGlosses_skipped%': '{skipped} kept {from}.',
+  '%interlinearizer_retagGlosses_skipped%': '{counts} kept {from}.',
   '%interlinearizer_deleteLanguageText_deleted%': 'Removed {tag} and deleted its {counts}.',
   '%interlinearizer_languageText_glosses%': '{glosses} glosses',
   '%interlinearizer_languageText_freeTranslations%': '{freeTranslations} free translations',
@@ -1339,7 +1339,12 @@ describe('ProjectModals', () => {
     });
 
     describe('a change of analysis languages', () => {
-      const MOVED = { words: 3, morphemes: 2, freeTranslations: 0, skipped: 0 };
+      const MOVED = {
+        words: 3,
+        morphemes: 2,
+        freeTranslations: 0,
+        skipped: { glosses: 0, freeTranslations: 0 },
+      };
       const RETAG: AnalysisLanguagesChange = {
         analysisLanguages: ['fr'],
         retag: { from: 'en', to: 'fr' },
@@ -1462,7 +1467,12 @@ describe('ProjectModals', () => {
       it('announces nothing when a move neither moved nor kept anything', async () => {
         mockChange = RETAG;
         const change = jest.fn().mockResolvedValue({
-          glossRetag: { words: 0, morphemes: 0, freeTranslations: 0, skipped: 0 },
+          glossRetag: {
+            words: 0,
+            morphemes: 0,
+            freeTranslations: 0,
+            skipped: { glosses: 0, freeTranslations: 0 },
+          },
         });
         const announceUndoable = jest.fn();
         renderActive(change, announceUndoable);
@@ -1473,20 +1483,24 @@ describe('ProjectModals', () => {
         expect(announceUndoable).not.toHaveBeenCalled();
       });
 
-      it('says how much stayed behind when a move moved nothing', async () => {
-        mockChange = RETAG;
-        const change = jest.fn().mockResolvedValue({
-          glossRetag: { words: 0, morphemes: 0, freeTranslations: 0, skipped: 2 },
-        });
-        const announceUndoable = jest.fn();
-        renderActive(change, announceUndoable);
+      it.each([
+        [{ glosses: 2, freeTranslations: 0 }, 'Changed en to fr. 2 glosses kept en.'],
+        [{ glosses: 0, freeTranslations: 1 }, 'Changed en to fr. 1 free translations kept en.'],
+      ])(
+        'says how much stayed behind, by kind, when a move moved nothing',
+        async (skipped, said) => {
+          mockChange = RETAG;
+          const change = jest.fn().mockResolvedValue({
+            glossRetag: { words: 0, morphemes: 0, freeTranslations: 0, skipped },
+          });
+          const announceUndoable = jest.fn();
+          renderActive(change, announceUndoable);
 
-        await userEvent.click(screen.getByTestId('metadata-change-languages'));
+          await userEvent.click(screen.getByTestId('metadata-change-languages'));
 
-        await waitFor(() =>
-          expect(announceUndoable).toHaveBeenCalledWith('Changed en to fr. 2 kept en.'),
-        );
-      });
+          await waitFor(() => expect(announceUndoable).toHaveBeenCalledWith(said));
+        },
+      );
 
       it('says how much text a removal deleted and offers to undo', async () => {
         mockChange = { analysisLanguages: ['en'], deleteTextOf: 'fr' };

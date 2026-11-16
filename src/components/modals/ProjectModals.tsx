@@ -53,7 +53,7 @@ const PROJECT_MODALS_STRING_KEYS: `%${string}%`[] = [
 
 /** Whether a move has anything to report: text it moved, or text it left hidden under `from`. */
 function hasReport({ words, morphemes, freeTranslations, skipped }: GlossRetagCounts): boolean {
-  return words + morphemes + freeTranslations + skipped > 0;
+  return words + morphemes + freeTranslations > 0 || hasText(skipped);
 }
 
 /** The message telling the reader what a move from `from` to `to` did, leaving out zero counts. */
@@ -63,20 +63,27 @@ function retagMessage(
   counts: GlossRetagCounts,
   localizedStrings: LanguageStrings,
 ): string {
-  const sentences: [key: `%${string}%`, count: number][] = [
-    ['%interlinearizer_retagGlosses_movedWords%', counts.words],
-    ['%interlinearizer_retagGlosses_movedMorphemes%', counts.morphemes],
-    ['%interlinearizer_retagGlosses_movedFreeTranslations%', counts.freeTranslations],
-    ['%interlinearizer_retagGlosses_skipped%', counts.skipped],
+  const { words, morphemes, freeTranslations, skipped } = counts;
+  const moved: [key: `%${string}%`, count: number][] = [
+    ['%interlinearizer_retagGlosses_movedWords%', words],
+    ['%interlinearizer_retagGlosses_movedMorphemes%', morphemes],
+    ['%interlinearizer_retagGlosses_movedFreeTranslations%', freeTranslations],
   ];
+  const replacers = { from, to, words, morphemes, freeTranslations };
   return [
-    formatReplacementString(localizedStrings['%interlinearizer_retagGlosses_changed%'], {
-      from,
-      to,
-    }),
-    ...sentences
+    formatReplacementString(localizedStrings['%interlinearizer_retagGlosses_changed%'], replacers),
+    ...moved
       .filter(([, count]) => count > 0)
-      .map(([key]) => formatReplacementString(localizedStrings[key], { from, to, ...counts })),
+      .map(([key]) => formatReplacementString(localizedStrings[key], replacers)),
+    ...(hasText(skipped)
+      ? [
+          formatReplacementString(localizedStrings['%interlinearizer_retagGlosses_skipped%'], {
+            from,
+            to,
+            counts: describeTextCounts(skipped, localizedStrings),
+          }),
+        ]
+      : []),
   ].join(' ');
 }
 

@@ -175,7 +175,12 @@ describe('sessionEditHandlers', () => {
       }),
     );
 
-    const moved = { words: 1, morphemes: 0, freeTranslations: 0, skipped: 0 };
+    const moved = {
+      words: 1,
+      morphemes: 0,
+      freeTranslations: 0,
+      skipped: { glosses: 0, freeTranslations: 0 },
+    };
     expect(reply.glossRetag).toStrictEqual(moved);
     expect(reply.step).toStrictEqual({
       summary: {

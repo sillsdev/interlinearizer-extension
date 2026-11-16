@@ -96,7 +96,12 @@ describe('changeAnalysisLanguages', () => {
       retag: { from: 'en', to: 'es' },
     });
 
-    expect(outcome.glossRetag).toEqual({ words: 2, morphemes: 1, freeTranslations: 0, skipped: 0 });
+    expect(outcome.glossRetag).toEqual({
+      words: 2,
+      morphemes: 1,
+      freeTranslations: 0,
+      skipped: { glosses: 0, freeTranslations: 0 },
+    });
     expect(draft.analysisLanguages).toEqual(['es']);
     const [token] = draft.analysis.tokenAnalyses;
     expect(token).toMatchObject({ gloss: { es: 'fish' }, updatedAt: NOW });
@@ -121,7 +126,12 @@ describe('changeAnalysisLanguages', () => {
       retag: { from: 'en', to: 'es' },
     });
 
-    expect(outcome.glossRetag).toEqual({ words: 0, morphemes: 0, freeTranslations: 1, skipped: 0 });
+    expect(outcome.glossRetag).toEqual({
+      words: 0,
+      morphemes: 0,
+      freeTranslations: 1,
+      skipped: { glosses: 0, freeTranslations: 0 },
+    });
     expect(draft.analysis.segmentAnalyses[0]).toMatchObject({
       freeTranslation: { es: 'Big.' },
       updatedAt: NOW,
@@ -145,7 +155,12 @@ describe('changeAnalysisLanguages', () => {
       retag: { from: 'en', to: 'es' },
     });
 
-    expect(outcome.glossRetag).toEqual({ words: 1, morphemes: 0, freeTranslations: 0, skipped: 0 });
+    expect(outcome.glossRetag).toEqual({
+      words: 1,
+      morphemes: 0,
+      freeTranslations: 0,
+      skipped: { glosses: 0, freeTranslations: 0 },
+    });
     expect(draft.analysis.tokenAnalyses.map(({ id }) => id)).toEqual(['ta-es']);
     expect(draft.analysis.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toEqual([
       'ta-es',
@@ -170,7 +185,12 @@ describe('changeAnalysisLanguages', () => {
       retag: { from: 'en', to: 'es' },
     });
 
-    expect(outcome.glossRetag).toEqual({ words: 1, morphemes: 0, freeTranslations: 0, skipped: 0 });
+    expect(outcome.glossRetag).toEqual({
+      words: 1,
+      morphemes: 0,
+      freeTranslations: 0,
+      skipped: { glosses: 0, freeTranslations: 0 },
+    });
     expect(draft.analysis.phraseAnalyses.map(({ id }) => id)).toEqual(['pa-es']);
     expect(draft.analysis.phraseAnalysisLinks.map(({ analysisId }) => analysisId)).toEqual([
       'pa-es',

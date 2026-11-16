@@ -33,7 +33,12 @@ describe('retagGlosses', () => {
 
     const { counts, tokenAnalyses, phraseAnalyses } = retagGlosses(analysis, 'en', 'es', NOW);
 
-    expect(counts).toEqual({ words: 2, morphemes: 2, freeTranslations: 0, skipped: 0 });
+    expect(counts).toEqual({
+      words: 2,
+      morphemes: 2,
+      freeTranslations: 0,
+      skipped: { glosses: 0, freeTranslations: 0 },
+    });
     expect(tokenAnalyses.map(({ id }) => id)).toEqual(['ta-1']);
     expect(phraseAnalyses.map(({ id }) => id)).toEqual(['pa-1']);
     const [token] = analysis.tokenAnalyses;
@@ -68,7 +73,12 @@ describe('retagGlosses', () => {
 
     const { counts, tokenAnalyses, phraseAnalyses } = retagGlosses(analysis, 'en', 'es', NOW);
 
-    expect(counts).toEqual({ words: 2, morphemes: 1, freeTranslations: 0, skipped: 0 });
+    expect(counts).toEqual({
+      words: 2,
+      morphemes: 1,
+      freeTranslations: 0,
+      skipped: { glosses: 0, freeTranslations: 0 },
+    });
     expect(tokenAnalyses.map(({ id }) => id)).toEqual(['ta-1']);
     expect(phraseAnalyses.map(({ id }) => id)).toEqual(['pa-1']);
     const [token] = analysis.tokenAnalyses;
@@ -96,7 +106,12 @@ describe('retagGlosses', () => {
 
     const { counts, tokenAnalyses } = retagGlosses(analysis, 'en', 'es', NOW);
 
-    expect(counts).toEqual({ words: 0, morphemes: 1, freeTranslations: 0, skipped: 2 });
+    expect(counts).toEqual({
+      words: 0,
+      morphemes: 1,
+      freeTranslations: 0,
+      skipped: { glosses: 2, freeTranslations: 0 },
+    });
     expect(tokenAnalyses).toHaveLength(1);
     const [token] = analysis.tokenAnalyses;
     expect(token.gloss).toEqual({ en: 'fish', es: 'pez' });
@@ -117,7 +132,7 @@ describe('retagGlosses', () => {
       words: 1,
       morphemes: 0,
       freeTranslations: 0,
-      skipped: 0,
+      skipped: { glosses: 0, freeTranslations: 0 },
     });
     expect(analysis.tokenAnalyses[0].gloss).toEqual({ es: 'fish' });
   });
@@ -135,7 +150,12 @@ describe('retagGlosses', () => {
 
     const { counts, tokenAnalyses, phraseAnalyses } = retagGlosses(analysis, 'en', 'es', NOW);
 
-    expect(counts).toEqual({ words: 0, morphemes: 0, freeTranslations: 0, skipped: 0 });
+    expect(counts).toEqual({
+      words: 0,
+      morphemes: 0,
+      freeTranslations: 0,
+      skipped: { glosses: 0, freeTranslations: 0 },
+    });
     expect(tokenAnalyses).toEqual([]);
     expect(phraseAnalyses).toEqual([]);
     expect(analysis).toEqual(before);
@@ -156,7 +176,12 @@ describe('retagGlosses free translations', () => {
 
     const { counts, segmentAnalyses } = retagGlosses(analysis, 'en', 'es', NOW);
 
-    expect(counts).toEqual({ words: 0, morphemes: 0, freeTranslations: 2, skipped: 1 });
+    expect(counts).toEqual({
+      words: 0,
+      morphemes: 0,
+      freeTranslations: 2,
+      skipped: { glosses: 0, freeTranslations: 1 },
+    });
     expect(segmentAnalyses.map(({ id }) => id)).toEqual(['sa-1', 'sa-2']);
     expect(analysis.segmentAnalyses.map(({ freeTranslation }) => freeTranslation)).toEqual([
       { es: 'A big fish.' },
@@ -171,16 +196,21 @@ describe('retagGlosses free translations', () => {
 
 describe('isGlossRetagCounts', () => {
   it('accepts counts', () => {
-    expect(isGlossRetagCounts({ words: 1, morphemes: 0, freeTranslations: 0, skipped: 2 })).toBe(
-      true,
-    );
+    expect(
+      isGlossRetagCounts({
+        words: 1,
+        morphemes: 0,
+        freeTranslations: 0,
+        skipped: { glosses: 2, freeTranslations: 0 },
+      }),
+    ).toBe(true);
   });
 
   it.each([
     undefined,
     'counts',
     { words: 1, morphemes: 0 },
-    { words: '1', morphemes: 0, freeTranslations: 0, skipped: 0 },
+    { words: '1', morphemes: 0, freeTranslations: 0, skipped: { glosses: 0, freeTranslations: 0 } },
   ])('refuses %p', (value) => {
     expect(isGlossRetagCounts(value)).toBe(false);
   });

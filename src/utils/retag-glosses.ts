@@ -5,6 +5,7 @@ import type {
   TextAnalysis,
   TokenAnalysis,
 } from 'interlinearizer';
+import { isLanguageTextCounts, type LanguageTextCounts } from './text-counts';
 
 /** How many glosses and free translations a retag moved, and how many it left where they were. */
 export type GlossRetagCounts = {
@@ -15,7 +16,7 @@ export type GlossRetagCounts = {
   /** Segment free translations moved. */
   freeTranslations: number;
   /** Glosses and free translations left under the old tag because the new tag held a different one. */
-  skipped: number;
+  skipped: LanguageTextCounts;
 };
 
 /** Whether `value` is a {@link GlossRetagCounts}. */
@@ -30,7 +31,7 @@ export function isGlossRetagCounts(value: unknown): value is GlossRetagCounts {
     'freeTranslations' in value &&
     typeof value.freeTranslations === 'number' &&
     'skipped' in value &&
-    typeof value.skipped === 'number'
+    isLanguageTextCounts(value.skipped)
   );
 }
 
@@ -88,13 +89,19 @@ export function retagGlosses(
   to: string,
   now: string,
 ): GlossRetag {
-  const counts: GlossRetagCounts = { words: 0, morphemes: 0, freeTranslations: 0, skipped: 0 };
+  const counts: GlossRetagCounts = {
+    words: 0,
+    morphemes: 0,
+    freeTranslations: 0,
+    skipped: { glosses: 0, freeTranslations: 0 },
+  };
   const tally = (
     outcome: ReturnType<typeof retagMultiString>,
     kind: 'words' | 'morphemes' | 'freeTranslations',
   ) => {
     if (outcome === 'moved') counts[kind] += 1;
-    else if (outcome === 'skipped') counts.skipped += 1;
+    else if (outcome === 'skipped')
+      counts.skipped[kind === 'freeTranslations' ? 'freeTranslations' : 'glosses'] += 1;
     return outcome === 'moved';
   };
 

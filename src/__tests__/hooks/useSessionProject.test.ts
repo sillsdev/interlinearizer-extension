@@ -890,7 +890,14 @@ describe('useSessionProject edits sent to the session', () => {
     [
       'moves glosses',
       { analysisLanguages: ['es'], retag: { from: 'en', to: 'es' } },
-      { glossRetag: { words: 2, morphemes: 1, freeTranslations: 0, skipped: 0 } },
+      {
+        glossRetag: {
+          words: 2,
+          morphemes: 1,
+          freeTranslations: 0,
+          skipped: { glosses: 0, freeTranslations: 0 },
+        },
+      },
     ],
     [
       'deletes glosses',

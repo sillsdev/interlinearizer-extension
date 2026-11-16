@@ -111,7 +111,8 @@ const readHolds = new Map<string, Set<Promise<unknown>>>();
 
 /**
  * Holds the source project's whole-text read until `until` settles: the read fetches and tokenizes
- * no further book meanwhile, so that work it would share the host with goes first.
+ * no further book meanwhile, so that work it would share the host with goes first. The open book's
+ * text is still read again at once when it changes, so that the view need not wait out the hold.
  */
 export function holdTextRead(sourceProjectId: string, until: Promise<unknown>): void {
   const holds = readHolds.get(sourceProjectId) ?? new Set<Promise<unknown>>();
@@ -586,7 +587,8 @@ async function readTextBook(
     .then(
       async ([usj, number]): Promise<{ book?: Book; forms: Set<string>; readNumber: number }> => {
         if (!usj) return { forms: new Set<string>(), readNumber: number };
-        if (readHolds.has(sourceProjectId)) await readHeldOff(sourceProjectId);
+        const isOpenBookEdit = edited && openBooks.get(sourceProjectId)?.bookId === bookId;
+        if (!isOpenBookEdit && readHolds.has(sourceProjectId)) await readHeldOff(sourceProjectId);
         return perfTime('readText:tokenize', () => {
           const book = tokenizeBook(extractBookFromUsj(usj, read.writingSystem));
           return { book, forms: formsOfBook(book), readNumber: number };

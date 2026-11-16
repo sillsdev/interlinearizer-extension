@@ -1768,6 +1768,12 @@ describe('onTextRead', () => {
 });
 
 describe('holdTextRead', () => {
+  const unsubscribers: Array<() => boolean> = [];
+
+  afterEach(() => {
+    unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
+  });
+
   it('fetches no book until the hold settles', async () => {
     const project = serveProject((bookId) => usj(bookId));
     project.booksPresent = '1';
@@ -1846,6 +1852,51 @@ describe('holdTextRead', () => {
     second.resolve();
     await settle();
     expect(project.subscriptions).toHaveLength(1);
+  });
+
+  it('reports an edit to the open book during a hold', async () => {
+    let version = 'v1';
+    const project = serveProject((bookId) => usj(bookId, version));
+    project.booksPresent = '1';
+    const edited = jest.fn();
+    unsubscribers.push(onBookTextChanged(edited));
+    segmentStandIns();
+    await getOpenBook('src', 'GEN');
+    readStatus();
+    await settle();
+    const hold = Promise.withResolvers<void>();
+    holdTextRead('src', hold.promise);
+
+    version = 'v2';
+    subscriptionsTo(project, 'GEN').forEach((s) => s.deliver(usj('GEN', version)));
+    await settle();
+
+    const heardDuringHold = [...edited.mock.calls];
+    hold.resolve();
+    expect(heardDuringHold).toEqual([['src', 'GEN']]);
+  });
+
+  it('reports an edit to a book that is not open only once the hold settles', async () => {
+    let version = 'v1';
+    const project = serveProject((bookId) => usj(bookId, version));
+    project.booksPresent = '11';
+    const edited = jest.fn();
+    unsubscribers.push(onBookTextChanged(edited));
+    segmentStandIns();
+    await getOpenBook('src', 'GEN');
+    readStatus();
+    await settle();
+    const hold = Promise.withResolvers<void>();
+    holdTextRead('src', hold.promise);
+
+    version = 'v2';
+    subscriptionsTo(project, 'EXO').forEach((s) => s.deliver(usj('EXO', version)));
+    await settle();
+
+    expect(edited).not.toHaveBeenCalled();
+    hold.resolve();
+    await settle();
+    expect(edited).toHaveBeenCalledWith('src', 'EXO');
   });
 
   it('leaves the reads of other projects unheld', async () => {

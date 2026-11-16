@@ -3160,7 +3160,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
 /**
  * Extension teardown. Called by the platform when the extension is unloaded. Registrations added
- * during activate are disposed by the platform.
+ * during activate are disposed by the platform. Forgets which tab holds each project and which tabs
+ * duplicate it, so the next activation tracks tabs afresh.
  *
  * @returns True to indicate successful deactivation; the platform may use this for logging.
  */

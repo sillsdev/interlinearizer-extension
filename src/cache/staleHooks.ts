@@ -4,8 +4,9 @@ import { useNamedFetch } from './namedQueryHooks';
 import { usePageSession } from './pageHooks';
 
 /**
- * The stale analyses that the session's draft holds in `bookId`; `undefined` until they arrive,
- * when the source has no text for the book, and after a fetch of them fails.
+ * The stale analyses that the session's draft holds in `bookId`, fetched again whenever a change
+ * names the stale summary; `undefined` until they arrive, when the source has no text for the book,
+ * and after a fetch of them fails.
  */
 export function useStaleSummary(bookId: string): StaleSummary | undefined {
   const { sessionId } = usePageSession();

@@ -41,6 +41,9 @@ const NO_ENVELOPE = new DraftEnvelopeStore(async () => {
  * and when the source, the import, or the import's version changes. New and Open have the host
  * start the draft over, then open a fresh session, which has nothing to undo. Undo, redo, discards
  * and boundary edits are commands to the session.
+ *
+ * Of the draft, the view holds only its envelope and the pages it shows. The whole analysis stays
+ * on the host, which serves the view one page at a time.
  */
 export default function useSessionProject(
   sourceProjectId: string,

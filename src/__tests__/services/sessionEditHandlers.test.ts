@@ -127,7 +127,7 @@ describe('sessionEditHandlers', () => {
 
   it("restores the project's analysis languages when every change is discarded, undoably", async () => {
     const { edits, sessionId, sessions } = await handlersOver({
-      getProject: async () => makeStubProject('proj-1'),
+      getProject: async () => ({ ...makeStubProject('proj-1'), analysisLanguages: ['de'] }),
     });
     await saveToProject(sessions, sessionId);
     await edits['interlinearizer.changeAnalysisLanguages']({
@@ -139,7 +139,7 @@ describe('sessionEditHandlers', () => {
 
     await edits['interlinearizer.discardAll']({ sessionId });
 
-    expect(await wholeDraft()).toMatchObject({ analysisLanguages: ['en'], dirty: false });
+    expect(await wholeDraft()).toMatchObject({ analysisLanguages: ['de'], dirty: false });
 
     await sessions.undo(sessionId);
 

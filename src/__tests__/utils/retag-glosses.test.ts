@@ -48,7 +48,7 @@ describe('retagGlosses', () => {
     expect(analysis.phraseAnalyses[0]).toMatchObject({ gloss: { es: 'whale' }, updatedAt: NOW });
   });
 
-  it('drops a gloss whose word or morpheme already has the same one under the new tag, as moved', () => {
+  it('drops a gloss whose word or morpheme already has the same one under the new tag, apart from surrounding space, as moved', () => {
     const analysis = analysisOf({
       tokenAnalyses: [
         {
@@ -98,7 +98,6 @@ describe('retagGlosses', () => {
           gloss: { en: 'fish', es: 'pez' },
           morphemes: [
             { id: 'm-1', form: 'fish', writingSystem: 'x', gloss: { en: 'fish', es: 'pez' } },
-            { id: 'm-2', form: 's', writingSystem: 'x', gloss: { en: 'PL' } },
           ],
         },
       ],
@@ -108,17 +107,15 @@ describe('retagGlosses', () => {
 
     expect(counts).toEqual({
       words: 0,
-      morphemes: 1,
+      morphemes: 0,
       freeTranslations: 0,
       skipped: { glosses: 2, freeTranslations: 0 },
     });
-    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalyses).toEqual([]);
     const [token] = analysis.tokenAnalyses;
     expect(token.gloss).toEqual({ en: 'fish', es: 'pez' });
-    expect(token.morphemes?.map(({ gloss }) => gloss)).toEqual([
-      { en: 'fish', es: 'pez' },
-      { es: 'PL' },
-    ]);
+    expect(token.morphemes?.[0].gloss).toEqual({ en: 'fish', es: 'pez' });
+    expect(token.updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
   });
 
   it('moves onto a blank gloss under the new tag', () => {
@@ -211,6 +208,7 @@ describe('isGlossRetagCounts', () => {
     'counts',
     { words: 1, morphemes: 0 },
     { words: '1', morphemes: 0, freeTranslations: 0, skipped: { glosses: 0, freeTranslations: 0 } },
+    { words: 1, morphemes: 0, freeTranslations: 0, skipped: { glosses: 0 } },
   ])('refuses %p', (value) => {
     expect(isGlossRetagCounts(value)).toBe(false);
   });

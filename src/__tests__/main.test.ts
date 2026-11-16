@@ -663,6 +663,7 @@ describe('main', () => {
           'interlinearizer.undoFromNotification',
           'interlinearizer.updateProjectMetadata',
           'interlinearizer.changeAnalysisLanguages',
+          'interlinearizer.countLanguageText',
           'interlinearizer.deleteProject',
         ]),
       );

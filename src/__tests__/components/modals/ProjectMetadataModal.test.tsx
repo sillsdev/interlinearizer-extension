@@ -65,9 +65,7 @@ describe('ProjectMetadataModal', () => {
   it('allows undo while the modal is open, because it shows the draft as it is', () => {
     render(<ProjectMetadataModal {...testProps} />);
 
-    expect(document.querySelector('[data-slot="dialog-content"]')).toHaveAttribute(
-      'data-allows-undo',
-    );
+    expect(screen.getByRole('dialog')).toHaveAttribute('data-allows-undo');
   });
 
   it("titles the modal with the source project's short name", () => {
@@ -80,7 +78,7 @@ describe('ProjectMetadataModal', () => {
     expect(screen.queryByText('il-project-uuid')).not.toBeInTheDocument();
   });
 
-  it('shows each analysis language as a chip, primary first', () => {
+  it('shows each analysis language as a chip, primary first, without the open-to-edit hint', () => {
     render(
       <ProjectMetadataModal
         {...testProps}

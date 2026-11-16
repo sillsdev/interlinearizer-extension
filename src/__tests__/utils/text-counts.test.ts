@@ -1,7 +1,11 @@
 /// <reference types="jest" />
 
 import { emptyAnalysis } from '../../types/empty-factories';
-import { countTextOfEveryTag, isLanguageTextCounts } from '../../utils/text-counts';
+import {
+  countTextOfEveryTag,
+  isLanguageTextCounts,
+  isTextCountsByTag,
+} from '../../utils/text-counts';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
 describe('countTextOfEveryTag', () => {
@@ -79,4 +83,17 @@ describe('isLanguageTextCounts', () => {
   ])('refuses %p', (value) => {
     expect(isLanguageTextCounts(value)).toBe(false);
   });
+});
+
+describe('isTextCountsByTag', () => {
+  it('accepts counts keyed by tag', () => {
+    expect(isTextCountsByTag({ fr: { glosses: 2, freeTranslations: 0 } })).toBe(true);
+  });
+
+  it.each([undefined, 'counts', [{ glosses: 2, freeTranslations: 0 }], { fr: { glosses: 2 } }])(
+    'refuses %p',
+    (value) => {
+      expect(isTextCountsByTag(value)).toBe(false);
+    },
+  );
 });

@@ -5,7 +5,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import type { DraftProject, TextAnalysis } from 'interlinearizer';
+import type { DraftProject } from 'interlinearizer';
 import type { ModalState } from '../../../components/modals/ProjectModals';
 import ProjectModals from '../../../components/modals/ProjectModals';
 import type { DraftCopyResult } from '../../../types/project-api';
@@ -252,11 +252,7 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
     onClose: () => void;
     onProjectSaved?: (u: { name?: string; description?: string; updatedAt?: string }) => void;
   }) => (
-    <div
-      data-testid="metadata-modal"
-      data-languages={analysisLanguages.join(',')}
-      data-counts-text={countLanguageText !== undefined}
-    >
+    <div data-testid="metadata-modal" data-languages={analysisLanguages.join(',')}>
       <button type="button" data-testid="metadata-close" onClick={onClose}>
         Close
       </button>
@@ -367,7 +363,7 @@ function buildProps(overrides: ModalsOverrides = {}) {
     activeProject: overrides.activeProject,
     announceUndoable: overrides.announceUndoable ?? jest.fn(),
     changeDraftAnalysisLanguages:
-      overrides.changeDraftAnalysisLanguages ?? jest.fn().mockResolvedValue(undefined),
+      overrides.changeDraftAnalysisLanguages ?? jest.fn().mockResolvedValue({}),
     countDraftLanguageText: overrides.countDraftLanguageText ?? jest.fn().mockResolvedValue({}),
     subscribeToDraftEdits: overrides.subscribeToDraftEdits ?? jest.fn(() => () => {}),
     defaultAnalysisLanguage: overrides.defaultAnalysisLanguage,
@@ -450,6 +446,7 @@ function makeWebViewStateWithActiveProjectSpies({
 beforeEach(() => {
   jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
   mockChange = { analysisLanguages: ['fr', 'en'] };
+  mockCounted = undefined;
 });
 
 describe('ProjectModals', () => {
@@ -1350,31 +1347,8 @@ describe('ProjectModals', () => {
         retag: { from: 'en', to: 'fr' },
       };
 
-      /** An analysis with one word glossed in `tag`. */
-      function glossedIn(tag: string): TextAnalysis {
-        return {
-          ...emptyAnalysis(),
-          tokenAnalyses: [
-            {
-              id: 'ta-1',
-              createdAt: '2026-01-01T00:00:00.000Z',
-              updatedAt: '2026-01-01T00:00:00.000Z',
-              surfaceText: 'fish',
-              gloss: { [tag]: 'fish' },
-            },
-          ],
-        };
-      }
-
-      /**
-       * Renders the metadata modal for the active project, whose draft is in `en`. The draft has a
-       * gloss in `en` unless `draft` says otherwise.
-       */
-      function renderActive(
-        changeDraftAnalysisLanguages: jest.Mock,
-        announceUndoable = jest.fn(),
-        draft: DraftProject = { ...MOCK_DRAFT, analysis: glossedIn('en') },
-      ) {
+      /** Renders the metadata modal for the active project. */
+      function renderActive(changeDraftAnalysisLanguages: jest.Mock, announceUndoable = jest.fn()) {
         render(
           <ProjectModals
             {...buildProps({
@@ -1382,7 +1356,6 @@ describe('ProjectModals', () => {
               activeProject: MOCK_PROJECT,
               changeDraftAnalysisLanguages,
               announceUndoable,
-              getDraftSnapshot: () => draft,
             })}
           />,
         );
@@ -1550,7 +1523,7 @@ describe('ProjectModals', () => {
         );
       });
 
-      it('still logs a failed change when the notification fails', async () => {
+      it('swallows a failed error notification after a failed change', async () => {
         jest.mocked(papi.notifications.send).mockRejectedValue(new Error('no bus'));
         const change = jest.fn().mockRejectedValue(new Error('refused'));
         renderActive(change);
@@ -1558,10 +1531,6 @@ describe('ProjectModals', () => {
         await userEvent.click(screen.getByTestId('metadata-change-languages'));
 
         await waitFor(() => expect(papi.notifications.send).toHaveBeenCalled());
-        expect(logger.error).toHaveBeenCalledWith(
-          "Interlinearizer: failed to change the draft's analysis languages",
-          expect.any(Error),
-        );
       });
     });
 

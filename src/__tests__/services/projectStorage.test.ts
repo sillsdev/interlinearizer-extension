@@ -595,7 +595,7 @@ describe('projectStorage', () => {
     });
 
     it('writes the updated project to storage', async () => {
-      mockListedProject(storedProject);
+      mockListedProject({ ...storedProject, analysisLanguages: ['de', 'fr'] });
 
       await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
 
@@ -604,6 +604,7 @@ describe('projectStorage', () => {
         'project:proj-id',
         JSON.stringify({
           ...storedProject,
+          analysisLanguages: ['de', 'fr'],
           updatedAt: UPDATE_TIME,
           modelVersion: CURRENT_MODEL_VERSION,
           name: 'My Name',
@@ -675,14 +676,6 @@ describe('projectStorage', () => {
       await expect(updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc')).rejects.toThrow();
 
       expect(__mockWriteUserData).not.toHaveBeenCalled();
-    });
-
-    it("leaves the project's analysis languages as they were", async () => {
-      mockListedProject(storedProject);
-
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc');
-
-      expect(result?.analysisLanguages).toEqual(storedProject.analysisLanguages);
     });
 
     it('removes name and description when called with undefined', async () => {

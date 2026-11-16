@@ -360,6 +360,7 @@ type MockProject = {
   analysisLanguages: string[];
   name?: string;
   description?: string;
+  targetProjectId?: string;
   pt9Import?: { fileHashes: Record<string, string>; importedAt: string };
 };
 
@@ -3958,9 +3959,8 @@ describe('InterlinearizerLoader', () => {
         analysisLanguages: ['fr'],
         analysis: draftAnalysis,
       });
-      await act(async () =>
-        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
-      );
+      const activeProject = { ...STUB_ACTIVE_PROJECT, targetProjectId: 'target-1' };
+      await act(async () => renderLoader({ useWebViewState: makeWebViewState({ activeProject }) }));
 
       mockSendCommand.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
@@ -3978,7 +3978,7 @@ describe('InterlinearizerLoader', () => {
           expect.any(String),
           testProjectId,
           'proj-1',
-          { targetProjectId: undefined },
+          { targetProjectId: 'target-1' },
         ],
       ]);
     });
@@ -6051,7 +6051,7 @@ describe('analysis language switch', () => {
     expect(capturedStoreProps?.analysisLanguage).toBe('en');
   });
 
-  it('shows glosses moved to another language in it', async () => {
+  it('reads the draft in the language its glosses were moved to', async () => {
     await mockDraftLanguages(['de', 'en', 'fr']);
     await act(async () =>
       renderLoader({
@@ -6067,10 +6067,7 @@ describe('analysis language switch', () => {
     expect(capturedStoreProps?.analysisLanguage).toBe('fr');
   });
 
-  it.each([
-    ['en', 'an undo', 'z'],
-    ['fr', 'a redo', 'y'],
-  ])('shows the glosses in %s after %s of their move', async (shown, _move, lastKey) => {
+  it("returns to the earlier language when the glosses' move is undone", async () => {
     await mockDraftLanguages(['de', 'en', 'fr']);
     await act(async () =>
       renderLoader({
@@ -6080,16 +6077,35 @@ describe('analysis language switch', () => {
     await flushHost(async () => {
       fireEvent.click(screen.getByTestId('retag-draft-languages'));
     });
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
 
     await flushHost(async () => {
       fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     });
-    if (lastKey === 'y')
-      await flushHost(async () => {
-        fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
-      });
 
-    expect(capturedStoreProps?.analysisLanguage).toBe(shown);
+    expect(capturedStoreProps?.analysisLanguage).toBe('en');
+  });
+
+  it("returns to the moved-to language when the glosses' move is redone", async () => {
+    await mockDraftLanguages(['de', 'en', 'fr']);
+    await act(async () =>
+      renderLoader({
+        useWebViewState: makeWebViewState({ analysisLanguageChoices: { draft: 'en' } }),
+      }),
+    );
+    await flushHost(async () => {
+      fireEvent.click(screen.getByTestId('retag-draft-languages'));
+    });
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
+    await flushHost(async () => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+
+    await flushHost(async () => {
+      fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+    });
+
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
   });
 
   it('keeps the chosen language when only the list of languages changes', async () => {

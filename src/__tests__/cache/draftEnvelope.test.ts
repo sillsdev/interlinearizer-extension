@@ -204,10 +204,11 @@ describe('DraftEnvelopeStore', () => {
   it('keeps the languages it holds for a scope record that lists none', async () => {
     const store = new DraftEnvelopeStore(async () => envelopeOf(false, ['en']));
     await store.refresh();
+    const held = store.envelope;
 
-    store.take({ intent: 'x', scope: scopeWith([]) });
+    store.take({ intent: 'x', scope: scopeWith([]) }, false);
 
-    expect(store.envelope).toStrictEqual(envelopeOf(true, ['en']));
+    expect(store.envelope).toBe(held);
   });
 
   it('lands a fetch with the scope record that the changes taken in meanwhile put', async () => {

@@ -182,7 +182,7 @@ describe('AnalysisLanguageChips', () => {
   });
 
   describe('adding a code', () => {
-    it('adds a code as the last one', async () => {
+    it('adds a code as the last one and closes the picker', async () => {
       const onChange = await renderChips(['en']);
 
       await userEvent.click(screen.getByRole('button', { name: 'Add' }));
@@ -234,19 +234,27 @@ describe('AnalysisLanguageChips', () => {
     });
 
     it('offers the codes whose text is hidden, with their counts', async () => {
-      const onChange = await renderChips(['en'], {
+      await renderChips(['en'], {
         en: { glosses: 1, freeTranslations: 0 },
         de: { glosses: 0, freeTranslations: 3 },
       });
 
       await userEvent.click(screen.getByRole('button', { name: 'Add' }));
-      const hidden = screen.getByRole('list', { name: 'Hidden text' });
+
       expect(
-        within(hidden)
+        within(screen.getByRole('list', { name: 'Hidden text' }))
           .getAllByRole('button')
           .map((button) => button.textContent),
       ).toEqual(['de: 3 free translations']);
-      await userEvent.click(within(hidden).getByRole('button'));
+    });
+
+    it('adds a hidden code when picked', async () => {
+      const onChange = await renderChips(['en'], { de: { glosses: 0, freeTranslations: 3 } });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await userEvent.click(
+        within(screen.getByRole('list', { name: 'Hidden text' })).getByRole('button'),
+      );
       await userEvent.click(screen.getByRole('button', { name: 'Add code' }));
 
       expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en', 'de'] });
@@ -297,7 +305,7 @@ describe('AnalysisLanguageChips', () => {
       expect(screen.getByRole('button', { name: 'Change code' })).toBeDisabled();
     });
 
-    it('asks before merging into a code that has text, and merges once confirmed', async () => {
+    it('asks before merging into a code that has text', async () => {
       const onChange = await renderChips(['en', 'fr'], {
         de: { glosses: 5, freeTranslations: 0 },
       });
@@ -308,7 +316,13 @@ describe('AnalysisLanguageChips', () => {
       expect(screen.getByRole('heading', { name: 'Change fr to de?' })).toBeInTheDocument();
       expect(screen.getByText('de already has 5 glosses.')).toBeInTheDocument();
       expect(onChange).not.toHaveBeenCalled();
+    });
 
+    it('merges into a code whose text is hidden once confirmed, taking its place', async () => {
+      const onChange = await renderChips(['en', 'fr'], { de: { glosses: 5, freeTranslations: 0 } });
+
+      await choose('fr options', 'Change code…');
+      await pick('de', 'Change code');
       await userEvent.click(screen.getByRole('button', { name: 'Change' }));
 
       expect(onChange).toHaveBeenCalledWith({

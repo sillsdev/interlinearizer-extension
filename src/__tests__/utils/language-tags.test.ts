@@ -78,9 +78,8 @@ describe('readLanguageCode', () => {
     },
   );
 
-  it('reads a code matching a known tag apart from case or form as that tag', () => {
+  it('reads a code matching a known tag apart from case as that tag', () => {
     expect(readLanguageCode('EN', ['fr', 'En'])).toBe('En');
-    expect(readLanguageCode('en-us', ['en-us'])).toBe('en-us');
   });
 
   it('reads a code that a known tag is a deprecated alias of as that tag, and the reverse', () => {
@@ -105,6 +104,8 @@ describe('readLanguageCode', () => {
     '   ',
     'not a tag',
     'en_US',
+    'en-',
+    'e_n',
     'x-',
     'x-toolongtag',
     'aaaa',

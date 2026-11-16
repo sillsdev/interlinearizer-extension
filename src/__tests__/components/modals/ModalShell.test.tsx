@@ -47,15 +47,16 @@ describe('ModalShell', () => {
     expect(screen.getByText('Body')).toBeInTheDocument();
   });
 
-  it.each([
-    [true, true],
-    [false, undefined],
-  ])('marks the dialog as allowing undo only when asked (%p)', (allowsUndo, marked) => {
-    render(<ModalShell {...defaultProps} allowsUndo={allowsUndo} />);
+  it('marks the dialog as allowing undo when asked', () => {
+    render(<ModalShell {...defaultProps} allowsUndo />);
 
-    const dialog = document.querySelector(DIALOG_SELECTOR);
-    if (marked) expect(dialog).toHaveAttribute('data-allows-undo');
-    else expect(dialog).not.toHaveAttribute('data-allows-undo');
+    expect(document.querySelector(DIALOG_SELECTOR)).toHaveAttribute('data-allows-undo', 'true');
+  });
+
+  it('leaves the dialog unmarked for undo by default', () => {
+    render(<ModalShell {...defaultProps} />);
+
+    expect(document.querySelector(DIALOG_SELECTOR)).not.toHaveAttribute('data-allows-undo');
   });
 
   it('renders without a body while the modal is still resolving its content', () => {

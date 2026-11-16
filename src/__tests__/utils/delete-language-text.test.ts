@@ -21,14 +21,19 @@ describe('deleteLanguageText', () => {
           surfaceText: 'fish',
           gloss: { en: 'fish', fr: 'poisson' },
           morphemes: [
-            { id: 'm-1', form: 'fish', writingSystem: 'x', gloss: { en: 'fish' } },
+            { id: 'm-1', form: 'fish', writingSystem: 'x', gloss: { en: 'fish', fr: 'poisson' } },
             { id: 'm-2', form: 's', writingSystem: 'x' },
           ],
         },
         { id: 'ta-2', ...FIXTURE_STAMPS, surfaceText: 'big', gloss: { fr: 'gros' } },
       ],
       phraseAnalyses: [
-        { id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'big fish', gloss: { en: 'whale' } },
+        {
+          id: 'pa-1',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'big fish',
+          gloss: { en: 'whale', fr: 'baleine' },
+        },
       ],
       segmentAnalyses: [
         {
@@ -52,15 +57,42 @@ describe('deleteLanguageText', () => {
     expect(segmentAnalyses.map(({ id }) => id)).toEqual(['sa-1']);
     const [token, untouched] = analysis.tokenAnalyses;
     expect(token.gloss).toEqual({ fr: 'poisson' });
-    expect(token.morphemes?.[0]).not.toHaveProperty('gloss');
+    expect(token.morphemes?.[0].gloss).toEqual({ fr: 'poisson' });
     expect(token.updatedAt).toBe(NOW);
     expect(untouched.updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
-    expect(analysis.phraseAnalyses[0]).not.toHaveProperty('gloss');
-    expect(analysis.phraseAnalyses[0].updatedAt).toBe(NOW);
+    expect(analysis.phraseAnalyses[0]).toMatchObject({ gloss: { fr: 'baleine' }, updatedAt: NOW });
     expect(analysis.segmentAnalyses[0]).toMatchObject({
       freeTranslation: { fr: 'Un gros poisson.' },
       updatedAt: NOW,
     });
+  });
+
+  it('drops a gloss or free translation whole once no language holds any text', () => {
+    const analysis = analysisOf({
+      tokenAnalyses: [
+        {
+          id: 'ta-1',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'fish',
+          gloss: { en: 'fish' },
+          morphemes: [{ id: 'm-1', form: 'fish', writingSystem: 'x', gloss: { en: 'fish' } }],
+        },
+      ],
+      phraseAnalyses: [
+        { id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'big fish', gloss: { en: 'whale' } },
+      ],
+      segmentAnalyses: [
+        { id: 'sa-1', ...FIXTURE_STAMPS, surfaceText: 'Fish.', freeTranslation: { en: 'A fish.' } },
+      ],
+    });
+
+    deleteLanguageText(analysis, 'en', NOW);
+
+    const [token] = analysis.tokenAnalyses;
+    expect(token).not.toHaveProperty('gloss');
+    expect(token.morphemes?.[0]).not.toHaveProperty('gloss');
+    expect(analysis.phraseAnalyses[0]).not.toHaveProperty('gloss');
+    expect(analysis.segmentAnalyses[0]).not.toHaveProperty('freeTranslation');
   });
 
   it('deletes blank text under the tag without counting it', () => {
@@ -85,6 +117,7 @@ describe('deleteLanguageText', () => {
         { id: 'sa-1', ...FIXTURE_STAMPS, surfaceText: 'Fish.', freeTranslation: { fr: 'z' } },
       ],
     });
+    const before = JSON.parse(JSON.stringify(analysis));
 
     const deletion = deleteLanguageText(analysis, 'en', NOW);
 
@@ -94,5 +127,6 @@ describe('deleteLanguageText', () => {
       phraseAnalyses: [],
       segmentAnalyses: [],
     });
+    expect(analysis).toStrictEqual(before);
   });
 });

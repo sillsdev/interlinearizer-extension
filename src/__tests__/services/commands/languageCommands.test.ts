@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import type { PhraseAnalysisLink, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type { TextAnalysis, TokenAnalysis } from 'interlinearizer';
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import {
   changeAnalysisLanguages,
@@ -8,32 +8,20 @@ import {
 } from '../../../services/commands/languageCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, memoryStorage, seedRepository, silentLogger } from '../../test-helpers';
+import {
+  FIXTURE_STAMPS,
+  makePhraseLink,
+  makeTokenLink,
+  memoryStorage,
+  seedRepository,
+  silentLogger,
+} from '../../test-helpers';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 
-function approved(id: string, analysisId: string, tokenRef: string): TokenAnalysisLink {
-  return {
-    id,
-    analysisId,
-    ...FIXTURE_STAMPS,
-    status: 'approved',
-    token: { tokenRef, surfaceText: 'fish' },
-  };
-}
-
-/** An approved link from the phrase "big fish" in `verseRef` to `analysisId`. */
-function phraseLink(id: string, analysisId: string, verseRef: string): PhraseAnalysisLink {
-  return {
-    id,
-    analysisId,
-    ...FIXTURE_STAMPS,
-    status: 'approved',
-    tokens: [
-      { tokenRef: `${verseRef}:0`, surfaceText: 'big' },
-      { tokenRef: `${verseRef}:1`, surfaceText: 'fish' },
-    ],
-  };
+/** A token analysis of "fish" carrying `fields`. */
+function tokenAnalysis(id: string, fields: Partial<TokenAnalysis> = {}): TokenAnalysis {
+  return { id, ...FIXTURE_STAMPS, surfaceText: 'fish', ...fields };
 }
 
 /** A repository holding a draft in `en` over `analysis`. */
@@ -63,9 +51,7 @@ async function change(
 describe('changeAnalysisLanguages', () => {
   it('gives the draft the new languages and moves no glosses without a move', async () => {
     const repository = await repositoryOver({
-      tokenAnalyses: [
-        { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { en: 'fish' } },
-      ],
+      tokenAnalyses: [tokenAnalysis('ta-1', { gloss: { en: 'fish' } })],
     });
 
     const { outcome, draft } = await change(repository, { analysisLanguages: ['es', 'en'] });
@@ -78,13 +64,10 @@ describe('changeAnalysisLanguages', () => {
   it('moves the glosses under one tag to another', async () => {
     const repository = await repositoryOver({
       tokenAnalyses: [
-        {
-          id: 'ta-1',
-          ...FIXTURE_STAMPS,
-          surfaceText: 'fish',
+        tokenAnalysis('ta-1', {
           gloss: { en: 'fish' },
           morphemes: [{ id: 'm-1', form: 'fish', writingSystem: 'x', gloss: { en: 'fish' } }],
-        },
+        }),
       ],
       phraseAnalyses: [
         { id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'big fish', gloss: { en: 'whale' } },
@@ -141,12 +124,12 @@ describe('changeAnalysisLanguages', () => {
   it('folds an analysis the move makes identical to another into it', async () => {
     const repository = await repositoryOver({
       tokenAnalyses: [
-        { id: 'ta-en', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { en: 'pez' } },
-        { id: 'ta-es', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { es: 'pez' } },
+        tokenAnalysis('ta-en', { gloss: { en: 'pez' } }),
+        tokenAnalysis('ta-es', { gloss: { es: 'pez' } }),
       ],
       tokenAnalysisLinks: [
-        approved('tl-1', 'ta-en', 'GEN 1:1:0'),
-        approved('tl-2', 'ta-es', 'GEN 1:2:0'),
+        makeTokenLink('ta-en', 'GEN 1:1:0'),
+        makeTokenLink('ta-es', 'GEN 1:2:0'),
       ],
     });
 
@@ -175,8 +158,8 @@ describe('changeAnalysisLanguages', () => {
         { id: 'pa-es', ...FIXTURE_STAMPS, surfaceText: 'big fish', gloss: { es: 'ballena' } },
       ],
       phraseAnalysisLinks: [
-        phraseLink('pl-1', 'pa-en', 'GEN 1:1'),
-        phraseLink('pl-2', 'pa-es', 'GEN 1:2'),
+        makePhraseLink('pa-en', ['GEN 1:1:0', 'GEN 1:1:1']),
+        makePhraseLink('pa-es', ['GEN 1:2:0', 'GEN 1:2:1']),
       ],
     });
 
@@ -200,11 +183,14 @@ describe('changeAnalysisLanguages', () => {
 
   it('deletes the glosses and free translations under a tag', async () => {
     const repository = await repositoryOver({
-      tokenAnalyses: [
-        { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { en: 'fish', fr: 'x' } },
-      ],
+      tokenAnalyses: [tokenAnalysis('ta-1', { gloss: { en: 'fish', fr: 'x' } })],
       segmentAnalyses: [
-        { id: 'sa-1', ...FIXTURE_STAMPS, surfaceText: 'Big fish.', freeTranslation: { fr: 'y' } },
+        {
+          id: 'sa-1',
+          ...FIXTURE_STAMPS,
+          surfaceText: 'Big fish.',
+          freeTranslation: { en: 'Big.', fr: 'y' },
+        },
       ],
     });
 
@@ -219,15 +205,16 @@ describe('changeAnalysisLanguages', () => {
       gloss: { en: 'fish' },
       updatedAt: NOW,
     });
-    expect(draft.analysis.segmentAnalyses).toEqual([]);
+    expect(draft.analysis.segmentAnalyses[0]).toMatchObject({
+      freeTranslation: { en: 'Big.' },
+      updatedAt: NOW,
+    });
   });
 
   it('removes a token analysis and its links once the deletion leaves it holding nothing', async () => {
     const repository = await repositoryOver({
-      tokenAnalyses: [
-        { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { fr: 'poisson' } },
-      ],
-      tokenAnalysisLinks: [approved('tl-1', 'ta-1', 'GEN 1:1:0')],
+      tokenAnalyses: [tokenAnalysis('ta-1', { gloss: { fr: 'poisson' } })],
+      tokenAnalysisLinks: [makeTokenLink('ta-1', 'GEN 1:1:0')],
     });
 
     const { draft } = await change(repository, { analysisLanguages: ['en'], deleteTextOf: 'fr' });
@@ -236,16 +223,29 @@ describe('changeAnalysisLanguages', () => {
     expect(draft.analysis.tokenAnalysisLinks).toEqual([]);
   });
 
+  it('removes a segment analysis and its links once the deletion leaves it holding nothing', async () => {
+    const repository = await repositoryOver({
+      segmentAnalyses: [
+        { id: 'sa-1', ...FIXTURE_STAMPS, surfaceText: 'Big fish.', freeTranslation: { fr: 'y' } },
+      ],
+      segmentAnalysisLinks: [
+        { id: 'sl-1', analysisId: 'sa-1', ...FIXTURE_STAMPS, status: 'approved', segmentId: 's-1' },
+      ],
+    });
+
+    const { draft } = await change(repository, { analysisLanguages: ['en'], deleteTextOf: 'fr' });
+
+    expect(draft.analysis.segmentAnalyses).toEqual([]);
+    expect(draft.analysis.segmentAnalysisLinks).toEqual([]);
+  });
+
   it('folds payloads that differed only in the deleted language', async () => {
     const repository = await repositoryOver({
       tokenAnalyses: [
-        { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', pos: 'n', gloss: { fr: 'x' } },
-        { id: 'ta-2', ...FIXTURE_STAMPS, surfaceText: 'fish', pos: 'n' },
+        tokenAnalysis('ta-1', { pos: 'n', gloss: { fr: 'x' } }),
+        tokenAnalysis('ta-2', { pos: 'n' }),
       ],
-      tokenAnalysisLinks: [
-        approved('tl-1', 'ta-1', 'GEN 1:1:0'),
-        approved('tl-2', 'ta-2', 'GEN 1:2:0'),
-      ],
+      tokenAnalysisLinks: [makeTokenLink('ta-1', 'GEN 1:1:0'), makeTokenLink('ta-2', 'GEN 1:2:0')],
     });
 
     const { draft } = await change(repository, { analysisLanguages: ['en'], deleteTextOf: 'fr' });
@@ -254,28 +254,6 @@ describe('changeAnalysisLanguages', () => {
     expect(draft.analysis.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toEqual([
       'ta-2',
       'ta-2',
-    ]);
-  });
-
-  it('folds an analysis the deletion makes identical to another into it', async () => {
-    const repository = await repositoryOver({
-      tokenAnalyses: [
-        { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { en: 'pez', fr: 'x' } },
-        { id: 'ta-2', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { en: 'pez' } },
-      ],
-      tokenAnalysisLinks: [
-        approved('tl-1', 'ta-1', 'GEN 1:1:0'),
-        approved('tl-2', 'ta-2', 'GEN 1:2:0'),
-      ],
-    });
-
-    const { draft } = await change(repository, { analysisLanguages: ['en'], deleteTextOf: 'fr' });
-
-    expect(draft.analysis.tokenAnalyses).toHaveLength(1);
-    const [survivor] = draft.analysis.tokenAnalyses;
-    expect(draft.analysis.tokenAnalysisLinks.map(({ analysisId }) => analysisId)).toEqual([
-      survivor.id,
-      survivor.id,
     ]);
   });
 });

@@ -992,11 +992,15 @@ describe('useSessionProject edits sent to the session', () => {
     await fakeHost();
     const { result } = renderWithoutBook();
     await waitFor(() => expect(result.current.isDraftLoading).toBe(false));
+    const { draft } = result.current;
 
+    let step: unknown = 'none yet';
     await act(async () => {
-      await result.current.undo();
+      step = await result.current.undo();
     });
 
+    expect(step).toBeUndefined();
+    expect(result.current.draft).toBe(draft);
     expect(result.current.canUndo).toBe(false);
   });
 

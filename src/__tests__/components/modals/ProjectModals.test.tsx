@@ -1394,7 +1394,7 @@ describe('ProjectModals', () => {
         rerender(<ProjectModals {...buildProps({ ...props, modal: 'metadata' })} />);
       }
 
-      it("holds the open project's fields until its draft has loaded", () => {
+      it("holds the open project's language actions and Save until its draft has loaded", () => {
         render(
           <ProjectModals
             {...buildProps({

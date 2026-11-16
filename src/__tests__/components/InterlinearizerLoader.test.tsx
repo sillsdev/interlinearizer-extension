@@ -3984,9 +3984,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('refreshes the cached activeProject languages and updatedAt from the saveDraftToProject response', async () => {
-      // saveDraftToProject returns the persisted project's summary carrying the draft's languages
-      // and the storage-refreshed updatedAt; every other command keeps its default (the
-      // empty-draft load) so the editor still mounts.
+      // saveDraftToProject returns the persisted project's summary, carrying the draft's languages
+      // and the storage-refreshed updatedAt. Every other command keeps its default (the empty-draft
+      // load), so the editor still mounts.
       otherCommands.mockImplementation(async (...args) =>
         args[0] === 'interlinearizer.saveDraftToProject'
           ? JSON.stringify({
@@ -4042,7 +4042,6 @@ describe('InterlinearizerLoader', () => {
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
-      // The previously cached Modified time and languages are preserved rather than cleared.
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
         'data-active-project-updated',
         '2026-01-01T00:00:00Z',

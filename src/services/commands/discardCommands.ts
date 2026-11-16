@@ -15,7 +15,7 @@ import { analysisHasFreeTranslations } from '../../utils/free-translations';
 import { sameSegmentation, segmentationForBook } from '../../utils/segmentation';
 import type { ChangeBuffer, RecordKind, RecordOf } from './changeBuffer';
 
-/** What the project that a draft saves to holds, as a discard restores it. */
+/** What the project that a draft saves to holds, as a discard restores that project. */
 export type SavedProject = DraftContent & Readonly<{ analysisLanguages: readonly string[] }>;
 
 /** What an unsaved-change discard tells its caller beside the changes it staged. */
@@ -45,9 +45,9 @@ function stageKind<Kind extends RecordKind>(
 }
 
 /**
- * Stages turning the stored draft's content into `restored`, as the WebView's save of `restored`
- * would store it: a book whose stored analysis could not be read keeps it as stored. The draft
- * takes `restoredLanguages` as its analysis languages when they are given.
+ * Stages turning the stored draft's content into `restored`, as saving `restored` would store it: a
+ * book whose stored analysis could not be read keeps it as stored. The draft takes
+ * `restoredLanguages` as its analysis languages when they are given.
  */
 function stageDiscard(
   buffer: ChangeBuffer,
@@ -119,14 +119,14 @@ function stageDiscard(
 /**
  * Stages discarding the unsaved changes to one book of the stored draft. The book's records and
  * boundaries become those of `saved`, or none without it. A payload the book shares with another
- * book keeps its stored version.
+ * book keeps its stored version. The draft keeps its analysis languages, because they span every
+ * book.
  *
  * @param buffer - Where the changes are staged.
  * @param stored - The stored draft, with the books whose analysis could not be read; those keep
  *   their stored analysis.
  * @param bookCode - The book discarded.
- * @param saved - The project that the draft saves to; absent when it has no project. Its analysis
- *   languages are left alone, because they span every book.
+ * @param saved - The project that the draft saves to; absent when it has no project.
  */
 export function discardBook(
   buffer: ChangeBuffer,

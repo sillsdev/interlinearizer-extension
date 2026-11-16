@@ -37,7 +37,7 @@ type ProjectMetadataModalProps = Readonly<{
   sourceShortName: string;
   /** Optional Platform.Bible project ID of the target text for bilateral alignment projects. */
   targetProjectId?: string;
-  /** BCP 47 tags for the analysis languages, as shown. */
+  /** BCP 47 tags for the analysis languages, primary first. */
   analysisLanguages: string[];
   /** ISO 8601 creation timestamp. */
   createdAt: string;
@@ -49,7 +49,7 @@ type ProjectMetadataModalProps = Readonly<{
    * as static text and there is no Save.
    */
   pt9ImportedAt?: string;
-  /** Whether the fields and Save are disabled for a reason outside the form. */
+  /** Whether the language actions and Save are disabled for a reason outside the form. */
   isSaveBlocked?: boolean;
   /** Counts the glosses and free translations of every language code that has any. */
   countLanguageText?: () => Promise<TextCountsByTag>;
@@ -59,8 +59,8 @@ type ProjectMetadataModalProps = Readonly<{
    */
   subscribeToDraftEdits?: (listener: () => void) => () => void;
   /**
-   * Applies a change to the analysis languages at once, apart from Save. Absent when the languages
-   * can't change here, because the project isn't the one open.
+   * Applies a change to the analysis languages immediately, without waiting for Save. Absent when
+   * the languages can't change here.
    */
   onChangeLanguages?: (change: AnalysisLanguagesChange) => Promise<void>;
   /** Callback invoked when the modal should be dismissed without saving. */
@@ -70,10 +70,10 @@ type ProjectMetadataModalProps = Readonly<{
 }>;
 
 /**
- * Modal that displays and allows editing of the active interlinearizer project's metadata. Name and
+ * Modal that displays and allows editing of an interlinearizer project's metadata. Name and
  * description are edited and saved together. The open project's analysis languages change one
- * action at a time, apart from Save. Read-only fields are the creation and modification dates and,
- * for an import, the last sync.
+ * action at a time, without waiting for Save. Read-only fields are the creation and modification
+ * dates and, for an import, the last sync.
  */
 export function ProjectMetadataModal({
   interlinearProjectId,
@@ -112,9 +112,8 @@ export function ProjectMetadataModal({
 
   /**
    * Sends the updated name and description to the backend, then hands the edited fields to the
-   * caller and closes the modal. Logs on failure; the backend command handler is responsible for
-   * showing the error notification so this handler does not re-send it. Save is disabled when the
-   * name is blank, because a name may not be cleared.
+   * caller and closes the modal. Logs a failure without notifying, because the backend already
+   * shows the error. Save is disabled when the name is blank, because a name may not be cleared.
    */
   const saveMetadata = useCallback(async () => {
     const newName = editName.trim();
@@ -128,8 +127,7 @@ export function ProjectMetadataModal({
         targetProjectId,
       );
       if (!updatedProjectJson) return;
-      // Parse the refreshed `updatedAt` out of the returned project so the caller's cached copy
-      // shows the new Modified time; omit it defensively if the payload is unexpectedly shaped.
+      // The returned project carries the refreshed `updatedAt`; a payload without one leaves it out.
       const parsed: unknown = JSON.parse(updatedProjectJson);
       const rawUpdatedAt =
         parsed && typeof parsed === 'object' && 'updatedAt' in parsed
@@ -203,7 +201,7 @@ export function ProjectMetadataModal({
               value={editName}
               placeholder={localizedStrings['%interlinearizer_modal_metadata_name_placeholder%']}
               onChange={(e) => setEditName(e.target.value)}
-              disabled={isSaveBlocked || isSubmitting}
+              disabled={isSubmitting}
             />
           </div>
 
@@ -220,7 +218,7 @@ export function ProjectMetadataModal({
                 localizedStrings['%interlinearizer_modal_metadata_description_placeholder%']
               }
               onChange={(e) => setEditDescription(e.target.value)}
-              disabled={isSaveBlocked || isSubmitting}
+              disabled={isSubmitting}
             />
           </div>
 

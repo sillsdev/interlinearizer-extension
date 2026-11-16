@@ -215,9 +215,8 @@ declare module 'papi-shared-types' {
 
     /**
      * Copies the source project's stored draft, its analysis and custom segment boundaries, into an
-     * existing interlinearizer project. Called from the WebView on Save and on Save As onto an
-     * existing project. The copy reads the stored draft after the session's earlier edits, so no
-     * analysis crosses the bus.
+     * existing interlinearizer project. The copy reads the stored draft after the session's earlier
+     * edits, so no analysis crosses the bus.
      *
      * @param sessionId - The session editing the draft. The copy runs in the session's turn, and
      *   the session's history marks the draft saved.
@@ -226,10 +225,10 @@ declare module 'papi-shared-types' {
      * @param config - The target to set on the project in the same write. The project also takes
      *   the analysis languages of the draft being copied, so its declared configuration matches the
      *   glosses it receives. An absent `targetProjectId` clears the project's target binding. Omit
-     *   `config` to leave the configuration unchanged.
+     *   `config` to leave the configuration unchanged. A draft that lists no analysis languages
+     *   leaves it unchanged too, target included.
      * @returns The saved project's `InterlinearProjectSummary` (with its refreshed `updatedAt`) as
-     *   a JSON string, or `undefined` if no project with the given ID exists. The WebView uses the
-     *   refreshed `updatedAt` to keep the cached Modified time current after a Save.
+     *   a JSON string, or `undefined` if no project with the given ID exists.
      * @throws If `sessionId` names no open session, if the project is a Paratext 9 import, which is
      *   read-only, or if the stored draft cannot be read whole, or if storage fails. Error is
      *   logged and an error notification is sent before rethrowing so callers do not need to send a
@@ -977,11 +976,10 @@ declare module 'papi-shared-types' {
 
     /**
      * Counts the glosses and free translations of a session's draft under each language tag that
-     * has any.
+     * has any. A book whose stored analysis can't be read counts as having none.
      *
      * @returns A JSON string of the counts, keyed by tag.
-     * @throws If the session is not open, or its draft or any book of it can't be read (logged
-     *   before rethrowing).
+     * @throws If the session is not open, or its draft can't be read (logged before rethrowing).
      */
     'interlinearizer.countLanguageText': (
       args: import('interlinearizer').SessionCommandArgs,

@@ -29,8 +29,8 @@ const LANGUAGE_CODE_PICKER_STRING_KEYS: `%${string}%`[] = [
 
 /**
  * Asks for a language code, either to add as an analysis language or to change one to. Codes that
- * aren't analysis languages but still have glosses or free translations are offered, with their
- * counts, so the user can bring that text back or see what a change would merge with.
+ * aren't analysis languages but still have glosses or free translations are offered with their
+ * counts. The user can then bring that text back or see what a change would merge with.
  *
  * Adding refuses a code already listed. Changing to a listed code merges the two.
  *

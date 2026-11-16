@@ -61,17 +61,31 @@ describe('languageNameForTag', () => {
 });
 
 describe('readLanguageCode', () => {
-  it('reads a well-formed code in its canonical form', () => {
-    expect(readLanguageCode(' EN-us ', [])).toBe('en-US');
+  it.each([
+    [' EN-us ', 'en-US'],
+    ['ZH-hant-tw', 'zh-Hant-TW'],
+    ['ES-419', 'es-419'],
+    ['SL-ROZAJ', 'sl-rozaj'],
+    ['EN-x-AB', 'en-x-ab'],
+  ])('reads the well-formed code %p in standard casing', (input, code) => {
+    expect(readLanguageCode(input, [])).toBe(code);
   });
+
+  it.each(['swh', 'iw', 'TL'])(
+    'keeps the deprecated alias %p rather than replacing it',
+    (input) => {
+      expect(readLanguageCode(input, [])).toBe(input.toLowerCase());
+    },
+  );
 
   it('reads a code matching a known tag apart from case or form as that tag', () => {
     expect(readLanguageCode('EN', ['fr', 'En'])).toBe('En');
     expect(readLanguageCode('en-us', ['en-us'])).toBe('en-us');
   });
 
-  it('reads a code whose canonical form matches a known tag as that tag', () => {
-    expect(readLanguageCode('he', ['iw'])).toBe('iw');
+  it('reads a code that a known tag is a deprecated alias of as that tag, and the reverse', () => {
+    expect(readLanguageCode('sw', ['swh'])).toBe('swh');
+    expect(readLanguageCode('swh', ['sw'])).toBe('sw');
   });
 
   it('reads a new code past a known tag that is not well formed', () => {
@@ -82,7 +96,14 @@ describe('readLanguageCode', () => {
     expect(readLanguageCode('EN_us', ['en_US'])).toBe('en_US');
   });
 
-  it.each(['', '   ', 'not a tag', 'en_US'])('reads %p as no code', (input) => {
-    expect(readLanguageCode(input, [])).toBeUndefined();
+  it('reads a private-use-only code in lower case', () => {
+    expect(readLanguageCode('X-Foo-Bar', [])).toBe('x-foo-bar');
   });
+
+  it.each(['', '   ', 'not a tag', 'en_US', 'x-', 'x-toolongtag'])(
+    'reads %p as no code',
+    (input) => {
+      expect(readLanguageCode(input, [])).toBeUndefined();
+    },
+  );
 });

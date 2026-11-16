@@ -99,7 +99,7 @@ export type ProjectApi = {
   discardAll: () => Promise<void>;
   /**
    * Gives the draft new analysis languages as one undoable step, moving or deleting any text the
-   * change names. Moved text that already has different text where it moves to stays where it is.
+   * change names. Text whose destination already holds different text stays under its old tag.
    *
    * @throws If no session is open, or the session refuses or fails the edit.
    */

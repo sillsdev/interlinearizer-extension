@@ -901,15 +901,17 @@ export async function updateAnalysis(
  * Copies the source project's stored draft into an existing interlinearizer project: the draft's
  * analysis replaces the project's, and the draft's custom segment boundaries replace the project's,
  * cleared when the draft has none. Refreshes `updatedAt` to the current time. The project's name
- * and description are untouched. Its configuration changes only when `config` is given and the
- * draft has analysis languages: the project then takes the draft's languages along with the given
- * target, so they match the glosses it receives.
+ * and description are untouched.
+ *
+ * The project's configuration changes only when `config` is given and the draft has analysis
+ * languages. The project then takes the draft's languages with the given target, so they match the
+ * glosses it receives.
  *
  * The caller must first have written the draft it means to save; whatever the draft holds when its
  * queued read runs is what the project receives. The copy is refused while any book's stored draft
- * analysis cannot be read, since the draft would replace the project's analysis for that book with
- * nothing. Once the project is written, the stored draft is marked clean unless a draft write was
- * sent after it was read.
+ * analysis cannot be read, because the draft would replace the project's analysis for that book
+ * with nothing. Once the project is written, the stored draft is marked clean unless a draft write
+ * was sent after it was read.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID whose draft to copy.
@@ -968,8 +970,7 @@ export async function saveDraftToProject(
  * @throws {Error} If the stored record was written by a newer build; nothing is written.
  * @throws {Error} If the project is a Paratext 9 import (`pt9Import` present); imports are
  *   read-only, their name and description included - the import stamps fixed values.
- * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
- *   reason.
+ * @throws If a storage read or write rejects for a reason other than a missing file.
  */
 export async function updateProjectMetadata(
   token: ExecutionToken,

@@ -56,7 +56,7 @@ function hasReport({ words, morphemes, freeTranslations, skipped }: GlossRetagCo
   return words + morphemes + freeTranslations + skipped > 0;
 }
 
-/** Tells the reader what a move from `from` to `to` did, leaving out zero counts. */
+/** The message telling the reader what a move from `from` to `to` did, leaving out zero counts. */
 function retagMessage(
   from: string,
   to: string,
@@ -93,8 +93,8 @@ function retagMessage(
  *
  * @param props.activeProject - The currently active interlinear project (the Save target), read
  *   from WebView state by the parent.
- * @param props.announceUndoable - Tells the reader what the step just made did, offering to undo
- *   it.
+ * @param props.announceUndoable - Announces a message about the step just made, with an offer to
+ *   undo that step.
  * @param props.changeDraftAnalysisLanguages - Gives the draft new analysis languages as one
  *   undoable step, moving or deleting any text the change names. Resolves what it did to the text.
  * @param props.countDraftLanguageText - Counts the draft's glosses and free translations under each
@@ -103,8 +103,9 @@ function retagMessage(
  *   draft, until the returned function is called.
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
  *   initial value of the analysis language field; should be the platform UI language.
- * @param props.isDraftLoading - Whether the draft is still loading. Project Info holds the active
- *   project's fields until it has loaded, because its analysis languages are the draft's.
+ * @param props.isDraftLoading - Whether the draft is still loading. Project Info disables the
+ *   active project's language actions and Save until the draft loads, because the project's
+ *   analysis languages come from the draft.
  * @param props.hasUnsavedWork - Whether the draft has unsaved work — either committed-but-unsaved
  *   changes or uncommitted text still sitting in a gloss input (matching the tab's unsaved marker).
  *   When true, New / Open are gated behind the discard confirmation so neither kind of unsaved work
@@ -292,9 +293,8 @@ export default function ProjectModals({
   );
 
   /**
-   * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
-   * project is the currently active one, carrying through the server-refreshed `updatedAt` so the
-   * cached Modified time (shown in the picker and on modal reopen) stays current.
+   * Called when the metadata modal saves changes. When the edited project is the active one, merges
+   * the saved fields into `activeProject`, the refreshed `updatedAt` included.
    */
   const handleMetadataProjectSaved = useCallback(
     (updated: { name?: string; description?: string; updatedAt?: string }) => {
@@ -618,8 +618,8 @@ export default function ProjectModals({
   }, [metadataSourceIsSelect, setModal]);
 
   const draftSnapshot = getDraftSnapshot();
-  // The open project's languages are its draft's until the draft is saved, and change only there.
-  // An import is never edited in the draft.
+  // The open project's languages come from its draft, which holds any unsaved change to them. An
+  // import is never edited in the draft.
   const metadataLanguagesInDraft =
     resolvedMetadataProject !== undefined &&
     resolvedMetadataProject.id === activeProject?.id &&

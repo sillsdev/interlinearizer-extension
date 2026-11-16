@@ -16,12 +16,13 @@ function marked(envelope: DraftEnvelope, mark: Mark | undefined): DraftEnvelope 
   return envelope.dirty === dirty ? envelope : { ...envelope, dirty };
 }
 
-/** `envelope` with the fields of the scope record `scope` puts, when it puts one. */
+/** `envelope` with the fields of `scope`, when there is one. */
 function scoped(envelope: DraftEnvelope, scope: ScopeRecord | undefined): DraftEnvelope {
   if (!scope) return envelope;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave it out
   const { segmentation, ...fields } = scope;
-  // A draft listing no analysis language reads as listing the session's, as the host fills it in.
+  // A scope record listing no analysis language keeps the envelope's languages, because the host
+  // fills in the session's.
   const analysisLanguages =
     fields.analysisLanguages.length > 0 ? fields.analysisLanguages : envelope.analysisLanguages;
   const next = { ...fields, analysisLanguages, dirty: envelope.dirty };
@@ -56,7 +57,7 @@ export class DraftEnvelopeStore {
     this.fetch = fetch;
   }
 
-  /** The envelope that the latest successful fetch got, as changes since have marked it. */
+  /** The envelope that the latest successful fetch got, as changes taken in since have left it. */
   get envelope(): DraftEnvelope | undefined {
     return this.held;
   }
@@ -83,9 +84,10 @@ export class DraftEnvelopeStore {
   }
 
   /**
-   * Updates the held envelope as the session's `changes` leave it: with the scope record they put,
-   * if any, and marked as `mark` says, or unsaved when `mark` is absent. Tells each listener when
-   * the envelope changes. Changes that touch no record leave it as it was.
+   * Updates the held envelope as the session's `changes` leave it. The envelope takes the scope
+   * record they put, if any. It is marked as `mark` says, or unsaved when `mark` is absent.
+   *
+   * Tells each listener when the envelope changes. Changes that touch no record leave it as it was.
    *
    * A fetch under way lands updated by the changes too, because the host may have answered it
    * before applying them.

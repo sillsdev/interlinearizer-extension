@@ -36,9 +36,8 @@ type AnalysisLanguageChipsProps = Readonly<{
   labelledBy: string;
   /**
    * Counts the glosses and free translations of every code that has any. The counts decide whether
-   * an action asks before hiding or merging text. Actions wait for the first count, and the text is
-   * counted again after each change. While a count has failed, Remove and Change are unavailable.
-   * Absent, no action asks.
+   * an action asks before hiding or merging text. Actions wait for the first count. The text is
+   * counted again after each change. Absent, or while a count has failed, no action asks.
    */
   countText?: () => Promise<TextCountsByTag>;
   /**
@@ -52,7 +51,7 @@ type AnalysisLanguageChipsProps = Readonly<{
   disabled?: boolean;
 }>;
 
-/** The counts while none have arrived. */
+/** The counts used while none are known: before the first arrives, or after a count fails. */
 const NO_COUNTS: TextCountsByTag = {};
 
 /** A code change waiting for the user to confirm merging into a code that already has text. */
@@ -88,22 +87,30 @@ export default function AnalysisLanguageChips({
   const chipButtons = useRef(new Map<string, HTMLButtonElement>());
   const [counted, setCounted] = useState<TextCountsByTag | undefined>(countText ? undefined : {});
   const textCounts = counted ?? NO_COUNTS;
-  const [countFailed, setCountFailed] = useState(false);
+  /** Numbers each count, so that only the latest one asked sets the counts. */
+  const latestCount = useRef(0);
 
   const recount = useCallback(async () => {
     if (!countText) return;
+    latestCount.current += 1;
+    const count = latestCount.current;
     try {
-      setCounted(await countText());
-      setCountFailed(false);
+      const counts = await countText();
+      if (count !== latestCount.current) return;
+      setCounted(counts);
     } catch (e) {
       logger.warn('Interlinearizer: could not count the text in each analysis language', e);
+      if (count !== latestCount.current) return;
       setCounted(NO_COUNTS);
-      setCountFailed(true);
     }
   }, [countText]);
 
   useEffect(() => {
     recount();
+    // Counts still under way when `countText` changes or the row unmounts set nothing.
+    return () => {
+      latestCount.current += 1;
+    };
   }, [recount]);
 
   useEffect(
@@ -219,7 +226,6 @@ export default function AnalysisLanguageChips({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 <DropdownMenuItem
-                  disabled={countFailed}
                   onSelect={() =>
                     setPicker({ changing: tag, returnFocusTo: chipButtons.current.get(tag) })
                   }
@@ -240,7 +246,7 @@ export default function AnalysisLanguageChips({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
-                  disabled={countFailed || languages.length < 2}
+                  disabled={languages.length < 2}
                   onSelect={() => handleRemove(tag)}
                 >
                   {localizedStrings['%interlinearizer_languageChips_remove%']}

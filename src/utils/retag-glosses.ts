@@ -55,9 +55,12 @@ function retagOutcome(
 }
 
 /**
- * Moves the text under `from` to `to` in place. Text under `to` is never overwritten. Text under
- * `from` that matches the text under `to` is dropped and counts as moved. Blank text under `from`
- * is left alone.
+ * Moves the text under `from` to `to` in place. Text under `to` that isn't blank is never
+ * overwritten. Text under `from` that matches the text under `to` is dropped and counts as moved.
+ * Blank text under `from` is left alone.
+ *
+ * @returns `'moved'` when the text moved or matched the text under `to`, `'skipped'` when `to` held
+ *   different text, and `'none'` when `from` held no text that isn't blank.
  */
 function retagMultiString(
   value: MultiString | undefined,

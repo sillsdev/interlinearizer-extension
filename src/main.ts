@@ -399,8 +399,7 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
 }
 
 /**
- * Updates the metadata of an existing interlinearizer project. Called from the WebView when the
- * user saves edits in the project info modal.
+ * Updates the metadata of an existing interlinearizer project.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param name - New user-facing name, or `undefined` to clear it.
@@ -408,8 +407,8 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param targetProjectId - New target-project ID; omit to clear the target binding.
  * @returns The updated project as a JSON string, or `undefined` if no project with the given ID
  *   exists.
- * @throws If storage fails. The error is logged and an error notification is sent before rethrowing
- *   so the frontend `catch` block can suppress it without sending a second notification.
+ * @throws If storage fails. The error is logged and an error notification is sent before
+ *   rethrowing.
  */
 async function updateProjectMetadata(
   interlinearProjectId: string,
@@ -625,7 +624,8 @@ async function savingInSession<T>(
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param interlinearProjectId - UUID of the interlinearizer project to save into.
  * @param config - The target to set on the project in the same write, along with the draft's
- *   analysis languages; omit to leave the project's configuration unchanged.
+ *   analysis languages; omit to leave the project's configuration unchanged. A draft that lists no
+ *   analysis languages leaves the configuration unchanged too, target included.
  * @returns The saved project's `InterlinearProjectSummary` (carrying the refreshed `updatedAt`) as
  *   a JSON string, or `undefined` if no project with the given ID exists.
  * @throws If `sessionId` names no open session, if the draft cannot be read for some book, if the

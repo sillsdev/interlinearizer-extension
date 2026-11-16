@@ -70,6 +70,12 @@ export function languageNameForTag(tag: string, locales?: readonly string[]): st
   }
 }
 
+/**
+ * A private-use-only BCP 47 tag, such as `x-foo`. Well formed, though `Intl` refuses it because it
+ * isn't a Unicode locale identifier.
+ */
+const PRIVATE_USE_TAG = /^x(-[a-z0-9]{1,8})+$/i;
+
 /** `tag` in its canonical form, or as it is when it isn't a well-formed BCP 47 tag. */
 function canonicalOrSelf(tag: string): string {
   try {
@@ -81,9 +87,30 @@ function canonicalOrSelf(tag: string): string {
 }
 
 /**
+ * `tag` in the standard BCP 47 casing: scripts in title case, regions in upper case, and every
+ * other subtag in lower case. Subtags after a singleton, such as `x`, are all lower case.
+ */
+function inStandardCase(tag: string): string {
+  let afterSingleton = false;
+  return tag
+    .split('-')
+    .map((subtag, index) => {
+      const lower = subtag.toLowerCase();
+      if (lower.length === 1) afterSingleton = true;
+      if (index === 0 || afterSingleton) return lower;
+      if (/^[a-z]{4}$/.test(lower)) return lower[0].toUpperCase() + lower.slice(1);
+      return /^[a-z]{2}$/.test(lower) ? lower.toUpperCase() : lower;
+    })
+    .join('-');
+}
+
+/**
  * Reads a language code typed by the user. A code that matches one of `knownTags`, apart from case
- * or canonical form, is read as that known tag. Text already written under the known tag then stays
- * reachable, even when the tag isn't well formed. Any other code is read in its canonical form.
+ * or a deprecated alias (`sw` finds `swh`), is read as that known tag. Text already written under
+ * the known tag then stays reachable, even when the tag isn't well formed.
+ *
+ * Any other well-formed code is read as typed, in standard casing. A deprecated alias is kept, not
+ * replaced by its preferred code.
  *
  * @returns The tag, or `undefined` when the input is blank, or is neither a known tag nor a
  *   well-formed BCP 47 tag.
@@ -97,10 +124,13 @@ export function readLanguageCode(input: string, knownTags: readonly string[]): s
   try {
     [canonical] = Intl.getCanonicalLocales(typed);
   } catch {
-    return undefined;
+    if (!PRIVATE_USE_TAG.test(typed)) return undefined;
+    canonical = typed;
   }
   /* v8 ignore next -- a well-formed tag always has a canonical form */
   if (canonical === undefined) return undefined;
   const lowered = canonical.toLowerCase();
-  return knownTags.find((tag) => canonicalOrSelf(tag).toLowerCase() === lowered) ?? canonical;
+  return (
+    knownTags.find((tag) => canonicalOrSelf(tag).toLowerCase() === lowered) ?? inStandardCase(typed)
+  );
 }

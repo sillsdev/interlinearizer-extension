@@ -1259,8 +1259,8 @@ function InterlinearizerLoaderInner({
 
   /**
    * Saves the current draft to the active project, analysis languages included. When no project is
-   * active there is nothing to save to yet, so it opens Save As instead. Errors are logged; the
-   * backend surfaces the notification.
+   * active, it opens Save As instead, because there is nothing to save to yet. Errors are logged;
+   * the backend surfaces the notification.
    */
   const handleSave = useCallback(async () => {
     if (!activeProject) {
@@ -1285,8 +1285,8 @@ function InterlinearizerLoaderInner({
           return false;
         }
         // The cached active project takes the saved languages and the response's refreshed
-        // `updatedAt`, so the picker sort and the metadata modal stay current without a reload. A
-        // payload of unexpected shape leaves the cached values as they were.
+        // `updatedAt`, so it stays current without a reload. A payload of unexpected shape leaves
+        // the cached values as they were.
         const parsed: unknown = JSON.parse(savedJson);
         if (isInterlinearProjectSummary(parsed)) {
           const { analysisLanguages, updatedAt } = parsed;

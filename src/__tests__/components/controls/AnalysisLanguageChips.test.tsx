@@ -44,8 +44,8 @@ const LOCALIZED: Record<string, string> = {
 };
 
 /**
- * Renders an editable row of `languages` whose text counts as `textCounts`, once the counts have
- * arrived.
+ * Renders an editable row of `languages`, with `textCounts` as each code's text counts, and waits
+ * for the counts to arrive.
  *
  * @returns The change handler.
  */
@@ -413,38 +413,72 @@ describe('AnalysisLanguageChips', () => {
     expect(screen.getByRole('heading', { name: 'Remove en?' })).toBeInTheDocument();
   });
 
-  it('logs a failed count and offers no Remove or Change until a count succeeds', async () => {
+  it('logs a failed count and removes a code without asking', async () => {
     const warn = jest.mocked(logger.warn);
     const onChange = jest.fn(async () => {});
-    const countText = jest
-      .fn<Promise<TextCountsByTag>, []>()
-      .mockRejectedValueOnce(new Error('GEN cannot be read'))
-      .mockResolvedValue({});
     render(
       <AnalysisLanguageChips
         languages={['en', 'fr']}
         labelledBy="label"
-        countText={countText}
+        countText={async () => {
+          throw new Error('the session closed');
+        }}
         onChange={onChange}
       />,
     );
     await waitFor(() => expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled());
 
-    await userEvent.click(screen.getByRole('button', { name: 'fr options' }));
+    await choose('fr options', 'Remove');
 
     expect(warn).toHaveBeenCalledWith(
       'Interlinearizer: could not count the text in each analysis language',
       expect.any(Error),
     );
-    expect(screen.getByRole('menuitem', { name: 'Remove' })).toBeDisabled();
-    expect(screen.getByRole('menuitem', { name: 'Change code…' })).toBeDisabled();
-
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Make primary' }));
-    await userEvent.click(screen.getByRole('button', { name: 'fr options' }));
-
-    expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['fr', 'en'] });
-    expect(screen.getByRole('menuitem', { name: 'Remove' })).toBeEnabled();
+    expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en'] });
   });
+
+  it.each([
+    ['counts', async () => ({})],
+    [
+      'failure',
+      async () => {
+        throw new Error('GEN cannot be read');
+      },
+    ],
+  ])(
+    'keeps the latest counts when an earlier count lands after them with its %s',
+    async (_case, earlierAnswer: () => Promise<TextCountsByTag>) => {
+      let answerEarlier: () => void = () => {};
+      let listener: () => void = () => {};
+      const countText = jest
+        .fn<Promise<TextCountsByTag>, []>()
+        .mockImplementationOnce(
+          () =>
+            new Promise<TextCountsByTag>((resolve, reject) => {
+              answerEarlier = () => earlierAnswer().then(resolve, reject);
+            }),
+        )
+        .mockResolvedValue({ fr: { glosses: 2, freeTranslations: 0 } });
+      render(
+        <AnalysisLanguageChips
+          languages={['en', 'fr']}
+          labelledBy="label"
+          countText={countText}
+          subscribeToEdits={(heard) => {
+            listener = heard;
+            return () => {};
+          }}
+          onChange={jest.fn(async () => {})}
+        />,
+      );
+
+      await act(async () => listener());
+      await act(async () => answerEarlier());
+      await choose('fr options', 'Remove');
+
+      expect(screen.getByRole('heading', { name: 'Remove fr?' })).toBeInTheDocument();
+    },
+  );
 
   it('holds every action while a change is being applied', async () => {
     let finish: () => void = () => {};

@@ -352,12 +352,12 @@ describe('ProjectMetadataModal', () => {
     expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled();
   });
 
-  it('disables the fields, the language actions, and the Save button while saving is blocked', () => {
+  it('disables the language actions and the Save button, but not the fields, while saving is blocked', () => {
     render(<ProjectMetadataModal {...testProps} isSaveBlocked onChangeLanguages={jest.fn()} />);
 
     expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
-    expect(screen.getByLabelText(/^name$/i)).toBeDisabled();
-    expect(screen.getByLabelText(/^description$/i)).toBeDisabled();
+    expect(screen.getByLabelText(/^name$/i)).toBeEnabled();
+    expect(screen.getByLabelText(/^description$/i)).toBeEnabled();
     expect(screen.getByRole('button', { name: 'en (primary) options' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
   });

@@ -87,7 +87,7 @@ async function removeEmptied(
 }
 
 /**
- * Stages the analyses that a move or deletion changed in `all`, the draft's analysis as the change
+ * Stages the analyses that a move or deletion changed. `all` is the draft's analysis as the change
  * leaves it. A token or segment analysis left holding nothing goes, with every link to it. Any
  * other token or phrase analysis that the change made identical to another payload is folded into
  * that payload.
@@ -131,14 +131,15 @@ async function stageTextChange(
 }
 
 /**
- * Stages in `buffer` the change giving the draft new analysis languages, mutating `stored`, the
- * draft's analysis, for any text it moves or deletes:
+ * Stages in `buffer` the change giving the draft new analysis languages. Text it moves or deletes
+ * is changed in place in `stored`, the draft's analysis:
  *
  * - With `deleteTextOf`, the glosses and free translations under that tag are deleted.
  * - With `retag`, those under `retag.from` move to `retag.to`. One that already has different text
  *   under `retag.to` stays where it is.
  *
- * A token or phrase analysis the change makes identical to another payload is folded into it.
+ * A token or phrase analysis the change makes identical to another payload is folded into that
+ * payload.
  */
 export async function changeAnalysisLanguages(
   buffer: ChangeBuffer,

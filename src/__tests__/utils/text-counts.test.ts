@@ -1,11 +1,11 @@
 /// <reference types="jest" />
 
 import { emptyAnalysis } from '../../types/empty-factories';
-import { countTextByTag, countTextOfEveryTag, isLanguageTextCounts } from '../../utils/text-counts';
+import { countTextOfEveryTag, isLanguageTextCounts } from '../../utils/text-counts';
 import { FIXTURE_STAMPS } from '../test-helpers';
 
-describe('countTextByTag', () => {
-  it('counts word, morpheme, and phrase glosses and free translations in each tag', () => {
+describe('countTextOfEveryTag', () => {
+  it('counts each tag that has text that is not blank, and no other', () => {
     const analysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
@@ -13,9 +13,9 @@ describe('countTextByTag', () => {
           id: 'ta-1',
           ...FIXTURE_STAMPS,
           surfaceText: 'fish',
-          gloss: { en: 'fish', fr: 'poisson' },
+          gloss: { en: 'fish', de: ' ' },
           morphemes: [
-            { id: 'm-1', form: 'fish', writingSystem: 'x', gloss: { en: 'fish' } },
+            { id: 'm-1', form: 'fish', writingSystem: 'x', gloss: { tpi: 'pis' } },
             { id: 'm-2', form: 's', writingSystem: 'x' },
           ],
         },
@@ -29,61 +29,9 @@ describe('countTextByTag', () => {
           id: 'sa-1',
           ...FIXTURE_STAMPS,
           surfaceText: 'Big fish.',
-          freeTranslation: { fr: 'Un gros poisson.' },
+          freeTranslation: { fr: 'Un gros poisson.', en: '  ' },
         },
         { id: 'sa-2', ...FIXTURE_STAMPS, surfaceText: 'Fish.' },
-      ],
-    };
-
-    expect(countTextByTag(analysis, ['en', 'fr', 'de'])).toStrictEqual({
-      en: { glosses: 3, freeTranslations: 0 },
-      fr: { glosses: 1, freeTranslations: 1 },
-      de: { glosses: 0, freeTranslations: 0 },
-    });
-  });
-
-  it('leaves out blank text', () => {
-    const analysis = {
-      ...emptyAnalysis(),
-      tokenAnalyses: [
-        { id: 'ta-1', ...FIXTURE_STAMPS, surfaceText: 'fish', gloss: { en: ' ', fr: '' } },
-      ],
-      segmentAnalyses: [
-        { id: 'sa-1', ...FIXTURE_STAMPS, surfaceText: 'Big fish.', freeTranslation: { en: '  ' } },
-      ],
-    };
-
-    expect(countTextByTag(analysis, ['en', 'fr'])).toStrictEqual({
-      en: { glosses: 0, freeTranslations: 0 },
-      fr: { glosses: 0, freeTranslations: 0 },
-    });
-  });
-});
-
-describe('countTextOfEveryTag', () => {
-  it('counts each tag that has text that is not blank, and no other', () => {
-    const analysis = {
-      ...emptyAnalysis(),
-      tokenAnalyses: [
-        {
-          id: 'ta-1',
-          ...FIXTURE_STAMPS,
-          surfaceText: 'fish',
-          gloss: { en: 'fish', de: ' ' },
-          morphemes: [{ id: 'm-1', form: 'fish', writingSystem: 'x', gloss: { tpi: 'pis' } }],
-        },
-        { id: 'ta-2', ...FIXTURE_STAMPS, surfaceText: 'big' },
-      ],
-      phraseAnalyses: [
-        { id: 'pa-1', ...FIXTURE_STAMPS, surfaceText: 'big fish', gloss: { en: 'whale' } },
-      ],
-      segmentAnalyses: [
-        {
-          id: 'sa-1',
-          ...FIXTURE_STAMPS,
-          surfaceText: 'Big fish.',
-          freeTranslation: { fr: 'Un gros poisson.' },
-        },
       ],
     };
 

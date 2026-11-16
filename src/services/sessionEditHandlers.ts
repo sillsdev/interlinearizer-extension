@@ -914,8 +914,8 @@ export function sessionEditHandlers({
   }
 
   /**
-   * The project that the session's draft saves to, as a discard restores it, or `undefined` when it
-   * has none.
+   * The project that the session's draft saves to, as a discard restores it, or `undefined` when
+   * the draft has none.
    *
    * @throws If the project is not stored, or reading it fails.
    */
@@ -968,7 +968,7 @@ export function sessionEditHandlers({
         intent,
         async (buffer, session) => {
           const { draft, unreadableBooks } = await session.repository.exportAll();
-          // A book that can't be read would keep its text under the old tag.
+          // A book that can't be read would keep the text this change moves or deletes.
           if ((retag || deleteTextOf !== undefined) && unreadableBooks.length > 0)
             throw new Error(
               `Interlinearizer: cannot move or delete language text while ${unreadableBooks.join(', ')} cannot be read`,
@@ -1006,24 +1006,17 @@ export function sessionEditHandlers({
 
   /**
    * Counts the glosses and free translations of a session's draft under each language tag that has
-   * any.
+   * any. A book whose stored analysis can't be read counts as having none.
    *
    * @returns A JSON string of the counts, keyed by tag.
-   * @throws If the session is not open, or its draft or any book of it can't be read. The error is
-   *   logged before rethrowing.
+   * @throws If the session is not open, or its draft can't be read. The error is logged before
+   *   rethrowing.
    */
   async function countLanguageText({
     sessionId,
   }: ArgsOf<'interlinearizer.countLanguageText'>): Promise<string> {
     try {
-      const { draft, unreadableBooks } = await sessions.run(sessionId, (session) =>
-        session.repository.exportAll(),
-      );
-      // Counts that left out a book would read its text as absent.
-      if (unreadableBooks.length > 0)
-        throw new Error(
-          `Interlinearizer: cannot count language text while ${unreadableBooks.join(', ')} cannot be read`,
-        );
+      const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
       return JSON.stringify(countTextOfEveryTag(draft.analysis));
     } catch (e) {
       logger.error(`Interlinearizer: failed to count language text in session ${sessionId}`, e);

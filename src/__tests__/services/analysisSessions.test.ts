@@ -1885,6 +1885,26 @@ describe('AnalysisSessions', () => {
         expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(edited, 'beta'));
       });
 
+      it.each([
+        ['new text', AFTER],
+        ['the text it had', BEFORE],
+      ])(
+        'leave the links into a missing book that returns with %s while the pass waits',
+        async (_case, returned) => {
+          const { sessions, sessionId, storage } = await sessionGlossingBeta();
+          await sessions.reanchorBook(SOURCE, BEFORE);
+          const command = deferred();
+          const running = sessions.run(sessionId, () => command.promise);
+          const missingPass = sessions.reanchorMissingBooks(SOURCE, []);
+
+          const returning = sessions.reanchorBook(SOURCE, returned, true);
+          command.resolve();
+          await Promise.all([running, missingPass, returning]);
+
+          expect((await storedLink(storage)).status).toBe('approved');
+        },
+      );
+
       it('skip a pass that reaches its turn after the session closes', async () => {
         const { sessions, sessionId, storage } = await sessionGlossingBeta();
         const command = deferred();

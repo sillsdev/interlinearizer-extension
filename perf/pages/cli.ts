@@ -90,6 +90,7 @@ function sessionHost(
     getInterfaceLanguages: async () => ['en'],
     startTextRead: async () => {},
     stopTextRead: async () => {},
+    holdTextRead: () => {},
     heldBook: (_source, bookId, segmentation) => heldBook(bookId, segmentation),
     getOpenVerseBook: async (_source, bookId) => heldBook(bookId, undefined),
     reportChange,

@@ -89,6 +89,7 @@ function makeSessions(projects: InterlinearProject[] = []) {
     getInterfaceLanguages: jest.fn(async (): Promise<string[]> => []),
     startTextRead: jest.fn<Promise<void>, [string]>(async () => {}),
     stopTextRead: jest.fn<Promise<void>, [string]>(async () => {}),
+    holdTextRead: jest.fn<void, [string, Promise<unknown>]>(),
     heldBook: jest.fn<Book | undefined, [string, string, SegmentationDelta | undefined]>(
       () => undefined,
     ),
@@ -583,6 +584,37 @@ describe('AnalysisSessions', () => {
       const { sessionId } = await sessions.open(SOURCE);
 
       await expect(sessions.runEdit(sessionId, async () => 'edited')).resolves.toBe('edited');
+    });
+
+    it("holds the source's whole-text read until the edit settles", async () => {
+      const { sessions, host } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const editing = sessions.runEdit(sessionId, async () => {});
+
+      expect(host.holdTextRead).toHaveBeenCalledWith(SOURCE, editing);
+      await editing;
+    });
+
+    it('holds no read for an edit it refuses', async () => {
+      const { sessions, host } = makeSessions([makeImport()]);
+      const { sessionId } = await sessions.open(SOURCE, undefined, 'import-id');
+
+      await expect(sessions.runEdit(sessionId, async () => {})).rejects.toThrow(
+        ReadOnlyAnalysisError,
+      );
+
+      expect(host.holdTextRead).not.toHaveBeenCalled();
+    });
+
+    it('holds no read for a session that is not open', async () => {
+      const { sessions, host } = makeSessions();
+
+      await expect(sessions.runEdit('not-a-session', async () => {})).rejects.toThrow(
+        'no session not-a-session is open',
+      );
+
+      expect(host.holdTextRead).not.toHaveBeenCalled();
     });
 
     it('refuses a session that is not open', async () => {

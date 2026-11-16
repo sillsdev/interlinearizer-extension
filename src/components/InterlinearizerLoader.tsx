@@ -878,7 +878,8 @@ function InterlinearizerLoaderInner({
 
   /**
    * Runs an undo or redo, unless the view is not showing the draft or a dialog or editor open over
-   * it describes the draft as it stands.
+   * it describes the draft as it stood when it opened. A dialog that shows the draft as it is now
+   * allows the move.
    *
    * @returns Whether the move ran.
    */
@@ -887,7 +888,9 @@ function InterlinearizerLoaderInner({
       if (
         isImportView ||
         isDraftLoading ||
-        document.querySelector('[data-slot="dialog-content"], [data-blocks-undo]')
+        document.querySelector(
+          '[data-slot="dialog-content"]:not([data-allows-undo]), [data-blocks-undo]',
+        )
       )
         return false;
       move();

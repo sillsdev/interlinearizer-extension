@@ -5245,6 +5245,21 @@ describe('undo and redo', () => {
     expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
   });
 
+  it('undoes and redoes on Ctrl+Z and Ctrl+Y while a dialog that allows undo is open', async () => {
+    await renderAndGloss();
+    render(<div data-slot="dialog-content" data-allows-undo />);
+
+    await flushHost(() => {
+      fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    });
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(0);
+
+    await flushHost(() => {
+      fireEvent.keyDown(document.body, { key: 'y', ctrlKey: true });
+    });
+    expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
+  });
+
   it('leaves the draft alone on Ctrl+Z while an editor open over it blocks undo', async () => {
     await renderAndGloss();
     render(<div data-blocks-undo />);
@@ -5758,6 +5773,33 @@ describe('undo and redo', () => {
       expect(jest.mocked(papi.notifications.send)).toHaveBeenCalledWith(
         expect.objectContaining({ clickCommand: 'interlinearizer.undoFromNotification' }),
       );
+    });
+
+    it('undoes from the notification under a dialog that allows undo', async () => {
+      await renderAndDelete();
+      render(<div data-slot="dialog-content" data-allows-undo />);
+
+      clickNotificationUndo('toast-1');
+
+      await flushHost();
+
+      expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(1);
+    });
+
+    it('leaves the draft alone from the notification when a second dialog over one that allows undo blocks it', async () => {
+      await renderAndDelete();
+      render(
+        <>
+          <div data-slot="dialog-content" data-allows-undo />
+          <div data-slot="dialog-content" />
+        </>,
+      );
+
+      clickNotificationUndo('toast-1');
+
+      await flushHost();
+
+      expect((await viewedAnalysis()).tokenAnalysisLinks).toHaveLength(0);
     });
 
     it('ignores an Undo click on a notification it did not send', async () => {

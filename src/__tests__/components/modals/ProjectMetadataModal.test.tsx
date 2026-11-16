@@ -62,6 +62,14 @@ describe('ProjectMetadataModal', () => {
     jest.mocked(papi.notifications.send).mockResolvedValue('mock-notification-id');
   });
 
+  it('allows undo while the modal is open, because it shows the draft as it is', () => {
+    render(<ProjectMetadataModal {...testProps} />);
+
+    expect(document.querySelector('[data-slot="dialog-content"]')).toHaveAttribute(
+      'data-allows-undo',
+    );
+  });
+
   it("titles the modal with the source project's short name", () => {
     render(<ProjectMetadataModal {...testProps} />);
     expect(screen.getByRole('heading', { name: 'Interlinear info: SRC' })).toBeInTheDocument();

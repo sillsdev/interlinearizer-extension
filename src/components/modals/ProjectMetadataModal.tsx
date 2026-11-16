@@ -165,6 +165,7 @@ export function ProjectMetadataModal({
       })}
       width="tw:w-lg"
       onClose={isSubmitting ? undefined : onClose}
+      allowsUndo
     >
       {/* Editable fields; static rows for a read-only import, whose values the import stamps. */}
       {readOnly ? (

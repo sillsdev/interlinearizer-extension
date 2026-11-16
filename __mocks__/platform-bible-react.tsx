@@ -1265,12 +1265,19 @@ export const DialogContent = forwardRef<
     'aria-describedby'?: undefined;
     children?: ReactNode;
     className?: string;
+    'data-allows-undo'?: boolean;
     onCloseAutoFocus?: (event: Event) => void;
     onInteractOutside?: (event: { preventDefault: () => void }) => void;
     showCloseButton?: boolean;
   }>
 >(function DialogContent(
-  { children, className, onCloseAutoFocus, onInteractOutside },
+  {
+    children,
+    className,
+    'data-allows-undo': allowsUndo,
+    onCloseAutoFocus,
+    onInteractOutside,
+  },
   ref,
 ): ReactElement {
   const { onOpenChange, titleId } = useContext(DialogContext);
@@ -1308,6 +1315,7 @@ export const DialogContent = forwardRef<
         aria-labelledby={titleId}
         aria-modal="true"
         className={className}
+        data-allows-undo={allowsUndo}
         data-slot="dialog-content"
         role="dialog"
       >

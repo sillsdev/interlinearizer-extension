@@ -18,7 +18,10 @@ import type { ChangeBuffer, RecordKind, RecordOf } from './changeBuffer';
 /** What the project that a draft saves to holds, as a discard restores that project. */
 export type SavedProject = DraftContent & Readonly<{ analysisLanguages: readonly string[] }>;
 
-/** The reads of the stored draft that a discard stages from. */
+/**
+ * The reads of the stored draft that a discard stages from. A discard makes them one at a time,
+ * because calls for one draft must not overlap.
+ */
 export type DiscardReader = Pick<
   AnalysisRepository,
   | 'getScope'
@@ -57,11 +60,9 @@ async function readRecords(
   >[],
   payloadIds: string[],
 ): Promise<TextAnalysis> {
-  const [tokenAnalyses, phraseAnalyses, segmentAnalyses] = await Promise.all([
-    reader.getTokenAnalyses(payloadIds),
-    reader.getPhraseAnalyses(payloadIds),
-    reader.getSegmentAnalyses(payloadIds),
-  ]);
+  const tokenAnalyses = await reader.getTokenAnalyses(payloadIds);
+  const phraseAnalyses = await reader.getPhraseAnalyses(payloadIds);
+  const segmentAnalyses = await reader.getSegmentAnalyses(payloadIds);
   const once = <T extends { id: string }>(records: T[]): T[] => [
     ...new Map(records.map((record) => [record.id, record])).values(),
   ];
@@ -96,11 +97,9 @@ async function readBookPart(
   bookCode: string,
   saved: TextAnalysis | undefined,
 ): Promise<StoredPart> {
-  const [scope, { unreadableBooks }, bookLinks] = await Promise.all([
-    reader.getScope(),
-    reader.getDraftState(),
-    reader.findLinksInBooks([bookCode]),
-  ]);
+  const scope = await reader.getScope();
+  const { unreadableBooks } = await reader.getDraftState();
+  const bookLinks = await reader.findLinksInBooks([bookCode]);
   const savedBook = (saved && splitAnalysisByBook(saved).get(bookCode)) ?? emptyAnalysis();
   const payloadIds = [
     ...new Set([...payloadIdsOf({ ...emptyAnalysis(), ...bookLinks }), ...payloadIdsOf(savedBook)]),
@@ -115,18 +114,18 @@ async function readBookPart(
 
 /** Reads every stored record, without any single read spanning the draft. */
 async function readWhole(reader: DiscardReader): Promise<StoredPart> {
-  const [scope, { unreadableBooks }, linkedBooks, unlinked] = await Promise.all([
-    reader.getScope(),
-    reader.getDraftState(),
-    reader.findLinkedBooks(),
-    reader.findUnlinkedPayloads(),
-  ]);
-  const books = await Promise.all(
-    linkedBooks.map(async (bookCode) => {
-      const links = await reader.findLinksInBooks([bookCode]);
-      return readRecords(reader, [links], payloadIdsOf({ ...emptyAnalysis(), ...links }));
-    }),
-  );
+  const scope = await reader.getScope();
+  const { unreadableBooks } = await reader.getDraftState();
+  const linkedBooks = await reader.findLinkedBooks();
+  const unlinked = await reader.findUnlinkedPayloads();
+  const books = await linkedBooks.reduce<Promise<TextAnalysis[]>>(async (previous, bookCode) => {
+    const read = await previous;
+    const links = await reader.findLinksInBooks([bookCode]);
+    return [
+      ...read,
+      await readRecords(reader, [links], payloadIdsOf({ ...emptyAnalysis(), ...links })),
+    ];
+  }, Promise.resolve([]));
   return {
     scope,
     analysis: mergeAnalyses([...books, { ...emptyAnalysis(), ...unlinked }]),

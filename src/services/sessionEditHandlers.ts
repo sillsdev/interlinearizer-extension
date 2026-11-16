@@ -1,7 +1,7 @@
 import type {
-  Book,
   ChangeId,
   InterlinearProject,
+  ReadonlyBook,
   RemovalPreviewRequest,
   TokenSnapshot,
 } from 'interlinearizer';
@@ -762,7 +762,7 @@ export function sessionEditHandlers({
    *
    * @throws If the project has no text for that book, or the book cannot be read or tokenized.
    */
-  function verseBookOf(session: Session, tokenRef: string): Promise<Book> {
+  function verseBookOf(session: Session, tokenRef: string): Promise<ReadonlyBook> {
     return readBookOf(session, tokenRef, getVerseBook);
   }
 

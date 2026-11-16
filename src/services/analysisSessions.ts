@@ -1,9 +1,9 @@
 import type {
   AnalysisChange,
   AnalysisQuery,
-  Book,
   ChangeId,
   DraftProject,
+  ReadonlyBook,
   SegmentationDelta,
   SessionAnalysisChange,
 } from 'interlinearizer';
@@ -80,7 +80,7 @@ export type SessionEditOptions = {
 /** What an edit command returns besides what it stages. */
 export type EditOutcome = {
   /** The books to re-anchor the draft to, with the staged changes in place. */
-  reanchorTo?: readonly Book[];
+  reanchorTo?: readonly ReadonlyBook[];
   /** Whether any segment of the draft that a discard leaves has a free translation. */
   hasFreeTranslations?: boolean;
   /** The token analyses that clearing glosses left empty, and so removed. */
@@ -138,14 +138,14 @@ export interface SessionHost {
     sourceProjectId: string,
     bookId: string,
     segmentation: SegmentationDelta | undefined,
-  ): Book | undefined;
+  ): ReadonlyBook | undefined;
   /**
    * Reads the source project's book, tokenized one segment per verse, and makes it the book whose
-   * edits are reported. The book is shared, so the caller must not change it.
+   * edits are reported.
    *
    * @returns `undefined` when the project has no text for the book.
    */
-  getOpenVerseBook(sourceProjectId: string, bookId: string): Promise<Book | undefined>;
+  getOpenVerseBook(sourceProjectId: string, bookId: string): Promise<ReadonlyBook | undefined>;
   /** Tells listeners what a change to a session's analysis touched. */
   reportChange(change: SessionAnalysisChange): void;
 }
@@ -245,7 +245,7 @@ async function replyTo(
 async function reanchorNow(
   host: SessionHost,
   session: Session,
-  book: Book,
+  book: ReadonlyBook,
   unreported?: AnalysisChange[],
 ): Promise<void> {
   const applied = await reanchorStoredBook(session.repository, session.history, book);
@@ -264,7 +264,7 @@ async function applyStaged(
   session: Session,
   buffer: ChangeBuffer,
   staged: ChangeSet,
-  reanchorTo: void | readonly Book[],
+  reanchorTo: void | readonly ReadonlyBook[],
   options: Pick<EditOptions, 'unsavedMark'> & Pick<SessionEditOptions, 'step'>,
 ): Promise<AppliedChange & { step?: EditStep }> {
   await buffer.assertLinkedAnalysesStored();
@@ -749,7 +749,7 @@ export class AnalysisSessions {
    * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
    * @throws Whatever describing the applied changes throws; the changes stay applied.
    */
-  reanchorBook(sourceProjectId: string, book: Book, edited = false): Promise<void> {
+  reanchorBook(sourceProjectId: string, book: ReadonlyBook, edited = false): Promise<void> {
     return this.runOnWritable(
       sourceProjectId,
       async ({ session, editPasses, anchoredVersions }) => {

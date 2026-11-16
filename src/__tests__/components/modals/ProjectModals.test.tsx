@@ -894,6 +894,30 @@ describe('ProjectModals', () => {
       expect(changeDraftAnalysisLanguages).toHaveBeenCalledWith({ analysisLanguages: ['fr'] });
     });
 
+    it('reads a draft with no snapshot yet as naming no languages', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(savedAs(MOCK_PROJECT));
+      const changeDraftAnalysisLanguages = jest.fn().mockResolvedValue({});
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            changeDraftAnalysisLanguages,
+            getDraftSnapshot: () => undefined,
+          })}
+        />,
+      );
+
+      expect(screen.getByTestId('saveas-modal')).toHaveAttribute(
+        'data-draft-analysis-languages',
+        '',
+      );
+      await userEvent.click(screen.getByTestId('saveas-new'));
+
+      await waitFor(() =>
+        expect(changeDraftAnalysisLanguages).toHaveBeenCalledWith({ analysisLanguages: ['fr'] }),
+      );
+    });
+
     it("leaves the draft's languages alone when the new project takes them as they are", async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(savedAs(MOCK_PROJECT));
       const changeDraftAnalysisLanguages = jest.fn().mockResolvedValue({});

@@ -121,7 +121,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ApplyStampsCreatedRecordsWithTheCommitTime()
+    public async Task ApplyStampsTheCommitTimeOnACreatedRecordWithoutTimestamps()
     {
         await ApplyNext(FullAnalysis());
 
@@ -258,7 +258,7 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ApplyKeepsTheCreationTimeOfAReplacedRecord()
+    public async Task ApplyKeepsTheCreationTimeOfARecordReplacedWithoutOne()
     {
         await ApplyNext(FullAnalysis());
         var created = await LatestCommit();
@@ -272,6 +272,77 @@ public class AnalysisRepositoryTests : CrdtTestBase
         var stored = (await Repository.GetTokenAnalyses([TaAnd])).Single();
         await Assert.That(stored.CreatedAt).IsEqualTo(created.DateTime);
         await Assert.That(stored.UpdatedAt).IsNotEqualTo(created.DateTime);
+    }
+
+    private static readonly DateTimeOffset Earlier = new(2025, 6, 1, 0, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset Later = new(2025, 7, 1, 0, 0, 0, TimeSpan.Zero);
+
+    private static T Stamped<T>(T record, DateTimeOffset createdAt, DateTimeOffset updatedAt) where T : AnalysisRecord
+    {
+        record.CreatedAt = createdAt;
+        record.UpdatedAt = updatedAt;
+        return record;
+    }
+
+    [Test]
+    public async Task ApplyKeepsTheTimestampsACreatedRecordCarries()
+    {
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "import",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Stamped(Token(TaAnd, "and", "and"), Earlier, Later)),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(
+                Stamped(TokenLink(TlGenAnd, TaAnd, "GEN 1:1:0", "and"), Earlier, Later)),
+        });
+
+        var analysis = (await Repository.GetTokenAnalyses([TaAnd])).Single();
+        await Assert.That(analysis.CreatedAt).IsEqualTo(Earlier);
+        await Assert.That(analysis.UpdatedAt).IsEqualTo(Later);
+        var link = (await Repository.FindLinksToAnalyses([TaAnd])).TokenAnalysisLinks.Single();
+        await Assert.That(link.CreatedAt).IsEqualTo(Earlier);
+        await Assert.That(link.UpdatedAt).IsEqualTo(Later);
+    }
+
+    [Test]
+    [Arguments(PutMode.Replace)]
+    [Arguments(PutMode.Patch)]
+    public async Task ApplyKeepsTheTimestampsAnEditCarries(PutMode putMode)
+    {
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "seed",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Stamped(Token(TaAnd, "and", "and"), Later, Later)),
+        });
+
+        // As a merge does: the creation time moves earlier and the update time stays as stored.
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "merge",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Stamped(Token(TaAnd, "and", "also"), Earlier, Later)),
+        }, putMode);
+
+        var stored = (await Repository.GetTokenAnalyses([TaAnd])).Single();
+        await Assert.That(stored.Gloss!["en"]).IsEqualTo("also");
+        await Assert.That(stored.CreatedAt).IsEqualTo(Earlier);
+        await Assert.That(stored.UpdatedAt).IsEqualTo(Later);
+    }
+
+    [Test]
+    public async Task ApplyInPatchModeWritesAPutThatChangesOnlyItsUpdateTime()
+    {
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "seed",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Stamped(Token(TaAnd, "and", "and"), Earlier, Earlier)),
+        });
+
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "touch",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Stamped(Token(TaAnd, "and", "and"), Earlier, Later)),
+        }, PutMode.Patch);
+
+        await Assert.That((await Repository.GetTokenAnalyses([TaAnd])).Single().UpdatedAt).IsEqualTo(Later);
     }
 
     [Test]

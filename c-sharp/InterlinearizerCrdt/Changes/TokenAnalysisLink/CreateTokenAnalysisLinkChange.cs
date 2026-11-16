@@ -10,14 +10,15 @@ namespace Interlinearizer.Crdt.Changes;
 /// <summary>
 /// Creates a <see cref="TokenAnalysisLink"/>. A link to an analysis already deleted,
 /// or in a project already deleted, is created deleted.
+/// A timestamp the change does not carry is the commit's time.
 /// </summary>
 [method: JsonConstructor]
 public class CreateTokenAnalysisLinkChange(Guid entityId)
     : CreateChange<TokenAnalysisLink>(entityId), ISelfNamedType<CreateTokenAnalysisLinkChange>
 {
     /// <summary>
-    /// Carries every field of <paramref name="link"/> but its timestamps, filed under
-    /// <paramref name="projectId"/>.
+    /// Carries every field of <paramref name="link"/>, filed under <paramref name="projectId"/>.
+    /// A timestamp left at its default is not carried.
     /// </summary>
     /// <exception cref="ArgumentException">
     /// If <paramref name="projectId"/> is empty, or the link names another project.
@@ -26,6 +27,8 @@ public class CreateTokenAnalysisLinkChange(Guid entityId)
     public CreateTokenAnalysisLinkChange(TokenAnalysisLink link, Guid projectId) : this(link.Id)
     {
         ProjectId = ProjectReferences.ProjectOf(link, projectId);
+        CreatedAt = Timestamps.Carried(link.CreatedAt);
+        UpdatedAt = Timestamps.Carried(link.UpdatedAt);
         AnalysisId = link.AnalysisId;
         Token = link.Token;
         Status = link.Status;
@@ -33,6 +36,8 @@ public class CreateTokenAnalysisLinkChange(Guid entityId)
     }
 
     public required Guid ProjectId { get; init; }
+    public DateTimeOffset? CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
     public required Guid AnalysisId { get; init; }
     public required TokenSnapshot Token { get; init; }
     public required AssignmentStatus Status { get; init; }
@@ -45,8 +50,8 @@ public class CreateTokenAnalysisLinkChange(Guid entityId)
             Id = EntityId,
             ProjectId = ProjectId,
             AnalysisId = AnalysisId,
-            CreatedAt = commit.DateTime,
-            UpdatedAt = commit.DateTime,
+            CreatedAt = CreatedAt ?? commit.DateTime,
+            UpdatedAt = UpdatedAt ?? commit.DateTime,
             Status = Status,
             Confidence = Confidence,
             Token = Token,

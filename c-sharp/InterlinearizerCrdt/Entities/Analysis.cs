@@ -21,7 +21,10 @@ public abstract class AnalysisRecord
     /// </summary>
     public DateTimeOffset CreatedAt { get; set; }
 
-    /// <summary>The most recent write aimed at this record, whether or not it changed the content.</summary>
+    /// <summary>
+    /// The time its writer stamped on the most recent write aimed at this record. Every write sets
+    /// it, whether or not the write changed the content.
+    /// </summary>
     public DateTimeOffset UpdatedAt { get; set; }
 }
 

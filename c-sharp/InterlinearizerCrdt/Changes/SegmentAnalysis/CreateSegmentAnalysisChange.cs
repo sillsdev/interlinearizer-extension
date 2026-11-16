@@ -8,16 +8,16 @@ using SIL.Harmony.Entities;
 namespace Interlinearizer.Crdt.Changes;
 
 /// <summary>
-/// Creates a <see cref="SegmentAnalysis"/>, stamped with the commit's time. An analysis in a project
-/// already deleted is created deleted.
+/// Creates a <see cref="SegmentAnalysis"/>. An analysis in a project already deleted is created
+/// deleted. A timestamp the change does not carry is the commit's time.
 /// </summary>
 [method: JsonConstructor]
 public class CreateSegmentAnalysisChange(Guid entityId)
     : CreateChange<SegmentAnalysis>(entityId), ISelfNamedType<CreateSegmentAnalysisChange>
 {
     /// <summary>
-    /// Carries every field of <paramref name="analysis"/> but its timestamps, filed under
-    /// <paramref name="projectId"/>.
+    /// Carries every field of <paramref name="analysis"/>, filed under <paramref name="projectId"/>.
+    /// A timestamp left at its default is not carried.
     /// </summary>
     /// <exception cref="ArgumentException">
     /// If <paramref name="projectId"/> is empty, or the analysis names another project.
@@ -26,6 +26,8 @@ public class CreateSegmentAnalysisChange(Guid entityId)
     public CreateSegmentAnalysisChange(SegmentAnalysis analysis, Guid projectId) : this(analysis.Id)
     {
         ProjectId = ProjectReferences.ProjectOf(analysis, projectId);
+        CreatedAt = Timestamps.Carried(analysis.CreatedAt);
+        UpdatedAt = Timestamps.Carried(analysis.UpdatedAt);
         SurfaceText = analysis.SurfaceText;
         Confidence = analysis.Confidence;
         Producer = analysis.Producer;
@@ -35,6 +37,8 @@ public class CreateSegmentAnalysisChange(Guid entityId)
     }
 
     public required Guid ProjectId { get; init; }
+    public DateTimeOffset? CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
     public required string SurfaceText { get; init; }
     public Confidence? Confidence { get; init; }
     public string? Producer { get; init; }
@@ -49,8 +53,8 @@ public class CreateSegmentAnalysisChange(Guid entityId)
             Id = EntityId,
             ProjectId = ProjectId,
             DeletedAt = await context.IsObjectDeleted(ProjectId) ? commit.DateTime : null,
-            CreatedAt = commit.DateTime,
-            UpdatedAt = commit.DateTime,
+            CreatedAt = CreatedAt ?? commit.DateTime,
+            UpdatedAt = UpdatedAt ?? commit.DateTime,
             SurfaceText = SurfaceText,
             Confidence = Confidence,
             Producer = Producer,

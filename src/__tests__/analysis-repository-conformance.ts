@@ -95,28 +95,12 @@ export type ReadOnlyConformanceStore = ConformanceStore & {
   openReadOnly: (draft: DraftProject) => Promise<AnalysisRepository>;
 };
 
-/** The timestamps on every record, which an implementation may stamp itself rather than keep. */
-type Stamps = 'createdAt' | 'updatedAt';
-
-/** {@link TextAnalysis} with its records' timestamps left out. */
-type UnstampedAnalysis = {
-  [Kind in keyof TextAnalysis]: Omit<TextAnalysis[Kind][number], Stamps>[];
-};
-
 /** The parts of a draft that a test may compare under the groups that an implementation opts into. */
-type ComparableDraft = Partial<Omit<DraftProject, 'analysis'>> & { analysis: UnstampedAnalysis };
+type ComparableDraft = Partial<Omit<DraftProject, 'analysis'>> & { analysis: TextAnalysis };
 
-/** `records` without their timestamps, in id order because lookups promise no order. */
-function unstampedInIdOrder<T extends { id: string } & Record<Stamps, string>>(
-  records: readonly T[],
-) {
-  return [...records].sort((a, b) => a.id.localeCompare(b.id)).map(unstamped);
-}
-
-/** `record` without its timestamps. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave them out
-function unstamped<T extends Record<Stamps, string>>({ createdAt, updatedAt, ...rest }: T) {
-  return rest;
+/** `records` in id order, because lookups promise no order. */
+function recordsInIdOrder<T extends { id: string }>(records: readonly T[]) {
+  return [...records].sort((a, b) => a.id.localeCompare(b.id));
 }
 
 const SOURCE = 'source-project';
@@ -561,17 +545,9 @@ function expectJsonPlain(value: unknown): void {
   expect(JSON.stringify(value)).not.toMatch(/\bnull\b/);
 }
 
-/** `analysis` with record lists in id order and each record's timestamps left out. */
-function unstampedAnalysis(analysis: TextAnalysis): UnstampedAnalysis {
-  const sorted = inIdOrder({ ...emptyDraft(SOURCE), analysis }).analysis;
-  return {
-    segmentAnalyses: sorted.segmentAnalyses.map(unstamped),
-    segmentAnalysisLinks: sorted.segmentAnalysisLinks.map(unstamped),
-    tokenAnalyses: sorted.tokenAnalyses.map(unstamped),
-    tokenAnalysisLinks: sorted.tokenAnalysisLinks.map(unstamped),
-    phraseAnalyses: sorted.phraseAnalyses.map(unstamped),
-    phraseAnalysisLinks: sorted.phraseAnalysisLinks.map(unstamped),
-  };
+/** `analysis` with record lists in id order. */
+function analysisInIdOrder(analysis: TextAnalysis): TextAnalysis {
+  return inIdOrder({ ...emptyDraft(SOURCE), analysis }).analysis;
 }
 
 /**
@@ -616,13 +592,13 @@ export function describeAnalysisRepositoryConformance(
 
   /**
    * The parts of `draft` that a test may compare under the groups that were opted into: its
-   * analysis with record lists in id order and no timestamps, its own record under `scope`, and its
-   * unsaved mark under `draftState`.
+   * analysis with record lists in id order, its own record under `scope`, and its unsaved mark
+   * under `draftState`.
    */
   function comparable(draft: DraftProject): ComparableDraft {
     return {
       ...(supports.has('scope') && scopeRecordOf(draft)),
-      analysis: unstampedAnalysis(draft.analysis),
+      analysis: analysisInIdOrder(draft.analysis),
       ...(supports.has('draftState') && { dirty: draft.dirty }),
     };
   }
@@ -692,8 +668,35 @@ export function describeAnalysisRepositoryConformance(
 
           const { analysis } = await readStored();
           expect(analysis.tokenAnalyses.find(({ id }) => id === ID.taBeginning)).toStrictEqual(
-            unstamped(bare),
+            bare,
           );
+        });
+
+        it('keeps the timestamps a put carries, creating or replacing', async () => {
+          await store.seed(SOURCE, fullDraft());
+          const repository = await store.open(SOURCE);
+          const [stored] = fullAnalysis().tokenAnalyses;
+          const created = {
+            id: ID.taLater,
+            createdAt: '2025-06-01T00:00:00.000Z',
+            updatedAt: '2025-07-01T00:00:00.000Z',
+            surfaceText: 'later',
+          };
+          // As a merge does: the creation time moves earlier and the update time stays as stored.
+          const replaced = {
+            ...stored,
+            createdAt: '2025-06-01T00:00:00.000Z',
+            gloss: { en: 'also' },
+          };
+
+          await repository.apply({
+            intent: 'restamp',
+            tokenAnalyses: { puts: [created, replaced], deletes: [] },
+          });
+
+          await expect(
+            repository.getTokenAnalyses([created.id, replaced.id]).then(recordsInIdOrder),
+          ).resolves.toStrictEqual(recordsInIdOrder([created, replaced]));
         });
 
         it('deletes records of every kind', async () => {
@@ -771,7 +774,7 @@ export function describeAnalysisRepositoryConformance(
 
           const { analysis } = await readStored();
           expect(analysis.tokenAnalyses.filter(({ id }) => id === ID.taAnd)).toStrictEqual([
-            unstamped(edited),
+            edited,
           ]);
           expect(
             analysis.tokenAnalysisLinks.filter(({ analysisId }) => analysisId === ID.taAnd),
@@ -792,8 +795,8 @@ export function describeAnalysisRepositoryConformance(
           god.surfaceText = 'changed';
 
           await expect(
-            repository.getTokenAnalyses([ID.taGod, ID.taLater]).then(unstampedInIdOrder),
-          ).resolves.toStrictEqual(unstampedInIdOrder(newRecords().tokenAnalyses));
+            repository.getTokenAnalyses([ID.taGod, ID.taLater]).then(recordsInIdOrder),
+          ).resolves.toStrictEqual(recordsInIdOrder(newRecords().tokenAnalyses));
         });
 
         it('refuses an id named twice in one record kind, applying nothing', async () => {
@@ -861,24 +864,20 @@ export function describeAnalysisRepositoryConformance(
           await expect(
             repository.getTokenAnalyses([ID.taAnd, ID.taMissing, ID.taAnd]).then(idsOf),
           ).resolves.toStrictEqual([ID.taAnd]);
+          await expect(repository.getPhraseAnalyses([ID.paInThe])).resolves.toStrictEqual(
+            fullAnalysis().phraseAnalyses,
+          );
           await expect(
-            repository.getPhraseAnalyses([ID.paInThe]).then((found) => found.map(unstamped)),
-          ).resolves.toStrictEqual(fullAnalysis().phraseAnalyses.map(unstamped));
-          await expect(
-            repository
-              .getSegmentAnalyses([ID.saExo, ID.saMissing])
-              .then((found) => found.map(unstamped)),
-          ).resolves.toStrictEqual(fullAnalysis().segmentAnalyses.map(unstamped));
+            repository.getSegmentAnalyses([ID.saExo, ID.saMissing]),
+          ).resolves.toStrictEqual(fullAnalysis().segmentAnalyses);
         });
 
         it('gets phrase links by id, once per id, skipping ids with nothing stored', async () => {
           const repository = await overFullDraft();
 
           await expect(
-            repository
-              .getPhraseAnalysisLinks([ID.plInThe, ID.plMissing, ID.plInThe])
-              .then((found) => found.map(unstamped)),
-          ).resolves.toStrictEqual(fullAnalysis().phraseAnalysisLinks.map(unstamped));
+            repository.getPhraseAnalysisLinks([ID.plInThe, ID.plMissing, ID.plInThe]),
+          ).resolves.toStrictEqual(fullAnalysis().phraseAnalysisLinks);
         });
 
         it('finds the token links on tokens, and the phrase links touching them, each once', async () => {
@@ -1110,10 +1109,8 @@ export function describeAnalysisRepositoryConformance(
             tokenAnalysisLinks: [],
             phraseAnalysisLinks: [ID.plTheBeginning],
           });
-          await expect(
-            repository.getTokenAnalyses([ID.taAnd]).then((found) => found.map(unstamped)),
-          ).resolves.toStrictEqual([
-            unstamped({ ...fullAnalysis().tokenAnalyses[0], gloss: { en: 'and then' } }),
+          await expect(repository.getTokenAnalyses([ID.taAnd])).resolves.toStrictEqual([
+            { ...fullAnalysis().tokenAnalyses[0], gloss: { en: 'and then' } },
           ]);
         });
 
@@ -1151,9 +1148,9 @@ export function describeAnalysisRepositoryConformance(
           const { tokenAnalysisLinks } = await repository.findLinksToAnalyses([ID.taAnd]);
           tokenAnalysisLinks[0].status = 'rejected';
 
-          await expect(
-            repository.getTokenAnalyses([ID.taAnd]).then((found) => found.map(unstamped)),
-          ).resolves.toStrictEqual([unstamped(fullAnalysis().tokenAnalyses[0])]);
+          await expect(repository.getTokenAnalyses([ID.taAnd])).resolves.toStrictEqual([
+            fullAnalysis().tokenAnalyses[0],
+          ]);
           await expect(
             repository.findLinksInBooks(['GEN', 'EXO'], ['rejected']).then(linkIdsOf),
           ).resolves.toMatchObject({ tokenAnalysisLinks: [] });
@@ -1335,9 +1332,9 @@ export function describeAnalysisRepositoryConformance(
           });
 
           await expect(
-            repository.getTokenAnalyses([ID.taAnd, ID.taUnlinked]).then(unstampedInIdOrder),
+            repository.getTokenAnalyses([ID.taAnd, ID.taUnlinked]).then(recordsInIdOrder),
           ).resolves.toStrictEqual(
-            unstampedInIdOrder(
+            recordsInIdOrder(
               fullAnalysis().tokenAnalyses.filter(({ id }) => id !== ID.taBeginning),
             ),
           );
@@ -1604,15 +1601,15 @@ export function describeAnalysisRepositoryConformance(
             changeInPlace((await repository.exportAll()).draft);
 
             await expect(
-              repository.getTokenAnalyses([ID.taAnd]).then(unstampedInIdOrder),
-            ).resolves.toStrictEqual([unstamped(fullAnalysis().tokenAnalyses[0])]);
+              repository.getTokenAnalyses([ID.taAnd]).then(recordsInIdOrder),
+            ).resolves.toStrictEqual([fullAnalysis().tokenAnalyses[0]]);
             await repository.apply(puttingNewRecords());
 
             await expect(
               readStored().then(({ analysis }) =>
                 analysis.tokenAnalyses.find(({ id }) => id === ID.taAnd),
               ),
-            ).resolves.toStrictEqual(unstamped(fullAnalysis().tokenAnalyses[0]));
+            ).resolves.toStrictEqual(fullAnalysis().tokenAnalyses[0]);
           });
         });
 
@@ -1769,7 +1766,7 @@ export function describeAnalysisRepositoryConformance(
             await hooks.damageBook(SOURCE, 'GEN', 'corrupt');
             const { draft } = await reloadForCopy();
             expect(draft.analysis.tokenAnalyses.filter(({ id }) => id === ID.taAnd)).toStrictEqual([
-              unstamped(edited),
+              edited,
             ]);
           });
 
@@ -1946,9 +1943,9 @@ export function describeReadOnlyRepositoryConformance(
       );
       const { analysis } = exodusOnlyDraft();
       await expect(
-        store.readAll(SOURCE).then((draft) => unstampedAnalysis(draft.analysis)),
+        store.readAll(SOURCE).then((draft) => analysisInIdOrder(draft.analysis)),
       ).resolves.toStrictEqual(
-        unstampedAnalysis({
+        analysisInIdOrder({
           ...analysis,
           segmentAnalyses: translating.segmentAnalyses?.puts ?? [],
         }),

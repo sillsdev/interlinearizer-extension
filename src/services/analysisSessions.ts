@@ -774,7 +774,8 @@ export class AnalysisSessions {
    *
    * A pass not `edited` is the whole-text read's. It joins the session's turn only once the read's
    * pass before it settles, so that a command sent meanwhile waits for one pass at most. It does
-   * nothing when a later text of the book has been passed since, or when the session has closed.
+   * nothing when a later text of the book has been passed since, or when a close is sent to the
+   * session before the pass reaches its turn.
    *
    * @throws Whatever reading the draft or applying the changes throws; nothing is applied.
    * @throws Whatever describing the applied changes throws; the changes stay applied.
@@ -961,11 +962,15 @@ export class AnalysisSessions {
 
   /**
    * Runs `pass` in the session's turn once the whole-text read's passes sent before have settled.
-   * Skips it when the session has closed by then.
+   * Skips `pass` when a close is sent to the session before `pass` reaches its turn.
    */
   private runReadPass(entry: OpenSession, pass: () => Promise<void>): Promise<void> {
     const result = entry.readPasses.then(() =>
-      entry.state === 'open' ? this.run(entry.session.id, pass) : undefined,
+      entry.state === 'open'
+        ? this.run(entry.session.id, async () => {
+            if (entry.state === 'open') await pass();
+          })
+        : undefined,
     );
     entry.readPasses = result.catch(() => {});
     return result;

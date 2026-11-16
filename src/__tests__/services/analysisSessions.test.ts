@@ -1950,6 +1950,20 @@ describe('AnalysisSessions', () => {
         await Promise.all([running, passAhead, closing]);
         expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-1'));
       });
+
+      it('skip a pass already in the turn queue when a close is sent before its turn', async () => {
+        const { sessions, sessionId, storage } = await sessionGlossingBeta();
+        const command = deferred();
+        const running = sessions.run(sessionId, () => command.promise);
+        const pass = sessions.reanchorBook(SOURCE, AFTER);
+        await flushPromises();
+        const closing = sessions.close(sessionId);
+        command.resolve();
+
+        await expect(pass).resolves.toBeUndefined();
+        await Promise.all([running, closing]);
+        expect(await storedLink(storage)).toEqual(betaLink(BEFORE, 'ta-1'));
+      });
     });
 
     it('does nothing for a source with no session open', async () => {

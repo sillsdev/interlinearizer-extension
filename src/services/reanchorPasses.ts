@@ -3,6 +3,7 @@ import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository
 import { emptyAnalysis } from '../types/empty-factories';
 import { booksLinkedIn } from '../utils/analysis-book';
 import { applyChangeSet, mergeChangeSets } from '../utils/change-set';
+import { byPreference } from '../utils/pick-rules';
 import { reanchorChangesForBook } from '../utils/reanchor-changes';
 import { segmentationForBook } from '../utils/segmentation';
 import type { AppliedChange } from './analysisChanges';
@@ -26,12 +27,25 @@ async function readBooks(
   return { ...scope, dirty: false, analysis: { ...emptyAnalysis(), ...links, segmentAnalyses } };
 }
 
-/** The changes that re-anchor `draft` to each of `books` in turn, `undefined` when there are none. */
+/**
+ * The changes that re-anchor `draft` to each of `books` in turn, `undefined` when there are none.
+ * The changes do not depend on the order in which the repository returns links. Where links tie,
+ * the link that {@link byPreference} puts first wins.
+ */
 function reanchorInTurn(
   draft: DraftProject,
   books: readonly ReadonlyBook[],
 ): ChangeSet | undefined {
-  let current = draft;
+  const { analysis } = draft;
+  let current: DraftProject = {
+    ...draft,
+    analysis: {
+      ...analysis,
+      tokenAnalysisLinks: [...analysis.tokenAnalysisLinks].sort(byPreference),
+      phraseAnalysisLinks: [...analysis.phraseAnalysisLinks].sort(byPreference),
+      segmentAnalysisLinks: [...analysis.segmentAnalysisLinks].sort(byPreference),
+    },
+  };
   let changes: ChangeSet | undefined;
   books.forEach((book) => {
     const bookChanges = reanchorChangesForBook(current, book);

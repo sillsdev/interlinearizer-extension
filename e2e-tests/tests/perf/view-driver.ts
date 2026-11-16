@@ -8,7 +8,7 @@ import { type HostHeap, readHostHeap } from './host-inspector';
 /** Storage key that asks the WebView for timing entries. */
 export const PERF_MARKS_KEY = 'interlinearizer.perfMarks';
 
-export const VIEW_TAB = /^Interlinearizer: WEB/;
+export const VIEW_TAB = /^Interlinearizer: /;
 
 export type Measure = { name: string; duration: number; end: number; detail: unknown };
 
@@ -132,7 +132,7 @@ export async function setBook(page: Page, book: string): Promise<void> {
 
 /** The open WebView's frame, waiting for it to appear. */
 export async function viewFrame(page: Page): Promise<Frame> {
-  const iframe = page.locator('iframe[title^="Interlinearizer: WEB"]').first();
+  const iframe = page.locator('iframe[title^="Interlinearizer: "]').first();
   await expect(iframe).toBeAttached({ timeout: 60_000 });
   const frame = await (await iframe.elementHandle())?.contentFrame();
   if (!frame) throw new Error('The Interlinearizer WebView has no frame');

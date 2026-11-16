@@ -16,6 +16,8 @@ Measures the extension rather than tests it: the data layer in Node, and the ext
 
 `PERF_TIERS` (comma-separated tier names) and `PERF_RUNS` (10 by default) narrow a run. `PERF_SKIP_SESSION_READS=true` keeps sessions from reading the whole text even once the harness asks them to, to isolate that read's cost; the result file records it.
 
+`PERF_REAL_SOURCE`, `PERF_REAL_PROJECT` and `PERF_REAL_BOOK` make `perf:app` measure a real project instead of the tiers: the source project whose draft the app's storage already holds, one of its saved interlinear projects for Save to open, and the book the view opens on. Nothing is seeded, and the results land under the tier name `real`.
+
 Results land in `perf/results/` as JSON, each recording the machine, its load average, and both commits. Before committing one, suffix its name with the issue it was measured for and why, such as `-407-baseline`; `perf:summary` reads the time from the file, not its name.
 
 ## Dataset shape

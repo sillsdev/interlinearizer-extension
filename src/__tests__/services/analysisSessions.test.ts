@@ -1026,13 +1026,29 @@ describe('AnalysisSessions', () => {
       });
     });
 
-    it('says whether the draft it leaves has a free translation, when its command asks and it applied', async () => {
+    it('says the draft it leaves has no free translation, when its command asks and removed the last', async () => {
       const { sessions, seedDraft } = makeSessions();
       await seedDraft({ ...emptyDraft(SOURCE), analysis: FREE_TRANSLATED });
       const { sessionId } = await sessions.open(SOURCE);
 
-      const reply = await sessions.edit(sessionId, 'link', async (buffer) => {
-        linking(buffer, 'GEN 1:1:0');
+      const reply = await sessions.edit(sessionId, 'unlink', async (buffer) => {
+        FREE_TRANSLATED.segmentAnalyses.forEach((record) =>
+          buffer.delete('segmentAnalyses', record),
+        );
+        return { reportsFreeTranslations: true };
+      });
+
+      expect(reply.hasFreeTranslations).toBe(false);
+    });
+
+    it('says the draft it leaves has a free translation, when its command asks and created the first', async () => {
+      const { sessions } = makeSessions();
+      const { sessionId } = await sessions.open(SOURCE);
+
+      const reply = await sessions.edit(sessionId, 'translate', async (buffer) => {
+        FREE_TRANSLATED.segmentAnalyses.forEach((record) =>
+          buffer.create('segmentAnalyses', record),
+        );
         return { reportsFreeTranslations: true };
       });
 

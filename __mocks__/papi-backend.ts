@@ -19,6 +19,7 @@ const mockDeleteUserData = jest.fn();
 const mockNotificationsSend = jest.fn();
 const mockProjectDataProvidersGet = jest.fn();
 const mockGetLocalizedString = jest.fn();
+const mockGetLocalizedProjectTitle = jest.fn();
 const mockCreateNetworkEventEmitterAsync = jest.fn();
 const mockReloadWebView = jest.fn();
 const mockSettingsGet = jest.fn();
@@ -51,6 +52,7 @@ const papi = {
   },
   localization: {
     getLocalizedString: mockGetLocalizedString,
+    getLocalizedProjectTitle: mockGetLocalizedProjectTitle,
   },
   network: {
     createNetworkEventEmitterAsync: mockCreateNetworkEventEmitterAsync,
@@ -95,6 +97,7 @@ const defaultExport = {
   __mockNotificationsSend: mockNotificationsSend,
   __mockProjectDataProvidersGet: mockProjectDataProvidersGet,
   __mockGetLocalizedString: mockGetLocalizedString,
+  __mockGetLocalizedProjectTitle: mockGetLocalizedProjectTitle,
   __mockCreateNetworkEventEmitterAsync: mockCreateNetworkEventEmitterAsync,
   __mockReloadWebView: mockReloadWebView,
   __mockSettingsGet: mockSettingsGet,

@@ -19,7 +19,12 @@ import {
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { X } from 'lucide-react';
 import { Canon } from '@sillsdev/scripture';
-import { formatReplacementString, isPlatformError } from 'platform-bible-utils';
+import {
+  formatProjectTitle,
+  formatReplacementString,
+  getProjectDisplayName,
+  isPlatformError,
+} from 'platform-bible-utils';
 import {
   useCallback,
   useEffect,
@@ -658,14 +663,13 @@ function InterlinearizerLoaderInner({
     'platform.name',
     '',
   );
-  const sourceShortName =
-    (!isPlatformError(sourceShortNameSetting) && sourceShortNameSetting) || projectId;
+  const sourceShortName = getProjectDisplayName(projectId, sourceShortNameSetting);
   const tabTitleFormat = resolvedOrEmpty(localizedStrings['%interlinearizer_tabTitle%']);
   // Undefined until both inputs resolve, leaving the provider's title in place meanwhile.
   const tabTitle =
     isSourceShortNameLoading || !tabTitleFormat
       ? undefined
-      : formatReplacementString(tabTitleFormat, { projectName: sourceShortName });
+      : formatProjectTitle(tabTitleFormat, projectId, sourceShortNameSetting);
 
   useEffect(() => {
     if (tabTitle === undefined) return;

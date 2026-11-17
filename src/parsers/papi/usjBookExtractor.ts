@@ -76,9 +76,9 @@ export interface RawBook {
    */
   duplicateVerseIds: string[];
   /**
-   * SIDs of verse markers dropped because the SID names no verse (e.g. `"1SA 9:"` from a `\v` with
-   * no number), in encounter order and repeated once per dropped marker. Empty for a well-formed
-   * book.
+   * SIDs of verse markers dropped because the SID names no verse, in encounter order and repeated
+   * once per dropped marker. A `\v` with no number gives such a SID, e.g. `"1SA 9:"`. Empty for a
+   * well-formed book.
    */
   invalidVerseIds: string[];
   /**
@@ -283,9 +283,8 @@ function verseNumberFromSid(sid: string): string {
  * the marker omits it.
  *
  * A marker whose SID an earlier marker already claimed, or whose SID names no verse, opens no verse
- * scope, so its text and any heading within it are discarded rather than folded into the preceding
- * verse. Discarding text after a SID that names no verse matches Paratext, which assigns that text
- * to no verse.
+ * scope. Its text and any heading within it are discarded rather than folded into the preceding
+ * verse. Paratext also leaves the text after a SID that names no verse outside every verse.
  *
  * @throws {SyntaxError} If the `verse` node is missing its required `sid` attribute.
  */
@@ -470,8 +469,8 @@ function fnv1a32(s: string): string {
  * The identification line and everything ahead of the first chapter or verse are also captured as
  * front matter, one entry per paragraph.
  *
- * A `verse` marker repeating a SID an earlier marker already claimed, or whose SID names no verse,
- * is skipped rather than fatal, so a book with duplicate or unnumbered verses still extracts.
+ * A `verse` marker is skipped rather than fatal when it repeats a SID an earlier marker claimed or
+ * its SID names no verse. A book with duplicate or unnumbered verses therefore still extracts.
  *
  * @throws {SyntaxError} If no `book` marker with a `code` attribute is found in the document.
  * @throws {SyntaxError} If a `verse` marker is missing its required `sid` attribute.

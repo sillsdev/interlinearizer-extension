@@ -232,8 +232,8 @@ export function segmentPagesOf(book: Book, segmentationVersion = 0): SegmentPage
 }
 
 /**
- * A GEN book with no segments and no skipped verse markers. Book fixtures spread from it and
- * override only what they test, so a field added to `Book` is defaulted here once.
+ * A GEN book with no segments and no skipped verse markers. Spreading it into a fixture defaults
+ * every `Book` field the fixture does not test.
  */
 export const EMPTY_GEN_BOOK: Book = {
   id: 'GEN',

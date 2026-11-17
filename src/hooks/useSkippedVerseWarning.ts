@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
 export type SkippedVerseKind = Readonly<{
   /** The notification shown to the user, naming no specific verse. */
   messageKey: LocalizeKey;
-  /** What the book does with `count` markers, for the log line, e.g. `repeats 2 verse marker(s)`. */
+  /** Describes `count` skipped markers in the log line, e.g. `repeats 2 verse marker(s)`. */
   describe: (count: number) => string;
 }>;
 
@@ -23,8 +23,8 @@ export const INVALID_VERSES: SkippedVerseKind = {
 };
 
 /**
- * Warns, once per project, book and set of markers, when the loaded book has verse markers of
- * `kind` that were skipped in extracting it, whose text the view does not show.
+ * Warns, once per project, book and set of markers, when the loaded book has skipped verse markers
+ * of `kind`. The view does not show those markers' text.
  */
 export default function useSkippedVerseWarning(
   projectId: string,

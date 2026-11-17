@@ -43,8 +43,10 @@ import { whenSettled } from '../utils/settles';
 import type { AnalysisLanguagesChange } from '../types/analysis-languages-change';
 import type { EditStep } from '../types/edit-step';
 import { formatTemplate } from '../utils/format-template';
-import useDuplicateVerseWarning from '../hooks/useDuplicateVerseWarning';
-import useInvalidVerseWarning from '../hooks/useInvalidVerseWarning';
+import useSkippedVerseWarning, {
+  DUPLICATE_VERSES,
+  INVALID_VERSES,
+} from '../hooks/useSkippedVerseWarning';
 import useLexiconRegistry from '../hooks/useLexiconRegistry';
 import { LexiconSensesProvider } from './LexiconSenses';
 import useLostBoundaryDismissal from '../hooks/useLostBoundaryDismissal';
@@ -730,8 +732,8 @@ function InterlinearizerLoaderInner({
   const { pages, isLoading: isPagesLoading, error: pagesError } = session?.pages ?? OPENING_PAGES;
   const client = session?.client;
 
-  useDuplicateVerseWarning(projectId, pages);
-  useInvalidVerseWarning(projectId, pages);
+  useSkippedVerseWarning(projectId, pages?.bookRef, pages?.duplicateVerseIds, DUPLICATE_VERSES);
+  useSkippedVerseWarning(projectId, pages?.bookRef, pages?.invalidVerseIds, INVALID_VERSES);
 
   /**
    * The source project once it has supplied a book or its book list, either of which proves that

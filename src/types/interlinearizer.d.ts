@@ -1580,8 +1580,8 @@ declare module 'interlinearizer' {
     /**
      * SIDs of verse markers that name no verse (e.g. `"1SA 9:"` from a `\v` with no number), which
      * are skipped because there is no verse to segment them as. Empty for a well-formed book; when
-     * non-empty, the book is missing those markers' text and any heading within it, as Paratext
-     * assigns that text to no verse.
+     * non-empty, the book is missing those markers' text and any heading within it. Paratext
+     * likewise assigns that text to no verse.
      */
     invalidVerseIds: string[];
 

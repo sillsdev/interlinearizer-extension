@@ -872,6 +872,18 @@ export function describeAnalysisRepositoryConformance(
           ).resolves.toStrictEqual(fullAnalysis().segmentAnalyses.map(unstamped));
         });
 
+        // Callers compare timestamps as strings, with each other and with ones they stamp.
+        it('hands back timestamps as toISOString writes them', async () => {
+          const repository = await overFullDraft();
+
+          const [{ createdAt, updatedAt }] = await repository.getTokenAnalyses([ID.taAnd]);
+
+          expect([createdAt, updatedAt]).toStrictEqual([
+            new Date(createdAt).toISOString(),
+            new Date(updatedAt).toISOString(),
+          ]);
+        });
+
         it('gets phrase links by id, once per id, skipping ids with nothing stored', async () => {
           const repository = await overFullDraft();
 

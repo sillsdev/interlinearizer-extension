@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Interlinearizer.Crdt.Entities;
 
@@ -9,12 +11,14 @@ internal static class WireJson
 {
     /// <summary>
     /// Leaves a record's project off the wire: a repository serves one project, so its records
-    /// never name it.
+    /// never name it. Writes timestamps as JavaScript's <c>toISOString</c> does, because the
+    /// TypeScript side compares them as strings, with each other and with ones it stamps.
     /// </summary>
     public static void Configure(JsonSerializerOptions options)
     {
         options.TypeInfoResolver = (options.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver())
             .WithAddedModifier(HideProject);
+        options.Converters.Add(new IsoTimestampConverter());
     }
 
     private static void HideProject(JsonTypeInfo typeInfo)
@@ -27,5 +31,15 @@ internal static class WireJson
                 property.ShouldSerialize = (_, _) => false;
             }
         }
+    }
+
+    /// <summary>A timestamp in UTC to the millisecond, as <c>Date.prototype.toISOString</c> writes it.</summary>
+    private sealed class IsoTimestampConverter : JsonConverter<DateTimeOffset>
+    {
+        public override DateTimeOffset Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            reader.GetDateTimeOffset();
+
+        public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options) =>
+            writer.WriteStringValue(value.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture));
     }
 }

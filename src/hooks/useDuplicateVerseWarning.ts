@@ -10,15 +10,15 @@ export default function useDuplicateVerseWarning(
   projectId: string,
   pages: Pick<SegmentPages, 'bookRef' | 'duplicateVerseIds'> | undefined,
 ): void {
-  const warnedForBookRef = useRef<string | undefined>(undefined);
+  const warnedKeys = useRef(new Set<string>());
   const bookRef = pages?.bookRef;
   const duplicateVerseIds = pages?.duplicateVerseIds;
   useEffect(() => {
     if (!duplicateVerseIds || duplicateVerseIds.length === 0) return;
 
     const bookKey = `${projectId}:${bookRef}:${duplicateVerseIds.join(',')}`;
-    if (warnedForBookRef.current === bookKey) return;
-    warnedForBookRef.current = bookKey;
+    if (warnedKeys.current.has(bookKey)) return;
+    warnedKeys.current.add(bookKey);
 
     logger.warn(
       `Interlinearizer: book ${bookRef} in project ${projectId} repeats ${duplicateVerseIds.length} verse marker(s); their text is not shown: ${duplicateVerseIds.join(', ')}`,

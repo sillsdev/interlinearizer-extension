@@ -44,6 +44,15 @@ describe('useDuplicateVerseWarning', () => {
     expect(papi.notifications.send).toHaveBeenCalledTimes(1);
   });
 
+  it('does not warn again on returning to a book already warned about', () => {
+    const { rerender } = renderWarning({ bookRef: 'GEN', duplicateVerseIds: ['GEN 1:1'] });
+
+    rerender({ pages: { bookRef: 'EXO', duplicateVerseIds: ['EXO 2:1'] } });
+    rerender({ pages: { bookRef: 'GEN', duplicateVerseIds: ['GEN 1:1'] } });
+
+    expect(papi.notifications.send).toHaveBeenCalledTimes(2);
+  });
+
   it('warns again when the book repeats another marker', () => {
     const { rerender } = renderWarning({ bookRef: 'GEN', duplicateVerseIds: ['GEN 1:1'] });
 

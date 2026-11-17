@@ -9,7 +9,8 @@ import {
   useLexiconSearch,
   useLinkedGloss,
 } from '../../components/LexiconSenses';
-import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
+import { createLexiconRegistry } from '../../utils/lexicon-resolvers';
+import { nullLexiconResolver } from '../test-helpers';
 import { stubLexiconRegistry, TEST_LEXICON_AUTHORITY, testSenseRef } from './test-helpers';
 
 const SENSES = {

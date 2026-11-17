@@ -6,7 +6,8 @@ import { useState, type ReactElement, type ReactNode } from 'react';
 import { PageClient } from '../../cache/pageClient';
 import { SessionAnalysisProvider } from '../../components/AnalysisStore';
 import { LexiconSensesProvider } from '../../components/LexiconSenses';
-import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
+import { createLexiconRegistry } from '../../utils/lexicon-resolvers';
+import { nullLexiconResolver } from '../test-helpers';
 import { ViewOptions } from '../../types/view-options';
 
 /**

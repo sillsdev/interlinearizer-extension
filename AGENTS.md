@@ -152,7 +152,6 @@ Data flows from Platform.Bible's USJ (Unified Scripture JSON) format through two
 The core types are:
 
 - `InterlinearProject` — a saved project: metadata, source and optional target project ids, and the `analysis: TextAnalysis`. A draft is stored as the same envelope with its analysis split into per-book shards. The `Book` hierarchy is never stored; it is rebuilt from USJ on each load.
-- `ActiveProject` — runtime pairing of `project: InterlinearProject` with reconstructed `source` and optional `target` books.
 - `Book → Segment → Token` — the text hierarchy. Section headings are segments too (`Segment.heading`), with no verse starts. As in Paratext, each heading is filed under the verse before it, or under verse 0 when it precedes a chapter's first verse. Headings never merge or split with verse text. A heading within a verse's text splits that verse, and the text resuming after it is a segment keyed and flagged like a split's later piece. Text ahead of the first chapter or verse is kept apart as `Book.frontMatter`, tokenized but never segmented or displayed.
 - `TextAnalysis` — flat analysis layer keyed by id (does **not** mirror text hierarchy)
 - `TokenAnalysis / MorphemeAnalysis` — parse and 1:1 glosses; multiple analyses per token are allowed, distinguished by `status`

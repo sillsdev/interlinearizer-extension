@@ -1,11 +1,9 @@
 import { createSelector } from '@reduxjs/toolkit';
 import type {
-  MergedContent,
   MorphemeAnalysis,
   PhraseAnalysisLink,
   SenseRef,
   TokenAnalysis,
-  TokenSnapshot,
 } from 'interlinearizer';
 import {
   createContext,
@@ -38,7 +36,6 @@ import {
   type AnalysisState,
 } from '../utils/analysis-selectors';
 import useLatestRef from '../hooks/useLatestRef';
-import type { AnalysisEditOutcome } from '../utils/edit-outcome';
 import type { Settles } from '../utils/settles';
 import type { PageClient } from '../cache/pageClient';
 import {
@@ -405,73 +402,7 @@ export function useBreakdownPreview(
   return useSessionBreakdownPreview(tokenRef, isOpen);
 }
 
-/**
- * The catalog's write callbacks, each keyed by `analysisId` and so global to that record. A
- * callback's promise rejects when its edit fails, after the failure is logged.
- */
-export type AnalysisRowDispatch = {
-  /**
-   * Writes a gloss onto the record itself, changing what the record says for every token linked to
-   * it. A blank value clears the gloss.
-   */
-  writeGloss: (analysisId: string, value: string) => Settles<AnalysisEditOutcome>;
-  /**
-   * Clears the gloss on several records at once, as a blank {@link AnalysisRowDispatch.writeGloss}
-   * does on one, returning the records it left with nothing and so deleted.
-   */
-  clearGlosses: (analysisIds: readonly string[]) => Settles<readonly string[]>;
-  /**
-   * Re-segments the record's morpheme breakdown for every token linked to it, keeping the glosses
-   * and lexicon links on every form the re-split does not drop.
-   */
-  writeMorphemes: (
-    analysisId: string,
-    forms: readonly string[],
-    writingSystem: string,
-  ) => Settles<AnalysisEditOutcome>;
-  /** Writes a gloss onto one morpheme of the record, for every token linked to it. */
-  writeMorphemeGloss: (
-    analysisId: string,
-    morphemeId: string,
-    value: string,
-  ) => Settles<AnalysisEditOutcome>;
-  /**
-   * Removes the records and every link to them, leaving their tokens on whatever the suggestion
-   * pool still offers.
-   */
-  deleteAnalyses: (analysisIds: readonly string[]) => Settles<void>;
-  /**
-   * Folds several records into one, writing the merged content onto the survivor. Reports where the
-   * edit left the survivor, because content identical to an unmerged record collapses the survivor
-   * onto that record.
-   */
-  mergeAll: (
-    survivorAnalysisId: string,
-    mergedAnalysisIds: readonly string[],
-    content: MergedContent,
-  ) => Settles<AnalysisEditOutcome>;
-};
-
-/**
- * The write callbacks for the places an analysis went stale at, each keyed by one such place and so
- * local to it.
- */
-export type StaleLocationDispatch = {
-  /** Gives up the place `analysisId` went stale at, `tokenRef`, reclaiming it once nothing links it. */
-  discard: (analysisId: string, tokenRef: string) => void;
-  /**
-   * Moves `analysisId` from the place it went stale at, `staleTokenRef`, onto the token at
-   * `tokenRef`, approving it there in place of whatever that token held.
-   */
-  reapply: (
-    analysisId: string,
-    staleTokenRef: string,
-    tokenRef: string,
-    surfaceText: string,
-  ) => void;
-};
-
-/** What each {@link StaleLocationDispatch} write would reclaim. */
+/** What each {@link useStaleLocationDispatch} write would reclaim. */
 export type StaleLocationReclaims = {
   /** Ids of the records that giving up `analysisId`'s stale place at `tokenRef` would reclaim. */
   discard: (analysisId: string, tokenRef: string) => Settles<readonly string[]>;
@@ -601,45 +532,6 @@ export function usePhraseSenseRef(phraseId: string): SenseRef | undefined {
   return usePageSelector((state: AnalysisState) => selectPhraseSenseRef(state, phraseId));
 }
 
-/** Return value of {@link usePhraseDispatch}. */
-export type PhraseDispatch = {
-  /**
-   * Creates a new approved phrase.
-   *
-   * @param tokens - The phrase's tokens, in document order.
-   */
-  createPhrase: (tokens: TokenSnapshot[]) => void;
-  /**
-   * Replaces the token list of an existing phrase occurrence.
-   *
-   * @param phraseId - `PhraseAnalysisLink.id` of the occurrence to update.
-   * @param tokens - Replacement ordered `TokenSnapshot`s in document order.
-   */
-  updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
-  /** Deletes the phrase occurrence whose `PhraseAnalysisLink.id` is `phraseId`. */
-  deletePhrase: (phraseId: string) => void;
-  /**
-   * Merges a neighboring phrase (or free token) into a target phrase in a single atomic dispatch,
-   * then saves once. Prefer this over `updatePhrase` + `deletePhrase` when absorbing a neighbor so
-   * no save observes the intermediate state where the neighbor's tokens belong to two phrases.
-   *
-   * @param targetPhraseId - ID of the phrase to keep and grow.
-   * @param tokens - The combined, document-ordered token snapshots for the target phrase.
-   * @param absorbedPhraseId - ID of the neighbor phrase to delete, or `undefined` when the absorbed
-   *   neighbor was a free (unphrased) token.
-   */
-  mergePhrases: (
-    targetPhraseId: string,
-    tokens: TokenSnapshot[],
-    absorbedPhraseId: string | undefined,
-  ) => void;
-  /**
-   * Splits the occurrence `phraseLink` just after `splitAfterTokenRef`, the session ordering each
-   * part's tokens.
-   */
-  splitPhrase: (phraseLink: PhraseAnalysisLink, splitAfterTokenRef: string) => void;
-};
-
 // #endregion
 
 // #region Segment hooks
@@ -711,16 +603,5 @@ export function usePlacedStaleFreeTranslations(): PlacedStaleFreeTranslations {
 
   return usePagePlacementSelector(selectPlacedStaleFreeTranslations);
 }
-
-/** The write callbacks for reviewing stale free translations. */
-export type StaleFreeTranslationDispatch = {
-  /**
-   * Keeps the stale translation `analysisId` as a claim about the text `segmentId` now reads,
-   * `surfaceText`, approving it for that segment.
-   */
-  keep: (analysisId: string, segmentId: string, surfaceText: string) => void;
-  /** Drops the stale translation `analysisId`. */
-  discard: (analysisId: string) => void;
-};
 
 // #endregion

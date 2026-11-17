@@ -6,7 +6,6 @@ import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
 import type { ComponentProps, ReactNode } from 'react';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
-import type { PhraseDispatch } from '../../components/AnalysisStore';
 import ContinuousView, { HOLD_CENTERED_MAX_MS } from '../../components/ContinuousView';
 import {
   createFocusStore,
@@ -30,6 +29,7 @@ import {
   makePunctToken,
   makeSegment,
   makeWordToken,
+  type PhraseDispatch,
   segmentPagesOf,
   withSplitPhrase,
 } from '../test-helpers';

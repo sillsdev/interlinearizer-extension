@@ -7,7 +7,6 @@ import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interline
 import type { LanguageStrings } from 'platform-bible-utils';
 import type { ReactNode } from 'react';
 import type { SlotFocusInfo } from '../../types/token-layout';
-import type { PhraseDispatch } from '../../components/AnalysisStore';
 import { LINK_SLOT_TRANSITION_MS } from '../../components/PhraseStripParts';
 import {
   SegmentationProvider,
@@ -22,6 +21,7 @@ import {
   makeSegment,
   makeVerseBook,
   makeWordToken,
+  type PhraseDispatch,
   withSplitPhrase,
 } from '../test-helpers';
 import {

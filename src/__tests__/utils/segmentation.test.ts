@@ -4,7 +4,6 @@ import type { SegmentationDelta, TokenSnapshot } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import {
   addBoundaryBefore,
-  defaultVerseStarts,
   effectiveStarts,
   isDefaultSegmentationForBook,
   isEmptyDelta,
@@ -84,24 +83,6 @@ const HEADING_BETWEEN = makeVerseBook([
 const HEADING_START = 'GEN 1:1/s1:0';
 const HEADING_INTERIOR = 'GEN 1:1/s1:4';
 const SPLIT_HEADING: TokenSnapshot = { tokenRef: HEADING_INTERIOR, surfaceText: 'Heading' };
-
-describe('defaultVerseStarts', () => {
-  it('returns the first-token ref of every verse', () => {
-    expect(defaultVerseStarts(THREE_VERSES)).toEqual(new Set([V1_START, V2_START, V3_START]));
-  });
-
-  it('skips headings', () => {
-    expect(defaultVerseStarts(HEADING_BETWEEN)).toEqual(new Set([V1_START, V2_START]));
-  });
-
-  it('skips verses with no tokens', () => {
-    const book = makeVerseBook([
-      { sid: 'GEN 1:1', number: '1', text: '   ' },
-      { sid: 'GEN 1:2', number: '2', text: 'Word.' },
-    ]);
-    expect(defaultVerseStarts(book)).toEqual(new Set(['GEN 1:2:0']));
-  });
-});
 
 describe('unmergeableVerseStarts', () => {
   it('holds only the book-first start when every later verse follows a token run', () => {
@@ -353,6 +334,14 @@ describe('effectiveStarts', () => {
     expect(effectiveStarts(THREE_VERSES, undefined)).toEqual(
       new Set([V1_START, V2_START, V3_START]),
     );
+  });
+
+  it('starts no segment at a heading by default', () => {
+    expect(effectiveStarts(HEADING_BETWEEN, undefined)).toEqual(new Set([V1_START, V2_START]));
+  });
+
+  it('starts no segment at a verse with no tokens by default', () => {
+    expect(effectiveStarts(EMPTY_MIDDLE_VERSE, undefined)).toEqual(new Set([V1_START, V3_START]));
   });
 
   it('drops a removed verse start (merge)', () => {

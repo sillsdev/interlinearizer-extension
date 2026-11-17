@@ -109,7 +109,12 @@ export default function CatalogQueryControls({
           </SelectTrigger>
           <SelectContent>
             {sortKeys.map((sortKey) => (
-              <SelectItem data-testid={`catalog-sort-${sortKey}`} key={sortKey} value={sortKey}>
+              <SelectItem
+                data-testid={`catalog-sort-${sortKey}`}
+                disabled={sortKey === 'firstUsage' && filters.zeroUsages}
+                key={sortKey}
+                value={sortKey}
+              >
                 {formatReplacementString(localizedStrings[SORT_LABEL_KEYS[sortKey]], {
                   book: currentBookName,
                 })}

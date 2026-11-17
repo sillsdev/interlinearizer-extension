@@ -711,6 +711,53 @@ describe('AnalysisCatalogPanel', () => {
         'Most used in Genesis',
       );
     });
+
+    describe('alongside the unused-only filter', () => {
+      // Built by hand because no write path produces an unused analysis.
+      const WITH_UNUSED: TextAnalysis = {
+        ...emptyAnalysis(),
+        tokenAnalyses: [
+          { ...FIXTURE_STAMPS, id: 'used', surfaceText: 'λόγος' },
+          { ...FIXTURE_STAMPS, id: 'unused', surfaceText: 'ἦν' },
+        ],
+        tokenAnalysisLinks: [link('used', 'GEN 1:1:0')],
+      };
+
+      async function keepOnlyUnused() {
+        await openFilters();
+        await userEvent.click(
+          screen.getByRole('checkbox', {
+            name: '%interlinearizer_analysisCatalog_filter_zeroUsages%',
+          }),
+        );
+      }
+
+      it('offers the first-usage sort while the unused-only filter is off', async () => {
+        await renderPanel({ analysis: WITH_UNUSED });
+
+        expect(screen.getByTestId('catalog-sort-firstUsage')).toBeEnabled();
+      });
+
+      it('disables the first-usage sort while the unused-only filter is on', async () => {
+        await renderPanel({ analysis: WITH_UNUSED });
+
+        await keepOnlyUnused();
+
+        expect(screen.getByTestId('catalog-sort-firstUsage')).toBeDisabled();
+      });
+
+      it('falls back to most used when the filter turns on under the first-usage sort', async () => {
+        await renderPanel({ analysis: WITH_UNUSED });
+        await userEvent.click(screen.getByTestId('catalog-sort-firstUsage'));
+
+        await keepOnlyUnused();
+
+        expect(screen.getByTestId('catalog-sort-usageCount')).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+      });
+    });
   });
 
   describe('filtering', () => {

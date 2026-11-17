@@ -8,21 +8,18 @@ namespace Interlinearizer.Crdt.Changes;
 /// <summary>
 /// Sets the fields it carries on a <see cref="TokenAnalysis"/>: a field left unset is left as
 /// stored, and one set to null is cleared.
-/// An update time the patch does not carry is the commit's time.
 /// </summary>
 public class PatchTokenAnalysisChange(Guid entityId)
     : EditChange<TokenAnalysis>(entityId), ISelfNamedType<PatchTokenAnalysisChange>
 {
     /// <summary>
-    /// The patch that takes <paramref name="stored"/> to <paramref name="put"/>, or null when
-    /// nothing differs. The patch carries the put's update time even when it matches the stored one.
+    /// The patch that takes <paramref name="stored"/> to <paramref name="put"/>, timestamps
+    /// aside; null when nothing differs.
     /// </summary>
     public static PatchTokenAnalysisChange? Diff(TokenAnalysis stored, TokenAnalysis put)
     {
         var patch = new PatchTokenAnalysisChange(put.Id)
         {
-            CreatedAt = Timestamps.Changed(stored.CreatedAt, put.CreatedAt),
-            UpdatedAt = Timestamps.Carried(put.UpdatedAt),
             SurfaceText = Patches.Changed(stored.SurfaceText, put.SurfaceText) ? new(put.SurfaceText) : default,
             Confidence = Patches.Changed(stored.Confidence, put.Confidence) ? new(put.Confidence) : default,
             Producer = Patches.Changed(stored.Producer, put.Producer) ? new(put.Producer) : default,
@@ -34,13 +31,11 @@ public class PatchTokenAnalysisChange(Guid entityId)
             Features = MultiStringPatch.Diff(stored.Features, put.Features),
             Gloss = MultiStringPatch.Diff(stored.Gloss, put.Gloss),
         };
-        return patch.IsEmpty && Timestamps.Changed(stored.UpdatedAt, put.UpdatedAt) is null ? null : patch;
+        return patch.IsEmpty ? null : patch;
     }
 
-    /// <summary>Whether the patch sets nothing but the update time.</summary>
     [JsonIgnore]
     public bool IsEmpty =>
-        CreatedAt is null &&
         !SurfaceText.HasValue &&
         !Confidence.HasValue &&
         !Producer.HasValue &&
@@ -65,12 +60,9 @@ public class PatchTokenAnalysisChange(Guid entityId)
     public MultiStringPatch? Gloss { get; init; }
     public PatchField<SenseRef?> GlossSenseRef { get; init; }
 
-    public DateTimeOffset? CreatedAt { get; init; }
-    public DateTimeOffset? UpdatedAt { get; init; }
-
     public override ValueTask ApplyChange(TokenAnalysis entity, IChangeContext context)
     {
-        Timestamps.Write(entity, CreatedAt, UpdatedAt, context);
+        entity.UpdatedAt = context.Commit.DateTime;
         if (SurfaceText.HasValue) entity.SurfaceText = SurfaceText.Value;
         if (Confidence.HasValue) entity.Confidence = Confidence.Value;
         if (Producer.HasValue) entity.Producer = Producer.Value;

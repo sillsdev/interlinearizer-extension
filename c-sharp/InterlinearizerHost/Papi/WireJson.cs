@@ -12,7 +12,7 @@ internal static class WireJson
     /// <summary>
     /// Leaves a record's project off the wire: a repository serves one project, so its records
     /// never name it. Writes timestamps as JavaScript's <c>toISOString</c> does, because the
-    /// TypeScript side compares them as strings and expects each back as it was put.
+    /// TypeScript side compares them as strings, with each other and with ones it stamps.
     /// </summary>
     public static void Configure(JsonSerializerOptions options)
     {

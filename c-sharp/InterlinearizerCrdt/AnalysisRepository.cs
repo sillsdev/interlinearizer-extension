@@ -21,10 +21,9 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     /// Applies <paramref name="changes"/> as one commit, so whole or not at all. A put of a record
     /// not stored creates it in this project. A put of one stored replaces it whole, or, when
     /// <paramref name="putMode"/> asks for a patch, writes only the fields that differ from the
-    /// stored record and nothing when none does. A put keeps the timestamps it carries. A
-    /// timestamp left at its default takes the commit's time, but a stored record keeps its
-    /// creation time. A delete of a record not stored, or stored in another project, is skipped. A change
-    /// set that changes nothing writes no commit.
+    /// stored record and nothing when none does. The timestamps a put carries are ignored, because
+    /// the commit stamps them. A delete of a record not stored, or stored in another project, is
+    /// skipped. A change set that changes nothing writes no commit.
     /// </summary>
     /// <exception cref="ArgumentException">
     /// If an id appears more than once in the changes, in one record kind or across kinds; if a

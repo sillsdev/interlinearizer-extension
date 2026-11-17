@@ -345,6 +345,20 @@ Decision made in development (2026-08-27); feedback welcome on the wording and o
 should be remembered forever, given the conversion stays reachable from the Select Project
 dialog's import button.
 
+## Syncing a Paratext 9 import when it is opened
+
+Opening a read-only Paratext 9 import checks whether the Paratext 9 interlinear files changed since
+the last import or sync. If they did, it syncs right away behind a "Syncing from Paratext 9…"
+dialog. The dialog then closes straight into the view, with no report. Every other sync (the first
+import, the first-open offer, and the banner's Sync button) ends with the import report.
+
+1. Should opening an import sync it automatically, or should it open the last synced data and offer
+   a sync, for example from the header banner?
+2. If it syncs automatically, should the user see what the sync changed (the import report, or a
+   shorter notice), or is closing straight into the view enough?
+
+#274
+
 ## Jumping to a stale place in the Analysis Catalog
 
 When an edit to the source text changes a word that had an analysis, the Analysis Catalog lists

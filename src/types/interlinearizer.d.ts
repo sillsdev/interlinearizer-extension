@@ -67,7 +67,7 @@ declare module 'papi-shared-types' {
      *   Omitted for analysis-only projects (LCM, PT9 single-sided).
      * @param name - User-facing name for the project.
      * @param description - User-facing description for the project.
-     * @returns The persisted `InterlinearProject` serialized as a JSON string.
+     * @returns The persisted project's `InterlinearProjectSummary` serialized as a JSON string.
      * @throws If storage fails. The error is logged and an error notification is sent before
      *   rethrowing so callers do not need to send a second notification.
      */
@@ -191,15 +191,6 @@ declare module 'papi-shared-types' {
      * executes in the WebView.
      */
     'interlinearizer.openLexiconChooser': () => Promise<void>;
-
-    /**
-     * Loads the interlinearizer project with the given UUID, including its full `TextAnalysis`. The
-     * WebView calls this when the active project changes to load the stored analysis.
-     *
-     * @returns JSON-stringified `InterlinearProject`, or `undefined` if not found.
-     * @throws If storage fails (logged before rethrowing).
-     */
-    'interlinearizer.getProject': (interlinearProjectId: string) => Promise<string | undefined>;
 
     /**
      * Returns the summary of the interlinearizer project with the given UUID, without reading its
@@ -1254,8 +1245,8 @@ declare module 'papi-shared-types' {
      * @param description - New user-facing description; omit or pass `undefined` to clear.
      * @param targetProjectId - New target-project ID; omit or pass `undefined` to clear (removes
      *   the target-side text binding).
-     * @returns The updated project as a JSON string, or `undefined` if no project with that ID
-     *   exists.
+     * @returns The updated project's `InterlinearProjectSummary` as a JSON string, or `undefined`
+     *   if no project with that ID exists.
      * @throws If storage fails. The error is logged and an error notification is sent before
      *   rethrowing so callers do not need to send a second notification.
      */
@@ -1299,7 +1290,7 @@ declare module 'papi-shared-types' {
      * @param interlinearProjectId - UUID of the Paratext 9 import to copy.
      * @param name - User-facing name for the copy, chosen in the copy dialog.
      * @param description - Optional user-facing description for the copy.
-     * @returns The created project as a JSON string.
+     * @returns The copy's `InterlinearProjectSummary` as a JSON string.
      * @throws If the project does not exist or is not a Paratext 9 import, or if storage fails. The
      *   error is logged and an error notification is sent before rethrowing so callers do not need
      *   to send a second notification.

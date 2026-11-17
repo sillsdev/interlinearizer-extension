@@ -212,10 +212,6 @@ const getCreateEditableCopyHandler = () =>
     'interlinearizer.createEditableCopy',
   );
 
-/** Activates the extension and returns the `interlinearizer.getProject` handler. */
-const getGetProjectHandler = () =>
-  activateAndGetHandler<(id: string) => Promise<string | undefined>>('interlinearizer.getProject');
-
 /**
  * Activates the extension, opens a session on the empty draft of `src-project`, and returns the
  * handler registered for `commandName`, cast to `T`, with the session's id.
@@ -608,7 +604,6 @@ describe('main', () => {
         expect.arrayContaining([
           'interlinearizer.openForWebView',
           'interlinearizer.createProject',
-          'interlinearizer.getProject',
           'interlinearizer.saveDraftToProject',
           'interlinearizer.saveDraftAsProject',
           'interlinearizer.getProjectsForSource',
@@ -1243,7 +1238,7 @@ describe('main', () => {
       );
     });
 
-    it('delegates to projectStorage.createProject and returns the JSON-serialized project', async () => {
+    it("delegates to projectStorage.createProject and returns the project's summary", async () => {
       mockCreateProject.mockResolvedValue(stubProject);
       const handler = await getCreateProjectHandler();
 
@@ -1257,7 +1252,7 @@ describe('main', () => {
         undefined,
         undefined,
       );
-      expect(result).toBe(JSON.stringify(stubProject));
+      expect(JSON.parse(result ?? '')).toStrictEqual(toProjectSummary(stubProject));
     });
 
     it('does not show a project picker dialog', async () => {
@@ -1754,6 +1749,16 @@ describe('main', () => {
       );
     });
 
+    it("returns the updated project's summary", async () => {
+      const updated = { ...stubProject, name: 'My Name' };
+      mockUpdateProjectMetadata.mockResolvedValue(updated);
+      const handler = await getUpdateProjectMetadataHandler();
+
+      const result = await handler('proj-id', 'My Name', undefined);
+
+      expect(JSON.parse(result ?? '')).toStrictEqual(toProjectSummary(updated));
+    });
+
     it('returns undefined when the project does not exist', async () => {
       mockUpdateProjectMetadata.mockResolvedValue(undefined);
       const handler = await getUpdateProjectMetadataHandler();
@@ -1774,53 +1779,6 @@ describe('main', () => {
       );
       expect(__mockNotificationsSend).toHaveBeenCalledWith(
         expect.objectContaining({ severity: 'error' }),
-      );
-    });
-  });
-
-  describe('interlinearizer.getProject command', () => {
-    const mockGetProject = jest.mocked(projectStorage.getProject);
-    const stubProject = makeStubProject('proj-id');
-
-    it('registers the interlinearizer.getProject command', async () => {
-      const context = createTestActivationContext();
-
-      await activate(context);
-
-      expect(__mockRegisterCommand).toHaveBeenCalledWith(
-        'interlinearizer.getProject',
-        expect.any(Function),
-        expect.any(Object),
-      );
-    });
-
-    it('returns the JSON-stringified project when it exists', async () => {
-      mockGetProject.mockResolvedValue(stubProject);
-      const handler = await getGetProjectHandler();
-
-      const result = await handler('proj-id');
-
-      expect(mockGetProject).toHaveBeenCalledWith(expect.anything(), 'proj-id');
-      expect(result).toBe(JSON.stringify(stubProject));
-    });
-
-    it('returns undefined when the project does not exist', async () => {
-      mockGetProject.mockResolvedValue(undefined);
-      const handler = await getGetProjectHandler();
-
-      const result = await handler('missing-id');
-
-      expect(result).toBeUndefined();
-    });
-
-    it('logs the error and rethrows when storage throws', async () => {
-      mockGetProject.mockRejectedValue(new Error('disk full'));
-      const handler = await getGetProjectHandler();
-
-      await expect(handler('proj-id')).rejects.toThrow('disk full');
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to get project',
-        expect.any(Error),
       );
     });
   });
@@ -4999,7 +4957,7 @@ describe('main', () => {
       );
     });
 
-    it('returns the created copy as JSON', async () => {
+    it("returns the created copy's summary", async () => {
       const copy = { ...makeStubProject('copy-id'), name: 'My Copy' };
       mockCopy.mockResolvedValue(copy);
       const handler = await getCreateEditableCopyHandler();
@@ -5012,7 +4970,7 @@ describe('main', () => {
         'My Copy',
         'my description',
       );
-      expect(JSON.parse(result)).toStrictEqual(copy);
+      expect(JSON.parse(result)).toStrictEqual(toProjectSummary(copy));
     });
 
     it('logs the error, sends an error notification, and rethrows when the copy fails', async () => {

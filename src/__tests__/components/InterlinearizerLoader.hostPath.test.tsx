@@ -290,7 +290,7 @@ describe('InterlinearizerLoader opening on a missing project', () => {
 });
 
 describe('InterlinearizerLoader starting over', () => {
-  it('opens a project by sending the host its id, reading no project', async () => {
+  it('opens a project by sending the host its id', async () => {
     await renderLoaded();
 
     fireEvent.click(screen.getByTestId('open-project'));
@@ -302,10 +302,6 @@ describe('InterlinearizerLoader starting over', () => {
       }),
     );
     await screen.findByTestId('earth');
-    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
-      'interlinearizer.getProject',
-      expect.anything(),
-    );
   });
 
   it('starts a new draft by sending the host its configuration', async () => {
@@ -323,7 +319,7 @@ describe('InterlinearizerLoader starting over', () => {
 });
 
 describe('InterlinearizerLoader discarding', () => {
-  it("discards the draft through its session, leaving the saved project's content to the host", async () => {
+  it('discards the draft through its session', async () => {
     await renderLoaded({ activeProject: ACTIVE_PROJECT });
 
     fireEvent.click(screen.getByTestId('tab-toolbar-discard-changes'));
@@ -334,10 +330,6 @@ describe('InterlinearizerLoader discarding', () => {
         sessionId: expect.any(String),
         changeId: expect.any(String),
       }),
-    );
-    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
-      'interlinearizer.getProject',
-      expect.anything(),
     );
   });
   it('tells the user when the session fails the discard, and closes the dialog', async () => {
@@ -372,7 +364,7 @@ describe('InterlinearizerLoader opening a Paratext 9 import', () => {
     pt9Import: { fileHashes: {}, importedAt: '2026-01-01T00:00:00.000Z' },
   };
 
-  it("opens the report's import from its summary, reading no project", async () => {
+  it("opens the report's import from its summary", async () => {
     await renderLoaded(
       {},
       {
@@ -399,10 +391,6 @@ describe('InterlinearizerLoader opening a Paratext 9 import', () => {
     expect(papi.commands.sendCommand).toHaveBeenCalledWith(
       'interlinearizer.getProjectSummary',
       IMPORT_SUMMARY.id,
-    );
-    expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
-      'interlinearizer.getProject',
-      expect.anything(),
     );
   });
 });

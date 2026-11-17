@@ -77,31 +77,8 @@ export interface InterlinearizerOpenOptions
   projectId?: string;
 }
 
-/** Tab title used when there is no project to name or the localized title format cannot be read. */
+/** Tab title used when there is no project to name. */
 const baseTabTitle = 'Interlinearizer';
-
-/**
- * Formats the tab title for the given source project, falling back to the project id when its short
- * name cannot be read and to {@link baseTabTitle} when the title format cannot.
- */
-async function getTabTitle(projectId: string): Promise<string> {
-  let projectName = projectId;
-  try {
-    const pdp = await papi.projectDataProviders.get('platform.base', projectId);
-    projectName = (await pdp.getSetting('platform.name')) || projectId;
-  } catch (e) {
-    logger.warn(`Could not read the short name of project ${projectId}: ${e}`);
-  }
-  try {
-    const titleFormat = await papi.localization.getLocalizedString({
-      localizeKey: '%interlinearizer_tabTitle%',
-    });
-    return formatReplacementString(titleFormat, { projectName });
-  } catch (e) {
-    logger.warn(`Could not read the tab title format: ${e}`);
-    return baseTabTitle;
-  }
-}
 
 /**
  * The tab that holds each project: the first one served while no other tab holds it. Opening the
@@ -161,7 +138,12 @@ const mainWebViewProvider: IWebViewProvider = {
         }),
         ...(duplicateOf !== undefined && { duplicateOf }),
       },
-      title: projectId ? await getTabTitle(projectId) : baseTabTitle,
+      title: projectId
+        ? await papi.localization.getLocalizedProjectTitle({
+            localizeKey: '%interlinearizer_tabTitle%',
+            projectId,
+          })
+        : baseTabTitle,
       content: interlinearizerReact,
       styles: interlinearizerStyles,
     };

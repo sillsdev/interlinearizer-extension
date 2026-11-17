@@ -4877,8 +4877,8 @@ describe('InterlinearizerLoader', () => {
       });
     });
 
-    it('falls back to the project id when the short name is empty', async () => {
-      mockSourceShortName('');
+    it.each(['', '  '])('falls back to the project id when the short name is %j', async (name) => {
+      mockSourceShortName(name);
       let result: ReturnType<typeof renderLoader> | undefined;
       await flushHost(async () => {
         result = renderLoader();

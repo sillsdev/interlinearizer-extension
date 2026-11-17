@@ -1,11 +1,6 @@
 /// <reference types="jest" />
 
-import {
-  composeLexemeKeyId,
-  LexemeKeyData,
-  lexemeKeysEqual,
-  parseLexemeKeyId,
-} from 'parsers/pt9/lexemeKey';
+import { composeLexemeKeyId, LexemeKeyData, parseLexemeKeyId } from 'parsers/pt9/lexemeKey';
 
 describe('parseLexemeKeyId', () => {
   it('parses a plain id with no homograph suffix', () => {
@@ -68,39 +63,5 @@ describe('composeLexemeKeyId', () => {
       Form: 'a',
       Homograph: 1,
     });
-  });
-});
-
-describe('lexemeKeysEqual', () => {
-  it('treats identical keys as equal', () => {
-    expect(
-      lexemeKeysEqual(
-        { Type: 'Word', Form: 'a', Homograph: 2 },
-        { Type: 'Word', Form: 'a', Homograph: 2 },
-      ),
-    ).toBe(true);
-  });
-
-  it('treats an absent homograph as homograph 1 on either side', () => {
-    expect(
-      lexemeKeysEqual({ Type: 'Word', Form: 'a' }, { Type: 'Word', Form: 'a', Homograph: 1 }),
-    ).toBe(true);
-    expect(
-      lexemeKeysEqual({ Type: 'Word', Form: 'a', Homograph: 1 }, { Type: 'Word', Form: 'a' }),
-    ).toBe(true);
-  });
-
-  it('distinguishes types', () => {
-    expect(lexemeKeysEqual({ Type: 'Word', Form: 'a' }, { Type: 'Stem', Form: 'a' })).toBe(false);
-  });
-
-  it('distinguishes forms', () => {
-    expect(lexemeKeysEqual({ Type: 'Word', Form: 'a' }, { Type: 'Word', Form: 'b' })).toBe(false);
-  });
-
-  it('distinguishes homographs', () => {
-    expect(
-      lexemeKeysEqual({ Type: 'Word', Form: 'a' }, { Type: 'Word', Form: 'a', Homograph: 2 }),
-    ).toBe(false);
   });
 });

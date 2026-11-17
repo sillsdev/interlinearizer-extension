@@ -12,9 +12,14 @@ import { LexiconSensesProvider } from '../../components/LexiconSenses';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { STATUS_TEXT_COLOR_CLASS } from '../../types/status-colors';
-import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
+import { createLexiconRegistry } from '../../utils/lexicon-resolvers';
+import {
+  nullLexiconResolver,
+  FIXTURE_STAMPS,
+  makePunctToken,
+  makeWordToken,
+} from '../test-helpers';
 import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
-import { FIXTURE_STAMPS, makePunctToken, makeWordToken } from '../test-helpers';
 import {
   mockKeyAsValueLocalizedStrings,
   TEST_LEXICON_AUTHORITY,

@@ -11,7 +11,8 @@ import CatalogSenseControl, {
   SENSE_CONTROL_STRING_KEYS,
 } from '../../components/CatalogSenseControl';
 import { LexiconSensesProvider } from '../../components/LexiconSenses';
-import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
+import { createLexiconRegistry } from '../../utils/lexicon-resolvers';
+import { nullLexiconResolver } from '../test-helpers';
 import { TEST_LEXICON_AUTHORITY, testSenseRef } from './test-helpers';
 
 /** Each string is its own key without the decoration, so a test finds a control by that name. */

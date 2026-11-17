@@ -97,14 +97,6 @@ function bookLookups(verseBook: ReadonlyBook): BookLookups {
   return lookups;
 }
 
-/**
- * The default segment-start refs — each verse segment's first token, of any type, so a verse's
- * leading punctuation stays with that verse.
- */
-export function defaultVerseStarts(verseBook: ReadonlyBook): ReadonlySet<string> {
-  return bookLookups(verseBook).defaults;
-}
-
 /** Whether a split's ref still names a token of the surface text it was set before. */
 function namesItsWord({ surfaces }: BookLookups, start: TokenSnapshot): boolean {
   const surfaceText = surfaces.get(start.tokenRef);

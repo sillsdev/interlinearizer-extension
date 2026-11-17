@@ -1320,11 +1320,6 @@ declare module 'papi-shared-types' {
  *
  * Shape at a glance:
  *
- *     ActiveProject
- *       ├─ project : InterlinearProject
- *       ├─ source  : Book[]
- *       └─ target? : Book[]   — present only when targetProjectId is set
- *
  *     InterlinearProject
  *       ├─ sourceProjectId
  *       ├─ targetProjectId?  — absent for analysis-only projects (LCM, PT9)
@@ -2490,9 +2485,6 @@ declare module 'interlinearizer' {
      * (e.g. BT Extension imports) where `AlignmentLink.targetEndpoints` must resolve to tokens in a
      * second text. Omitted for analysis-only projects (LCM, PT9 single-sided glossing).
      *
-     * When present, the `ActiveProject.target` books are rebuilt from this project's USJ on load,
-     * exactly as `ActiveProject.source` is rebuilt from `sourceProjectId`.
-     *
      * BT Extension: corresponds to one `Translation` scoped to two sides (`Translation.sideNum`).
      * By BT convention `sideNum = 1` is the source and `sideNum = 2` is the target;
      * `sourceProjectId` maps to the side-1 project and `targetProjectId` maps to the side-2
@@ -2736,42 +2728,4 @@ declare module 'interlinearizer' {
 
   /** A draft without its analysis or boundaries, which the view reads whole. */
   export type DraftEnvelope = Omit<DraftProject, 'analysis' | 'segmentation'>;
-
-  // ---------------------------------------------------------------------------
-  // §8 ActiveProject — runtime pairing of project envelope and text layers
-  // ---------------------------------------------------------------------------
-
-  /**
-   * The runtime object for an open interlinearizer project. Pairs the persisted
-   * {@link InterlinearProject} envelope with the reconstructed text hierarchies.
-   *
-   * `source` and `target` are rebuilt from Platform.Bible's USJ on each load and are never
-   * serialized. All annotation and alignment mutations target `project.analysis` and
-   * `project.links`; saving is done by writing those fields back to storage via `updateAnalysis`.
-   *
-   * `target` is present only when `project.targetProjectId` is set (bilateral alignment projects
-   * such as BT Extension imports). When present, `AlignmentLink.targetEndpoints` token IDs resolve
-   * against these books; when absent, only `sourceEndpoints` can be resolved.
-   *
-   * BT Extension: `source` corresponds to `Translation.sideNum = 1` and `target` to `sideNum = 2`,
-   * following BT's convention that side 1 is the input being analyzed and side 2 is the output.
-   */
-  export interface ActiveProject {
-    /** The persisted project envelope. Mutations target `project.analysis` and `project.links`. */
-    project: InterlinearProject;
-
-    /**
-     * The reconstructed source books, built from Platform.Bible USJ on load. Never serialized —
-     * rebuilt on every activation. Typically one book per scripture book code; multiple books may
-     * be present when the UI has prefetched adjacent books.
-     */
-    source: Book[];
-
-    /**
-     * The reconstructed target books, built from `project.targetProjectId`'s USJ on load. Present
-     * only when `project.targetProjectId` is set; absent for analysis-only projects (LCM, PT9).
-     * Never serialized — rebuilt on every activation alongside `source`.
-     */
-    target?: Book[];
-  }
 }

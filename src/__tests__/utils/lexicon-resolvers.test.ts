@@ -7,11 +7,8 @@ import type {
   LexiconResolver,
   ResolvedSense,
 } from 'interlinearizer/lexicon';
-import {
-  connectLexiconRegistry,
-  createLexiconRegistry,
-  nullLexiconResolver,
-} from '../../utils/lexicon-resolvers';
+import { connectLexiconRegistry, createLexiconRegistry } from '../../utils/lexicon-resolvers';
+import { nullLexiconResolver } from '../test-helpers';
 
 const NO_CAPABILITIES: LexiconCapabilities = {
   search: false,
@@ -41,30 +38,6 @@ function stubResolver(
 function senseRef(authority: string): SenseRef {
   return { authority, senseId: 's-1' };
 }
-
-describe('nullLexiconResolver', () => {
-  it('declares no authority, so every ref is foreign to it', () => {
-    expect(nullLexiconResolver.authorities).toEqual([]);
-  });
-
-  it('declares no capability, so no lexicon UI is offered', () => {
-    expect(nullLexiconResolver.capabilities).toEqual(NO_CAPABILITIES);
-  });
-
-  it('resolves no sense', async () => {
-    await expect(nullLexiconResolver.resolveSense(senseRef('anything'))).resolves.toBeUndefined();
-  });
-
-  it('finds nothing to gloss a form with', async () => {
-    await expect(nullLexiconResolver.searchByForm('mayim')).resolves.toEqual([]);
-  });
-
-  it('refuses to create an entry rather than reporting one it did not create', async () => {
-    await expect(
-      nullLexiconResolver.createEntry({ form: 'mayim', writingSystem: 'hbo' }),
-    ).rejects.toThrow('No lexicon is connected');
-  });
-});
 
 describe('createLexiconRegistry', () => {
   it('resolves a ref through the lexicon whose authority minted it', async () => {

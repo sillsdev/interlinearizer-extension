@@ -2,7 +2,7 @@ import papi, { logger } from '@papi/frontend';
 import type { LocalizeKey } from 'platform-bible-utils';
 import { useEffect, useRef } from 'react';
 
-/** One reason the extractor skips verse markers, as the warning about it names it. */
+/** A reason that the extractor skips verse markers, with what the warning says about it. */
 export type SkippedVerseKind = Readonly<{
   /** The notification shown to the user, naming no specific verse. */
   messageKey: LocalizeKey;
@@ -24,7 +24,7 @@ export const INVALID_VERSES: SkippedVerseKind = {
 
 /**
  * Warns, once per project, book and set of markers, when the loaded book has verse markers of
- * `kind` that it skipped, whose text the view does not show.
+ * `kind` that were skipped in extracting it, whose text the view does not show.
  */
 export default function useSkippedVerseWarning(
   projectId: string,

@@ -51,6 +51,8 @@ declare module 'papi-shared-types' {
      *
      * @returns A promise that resolves to the opened WebView ID, or `undefined` if the user
      *   dismissed the picker without selecting a project.
+     * @throws If reading the WebView's definition, showing the project picker, or opening the
+     *   WebView fails.
      */
     'interlinearizer.openForWebView': (webViewId?: string) => Promise<string | undefined>;
 
@@ -99,8 +101,12 @@ declare module 'papi-shared-types' {
     /**
      * Deletes an interlinearizer project by UUID. No-ops silently if the project does not exist.
      *
-     * @throws If the underlying storage write fails (the failure is also logged and surfaced as an
-     *   error notification before being re-thrown).
+     * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+     * @throws {Error} If the stored project summaries were written by a newer build, or are
+     *   corrupt.
+     * @throws If reading the summaries fails for a reason other than the file not existing, or
+     *   writing them fails. Every failure is logged and surfaced as an error notification before
+     *   being re-thrown.
      */
     'interlinearizer.deleteProject': (interlinearProjectId: string) => Promise<void>;
 

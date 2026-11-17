@@ -86,14 +86,6 @@ export function sessionCatalogHandlers({
     }
   }
 
-  /**
-   * Serves one page of a session's catalog, its usages placed among the current book's headings, or
-   * among none when that book cannot be read.
-   *
-   * @returns A JSON string of the `CatalogPage`, each row's books listed.
-   * @throws If the session is not open or its analysis cannot be read. The error is logged before
-   *   rethrowing.
-   */
   async function getCatalogRows({
     sessionId,
     request,
@@ -110,12 +102,6 @@ export function sessionCatalogHandlers({
     });
   }
 
-  /**
-   * Counts the distinct tokens in a session's draft that approve any of the analyses.
-   *
-   * @throws If the session is not open or its analysis cannot be read. The error is logged before
-   *   rethrowing.
-   */
   async function countUsages({
     sessionId,
     analysisIds,
@@ -125,14 +111,6 @@ export function sessionCatalogHandlers({
     );
   }
 
-  /**
-   * Serves the rows of the analyses in a session's draft that `analysisIds` names, in that order,
-   * leaving out unstored ids.
-   *
-   * @returns A JSON string of the rows, each row's books listed.
-   * @throws If the session is not open or its analysis cannot be read. The error is logged before
-   *   rethrowing.
-   */
   async function getCatalogRowsByIds({
     sessionId,
     currentBook,
@@ -144,15 +122,6 @@ export function sessionCatalogHandlers({
     });
   }
 
-  /**
-   * Serves the rows in a session's draft sharing the analysis's normalized surface form, the
-   * analysis's own among them, most used first.
-   *
-   * @returns A JSON string of the rows, each row's books listed; `"[]"` when no analysis carries
-   *   the id.
-   * @throws If the session is not open or its analysis cannot be read. The error is logged before
-   *   rethrowing.
-   */
   async function getHomographRows({
     sessionId,
     currentBook,
@@ -164,13 +133,6 @@ export function sessionCatalogHandlers({
     });
   }
 
-  /**
-   * Summarizes the selected analyses of a session's draft for a bulk action over them.
-   *
-   * @returns A JSON string of the `SelectionSummary`.
-   * @throws If the session is not open or its analysis cannot be read. The error is logged before
-   *   rethrowing.
-   */
   async function getSelectionSummary({
     sessionId,
     analysisIds,
@@ -181,16 +143,6 @@ export function sessionCatalogHandlers({
     });
   }
 
-  /**
-   * Reports what deleting a token analysis in a session's draft would do to the tokens that approve
-   * it, whichever book they sit in. An outcome that depends on a token whose book cannot be read is
-   * `uncertain`.
-   *
-   * @returns A JSON string of the `AnalysisDeletionOutcome`; `"null"` when no analysis carries the
-   *   id.
-   * @throws If the session is not open or its analysis cannot be read. The error is logged before
-   *   rethrowing.
-   */
   async function previewDeletion({
     sessionId,
     analysisId,

@@ -199,15 +199,21 @@ function createSessions(
 // #region Command handlers
 
 /**
- * Opens the Interlinearizer WebView for the given project. If no projectId is provided, shows a
- * project picker dialog. Each project gets its own tab; reopening an already-open project brings
- * that tab to front.
+ * Opens the Interlinearizer WebView for a project. Each project gets its own tab; reopening an
+ * already-open project brings that tab to front.
  *
+ * @param projectId - The project to open. When omitted, the user picks one in a project picker
+ *   dialog.
+ * @param besideTabId - The tab that a new Interlinearizer tab opens right after, in that tab's
+ *   group. When omitted, the platform's default placement applies.
  * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
  * @throws If `papi.dialogs.selectProject` rejects (e.g. platform error while showing the dialog).
  * @throws If `papi.webViews.openWebView` rejects (e.g. the platform cannot open or focus the tab).
  */
-async function openInterlinearizer(projectId?: string): Promise<string | undefined> {
+async function openInterlinearizer(
+  projectId?: string,
+  besideTabId?: string,
+): Promise<string | undefined> {
   const resolvedProjectId =
     projectId ??
     (await papi.dialogs.selectProject({
@@ -233,7 +239,11 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
     projectId: resolvedProjectId,
     ...seededState,
   };
-  return papi.webViews.openWebView(mainWebViewType, undefined, options);
+  const layout =
+    besideTabId === undefined
+      ? undefined
+      : { type: 'panel' as const, direction: 'after-tab' as const, targetTabId: besideTabId };
+  return papi.webViews.openWebView(mainWebViewType, layout, options);
 }
 
 /**
@@ -286,7 +296,7 @@ function rememberActiveProject(
 async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
   if (!webViewId) return openInterlinearizer();
   const webViewDefinition = await papi.webViews.getOpenWebViewDefinition(webViewId);
-  return openInterlinearizer(webViewDefinition?.projectId);
+  return openInterlinearizer(webViewDefinition?.projectId, webViewId);
 }
 
 async function createInterlinearProject(

@@ -1019,8 +1019,25 @@ describe('main', () => {
       expect(__mockSelectProject).not.toHaveBeenCalled();
       expect(__mockOpenWebView).toHaveBeenCalledWith(
         mainWebViewType,
-        undefined,
+        expect.anything(),
         expect.objectContaining({ projectId: 'project-from-webview' }),
+      );
+    });
+
+    it('opens the Interlinearizer right after the given WebView, in its tab group', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue({
+        id: 'editor-webview',
+        webViewType: 'platformScriptureEditor.react',
+        projectId: 'project-from-webview',
+      });
+      const openForWebView = await getOpenForWebViewHandler();
+
+      await openForWebView('editor-webview');
+
+      expect(__mockOpenWebView).toHaveBeenCalledWith(
+        mainWebViewType,
+        { type: 'panel', direction: 'after-tab', targetTabId: 'editor-webview' },
+        expect.anything(),
       );
     });
 
@@ -1041,7 +1058,7 @@ describe('main', () => {
       );
       expect(__mockOpenWebView).toHaveBeenCalledWith(
         mainWebViewType,
-        undefined,
+        expect.anything(),
         expect.objectContaining({ offerPt9Import: true }),
       );
     });
@@ -1064,7 +1081,7 @@ describe('main', () => {
       );
       expect(__mockOpenWebView).toHaveBeenCalledWith(
         mainWebViewType,
-        undefined,
+        expect.anything(),
         expect.objectContaining({ activeProject }),
       );
     });
@@ -1088,7 +1105,7 @@ describe('main', () => {
       );
       expect(__mockOpenWebView).toHaveBeenCalledWith(
         mainWebViewType,
-        undefined,
+        expect.anything(),
         expect.objectContaining({ activeProject: undefined }),
       );
     });
@@ -1129,7 +1146,7 @@ describe('main', () => {
       expect(__mockSelectProject).toHaveBeenCalledTimes(1);
       expect(__mockOpenWebView).toHaveBeenCalledWith(
         mainWebViewType,
-        undefined,
+        expect.anything(),
         expect.objectContaining({ projectId: 'picker-project' }),
       );
     });

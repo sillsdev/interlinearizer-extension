@@ -336,12 +336,10 @@ function offerForToken(
  * it never combines stored decisions and the derived view itself. An approved token carries the
  * offer only as promotable alternatives, so a confirmed token never shows a suggestion.
  *
- * Unlike the reference-stable per-token reads ({@link selectApprovedGloss} returns a primitive,
- * {@link selectApprovedMorphemes} a stable array), this freshly allocates its result object — and
- * the suggested branch a fresh `candidates` array — on every call. A `useSelector` consumer must
- * therefore NOT rely on the default `Object.is` equality: subscribe through a per-token memoized
- * selector or pass a shallow/custom `equalityFn` (or `useMemo` the result), or every change to the
- * held pages will re-render the token.
+ * Unlike reference-stable per-token reads such as {@link selectApprovedGloss}, this returns a fresh
+ * object on every call. A suggested result also carries a fresh `candidates` array. A subscriber
+ * must therefore not compare results with `Object.is`. It should memoize per token or compare with
+ * a shallow or custom equality; otherwise every change to the held pages re-renders the token.
  *
  * @param state - The analysis state that holds the token's decisions.
  * @param tokenRef - The token to resolve.

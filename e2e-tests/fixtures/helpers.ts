@@ -1233,9 +1233,9 @@ export async function openInterlinearizerFromScriptureEditor(
   await expect(interlinearizerTab).toBeVisible({ timeout: 15_000 });
   await interlinearizerTab.click();
 
-  // Close any leftover project-picker dock tab. This flow no longer opens one, but on the shared CDP
-  // instance a prior test that hit the picker path can leave one mounted, and leaked pickers
-  // accumulate (the DOM is never reset) until a `.select-project-dialog` read trips strict mode.
+  // Close any leftover project-picker dock tab. This flow opens none, but on the shared CDP
+  // instance a prior test can leave one mounted. Because the DOM is never reset, leaked pickers
+  // accumulate until a `.select-project-dialog` read trips strict mode.
   await closeSelectProjectPickers(page);
 }
 

@@ -68,7 +68,7 @@ Start the application from your desktop's application menu, or with:
 snap run paratext-10-studio
 ```
 
-### Both platforms
+### All platforms
 
 Start Paratext 10 once to confirm it runs, then close it again. That first run creates the
 folder you will need in step 3.
@@ -119,7 +119,7 @@ The extensions folder sits inside the snap's own folder rather than next to the 
 `~/.paratext-10-studio`, because that is the location a confined snap can unpack and run extensions
 from.
 
-### Both platforms
+### All platforms
 
 Put the downloaded zip in that folder; nothing else needs to go there. If an Interlinearizer zip from
 an earlier release is already there, delete it first. Paratext 10 creates the

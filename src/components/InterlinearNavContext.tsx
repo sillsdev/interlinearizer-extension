@@ -425,11 +425,11 @@ export function InterlinearNavProvider({
    */
   const scrRefKey = verseKey(scrRef);
 
-  // Detect a cross-book navigation *during render* and start the fade-out synchronously, so the
-  // curtain drops in the same commit the book ref changes — never a paint later (an effect-driven
-  // fade-out would let the mounted views render one frame against the new book's ref before the
-  // curtain covers them). Setting state during render is the guarded React pattern: `awaitingSettle`
-  // flips true so this fires once per book change, and `setFadePhase` is batched into this commit.
+  // Detect a cross-book navigation *during render* and start the fade-out synchronously, so that the
+  // curtain drops in the same commit as the book ref changes. An effect-driven fade-out would let
+  // the mounted views render one frame against the new book's ref before the curtain covers them.
+  // Setting state during render is the guarded React pattern: `awaitingSettleRef` flips true, so
+  // this fires once per book change. `setFadePhase` is batched into this commit.
   if (scrRef.book !== displayedBookRef.current && !awaitingSettleRef.current) {
     if (fadeInTimeoutRef.current !== undefined) {
       clearTimeout(fadeInTimeoutRef.current);

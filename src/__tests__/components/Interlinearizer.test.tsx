@@ -68,8 +68,8 @@ type CapturedContinuousViewProps = {
 let capturedContinuousViewProps: CapturedContinuousViewProps | undefined;
 
 /**
- * The segmentation context value seen by the (stubbed) ContinuousView — carries the force-break
- * wrapped dispatch built by InterlinearizerInner, so tests can invoke its methods directly.
+ * The segmentation context value seen by the stubbed ContinuousView. It carries the dispatch that
+ * Interlinearizer wraps to force breaks, so tests can invoke its methods directly.
  */
 let capturedSegmentation: SegmentationContextValue | undefined;
 
@@ -106,8 +106,8 @@ const mockCreatePhrase = jest.fn();
 const mockDeletePhrase = jest.fn();
 
 /**
- * Phrase-link-by-id map served by the mocked `usePhraseLinkByIdGetter`. Force-break tests seed it
- * with phrases that straddle a boundary; cleared in the top-level `beforeEach`.
+ * Phrase-link-by-id map served by the mocked `usePhraseLinkByIdMap`. Force-break tests seed it with
+ * phrases that straddle a boundary, and the top-level `beforeEach` clears it.
  */
 const mockPhraseLinkById = new Map<string, PhraseAnalysisLink>();
 
@@ -162,11 +162,6 @@ jest.mock('../../components/AnalysisStore', () => ({
     phraseLinkByIdMapReads += 1;
     return mockPhraseLinkById;
   },
-  /**
-   * Returns a getter over the test-owned phrase-link map so force-break tests can seed straddling
-   * phrases.
-   */
-  usePhraseLinkByIdGetter: () => () => mockPhraseLinkById,
   usePhraseDispatch: () => ({
     createPhrase: (...args: Parameters<typeof mockCreatePhrase>) => mockCreatePhrase(...args),
     updatePhrase: (...args: Parameters<typeof mockUpdatePhrase>) => mockUpdatePhrase(...args),
@@ -885,7 +880,7 @@ describe('Interlinearizer', () => {
   it('falls back to the active-verse first word when switching off continuousScroll with no strip position', () => {
     jest.useFakeTimers();
     try {
-      // Start in continuous mode without ContinuousView ever calling onFocusPhraseIndexChange.
+      // Start in continuous mode without ContinuousView ever reporting a strip position.
       const { rerender } = renderInterlinearizer({
         book: GEN_1_MULTI_BOOK,
         continuousScroll: true,
@@ -1144,12 +1139,6 @@ describe('Interlinearizer', () => {
     }
   });
 
-  /**
-   * Makes the segment `topSegmentId` the topmost one touching the container's top edge, so the
-   * pinned-chapter overlay resolves it deterministically in jsdom (which otherwise reports every
-   * rect as zero). Every `[data-segment-id]` before the target is placed fully above the top edge
-   * (negative bottom); the target and those after it sit at/below it. The container reports top 0.
-   */
   /**
    * Stubs the list's scroll position. The pinned-chapter header resolves the segment at the top
    * edge from this offset through the height table, so a test positions the list by scrolling

@@ -1829,8 +1829,6 @@ describe('InterlinearizerLoader', () => {
       copyJson?: string;
     } = {}): void {
       otherCommands.mockImplementation(async (...args) => {
-        if (args[0] === 'interlinearizer.getProject')
-          return JSON.stringify({ ...FRESH_IMPORT_SUMMARY, analysis: emptyAnalysis() });
         if (args[0] === 'interlinearizer.getProjectSummary')
           return JSON.stringify(FRESH_IMPORT_SUMMARY);
         if (args[0] === 'interlinearizer.importPt9Project') {
@@ -2769,8 +2767,6 @@ describe('InterlinearizerLoader', () => {
 
     it('logs and keeps the dialog when the copy command rejects', async () => {
       otherCommands.mockImplementation(async (...args) => {
-        if (args[0] === 'interlinearizer.getProject')
-          return JSON.stringify({ ...FRESH_IMPORT_SUMMARY, analysis: emptyAnalysis() });
         if (args[0] === 'interlinearizer.createEditableCopy') throw new Error('copy failed');
         return JSON.stringify(emptyDraft(testProjectId));
       });
@@ -5995,13 +5991,9 @@ describe('analysis language switch', () => {
 
   const IMPORT_LISTING_TWO = { ...STUB_IMPORT_PROJECT, analysisLanguages: ['swh', 'en'] };
 
-  /** Stores a draft listing `languages`, and serves {@link IMPORT_LISTING_TWO} for any import. */
+  /** Stores a draft listing `languages`. */
   async function mockDraftLanguages(languages: string[]): Promise<void> {
-    otherCommands.mockImplementation(async (...args) =>
-      args[0] === 'interlinearizer.getProject'
-        ? JSON.stringify({ ...IMPORT_LISTING_TWO, analysis: emptyAnalysis() })
-        : undefined,
-    );
+    otherCommands.mockImplementation(async () => undefined);
     await seedDraft({ ...emptyDraft(testProjectId), analysisLanguages: languages });
   }
 

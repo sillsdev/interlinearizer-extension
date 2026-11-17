@@ -304,7 +304,7 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
 /**
  * Creates a new interlinearizer project for the given source project. Called from the WebView via
  * `papi.commands.sendCommand` after the user fills in the create-project modal. Returns the
- * persisted project serialized as a JSON string.
+ * persisted project's summary serialized as a JSON string.
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to interlinearize.
  * @param analysisLanguages - BCP 47 tags for languages used in glosses and annotations (e.g.
@@ -332,7 +332,7 @@ async function createInterlinearProject(
       name,
       description,
     );
-    return JSON.stringify(project);
+    return JSON.stringify(toProjectSummary(project));
   } catch (e) {
     logger.error('Interlinearizer: failed to create project', e);
     await papi.notifications
@@ -379,8 +379,8 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
  * @param targetProjectId - New target-project ID; omit to clear the target binding.
- * @returns The updated project as a JSON string, or `undefined` if no project with the given ID
- *   exists.
+ * @returns The updated project's summary as a JSON string, or `undefined` if no project with the
+ *   given ID exists.
  * @throws If storage fails. The error is logged and an error notification is sent before
  *   rethrowing.
  */
@@ -398,7 +398,7 @@ async function updateProjectMetadata(
       description,
       targetProjectId,
     );
-    return updated ? JSON.stringify(updated) : undefined;
+    return updated ? JSON.stringify(toProjectSummary(updated)) : undefined;
   } catch (e) {
     logger.error('Interlinearizer: failed to update project metadata', e);
     await papi.notifications
@@ -461,8 +461,8 @@ async function importPt9Project(sourceProjectId: string): Promise<string> {
 }
 
 /**
- * Creates an editable copy of a Paratext 9 import project. Returns the created project as a JSON
- * string.
+ * Creates an editable copy of a Paratext 9 import project. Returns the copy's summary as a JSON
+ * string, because the copy's analysis can exceed the size PAPI carries in one reply.
  *
  * @param interlinearProjectId - UUID of the Paratext 9 import to copy.
  * @param name - User-facing name for the copy, chosen in the copy dialog.
@@ -483,7 +483,7 @@ async function createEditableCopy(
       name,
       description,
     );
-    return JSON.stringify(project);
+    return JSON.stringify(toProjectSummary(project));
   } catch (e) {
     logger.error('Interlinearizer: failed to create an editable copy', e);
     await papi.notifications
@@ -492,28 +492,6 @@ async function createEditableCopy(
         severity: 'error',
       })
       .catch(() => {});
-    throw e;
-  }
-}
-
-/**
- * Loads the interlinearizer project with the given ID, including its full `TextAnalysis`. The
- * WebView calls this when the active project changes to load the stored analysis into the
- * interlinearizer.
- *
- * @param interlinearProjectId - UUID of the interlinearizer project to fetch.
- * @returns JSON-stringified `InterlinearProject`, or `undefined` if no project with that ID exists.
- * @throws {SyntaxError} If the project's storage value contains invalid JSON.
- * @throws {Error} If the stored record was written by a newer build.
- * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. The error is logged
- *   before rethrowing.
- */
-async function getInterlinearProject(interlinearProjectId: string): Promise<string | undefined> {
-  try {
-    const project = await projectStorage.getProject(executionToken, interlinearProjectId);
-    return project ? JSON.stringify(project) : undefined;
-  } catch (e) {
-    logger.error('Interlinearizer: failed to get project', e);
     throw e;
   }
 }
@@ -1406,30 +1384,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary:
-            'JSON-stringified InterlinearProject for the new project; rejects (throws) on storage failure',
-          schema: { type: 'string' },
-        },
-      },
-    },
-  );
-
-  const getProjectCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.getProject',
-    getInterlinearProject,
-    {
-      method: {
-        summary: 'Return the interlinearizer project with the given UUID as a JSON string',
-        params: [
-          {
-            name: 'interlinearProjectId',
-            required: true,
-            summary: 'UUID of the interlinearizer project to fetch',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary: 'JSON-stringified InterlinearProject, or undefined if not found',
+            'JSON-stringified InterlinearProjectSummary of the new project; rejects (throws) on storage failure',
           schema: { type: 'string' },
         },
       },
@@ -2879,7 +2834,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary:
-            'JSON-stringified updated InterlinearProject, or undefined if no project with that ID exists; rejects (throws) on storage failure',
+            'JSON-stringified InterlinearProjectSummary of the updated project, or undefined if no project with that ID exists; rejects (throws) on storage failure',
           schema: { type: 'string' },
         },
       },
@@ -2944,7 +2899,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary:
-            'JSON-stringified created InterlinearProject; rejects (throws) when the project is missing or not a Paratext 9 import',
+            'JSON-stringified InterlinearProjectSummary of the created copy; rejects (throws) when the project is missing or not a Paratext 9 import',
           schema: { type: 'string' },
         },
       },
@@ -3161,7 +3116,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     showMorphologyValidatorRegistration,
     showFreeTranslationValidatorRegistration,
     createProjectCommandRegistration,
-    getProjectCommandRegistration,
     saveDraftToProjectCommandRegistration,
     saveDraftAsProjectCommandRegistration,
     getProjectsForSourceCommandRegistration,

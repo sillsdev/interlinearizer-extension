@@ -10,15 +10,15 @@ export default function useInvalidVerseWarning(
   projectId: string,
   pages: Pick<SegmentPages, 'bookRef' | 'invalidVerseIds'> | undefined,
 ): void {
-  const warnedForBookRef = useRef<string | undefined>(undefined);
+  const warnedKeys = useRef(new Set<string>());
   const bookRef = pages?.bookRef;
   const invalidVerseIds = pages?.invalidVerseIds;
   useEffect(() => {
     if (!invalidVerseIds || invalidVerseIds.length === 0) return;
 
     const bookKey = `${projectId}:${bookRef}:${invalidVerseIds.join(',')}`;
-    if (warnedForBookRef.current === bookKey) return;
-    warnedForBookRef.current = bookKey;
+    if (warnedKeys.current.has(bookKey)) return;
+    warnedKeys.current.add(bookKey);
 
     logger.warn(
       `Interlinearizer: book ${bookRef} in project ${projectId} has ${invalidVerseIds.length} verse marker(s) that name no verse; their text is not shown: ${invalidVerseIds.join(', ')}`,

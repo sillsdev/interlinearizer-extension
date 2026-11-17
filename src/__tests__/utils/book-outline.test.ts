@@ -55,4 +55,17 @@ describe('buildBookOutline', () => {
       invalidVerseIds: [],
     });
   });
+
+  it("carries the book's skipped verse markers", () => {
+    const book: Book = {
+      ...EMPTY_GEN_BOOK,
+      duplicateVerseIds: ['GEN 1:1'],
+      invalidVerseIds: ['GEN 1:'],
+    };
+
+    expect(buildBookOutline(book, [])).toMatchObject({
+      duplicateVerseIds: ['GEN 1:1'],
+      invalidVerseIds: ['GEN 1:'],
+    });
+  });
 });

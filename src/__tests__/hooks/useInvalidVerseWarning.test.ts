@@ -39,6 +39,15 @@ describe('useInvalidVerseWarning', () => {
     expect(papi.notifications.send).toHaveBeenCalledTimes(1);
   });
 
+  it('does not warn again on returning to a book already warned about', () => {
+    const { rerender } = renderWarning({ bookRef: 'GEN', invalidVerseIds: ['GEN 1:'] });
+
+    rerender({ pages: { bookRef: 'EXO', invalidVerseIds: ['EXO 2:'] } });
+    rerender({ pages: { bookRef: 'GEN', invalidVerseIds: ['GEN 1:'] } });
+
+    expect(papi.notifications.send).toHaveBeenCalledTimes(2);
+  });
+
   it('does not warn for a book with no such markers', () => {
     renderWarning({ bookRef: 'GEN', invalidVerseIds: [] });
 

@@ -124,6 +124,30 @@ describe('useNamedFetch', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it('waits for the fetch under way, then fetches once for every change that arrived meanwhile', async () => {
+    const releases: ((answer: string) => void)[] = [];
+    const fetch = jest.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          releases.push(resolve);
+        }),
+    );
+    const { result } = await renderFetch({ current: 'a' }, fetch);
+    const { sessionId } = result.current.session;
+
+    await relayNamed(sessionId);
+    await relayNamed(sessionId);
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await act(async () => releases[0]('first'));
+    expect(result.current.answer).toBe('first');
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    await act(async () => releases[1]('second'));
+    expect(result.current.answer).toBe('second');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("serves undefined for a new key until that key's answer arrives", async () => {
     const key: { current: string | undefined } = { current: 'a' };
     let release = () => {};

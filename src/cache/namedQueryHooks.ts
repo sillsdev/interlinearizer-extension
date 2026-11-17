@@ -1,6 +1,6 @@
 import { logger } from '@papi/frontend';
 import type { AnalysisQuery } from 'interlinearizer';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import useLatestRef from '../hooks/useLatestRef';
 import useSessionChange from '../hooks/useSessionChange';
 import { usePageSession } from './pageHooks';
@@ -38,6 +38,9 @@ export type NamedFetch<T> = Readonly<{
  * change to the session names `query`. A list of queries matches a change that names any of them.
  * Logs a failed fetch as one of `what`. Nothing is fetched while `key` is `undefined`.
  *
+ * Runs one fetch at a time for a key. Changes and retries that arrive during a fetch are answered
+ * by one fetch after it.
+ *
  * @returns `undefined` while `key` is `undefined`. Otherwise the latest answer for `key`, with
  *   whether the latest fetch failed. Until an answer for `key` arrives, and after a failed fetch,
  *   the answer is `undefined`, or, with `keepPrevious`, the last answer. An undefined `key` drops
@@ -55,20 +58,34 @@ export function useNamedFetch<T>(
   const fetchRef = useLatestRef(fetch);
   const sessionKey = key === undefined ? undefined : JSON.stringify([sessionId, key]);
   const [retries, setRetries] = useState(0);
+  const [followUps, setFollowUps] = useState(0);
+  const running = useRef<{ abandoned: boolean; outdated: boolean } | undefined>(undefined);
   const [answer, setAnswer] = useState<
     Readonly<{ key: string; value: T | undefined; failed: boolean; retries: number }> | undefined
   >(undefined);
   if (sessionKey === undefined && answer !== undefined) setAnswer(undefined);
+  useEffect(
+    () => () => {
+      if (running.current) running.current.abandoned = true;
+      running.current = undefined;
+    },
+    [sessionKey],
+  );
   useEffect(() => {
-    if (sessionKey === undefined) return undefined;
-    let isCurrent = true;
+    if (sessionKey === undefined) return;
+    if (running.current) {
+      running.current.outdated = true;
+      return;
+    }
+    const run = { abandoned: false, outdated: false };
+    running.current = run;
     (async () => {
       try {
         const value = await fetchRef.current();
-        if (isCurrent) setAnswer({ key: sessionKey, value, failed: false, retries });
+        if (!run.abandoned) setAnswer({ key: sessionKey, value, failed: false, retries });
       } catch (e) {
         logger.warn(`Interlinearizer: could not fetch ${what}`, e);
-        if (isCurrent)
+        if (!run.abandoned)
           setAnswer((was) => ({
             key: sessionKey,
             value: keepPrevious ? was?.value : undefined,
@@ -76,11 +93,11 @@ export function useNamedFetch<T>(
             retries,
           }));
       }
+      if (run.abandoned) return;
+      running.current = undefined;
+      if (run.outdated) setFollowUps((was) => was + 1);
     })();
-    return () => {
-      isCurrent = false;
-    };
-  }, [sessionKey, changes, retries, what, fetchRef, keepPrevious]);
+  }, [sessionKey, changes, retries, followUps, what, fetchRef, keepPrevious]);
   const retry = useCallback(() => setRetries((was) => was + 1), []);
   if (sessionKey === undefined) return undefined;
   if (answer?.key === sessionKey)

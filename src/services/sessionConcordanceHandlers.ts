@@ -134,9 +134,16 @@ export function sessionConcordanceHandlers({
         if (!books) return 'null';
         const writingSystem = await getWritingSystem(sourceProjectId);
         const entries = entriesOf(writingSystem, books);
-        const { analysis } = await session.repository.getWholeDraft();
-        const analysesById = new Map(analysis.tokenAnalyses.map((ta) => [ta.id, ta]));
-        const approved = approvedAnalysisByToken(analysis.tokenAnalysisLinks, analysesById);
+        const { repository } = session;
+        const { tokenAnalysisLinks } = await repository.findLinksInBooks(
+          books.map(({ book }) => book),
+          ['approved'],
+        );
+        const analyses = await repository.getTokenAnalyses([
+          ...new Set(tokenAnalysisLinks.map(({ analysisId }) => analysisId)),
+        ]);
+        const analysesById = new Map(analyses.map((ta) => [ta.id, ta]));
+        const approved = approvedAnalysisByToken(tokenAnalysisLinks, analysesById);
         if ('form' in request) {
           const entry = entries.find(({ form }) => form === request.form);
           const occurrences = entry?.occurrences ?? [];

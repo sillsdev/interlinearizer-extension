@@ -152,8 +152,8 @@ The Interlinearizer opens in a new tab, showing the text of the book you are cur
   breakdowns, and free translation can each be turned on and off.
 - **Save your work** from the **Project** menu at the top of the Interlinearizer tab. Your edits are
   continuously kept in a working draft, and **Save** / **Save As…** write that draft to a named
-  interlinear project. **Select Interlinear Project…** switches between projects for the same source
-  text, and **New Interlinear Project…** starts a fresh one.
+  interlinear project. **Select interlinear…** switches between projects for the same source
+  text, and **New interlinear…** starts a fresh one.
 
 ## Optional: the Lexicon extension
 

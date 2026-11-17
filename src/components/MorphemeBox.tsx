@@ -39,10 +39,11 @@ export const ROW_LABEL_CLASS = 'tw:whitespace-nowrap tw:pe-1 tw:text-xs tw:text-
  *
  * The breakdown renders as a boxed grid: each grid column is one morpheme, with its form on the top
  * row directly above its gloss on the second row, so a morpheme and its gloss always share a
- * column. Where a morpheme stores no gloss of its own, the box shows the gloss of the morpheme's
- * lexicon sense instead. A third row marks that gloss, in the same column. The box appears only for
- * tokens that have a breakdown; an unanalyzed token's "define breakdown" affordance lives in
- * {@link TokenChip} instead.
+ * column. Where a morpheme stores no gloss of its own, the box's own gloss cell shows the gloss of
+ * the morpheme's lexicon sense instead. A third row, in the same column, holds the morpheme's
+ * lexicon link: the caller's control where it supplies one, otherwise a mark on a gloss that comes
+ * from the lexicon. The box appears only for tokens that have a breakdown; an unanalyzed token's
+ * "define breakdown" affordance lives in {@link TokenChip} instead.
  *
  * The whole forms row is a single accessible "edit breakdown" control rather than one labeled
  * button per morpheme: every form cell opens the same whole-breakdown editor, so per-cell labels
@@ -65,6 +66,7 @@ function MorphemeBoxInner({
   onEditBreakdown,
   onGlossFocus,
   renderGloss,
+  renderSenseLink,
   rowLabels,
   readOnly,
   morphemeTestId,
@@ -113,8 +115,14 @@ function MorphemeBoxInner({
    * through the analysis store; supplying one commits against the analysis instead.
    */
   renderGloss?: (morpheme: MorphemeAnalysis, index: number) => ReactNode;
-  /** Names the two rows. Omitted, neither is labeled. */
-  rowLabels?: Readonly<{ forms: string; glosses: string }>;
+  /**
+   * Renders the cell under one morpheme's gloss, where the caller owns the morpheme's lexicon link.
+   * Omitted, that row carries the box's own mark for a gloss that comes from the lexicon, unless
+   * `renderGloss` is supplied.
+   */
+  renderSenseLink?: (morpheme: MorphemeAnalysis, index: number) => ReactNode;
+  /** Names the rows. Omitted, none is labeled. `senseLinks` labels the row `renderSenseLink` fills. */
+  rowLabels?: Readonly<{ forms: string; glosses: string; senseLinks?: string }>;
   /** Whether the breakdown is shown without the affordances that edit it. */
   readOnly: boolean;
   /** `data-testid` marking each morpheme's form cell. */
@@ -231,6 +239,15 @@ function MorphemeBoxInner({
     );
   };
 
+  /** One morpheme's lexicon link cell: the caller's element, placed directly in the grid. */
+  const senseLinkCell = (m: MorphemeAnalysis, i: number) => {
+    const cell = renderSenseLink?.(m, i);
+    /* v8 ignore next -- every caller returns an element; the guard satisfies cloneElement's type */
+    if (!isValidElement<{ style?: CSSProperties }>(cell)) return cell;
+    const placement = { gridColumn: firstCell + i, gridRow: 3 };
+    return cloneElement(cell, { key: m.id, style: { ...cell.props.style, ...placement } });
+  };
+
   /**
    * One morpheme's gloss cell: the caller's own where it owns the commit path, otherwise the
    * token-keyed input that writes through the analysis store, or static text when read-only.
@@ -302,13 +319,25 @@ function MorphemeBoxInner({
             >
               {rowLabels.glosses}
             </span>
+            {rowLabels.senseLinks !== undefined && (
+              <span
+                className={ROW_LABEL_CLASS}
+                data-testid={`${cellGlossTestId}-sense-links-row-label`}
+                style={{ gridColumn: 1, gridRow: 3 }}
+              >
+                {rowLabels.senseLinks}
+              </span>
+            )}
           </>
         )}
         {morphemes.map(formCell)}
         {morphemes.map(glossCell)}
+        {renderSenseLink && morphemes.map(senseLinkCell)}
         {/* A caller that renders its own glosses decides what they show. This box cannot tell
-            whether such a gloss came from the lexicon, so it marks none. */}
+            whether such a gloss came from the lexicon, so it marks none. A caller that renders the link
+            cells owns that row. */}
         {!renderGloss &&
+          !renderSenseLink &&
           markLexiconGlosses &&
           morphemes.map((m, i) => (
             <LexiconGlossMark

@@ -50,7 +50,6 @@ export const FILTER_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_filter_morphemes_lacks%',
   '%interlinearizer_analysisCatalog_filter_zeroUsages%',
   '%interlinearizer_analysisCatalog_filter_stale%',
-  '%interlinearizer_analysisCatalog_filter_staleEverywhere%',
   '%interlinearizer_analysisCatalog_filter_notInText%',
   ...Object.values(CONFIDENCE_LABEL_KEYS),
 ] as const satisfies `%${string}%`[];
@@ -250,8 +249,6 @@ type CatalogFilterPopoverProps = Readonly<{
   onFiltersChange: (filters: CatalogFilters) => void;
   /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
   showMorphology: boolean;
-  /** Whether every book has been checked for stale places, rather than only the books opened. */
-  staleCoversDraft: boolean;
   /** What the language the missing-gloss filter asks about is called, as its label names it. */
   analysisLanguageName: string;
   /** Resolved localizations covering at least {@link FILTER_STRING_KEYS}. */
@@ -274,7 +271,6 @@ export default function CatalogFilterPopover({
   filters,
   onFiltersChange,
   showMorphology,
-  staleCoversDraft,
   analysisLanguageName,
   localizedStrings,
 }: CatalogFilterPopoverProps) {
@@ -436,11 +432,7 @@ export default function CatalogFilterPopover({
 
           <FilterToggle
             isOn={filters.stale ?? false}
-            label={
-              staleCoversDraft
-                ? localizedStrings['%interlinearizer_analysisCatalog_filter_staleEverywhere%']
-                : localizedStrings['%interlinearizer_analysisCatalog_filter_stale%']
-            }
+            label={localizedStrings['%interlinearizer_analysisCatalog_filter_stale%']}
             onChange={(stale) => onFiltersChange({ ...filters, stale })}
           />
 

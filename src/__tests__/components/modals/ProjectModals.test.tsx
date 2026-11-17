@@ -4,13 +4,16 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import papi, { logger } from '@papi/frontend';
+import { useLocalizedStrings } from '@papi/frontend/react';
 import type { DraftProject } from 'interlinearizer';
 import type { ModalState } from '../../../components/modals/ProjectModals';
 import ProjectModals from '../../../components/modals/ProjectModals';
-import type { DraftCopyResult } from '../../../hooks/useDraftProject';
+import type { DraftCopyResult } from '../../../types/project-api';
 import { emptyAnalysis } from '../../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../../types/model-version';
 import type { InterlinearProjectSummary } from '../../../types/interlinear-project-summary';
+import type { AnalysisLanguagesChange } from '../../../types/analysis-languages-change';
+import type { TextCountsByTag } from '../../../utils/text-counts';
 import { makeWebViewState } from '../../test-helpers';
 
 /** Minimal project summary used in tests. */
@@ -42,6 +45,25 @@ const MOCK_IMPORT_PROJECT: InterlinearProjectSummary = {
 /** A full project (with analysis), as the mocked project-creating commands return. */
 const MOCK_FULL_PROJECT = { ...MOCK_PROJECT, analysis: emptyAnalysis() };
 
+/** The strings ProjectModals formats. */
+const LOCALIZED: Record<string, string> = {
+  '%interlinearizer_retagGlosses_changed%': 'Changed {from} to {to}.',
+  '%interlinearizer_retagGlosses_movedWords%': '{words} words.',
+  '%interlinearizer_retagGlosses_movedMorphemes%': '{morphemes} morphemes.',
+  '%interlinearizer_retagGlosses_movedFreeTranslations%': '{freeTranslations} free translations.',
+  '%interlinearizer_retagGlosses_skipped%': '{counts} kept {from}.',
+  '%interlinearizer_deleteLanguageText_deleted%': 'Removed {tag} and deleted its {counts}.',
+  '%interlinearizer_languageText_glosses%': '{glosses} glosses',
+  '%interlinearizer_languageText_freeTranslations%': '{freeTranslations} free translations',
+  '%interlinearizer_languageText_both%':
+    '{glosses} glosses and {freeTranslations} free translations',
+};
+
+/** The change the mocked metadata modal's language button applies; a test may set its own. */
+let mockChange: AnalysisLanguagesChange = { analysisLanguages: ['fr', 'en'] };
+/** What the mocked metadata modal's count button last got. */
+let mockCounted: Promise<TextCountsByTag> | undefined;
+
 /** Draft snapshot returned by the default `getDraftSnapshot`. */
 const MOCK_DRAFT: DraftProject = {
   sourceProjectId: 'source-proj',
@@ -49,7 +71,6 @@ const MOCK_DRAFT: DraftProject = {
   analysisLanguages: ['en'],
   analysis: emptyAnalysis(),
   dirty: true,
-  suggestedName: 'Suggested Name',
   suggestedDescription: 'Suggested Desc',
 };
 
@@ -150,20 +171,20 @@ jest.mock('../../../components/modals/SaveAsProjectModal', () => ({
   __esModule: true,
   SaveAsProjectModal: ({
     activeProjectId,
-    defaultName,
+    activeProjectName,
     onSaveNew,
     onOverwrite,
     onClose,
   }: {
     activeProjectId?: string;
-    defaultName?: string;
+    activeProjectName?: string;
     onSaveNew: (name?: string, description?: string) => void;
     onOverwrite: (p: InterlinearProjectSummary) => void;
     onClose: () => void;
   }) => (
     <div
       data-active-project-id={activeProjectId}
-      data-default-name={defaultName}
+      data-active-project-name={activeProjectName}
       data-testid="saveas-modal"
     >
       <button
@@ -217,30 +238,51 @@ jest.mock('../../../components/modals/DiscardDraftConfirm', () => ({
 jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
   __esModule: true,
   ProjectMetadataModal: ({
+    analysisLanguages,
+    isSaveBlocked,
+    countLanguageText,
+    onChangeLanguages,
     onClose,
     onProjectSaved,
   }: {
+    analysisLanguages: string[];
+    isSaveBlocked?: boolean;
+    countLanguageText?: () => Promise<TextCountsByTag>;
+    onChangeLanguages?: (change: AnalysisLanguagesChange) => Promise<void>;
     onClose: () => void;
-    onProjectSaved?: (u: {
-      name?: string;
-      description?: string;
-      analysisLanguages: string[];
-      updatedAt?: string;
-    }) => void;
+    onProjectSaved?: (u: { name?: string; description?: string; updatedAt?: string }) => void;
   }) => (
-    <div data-testid="metadata-modal">
+    <div data-testid="metadata-modal" data-languages={analysisLanguages.join(',')}>
       <button type="button" data-testid="metadata-close" onClick={onClose}>
         Close
       </button>
+      {countLanguageText && (
+        <button
+          type="button"
+          data-testid="metadata-count-text"
+          onClick={() => {
+            mockCounted = countLanguageText();
+          }}
+        >
+          Count
+        </button>
+      )}
+      {onChangeLanguages && (
+        <button
+          type="button"
+          data-testid="metadata-change-languages"
+          disabled={isSaveBlocked}
+          onClick={() => onChangeLanguages(mockChange)}
+        >
+          Change languages
+        </button>
+      )}
       <button
         type="button"
         data-testid="metadata-save"
+        disabled={isSaveBlocked}
         onClick={() => {
-          onProjectSaved?.({
-            name: 'Updated',
-            analysisLanguages: ['fr'],
-            updatedAt: '2026-06-15T09:00:00Z',
-          });
+          onProjectSaved?.({ name: 'Updated', updatedAt: '2026-06-15T09:00:00Z' });
           onClose();
         }}
       >
@@ -256,12 +298,14 @@ jest.mock('../../../components/modals/DeleteProjectConfirm', () => ({
     projectId,
     projectName,
     isPt9Import,
+    isActiveProject,
     onCancel,
     onDeleted,
   }: {
     projectId: string;
     projectName?: string;
     isPt9Import: boolean;
+    isActiveProject: boolean;
     onCancel: () => void;
     onDeleted: (id: string) => void;
   }) => (
@@ -269,6 +313,7 @@ jest.mock('../../../components/modals/DeleteProjectConfirm', () => ({
       data-testid="delete-confirm"
       data-project-name={projectName}
       data-pt9-import={String(isPt9Import)}
+      data-active-project={String(isActiveProject)}
     >
       <button type="button" data-testid="delete-confirm-cancel" onClick={onCancel}>
         Cancel
@@ -283,12 +328,17 @@ jest.mock('../../../components/modals/DeleteProjectConfirm', () => ({
 /** Props accepted by {@link buildProps}, mirroring ProjectModals' own props. */
 type ModalsOverrides = Partial<{
   activeProject: InterlinearProjectSummary | undefined;
+  announceUndoable: jest.Mock;
+  changeDraftAnalysisLanguages: jest.Mock;
+  countDraftLanguageText: jest.Mock;
+  subscribeToDraftEdits: jest.Mock;
   defaultAnalysisLanguage: string;
+  isDraftLoading: boolean;
   hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
   detachFromProject: jest.Mock;
   commitDraft: (
-    copy: (snapshot: DraftProject, sessionId?: string) => Promise<DraftCopyResult>,
+    copy: (snapshot: DraftProject, sessionId: string) => Promise<DraftCopyResult>,
   ) => Promise<boolean>;
   loadFromProject: jest.Mock;
   newDraft: jest.Mock;
@@ -300,6 +350,9 @@ type ModalsOverrides = Partial<{
   useWebViewState: ReturnType<typeof makeWebViewState>;
 }>;
 
+/** The session that the draft in these tests is kept in. */
+const SESSION_ID = 'session-1';
+
 /**
  * Builds a complete ProjectModals prop set, filling required props with sensible defaults so each
  * test only specifies what it cares about.
@@ -308,15 +361,21 @@ function buildProps(overrides: ModalsOverrides = {}) {
   const getDraftSnapshot = overrides.getDraftSnapshot ?? (() => MOCK_DRAFT);
   return {
     activeProject: overrides.activeProject,
+    announceUndoable: overrides.announceUndoable ?? jest.fn(),
+    changeDraftAnalysisLanguages:
+      overrides.changeDraftAnalysisLanguages ?? jest.fn().mockResolvedValue({}),
+    countDraftLanguageText: overrides.countDraftLanguageText ?? jest.fn().mockResolvedValue({}),
+    subscribeToDraftEdits: overrides.subscribeToDraftEdits ?? jest.fn(() => () => {}),
     defaultAnalysisLanguage: overrides.defaultAnalysisLanguage,
     hasUnsavedWork: overrides.hasUnsavedWork ?? false,
+    isDraftLoading: overrides.isDraftLoading ?? false,
     getDraftSnapshot,
     detachFromProject: overrides.detachFromProject ?? jest.fn(),
     commitDraft:
       overrides.commitDraft ??
       (async (copy) => {
         const snapshot = getDraftSnapshot();
-        return snapshot ? (await copy(snapshot)) !== false : false;
+        return snapshot ? (await copy(snapshot, SESSION_ID)) !== false : false;
       }),
     loadFromProject: overrides.loadFromProject ?? jest.fn(),
     newDraft: overrides.newDraft ?? jest.fn(),
@@ -337,13 +396,13 @@ function savedAs(project: InterlinearProjectSummary, omittedBooks: string[] = []
 }
 
 /**
- * A `commitDraft` that runs the copy on {@link MOCK_DRAFT}, under `sessionId` when given. It records
- * what each copy resolved, so a test can tell whether the draft would count each save as landed.
+ * A `commitDraft` that runs the copy on {@link MOCK_DRAFT}, under `sessionId`. It records what each
+ * copy resolved, so a test can tell whether the draft would count each save as landed.
  */
-function recordingCommitDraft(sessionId?: string) {
+function recordingCommitDraft(sessionId = SESSION_ID) {
   const outcomes: DraftCopyResult[] = [];
   const commitDraft = jest.fn(
-    async (copy: (s: DraftProject, session?: string) => Promise<DraftCopyResult>) => {
+    async (copy: (s: DraftProject, session: string) => Promise<DraftCopyResult>) => {
       const copied = await copy(MOCK_DRAFT, sessionId);
       outcomes.push(copied);
       return copied !== false;
@@ -359,9 +418,9 @@ function recordingCommitDraft(sessionId?: string) {
 function heldCommitDraft() {
   let release!: () => void;
   const commitDraft = jest.fn(
-    (copy: (s: DraftProject) => Promise<DraftCopyResult>) =>
+    (copy: (s: DraftProject, session: string) => Promise<DraftCopyResult>) =>
       new Promise<boolean>((resolve) => {
-        release = () => resolve(copy(MOCK_DRAFT).then((copied) => copied !== false));
+        release = () => resolve(copy(MOCK_DRAFT, SESSION_ID).then((copied) => copied !== false));
       }),
   );
   return { commitDraft, release: () => release() };
@@ -383,6 +442,12 @@ function makeWebViewStateWithActiveProjectSpies({
     key === 'activeProject' ? reset : () => {},
   ];
 }
+
+beforeEach(() => {
+  jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
+  mockChange = { analysisLanguages: ['fr', 'en'] };
+  mockCounted = undefined;
+});
 
 describe('ProjectModals', () => {
   beforeEach(() => {
@@ -406,11 +471,12 @@ describe('ProjectModals', () => {
       expect(screen.getByTestId('create-modal')).toBeInTheDocument();
     });
 
-    it('renders the save-as modal (prefilled from the draft) when modal is saveAs', () => {
-      render(<ProjectModals {...buildProps({ modal: 'saveAs' })} />);
-      const modal = screen.getByTestId('saveas-modal');
-      expect(modal).toBeInTheDocument();
-      expect(modal).toHaveAttribute('data-default-name', 'Suggested Name');
+    it('renders the save-as modal with the active project name when modal is saveAs', () => {
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', activeProject: MOCK_PROJECT })} />);
+      expect(screen.getByTestId('saveas-modal')).toHaveAttribute(
+        'data-active-project-name',
+        MOCK_PROJECT.name,
+      );
     });
 
     it('forwards the active project id to the save-as modal so it can badge that overwrite target', () => {
@@ -552,7 +618,6 @@ describe('ProjectModals', () => {
       expect(setActiveProject.mock.calls[0][0]).not.toHaveProperty('analysis');
       expect(newDraft).toHaveBeenCalledWith({
         analysisLanguages: ['en'],
-        suggestedName: 'New',
         suggestedDescription: 'Desc',
       });
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
@@ -588,7 +653,6 @@ describe('ProjectModals', () => {
       await waitFor(() => expect(resetActiveProject).toHaveBeenCalledTimes(1));
       expect(newDraft).toHaveBeenCalledWith({
         analysisLanguages: ['en'],
-        suggestedName: 'New',
         suggestedDescription: 'Desc',
       });
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
@@ -720,7 +784,6 @@ describe('ProjectModals', () => {
       await waitFor(() =>
         expect(newDraft).toHaveBeenCalledWith({
           analysisLanguages: ['en'],
-          suggestedName: 'New',
           suggestedDescription: 'Desc',
         }),
       );
@@ -796,6 +859,7 @@ describe('ProjectModals', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledTimes(1);
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftAsProject',
+        SESSION_ID,
         'source-proj',
         ['en'],
         undefined,
@@ -808,7 +872,7 @@ describe('ProjectModals', () => {
 
     it('saves as a new project through the session that keeps the draft', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(savedAs(MOCK_PROJECT));
-      const { commitDraft } = recordingCommitDraft('session-1');
+      const { commitDraft } = recordingCommitDraft();
       render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft })} />);
 
       await userEvent.click(screen.getByTestId('saveas-new'));
@@ -816,12 +880,12 @@ describe('ProjectModals', () => {
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveDraftAsProject',
+          SESSION_ID,
           'source-proj',
           ['en'],
           undefined,
           'NewName',
           'NewDesc',
-          'session-1',
         ),
       );
     });
@@ -850,6 +914,7 @@ describe('ProjectModals', () => {
       await act(async () => release());
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftAsProject',
+        SESSION_ID,
         'source-proj',
         ['en'],
         undefined,
@@ -937,16 +1002,17 @@ describe('ProjectModals', () => {
       await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftToProject',
+        SESSION_ID,
         'source-proj',
         'proj-1',
-        { analysisLanguages: ['en'], targetProjectId: undefined },
+        { targetProjectId: undefined },
       );
       expect(outcomes).toEqual([true]);
     });
 
     it('overwrites a project through the session that keeps the draft', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
-      const { commitDraft } = recordingCommitDraft('session-1');
+      const { commitDraft } = recordingCommitDraft();
       render(<ProjectModals {...buildProps({ modal: 'saveAs', commitDraft })} />);
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
@@ -954,10 +1020,10 @@ describe('ProjectModals', () => {
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveDraftToProject',
+          SESSION_ID,
           'source-proj',
           'proj-1',
-          { analysisLanguages: ['en'], targetProjectId: undefined },
-          'session-1',
+          { targetProjectId: undefined },
         ),
       );
     });
@@ -974,9 +1040,10 @@ describe('ProjectModals', () => {
       await act(async () => release());
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveDraftToProject',
+        SESSION_ID,
         'source-proj',
         'proj-1',
-        { analysisLanguages: ['en'], targetProjectId: undefined },
+        { targetProjectId: undefined },
       );
     });
 
@@ -1084,7 +1151,7 @@ describe('ProjectModals', () => {
       expect(setModal).not.toHaveBeenCalled();
     });
 
-    it('sends the draft config with the overwrite so the host sets it in the same write', async () => {
+    it("sends the draft's target with the overwrite so the host sets it in the same write", async () => {
       const draftWithConfig: DraftProject = {
         sourceProjectId: 'source-proj',
         modelVersion: CURRENT_MODEL_VERSION,
@@ -1101,14 +1168,15 @@ describe('ProjectModals', () => {
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
 
-      // One command carries the draft's analysis languages and alignment target; the project's
-      // own name and description are not sent, so the host keeps them.
+      // One command carries the draft's alignment target; the host takes the languages from the
+      // stored draft. The project's own name and description are not sent, so the host keeps them.
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveDraftToProject',
+          SESSION_ID,
           'source-proj',
           'proj-1',
-          { analysisLanguages: ['sw', 'fr'], targetProjectId: 'tgt-9' },
+          { targetProjectId: 'tgt-9' },
         ),
       );
       expect(papi.commands.sendCommand).toHaveBeenCalledTimes(1);
@@ -1177,16 +1245,44 @@ describe('ProjectModals', () => {
         />,
       );
       await userEvent.click(screen.getByTestId('metadata-save'));
-      // The saved edits (name, languages, and the server-refreshed updatedAt) are merged onto the
-      // active project, so a regression that drops the update branch — or the refreshed timestamp —
-      // is caught here.
+      // The saved name and the server-refreshed updatedAt are merged onto the active project. Its
+      // languages stay as stored, because the draft holds any new ones until it is saved.
       expect(setActiveProject).toHaveBeenCalledWith({
         ...MOCK_PROJECT,
         name: 'Updated',
-        analysisLanguages: ['fr'],
         updatedAt: '2026-06-15T09:00:00Z',
       });
       expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it("shows the open project's languages from its draft", () => {
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'metadata',
+            activeProject: MOCK_PROJECT,
+            getDraftSnapshot: () => ({ ...MOCK_DRAFT, analysisLanguages: ['fr', 'en'] }),
+          })}
+        />,
+      );
+
+      const modal = screen.getByTestId('metadata-modal');
+      expect(modal).toHaveAttribute('data-languages', 'fr,en');
+    });
+
+    it("shows an open import's own languages, which no draft holds", () => {
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'metadata',
+            activeProject: MOCK_IMPORT_PROJECT,
+            getDraftSnapshot: () => ({ ...MOCK_DRAFT, analysisLanguages: ['fr'] }),
+          })}
+        />,
+      );
+
+      const modal = screen.getByTestId('metadata-modal');
+      expect(modal).toHaveAttribute('data-languages', 'en');
     });
 
     it('does not update the active project when the saved project is a different one', async () => {
@@ -1239,11 +1335,211 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('select');
     });
 
+    describe('a change of analysis languages', () => {
+      const MOVED = {
+        words: 3,
+        morphemes: 2,
+        freeTranslations: 0,
+        skipped: { glosses: 0, freeTranslations: 0 },
+      };
+      const RETAG: AnalysisLanguagesChange = {
+        analysisLanguages: ['fr'],
+        retag: { from: 'en', to: 'fr' },
+      };
+
+      /** Renders the metadata modal for the active project. */
+      function renderActive(changeDraftAnalysisLanguages: jest.Mock, announceUndoable = jest.fn()) {
+        render(
+          <ProjectModals
+            {...buildProps({
+              modal: 'metadata',
+              activeProject: MOCK_PROJECT,
+              changeDraftAnalysisLanguages,
+              announceUndoable,
+            })}
+          />,
+        );
+      }
+
+      /** Renders the metadata modal for proj-2 while proj-1 is active. */
+      async function renderOther(isDraftLoading = false) {
+        const useWebViewState = makeWebViewState();
+        const props = { activeProject: MOCK_PROJECT, useWebViewState, isDraftLoading };
+        const { rerender } = render(
+          <ProjectModals {...buildProps({ ...props, modal: 'select' })} />,
+        );
+        await userEvent.click(screen.getByTestId('select-view-info-2'));
+        rerender(<ProjectModals {...buildProps({ ...props, modal: 'metadata' })} />);
+      }
+
+      it("holds the open project's language actions and Save until its draft has loaded", () => {
+        render(
+          <ProjectModals
+            {...buildProps({
+              modal: 'metadata',
+              activeProject: MOCK_PROJECT,
+              isDraftLoading: true,
+            })}
+          />,
+        );
+
+        expect(screen.getByTestId('metadata-save')).toBeDisabled();
+        expect(screen.getByTestId('metadata-change-languages')).toBeDisabled();
+      });
+
+      it("doesn't let the languages of a project that isn't open change, even while the draft loads", async () => {
+        await renderOther(true);
+
+        expect(screen.getByTestId('metadata-save')).toBeEnabled();
+        expect(screen.queryByTestId('metadata-change-languages')).toBeNull();
+        expect(screen.queryByTestId('metadata-count-text')).toBeNull();
+      });
+
+      it("doesn't let an open import's languages change", () => {
+        render(
+          <ProjectModals
+            {...buildProps({ modal: 'metadata', activeProject: MOCK_IMPORT_PROJECT })}
+          />,
+        );
+
+        expect(screen.queryByTestId('metadata-change-languages')).toBeNull();
+      });
+
+      it("counts the open project's text through the session", async () => {
+        const counts = { de: { glosses: 1, freeTranslations: 0 } };
+        const countDraftLanguageText = jest.fn().mockResolvedValue(counts);
+        render(
+          <ProjectModals
+            {...buildProps({
+              modal: 'metadata',
+              activeProject: MOCK_PROJECT,
+              countDraftLanguageText,
+            })}
+          />,
+        );
+
+        await userEvent.click(screen.getByTestId('metadata-count-text'));
+
+        expect(await mockCounted).toBe(counts);
+      });
+
+      it('moves glosses in the draft and offers to undo', async () => {
+        mockChange = RETAG;
+        const change = jest.fn().mockResolvedValue({ glossRetag: MOVED });
+        const announceUndoable = jest.fn();
+        renderActive(change, announceUndoable);
+
+        await userEvent.click(screen.getByTestId('metadata-change-languages'));
+
+        expect(change).toHaveBeenCalledWith(RETAG);
+        await waitFor(() =>
+          expect(announceUndoable).toHaveBeenCalledWith('Changed en to fr. 3 words. 2 morphemes.'),
+        );
+      });
+
+      it('announces nothing when a move neither moved nor kept anything', async () => {
+        mockChange = RETAG;
+        const change = jest.fn().mockResolvedValue({
+          glossRetag: {
+            words: 0,
+            morphemes: 0,
+            freeTranslations: 0,
+            skipped: { glosses: 0, freeTranslations: 0 },
+          },
+        });
+        const announceUndoable = jest.fn();
+        renderActive(change, announceUndoable);
+
+        await userEvent.click(screen.getByTestId('metadata-change-languages'));
+
+        await waitFor(() => expect(change).toHaveBeenCalled());
+        expect(announceUndoable).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        [{ glosses: 2, freeTranslations: 0 }, 'Changed en to fr. 2 glosses kept en.'],
+        [{ glosses: 0, freeTranslations: 1 }, 'Changed en to fr. 1 free translations kept en.'],
+      ])(
+        'says how much stayed behind, by kind, when a move moved nothing',
+        async (skipped, said) => {
+          mockChange = RETAG;
+          const change = jest.fn().mockResolvedValue({
+            glossRetag: { words: 0, morphemes: 0, freeTranslations: 0, skipped },
+          });
+          const announceUndoable = jest.fn();
+          renderActive(change, announceUndoable);
+
+          await userEvent.click(screen.getByTestId('metadata-change-languages'));
+
+          await waitFor(() => expect(announceUndoable).toHaveBeenCalledWith(said));
+        },
+      );
+
+      it('says how much text a removal deleted and offers to undo', async () => {
+        mockChange = { analysisLanguages: ['en'], deleteTextOf: 'fr' };
+        const change = jest
+          .fn()
+          .mockResolvedValue({ deletedText: { glosses: 2, freeTranslations: 1 } });
+        const announceUndoable = jest.fn();
+        renderActive(change, announceUndoable);
+
+        await userEvent.click(screen.getByTestId('metadata-change-languages'));
+
+        await waitFor(() =>
+          expect(announceUndoable).toHaveBeenCalledWith(
+            'Removed fr and deleted its 2 glosses and 1 free translations.',
+          ),
+        );
+      });
+
+      it('announces nothing for a change that moves and deletes no text', async () => {
+        const change = jest.fn().mockResolvedValue({});
+        const announceUndoable = jest.fn();
+        renderActive(change, announceUndoable);
+
+        await userEvent.click(screen.getByTestId('metadata-change-languages'));
+
+        await waitFor(() =>
+          expect(change).toHaveBeenCalledWith({ analysisLanguages: ['fr', 'en'] }),
+        );
+        expect(announceUndoable).not.toHaveBeenCalled();
+      });
+
+      it('logs a draft change that fails and tells the user', async () => {
+        const change = jest.fn().mockRejectedValue(new Error('refused'));
+        renderActive(change);
+
+        await userEvent.click(screen.getByTestId('metadata-change-languages'));
+
+        await waitFor(() =>
+          expect(papi.notifications.send).toHaveBeenCalledWith({
+            message: '%interlinearizer_error_changeAnalysisLanguages%',
+            severity: 'error',
+          }),
+        );
+        expect(logger.error).toHaveBeenCalledWith(
+          "Interlinearizer: failed to change the draft's analysis languages",
+          expect.any(Error),
+        );
+      });
+
+      it('swallows a failed error notification after a failed change', async () => {
+        jest.mocked(papi.notifications.send).mockRejectedValue(new Error('no bus'));
+        const change = jest.fn().mockRejectedValue(new Error('refused'));
+        renderActive(change);
+
+        await userEvent.click(screen.getByTestId('metadata-change-languages'));
+
+        await waitFor(() => expect(papi.notifications.send).toHaveBeenCalled());
+      });
+    });
+
     it('asks to confirm deleting the active project', () => {
       render(<ProjectModals {...buildProps({ modal: 'delete', activeProject: MOCK_PROJECT })} />);
       const confirm = screen.getByTestId('delete-confirm');
       expect(confirm).toHaveAttribute('data-project-name', MOCK_PROJECT.name);
       expect(confirm).toHaveAttribute('data-pt9-import', 'false');
+      expect(confirm).toHaveAttribute('data-active-project', 'true');
     });
 
     it('tells the delete confirmation when the active project is a Paratext 9 import', () => {
@@ -1251,6 +1547,13 @@ describe('ProjectModals', () => {
         <ProjectModals {...buildProps({ modal: 'delete', activeProject: MOCK_IMPORT_PROJECT })} />,
       );
       expect(screen.getByTestId('delete-confirm')).toHaveAttribute('data-pt9-import', 'true');
+    });
+
+    it('does not tell the delete confirmation that an active import is the draft Save target', () => {
+      render(
+        <ProjectModals {...buildProps({ modal: 'delete', activeProject: MOCK_IMPORT_PROJECT })} />,
+      );
+      expect(screen.getByTestId('delete-confirm')).toHaveAttribute('data-active-project', 'false');
     });
 
     it('resets and detaches the active project once it is deleted', async () => {

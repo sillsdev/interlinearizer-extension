@@ -89,8 +89,8 @@ function EditableTokenLinkIcon({
   const handleUnlinkClick = useCallback(() => {
     /* v8 ignore next -- button only renders when inSamePhrase and both tokens are defined */
     if (!inSamePhrase || !prevPhraseLink || !prevToken) return;
-    splitPhrase(prevPhraseLink, prevToken.ref, tokenDocOrder);
-  }, [inSamePhrase, prevPhraseLink, prevToken, splitPhrase, tokenDocOrder]);
+    splitPhrase(prevPhraseLink, prevToken.ref);
+  }, [inSamePhrase, prevPhraseLink, prevToken, splitPhrase]);
 
   /**
    * Joins the neighbor on the far side of this slot into the focused phrase (or free token).

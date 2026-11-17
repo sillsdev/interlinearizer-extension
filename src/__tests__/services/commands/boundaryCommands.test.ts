@@ -70,7 +70,9 @@ describe('splitSegment', () => {
       getInterfaceLanguages: async () => [],
       startTextRead: async () => {},
       stopTextRead: async () => {},
+      holdTextRead: () => {},
       heldBook: () => undefined,
+      getOpenVerseBook: async () => undefined,
       reportChange: () => {},
     });
     const stored = async () => {

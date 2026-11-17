@@ -360,6 +360,78 @@ describe("EditHistory's unsaved mark", () => {
   });
 });
 
+describe("EditHistory's forgetting saves", () => {
+  it('marks the draft unsaved when an undo leads back to content saved before the saves were forgotten', async () => {
+    const { history, storedDirty } = makeHistory();
+    await history.apply(putting('a'));
+
+    history.forgetSaves(false);
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(true);
+  });
+
+  it('marks the draft saved when an undo leads back to saved content noted as empty', async () => {
+    const { history, storedDirty } = makeHistory();
+    history.noteEmpty();
+    await history.apply(putting('a'));
+
+    history.forgetSaves(false);
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
+  it('marks the draft saved when an undo leads back to saved content noted as empty, though a later save superseded it', async () => {
+    const { history, repository, storedDirty } = makeHistory();
+    history.noteEmpty();
+    await history.apply(putting('a'));
+    await history.markClean();
+
+    history.forgetSaves(false);
+    await repository.apply({ intent: 'unsave' });
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
+  it('marks the draft saved when an undo leads back to content noted as empty after it was saved', async () => {
+    const { history, storedDirty } = makeHistory();
+    await history.apply(putting('a'), { unsavedMark: 'clear' });
+    history.noteEmpty();
+    await history.apply(putting('b'));
+
+    history.forgetSaves(false);
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+
+  it('marks the draft unsaved when an undo leads back to unsaved content noted as empty', async () => {
+    const { history, repository, storedDirty } = makeHistory();
+    await seedRepository(repository, { ...emptyDraft('src'), dirty: true });
+    history.noteEmpty();
+    await history.apply(putting('a'));
+
+    history.forgetSaves(false);
+    await history.undo();
+
+    await expect(storedDirty()).resolves.toBe(true);
+  });
+
+  it('marks the draft saved when an undo and redo lead back to the content current when the saves were forgotten', async () => {
+    const { history, storedDirty } = makeHistory();
+    await history.apply(putting('a'), { unsavedMark: 'clear' });
+
+    history.forgetSaves(true);
+    await history.undo();
+    await expect(storedDirty()).resolves.toBe(true);
+    await history.redo();
+
+    await expect(storedDirty()).resolves.toBe(false);
+  });
+});
+
 describe('EditHistory re-anchoring', () => {
   /** A book of one verse reading `text`, versioned by its text as a book's content hash would. */
   function verseBook(sid: string, text: string): Book {
@@ -384,7 +456,7 @@ describe('EditHistory re-anchoring', () => {
 
   /**
    * A history over a draft in memory whose re-anchoring applies each book's pass in turn, with a
-   * way to run a pass the history records, as the session does, and to read back the stored link.
+   * way to run a pass through the history, as the session does, and to read back the stored link.
    */
   function makeReanchoringHistory() {
     const { storage } = memoryStorage();
@@ -403,16 +475,72 @@ describe('EditHistory re-anchoring', () => {
       },
     );
     const history = new EditHistory(repository, reanchorBooks);
-    const pass = async (book: Book) => {
-      const changes = reanchorChangesForBook((await repository.exportAll()).draft, book);
-      if (changes) await repository.apply(changes);
-      history.recordPass(book);
-    };
+    const pass = async (book: Book) =>
+      history.applyPass(book, reanchorChangesForBook((await repository.exportAll()).draft, book));
     const storedLink = async () =>
       (await new DraftRepository(storage, 'src', silentLogger()).exportAll()).draft.analysis
         .tokenAnalysisLinks[0];
     return { history, repository, reanchorBooks, pass, storedLink };
   }
+
+  it('applies a pass as no undo step, returning its inverse', async () => {
+    const { history, pass, storedLink } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+
+    const applied = await pass(after);
+    await history.undo();
+
+    expect(applied?.changes.tokenAnalysisLinks?.puts.map(({ token }) => token)).toStrictEqual([
+      betaLink(after, 'ta-1').token,
+    ]);
+    expect(applied?.inverse.tokenAnalysisLinks?.puts).toStrictEqual([betaLink(before, 'ta-1')]);
+    expect(history.canUndo).toBe(false);
+    expect(await storedLink()).toBeUndefined();
+  });
+
+  it.each([false, true])(
+    'leaves a draft whose unsaved mark is %s as it was, a pass being no edit',
+    async (dirty) => {
+      const { history, repository, pass } = makeReanchoringHistory();
+      await history.apply(linking(betaLink(genesis('alpha beta'), 'ta-1')));
+      if (!dirty) await history.markClean();
+
+      await pass(genesis('new alpha beta'));
+
+      await expect(repository.exportAll()).resolves.toMatchObject({ draft: { dirty } });
+    },
+  );
+
+  it('records a pass that changes nothing, so that an undo re-anchors what it restores', async () => {
+    const { history, storedLink } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await history.apply(linking(betaLink(after, 'ta-2')));
+
+    await expect(history.applyPass(after, undefined)).resolves.toBeUndefined();
+    await history.undo();
+
+    expect(await storedLink()).toEqual(
+      expect.objectContaining({ analysisId: 'ta-1', token: betaLink(after, 'ta-1').token }),
+    );
+  });
+
+  it('records no pass that fails to apply', async () => {
+    const { history, repository, reanchorBooks } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    const changes = reanchorChangesForBook((await repository.exportAll()).draft, after);
+    jest.spyOn(repository, 'apply').mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(history.applyPass(after, changes)).rejects.toThrow('disk full');
+    await history.undo();
+
+    expect(reanchorBooks).not.toHaveBeenCalled();
+  });
 
   it('undoes an edit to the text a pass re-anchored to since', async () => {
     const { history, pass, storedLink } = makeReanchoringHistory();
@@ -583,7 +711,7 @@ describe('EditHistory re-anchoring', () => {
     const { storage } = memoryStorage();
     const history = new EditHistory(new DraftRepository(storage, 'src', silentLogger()));
     await history.apply(linking(betaLink(genesis('alpha beta'), 'ta-1')));
-    history.recordPass(genesis('new alpha beta'));
+    await history.applyPass(genesis('new alpha beta'), undefined);
 
     await expect(history.undo()).resolves.toMatchObject({
       changes: { intent: 'link ta-1', tokenAnalysisLinks: { puts: [], deletes: ['tl-beta'] } },

@@ -1,0 +1,374 @@
+/// <reference types="jest" />
+
+import papi, { logger } from '@papi/frontend';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { useMemo } from 'react';
+import {
+  useCatalogRowsByIds,
+  useCatalogView,
+  useDeletionPreview,
+  useHomographRows,
+  useSelectionSummary,
+} from '../../cache/catalogHooks';
+import { settle } from '../components/analysis-provider';
+import { relayChange } from './fake-host';
+import {
+  changeNaming,
+  failing,
+  sessionIdOf,
+  setLanguage,
+  timesSent,
+  wrapperOver,
+} from './hook-sessions';
+
+const REQUEST = {
+  currentBook: 'GEN',
+  search: '',
+  sort: 'surfaceText' as const,
+  filters: {},
+  sourceLanguageTag: 'en',
+};
+
+describe('useCatalogView', () => {
+  it("serves a page of the session's catalog, each row's books as a set", async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await settle();
+
+    expect(result.current.view?.rows.map((row) => [row.analysisId, row.books])).toStrictEqual([
+      ['ta-beginning', new Set(['GEN'])],
+    ]);
+  });
+
+  it('fetches again when a change to the session names the catalog', async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await settle();
+    const before = timesSent('interlinearizer.getCatalogRows');
+
+    relayChange(changeNaming(sessionIdOf('interlinearizer.getCatalogRows'), ['getCatalogRows']));
+    await settle();
+
+    expect(timesSent('interlinearizer.getCatalogRows')).toBe(before + 1);
+  });
+
+  it('fetches nothing for a change naming another query', async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await settle();
+    const before = timesSent('interlinearizer.getCatalogRows');
+
+    relayChange(changeNaming(sessionIdOf('interlinearizer.getCatalogRows'), ['getConcordance']));
+    await settle();
+
+    expect(timesSent('interlinearizer.getCatalogRows')).toBe(before);
+  });
+
+  it("fetches nothing for a change to another session's catalog", async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await settle();
+    const before = timesSent('interlinearizer.getCatalogRows');
+
+    relayChange(changeNaming('another-session', ['getCatalogRows']));
+    await settle();
+
+    expect(timesSent('interlinearizer.getCatalogRows')).toBe(before);
+  });
+
+  it('keeps the page of the latest request, not one it superseded', async () => {
+    const wrapper = await wrapperOver();
+    const { result, rerender } = renderHook(
+      ({ search }: Readonly<{ search: string }>) =>
+        useCatalogView(
+          useMemo(() => ({ ...REQUEST, search }), [search]),
+          10,
+        ),
+      { wrapper, initialProps: { search: '' } },
+    );
+
+    rerender({ search: 'nothing matches this' });
+    await settle();
+
+    expect(result.current.view?.keptIds).toStrictEqual([]);
+  });
+
+  it('keeps the last page on screen while the next request is fetched', async () => {
+    const wrapper = await wrapperOver();
+    const { result, rerender } = renderHook(
+      ({ search }: Readonly<{ search: string }>) =>
+        useCatalogView(
+          useMemo(() => ({ ...REQUEST, search }), [search]),
+          10,
+        ),
+      { wrapper, initialProps: { search: '' } },
+    );
+    await settle();
+
+    rerender({ search: 'nothing matches this' });
+    const shown = result.current.view?.keptIds;
+    await settle();
+
+    expect(shown).toStrictEqual(['ta-beginning']);
+  });
+
+  it('logs a page that could not be fetched', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.getCatalogRows');
+
+    renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await settle();
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interlinearizer: could not fetch the catalog',
+      expect.any(Error),
+    );
+  });
+
+  it('offers a retry when the first page could not be fetched', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.getCatalogRows');
+
+    const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await settle();
+
+    expect(result.current.view).toBeUndefined();
+    expect(result.current.retry).toBeInstanceOf(Function);
+  });
+
+  it('keeps the same retry while a retry of the page fails', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.getCatalogRows');
+    const retries: unknown[] = [];
+    const { result } = renderHook(
+      () => {
+        const fetched = useCatalogView(REQUEST, 10);
+        retries.push(fetched.retry);
+        return fetched;
+      },
+      { wrapper },
+    );
+    await settle();
+    const { retry } = result.current;
+    const failedAt = retries.length;
+
+    act(() => retry?.());
+    await settle();
+
+    expect(timesSent('interlinearizer.getCatalogRows')).toBe(2);
+    expect(retries.slice(failedAt).every((each) => each === retry)).toBe(true);
+  });
+
+  it('keeps the last page when fetching it again fails', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await waitFor(() => expect(result.current.view?.keptIds).toStrictEqual(['ta-beginning']));
+    failing('interlinearizer.getCatalogRows');
+
+    relayChange(changeNaming(sessionIdOf('interlinearizer.getCatalogRows'), ['getCatalogRows']));
+    await settle();
+
+    expect(result.current.view?.keptIds).toStrictEqual(['ta-beginning']);
+  });
+});
+
+describe('useSelectionSummary', () => {
+  it('asks nothing while none is selected', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useSelectionSummary([]), { wrapper });
+    await settle();
+
+    expect(result.current).toBeUndefined();
+    expect(timesSent('interlinearizer.getSelectionSummary')).toBe(0);
+  });
+
+  it('summarizes the selected analyses', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useSelectionSummary(['ta-beginning']), { wrapper });
+
+    await waitFor(() =>
+      expect(result.current).toStrictEqual({ usageCount: 1, glossedIds: ['ta-beginning'] }),
+    );
+  });
+
+  it('drops the last summary when fetching it again fails', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useSelectionSummary(['ta-beginning']), { wrapper });
+    await waitFor(() => expect(result.current).toBeDefined());
+    failing('interlinearizer.getSelectionSummary');
+
+    relayChange(
+      changeNaming(sessionIdOf('interlinearizer.getSelectionSummary'), ['getCatalogRows']),
+    );
+    await settle();
+
+    expect(result.current).toBeUndefined();
+  });
+
+  it('logs a summary that could not be fetched', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.getSelectionSummary');
+
+    renderHook(() => useSelectionSummary(['ta-beginning']), { wrapper });
+    await settle();
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interlinearizer: could not fetch the selection summary',
+      expect.any(Error),
+    );
+  });
+});
+
+describe('useDeletionPreview', () => {
+  it('is loading until the host answers', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
+
+    expect(result.current).toStrictEqual({ status: 'loading' });
+    await settle();
+  });
+
+  it('states what deleting the analysis would do', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
+
+    await waitFor(() =>
+      expect(result.current).toStrictEqual({
+        status: 'ready',
+        outcome: { kind: 'blank', usageCount: 1, unappliedCount: 0 },
+      }),
+    );
+  });
+
+  it('reports an analysis no longer stored as missing', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useDeletionPreview('ta-gone'), { wrapper });
+
+    await waitFor(() => expect(result.current).toStrictEqual({ status: 'missing' }));
+  });
+
+  it('reports a preview the host could not give', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.previewDeletion');
+
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
+
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Interlinearizer: could not fetch the deletion preview',
+      expect.any(Error),
+    );
+  });
+
+  it('asks again when retried', async () => {
+    const wrapper = await wrapperOver();
+    const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+    failing('interlinearizer.previewDeletion');
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+    jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => serve?.(...call));
+
+    const { current } = result;
+    act(() => {
+      if (current.status === 'failed') current.retry();
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+  });
+
+  it('shows a retried preview as loading until the host answers', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.previewDeletion');
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+
+    const { current } = result;
+    act(() => {
+      if (current.status === 'failed') current.retry();
+    });
+
+    expect(result.current.status).toBe('loading');
+    await waitFor(() => expect(result.current.status).toBe('failed'));
+  });
+
+  it('fetches again when a change to the session names the catalog', async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
+    await settle();
+
+    relayChange(changeNaming(sessionIdOf('interlinearizer.previewDeletion'), ['getCatalogRows']));
+    await settle();
+
+    expect(timesSent('interlinearizer.previewDeletion')).toBe(2);
+  });
+});
+
+describe('a change of analysis language', () => {
+  it('fetches the catalog page again in the new language', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useCatalogView(REQUEST, 10), { wrapper });
+    await waitFor(() => expect(result.current.view?.rows[0]?.gloss).toBe('start'));
+
+    await setLanguage('interlinearizer.getCatalogRows', 'fr');
+
+    await waitFor(() => expect(result.current.view?.rows[0]?.gloss).toBe(''));
+  });
+
+  it('summarizes the selection again in the new language', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useSelectionSummary(['ta-beginning']), { wrapper });
+    await waitFor(() => expect(result.current?.glossedIds).toStrictEqual(['ta-beginning']));
+
+    await setLanguage('interlinearizer.getSelectionSummary', 'fr');
+
+    await waitFor(() => expect(result.current?.glossedIds).toStrictEqual([]));
+  });
+
+  it("drops the old language's summary when fetching it in the new language fails", async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useSelectionSummary(['ta-beginning']), { wrapper });
+    await waitFor(() => expect(result.current?.glossedIds).toStrictEqual(['ta-beginning']));
+    failing('interlinearizer.getSelectionSummary');
+
+    await act(() => setLanguage('interlinearizer.getSelectionSummary', 'fr'));
+    await settle();
+
+    expect(result.current).toBeUndefined();
+  });
+
+  it('fetches the rows by id again in the new language', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useCatalogRowsByIds(['ta-beginning'], 'GEN'), { wrapper });
+    await waitFor(() => expect(result.current?.get('ta-beginning')?.gloss).toBe('start'));
+
+    await setLanguage('interlinearizer.getCatalogRowsByIds', 'fr');
+
+    await waitFor(() => expect(result.current?.get('ta-beginning')?.gloss).toBe(''));
+  });
+
+  it('fetches the homographs again in the new language', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useHomographRows('ta-beginning', 'GEN'), { wrapper });
+    await waitFor(() => expect(result.current?.[0]?.gloss).toBe('start'));
+
+    await setLanguage('interlinearizer.getHomographRows', 'fr');
+
+    await waitFor(() => expect(result.current?.[0]?.gloss).toBe(''));
+  });
+
+  it('previews the deletion again', async () => {
+    const wrapper = await wrapperOver();
+    const { result } = renderHook(() => useDeletionPreview('ta-beginning'), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await setLanguage('interlinearizer.previewDeletion', 'fr');
+
+    await waitFor(() => expect(timesSent('interlinearizer.previewDeletion')).toBe(2));
+  });
+});

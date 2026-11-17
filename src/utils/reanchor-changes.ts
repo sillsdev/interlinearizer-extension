@@ -1,4 +1,4 @@
-import type { Book, DraftProject } from 'interlinearizer';
+import type { DraftProject, ReadonlyBook } from 'interlinearizer';
 import type { DraftContent } from '../types/draft-content';
 import type { ChangeSet, RecordChanges } from '../types/analysis-repository';
 import type { BookPass } from '../types/book-pass';
@@ -59,7 +59,7 @@ export function changesOfReanchor(
 }
 
 /** Builds the pass that re-anchors a draft's content to `verseBook`'s current text. */
-export function reanchorDraftToBook(verseBook: Book): BookPass<DraftContent> {
+export function reanchorDraftToBook(verseBook: ReadonlyBook): BookPass<DraftContent> {
   return (content) => {
     const segmentation = reanchorSegmentation(verseBook, content.segmentation);
     const analysis = perfTime(
@@ -85,12 +85,16 @@ function changesOfPass(draft: DraftProject, pass: BookPass<DraftContent>): Chang
 }
 
 /**
- * The changes that re-anchor `draft` to `book`'s current text, matching the WebView's pass over
- * `book`. A book the text lacks is passed as a book with no segments. The draft may hold only the
- * links in `book`, with the segment analyses they reference, and the changes are the same.
+ * The changes that re-anchor `draft` to `book`'s current text, as {@link reanchorDraftToBook}'s pass
+ * over `book` makes them. A book the text lacks is passed as a book with no segments. The draft may
+ * hold only the links in `book`, with the segment analyses they reference, and the changes are the
+ * same.
  *
  * @returns The changes, or `undefined` when the draft already reads as re-anchored.
  */
-export function reanchorChangesForBook(draft: DraftProject, book: Book): ChangeSet | undefined {
+export function reanchorChangesForBook(
+  draft: DraftProject,
+  book: ReadonlyBook,
+): ChangeSet | undefined {
   return changesOfPass(draft, reanchorDraftToBook(book));
 }

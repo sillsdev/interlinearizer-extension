@@ -3,11 +3,17 @@
 
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { SenseCandidate } from 'interlinearizer/lexicon';
 import { TooltipProvider } from 'platform-bible-react';
 import type { ComponentProps } from 'react';
 import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from '../../components/CatalogRowHeader';
 import type { CatalogRow } from '../../utils/analysis-query';
-import { testSenseRef, withLexicon } from './test-helpers';
+import {
+  EmptyAnalysisProvider,
+  TEST_LEXICON_AUTHORITY,
+  testSenseRef,
+  withLexicon,
+} from './test-helpers';
 
 /**
  * Each key resolving to itself, except those that fill in placeholders, such as the check box's
@@ -40,8 +46,26 @@ function row(overrides: Partial<CatalogRow> = {}): CatalogRow {
   };
 }
 
-/** The header, collapsed and checkable, with every callback stubbed unless a test says otherwise. */
-function renderHeader(overrides: Partial<ComponentProps<typeof CatalogRowHeader>> = {}) {
+/** A search hit for the sense `senseId`. */
+function candidate(senseId: string): SenseCandidate {
+  return {
+    gloss: { en: senseId },
+    entryRef: { authority: TEST_LEXICON_AUTHORITY, entryId: `e-${senseId}` },
+    senseRef: testSenseRef(senseId),
+  };
+}
+
+/**
+ * The header, collapsed and checkable, with every callback stubbed unless a test says otherwise.
+ * The lexicon can search when `search` is given; `readOnly` makes the analysis read-only.
+ */
+function renderHeader(
+  overrides: Partial<ComponentProps<typeof CatalogRowHeader>> = {},
+  lexicon: Readonly<{
+    readOnly?: boolean;
+    search?: (form: string) => Promise<SenseCandidate[]>;
+  }> = {},
+) {
   const props = {
     row: row(),
     analysisLanguage: 'en',
@@ -51,14 +75,20 @@ function renderHeader(overrides: Partial<ComponentProps<typeof CatalogRowHeader>
     isNotInText: false,
     isChecked: false,
     onCheckedChange: jest.fn(),
+    onLinkSense: jest.fn(),
+    onUnlinkSense: jest.fn(),
+    onAdoptSenseGloss: jest.fn(),
     localizedStrings: STRINGS,
     ...overrides,
   };
   const { ui, resolveSense } = withLexicon(
-    <TooltipProvider>
-      <CatalogRowHeader {...props} />
-    </TooltipProvider>,
+    <EmptyAnalysisProvider analysisLanguage="en" readOnly={lexicon.readOnly}>
+      <TooltipProvider>
+        <CatalogRowHeader {...props} />
+      </TooltipProvider>
+    </EmptyAnalysisProvider>,
     SENSES,
+    lexicon.search,
   );
   render(ui);
   return { ...props, resolveSense };
@@ -95,14 +125,17 @@ describe('CatalogRowHeader', () => {
   });
 
   it('leaves a gloss unmarked when its analysis links to no lexicon sense', () => {
-    const { resolveSense } = renderHeader();
+    const { resolveSense } = renderHeader({}, { readOnly: true });
 
     expect(screen.queryByTestId('catalog-sense-link')).not.toBeInTheDocument();
     expect(resolveSense).not.toHaveBeenCalled();
   });
 
   it('marks a gloss whose analysis links to a sense glossed the same', async () => {
-    const { resolveSense } = renderHeader({ row: row({ glossSenseRef: testSenseRef('s-word') }) });
+    const { resolveSense } = renderHeader(
+      { row: row({ glossSenseRef: testSenseRef('s-word') }) },
+      { readOnly: true },
+    );
 
     await waitFor(() => expect(resolveSense).toHaveBeenCalled());
     // An agreeing sense marks the row just as a pending one does, so wait out the lookup itself.
@@ -115,7 +148,10 @@ describe('CatalogRowHeader', () => {
   });
 
   it("shows the linked sense's gloss where the analysis stores none, marked as from the lexicon", async () => {
-    renderHeader({ row: row({ gloss: '', glossSenseRef: testSenseRef('s-word') }) });
+    renderHeader(
+      { row: row({ gloss: '', glossSenseRef: testSenseRef('s-word') }) },
+      { readOnly: true },
+    );
 
     await waitFor(() => expect(screen.getByTestId('catalog-row-gloss')).toHaveTextContent('word'));
     expect(screen.getByTestId('catalog-sense-link')).toHaveTextContent(
@@ -124,7 +160,10 @@ describe('CatalogRowHeader', () => {
   });
 
   it("marks a typed gloss that differs from its linked sense's, naming the sense's", async () => {
-    renderHeader({ row: row({ gloss: 'utterance', glossSenseRef: testSenseRef('s-word') }) });
+    renderHeader(
+      { row: row({ gloss: 'utterance', glossSenseRef: testSenseRef('s-word') }) },
+      { readOnly: true },
+    );
 
     await waitFor(() => expect(screen.getByTestId('book-alert-icon')).toBeInTheDocument());
     expect(screen.getByTestId('catalog-row-gloss')).toHaveTextContent('utterance');
@@ -132,9 +171,10 @@ describe('CatalogRowHeader', () => {
   });
 
   it('marks a link the lexicon cannot resolve as a link and nothing more', async () => {
-    const { resolveSense } = renderHeader({
-      row: row({ gloss: '', glossSenseRef: testSenseRef('gone') }),
-    });
+    const { resolveSense } = renderHeader(
+      { row: row({ gloss: '', glossSenseRef: testSenseRef('gone') }) },
+      { readOnly: true },
+    );
 
     await waitFor(() => expect(resolveSense).toHaveBeenCalled());
     await act(async () => {
@@ -144,6 +184,72 @@ describe('CatalogRowHeader', () => {
     expect(screen.getByTestId('catalog-sense-link')).toHaveTextContent(
       '%interlinearizer_analysisCatalog_senseLinked%',
     );
+  });
+
+  describe('the lexicon link control', () => {
+    const search = async () => [candidate('s-other')];
+
+    it('sits beside the surface form, outside the toggle', async () => {
+      renderHeader({ row: row({ glossSenseRef: testSenseRef('s-word') }) });
+
+      const control = await screen.findByTestId('catalog-sense-control');
+      const toggle = screen.getByTestId('catalog-row-toggle');
+      expect(toggle).not.toContainElement(control);
+      expect(control.parentElement).toBe(toggle.parentElement);
+    });
+
+    it('does not expand the row when clicked', async () => {
+      const { onToggle } = renderHeader({}, { search });
+
+      await userEvent.click(screen.getByTestId('catalog-sense-control'));
+
+      expect(onToggle).not.toHaveBeenCalled();
+    });
+
+    it('is offered to link an unlinked analysis the lexicon can search for', () => {
+      renderHeader({}, { search });
+
+      expect(screen.getByTestId('catalog-sense-control')).toHaveAccessibleName(
+        '%interlinearizer_analysisCatalog_senseAddLink%',
+      );
+    });
+
+    it('is absent from an unlinked analysis the lexicon cannot search for', () => {
+      renderHeader();
+
+      expect(screen.queryByTestId('catalog-sense-control')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('catalog-sense-link')).not.toBeInTheDocument();
+    });
+
+    it('is only a mark on a read-only analysis', () => {
+      renderHeader({}, { readOnly: true, search });
+
+      expect(screen.queryByTestId('catalog-sense-control')).not.toBeInTheDocument();
+    });
+
+    it('links the analysis to the sense picked from a search', async () => {
+      const { onLinkSense } = renderHeader({}, { search });
+
+      await userEvent.click(screen.getByTestId('catalog-sense-control'));
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseLinkAction%'));
+      await userEvent.click(await screen.findByTestId('catalog-sense-candidate'));
+
+      expect(onLinkSense).toHaveBeenCalledWith(candidate('s-other'));
+    });
+
+    it('adopts the sense gloss, and unlinks, through the linked analysis', async () => {
+      const { onAdoptSenseGloss, onUnlinkSense } = renderHeader({
+        row: row({ gloss: 'utterance', glossSenseRef: testSenseRef('s-word') }),
+      });
+
+      await userEvent.click(await screen.findByTestId('catalog-sense-control'));
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseAdoptGloss%'));
+      await userEvent.click(screen.getByTestId('catalog-sense-control'));
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseUnlink%'));
+
+      expect(onAdoptSenseGloss).toHaveBeenCalledWith('word');
+      expect(onUnlinkSense).toHaveBeenCalledWith();
+    });
   });
 
   it('spells out what each usage count means for assistive tech', () => {

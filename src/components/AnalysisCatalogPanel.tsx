@@ -1,6 +1,8 @@
+import { logger } from '@papi/frontend';
 import { useSetting } from '@papi/frontend/react';
+import type { SenseCandidate } from 'interlinearizer/lexicon';
 import { X } from 'lucide-react';
-import { Button, EmptyState, TooltipProvider } from 'platform-bible-react';
+import { Button, EmptyState, RetryableErrorView, TooltipProvider } from 'platform-bible-react';
 import {
   formatReplacementString,
   isPlatformError,
@@ -16,11 +18,9 @@ import {
   type Ref,
 } from 'react';
 import {
-  useAnalysisDeletionOutcome,
   useAnalysisLanguage,
   useAnalysisReadOnly,
   useAnalysisRowDispatch,
-  useCatalogRows,
   useConfirmMorphemesDispatch,
   useGlossClearReclaims,
   useReportGlossEditing,
@@ -28,6 +28,7 @@ import {
   useStaleLocationReclaims,
 } from './AnalysisStore';
 import type { AnalysisEditOutcome } from '../utils/edit-outcome';
+import type { AnalysisDeletionOutcome } from '../utils/analysis-selectors';
 import { breakdownDraftForms, createGlossRetry } from './CatalogRowEditor';
 import CatalogCloseModal, { CLOSE_STRING_KEYS } from './CatalogCloseModal';
 import CatalogMergeModal, { MERGE_STRING_KEYS } from './CatalogMergeModal';
@@ -44,37 +45,69 @@ import CatalogList from './CatalogList';
 import CatalogRowView, { ROW_STRING_KEYS } from './CatalogRowView';
 import CatalogSelectionBar, { SELECTION_BAR_STRING_KEYS } from './CatalogSelectionBar';
 import SidePanelTabs, { SIDE_PANEL_TAB_STRING_KEYS } from './SidePanelTabs';
-import { useSourceTextContext } from './SourceTextContext';
 import TextReadingStatus, { TEXT_READING_STRING_KEYS } from './TextReadingStatus';
 import { useInterlinearNav } from './InterlinearNavContext';
 import useDraftDiscardGate from '../hooks/useDraftDiscardGate';
 import useRowSelection from '../hooks/useRowSelection';
 import useRowWindow from '../hooks/useRowWindow';
-import type { StepSummary } from '../types/edit-step';
 import { whenSettled, type Settles } from '../utils/settles';
-import { normalizeSurfaceForm } from '../utils/analysis-identity';
+import {
+  useCatalogReads,
+  useCatalogRowsByIds,
+  useCatalogView,
+  useHomographRows,
+  useSelectionSummary,
+} from '../cache/catalogHooks';
+import { useTextReadStatus } from '../cache/concordanceHooks';
 import {
   DELETION_ANNOUNCEMENT_STRING_KEYS,
   deletionAnnouncement,
 } from '../utils/deletion-announcement';
 import {
-  applyCatalogQuery,
-  deriveFacets,
   reconcileFilters,
   type CatalogFilters,
-  type CatalogQuery,
+  type CatalogFacets,
   type CatalogRow,
   type CatalogSort,
   type CatalogUsage,
-  type HeadingPlacement,
 } from '../utils/analysis-query';
-import { collatorForTag, languageNameForTag } from '../utils/language-tags';
+import { languageNameForTag } from '../utils/language-tags';
 
-/** Runs an action with no undo history to group its edits in. */
-const RUN_UNGROUPED = <T,>(action: () => T): T => action();
+/** How many rows the panel first asks the host for, enough to fill the window it first mounts. */
+const INITIAL_FETCH_COUNT = 40;
+
+/** How far past the rows that have arrived the window may grow while it waits for more. */
+const FETCH_AHEAD_COUNT = 40;
 
 /** Tells no one about an edit, having no history to undo it from. */
 const ANNOUNCE_NOTHING = () => {};
+
+/**
+ * `read`, for an edit to use once the edit settles, resolving `undefined` if the read fails.
+ *
+ * Logs the failure as soon as it lands, because an edit that fails never awaits its read.
+ */
+function readForEdit<T>(read: Promise<T>): Promise<T | undefined> {
+  return read.catch((e) => {
+    logger.warn('Interlinearizer: could not read the uses an edit reached', e);
+    return undefined;
+  });
+}
+
+/** Calls `then` with the count once it arrives, unless it could not be had. */
+async function afterCounting(counted: Promise<number | undefined>, then: (count: number) => void) {
+  const count = await counted;
+  if (count !== undefined) then(count);
+}
+
+/** Calls `then` with the deletion outcome once it arrives, unless it could not be had. */
+async function afterPreviewing(
+  previewed: Promise<AnalysisDeletionOutcome | undefined>,
+  then: (outcome: AnalysisDeletionOutcome) => void,
+) {
+  const outcome = await previewed;
+  if (outcome) then(outcome);
+}
 
 /** How many tokens the rows `analysisIds` names are used at, a token carrying several counting once. */
 function distinctUsageCount(rows: readonly CatalogRow[], analysisIds: ReadonlySet<string>): number {
@@ -83,18 +116,6 @@ function distinctUsageCount(rows: readonly CatalogRow[], analysisIds: ReadonlySe
       .filter((r) => analysisIds.has(r.analysisId))
       .flatMap((r) => r.usages.map((u) => u.tokenRef)),
   ).size;
-}
-
-/** Summarizes a catalog step on the row `analysisId` names, given where the step left that row. */
-function catalogStepSummary(
-  kind: 'catalogEdit' | 'catalogMerge',
-  form: string,
-  analysisId: string,
-  outcome: AnalysisEditOutcome,
-): StepSummary {
-  if (outcome.kind === 'removed') return { kind, form, analysisId };
-  const survivingAnalysisId = outcome.kind === 'merged' ? outcome.survivingAnalysisId : analysisId;
-  return { kind, form, analysisId, survivingAnalysisId };
 }
 
 /**
@@ -118,9 +139,11 @@ export const ANALYSIS_CATALOG_PANEL_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_close%',
   '%interlinearizer_analysisCatalog_deletedChecked%',
   '%interlinearizer_analysisCatalog_empty%',
+  '%interlinearizer_analysisCatalog_loadFailed%',
   '%interlinearizer_analysisCatalog_mergedEmpty%',
   '%interlinearizer_analysisCatalog_usageCountInBook%',
   '%interlinearizer_analysisCatalog_noMatches%',
+  '%interlinearizer_analysisCatalog_retry%',
   ...TEXT_READING_STRING_KEYS,
   ...QUERY_CONTROL_STRING_KEYS,
   ...ROW_STRING_KEYS,
@@ -178,25 +201,16 @@ type AnalysisCatalogPanelProps = Readonly<{
   onClose: () => void;
   /** Switches the side panel to the concordance. */
   onShowConcordance: () => void;
-  /**
-   * Runs an action so every edit it makes undoes as one step, summarized for the reader as given or
-   * as derived from the action's result. Without this prop, each edit is a step of its own.
-   */
-  asOneStep?: <T>(action: () => T, summary: StepSummary | ((result: T) => StepSummary)) => T;
   /** Tells the reader what an edit just did, offering to undo it; silent when omitted. */
   announceUndoable?: (message: string) => void;
   /** Book code each row's per-book usage count is taken against. */
   currentBook: string;
-  /** Where the loaded book's headings sit, by heading segment id, for ordering usages. */
-  headingPlacements: ReadonlyMap<string, HeadingPlacement>;
   /** Reads the loaded book's current text for a token ref, `undefined` for one in any other book. */
   liveSurfaceText: (tokenRef: string) => string | undefined;
   /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
   showMorphology: boolean;
   /** BCP 47 tag of the source text, so surface forms collate by their own language. */
   sourceLanguageTag: string;
-  /** Whether every book has been checked for stale places, rather than only the books opened. */
-  staleCoversDraft: boolean;
   /** Resolved localizations covering at least {@link ANALYSIS_CATALOG_PANEL_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
   /** What the current book is called wherever the panel names it in prose. */
@@ -219,19 +233,15 @@ export default function AnalysisCatalogPanel({
   ref,
   onClose,
   onShowConcordance,
-  asOneStep = RUN_UNGROUPED,
   announceUndoable = ANNOUNCE_NOTHING,
   currentBook,
-  headingPlacements,
   liveSurfaceText,
   showMorphology,
   sourceLanguageTag,
-  staleCoversDraft,
   localizedStrings,
   currentBookName,
 }: AnalysisCatalogPanelProps) {
   const analysisLanguage = useAnalysisLanguage();
-  const catalogRows = useCatalogRows(currentBook, headingPlacements);
 
   /**
    * What the reader has typed into the search box. Ephemeral rather than persisted: the panel is
@@ -250,58 +260,68 @@ export default function AnalysisCatalogPanel({
    */
   const [chosenFilters, setFilters] = useState<CatalogFilters>({});
 
-  const sourceText = useSourceTextContext();
-  const { request: requestText, textForms } = sourceText;
+  /** Whether a filter has asked for the whole text. Asking how far the read has got starts it. */
+  const [isTextWanted, setTextWanted] = useState(false);
 
-  /** Records the reader's filters, asking for the text to be read once one needs it. */
-  const handleFiltersChange = useCallback(
-    (next: CatalogFilters) => {
-      if (next.stale) requestText();
-      setFilters(next);
-    },
-    [requestText],
-  );
+  // Covers every way filters get set, not just the controls.
+  useEffect(() => {
+    if (chosenFilters.notInText || chosenFilters.stale) setTextWanted(true);
+  }, [chosenFilters.notInText, chosenFilters.stale]);
 
-  // Each rebuilt only when its own tag changes: the query around them turns over on every keystroke
-  // in the search box, and a collator is expensive enough to be worth not rebuilding that often.
-  const surfaceCollator = useMemo(() => collatorForTag(sourceLanguageTag), [sourceLanguageTag]);
-  const glossCollator = useMemo(() => collatorForTag(analysisLanguage), [analysisLanguage]);
+  const readStatus = useTextReadStatus(isTextWanted);
+
+  /** How many rows the host is asked for: at least as many as the window has mounted. */
+  const [fetchCount, setFetchCount] = useState(INITIAL_FETCH_COUNT);
+
+  /** The listing that {@link fetchCount} grew against, so a new one can be recognized as new. */
+  const [fetchedListing, setFetchedListing] = useState<unknown>(undefined);
 
   /**
-   * The choices worth offering as filters, taken against every row the draft holds rather than the
-   * rows a filter left standing: a facet judged against its own selection's survivors would
-   * collapse to that selection, leaving no choice on screen to widen it back by.
+   * The filter choices the latest page offered, or `undefined` until a page arrives. Until then the
+   * reader's filters stand as chosen.
    */
-  const facets = useMemo(() => deriveFacets(catalogRows), [catalogRows]);
+  const [facets, setFacets] = useState<CatalogFacets | undefined>(undefined);
 
   /**
    * The filters actually narrowing the listing: the reader's choices less any the facets have since
    * withdrawn. An edit beside the panel can remove the last row carrying a chosen value, which
    * takes that facet's control off screen; keeping the choice would narrow the list to nothing with
-   * no control left to widen it back by.
+   * no control left to widen it back by. The facets are taken against every row the draft holds
+   * rather than the rows a filter left standing, so each page names the same ones whatever it
+   * asks.
    */
-  const filters = useMemo(() => reconcileFilters(chosenFilters, facets), [chosenFilters, facets]);
+  const filters = useMemo(
+    () => (facets ? reconcileFilters(chosenFilters, facets) : chosenFilters),
+    [chosenFilters, facets],
+  );
 
   // Commits a withdrawal back over the choices, so a dropped value cannot return with its facet and
   // narrow the listing by a filter the reader watched release. Settles after one withdrawal, the
   // reconciled filters being the chosen set itself once every choice survives.
   if (filters !== chosenFilters) setFilters(filters);
 
-  /** How the listing is narrowed and ordered, from the controls above the list. */
-  const query = useMemo<CatalogQuery>(
-    () => ({ search, sort, filters, surfaceCollator, glossCollator, textForms }),
-    [search, sort, filters, surfaceCollator, glossCollator, textForms],
+  const request = useMemo(
+    () => ({ currentBook, search, sort, filters, sourceLanguageTag }),
+    [currentBook, search, sort, filters, sourceLanguageTag],
   );
 
-  const rows = useMemo(() => applyCatalogQuery(catalogRows, query), [catalogRows, query]);
+  const { view, retry } = useCatalogView(request, fetchCount);
+  if (view && view.facets !== facets) setFacets(view.facets);
+  const keptIds = useMemo(() => view?.keptIds ?? [], [view]);
+  const rowCount = view?.rowCount ?? 0;
+
+  /** The ids of the rows the listing keeps, in the shape the selection and the window take. */
+  const rows = useMemo(() => keptIds.map((analysisId) => ({ analysisId })), [keptIds]);
+
+  /** Whether every book of the text has been read, none failing. */
+  const isTextRead =
+    readStatus !== undefined &&
+    readStatus !== 'error' &&
+    readStatus.booksRead === readStatus.bookCount &&
+    readStatus.failedBookIds.length === 0;
 
   /** Whether the not-in-text filter is on before the whole text has been read. */
-  const isAwaitingText = filters.notInText && !textForms;
-
-  // Covers every way filters get set, not just the controls.
-  useEffect(() => {
-    if (filters.notInText) requestText();
-  }, [filters.notInText, requestText]);
+  const isAwaitingText = filters.notInText && !isTextRead;
 
   /**
    * Label every row carries for its per-book usage count, resolved once for the whole list. Names
@@ -335,11 +355,12 @@ export default function AnalysisCatalogPanel({
   }, [analysisLanguage, interfaceLanguages]);
 
   /**
-   * The analysis language's collation, held only where that language decides the listing's rows or
-   * their order: elsewhere it reorders only homographs the sort key ties, which stay adjacent, so
-   * the scroll stands though they may trade places beneath it.
+   * The analysis language where it decides the listing's rows or their order, and `undefined`
+   * elsewhere. Elsewhere its collation can reorder only homographs that tie on the sort key. Those
+   * stay adjacent, so the scroll position holds even when they trade places.
    */
-  const listingGlossCollator = sort === 'gloss' || filters.missingGloss ? glossCollator : undefined;
+  const listingGlossLanguage =
+    sort === 'gloss' || filters.missingGloss ? analysisLanguage : undefined;
 
   /**
    * Everything that decides which listing is on screen. The book counts alongside the query because
@@ -347,8 +368,8 @@ export default function AnalysisCatalogPanel({
    * by that count, and relabels that column in every other.
    */
   const listing = useMemo(
-    () => ({ search, sort, filters, surfaceCollator, listingGlossCollator, currentBook }),
-    [search, sort, filters, surfaceCollator, listingGlossCollator, currentBook],
+    () => ({ search, sort, filters, sourceLanguageTag, listingGlossLanguage, currentBook }),
+    [search, sort, filters, sourceLanguageTag, listingGlossLanguage, currentBook],
   );
 
   /**
@@ -366,9 +387,14 @@ export default function AnalysisCatalogPanel({
     undefined,
   );
 
+  /** The rows the host has sent, by id. */
+  const sentRows = useMemo(() => new Map(view?.rows.map((row) => [row.analysisId, row])), [view]);
+
+  // The reveal request holds until the host sends its row, because a row past the fetched page
+  // mounts only once the larger page arrives.
   useEffect(() => {
-    if (rowToReveal) setRowToReveal(undefined);
-  }, [rowToReveal]);
+    if (rowToReveal && sentRows.has(rowToReveal.analysisId)) setRowToReveal(undefined);
+  }, [rowToReveal, sentRows]);
 
   /** Raises a merge notice, taking the reader to the row it names. */
   const showMergeNotice = useCallback((notice: MergeNotice) => {
@@ -382,17 +408,37 @@ export default function AnalysisCatalogPanel({
    */
   const revealedRowIndex = useMemo(() => {
     if (!rowToReveal) return undefined;
-    const index = rows.findIndex((r) => r.analysisId === rowToReveal.analysisId);
+    const index = keptIds.indexOf(rowToReveal.analysisId);
     /* v8 ignore next -- the window ignores -1 just as it does undefined */
     return index === -1 ? undefined : index;
-  }, [rows, rowToReveal]);
+  }, [keptIds, rowToReveal]);
+
+  // Capped at FETCH_AHEAD_COUNT past the rows that have arrived, but long enough to reach a revealed
+  // row. Without the cap, a sentinel that stays in reach keeps growing the window while rows are
+  // fetched. Each step then asks the host for more rows.
+  const windowedRows = useMemo(
+    () => rows.slice(0, Math.max(sentRows.size + FETCH_AHEAD_COUNT, (revealedRowIndex ?? -1) + 1)),
+    [rows, sentRows, revealedRowIndex],
+  );
 
   /**
    * The slice of the listing that is actually mounted. A draft accumulates analyses without bound
    * and every row carries its own expander and usage list, so the list grows as it is scrolled
    * rather than rendering whole.
+   *
+   * A failed fetch leaves the window at its cap, so reaching the end there fetches the page again.
    */
-  const { windowRows, scrollRef, sentinelRef } = useRowWindow(rows, listing, revealedRowIndex);
+  const { windowRows, scrollRef, sentinelRef } = useRowWindow(
+    windowedRows,
+    listing,
+    revealedRowIndex,
+    retry,
+  );
+  // Reset with the window, so a new listing is not fetched at the size an earlier one scrolled to.
+  if (listing !== fetchedListing) {
+    setFetchedListing(listing);
+    setFetchCount(INITIAL_FETCH_COUNT);
+  } else if (windowRows.length > fetchCount) setFetchCount(windowRows.length);
 
   const { navigate, requestFocusToken, cancelFocusRequest } = useInterlinearNav();
 
@@ -439,22 +485,32 @@ export default function AnalysisCatalogPanel({
 
   const rowDispatch = useAnalysisRowDispatch();
   const confirmMorphemes = useConfirmMorphemesDispatch();
-  const readDeletionOutcome = useAnalysisDeletionOutcome();
   const readOnly = useAnalysisReadOnly();
 
   const { checkedIds, setChecked, setAllChecked } = useRowSelection(rows);
 
-  /** How many uses the checked rows have between them, which is what a bulk action reaches. */
-  const checkedUsageCount = useMemo(
-    () => distinctUsageCount(catalogRows, checkedIds),
-    [catalogRows, checkedIds],
+  /** The checked rows' ids in listing order, which picks a merge's survivor when uses tie. */
+  const orderedCheckedIds = useMemo(
+    () => keptIds.filter((analysisId) => checkedIds.has(analysisId)),
+    [keptIds, checkedIds],
   );
 
+  /** What a bulk action over the checked rows reaches. */
+  const selection = useSelectionSummary(orderedCheckedIds);
+
+  /** How many uses the checked rows have between them, which is what a bulk action reaches. */
+  const checkedUsageCount = selection?.usageCount ?? 0;
+
   /** The checked rows carrying a gloss in the analysis language, which a gloss clear reaches. */
-  const glossedCheckedIds = useMemo(
-    () =>
-      catalogRows.filter((r) => checkedIds.has(r.analysisId) && r.gloss).map((r) => r.analysisId),
-    [catalogRows, checkedIds],
+  const glossedCheckedIds = useMemo(() => selection?.glossedIds ?? [], [selection]);
+
+  const reads = useCatalogReads(currentBook);
+
+  /** Announces the message an edit's use count completes, once that count arrives. */
+  const announceCounted = useCallback(
+    (counted: Promise<number | undefined>, message: (usageCount: number) => string) =>
+      afterCounting(counted, (usageCount) => announceUndoable(message(usageCount))),
+    [announceUndoable],
   );
 
   /**
@@ -489,9 +545,6 @@ export default function AnalysisCatalogPanel({
    */
   const [glossRetry] = useState(() => createGlossRetry(setHoldsUnsavedGloss));
 
-  // A draft that no field can show again would otherwise hold the unsaved mark on for good.
-  useEffect(() => glossRetry.prune(catalogRows), [catalogRows, glossRetry]);
-
   const handleBreakdownDraftChange = useCallback(
     (analysisId: string, draft: string | undefined, surfaceText: string) => {
       setBreakdownDrafts((drafts) => {
@@ -515,18 +568,44 @@ export default function AnalysisCatalogPanel({
   }, []);
 
   /**
+   * The analyses a draft is held against, a breakdown or a kept gloss, whose rows may sit anywhere
+   * in the listing or outside it. Read from the gloss drafts at each render, which every change to
+   * the catalog brings.
+   */
+  const keptGlossIds = glossRetry.keptAnalysisIds();
+  const trackedIdsKey = JSON.stringify([...new Set([...breakdownDrafts.keys(), ...keptGlossIds])]);
+  const trackedIds: readonly string[] = useMemo(() => JSON.parse(trackedIdsKey), [trackedIdsKey]);
+
+  /** The rows of {@link trackedIds}. An analysis that is no longer stored has none. */
+  const trackedRows = useCatalogRowsByIds(trackedIds, currentBook);
+
+  // A draft that no field can show again would otherwise hold the unsaved mark on for good.
+  useEffect(() => {
+    if (trackedRows) glossRetry.prune([...trackedRows.values()], new Set(trackedIds));
+  }, [trackedRows, trackedIds, glossRetry]);
+
+  /** The row for `analysisId`, from those the host has sent, or `undefined` when none has. */
+  const rowOf = useCallback(
+    (analysisId: string): CatalogRow | undefined =>
+      trackedRows?.get(analysisId) ?? sentRows.get(analysisId),
+    [trackedRows, sentRows],
+  );
+
+  /**
    * Whether one row is holding a breakdown the reader has changed but not saved. Measured against
-   * what the editor pre-filled, so a draft left untouched is not unsaved work.
+   * what the editor pre-filled, so a draft left untouched is not unsaved work. A draft whose row
+   * the panel holds no copy of counts as unsaved.
    */
   const rowHasUnsavedBreakdown = useCallback(
     (analysisId: string) => {
-      const row = catalogRows.find((r) => r.analysisId === analysisId);
-      const draft = row && breakdownDrafts.get(analysisId);
-      if (row === undefined || draft === undefined) return false;
+      const draft = breakdownDrafts.get(analysisId);
+      if (draft === undefined) return false;
+      const row = rowOf(analysisId);
+      if (row === undefined) return true;
       const prefilled = row.morphemes.map((m) => m.form).join(' ') || row.surfaceText;
       return breakdownDraftForms(draft.text).join(' ') !== breakdownDraftForms(prefilled).join(' ');
     },
-    [catalogRows, breakdownDrafts],
+    [rowOf, breakdownDrafts],
   );
 
   /** Whether any row is holding a breakdown the reader has changed but not saved. */
@@ -558,14 +637,15 @@ export default function AnalysisCatalogPanel({
    * would stop asking.
    */
   useEffect(() => {
+    if (!trackedRows) return;
     const stranded = [...breakdownDrafts].find(
-      ([analysisId]) => !catalogRows.some((r) => r.analysisId === analysisId),
+      ([analysisId]) => trackedIds.includes(analysisId) && !trackedRows.has(analysisId),
     );
     if (!stranded) return;
     const [analysisId, draft] = stranded;
     setStrandedDraft({ surfaceText: draft.surfaceText });
     discardBreakdownDraft(analysisId);
-  }, [breakdownDrafts, catalogRows, discardBreakdownDraft]);
+  }, [breakdownDrafts, trackedRows, trackedIds, discardBreakdownDraft]);
 
   /**
    * How the reader is leaving the panel while being asked to confirm it over unsaved edits, or
@@ -618,32 +698,17 @@ export default function AnalysisCatalogPanel({
   );
 
   /**
-   * Runs a row edit as one undo step, summarized as given or from its result, then hands the result
-   * to `then` once it settles. An edit sent to the session settles later and records its own step.
+   * Runs a row edit, then hands its result to `then` once it settles.
    *
-   * @returns The edit's result, which rejects when an edit sent to the session fails.
+   * @returns The edit's result, which rejects when the edit fails.
    */
   const runRowEdit = useCallback(
-    <T,>(
-      edit: () => Settles<T>,
-      summary: StepSummary | ((settled: T) => StepSummary),
-      then: (settled: T) => void,
-    ): Settles<T> => {
-      const result = asOneStep(
-        edit,
-        typeof summary === 'function'
-          ? (settled) => {
-              /* v8 ignore next 2 -- the host path groups no edits; its session records each */
-              if (settled instanceof Promise)
-                throw new Error('Interlinearizer: an edit sent to the session was grouped');
-              return summary(settled);
-            }
-          : summary,
-      );
+    <T,>(edit: () => Settles<T>, then: (settled: T) => void): Settles<T> => {
+      const result = edit();
       whenSettled(result, then);
       return result;
     },
-    [asOneStep],
+    [],
   );
 
   /**
@@ -672,9 +737,9 @@ export default function AnalysisCatalogPanel({
    */
   const surfaceTextOf = useCallback(
     (analysisId: string) =>
-      /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
-      catalogRows.find((r) => r.analysisId === analysisId)?.surfaceText ?? '',
-    [catalogRows],
+      /* v8 ignore next -- the id came from a row the host sent, so it always resolves */
+      rowOf(analysisId)?.surfaceText ?? '',
+    [rowOf],
   );
 
   const handleGlossCommit = useCallback(
@@ -682,7 +747,6 @@ export default function AnalysisCatalogPanel({
       const form = surfaceTextOf(analysisId);
       return runRowEdit(
         () => rowDispatch.writeGloss(analysisId, value),
-        (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
         (outcome) => reportEditOutcome(outcome, form),
       );
     },
@@ -694,7 +758,6 @@ export default function AnalysisCatalogPanel({
       const form = surfaceTextOf(analysisId);
       runRowEdit(
         () => rowDispatch.writeMorphemes(analysisId, forms, sourceLanguageTag),
-        (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
         (outcome) => reportEditOutcome(outcome, form),
       );
     },
@@ -706,22 +769,74 @@ export default function AnalysisCatalogPanel({
       const form = surfaceTextOf(analysisId);
       return runRowEdit(
         () => rowDispatch.writeMorphemeGloss(analysisId, morphemeId, value),
-        (outcome) => catalogStepSummary('catalogEdit', form, analysisId, outcome),
         (outcome) => reportEditOutcome(outcome, form),
       );
     },
     [reportEditOutcome, rowDispatch, runRowEdit, surfaceTextOf],
   );
 
+  /**
+   * Runs a sense-link edit on the row `analysisId`, reporting a collapse into an identical row as
+   * any other row edit does.
+   */
+  const runSenseEdit = useCallback(
+    (analysisId: string, edit: () => Settles<AnalysisEditOutcome>) => {
+      const form = surfaceTextOf(analysisId);
+      runRowEdit(edit, (outcome) => reportEditOutcome(outcome, form));
+    },
+    [reportEditOutcome, runRowEdit, surfaceTextOf],
+  );
+
+  const handleLinkSense = useCallback(
+    (analysisId: string, candidate: SenseCandidate) =>
+      runSenseEdit(analysisId, () => rowDispatch.linkSense(analysisId, candidate.senseRef)),
+    [rowDispatch, runSenseEdit],
+  );
+
+  const handleUnlinkSense = useCallback(
+    (analysisId: string, keepGloss?: string) =>
+      runSenseEdit(analysisId, () => rowDispatch.unlinkSense(analysisId, keepGloss)),
+    [rowDispatch, runSenseEdit],
+  );
+
+  const handleAdoptSenseGloss = useCallback(
+    (analysisId: string, senseGloss: string) =>
+      runSenseEdit(analysisId, () => rowDispatch.adoptSenseGloss(analysisId, senseGloss)),
+    [rowDispatch, runSenseEdit],
+  );
+
+  const handleLinkMorphemeSense = useCallback(
+    (analysisId: string, morphemeId: string, candidate: SenseCandidate) =>
+      runSenseEdit(analysisId, () =>
+        rowDispatch.linkMorphemeSense(
+          analysisId,
+          morphemeId,
+          candidate.entryRef,
+          candidate.senseRef,
+        ),
+      ),
+    [rowDispatch, runSenseEdit],
+  );
+
+  const handleUnlinkMorphemeSense = useCallback(
+    (analysisId: string, morphemeId: string, keepGloss?: string) =>
+      runSenseEdit(analysisId, () =>
+        rowDispatch.unlinkMorphemeSense(analysisId, morphemeId, keepGloss),
+      ),
+    [rowDispatch, runSenseEdit],
+  );
+
+  const handleAdoptMorphemeSenseGloss = useCallback(
+    (analysisId: string, morphemeId: string, senseGloss: string) =>
+      runSenseEdit(analysisId, () =>
+        rowDispatch.adoptMorphemeSenseGloss(analysisId, morphemeId, senseGloss),
+      ),
+    [rowDispatch, runSenseEdit],
+  );
+
   const handleMorphemesConfirm = useCallback(
-    (analysisId: string) =>
-      asOneStep(() => confirmMorphemes(analysisId), {
-        kind: 'catalogEdit',
-        form: surfaceTextOf(analysisId),
-        analysisId,
-        survivingAnalysisId: analysisId,
-      }),
-    [asOneStep, confirmMorphemes, surfaceTextOf],
+    (analysisId: string) => confirmMorphemes(analysisId),
+    [confirmMorphemes],
   );
 
   /**
@@ -754,32 +869,29 @@ export default function AnalysisCatalogPanel({
   /** Deletes the analysis `analysisId` names, announcing what the deletion did. */
   const deleteAnalysis = useCallback(
     (analysisId: string) => {
-      const outcome = readDeletionOutcome(analysisId, liveSurfaceText);
-      /* v8 ignore next -- the id came from a row of this very listing, so it always resolves */
-      if (!outcome) return;
+      // Previewed before the record goes, because the deletion takes its uses with it.
+      const previewed = readForEdit(reads.previewDeletion(analysisId));
       const form = surfaceTextOf(analysisId);
       // Cleared before the record goes, so this removal is not reported back to the reader who
       // asked for it.
       discardBreakdownDraft(analysisId);
       runRowEdit(
         () => rowDispatch.deleteAnalyses([analysisId]),
-        outcome.usageCount === 0
-          ? { kind: 'catalogDeleteUnused', form, analysisId }
-          : { kind: 'catalogDelete', form, analysisId, count: outcome.usageCount },
         () => {
           // A deleted row cannot be the one a merge notice points at, and leaving the notice up
           // would send the reader to a row that is no longer there.
           setMergeNotice(undefined);
-          announceUndoable(deletionAnnouncement(form, outcome, localizedStrings));
+          afterPreviewing(previewed, (outcome) =>
+            announceUndoable(deletionAnnouncement(form, outcome, localizedStrings)),
+          );
         },
       );
     },
     [
       announceUndoable,
       discardBreakdownDraft,
-      liveSurfaceText,
       localizedStrings,
-      readDeletionOutcome,
+      reads,
       rowDispatch,
       runRowEdit,
       surfaceTextOf,
@@ -790,15 +902,15 @@ export default function AnalysisCatalogPanel({
   const deleteChecked = useCallback(
     (analysisIds: readonly string[]) => {
       const count = analysisIds.length;
-      const usageCount = distinctUsageCount(catalogRows, new Set(analysisIds));
+      // Counted before the records go, which takes their uses with them.
+      const counted = readForEdit(reads.countUsages(analysisIds));
       // Cleared before the records go, so their removal is not reported back as stranding them.
       analysisIds.forEach(discardBreakdownDraft);
       runRowEdit(
         () => rowDispatch.deleteAnalyses(analysisIds),
-        { kind: 'catalogDeleteChecked', count, usageCount },
         () => {
           setMergeNotice(undefined);
-          announceUndoable(
+          announceCounted(counted, (usageCount) =>
             formatReplacementString(
               localizedStrings['%interlinearizer_analysisCatalog_deletedChecked%'],
               { count, usageCount },
@@ -807,14 +919,7 @@ export default function AnalysisCatalogPanel({
         },
       );
     },
-    [
-      announceUndoable,
-      catalogRows,
-      discardBreakdownDraft,
-      localizedStrings,
-      rowDispatch,
-      runRowEdit,
-    ],
+    [announceCounted, discardBreakdownDraft, localizedStrings, reads, rowDispatch, runRowEdit],
   );
 
   const handleDeleteChecked = useCallback(() => {
@@ -836,25 +941,28 @@ export default function AnalysisCatalogPanel({
     (analysisIds: readonly string[], reclaimedIds: readonly string[]) => {
       const count = analysisIds.length;
       setMergeNotice(undefined);
+      // Read before the clear, which deletes some of these records and their uses with them.
+      const reclaimedRows = readForEdit(reads.rowsByIds(reclaimedIds));
       runRowEdit(
         () => rowDispatch.clearGlosses(analysisIds),
-        { kind: 'catalogClearGlossChecked', count },
         (deletedIds) => {
           const deletedCount = deletedIds.length;
           const mergedCount = reclaimedIds.filter((id) => !deletedIds.includes(id)).length;
           if (deletedCount === 0 && mergedCount === 0) return;
-          announceUndoable(
-            formatReplacementString(localizedStrings[clearedGlossKey(deletedCount, mergedCount)], {
-              count,
-              deletedCount,
-              mergedCount,
-              usageCount: distinctUsageCount(catalogRows, new Set(deletedIds)),
-            }),
+          announceCounted(
+            reclaimedRows.then(
+              (reclaimed) => reclaimed && distinctUsageCount(reclaimed, new Set(deletedIds)),
+            ),
+            (usageCount) =>
+              formatReplacementString(
+                localizedStrings[clearedGlossKey(deletedCount, mergedCount)],
+                { count, deletedCount, mergedCount, usageCount },
+              ),
           );
         },
       );
     },
-    [announceUndoable, catalogRows, localizedStrings, rowDispatch, runRowEdit],
+    [announceCounted, localizedStrings, reads, rowDispatch, runRowEdit],
   );
 
   const readGlossClearReclaims = useGlossClearReclaims();
@@ -901,10 +1009,8 @@ export default function AnalysisCatalogPanel({
       [survivorAnalysisId, ...mergedAnalysisIds].forEach(discardBreakdownDraft);
 
       setMergeRequest(undefined);
-      const usageCount = distinctUsageCount(
-        catalogRows,
-        new Set([survivorAnalysisId, ...mergedAnalysisIds]),
-      );
+      // Counted before the merge, which can remove every record it names.
+      const counted = readForEdit(reads.countUsages([survivorAnalysisId, ...mergedAnalysisIds]));
 
       runRowEdit(
         () =>
@@ -917,7 +1023,6 @@ export default function AnalysisCatalogPanel({
             features: content.features,
             confidence: content.confidence,
           }),
-        (merge) => catalogStepSummary('catalogMerge', surfaceText, survivorAnalysisId, merge),
         // Reported against the record that the merge left standing, not the one it was aimed at.
         // The reader was warned that content matching an unmerged homograph moves the survivor.
         (outcome) => {
@@ -930,28 +1035,30 @@ export default function AnalysisCatalogPanel({
             });
           else if (outcome.kind === 'removed') {
             setMergeNotice(undefined);
-            announceUndoable(
+            announceCounted(counted, (usageCount) =>
               formatReplacementString(
                 localizedStrings['%interlinearizer_analysisCatalog_mergedEmpty%'],
                 { form: surfaceText, count: usageCount },
               ),
             );
           } else
-            announceMerge({
-              survivingAnalysisId: survivorAnalysisId,
-              survivingGloss: content.gloss,
-              surfaceText,
-              usageCount,
-            });
+            afterCounting(counted, (usageCount) =>
+              announceMerge({
+                survivingAnalysisId: survivorAnalysisId,
+                survivingGloss: content.gloss,
+                surfaceText,
+                usageCount,
+              }),
+            );
         },
       );
     },
     [
+      announceCounted,
       announceMerge,
-      announceUndoable,
-      catalogRows,
       discardBreakdownDraft,
       localizedStrings,
+      reads,
       rowDispatch,
       runRowEdit,
     ],
@@ -999,34 +1106,8 @@ export default function AnalysisCatalogPanel({
     [readStaleReclaims, requestDropping, staleDispatch],
   );
 
-  /**
-   * The rows sharing each surface form, most-used first, bucketed by the same normalized form the
-   * suggestion pool buckets by — so a merge is offered exactly among the records the store treats
-   * as homographs, rather than withheld from ones differing only in case or Unicode form.
-   */
-  const homographRowsByForm = useMemo(() => {
-    const byForm = new Map<string, CatalogRow[]>();
-    catalogRows.forEach((row) => {
-      const key = normalizeSurfaceForm(row.surfaceText);
-      const bucket = byForm.get(key) ?? [];
-      bucket.push(row);
-      byForm.set(key, bucket);
-    });
-    byForm.forEach((bucket) => bucket.sort((a, b) => b.usageCount - a.usageCount));
-    return byForm;
-  }, [catalogRows]);
-
-  /** Which rows have a homograph, and so are offered a merge control at all. */
-  const idsWithMergePeers = useMemo(
-    () =>
-      new Set(
-        [...homographRowsByForm.values()]
-          .filter((bucket) => bucket.length > 1)
-          .flat()
-          .map((row) => row.analysisId),
-      ),
-    [homographRowsByForm],
-  );
+  /** Every record of the form the open picker was opened on, most used first. */
+  const homographRows = useHomographRows(mergeRequest?.analysisId, currentBook);
 
   /**
    * The analyses the open picker is choosing a merge's two ends between — every record of the form
@@ -1035,31 +1116,22 @@ export default function AnalysisCatalogPanel({
    * lingering.
    */
   const openMerge = useMemo(() => {
-    const openedFrom = catalogRows.find((r) => r.analysisId === mergeRequest?.analysisId);
-    if (!openedFrom) return undefined;
-    /* v8 ignore next -- unreachable: every row is filed, so a resolved one is in its own bucket */
-    const candidates = homographRowsByForm.get(normalizeSurfaceForm(openedFrom.surfaceText)) ?? [];
-    return candidates.length > 1
-      ? { openedFrom, candidates, mergedIds: mergeRequest?.mergedIds }
+    const openedFrom = homographRows?.find((r) => r.analysisId === mergeRequest?.analysisId);
+    if (!homographRows || !openedFrom) return undefined;
+    return homographRows.length > 1
+      ? { openedFrom, candidates: homographRows, mergedIds: mergeRequest?.mergedIds }
       : undefined;
-  }, [catalogRows, homographRowsByForm, mergeRequest]);
+  }, [homographRows, mergeRequest]);
 
   /**
    * Opens a merge of the checked rows into the most used of them, or `undefined` unless at least
    * two are checked and all of them are homographs. A merge only reassigns tokens within one form.
    */
   const mergeChecked = useMemo(() => {
-    const checkedRows = rows.filter((r) => checkedIds.has(r.analysisId));
-    if (checkedRows.length < 2) return undefined;
-    const form = normalizeSurfaceForm(checkedRows[0].surfaceText);
-    if (checkedRows.some((r) => normalizeSurfaceForm(r.surfaceText) !== form)) return undefined;
-    const [survivor, ...merged] = checkedRows.toSorted((a, b) => b.usageCount - a.usageCount);
-    return () =>
-      handleMergeRequest(
-        survivor.analysisId,
-        merged.map((r) => r.analysisId),
-      );
-  }, [rows, checkedIds, handleMergeRequest]);
+    const merge = selection?.merge;
+    if (!merge) return undefined;
+    return () => handleMergeRequest(merge.survivorId, merge.mergedIds);
+  }, [selection, handleMergeRequest]);
 
   return (
     // The panel sits beside the interlinear view rather than within it, so the row tooltips have no
@@ -1096,20 +1168,19 @@ export default function AnalysisCatalogPanel({
           which keeps the controls on screen for the query that matched nothing — they are the only
           way to widen it back.
         */}
-        {catalogRows.length > 0 && (
+        {rowCount > 0 && facets && (
           <CatalogQueryControls
             analysisLanguageName={analysisLanguageName}
             currentBookName={currentBookName}
             facets={facets}
             filters={filters}
             localizedStrings={localizedStrings}
-            onFiltersChange={handleFiltersChange}
+            onFiltersChange={setFilters}
             onSearchChange={setSearch}
             onSortChange={setSort}
             search={search}
             showMorphology={showMorphology}
             sort={sort}
-            staleCoversDraft={staleCoversDraft}
           />
         )}
 
@@ -1146,11 +1217,21 @@ export default function AnalysisCatalogPanel({
           <TextReadingStatus
             idPrefix="analysis-catalog-text"
             localizedStrings={localizedStrings}
-            text={sourceText}
+            status={readStatus}
           />
         )}
 
-        {!isAwaitingText &&
+        {!view && retry && !isAwaitingText && (
+          <RetryableErrorView
+            className="tw:px-3 tw:py-2"
+            message={localizedStrings['%interlinearizer_analysisCatalog_loadFailed%']}
+            onRetry={retry}
+            retryLabel={localizedStrings['%interlinearizer_analysisCatalog_retry%']}
+          />
+        )}
+
+        {view &&
+          !isAwaitingText &&
           (rows.length === 0 ? (
             // Two ways to have nothing to list, and they call for different answers: a draft that has
             // recorded nothing yet, and a query that kept none of what it did. Telling a reader the
@@ -1159,48 +1240,54 @@ export default function AnalysisCatalogPanel({
               className="tw:px-3 tw:py-2"
               id="analysis-catalog-empty"
               message={
-                catalogRows.length === 0
+                rowCount === 0
                   ? localizedStrings['%interlinearizer_analysisCatalog_empty%']
                   : localizedStrings['%interlinearizer_analysisCatalog_noMatches%']
               }
             />
           ) : (
             <CatalogList scrollRef={scrollRef} sentinelRef={sentinelRef}>
-              {windowRows.map((row) => (
-                <CatalogRowView
-                  key={row.analysisId}
-                  analysisLanguage={analysisLanguage}
-                  showMorphology={showMorphology}
-                  breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
-                  glossRetry={glossRetry}
-                  isSelected={row.analysisId === selectedAnalysisId}
-                  isChecked={checkedIds.has(row.analysisId)}
-                  onCheckedChange={readOnly ? undefined : setChecked}
-                  isNotInText={textForms !== undefined && !textForms.has(row.form)}
-                  liveSurfaceText={liveSurfaceText}
-                  localizedStrings={localizedStrings}
-                  onBreakdownDraftChange={handleBreakdownDraftChange}
-                  // No discard prompt follows: the row's delete confirmation already covers the
-                  // analysis's unsaved breakdown.
-                  onDeleteRequest={deleteAnalysis}
-                  onGlossCommit={handleGlossCommit}
-                  onMergeRequest={
-                    idsWithMergePeers.has(row.analysisId) ? handleMergeRequest : undefined
-                  }
-                  onMorphemeGlossCommit={handleMorphemeGlossCommit}
-                  onMorphemesCommit={handleMorphemesCommit}
-                  onMorphemesConfirm={handleMorphemesConfirm}
-                  onStaleDiscard={handleStaleDiscard}
-                  onStaleReapply={handleStaleReapply}
-                  onStaleSelect={handleStaleSelect}
-                  onUsageSelect={handleUsageSelect}
-                  row={row}
-                  revealRequest={
-                    row.analysisId === rowToReveal?.analysisId ? rowToReveal : undefined
-                  }
-                  usageCountInBookLabel={usageCountInBookLabel}
-                />
-              ))}
+              {windowRows
+                .flatMap(({ analysisId }) => sentRows.get(analysisId) ?? [])
+                .map((row) => (
+                  <CatalogRowView
+                    key={row.analysisId}
+                    analysisLanguage={analysisLanguage}
+                    showMorphology={showMorphology}
+                    breakdownDraft={breakdownDrafts.get(row.analysisId)?.text}
+                    glossRetry={glossRetry}
+                    isSelected={row.analysisId === selectedAnalysisId}
+                    isChecked={checkedIds.has(row.analysisId)}
+                    onCheckedChange={readOnly ? undefined : setChecked}
+                    isNotInText={row.isNotInText}
+                    liveSurfaceText={liveSurfaceText}
+                    localizedStrings={localizedStrings}
+                    onBreakdownDraftChange={handleBreakdownDraftChange}
+                    // No discard prompt follows: the row's delete confirmation already covers the
+                    // analysis's unsaved breakdown.
+                    onDeleteRequest={deleteAnalysis}
+                    onAdoptMorphemeSenseGloss={handleAdoptMorphemeSenseGloss}
+                    onAdoptSenseGloss={handleAdoptSenseGloss}
+                    onGlossCommit={handleGlossCommit}
+                    onLinkMorphemeSense={handleLinkMorphemeSense}
+                    onLinkSense={handleLinkSense}
+                    onMergeRequest={row.hasHomograph ? handleMergeRequest : undefined}
+                    onMorphemeGlossCommit={handleMorphemeGlossCommit}
+                    onMorphemesCommit={handleMorphemesCommit}
+                    onMorphemesConfirm={handleMorphemesConfirm}
+                    onUnlinkMorphemeSense={handleUnlinkMorphemeSense}
+                    onUnlinkSense={handleUnlinkSense}
+                    onStaleDiscard={handleStaleDiscard}
+                    onStaleReapply={handleStaleReapply}
+                    onStaleSelect={handleStaleSelect}
+                    onUsageSelect={handleUsageSelect}
+                    row={row}
+                    revealRequest={
+                      row.analysisId === rowToReveal?.analysisId ? rowToReveal : undefined
+                    }
+                    usageCountInBookLabel={usageCountInBookLabel}
+                  />
+                ))}
             </CatalogList>
           ))}
 

@@ -1,9 +1,8 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseDispatch, usePhraseLinkByIdGetter, usePhraseLinkByIdMap } from './AnalysisStore';
+import { usePhraseDispatch } from './AnalysisStore';
 import {
   NO_OP_SEGMENTATION_DISPATCH,
   SegmentationProvider,
@@ -12,18 +11,13 @@ import {
 } from './SegmentationStore';
 import ContinuousView from './ContinuousView';
 import EditPhraseControls from './controls/EditPhraseControls';
-import useBookIndexes from '../hooks/useBookIndexes';
-import type { SegmentPages } from '../hooks/useSegmentPages';
+import usePageIndexes from '../hooks/usePageIndexes';
+import type { SegmentPages } from '../types/segment-pages';
 import { useAltHeldAttribute } from '../hooks/useAltHeldAttribute';
 import type { PhraseMode } from '../types/phrase-mode';
 import { TOOLTIP_DELAY_MS } from './tooltip-delay';
 import type { ViewOptions } from '../types/view-options';
 import { perfMeasure } from '../utils/perf-marks';
-import {
-  phrasesStraddlingBoundary,
-  splitPhraseAtBoundary,
-  straddledRefs,
-} from '../utils/phrase-arc';
 import SegmentListView from './SegmentListView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
 import { FocusProvider } from './FocusStore';
@@ -36,21 +30,16 @@ const EMPTY_FORMER_BOUNDARIES: ReadonlyMap<string, string> = new Map();
 /** Stable empty set used as the `unmergeableStarts` default so memoization holds. */
 const EMPTY_UNMERGEABLE_STARTS: ReadonlySet<string> = new Set();
 
-/** Runs an action with no undo history to group its edits in. */
-const RUN_UNGROUPED = (action: () => void) => action();
-
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
-  /** The whole tokenized book, under the current boundaries. */
-  book: Book;
   /** The book's segments as the segment list renders them. */
   pages: SegmentPages;
   /** When true, the horizontal token strip is shown above the segment list. */
   continuousScroll: boolean;
   /**
    * Current scripture reference used to highlight the active verse. The loader resolves this to a
-   * verse contained in some segment of `book` (when the chapter has segments): normally verse >= 1,
-   * and verse 0 only when a matching verse-0 superscription segment exists.
+   * verse contained in some segment of the book (when the chapter has segments): normally verse >=
+   * 1, and verse 0 only when a matching verse-0 superscription segment exists.
    */
   scrRef: SerializedVerseRef;
   /** Current phrase-interaction mode; owned by the parent and passed down for rendering. */
@@ -72,13 +61,6 @@ type InterlinearizerProps = Readonly<{
   formerBoundaries?: ReadonlyMap<string, string>;
   /** Segment-start refs no merge can remove; when absent, none are. */
   unmergeableStarts?: ReadonlySet<string>;
-  /** Runs an action so every edit it makes undoes as one step; ungrouped when omitted. */
-  asOneStep?: (action: () => void) => void;
-  /**
-   * Whether `segmentationDispatch` itself breaks the phrases that a new boundary would cut, as a
-   * session's boundary edits do. When it doesn't, they are broken before the boundary is added.
-   */
-  dispatchBreaksPhrases?: boolean;
 }>;
 
 /**
@@ -87,7 +69,6 @@ type InterlinearizerProps = Readonly<{
  * remounted on a book change.
  */
 export default function Interlinearizer({
-  book,
   pages,
   continuousScroll,
   scrRef,
@@ -97,86 +78,31 @@ export default function Interlinearizer({
   segmentationDispatch = NO_OP_SEGMENTATION_DISPATCH,
   formerBoundaries = EMPTY_FORMER_BOUNDARIES,
   unmergeableStarts = EMPTY_UNMERGEABLE_STARTS,
-  asOneStep = RUN_UNGROUPED,
-  dispatchBreaksPhrases = false,
 }: InterlinearizerProps) {
   // Navigation surface from the context: `consumeInternalNav` lets the segment window suppress the
   // fade for internal moves, `recenterRequest` asks it to frame a jump navigation alone would not,
   // and `reportSettled` lifts the cross-book curtain once the new book is laid out.
   const { consumeInternalNav, recenterRequest, reportSettled } = useInterlinearNav();
 
-  useLayoutEffect(() => perfMeasure('book-render', 'book-change'), [book.bookRef]);
+  useLayoutEffect(() => perfMeasure('book-render', 'book-change'), [pages.bookRef]);
 
   useAltHeldAttribute();
 
-  // Book-wide lookup indexes.
+  const indexes = usePageIndexes(pages);
   const {
     segmentById,
     segmentOrder,
     tokenDocOrder,
-    fullTokenOrder,
     gapTextByWordRef,
     tokenSegmentMap,
     wordTokenByRef,
-    wordRefByOrder,
-  } = useBookIndexes(book);
-
-  const phraseDispatch = usePhraseDispatch();
-  const getPhraseLinkById = usePhraseLinkByIdGetter();
-  const phraseLinkById = usePhraseLinkByIdMap();
-
-  /** The not-mid-phrase guard: word-token refs before which a segment boundary would cut a phrase. */
-  const straddledBoundaryRefs = useMemo<ReadonlySet<string>>(
-    () => straddledRefs(phraseLinkById.values(), tokenDocOrder, (order) => wordRefByOrder[order]),
-    [phraseLinkById, tokenDocOrder, wordRefByOrder],
-  );
-
-  /**
-   * Splits every phrase that a new segment boundary before `boundaryRef` would cut, so no phrase
-   * ever spans two segments. Reads the phrase links at call time (not via subscription) and applies
-   * {@link splitPhraseAtBoundary} at each straddled phrase's boundary-side split point.
-   */
-  const forceBreakStraddledPhrases = useCallback(
-    (boundaryRef: string) => {
-      phrasesStraddlingBoundary(boundaryRef, getPhraseLinkById().values(), fullTokenOrder).forEach(
-        ({ link, splitAfterTokenRef }) =>
-          splitPhraseAtBoundary(link, splitAfterTokenRef, phraseDispatch, tokenDocOrder),
-      );
-    },
-    [getPhraseLinkById, fullTokenOrder, phraseDispatch, tokenDocOrder],
-  );
-
-  /**
-   * The dispatch provided through the segmentation context: wraps the raw boundary writer so any
-   * operation that adds a boundary (split, and the add-half of move) first force-breaks the phrases
-   * the new boundary would cut. Merge only removes a boundary, which can never leave a phrase
-   * straddling segments, so it passes through. A dispatch that breaks phrases itself passes through
-   * unwrapped.
-   */
-  const dispatch = useMemo<SegmentationDispatch>(
-    () =>
-      dispatchBreaksPhrases
-        ? segmentationDispatch
-        : {
-            merge: segmentationDispatch.merge,
-            split: (tokenRef) =>
-              asOneStep(() => {
-                forceBreakStraddledPhrases(tokenRef);
-                segmentationDispatch.split(tokenRef);
-              }),
-            move: (fromRef, toRef) =>
-              asOneStep(() => {
-                forceBreakStraddledPhrases(toRef);
-                segmentationDispatch.move(fromRef, toRef);
-              }),
-          },
-    [segmentationDispatch, forceBreakStraddledPhrases, asOneStep, dispatchBreaksPhrases],
-  );
+    straddledBoundaryRefs,
+  } = indexes;
 
   /** Segmentation context value — the dispatch paired with the lookups it operates over. */
   const segmentationValue = useMemo<SegmentationContextValue>(
     () => ({
-      dispatch,
+      dispatch: segmentationDispatch,
       segmentById,
       segmentOrder,
       formerBoundaries,
@@ -184,7 +110,7 @@ export default function Interlinearizer({
       unmergeableStarts,
     }),
     [
-      dispatch,
+      segmentationDispatch,
       segmentById,
       segmentOrder,
       formerBoundaries,
@@ -252,13 +178,7 @@ export default function Interlinearizer({
             className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
             style={{ opacity: isModeToggleFading ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
           >
-            <FocusProvider
-              book={book}
-              scrRef={scrRef}
-              segmentById={segmentById}
-              tokenSegmentMap={tokenSegmentMap}
-              wordTokenByRef={wordTokenByRef}
-            >
+            <FocusProvider pages={pages} scrRef={scrRef} indexes={indexes}>
               {displayContinuousScroll && (
                 <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
                   <ContinuousView
@@ -277,7 +197,6 @@ export default function Interlinearizer({
 
               <SegmentListView
                 pages={pages}
-                book={book}
                 scrRef={scrRef}
                 continuousScroll={continuousScroll}
                 displayContinuousScroll={displayContinuousScroll}

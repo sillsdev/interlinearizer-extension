@@ -1,4 +1,4 @@
-import type { Book } from 'interlinearizer';
+import type { ReadonlyBook } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import type { EditStep } from '../types/edit-step';
 import type { AppliedChange } from './analysisChanges';
@@ -15,7 +15,7 @@ export const MAX_UNDO_STEPS = 100;
  */
 export type ReanchorBooks = (
   changes: ChangeSet,
-  books: readonly Book[],
+  books: readonly ReadonlyBook[],
 ) => Promise<ChangeSet | undefined>;
 
 /** How an edit applies. */
@@ -74,7 +74,7 @@ export class EditHistory {
    * Each book's latest text a pass has re-anchored to, while some step predates that pass, in the
    * order the passes ran.
    */
-  private readonly passes = new Map<string, { book: Book; ordinal: number }>();
+  private readonly passes = new Map<string, { book: ReadonlyBook; ordinal: number }>();
 
   /** How many passes have ever been recorded. */
   private passCount = 0;
@@ -87,6 +87,12 @@ export class EditHistory {
 
   /** The states whose content the draft was saved with, as far as the history has seen. */
   private cleanStates = new Set<number>();
+
+  /** The states whose content is empty, as far as the history has been told. */
+  private readonly emptyStates = new Set<number>();
+
+  /** The empty states the history has seen saved, later saves notwithstanding. */
+  private readonly savedEmptyStates = new Set<number>();
 
   private appliedCount = 0;
 
@@ -116,11 +122,22 @@ export class EditHistory {
   }
 
   /**
-   * Forgets every save: no state that the history holds counts as saved any more, except the
-   * current one when `keepCurrent` is set.
+   * Records that the draft's current content is empty, whether that content is saved before this
+   * call or after it.
+   */
+  noteEmpty(): void {
+    this.emptyStates.add(this.state);
+    if (this.cleanStates.has(this.state)) this.savedEmptyStates.add(this.state);
+  }
+
+  /**
+   * Forgets every save of content that isn't empty. A state still counts as saved only when
+   * {@link noteEmpty} recorded it as empty. A later save of other content doesn't change that. With
+   * `keepCurrent` set, the current state counts as saved too.
    */
   forgetSaves(keepCurrent: boolean): void {
-    this.cleanStates = new Set(keepCurrent ? [this.state] : []);
+    this.cleanStates = new Set(this.savedEmptyStates);
+    if (keepCurrent) this.addCleanState();
   }
 
   /**
@@ -149,7 +166,7 @@ export class EditHistory {
     this.forgetUnneededPasses();
     this.lastState += 1;
     this.state = this.lastState;
-    if (keep && !wasDirty) this.cleanStates.add(this.state);
+    if (keep && !wasDirty) this.addCleanState();
     if (options?.unsavedMark === 'clear') await this.markRestoredClean();
     return inverse;
   }
@@ -174,21 +191,35 @@ export class EditHistory {
    */
   async markRestoredClean(): Promise<void> {
     await this.repository.markClean();
-    this.cleanStates.add(this.state);
+    this.addCleanState();
   }
 
   /**
-   * Records that a pass has just re-anchored the stored draft to `book`'s current text, superseding
-   * any earlier pass over the book, so that what an undo or redo restores is re-anchored to it too.
-   * A missing book is passed as a book with no segments. Nothing is recorded when the book's text
-   * is the same text its last pass re-anchored to.
+   * Applies `changes`, a pass that re-anchors the stored draft to `book`'s current text. Records
+   * the pass, so that what an undo or redo restores is re-anchored to that text too. A pass that
+   * changes nothing is still recorded, because an undo or redo may restore analysis anchored to
+   * older text.
+   *
+   * The pass goes unrecorded when the history holds no steps to undo or redo. It also goes
+   * unrecorded when the book's text is unchanged since its last recorded pass.
+   *
+   * The pass is no undo step and leaves the draft as saved or unsaved as it was. A missing book is
+   * passed as a book with no segments.
+   *
+   * @returns The changes applied, with their inverse: the changes that undo them. `undefined` when
+   *   there are no changes to apply.
+   * @throws Whatever applying the changes throws; nothing is applied or recorded.
    */
-  recordPass(book: Book): void {
-    if (this.undoable.length === 0 && this.redoable.length === 0) return;
-    if (this.passes.get(book.bookRef)?.book.textVersion === book.textVersion) return;
-    this.passCount += 1;
-    this.passes.delete(book.bookRef);
-    this.passes.set(book.bookRef, { book, ordinal: this.passCount });
+  async applyPass(
+    book: ReadonlyBook,
+    changes: ChangeSet | undefined,
+  ): Promise<AppliedChange | undefined> {
+    const applied = changes && {
+      changes,
+      inverse: (await this.repository.apply(changes, { keepDirty: true })).inverse,
+    };
+    this.recordPass(book);
+    return applied;
   }
 
   /**
@@ -252,9 +283,30 @@ export class EditHistory {
     return { changes, inverse, ...(step.step && { step: step.step }), dirty: !clean };
   }
 
+  /**
+   * Records that a pass has just re-anchored the stored draft to `book`'s current text, superseding
+   * any earlier pass over the book, so that what an undo or redo restores is re-anchored to it too.
+   * Nothing is recorded when the book's text is the same text its last pass re-anchored to.
+   */
+  private recordPass(book: ReadonlyBook): void {
+    if (this.undoable.length === 0 && this.redoable.length === 0) return;
+    if (this.passes.get(book.bookRef)?.book.textVersion === book.textVersion) return;
+    this.passCount += 1;
+    this.passes.delete(book.bookRef);
+    this.passes.set(book.bookRef, { book, ordinal: this.passCount });
+  }
+
   /** Unless `wasDirty`, makes the current state the only clean one, if it isn't clean already. */
   private noteMark(wasDirty: boolean): void {
-    if (!wasDirty && !this.cleanStates.has(this.state)) this.cleanStates = new Set([this.state]);
+    if (wasDirty || this.cleanStates.has(this.state)) return;
+    this.cleanStates = new Set();
+    this.addCleanState();
+  }
+
+  /** Counts the current state as saved. */
+  private addCleanState(): void {
+    this.cleanStates.add(this.state);
+    if (this.emptyStates.has(this.state)) this.savedEmptyStates.add(this.state);
   }
 
   /** Forgets each pass that every step left in the history already reflects. */

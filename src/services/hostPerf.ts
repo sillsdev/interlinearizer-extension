@@ -15,7 +15,7 @@ let sessionReadsSkipped = false;
 
 /**
  * Turns on or off skipping the whole-text read that a session starts once a feature needs the whole
- * text, so the harness can time the host path without it. Off until turned on.
+ * text, so the harness can time the view without it. Off until turned on.
  */
 export function setSessionReadsSkipped(on: boolean): void {
   sessionReadsSkipped = on;

@@ -26,14 +26,13 @@ import {
   useAnalysisLanguage,
   useAnalysisReadOnly,
   useApproveAnalysisDispatch,
+  useBreakdownPreview,
   useConfirmMorphemesDispatch,
   useGloss,
   useGlossSenseRef,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
   useMorphemeDeleteDispatch,
-  useMorphemePayloadIsSolelyOwned,
-  useMorphemeResetLosesAnnotation,
   useMorphemes,
   useReportGlossEditing,
   useResolvedTokenAnalysis,
@@ -64,8 +63,8 @@ const SUGGESTED_PLACEHOLDER_PAD = '\u2009';
 /**
  * Renders a single word token as an inline chip with an editable gloss input below the surface
  * text. The gloss value and the dispatch that writes it both come from context, so the chip must be
- * rendered under an {@link AnalysisStoreProvider}. The gloss is written to the store only on blur,
- * and only when the draft differs from the committed value, to avoid creating empty analysis
+ * rendered under a {@link SessionAnalysisProvider}. The gloss is written to the session only on
+ * blur, and only when the draft differs from the committed value, to avoid creating empty analysis
  * entries on focus/blur cycles with no edits.
  *
  * When `showMorphology` is true, the morpheme breakdown is shown below the surface text. For
@@ -123,8 +122,6 @@ export function TokenChip({
   const morphemes = useMorphemes(token.ref);
   const dispatchMorphemeBreakdown = useMorphemeBreakdownDispatch();
   const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
-  const resetLosesAnnotation = useMorphemeResetLosesAnnotation(token.ref);
-  const payloadIsSolelyOwned = useMorphemePayloadIsSolelyOwned(token.ref);
   const staleMorphemesAnalysisId = useStaleMorphemesAnalysisId(token.ref);
   const confirmMorphemes = useConfirmMorphemesDispatch();
   const readOnly = useAnalysisReadOnly();
@@ -154,6 +151,7 @@ export function TokenChip({
   );
   const suggestionSource = clearingApprovedGloss ? clearedSuggestion : resolved;
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const breakdownPreview = useBreakdownPreview(token.ref, popoverOpen);
   const glossInputId = useId();
   const glossInputRef = useRef<HTMLInputElement | undefined>(undefined);
   // The suggestion combobox: an `activeIndex` of -1 means no row is highlighted, so a bare Enter
@@ -494,7 +492,7 @@ export function TokenChip({
                 </Button>
               </PopoverAnchor>
             )}
-            {popoverOpen && (
+            {breakdownPreview && (
               <MorphemeBreakdownPopover
                 glossInputId={glossInputId}
                 initialValue={
@@ -503,8 +501,8 @@ export function TokenChip({
                 // Withheld for a shared payload, which the write forks rather than re-segmenting in
                 // place, so a form this token drops survives on the tokens still reading the
                 // original and there is nothing to confirm.
-                morphemes={payloadIsSolelyOwned ? morphemes : undefined}
-                needsResetConfirm={resetLosesAnnotation}
+                morphemes={breakdownPreview.solelyOwned ? morphemes : undefined}
+                needsResetConfirm={breakdownPreview.resetLosesAnnotation}
                 onClose={() => setPopoverOpen(false)}
                 onConfirm={
                   staleMorphemesAnalysisId === undefined

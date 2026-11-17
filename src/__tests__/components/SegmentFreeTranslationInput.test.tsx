@@ -26,7 +26,7 @@ jest.mock('../../components/AnalysisStore', () => ({
 
 /** Builds a stale translation of GEN 1:1 reading `text`. */
 function stale(analysisId: string, text = 'Au début'): StaleFreeTranslation {
-  return { analysisId, segmentId: 'GEN 1:1', text };
+  return { linkId: `link-${analysisId}`, analysisId, segmentId: 'GEN 1:1', text };
 }
 
 describe('SegmentFreeTranslationInput', () => {

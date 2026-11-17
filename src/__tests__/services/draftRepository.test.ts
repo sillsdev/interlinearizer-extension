@@ -90,13 +90,13 @@ describe('DraftRepository', () => {
 
   it('rewrites only the books whose records changed since the load', async () => {
     const { storage, writes } = memoryStorage();
-    await new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+    await new DraftRepository(storage, 'src', silentLogger()).startOver(twoBookDraft());
     const repository = new DraftRepository(storage, 'src', silentLogger());
     const { draft } = await repository.exportAll();
     writes.length = 0;
     draft.analysis.segmentAnalyses[0].freeTranslation = { en: 'And then.' };
 
-    await repository.replaceAll(draft);
+    await repository.startOver(draft);
 
     expect(writes).toContain(draftAnalysisKey('src', 'EXO'));
     expect(writes).not.toContain(draftAnalysisKey('src', 'GEN'));
@@ -116,7 +116,7 @@ describe('DraftRepository', () => {
     const { storage, records, writes } = memoryStorage({ [draftKey('src')]: newer });
 
     await expect(
-      new DraftRepository(storage, 'src', silentLogger()).replaceAll(twoBookDraft()),
+      new DraftRepository(storage, 'src', silentLogger()).startOver(twoBookDraft()),
     ).rejects.toThrow(/newer than this build supports/);
 
     expect(writes).toEqual([]);
@@ -134,6 +134,58 @@ describe('DraftRepository', () => {
     expect(logger.warn).toHaveBeenCalledWith(
       `Interlinearizer: analysis shard ${draftAnalysisKey('src', 'GEN')} is not valid JSON; treating as empty`,
     );
+  });
+
+  it('reads an envelope whose shard manifest is malformed as naming no shard', async () => {
+    const { storage, records } = memoryStorage();
+    await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
+    const envelope = JSON.parse(records.get(draftKey('src')) ?? '{}');
+    records.set(draftKey('src'), JSON.stringify({ ...envelope, analysisBooks: 'GEN' }));
+
+    const { draft } = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
+
+    expect(draft).not.toHaveProperty('analysisBooks');
+  });
+
+  it.each([
+    [
+      'links without ids',
+      JSON.stringify({
+        ...emptyAnalysis(),
+        tokenAnalysisLinks: [{ ...FIXTURE_STAMPS, analysisId: 'ta', status: 'approved' }],
+      }),
+    ],
+    ['failed validation', JSON.stringify({ tokenAnalyses: 'none' })],
+  ])('reads a stored shard with %s as empty, telling its logger', async (reason, shard) => {
+    const { storage, records } = memoryStorage();
+    await seedRepository(new DraftRepository(storage, 'src', silentLogger()), twoBookDraft());
+    records.set(draftAnalysisKey('src', 'GEN'), shard);
+    const logger = silentLogger();
+
+    const { draft, unreadableBooks } = await new DraftRepository(
+      storage,
+      'src',
+      logger,
+    ).exportAll();
+
+    expect(unreadableBooks).toEqual(['GEN']);
+    expect(draft.analysis.tokenAnalysisLinks.map((l) => l.token.tokenRef)).not.toContainEqual(
+      expect.stringMatching(/^GEN /),
+    );
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining(reason));
+  });
+
+  it.each([
+    ['is not valid JSON', 'not json'],
+    ['is no draft', JSON.stringify({ sourceProjectId: 'src' })],
+  ])('starts the draft over in place of a stored envelope that %s', async (_case, stored) => {
+    const { storage, records } = memoryStorage({ [draftKey('src')]: stored });
+
+    await new DraftRepository(storage, 'src', silentLogger()).startOver(twoBookDraft());
+
+    const { draft } = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
+    expect(draft.analysis.tokenAnalyses).toHaveLength(twoBookDraft().analysis.tokenAnalyses.length);
+    expect(records.get(draftKey('src'))).not.toBe(stored);
   });
 
   describe('exportForCopy', () => {
@@ -238,47 +290,17 @@ describe('DraftRepository', () => {
      */
     async function loadedWithUnreadableGen() {
       const memory = memoryStorage();
-      await new DraftRepository(memory.storage, 'src', silentLogger()).replaceAll(twoBookDraft());
+      await new DraftRepository(memory.storage, 'src', silentLogger()).startOver(twoBookDraft());
       memory.records.set(draftAnalysisKey('src', 'GEN'), 'not json');
       const repository = new DraftRepository(memory.storage, 'src', silentLogger());
       const { draft } = await repository.exportAll();
       return { ...memory, repository, draft };
     }
 
-    it('keeps an unreadable book the draft carries nothing for', async () => {
-      const { repository, draft, records } = await loadedWithUnreadableGen();
-
-      await repository.replaceAll({ ...draft, analysis: emptyAnalysis() });
-
-      expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
-    });
-
-    it('keeps an unreadable book when the saving repository never loaded the draft', async () => {
-      const { storage, draft, records } = await loadedWithUnreadableGen();
-
-      await new DraftRepository(storage, 'src', silentLogger()).replaceAll({
-        ...draft,
-        analysis: emptyAnalysis(),
-      });
-
-      expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
-    });
-
-    it('leaves out the analysis a draft carries for an unreadable book, keeping its shard', async () => {
-      const { repository, records } = await loadedWithUnreadableGen();
-
-      await expect(repository.replaceAll(twoBookDraft())).resolves.toEqual(['GEN']);
-
-      expect(records.get(draftAnalysisKey('src', 'GEN'))).toBe('not json');
-    });
-
     it('wipes an unreadable book the draft carries nothing for once the draft is started over', async () => {
       const { repository, draft, records } = await loadedWithUnreadableGen();
 
-      await repository.replaceAll(
-        { ...draft, analysis: emptyAnalysis() },
-        { discardUnreadable: true },
-      );
+      await repository.startOver({ ...draft, analysis: emptyAnalysis() });
 
       expect(records.has(draftAnalysisKey('src', 'GEN'))).toBe(false);
     });
@@ -484,6 +506,7 @@ describe('DraftRepository', () => {
     );
 
     it.each([
+      ['no journal at all', 'null'],
       ['not valid JSON', 'not json'],
       ['malformed', JSON.stringify({ adding: [], removing: [], unsettled: 'EXO' })],
     ])(
@@ -698,7 +721,7 @@ describe('DraftRepository', () => {
       const { storage } = memoryStorage();
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.exportAll();
-      await repository.replaceAll(twoBookDraft());
+      await repository.startOver(twoBookDraft());
       const read = jest.spyOn(storage, 'read');
 
       await repository.findLinksInBooks(['GEN']);

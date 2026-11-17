@@ -80,17 +80,6 @@ export const GUTTER_LANE_STEP = 10;
 // #region Phrase split utilities
 
 /**
- * Subset of the phrase-store dispatch surface that {@link splitPhraseAtBoundary} needs. Kept local
- * so the utils layer doesn't depend on the store; the store's real dispatch type is structurally
- * compatible.
- */
-type SplitPhraseDispatch = {
-  createPhrase: (tokens: TokenSnapshot[]) => void;
-  updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
-  deletePhrase: (phraseId: string) => void;
-};
-
-/**
  * Sorts token snapshots by flat document index, without mutating the input, so a stored phrase
  * token list reflects visual left-to-right order. The single document-order sort, so slicing a
  * phrase orders its tokens identically everywhere.
@@ -154,44 +143,6 @@ export function computeSplitFreeRefs(
 }
 
 /**
- * Splits a phrase just after the given token and dispatches the resulting create, update, and
- * delete calls. The single split implementation, so no entry point can slice a phrase differently.
- *
- * Outcomes, where `before` is the half up to and including the boundary token:
- *
- * - Both halves ≤ 1 token → delete the phrase; it only had 2 tokens to begin with.
- * - Both halves ≥ 2 tokens → shrink the phrase to `before` and create a new phrase from `after`.
- * - Exactly one half has 1 token → shrink to the larger half; the solo token becomes free.
- *
- * The boundary is in document order, matching how the buttons present it, so this holds even when
- * the stored token list is out of order. Omitting the document-order map falls back to stored
- * order. A boundary that is absent or is the phrase's last token is a no-op.
- */
-export function splitPhraseAtBoundary(
-  phraseLink: PhraseAnalysisLink,
-  splitAfterTokenRef: string,
-  dispatch: SplitPhraseDispatch,
-  tokenDocOrder: ReadonlyMap<string, number> = new Map(),
-): void {
-  const slice = sliceAtBoundary(phraseLink.tokens, splitAfterTokenRef, tokenDocOrder);
-  if (!slice) return;
-  const { before, after } = slice;
-  // Splitting after the last token leaves the phrase unchanged but still dispatches an update +
-  // triggers `onSave`. Defensive (callers only place buttons between boxes) but avoids a stray write.
-  if (after.length === 0) return;
-  if (before.length <= 1 && after.length <= 1) {
-    dispatch.deletePhrase(phraseLink.id);
-    return;
-  }
-  if (before.length >= 2 && after.length >= 2) {
-    dispatch.updatePhrase(phraseLink.id, before);
-    dispatch.createPhrase(after);
-    return;
-  }
-  dispatch.updatePhrase(phraseLink.id, before.length >= 2 ? before : after);
-}
-
-/**
  * A phrase cut by a proposed segment boundary, paired with the in-phrase split point that puts each
  * resulting fragment wholly on its own side of the boundary.
  */
@@ -199,8 +150,8 @@ export type StraddledPhrase = {
   /** The phrase that would span the boundary. */
   link: PhraseAnalysisLink;
   /**
-   * The phrase's last token before the boundary; splitting just after it (via
-   * {@link splitPhraseAtBoundary}) severs the phrase cleanly at the boundary.
+   * The phrase's last token before the boundary; splitting just after it (via a split) severs the
+   * phrase cleanly at the boundary.
    */
   splitAfterTokenRef: string;
 };

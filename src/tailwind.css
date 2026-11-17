@@ -103,7 +103,7 @@
 }
 
 @utility gloss-rejected {
-  /* orange — defined for the model; no reducer produces this status in v1 */
+  /* orange — defined for the model; no command produces this status in v1 */
   @apply tw:text-orange-600 tw:dark:text-orange-400;
 }
 

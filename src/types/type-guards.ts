@@ -36,7 +36,7 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
     (!('targetProjectId' in p) || typeof p.targetProjectId === 'string') &&
     (!('pt9Import' in p) || isPt9ImportProvenance(p.pt9Import)) &&
     (!('books' in p) || (Array.isArray(p.books) && p.books.every((b) => typeof b === 'string'))) &&
-    (!('tokenAnalysisCount' in p) || typeof p.tokenAnalysisCount === 'number')
+    (!('analysisCount' in p) || typeof p.analysisCount === 'number')
   );
 }
 
@@ -332,7 +332,6 @@ export function isDraftProject(value: unknown): value is DraftProject {
     'modelVersion' in value &&
     typeof value.modelVersion === 'number' &&
     (!('targetProjectId' in value) || typeof value.targetProjectId === 'string') &&
-    (!('suggestedName' in value) || typeof value.suggestedName === 'string') &&
     (!('suggestedDescription' in value) || typeof value.suggestedDescription === 'string') &&
     (!('segmentation' in value) || isSegmentationDelta(value.segmentation)) &&
     'analysis' in value &&
@@ -348,13 +347,16 @@ export interface AnalysisViolation {
   /**
    * Which invariant was broken. `unreferencedAnalysis` is never reported for the token layer, whose
    * payloads describe a spelling rather than an occurrence and so may outrun the text.
+   * `blankMorphemeForm` marks a token payload holding a morpheme with a blank form. No stored
+   * morpheme may have a blank form.
    */
   kind:
     | 'multipleApproved'
     | 'danglingLink'
     | 'unreferencedAnalysis'
     | 'duplicateAnalysisId'
-    | 'duplicateLinkId';
+    | 'duplicateLinkId'
+    | 'blankMorphemeForm';
 
   /** Which analysis layer the violation was found in. */
   layer: 'segment' | 'token' | 'phrase';
@@ -451,14 +453,22 @@ function validateLayer<L extends AnalysisLink>(
 /**
  * Reports the invariant violations a structurally valid {@link TextAnalysis} can still carry: a
  * target with more than one `approved` link, a link whose `analysisId` names no payload, two
- * payloads or two links sharing an id, and — for the layers whose payloads may not outrun the text
- * — a payload no link references. Where {@link isTextAnalysis} asks whether the shape is readable,
- * this asks whether the collections agree with each other.
+ * payloads or two links sharing an id, a token payload holding a morpheme with a blank form, and —
+ * for the layers whose payloads may not outrun the text — a payload no link references. Where
+ * {@link isTextAnalysis} asks whether the shape is readable, this asks whether the collections agree
+ * with each other.
  *
  * Reporting is all it does: the returned violations leave the analysis untouched, so a corrupted
  * record stays readable and its corruption stays visible.
  */
 export function validateTextAnalysis(analysis: TextAnalysis): AnalysisViolation[] {
+  const blankForms = violation(
+    'blankMorphemeForm',
+    'token',
+    analysis.tokenAnalyses
+      .filter((a) => a.morphemes?.some((m) => m.form.trim() === ''))
+      .map((a) => a.id),
+  );
   return [
     ...validateLayer('segment', analysis.segmentAnalyses, analysis.segmentAnalysisLinks, {
       targetKey: (link) => link.segmentId,
@@ -468,6 +478,7 @@ export function validateTextAnalysis(analysis: TextAnalysis): AnalysisViolation[
       targetKey: (link) => link.token.tokenRef,
       requireReferenced: false,
     }),
+    ...(blankForms === undefined ? [] : [blankForms]),
     ...validateLayer('phrase', analysis.phraseAnalyses, analysis.phraseAnalysisLinks, {
       targetKey: (link) => phraseTargetKey(link.tokens),
       approvalKeys: (link) => link.tokens.map((t) => t.tokenRef),

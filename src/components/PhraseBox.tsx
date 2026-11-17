@@ -339,9 +339,7 @@ export function PhraseBox({
 
   /**
    * Adds a free token to the phrase being edited, inserting it in document order so the stored
-   * token list always matches the visual left-to-right order. Keeping the list sorted is required
-   * for `splitPhraseAtBoundary` (and its hover previews), which slice the stored array by position
-   * to determine the before/after fragments.
+   * token list always matches the visual left-to-right order.
    */
   const handleEditAdd = useCallback(
     (tokenRef: string, surfaceText: string) => {
@@ -358,7 +356,7 @@ export function PhraseBox({
   const isRealPhrase = phraseLink !== undefined;
 
   // The pop-out (✕) guard below compares against the phrase's first/last token in *document* order,
-  // not stored order. Sorted defensively here (matching `splitPhraseAtBoundary`) so unsorted data
+  // not stored order. Sorted defensively here so unsorted data
   // still places the ✕ on the visually-first/last tokens rather than wherever they sit in storage.
   const orderedPhraseRefs = phraseLink
     ? sortByDocOrder(phraseLink.tokens, tokenDocOrder).map((t) => t.tokenRef)

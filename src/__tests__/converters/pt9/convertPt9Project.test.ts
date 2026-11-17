@@ -128,29 +128,26 @@ describe('convertPt9Project', () => {
       importedAt: STAMP,
     });
 
-    expect(result.report.booksDroppedAsDuplicates).toBe(1);
+    expect(result.report.filesPt9NeverLoads).toEqual(['Interlinear_en_GEN.xml']);
     expect(result.analysis.tokenAnalyses).toHaveLength(1);
     expect(result.analysis.tokenAnalyses[0].surfaceText).toBe('hello');
   });
 
-  it('keeps the first book when duplicates share an identity and none is canonical', () => {
-    const first = {
-      ...bookWith('en', 'GEN', 'hello', 'S1', 'AA'),
-      isCanonicalPath: false,
-    };
-    const second = {
-      ...bookWith('en', 'GEN', 'ghost', 'S9', 'AA'),
-      filePath: 'Interlinear_en_GEN.xml',
+  it('converts nothing from a file PT9 never loads, even with no canonical twin', () => {
+    const stray = {
+      ...bookWith('English', 'GEN', 'hello', 'S1', 'AA'),
+      filePath: 'Interlinear_en/Interlinear_en_opy.xml',
       isCanonicalPath: false,
     };
     const result = convertPt9Project({
-      data: dataOf([first, second]),
+      data: dataOf([stray, bookWith('en', 'GEN', 'hello', 'S1', 'AA')], { lexicon: LEXICON }),
       books: [makeVerseBook([{ sid: 'GEN 1:1', text: 'hello' }])],
       importedAt: STAMP,
     });
 
-    expect(result.report.booksDroppedAsDuplicates).toBe(1);
-    expect(result.analysis.tokenAnalyses[0].surfaceText).toBe('hello');
+    expect(result.report.filesPt9NeverLoads).toEqual(['Interlinear_en/Interlinear_en_opy.xml']);
+    expect(result.analysisLanguages).toEqual(['en']);
+    expect(result.report.languages.map((language) => language.rawLanguage)).toEqual(['en']);
   });
 
   it('merges languages across books and reports a same-tag collision', () => {
@@ -271,15 +268,15 @@ describe('convertPt9Project', () => {
     expect(languages).toStrictEqual(['en', 'fr']);
   });
 
-  it('does not count an approval the cross-language merge withdraws', () => {
-    // de's unapproved verse withdraws en's approval of hello and in; de itself glosses nothing.
+  it('counts an approval that another language left unapproved', () => {
+    // en's approvals of "hello" and "in" survive de's unapproved verse. de itself glosses nothing.
     const languages = languagesOf('hello in the world', [
       verseOf('en', [mkCluster(0, 5, [['Word:hello']]), mkCluster(6, 2, [['Word:in']])]),
       verseOf('de', [mkCluster(0, 5, [['Word:hello']]), mkCluster(6, 2, [['Word:in']])], false),
       verseOf('fr', [mkCluster(13, 5, [['Word:world']])]),
     ]);
 
-    expect(languages).toStrictEqual(['fr', 'en', 'de']);
+    expect(languages).toStrictEqual(['en', 'fr', 'de']);
   });
 
   it('keeps tied tags in discovery order and merges records across them', () => {
@@ -287,7 +284,7 @@ describe('convertPt9Project', () => {
     const result = convertPt9Project({
       data: dataOf([
         bookWith('fr', 'GEN', 'hello', 'S1', 'AA'),
-        bookWith('en', 'GEN', 'hello', 'S1'),
+        bookWith('en', 'GEN', 'hello', 'S1', 'AA'),
       ]),
       books,
       importedAt: STAMP,
@@ -296,8 +293,6 @@ describe('convertPt9Project', () => {
     expect(result.analysisLanguages).toStrictEqual(['fr', 'en']);
     expect(result.report.merge.sameTagCollisions).toStrictEqual([]);
     expect(result.analysis.tokenAnalyses).toHaveLength(1);
-    // fr's verse is hashed, en's is not: strict all-hashed merging yields suggested.
-    expect(result.analysis.tokenAnalysisLinks[0].status).toBe('suggested');
     expect(result.report.merge.mergedTokenRecords).toBe(1);
   });
 
@@ -325,6 +320,31 @@ describe('convertPt9Project', () => {
     expect(result.report.merge.identicalPayloadsMerged).toBe(1);
   });
 
+  it('shares one payload between phrases analyzed identically', () => {
+    const verse = verseOf('en', [mkCluster(0, 6, [['Phrase:in the', 'S5']])]).verses[0];
+    const result = convertPt9Project({
+      data: dataOf(
+        [{ ...bookWith('en', 'GEN', 'in'), verses: [verse, { ...verse, reference: 'GEN 1:2' }] }],
+        { lexicon: LEXICON },
+      ),
+      books: [
+        makeVerseBook([
+          { sid: 'GEN 1:1', text: 'in the' },
+          { sid: 'GEN 1:2', text: 'in the' },
+        ]),
+      ],
+      importedAt: STAMP,
+    });
+
+    const [analysis] = result.analysis.phraseAnalyses;
+    expect(result.analysis.phraseAnalyses).toHaveLength(1);
+    expect(result.analysis.phraseAnalysisLinks.map((l) => l.analysisId)).toStrictEqual([
+      analysis.id,
+      analysis.id,
+    ]);
+    expect(result.report.merge.identicalPhrasePayloadsMerged).toBe(1);
+  });
+
   it('reports a missing book without records', () => {
     const result = convertPt9Project({
       data: dataOf([bookWith('en', 'EXO', 'hello', 'S1')]),
@@ -336,7 +356,7 @@ describe('convertPt9Project', () => {
     expect(result.analysis.tokenAnalyses).toHaveLength(0);
   });
 
-  it('counts and drops a book of interlinear data missing its language or book id', () => {
+  it('lists and drops a book of interlinear data missing its language or book id', () => {
     const result = convertPt9Project({
       data: dataOf([
         { bookId: 'GEN', verses: [], filePath: 'Interlinear_x.xml', isCanonicalPath: false },
@@ -347,7 +367,10 @@ describe('convertPt9Project', () => {
       importedAt: STAMP,
     });
 
-    expect(result.report.booksMissingIdentity).toBe(2);
+    expect(result.report.filesPt9NeverLoads).toStrictEqual([
+      'Interlinear_x.xml',
+      'Interlinear_y.xml',
+    ]);
     expect(result.report.languages.map((l) => l.rawLanguage)).toStrictEqual(['en']);
     expect(result.analysis.tokenAnalyses).toHaveLength(1);
   });
@@ -414,30 +437,29 @@ describe('convertPt9Project', () => {
       expect(book.versesHashed).toBe(6);
       expect(book.versesNotFound).toBe(33);
       expect(book.clustersTotal).toBe(61);
-      expect(book.clustersConverted).toBe(24);
+      expect(book.clustersConverted).toBe(20);
       expect(book.clusterDrops).toStrictEqual({
         verseNotFound: 37,
         formMismatch: 0,
+        parseFormMismatch: 4,
         frontMatter: 0,
         lemmaOrOther: 0,
         duplicateCluster: 0,
         unparseableLexemeId: 0,
+        blankMorphemeForm: 0,
       });
       expect(book.ambiguousAnchors).toBe(1);
       expect(book.punctuationEntriesIgnored).toBe(1);
       expect(book.phrasesConverted).toBe(0);
     });
 
-    it('merges the hello word and parse pair with lexicon glosses, approved', () => {
+    it('keeps the hello word gloss but drops the parse that spells helloing', () => {
       const link = result.analysis.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'MAT 1:1:0');
       expect(link?.status).toBe('approved');
       const analysis = result.analysis.tokenAnalyses.find((a) => a.id === link?.analysisId);
       expect(analysis?.surfaceText).toBe('hello');
       expect(analysis?.gloss).toStrictEqual({ en: 'greeting' });
-      expect(analysis?.morphemes).toStrictEqual([
-        { id: 'm0', form: 'hello', writingSystem: 'en', gloss: { en: 'greet' } },
-        { id: 'm1', form: 'ing', writingSystem: 'en', gloss: { en: 'PROG' } },
-      ]);
+      expect(analysis?.morphemes).toBeUndefined();
     });
 
     it('imports a dangling sense selection without gloss text', () => {

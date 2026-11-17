@@ -19,6 +19,7 @@ import { withTooltipProvider } from './test-helpers';
 const mockCreatePhrase = jest.fn();
 const mockUpdatePhrase = jest.fn();
 const mockDeletePhrase = jest.fn();
+const mockSplitPhrase = jest.fn();
 const mockMergePhrases = jest.fn();
 
 /** What the mocked useAnalysisReadOnly returns; module state, reset by the afterEach below. */
@@ -37,6 +38,7 @@ jest.mock('../../components/AnalysisStore', () => ({
       updatePhrase: mockUpdatePhrase,
       deletePhrase: mockDeletePhrase,
       mergePhrases: mockMergePhrases,
+      splitPhrase: mockSplitPhrase,
     }),
 }));
 
@@ -90,6 +92,7 @@ describe('TokenLinkIcon', () => {
     mockCreatePhrase.mockClear();
     mockUpdatePhrase.mockClear();
     mockDeletePhrase.mockClear();
+    mockSplitPhrase.mockClear();
     mockMergePhrases.mockClear();
   });
 
@@ -151,7 +154,7 @@ describe('TokenLinkIcon', () => {
     );
   });
 
-  it('clicking unlink splits the phrase through the dispatch (deletePhrase for 2-token phrase)', async () => {
+  it('clicking unlink splits the phrase after the token before it', async () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     renderIcon(
       <TokenLinkIcon
@@ -167,7 +170,7 @@ describe('TokenLinkIcon', () => {
       },
     );
     await userEvent.click(screen.getByTestId('token-unlink-btn'));
-    expect(mockDeletePhrase).toHaveBeenCalledWith('p1');
+    expect(mockSplitPhrase).toHaveBeenCalledWith(phraseLink, 'tok-a');
   });
 
   it('clears onHoverPhrase when unlink button is clicked', async () => {

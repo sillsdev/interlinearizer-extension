@@ -2,22 +2,22 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
-import { Collator } from 'platform-bible-utils';
+import papi, { logger } from '@papi/frontend';
+import type { Book, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { useEffect, type ReactNode } from 'react';
-import { AnalysisStoreProvider, useGlossDispatch } from '../../components/AnalysisStore';
+import { useGlossDispatch } from '../../components/AnalysisStore';
 import ConcordancePanel, { CONCORDANCE_PANEL_STRING_KEYS } from '../../components/ConcordancePanel';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
-import { ConcordanceEntriesContext, SourceTextContext } from '../../components/SourceTextContext';
-import type { SourceText } from '../../hooks/useSourceTextReader';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { buildConcordanceEntries, indexBook, type ConcordanceEntry } from '../../utils/concordance';
+import type { TextReadStatus } from '../../types/text-read-status';
+import { indexBook } from '../../utils/concordance';
+import type { FakeText } from '../cache/fake-host';
+import { renderWithAnalysis, settle } from './analysis-provider';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
-jest.mock('../../utils/host-path', () => ({ hostPathEnabled: () => false }));
 jest.mock('../../components/TextReadingStatus');
 
 /**
@@ -50,30 +50,32 @@ function GlossEditProbe() {
   return undefined;
 }
 
-/** Genesis and Exodus, one verse each, "light" occurring in both. */
-const ENTRIES = buildConcordanceEntries(
-  [
-    indexBook(makeVerseBook([{ sid: 'GEN 1:3', text: 'Let there be light' }])),
-    indexBook(makeVerseBook([{ sid: 'EXO 10:23', text: 'had light' }])),
-  ],
-  new Collator('en'),
-);
+/** Genesis, the book the view has open. */
+const GENESIS = makeVerseBook([{ sid: 'GEN 1:3', text: 'Let there be light' }]);
 
-/** Builds the source text as the reading hook hands it over, ready by default. */
-function makeText(overrides: Partial<SourceText> = {}): SourceText {
+/** Exodus, where "light" occurs again. */
+const EXODUS = makeVerseBook([{ sid: 'EXO 10:23', text: 'had light' }]);
+
+/**
+ * The source text as the host reads it whole: read, with `books` in its concordance, Genesis and
+ * Exodus by default.
+ */
+function textOf({
+  books = [GENESIS, EXODUS],
+  status = { booksRead: 2, bookCount: 2, failedBookIds: [] },
+}: Partial<{ books: Book[]; status: TextReadStatus }> = {}): FakeText {
   return {
-    status: 'ready',
-    booksRead: 2,
-    bookCount: 2,
-    readings: new Map(),
-    liveVersions: new Map(),
-    isPartial: false,
-    textForms: undefined,
-    refresh: () => {},
-    request: () => {},
-    ...overrides,
+    status: () => status,
+    isFormInText: () => undefined,
+    concordanceBooks: () => books.map(indexBook),
   };
 }
+
+/** A text the host is still reading. */
+const UNREAD: FakeText = {
+  status: () => ({ booksRead: 1, bookCount: 2, failedBookIds: [] }),
+  isFormInText: () => undefined,
+};
 
 /** Builds an approved link from `tokenRef` to the analysis. */
 function link(analysisId: string, tokenRef: string): TokenAnalysisLink {
@@ -101,9 +103,8 @@ function panelStrings(overrides: Record<string, string> = {}): Record<string, st
 const PANEL_STRINGS = panelStrings();
 
 type PanelOptions = Partial<{
-  text: SourceText;
-  /** The entries listed, {@link ENTRIES} by default. */
-  entries: readonly ConcordanceEntry[];
+  /** The source text the host reads, {@link textOf}'s default by default. */
+  text: FakeText;
   analysis: TextAnalysis;
   currentBook: string;
   currentBookName: string;
@@ -115,37 +116,40 @@ type PanelOptions = Partial<{
   beside: ReactNode;
 }>;
 
-/** The panel inside a seeded analysis store and a real navigation provider. */
+/** The panel inside a real navigation provider, for {@link renderPanel} to seed an analysis under. */
 function panelTree(options: PanelOptions = {}) {
   return (
     <InterlinearNavProvider
       useWebViewScrollGroupScrRef={makeScrollGroupHook(defaultScrRef, options.setScrRef)}
     >
-      <AnalysisStoreProvider
-        analysisLanguage="en"
-        initialAnalysis={options.analysis ?? emptyAnalysis()}
-      >
+      <>
         <FocusRequestProbe bookCode="EXO" />
         {options.beside}
-        <SourceTextContext.Provider value={options.text ?? makeText()}>
-          <ConcordanceEntriesContext.Provider value={options.entries ?? ENTRIES}>
-            <ConcordancePanel
-              currentBook={options.currentBook ?? 'GEN'}
-              currentBookName={options.currentBookName ?? 'Genesis'}
-              localizedStrings={options.localizedStrings ?? PANEL_STRINGS}
-              onClose={options.onClose ?? (() => {})}
-              onShowCatalog={options.onShowCatalog ?? (() => {})}
-              sourceLanguageTag="en"
-            />
-          </ConcordanceEntriesContext.Provider>
-        </SourceTextContext.Provider>
-      </AnalysisStoreProvider>
+        <ConcordancePanel
+          currentBook={options.currentBook ?? 'GEN'}
+          currentBookName={options.currentBookName ?? 'Genesis'}
+          localizedStrings={options.localizedStrings ?? PANEL_STRINGS}
+          onClose={options.onClose ?? (() => {})}
+          onShowCatalog={options.onShowCatalog ?? (() => {})}
+          sourceLanguageTag="en"
+        />
+      </>
     </InterlinearNavProvider>
   );
 }
 
-function renderPanel(options: PanelOptions = {}) {
-  return render(panelTree(options));
+/**
+ * Renders the panel over `options.analysis`, an empty analysis by default, once it has the host's
+ * answers.
+ */
+async function renderPanel(options: PanelOptions = {}) {
+  const rendered = await renderWithAnalysis(panelTree(options), {
+    analysis: options.analysis ?? emptyAnalysis(),
+    book: GENESIS,
+    text: options.text ?? textOf(),
+  });
+  await rendered.settle();
+  return rendered;
 }
 
 /** The row listing `form`. */
@@ -160,46 +164,110 @@ beforeEach(() => {
 });
 
 describe('ConcordancePanel', () => {
-  it('shows how far reading the books has got while the index is built', () => {
-    renderPanel({ text: makeText({ status: 'loading' }) });
+  it('shows how far reading the books has got while the index is built', async () => {
+    await renderPanel({ text: UNREAD });
 
     expect(screen.getByTestId('text-reading-status')).toBeInTheDocument();
     expect(screen.queryByTestId('concordance-row')).not.toBeInTheDocument();
   });
 
-  it('says so when the books could not be listed', () => {
-    renderPanel({ text: makeText({ status: 'error' }) });
+  it('says so when the books could not be listed', async () => {
+    jest.spyOn(logger, 'warn').mockImplementation(() => {});
+    await renderPanel({
+      text: {
+        ...UNREAD,
+        status: () => {
+          throw new Error('offline');
+        },
+      },
+    });
 
     expect(screen.getByTestId('text-reading-status')).toBeInTheDocument();
     expect(screen.queryByTestId('concordance-row')).not.toBeInTheDocument();
     expect(screen.queryByTestId('concordance-empty')).not.toBeInTheDocument();
   });
 
-  it('says so when the text has no words', () => {
-    renderPanel({ entries: [] });
+  it('says so when the text has no words', async () => {
+    await renderPanel({ text: textOf({ books: [] }) });
 
     expect(screen.getByTestId('concordance-empty')).toHaveTextContent(
       '%interlinearizer_concordance_empty%',
     );
   });
 
-  it('lists what was read beside a notice when a book failed to read', () => {
-    renderPanel({ text: makeText({ isPartial: true }) });
+  /** The panel's strings with templates for the reading summary. */
+  const SUMMARY_STRINGS = panelStrings({
+    '%interlinearizer_concordance_booksRead%': 'Read {count}',
+    '%interlinearizer_concordance_unreadBooks%': 'Unread: {books}',
+  });
 
-    expect(screen.getByTestId('concordance-partial')).toHaveTextContent(
-      '%interlinearizer_concordance_partial%',
-    );
+  it('says how many books were read once every book is read', async () => {
+    await renderPanel({ localizedStrings: SUMMARY_STRINGS });
+
+    expect(screen.getByTestId('concordance-books-read')).toHaveTextContent('Read 2');
+    expect(screen.queryByTestId('concordance-unread-books')).not.toBeInTheDocument();
+  });
+
+  it('leaves a book with no text out of the books read', async () => {
+    await renderPanel({ text: textOf({ books: [GENESIS] }), localizedStrings: SUMMARY_STRINGS });
+
+    expect(screen.getByTestId('concordance-books-read')).toHaveTextContent('Read 1');
+  });
+
+  it('shows no reading summary while the text is still being read', async () => {
+    await renderPanel({ text: UNREAD });
+
+    expect(screen.queryByTestId('concordance-read-summary')).not.toBeInTheDocument();
+  });
+
+  it('names the books that failed to read beside what was read', async () => {
+    await renderPanel({
+      text: textOf({
+        books: [GENESIS],
+        status: { booksRead: 3, bookCount: 3, failedBookIds: ['EXO', 'LEV'] },
+      }),
+      localizedStrings: SUMMARY_STRINGS,
+    });
+
+    expect(screen.getByTestId('concordance-books-read')).toHaveTextContent('Read 1');
+    expect(screen.getByTestId('concordance-unread-books')).toHaveTextContent('Unread: EXO, LEV');
     expect(screen.getAllByTestId('concordance-row')).not.toHaveLength(0);
   });
 
-  it('shows no partial-reading notice when every book was read', () => {
-    renderPanel();
+  it('reads the failed books again from its retry control', async () => {
+    const retry = jest.fn();
+    await renderPanel({
+      text: {
+        ...textOf({
+          books: [GENESIS],
+          status: { booksRead: 2, bookCount: 2, failedBookIds: ['EXO'] },
+        }),
+        retry,
+      },
+    });
 
-    expect(screen.queryByTestId('concordance-partial')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('concordance-retry'));
+
+    expect(retry).toHaveBeenCalled();
   });
 
-  it('lists every form of the text, most frequent first', () => {
-    renderPanel();
+  it('offers no retry once every book has been read', async () => {
+    await renderPanel();
+
+    expect(screen.queryByTestId('concordance-retry')).not.toBeInTheDocument();
+  });
+
+  it('says the text could not be read, not that it has no words, when every book failed', async () => {
+    await renderPanel({
+      text: textOf({ books: [], status: { booksRead: 1, bookCount: 1, failedBookIds: ['GEN'] } }),
+    });
+
+    expect(screen.getByTestId('text-reading-status')).toBeInTheDocument();
+    expect(screen.queryByTestId('concordance-empty')).not.toBeInTheDocument();
+  });
+
+  it('lists every form of the text, most frequent first', async () => {
+    await renderPanel();
 
     expect(screen.getAllByTestId('concordance-row').map((r) => r.dataset.form)).toEqual([
       'light',
@@ -210,21 +278,21 @@ describe('ConcordancePanel', () => {
     ]);
   });
 
-  it('counts each form in the current book, naming the book', () => {
-    renderPanel({ currentBook: 'EXO', currentBookName: 'Exodus' });
+  it('counts each form in the current book, naming the book', async () => {
+    await renderPanel({ currentBook: 'EXO', currentBookName: 'Exodus' });
 
     const count = within(rowFor('let')).getByTestId('concordance-row-count-in-book');
     expect(count).toHaveTextContent('0');
     expect(count).toHaveTextContent('in Exodus');
   });
 
-  it('reads a form as analyzed where its occurrences carry approved analyses', () => {
+  it('reads a form as analyzed where its occurrences carry approved analyses', async () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'a1', surfaceText: 'light' }],
       tokenAnalysisLinks: [link('a1', 'GEN 1:3:13')],
     };
-    renderPanel({ analysis });
+    await renderPanel({ analysis });
 
     expect(within(rowFor('light')).getByTestId('concordance-row-status')).toHaveAttribute(
       'data-status',
@@ -232,10 +300,11 @@ describe('ConcordancePanel', () => {
     );
   });
 
-  it('follows a gloss approved beside the panel', () => {
-    renderPanel({ beside: <GlossEditProbe /> });
+  it('follows a gloss approved beside the panel', async () => {
+    await renderPanel({ beside: <GlossEditProbe /> });
 
     act(() => editGloss('EXO 10:23:4', 'light', 'light'));
+    await settle();
 
     expect(within(rowFor('light')).getByTestId('concordance-row-status')).toHaveAttribute(
       'data-status',
@@ -246,6 +315,7 @@ describe('ConcordancePanel', () => {
   describe('jumping to an occurrence', () => {
     async function clickOccurrence(form: string, tokenRef: string): Promise<void> {
       await userEvent.click(within(rowFor(form)).getByTestId('concordance-row-toggle'));
+      await settle();
       const occurrence = within(rowFor(form))
         .getAllByTestId('concordance-occurrence')
         .find((o) => o.dataset.tokenRef === tokenRef);
@@ -255,7 +325,7 @@ describe('ConcordancePanel', () => {
 
     it('navigates to the verse the occurrence sits in', async () => {
       const setScrRef = jest.fn();
-      renderPanel({ setScrRef });
+      await renderPanel({ setScrRef });
 
       await clickOccurrence('light', 'EXO 10:23:4');
 
@@ -265,7 +335,7 @@ describe('ConcordancePanel', () => {
     });
 
     it('asks for the occurrence itself to be focused', async () => {
-      renderPanel();
+      await renderPanel();
 
       await clickOccurrence('light', 'EXO 10:23:4');
 
@@ -273,7 +343,7 @@ describe('ConcordancePanel', () => {
     });
 
     it('marks the row the jump came from', async () => {
-      renderPanel();
+      await renderPanel();
 
       await clickOccurrence('light', 'EXO 10:23:4');
 
@@ -282,37 +352,9 @@ describe('ConcordancePanel', () => {
     });
   });
 
-  it('reads the text again on refresh', async () => {
-    const refresh = jest.fn();
-    renderPanel({ text: makeText({ refresh }) });
-
-    await userEvent.click(screen.getByTestId('concordance-refresh'));
-
-    expect(refresh).toHaveBeenCalled();
-  });
-
-  it('names the refresh action on hover', () => {
-    renderPanel({
-      localizedStrings: panelStrings({
-        '%interlinearizer_concordance_refresh%': 'Read the text again',
-      }),
-    });
-
-    expect(screen.getByTestId('concordance-refresh')).toHaveAttribute(
-      'title',
-      'Read the text again',
-    );
-  });
-
-  it('offers no refresh while the text is being read', () => {
-    renderPanel({ text: makeText({ status: 'loading' }) });
-
-    expect(screen.getByTestId('concordance-refresh')).toBeDisabled();
-  });
-
   it('closes from its own close control', async () => {
     const onClose = jest.fn();
-    renderPanel({ onClose });
+    await renderPanel({ onClose });
 
     await userEvent.click(screen.getByTestId('concordance-close'));
 
@@ -321,7 +363,7 @@ describe('ConcordancePanel', () => {
 
   it('switches to the analysis catalog from its tab', async () => {
     const onShowCatalog = jest.fn();
-    renderPanel({ onShowCatalog });
+    await renderPanel({ onShowCatalog });
 
     await userEvent.click(screen.getByTestId('side-panel-tab-catalog'));
 
@@ -329,50 +371,73 @@ describe('ConcordancePanel', () => {
   });
 
   describe('with a long list', () => {
-    const MANY = buildConcordanceEntries(
-      [
-        indexBook(
-          makeVerseBook([
-            {
-              sid: 'GEN 1:1',
-              text: Array.from({ length: 100 }, (_unused, index) => `w${index}`).join(' '),
-            },
-          ]),
-        ),
-      ],
-      new Collator('en'),
-    );
+    const MANY = makeVerseBook([
+      {
+        sid: 'GEN 1:1',
+        text: Array.from({ length: 100 }, (_unused, index) => `w${index}`).join(' '),
+      },
+    ]);
 
-    it('mounts only part of it', () => {
-      renderPanel({ entries: MANY });
+    it('mounts only part of it', async () => {
+      await renderPanel({ text: textOf({ books: [MANY] }) });
 
       const mounted = screen.getAllByTestId('concordance-row').length;
       expect(mounted).toBeGreaterThan(0);
       expect(mounted).toBeLessThan(100);
     });
 
-    it('mounts more as the end of what is mounted comes into view', () => {
-      renderPanel({ entries: MANY });
+    it('mounts more as the end of what is mounted comes into view', async () => {
+      await renderPanel({ text: textOf({ books: [MANY] }) });
       const before = screen.getAllByTestId('concordance-row').length;
 
       act(() => {
         global.triggerIntersection(screen.getByTestId('concordance-rows-sentinel'), true);
       });
+      await settle();
 
       expect(screen.getAllByTestId('concordance-row').length).toBeGreaterThan(before);
     });
 
-    it('starts over at its first rows once a refresh has read the text again', () => {
-      const { rerender } = renderPanel({ entries: MANY });
-      const initial = screen.getAllByTestId('concordance-row').length;
+    it('grows no further than a chunk past the rows that have arrived', async () => {
+      await renderPanel({ text: textOf({ books: [MANY] }) });
+      const before = screen.getAllByTestId('concordance-row').length;
+
       act(() => {
         global.triggerIntersection(screen.getByTestId('concordance-rows-sentinel'), true);
       });
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('concordance-rows-sentinel'), true);
+      });
+      await settle();
 
-      rerender(panelTree({ text: makeText({ status: 'loading' }), entries: [] }));
-      rerender(panelTree({ entries: MANY }));
+      expect(screen.getAllByTestId('concordance-row')).toHaveLength(before * 2);
+    });
 
-      expect(screen.getAllByTestId('concordance-row')).toHaveLength(initial);
+    it('fetches a failed page again when the end of the list comes back into view', async () => {
+      await renderPanel({ text: textOf({ books: [MANY] }) });
+      const before = screen.getAllByTestId('concordance-row').length;
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      let failNext = true;
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.getConcordance' && failNext) {
+          failNext = false;
+          throw new Error('offline');
+        }
+        return serve?.(...call);
+      });
+      jest.spyOn(logger, 'warn').mockImplementation(() => {});
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('concordance-rows-sentinel'), true);
+      });
+      await settle();
+      expect(screen.getAllByTestId('concordance-row')).toHaveLength(before);
+
+      act(() => {
+        global.triggerIntersection(screen.getByTestId('concordance-rows-sentinel'), true);
+      });
+      await settle();
+
+      expect(screen.getAllByTestId('concordance-row').length).toBeGreaterThan(before);
     });
   });
 });

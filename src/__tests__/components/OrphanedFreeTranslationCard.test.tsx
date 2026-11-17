@@ -22,7 +22,12 @@ const STRINGS = {
 
 /** Renders the card for a translation of a piece of GEN 1:5 split off mid-verse, reading `text`. */
 function renderCard(text = 'Au début') {
-  const translation: StaleFreeTranslation = { analysisId: 'sa-1', segmentId: 'GEN 1:5:12', text };
+  const translation: StaleFreeTranslation = {
+    linkId: 'link-sa-1',
+    analysisId: 'sa-1',
+    segmentId: 'GEN 1:5:12',
+    text,
+  };
   return render(
     withTooltipProvider(
       <OrphanedFreeTranslationCard translation={translation} localizedStrings={STRINGS} />,

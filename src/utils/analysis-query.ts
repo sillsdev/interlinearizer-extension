@@ -3,7 +3,7 @@ import type {
   Confidence,
   MorphemeAnalysis,
   MultiString,
-  Segment,
+  ReadonlySegment,
   SenseRef,
   TextAnalysis,
   TokenAnalysis,
@@ -105,8 +105,8 @@ export interface CatalogFilters {
   /** Keeps only rows with a stale location, in one of the selected books where `books` is active. */
   stale?: boolean;
   /**
-   * Keeps only rows whose form isn't in {@link CatalogQuery.textForms}, and none while that is
-   * unset.
+   * Keeps only rows whose form {@link CatalogQuery.isFormInText} says the text lacks, and none while
+   * the text is unread.
    */
   notInText?: boolean;
   /** Keeps only rows with no gloss in the scope's analysis language. */
@@ -138,8 +138,11 @@ export interface CatalogQuery {
   surfaceCollator: Collator;
   /** Collates glosses, so ordering follows the analysis language rather than code points. */
   glossCollator: Collator;
-  /** Every normalized word form the source text holds, `undefined` until every book has been read. */
-  textForms?: ReadonlySet<string>;
+  /**
+   * Whether the source text holds a normalized word form, `undefined` until every book has been
+   * read. Absent, the text counts as unread.
+   */
+  isFormInText?: (form: string) => boolean | undefined;
 }
 
 /**
@@ -163,7 +166,9 @@ export interface CatalogUsage {
  * Maps each heading among a book's segments, taken in document order, to where it sits, for a
  * {@link CatalogScope} to order heading usages by.
  */
-export function placeHeadings(segments: readonly Segment[]): ReadonlyMap<string, HeadingPlacement> {
+export function placeHeadings(
+  segments: readonly ReadonlySegment[],
+): ReadonlyMap<string, HeadingPlacement> {
   const placements = new Map<string, HeadingPlacement>();
   segments.forEach((segment, order) => {
     if (!segment.heading) return;
@@ -274,9 +279,8 @@ function collapseLineEndings(text: string): string {
 
 /**
  * The folded text each analysis is searched by, held against the record it was folded from, so a
- * write re-folds the one analysis it replaced. A record edited in place rather than replaced would
- * keep the fold it arrived with: the store's own records are frozen and throw on such an edit, so
- * the fragility is confined to records assembled outside it.
+ * write re-folds the one analysis it replaced. A record edited in place keeps its old fold, so
+ * callers must replace a record rather than edit it. Nothing enforces this.
  */
 const searchTextByAnalysis = new WeakMap<TokenAnalysis, string>();
 
@@ -608,7 +612,7 @@ function passesFeatures(row: CatalogRow, selected: CatalogFilters['features']): 
 function passesFilters(
   row: CatalogRow,
   filters: CatalogFilters,
-  textForms: ReadonlySet<string> | undefined,
+  isFormInText: ((form: string) => boolean | undefined) | undefined,
 ): boolean {
   const { books } = filters;
   if (isActive(books) && !books.some((book) => row.books.has(book))) return false;
@@ -621,7 +625,7 @@ function passesFilters(
     !row.staleLocations.some((place) => !isActive(books) || books.includes(place.book))
   )
     return false;
-  if (filters.notInText && (!textForms || textForms.has(row.form))) return false;
+  if (filters.notInText && isFormInText?.(row.form) !== false) return false;
   if (filters.missingGloss && row.gloss !== '') return false;
   if (filters.morphemes) {
     const hasMorphemes = row.morphemes.length > 0;
@@ -687,7 +691,7 @@ export function applyCatalogQuery(
   return rows
     .filter(
       (row) =>
-        row.searchText.includes(search) && passesFilters(row, query.filters, query.textForms),
+        row.searchText.includes(search) && passesFilters(row, query.filters, query.isFormInText),
     )
     .toSorted((a, b) => compareBySort(a, b, query));
 }

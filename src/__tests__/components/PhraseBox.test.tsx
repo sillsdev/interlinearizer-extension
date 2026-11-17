@@ -5,7 +5,6 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import type { PhraseAnalysisLink, SenseRef, Token } from 'interlinearizer';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { PhraseBox } from '../../components/PhraseBox';
 import {
   PhraseStripProvider,
@@ -19,6 +18,7 @@ import {
   withSplitPhrase,
 } from '../test-helpers';
 import {
+  EmptyAnalysisProvider,
   mockKeyAsValueLocalizedStrings,
   testSenseRef,
   withLexicon,
@@ -50,8 +50,8 @@ afterEach(() => {
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   useAnalysisReadOnly: () => mockAnalysisReadOnly.value,
-  /** Pass-through AnalysisStoreProvider stub. */
-  AnalysisStoreProvider({ children }: Readonly<{ children: import('react').ReactNode }>) {
+  /** Pass-through SessionAnalysisProvider stub. */
+  SessionAnalysisProvider({ children }: Readonly<{ children: import('react').ReactNode }>) {
     return children;
   },
   useGloss: (...args: Parameters<typeof mockUseGloss>) => mockUseGloss(...args),
@@ -198,11 +198,11 @@ function requiredProps(): PhraseBoxTestProps {
  */
 function renderBox(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
   return render(
-    <AnalysisStoreProvider analysisLanguage="und">
+    <EmptyAnalysisProvider>
       <PhraseStripProvider value={makePhraseStripContext(context)}>
         {withTooltipProvider(ui)}
       </PhraseStripProvider>
-    </AnalysisStoreProvider>,
+    </EmptyAnalysisProvider>,
   );
 }
 
@@ -810,8 +810,7 @@ describe('PhraseBox', () => {
 
   it('splits a discontiguous phrase at the last intra-box boundary in document order even when the stored token list is scrambled', async () => {
     // Phrase displayed as [A,C,D,E] (A discontiguous, [C,D,E] a contiguous run) but stored out of
-    // document order. The split uses document order, so clicking the last intra-box boundary (D|E)
-    // frees E and keeps [A,C,D].
+    // document order. The buttons follow document order, so the last intra-box boundary is D|E.
     const phraseLink: PhraseAnalysisLink = {
       ...FIXTURE_STAMPS,
       id: 'phrase-x',
@@ -831,14 +830,13 @@ describe('PhraseBox', () => {
       ['E', 3],
     ]);
     mockUsePhraseLinkForToken.mockReturnValue(phraseLink);
-    const updatePhraseSpy = jest.fn();
-    const createPhraseSpy = jest.fn();
-    const deletePhraseSpy = jest.fn();
+    const splitPhraseSpy = jest.fn();
     mockUsePhraseDispatch.mockReturnValue(
       withSplitPhrase({
-        createPhrase: createPhraseSpy,
-        updatePhrase: updatePhraseSpy,
-        deletePhrase: deletePhraseSpy,
+        createPhrase: jest.fn(),
+        updatePhrase: jest.fn(),
+        deletePhrase: jest.fn(),
+        splitPhrase: splitPhraseSpy,
       }),
     );
     renderBox(
@@ -855,13 +853,7 @@ describe('PhraseBox', () => {
     // Click the last intra-box button (the D|E boundary in document order).
     await userEvent.click(unlinkBtns[unlinkBtns.length - 1]);
 
-    // Phrase shrinks to [A,C,D] in document order, E freed.
-    expect(updatePhraseSpy).toHaveBeenCalledWith('phrase-x', [
-      { tokenRef: 'A', surfaceText: 'A' },
-      { tokenRef: 'C', surfaceText: 'C' },
-      { tokenRef: 'D', surfaceText: 'D' },
-    ]);
-    expect(createPhraseSpy).not.toHaveBeenCalled();
+    expect(splitPhraseSpy).toHaveBeenCalledWith(phraseLink, 'D');
   });
 
   it('hovering an intra-phrase unlink button reports the would-be-free tokens to onHoverSplitFreeTokens', async () => {
@@ -926,11 +918,13 @@ describe('PhraseBox', () => {
     mockUsePhraseLinkForToken.mockReturnValue(phraseLink);
     const updatePhraseSpy = jest.fn();
     const deletePhraseSpy = jest.fn();
+    const splitPhraseSpy = jest.fn();
     mockUsePhraseDispatch.mockReturnValue(
       withSplitPhrase({
         createPhrase: jest.fn(),
         updatePhrase: updatePhraseSpy,
         deletePhrase: deletePhraseSpy,
+        splitPhrase: splitPhraseSpy,
       }),
     );
     renderBox(
@@ -943,17 +937,13 @@ describe('PhraseBox', () => {
       { tokenDocOrder: docOrder },
     );
 
-    // Click the B|C unlink button (second intra-box boundary). Both halves are length 2, so the
-    // split shrinks the phrase to [A,B] and creates [C,D], popping nothing out.
+    // Click the B|C unlink button (second intra-box boundary), which splits after B.
     const unlinkBtns = screen.getAllByTestId('token-unlink-btn');
     await userEvent.click(unlinkBtns[1]);
 
     expect(deletePhraseSpy).not.toHaveBeenCalled();
-    expect(updatePhraseSpy).toHaveBeenCalledTimes(1);
-    expect(updatePhraseSpy).toHaveBeenCalledWith('phrase-x', [
-      { tokenRef: 'A', surfaceText: 'A' },
-      { tokenRef: 'B', surfaceText: 'B' },
-    ]);
+    expect(updatePhraseSpy).not.toHaveBeenCalled();
+    expect(splitPhraseSpy.mock.calls).toStrictEqual([[phraseLink, 'B']]);
   });
 
   it('inserts an added token in document order when tokenDocOrder places it before existing tokens', async () => {

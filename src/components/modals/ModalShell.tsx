@@ -35,6 +35,8 @@ import { useState, type ReactNode } from 'react';
  * @param props.returnFocusTo - Element to focus once the modal closes, for a modal opened from
  *   something that is gone by the time it mounts, such as a menu item. Defaults to whatever held
  *   focus when the modal opened.
+ * @param props.allowsUndo - Whether undo and redo may run while this modal is open, because it
+ *   shows the draft as it is now rather than as it was when the modal opened.
  */
 export function ModalShell({
   titleTestId,
@@ -43,6 +45,7 @@ export function ModalShell({
   width,
   onClose,
   returnFocusTo,
+  allowsUndo = false,
   children,
 }: Readonly<{
   titleTestId: string;
@@ -51,6 +54,7 @@ export function ModalShell({
   width: string;
   onClose?: () => void;
   returnFocusTo?: HTMLElement;
+  allowsUndo?: boolean;
   children?: ReactNode;
 }>) {
   // eslint-disable-next-line no-null/no-null -- the platform's container prop takes null until the dialog mounts
@@ -88,6 +92,7 @@ export function ModalShell({
         }}
         ref={setDialogEl}
         showCloseButton={false}
+        data-allows-undo={allowsUndo || undefined}
       >
         <PopoverPortalContainerProvider container={dialogEl}>
           <DialogTitle

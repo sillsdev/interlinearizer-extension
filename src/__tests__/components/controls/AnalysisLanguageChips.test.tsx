@@ -1,0 +1,518 @@
+/// <reference types="jest" />
+/// <reference types="@testing-library/jest-dom" />
+
+import { logger } from '@papi/frontend';
+import { useLocalizedStrings } from '@papi/frontend/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import AnalysisLanguageChips from '../../../components/controls/AnalysisLanguageChips';
+import type { TextCountsByTag } from '../../../utils/text-counts';
+
+const LOCALIZED: Record<string, string> = {
+  '%interlinearizer_languageChips_menu%': '{tag} options',
+  '%interlinearizer_languageChips_menu_primary%': '{tag} (primary) options',
+  '%interlinearizer_languageChips_change%': 'Change code…',
+  '%interlinearizer_languageChips_makePrimary%': 'Make primary',
+  '%interlinearizer_languageChips_remove%': 'Remove',
+  '%interlinearizer_languageChips_add%': 'Add',
+  '%interlinearizer_languagePicker_addTitle%': 'Add analysis language',
+  '%interlinearizer_languagePicker_changeTitle%': 'Change {tag}',
+  '%interlinearizer_languagePicker_codeLabel%': 'Language code',
+  '%interlinearizer_languagePicker_placeholder%': 'e.g. en',
+  '%interlinearizer_languagePicker_invalid%': "{tag} isn't a valid language code.",
+  '%interlinearizer_languagePicker_listed%': '{tag} is already an analysis language.',
+  '%interlinearizer_languagePicker_hiddenHeading%': 'Hidden text',
+  '%interlinearizer_languagePicker_hiddenItem%': '{tag}: {counts}',
+  '%interlinearizer_languagePicker_add%': 'Add code',
+  '%interlinearizer_languagePicker_change%': 'Change code',
+  '%interlinearizer_languagePicker_cancel%': 'Cancel',
+  '%interlinearizer_languageText_glosses%': '{glosses} glosses',
+  '%interlinearizer_languageText_freeTranslations%': '{freeTranslations} free translations',
+  '%interlinearizer_languageText_both%':
+    '{glosses} glosses and {freeTranslations} free translations',
+  '%interlinearizer_confirm_changeLanguage_title%': 'Change {from} to {to}?',
+  '%interlinearizer_confirm_changeLanguage_existing%': '{to} already has {counts}.',
+  '%interlinearizer_confirm_changeLanguage_body%': '{from} moves to {to}.',
+  '%interlinearizer_confirm_changeLanguage_ok%': 'Change',
+  '%interlinearizer_confirm_changeLanguage_cancel%': 'Cancel',
+  '%interlinearizer_confirm_removeLanguage_title%': 'Remove {tag}?',
+  '%interlinearizer_confirm_removeLanguage_existing%': '{tag} has {counts}.',
+  '%interlinearizer_confirm_removeLanguage_body%': 'Keep them hidden or delete them.',
+  '%interlinearizer_confirm_removeLanguage_keep%': 'Keep hidden',
+  '%interlinearizer_confirm_removeLanguage_delete%': 'Delete',
+  '%interlinearizer_confirm_removeLanguage_cancel%': 'Cancel',
+};
+
+/**
+ * Renders an editable row of `languages`, with `textCounts` as each code's text counts, and waits
+ * for the counts to arrive.
+ *
+ * @returns The change handler.
+ */
+async function renderChips(languages: string[], textCounts: TextCountsByTag = {}) {
+  const onChange = jest.fn(async () => {});
+  render(
+    <>
+      <span id="label">Analysis languages</span>
+      <AnalysisLanguageChips
+        languages={languages}
+        labelledBy="label"
+        countText={async () => textCounts}
+        onChange={onChange}
+      />
+    </>,
+  );
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled());
+  return onChange;
+}
+
+/** Chooses `item` from the menu of the chip named `chip`. */
+async function choose(chip: string, item: string) {
+  await userEvent.click(screen.getByRole('button', { name: chip }));
+  await userEvent.click(screen.getByRole('menuitem', { name: item }));
+}
+
+/** Types `code` into the open picker and submits it with the picker's button named `submit`. */
+async function pick(code: string, submit: string) {
+  await userEvent.type(screen.getByLabelText('Language code'), code);
+  await userEvent.click(screen.getByRole('button', { name: submit }));
+}
+
+describe('AnalysisLanguageChips', () => {
+  beforeEach(() => {
+    jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
+  });
+
+  it('shows the codes alone, primary first, with no actions when they cannot change', () => {
+    render(
+      <>
+        <span id="label">Analysis languages</span>
+        <AnalysisLanguageChips languages={['en', 'fr']} labelledBy="label" />
+      </>,
+    );
+
+    const list = screen.getByRole('list', { name: 'Analysis languages' });
+    const items = within(list).getAllByRole('listitem');
+    expect(items.map((item) => item.textContent)).toEqual(['en', 'fr']);
+    expect(within(items[0]).getByTestId('star-icon')).toBeInTheDocument();
+    expect(within(items[1]).queryByTestId('star-icon')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('makes a code primary', async () => {
+    const onChange = await renderChips(['en', 'fr', 'de']);
+
+    await choose('de options', 'Make primary');
+
+    expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['de', 'en', 'fr'] });
+  });
+
+  it('offers no Make primary on the primary code', async () => {
+    await renderChips(['en', 'fr']);
+
+    await userEvent.click(screen.getByRole('button', { name: 'en (primary) options' }));
+
+    expect(screen.queryByRole('menuitem', { name: 'Make primary' })).not.toBeInTheDocument();
+  });
+
+  it('removes a code that has no text without asking', async () => {
+    const onChange = await renderChips(['en', 'fr'], { en: { glosses: 3, freeTranslations: 0 } });
+
+    await choose('fr options', 'Remove');
+
+    expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en'] });
+    expect(screen.queryByRole('heading', { name: 'Remove fr?' })).not.toBeInTheDocument();
+  });
+
+  it('makes the next code primary when the primary is removed', async () => {
+    const onChange = await renderChips(['en', 'fr', 'de']);
+
+    await choose('en (primary) options', 'Remove');
+
+    expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['fr', 'de'] });
+  });
+
+  it("won't remove the last code", async () => {
+    await renderChips(['en']);
+
+    await userEvent.click(screen.getByRole('button', { name: 'en (primary) options' }));
+
+    expect(screen.getByRole('menuitem', { name: 'Remove' })).toBeDisabled();
+  });
+
+  describe('removing a code that has text', () => {
+    const counts = { fr: { glosses: 4, freeTranslations: 2 } };
+
+    it('says how much text it has', async () => {
+      await renderChips(['en', 'fr'], counts);
+
+      await choose('fr options', 'Remove');
+
+      expect(screen.getByRole('heading', { name: 'Remove fr?' })).toBeInTheDocument();
+      expect(screen.getByText('fr has 4 glosses and 2 free translations.')).toBeInTheDocument();
+    });
+
+    it('keeps the text hidden when the user says so', async () => {
+      const onChange = await renderChips(['en', 'fr'], counts);
+
+      await choose('fr options', 'Remove');
+      await userEvent.click(screen.getByRole('button', { name: 'Keep hidden' }));
+
+      expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en'] });
+    });
+
+    it('deletes the text when the user says so', async () => {
+      const onChange = await renderChips(['en', 'fr'], counts);
+
+      await choose('fr options', 'Remove');
+      await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+      expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en'], deleteTextOf: 'fr' });
+    });
+
+    it('keeps the code when the user cancels', async () => {
+      const onChange = await renderChips(['en', 'fr'], counts);
+
+      await choose('fr options', 'Remove');
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(onChange).not.toHaveBeenCalled();
+      expect(screen.queryByRole('heading', { name: 'Remove fr?' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('adding a code', () => {
+    it('adds a code as the last one and closes the picker', async () => {
+      const onChange = await renderChips(['en']);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await pick('tpi', 'Add code');
+
+      expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en', 'tpi'] });
+      expect(
+        screen.queryByRole('heading', { name: 'Add analysis language' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('adds the typed code on Enter', async () => {
+      const onChange = await renderChips(['en']);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await userEvent.type(screen.getByLabelText('Language code'), 'tpi{Enter}');
+
+      expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en', 'tpi'] });
+    });
+
+    it('ignores Enter while the typed code is refused', async () => {
+      const onChange = await renderChips(['en']);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await userEvent.type(screen.getByLabelText('Language code'), 'en{Enter}');
+
+      expect(onChange).not.toHaveBeenCalled();
+      expect(screen.getByRole('heading', { name: 'Add analysis language' })).toBeInTheDocument();
+    });
+
+    it('refuses a code already listed', async () => {
+      await renderChips(['en', 'fr']);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await userEvent.type(screen.getByLabelText('Language code'), 'FR');
+
+      expect(screen.getByText('fr is already an analysis language.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add code' })).toBeDisabled();
+    });
+
+    it('refuses a code that is not well formed', async () => {
+      await renderChips(['en']);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await userEvent.type(screen.getByLabelText('Language code'), 'not a code');
+
+      expect(screen.getByText("not a code isn't a valid language code.")).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add code' })).toBeDisabled();
+    });
+
+    it('offers the codes whose text is hidden, with their counts', async () => {
+      await renderChips(['en'], {
+        en: { glosses: 1, freeTranslations: 0 },
+        de: { glosses: 0, freeTranslations: 3 },
+      });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+      expect(
+        within(screen.getByRole('list', { name: 'Hidden text' }))
+          .getAllByRole('button')
+          .map((button) => button.textContent),
+      ).toEqual(['de: 3 free translations']);
+    });
+
+    it('adds a hidden code when picked', async () => {
+      const onChange = await renderChips(['en'], { de: { glosses: 0, freeTranslations: 3 } });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await userEvent.click(
+        within(screen.getByRole('list', { name: 'Hidden text' })).getByRole('button'),
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Add code' }));
+
+      expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en', 'de'] });
+    });
+
+    it('adds back a hidden code that is not well formed', async () => {
+      const onChange = await renderChips(['en'], { en_US: { glosses: 1, freeTranslations: 0 } });
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await userEvent.click(
+        within(screen.getByRole('list', { name: 'Hidden text' })).getByRole('button'),
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Add code' }));
+
+      expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en', 'en_US'] });
+    });
+
+    it('adds nothing when the user cancels', async () => {
+      const onChange = await renderChips(['en']);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Add' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(onChange).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('changing a code', () => {
+    it('moves its text to a code that has none without asking', async () => {
+      const onChange = await renderChips(['en', 'fr'], { fr: { glosses: 2, freeTranslations: 0 } });
+
+      await choose('fr options', 'Change code…');
+      expect(screen.getByRole('heading', { name: 'Change fr' })).toBeInTheDocument();
+      await pick('es', 'Change code');
+
+      expect(onChange).toHaveBeenCalledWith({
+        analysisLanguages: ['en', 'es'],
+        retag: { from: 'fr', to: 'es' },
+      });
+    });
+
+    it("won't change a code to itself", async () => {
+      await renderChips(['en', 'fr']);
+
+      await choose('fr options', 'Change code…');
+      await userEvent.type(screen.getByLabelText('Language code'), 'fr');
+
+      expect(screen.getByRole('button', { name: 'Change code' })).toBeDisabled();
+    });
+
+    it('asks before merging into a code that has text', async () => {
+      const onChange = await renderChips(['en', 'fr'], {
+        de: { glosses: 5, freeTranslations: 0 },
+      });
+
+      await choose('fr options', 'Change code…');
+      await pick('de', 'Change code');
+
+      expect(screen.getByRole('heading', { name: 'Change fr to de?' })).toBeInTheDocument();
+      expect(screen.getByText('de already has 5 glosses.')).toBeInTheDocument();
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('merges into a code whose text is hidden once confirmed, taking its place', async () => {
+      const onChange = await renderChips(['en', 'fr'], { de: { glosses: 5, freeTranslations: 0 } });
+
+      await choose('fr options', 'Change code…');
+      await pick('de', 'Change code');
+      await userEvent.click(screen.getByRole('button', { name: 'Change' }));
+
+      expect(onChange).toHaveBeenCalledWith({
+        analysisLanguages: ['en', 'de'],
+        retag: { from: 'fr', to: 'de' },
+      });
+    });
+
+    it('leaves the code as it is when the user cancels the merge', async () => {
+      const onChange = await renderChips(['en', 'fr'], { de: { glosses: 5, freeTranslations: 0 } });
+
+      await choose('fr options', 'Change code…');
+      await pick('de', 'Change code');
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('merges into a listed code, which keeps the earlier place', async () => {
+      const onChange = await renderChips(['en', 'fr', 'de'], {
+        en: { glosses: 1, freeTranslations: 0 },
+      });
+
+      await choose('de options', 'Change code…');
+      await pick('en', 'Change code');
+      await userEvent.click(screen.getByRole('button', { name: 'Change' }));
+
+      expect(onChange).toHaveBeenCalledWith({
+        analysisLanguages: ['en', 'fr'],
+        retag: { from: 'de', to: 'en' },
+      });
+    });
+  });
+
+  it('holds every action until the text is counted', async () => {
+    let answer: (counts: TextCountsByTag) => void = () => {};
+    render(
+      <AnalysisLanguageChips
+        languages={['en']}
+        labelledBy="label"
+        countText={() =>
+          new Promise((resolve) => {
+            answer = resolve;
+          })
+        }
+        onChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
+
+    await act(async () => answer({}));
+
+    expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled();
+  });
+
+  it('counts the text again after each change', async () => {
+    const countText = jest
+      .fn<Promise<TextCountsByTag>, []>()
+      .mockResolvedValueOnce({})
+      .mockResolvedValue({ fr: { glosses: 2, freeTranslations: 0 } });
+    render(
+      <AnalysisLanguageChips
+        languages={['en', 'fr']}
+        labelledBy="label"
+        countText={countText}
+        onChange={jest.fn(async () => {})}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled());
+
+    await choose('fr options', 'Make primary');
+    await waitFor(() => expect(countText).toHaveBeenCalledTimes(2));
+    await choose('fr options', 'Remove');
+
+    expect(screen.getByRole('heading', { name: 'Remove fr?' })).toBeInTheDocument();
+  });
+
+  it('counts the text again after an edit made elsewhere', async () => {
+    const listeners = new Set<() => void>();
+    const countText = jest
+      .fn<Promise<TextCountsByTag>, []>()
+      .mockResolvedValueOnce({})
+      .mockResolvedValue({ en: { glosses: 1, freeTranslations: 0 } });
+    render(
+      <AnalysisLanguageChips
+        languages={['en', 'fr']}
+        labelledBy="label"
+        countText={countText}
+        subscribeToEdits={(listener) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        }}
+        onChange={jest.fn(async () => {})}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled());
+
+    await act(async () => listeners.forEach((listener) => listener()));
+    await choose('en (primary) options', 'Remove');
+
+    expect(screen.getByRole('heading', { name: 'Remove en?' })).toBeInTheDocument();
+  });
+
+  it('logs a failed count and removes a code without asking', async () => {
+    const warn = jest.mocked(logger.warn);
+    const onChange = jest.fn(async () => {});
+    render(
+      <AnalysisLanguageChips
+        languages={['en', 'fr']}
+        labelledBy="label"
+        countText={async () => {
+          throw new Error('the session closed');
+        }}
+        onChange={onChange}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled());
+
+    await choose('fr options', 'Remove');
+
+    expect(warn).toHaveBeenCalledWith(
+      'Interlinearizer: could not count the text in each analysis language',
+      expect.any(Error),
+    );
+    expect(onChange).toHaveBeenCalledWith({ analysisLanguages: ['en'] });
+  });
+
+  it.each([
+    ['counts', async () => ({})],
+    [
+      'failure',
+      async () => {
+        throw new Error('GEN cannot be read');
+      },
+    ],
+  ])(
+    'keeps the latest counts when an earlier count lands after them with its %s',
+    async (_case, earlierAnswer: () => Promise<TextCountsByTag>) => {
+      let answerEarlier: () => void = () => {};
+      let listener: () => void = () => {};
+      const countText = jest
+        .fn<Promise<TextCountsByTag>, []>()
+        .mockImplementationOnce(
+          () =>
+            new Promise<TextCountsByTag>((resolve, reject) => {
+              answerEarlier = () => earlierAnswer().then(resolve, reject);
+            }),
+        )
+        .mockResolvedValue({ fr: { glosses: 2, freeTranslations: 0 } });
+      render(
+        <AnalysisLanguageChips
+          languages={['en', 'fr']}
+          labelledBy="label"
+          countText={countText}
+          subscribeToEdits={(heard) => {
+            listener = heard;
+            return () => {};
+          }}
+          onChange={jest.fn(async () => {})}
+        />,
+      );
+
+      await act(async () => listener());
+      await act(async () => answerEarlier());
+      await choose('fr options', 'Remove');
+
+      expect(screen.getByRole('heading', { name: 'Remove fr?' })).toBeInTheDocument();
+    },
+  );
+
+  it('holds every action while a change is being applied', async () => {
+    let finish: () => void = () => {};
+    const onChange = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(
+      <AnalysisLanguageChips languages={['en', 'fr']} labelledBy="label" onChange={onChange} />,
+    );
+
+    await choose('fr options', 'Make primary');
+
+    expect(screen.getByRole('button', { name: 'en (primary) options' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
+
+    await act(async () => finish());
+
+    expect(screen.getByRole('button', { name: 'Add' })).toBeEnabled();
+  });
+});

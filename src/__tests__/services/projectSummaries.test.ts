@@ -85,7 +85,7 @@ describe('ProjectSummaries', () => {
     await summaries.replace(summarizeProject({ ...analyzedProject('first'), name: 'Renamed' }));
 
     expect(await summaries.list()).toEqual([
-      expect.objectContaining({ id: 'first', name: 'Renamed', tokenAnalysisCount: 2 }),
+      expect.objectContaining({ id: 'first', name: 'Renamed', analysisCount: 2 }),
       expect.objectContaining({ id: 'second' }),
     ]);
   });
@@ -196,7 +196,7 @@ describe('ProjectSummaries', () => {
 describe('summarizeProject', () => {
   it("describes a project's analysis by its books and payload count", () => {
     expect(summarizeProject(analyzedProject('p1'))).toEqual(
-      expect.objectContaining({ id: 'p1', books: ['GEN', 'EXO'], tokenAnalysisCount: 2 }),
+      expect.objectContaining({ id: 'p1', books: ['GEN', 'EXO'], analysisCount: 2 }),
     );
   });
 

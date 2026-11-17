@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, readdirSync, rmSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import type { TokenAnalysis } from 'interlinearizer';
@@ -63,11 +63,12 @@ describe('the host over one source', () => {
       command('listProjects', { sourceProjectId: 'source-folder' }),
     ).resolves.toStrictEqual([]);
 
-    expect(existsSync(path.join(dataDirectory, 'sources', 'source-folder.sqlite'))).toBe(true);
+    expect(readdirSync(path.join(dataDirectory, 'sources'))).toContain('SOURCE-FOLDER.sqlite');
   });
 
-  it('refuses a source whose id cannot name a file', async () => {
+  it('refuses a source whose id cannot name a file on every platform', async () => {
     await expect(command('listProjects', { sourceProjectId: 'a/b' })).rejects.toThrow('cannot');
+    await expect(command('listProjects', { sourceProjectId: 'a\\b' })).rejects.toThrow('cannot');
     await expect(command('listProjects', { sourceProjectId: '' })).rejects.toThrow('cannot');
   });
 
@@ -174,5 +175,25 @@ describe('the host over one source', () => {
     const listed = await command<ListedProject[]>('listProjects', { sourceProjectId: source });
     expect(listed.map((p) => p.name)).toStrictEqual(['A']);
     await expect(tokensHeld(repositoryFor(source, a), [tokenA])).resolves.toStrictEqual([tokenA]);
+  });
+
+  it('runs overlapping commands on one source, across its projects and alongside a close', async () => {
+    const source = 'source-overlap';
+    const a = crypto.randomUUID();
+    const b = crypto.randomUUID();
+    await command('createProject', { sourceProjectId: source, projectId: a });
+    await command('createProject', { sourceProjectId: source, projectId: b });
+
+    const [tokenA1, tokenB1, , tokenA2, , tokenB2] = await Promise.all([
+      seedToken(repositoryFor(source, a)),
+      seedToken(repositoryFor(source, b)),
+      command('closeSource', { sourceProjectId: source }),
+      seedToken(repositoryFor(source, a)),
+      repositoryFor(source, b).findLinkedBooks(),
+      seedToken(repositoryFor(source, b)),
+    ]);
+
+    await expect(tokensHeld(repositoryFor(source, a), [tokenA1, tokenA2])).resolves.toHaveLength(2);
+    await expect(tokensHeld(repositoryFor(source, b), [tokenB1, tokenB2])).resolves.toHaveLength(2);
   });
 });

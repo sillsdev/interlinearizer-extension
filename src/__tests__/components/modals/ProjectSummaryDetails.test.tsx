@@ -9,7 +9,7 @@ const NAMED_PROJECT = makeProjectSummary({ analysisLanguages: ['en', 'fr'], name
 
 const LABELS = {
   activeBadgeLabel: 'Active',
-  analysisCountTemplate: '{count} token analyses',
+  analysisCountTemplate: 'Analyses: {count}',
   booksMoreTemplate: '+{count} more',
   modifiedPrefix: 'Modified',
   unnamedLabel: 'Unnamed',
@@ -37,18 +37,61 @@ describe('ProjectSummaryDetails', () => {
     expect(screen.getByText('Active')).toBeInTheDocument();
   });
 
-  it('describes the books covered and how many token analyses the project holds', () => {
-    const project = makeProjectSummary({ books: ['GEN', 'EXO'], tokenAnalysisCount: 412 });
+  it('describes the books covered and how many analyses the project holds', () => {
+    const project = makeProjectSummary({ books: ['GEN', 'EXO'], analysisCount: 412 });
     render(<ProjectSummaryDetails {...LABELS} isActive={false} project={project} />);
 
-    expect(screen.getByText('GEN, EXO · 412 token analyses')).toBeInTheDocument();
+    expect(screen.getByText('GEN, EXO · Analyses: 412')).toBeInTheDocument();
   });
 
   it('describes an untouched project as holding no analyses, so an empty row still says so', () => {
-    const project = makeProjectSummary({ books: [], tokenAnalysisCount: 0 });
+    const project = makeProjectSummary({ books: [], analysisCount: 0 });
     render(<ProjectSummaryDetails {...LABELS} isActive={false} project={project} />);
 
-    expect(screen.getByText('0 token analyses')).toBeInTheDocument();
+    expect(screen.getByText('Analyses: 0')).toBeInTheDocument();
+  });
+
+  it('chips a Paratext 9 import read-only ahead of its language tags', () => {
+    const imported = makeProjectSummary({
+      analysisLanguages: ['en'],
+      pt9Import: { fileHashes: {}, importedAt: '2026-08-01T00:00:00.000Z' },
+    });
+    render(
+      <ProjectSummaryDetails
+        {...LABELS}
+        isActive={false}
+        project={imported}
+        readOnlyLabel="Read-only"
+      />,
+    );
+
+    const chip = screen.getByTestId('readonly-chip');
+    expect(chip).toHaveTextContent('Read-only');
+    expect(chip.compareDocumentPosition(screen.getByText('en'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it('leaves an editable project unchipped even when given the read-only label', () => {
+    render(
+      <ProjectSummaryDetails
+        {...LABELS}
+        isActive={false}
+        project={NAMED_PROJECT}
+        readOnlyLabel="Read-only"
+      />,
+    );
+
+    expect(screen.queryByTestId('readonly-chip')).not.toBeInTheDocument();
+  });
+
+  it('leaves an import unchipped when given no read-only label', () => {
+    const imported = makeProjectSummary({
+      pt9Import: { fileHashes: {}, importedAt: '2026-08-01T00:00:00.000Z' },
+    });
+    render(<ProjectSummaryDetails {...LABELS} isActive={false} project={imported} />);
+
+    expect(screen.queryByTestId('readonly-chip')).not.toBeInTheDocument();
   });
 
   it('omits the analysis line for a summary that carries no analysis facts', () => {

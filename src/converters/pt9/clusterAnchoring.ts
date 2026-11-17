@@ -2,7 +2,7 @@ import type { FrontMatterParagraph, Segment, Token } from 'interlinearizer';
 import type { Pt9InterlinearCluster } from 'platform-scripture';
 import { LexemeKeyData, parseLexemeKeyId } from 'parsers/pt9/lexemeKey';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
-import { emptyClusterDrops, Pt9ClusterDropReason } from './report';
+import type { Pt9ClusterDropReason } from './report';
 
 /** One lexeme of a classified cluster: its parsed key and the cluster's sense selection for it. */
 export interface ClassifiedLexeme {
@@ -14,7 +14,7 @@ export interface ClassifiedLexeme {
  * A cluster sorted into the kind that decides its conversion, mirroring how PT9 derives cluster
  * type from lexeme types: any stem/suffix/prefix makes a word parse; a single Word or Phrase lexeme
  * makes those kinds; everything else (Lemma clusters, empty clusters, unknown types) is dropped, as
- * is any cluster carrying an unparseable lexeme id.
+ * is any cluster carrying an unparseable lexeme id or a lexeme with a blank form.
  */
 export type ClassifiedCluster =
   | { kind: 'word'; cluster: Pt9InterlinearCluster; lexeme: ClassifiedLexeme }
@@ -23,8 +23,16 @@ export type ClassifiedCluster =
   | {
       kind: 'drop';
       cluster: Pt9InterlinearCluster;
-      reason: 'lemmaOrOther' | 'unparseableLexemeId';
+      reason: 'lemmaOrOther' | 'unparseableLexemeId' | 'blankMorphemeForm';
     };
+
+/**
+ * Whether a lexeme's form is blank. PT9's id grammar admits one, as in `Stem::2`; the analysis
+ * model does not.
+ */
+export function isBlankForm(form: string): boolean {
+  return form.trim() === '';
+}
 
 /** Lexeme types whose presence makes a cluster a word parse in PT9's derivation. */
 const PARSE_TYPES = new Set(['Stem', 'Suffix', 'Prefix']);
@@ -41,6 +49,8 @@ export function classifyCluster(cluster: Pt9InterlinearCluster): ClassifiedClust
   });
   if (lexemes.length !== cluster.lexemes.length)
     return { kind: 'drop', cluster, reason: 'unparseableLexemeId' };
+  if (lexemes.some((l) => isBlankForm(l.key.Form)))
+    return { kind: 'drop', cluster, reason: 'blankMorphemeForm' };
 
   if (lexemes.some((l) => PARSE_TYPES.has(l.key.Type)))
     return { kind: 'wordParse', cluster, lexemes };
@@ -74,7 +84,8 @@ export interface AnchoredPhrase {
 export interface VerseAnchorResult {
   groups: AnchoredTokenGroup[];
   phrases: AnchoredPhrase[];
-  dropCounts: Record<Pt9ClusterDropReason, number>;
+  /** The clusters that did not convert, in no particular order. */
+  drops: { cluster: Pt9InterlinearCluster; reason: Pt9ClusterDropReason }[];
   /** Anchors (token groups and phrases) placed ambiguously. */
   ambiguousCount: number;
 }
@@ -244,6 +255,9 @@ function alignInOrder(
  * unknown, so each of the candidate `verseExtents` is tried and the closest fit counts. The layout
  * only approximates PT9's marker-bearing USFM, so only the proportion is meaningful, never the
  * absolute values themselves.
+ *
+ * When a verse is edited after PT9 analyzed it, PT9's offsets point at drifted text. The prior can
+ * then favor the wrong one of several equal-folding words.
  */
 function priorDistance(
   layout: VerseLayout,
@@ -255,12 +269,36 @@ function priorDistance(
   return Math.min(...verseExtents.map((extent) => Math.abs(at - clusterIndex / extent)));
 }
 
-/** The folded surface a range group's word facet names, or else its parse's forms joined. */
-function expectedForm({ word, parse }: RangeGroup): string {
-  if (word !== undefined) return normalizeSurfaceForm(word.classified.lexeme.key.Form);
-  /* v8 ignore next -- a range group is only ever created with at least one facet */
-  if (parse === undefined) return '';
-  return normalizeSurfaceForm(parse.classified.lexemes.map((l) => l.key.Form).join(''));
+/**
+ * Morph-type indicators that PT9 users type at the edges of parse forms, such as the `-` of `fr` +
+ * `-om`. PT9 stores them as part of the form, so a parse matches its word only once they are folded
+ * out. Within a form they are spelling, as in `re-cover`, and must match the word.
+ */
+const EDGE_INDICATORS = /^[-=~]+|[-=~]+$/g;
+
+/**
+ * A test of whether a folded surface is what a parse's forms spell out together. It ignores each
+ * form's edge indicators.
+ *
+ * The surface may carry indicator characters where two forms meet, as `twenty-one` does between
+ * `twenty` and `one`.
+ */
+function parseMatcher(lexemes: readonly ClassifiedLexeme[]): (surface: string) => boolean {
+  // Decomposed, because a form starting with a combining mark composes with the form before it in
+  // the surface, but not when each form is folded alone.
+  const cores = lexemes.map((l) =>
+    normalizeSurfaceForm(l.key.Form.replace(EDGE_INDICATORS, '')).normalize('NFD'),
+  );
+  // NFD reorders combining marks across a join only when it decomposes the forms together. An
+  // indicator at a join blocks that reordering, because it is a starter character.
+  const joined = cores.join('').normalize('NFD');
+  const pattern = new RegExp(
+    `^${cores.map((core) => core.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')).join('[-=~]*')}$`,
+  );
+  return (surface) => {
+    const decomposed = surface.normalize('NFD');
+    return decomposed === joined || pattern.test(decomposed);
+  };
 }
 
 function countFrom(candidates: ReadonlySet<number>, cursor: number): number {
@@ -280,14 +318,19 @@ interface RangeGroup {
  * cluster landing on the book's front matter, which the text layer leaves out, is counted as a
  * front-matter drop rather than converted.
  *
- * Lexeme forms are the ground truth: they are matched case- and normalization-folded, in order,
- * because PT9's stored offsets index a different string than the segments' baseline text and cannot
- * be applied to it. The range index therefore serves only as ordering and, among equal-folding
+ * Lexeme forms are the ground truth: they are matched case- and normalization-folded, in order.
+ * PT9's stored offsets index a different string than the segments' baseline text. They also go
+ * stale when the text is edited, because PT9 matches analyses to words by form and leaves the
+ * offsets unrewritten. The range index therefore serves only as ordering and, among equal-folding
  * candidates, as a position prior. As many clusters anchor as that order allows, so a cluster over
  * text the layer leaves out, such as a footnote, cannot take a later token at the cost of the
  * clusters before that token. Word and parse clusters covering the identical range anchor together
  * onto one token, while phrases anchor to consecutive runs of word tokens within one segment.
- * Clusters that match nothing are counted by reason rather than silently lost.
+ *
+ * A parse's forms must spell out its token even when a word cluster at the same range chose the
+ * token. Indicators typed at a form's edges are ignored, as are indicator characters where the
+ * token joins two forms. A parse that fails is dropped. Its word converts alone. Clusters that
+ * match nothing are returned with their reason rather than silently lost.
  *
  * @param segments - The verse's own text, when it has any, and the headings within it, in document
  *   order.
@@ -300,14 +343,17 @@ export function anchorVerseClusters(
   clusters: Pt9InterlinearCluster[],
   frontMatter: readonly FrontMatterParagraph[] = [],
 ): VerseAnchorResult {
-  const dropCounts = emptyClusterDrops();
+  const drops: VerseAnchorResult['drops'] = [];
+  const drop = (reason: Pt9ClusterDropReason, cluster: Pt9InterlinearCluster) => {
+    drops.push({ cluster, reason });
+  };
   const wordClassified: Extract<ClassifiedCluster, { kind: 'word' }>[] = [];
   const parseClassified: Extract<ClassifiedCluster, { kind: 'wordParse' }>[] = [];
   const phraseClassified: Extract<ClassifiedCluster, { kind: 'phrase' }>[] = [];
 
   clusters.forEach((cluster) => {
     const classified = classifyCluster(cluster);
-    if (classified.kind === 'drop') dropCounts[classified.reason] += 1;
+    if (classified.kind === 'drop') drop(classified.reason, cluster);
     else if (classified.kind === 'word') wordClassified.push(classified);
     else if (classified.kind === 'wordParse') parseClassified.push(classified);
     else phraseClassified.push(classified);
@@ -327,12 +373,12 @@ export function anchorVerseClusters(
   };
   wordClassified.forEach((classified) => {
     const group = groupFor(classified.cluster);
-    if (group.word !== undefined) dropCounts.duplicateCluster += 1;
+    if (group.word !== undefined) drop('duplicateCluster', classified.cluster);
     else group.word = { classified };
   });
   parseClassified.forEach((classified) => {
     const group = groupFor(classified.cluster);
-    if (group.parse !== undefined) dropCounts.duplicateCluster += 1;
+    if (group.parse !== undefined) drop('duplicateCluster', classified.cluster);
     else group.parse = { classified };
   });
 
@@ -347,9 +393,17 @@ export function anchorVerseClusters(
   const sortedGroups = [...rangeGroups.values()].sort(
     (a, b) => a.index - b.index || a.length - b.length,
   );
-  const groupCandidates = sortedGroups.map((group) => {
-    const expected = expectedForm(group);
-    return new Set(foldedWords.flatMap((form, j) => (form === expected ? [j] : [])));
+  const parseMatchers = sortedGroups.map(
+    ({ parse }) => parse && parseMatcher(parse.classified.lexemes),
+  );
+  const groupCandidates = sortedGroups.map(({ word }, item) => {
+    const wordForm = word && normalizeSurfaceForm(word.classified.lexeme.key.Form);
+    const matches = (form: string) =>
+      wordForm !== undefined
+        ? form === wordForm
+        : /* v8 ignore next -- a range group is only ever created with at least one facet */
+          (parseMatchers[item]?.(form) ?? false);
+    return new Set(foldedWords.flatMap((form, j) => (matches(form) ? [j] : [])));
   });
   const groupPlacements = alignInOrder(groupCandidates, wordTokens.length, (item, position) =>
     priorDistance(layout, position, sortedGroups[item].index, verseExtents),
@@ -361,26 +415,33 @@ export function anchorVerseClusters(
   sortedGroups.forEach((group, item) => {
     const { word, parse } = group;
     const chosen = groupPlacements[item];
-    const facetCount = [word, parse].filter((facet) => facet !== undefined).length;
+    const dropFacets = (reason: Pt9ClusterDropReason) => {
+      if (word !== undefined) drop(reason, word.classified.cluster);
+      if (parse !== undefined) drop(reason, parse.classified.cluster);
+    };
     if (chosen === undefined) {
-      dropCounts.formMismatch += facetCount;
+      dropFacets('formMismatch');
       return;
     }
     const ambiguous = countFrom(groupCandidates[item], cursor) > 1;
     cursor = chosen + 1;
     if (layout.words[chosen].inFrontMatter) {
-      dropCounts.frontMatter += facetCount;
+      dropFacets('frontMatter');
       return;
     }
     if (ambiguous) ambiguousCount += 1;
+    // A word cluster may have chosen the token by its own form, so the parse is checked against it.
+    const parseFits = parseMatchers[item]?.(foldedWords[chosen]) ?? true;
+    if (parse !== undefined && !parseFits) drop('parseFormMismatch', parse.classified.cluster);
     groups.push({
       token: wordTokens[chosen],
       ...(word !== undefined && {
         word: { lexeme: word.classified.lexeme, excluded: word.classified.cluster.excluded },
       }),
-      ...(parse !== undefined && {
-        parse: { lexemes: parse.classified.lexemes, excluded: parse.classified.cluster.excluded },
-      }),
+      ...(parse !== undefined &&
+        parseFits && {
+          parse: { lexemes: parse.classified.lexemes, excluded: parse.classified.cluster.excluded },
+        }),
       ambiguous,
     });
   });
@@ -393,6 +454,7 @@ export function anchorVerseClusters(
   );
   const phraseCandidates = phraseWords.map((words) => {
     const starts = new Set<number>();
+    /* v8 ignore next -- classifyCluster drops a blank phrase form before it reaches anchoring */
     if (words.length === 0) return starts;
     for (let s = 0; s + words.length <= wordTokens.length; s += 1) {
       const { block } = layout.words[s];
@@ -410,13 +472,13 @@ export function anchorVerseClusters(
   sortedPhrases.forEach((classified, item) => {
     const start = phrasePlacements[item];
     if (start === undefined) {
-      dropCounts.formMismatch += 1;
+      drop('formMismatch', classified.cluster);
       return;
     }
     const ambiguous = countFrom(phraseCandidates[item], phraseCursor) > 1;
     phraseCursor = start + 1;
     if (layout.words[start].inFrontMatter) {
-      dropCounts.frontMatter += 1;
+      drop('frontMatter', classified.cluster);
       return;
     }
     if (ambiguous) ambiguousCount += 1;
@@ -428,5 +490,5 @@ export function anchorVerseClusters(
     });
   });
 
-  return { groups, phrases, dropCounts, ambiguousCount };
+  return { groups, phrases, drops, ambiguousCount };
 }

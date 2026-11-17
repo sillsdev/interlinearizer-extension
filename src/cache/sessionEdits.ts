@@ -1,14 +1,17 @@
 import papi, { logger } from '@papi/frontend';
 import type {
+  EntryRef,
   MergedContent,
   PhraseAnalysisLink,
   RemovalPreviewRequest,
+  SenseRef,
   SessionEditArgs,
   TokenSnapshot,
 } from 'interlinearizer';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { BreakdownPreview } from '../services/commands/morphemeCommands';
 import type { CommandReply } from '../types/command-reply';
-import { readEditOutcome, type AnalysisEditOutcome } from '../utils/edit-outcome';
+import type { AnalysisEditOutcome } from '../utils/edit-outcome';
 import { perfMark } from '../utils/perf-marks';
 import { usePageSession, useSessionEdit } from './pageHooks';
 
@@ -48,8 +51,15 @@ export function useGlossCommand(): (tokenRef: string, surfaceText: string, value
   );
 }
 
-/** Approves a stored token analysis for a token. */
-export function useApproveAnalysisCommand(): (
+/**
+ * Returns a stable callback that approves an existing `TokenAnalysis` payload for a token, as
+ * accepting a suggestion or promoting a candidate does. Persists immediately.
+ *
+ * The shared payload is never rewritten, so no other token's gloss changes.
+ *
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function useApproveAnalysisDispatch(): (
   tokenRef: string,
   surfaceText: string,
   analysisId: string,
@@ -69,8 +79,14 @@ export function useApproveAnalysisCommand(): (
   );
 }
 
-/** Keeps a token analysis's stale breakdown as it stands. */
-export function useConfirmMorphemesCommand(): (analysisId: string, tokenRef?: string) => void {
+/**
+ * Returns a stable callback that keeps an analysis's stale breakdown as it stands, clearing the
+ * mark for every token linked to it. Persists immediately, recording the optional `tokenRef` as the
+ * place the confirmation was made at.
+ *
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function useConfirmMorphemesDispatch(): (analysisId: string, tokenRef?: string) => void {
   const fire = useFireEdit();
   return useCallback(
     (analysisId, tokenRef) =>
@@ -85,8 +101,13 @@ export function useConfirmMorphemesCommand(): (analysisId: string, tokenRef?: st
   );
 }
 
-/** Writes a token's morpheme breakdown. */
-export function useMorphemeBreakdownCommand(): (
+/**
+ * Returns a stable callback that replaces the morpheme breakdown on a token's approved
+ * `TokenAnalysis`. Persists immediately. Other tokens that share the payload keep their breakdown.
+ *
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function useMorphemeBreakdownDispatch(): (
   tokenRef: string,
   surfaceText: string,
   forms: string[],
@@ -108,8 +129,13 @@ export function useMorphemeBreakdownCommand(): (
   );
 }
 
-/** Removes a token's morpheme breakdown. */
-export function useMorphemeDeleteCommand(): (tokenRef: string) => void {
+/**
+ * Returns a stable callback that removes the morpheme breakdown from a token's approved
+ * `TokenAnalysis`. Persists immediately. A record left with no other content is deleted.
+ *
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
   const fire = useFireEdit();
   return useCallback(
     (tokenRef) =>
@@ -120,8 +146,13 @@ export function useMorphemeDeleteCommand(): (tokenRef: string) => void {
   );
 }
 
-/** Writes the gloss of one morpheme of a token's breakdown. */
-export function useMorphemeGlossCommand(): (
+/**
+ * Returns a stable callback that writes the gloss of one morpheme in a token's approved
+ * `TokenAnalysis`. Persists immediately. Other tokens that share the payload keep their gloss.
+ *
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function useMorphemeGlossDispatch(): (
   tokenRef: string,
   morphemeId: string,
   value: string,
@@ -141,8 +172,13 @@ export function useMorphemeGlossCommand(): (
   );
 }
 
-/** Writes a phrase occurrence's gloss. */
-export function usePhraseGlossCommand(): (phraseId: string, value: string) => void {
+/**
+ * Returns a stable callback that writes the gloss of a phrase occurrence, persisting it
+ * immediately.
+ *
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function usePhraseGlossDispatch(): (phraseId: string, value: string) => void {
   const fire = useFireEdit();
   return useCallback(
     (phraseId, value) =>
@@ -153,8 +189,12 @@ export function usePhraseGlossCommand(): (phraseId: string, value: string) => vo
   );
 }
 
-/** The phrase edits, as the session makes them. */
-export function usePhraseCommands(): {
+/**
+ * Returns stable callbacks for editing phrase occurrences. Each persists immediately.
+ *
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function usePhraseDispatch(): {
   createPhrase: (tokens: TokenSnapshot[]) => void;
   updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
   deletePhrase: (phraseId: string) => void;
@@ -202,8 +242,16 @@ export function usePhraseCommands(): {
   );
 }
 
-/** Writes a segment's free translation, adopting a stale one when named. */
-export function useSegmentFreeTranslationCommand(): (
+/**
+ * Returns a stable callback that writes a segment's free translation, persisting it immediately. A
+ * blank value clears the translation and may drop the now-empty `SegmentAnalysis` record.
+ *
+ * When the segment has no approved translation, the stale translation that `adoptStaleAnalysisId`
+ * names, if given, is adopted as the one the value was typed over.
+ *
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function useSegmentFreeTranslationDispatch(): (
   segmentId: string,
   surfaceText: string,
   value: string,
@@ -225,8 +273,12 @@ export function useSegmentFreeTranslationCommand(): (
   );
 }
 
-/** Keeps or drops a stale free translation. */
-export function useStaleFreeTranslationCommands(): {
+/**
+ * Returns stable callbacks for reviewing stale free translations. Each persists immediately.
+ *
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function useStaleFreeTranslationDispatch(): {
   keep: (analysisId: string, segmentId: string, surfaceText: string) => void;
   discard: (analysisId: string) => void;
 } {
@@ -254,8 +306,13 @@ export function useStaleFreeTranslationCommands(): {
   );
 }
 
-/** Gives up, or moves, the place that a token analysis went stale at. */
-export function useStaleLocationCommands(): {
+/**
+ * Returns stable callbacks for reviewing the places that analyses went stale at. Each persists
+ * immediately.
+ *
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function useStaleLocationDispatch(): {
   discard: (analysisId: string, tokenRef: string) => void;
   reapply: (
     analysisId: string,
@@ -290,21 +347,26 @@ export function useStaleLocationCommands(): {
   );
 }
 
-/**
- * The analysis that holds `analysisId`'s row after a catalog edit, as the edit's step names it.
- * With no step, that is `analysisId` itself; with a step that names no survivor, `undefined`.
- */
-function survivorOf(reply: CommandReply | undefined, analysisId: string): string | undefined {
-  if (!reply?.step) return analysisId;
-  const { summary } = reply.step;
-  return summary && 'survivingAnalysisId' in summary ? summary.survivingAnalysisId : undefined;
-}
+/** A catalog edit's reply, with what the host adds to it. */
+type CatalogEditReply = CommandReply & {
+  /** Where the edit left the record it was aimed at. */
+  outcome?: AnalysisEditOutcome;
+  /** The token analyses that a gloss clear left empty, and so removed. */
+  emptiedAnalysisIds?: string[];
+};
+
+const EDITED: AnalysisEditOutcome = { kind: 'edited' };
 
 /**
- * The catalog's row edits, as the session makes them. Each settles once the edit has; an edit that
- * resolves an outcome settles once the whole analysis has been read again.
+ * Returns stable callbacks for editing the analysis records that the catalog lists. Each edit
+ * rewrites the record for every token linked to it.
+ *
+ * Each write reports where its reply says it left the record, so the caller can say when an edit
+ * collapsed the row onto a sibling. An edit settles once it has applied.
+ *
+ * @throws When called outside a {@link PageClientProvider}.
  */
-export function useAnalysisRowCommands(): {
+export function useAnalysisRowDispatch(): {
   writeGloss: (analysisId: string, value: string) => Promise<AnalysisEditOutcome>;
   clearGlosses: (analysisIds: readonly string[]) => Promise<readonly string[]>;
   writeMorphemes: (
@@ -317,6 +379,25 @@ export function useAnalysisRowCommands(): {
     morphemeId: string,
     value: string,
   ) => Promise<AnalysisEditOutcome>;
+  linkSense: (analysisId: string, senseRef: SenseRef) => Promise<AnalysisEditOutcome>;
+  unlinkSense: (analysisId: string, keepGloss?: string) => Promise<AnalysisEditOutcome>;
+  linkMorphemeSense: (
+    analysisId: string,
+    morphemeId: string,
+    entryRef: EntryRef,
+    senseRef: SenseRef,
+  ) => Promise<AnalysisEditOutcome>;
+  unlinkMorphemeSense: (
+    analysisId: string,
+    morphemeId: string,
+    keepGloss?: string,
+  ) => Promise<AnalysisEditOutcome>;
+  adoptSenseGloss: (analysisId: string, value: string) => Promise<AnalysisEditOutcome>;
+  adoptMorphemeSenseGloss: (
+    analysisId: string,
+    morphemeId: string,
+    value: string,
+  ) => Promise<AnalysisEditOutcome>;
   deleteAnalyses: (analysisIds: readonly string[]) => Promise<void>;
   mergeAll: (
     survivorAnalysisId: string,
@@ -325,14 +406,13 @@ export function useAnalysisRowCommands(): {
   ) => Promise<AnalysisEditOutcome>;
 } {
   const edit = useSessionEdit();
-  const { whole, analysisLanguage } = usePageSession();
 
   return useMemo(() => {
     /** Sends an edit, logging and rethrowing a failure. */
     const send = async (
       intent: string,
       call: (args: SessionEditArgs) => Promise<string | undefined>,
-    ): Promise<CommandReply | undefined> => {
+    ): Promise<CatalogEditReply | undefined> => {
       try {
         return await edit(call);
       } catch (e) {
@@ -340,9 +420,9 @@ export function useAnalysisRowCommands(): {
         throw e;
       }
     };
-    /** Where the edit that `reply` answers left `analysisId`. */
-    const outcomeOf = (reply: CommandReply | undefined, analysisId: string) =>
-      readEditOutcome(whole.current, survivorOf(reply, analysisId), analysisId, analysisLanguage);
+    /** Where the edit that `reply` answers left its record; in place when no reply came. */
+    const outcomeOf = (reply: CatalogEditReply | undefined): AnalysisEditOutcome =>
+      reply?.outcome ?? EDITED;
     return {
       writeGloss: async (analysisId, value) =>
         outcomeOf(
@@ -353,16 +433,13 @@ export function useAnalysisRowCommands(): {
               value,
             }),
           ),
-          analysisId,
         ),
       clearGlosses: async (analysisIds) => {
-        const reply: (CommandReply & { emptiedAnalysisIds?: string[] }) | undefined = await send(
-          'clearAnalysisGlosses',
-          (args) =>
-            papi.commands.sendCommand('interlinearizer.clearAnalysisGlosses', {
-              ...args,
-              analysisIds: [...analysisIds],
-            }),
+        const reply = await send('clearAnalysisGlosses', (args) =>
+          papi.commands.sendCommand('interlinearizer.clearAnalysisGlosses', {
+            ...args,
+            analysisIds: [...analysisIds],
+          }),
         );
         return reply?.emptiedAnalysisIds ?? [];
       },
@@ -376,7 +453,6 @@ export function useAnalysisRowCommands(): {
               writingSystem,
             }),
           ),
-          analysisId,
         ),
       writeMorphemeGloss: async (analysisId, morphemeId, value) =>
         outcomeOf(
@@ -388,7 +464,70 @@ export function useAnalysisRowCommands(): {
               value,
             }),
           ),
-          analysisId,
+        ),
+      linkSense: async (analysisId, senseRef) =>
+        outcomeOf(
+          await send('linkAnalysisSense', (args) =>
+            papi.commands.sendCommand('interlinearizer.linkAnalysisSense', {
+              ...args,
+              analysisId,
+              senseRef,
+            }),
+          ),
+        ),
+      unlinkSense: async (analysisId, keepGloss) =>
+        outcomeOf(
+          await send('unlinkAnalysisSense', (args) =>
+            papi.commands.sendCommand('interlinearizer.unlinkAnalysisSense', {
+              ...args,
+              analysisId,
+              keepGloss,
+            }),
+          ),
+        ),
+      linkMorphemeSense: async (analysisId, morphemeId, entryRef, senseRef) =>
+        outcomeOf(
+          await send('linkAnalysisMorphemeSense', (args) =>
+            papi.commands.sendCommand('interlinearizer.linkAnalysisMorphemeSense', {
+              ...args,
+              analysisId,
+              morphemeId,
+              entryRef,
+              senseRef,
+            }),
+          ),
+        ),
+      unlinkMorphemeSense: async (analysisId, morphemeId, keepGloss) =>
+        outcomeOf(
+          await send('unlinkAnalysisMorphemeSense', (args) =>
+            papi.commands.sendCommand('interlinearizer.unlinkAnalysisMorphemeSense', {
+              ...args,
+              analysisId,
+              morphemeId,
+              keepGloss,
+            }),
+          ),
+        ),
+      adoptSenseGloss: async (analysisId, value) =>
+        outcomeOf(
+          await send('adoptAnalysisSenseGloss', (args) =>
+            papi.commands.sendCommand('interlinearizer.adoptAnalysisSenseGloss', {
+              ...args,
+              analysisId,
+              value,
+            }),
+          ),
+        ),
+      adoptMorphemeSenseGloss: async (analysisId, morphemeId, value) =>
+        outcomeOf(
+          await send('adoptAnalysisMorphemeSenseGloss', (args) =>
+            papi.commands.sendCommand('interlinearizer.adoptAnalysisMorphemeSenseGloss', {
+              ...args,
+              analysisId,
+              morphemeId,
+              value,
+            }),
+          ),
         ),
       deleteAnalyses: async (analysisIds) => {
         await send('deleteAnalyses', (args) =>
@@ -408,10 +547,9 @@ export function useAnalysisRowCommands(): {
               content,
             }),
           ),
-          survivorAnalysisId,
         ),
     };
-  }, [edit, whole, analysisLanguage]);
+  }, [edit]);
 }
 
 /** Asks the session which token analyses an edit would remove, applying nothing. */
@@ -446,4 +584,50 @@ export function useRemovalPreviews(): {
         }),
     };
   }, [sessionId]);
+}
+
+/**
+ * What a breakdown edit is taken to do when the session cannot say: rewrite a payload that only the
+ * edited token links, losing what a reset or re-split drops.
+ */
+const UNKNOWN_BREAKDOWN: BreakdownPreview = { solelyOwned: true, resetLosesAnnotation: true };
+
+/**
+ * Asks the session what a breakdown edit at `tokenRef` would do, each time `isOpen` turns on. A
+ * failed ask is logged and answered as an edit to a solely owned payload whose reset loses
+ * annotation.
+ *
+ * @returns The answer; `undefined` while `isOpen` is off, and until the answer arrives.
+ * @throws When called outside a {@link PageClientProvider}.
+ */
+export function useBreakdownPreview(
+  tokenRef: string,
+  isOpen: boolean,
+): BreakdownPreview | undefined {
+  const { sessionId } = usePageSession();
+  const [preview, setPreview] = useState<BreakdownPreview>();
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let isCurrent = true;
+    (async () => {
+      let answer: BreakdownPreview;
+      try {
+        answer = JSON.parse(
+          await papi.commands.sendCommand('interlinearizer.previewBreakdownEdit', {
+            sessionId,
+            tokenRef,
+          }),
+        );
+      } catch (e) {
+        logger.warn(`Interlinearizer: could not preview a breakdown edit at ${tokenRef}`, e);
+        answer = UNKNOWN_BREAKDOWN;
+      }
+      if (isCurrent) setPreview(answer);
+    })();
+    return () => {
+      isCurrent = false;
+      setPreview(undefined);
+    };
+  }, [sessionId, tokenRef, isOpen]);
+  return preview;
 }

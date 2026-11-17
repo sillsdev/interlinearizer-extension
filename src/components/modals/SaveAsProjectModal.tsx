@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import useProjectsForSource from '../../hooks/useProjectsForSource';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
+import { uniqueDefaultName } from '../../utils/unique-name';
 import { ModalShell } from './ModalShell';
 import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
@@ -11,6 +12,8 @@ import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_saveAs_title%',
   '%interlinearizer_modal_saveAs_new_section%',
+  '%interlinearizer_modal_saveAs_defaultName%',
+  '%interlinearizer_modal_saveAs_defaultNameNumbered%',
   '%interlinearizer_modal_create_name_label%',
   '%interlinearizer_modal_create_name_placeholder%',
   '%interlinearizer_modal_create_description_label%',
@@ -22,9 +25,8 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_saveAs_overwrite_confirm_body%',
   '%interlinearizer_modal_saveAs_overwrite_confirm_ok%',
   '%interlinearizer_modal_saveAs_overwrite_confirm_cancel%',
-  '%interlinearizer_modal_saveAs_save_active%',
   '%interlinearizer_modal_saveAs_save_active_clean%',
-  '%interlinearizer_modal_saveAs_cancel%',
+  '%interlinearizer_modal_saveAs_close%',
   '%interlinearizer_modal_select_name_unnamed%',
   '%interlinearizer_modal_select_analysis_count%',
   '%interlinearizer_modal_select_books_more%',
@@ -33,14 +35,84 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
 ];
 
 /**
+ * Fields for saving the draft as a new project.
+ *
+ * The fields start from `initialName` and `initialDescription`. Later changes to those props never
+ * overwrite what the fields hold.
+ */
+function SaveAsNewForm({
+  initialName,
+  initialDescription,
+  isLoading,
+  isSubmitting,
+  nameLabel,
+  namePlaceholder,
+  descriptionLabel,
+  descriptionPlaceholder,
+  saveLabel,
+  onSave,
+}: Readonly<{
+  initialName: string;
+  initialDescription: string;
+  isLoading: boolean;
+  isSubmitting: boolean;
+  nameLabel: string;
+  namePlaceholder: string;
+  descriptionLabel: string;
+  descriptionPlaceholder: string;
+  saveLabel: string;
+  onSave: (name: string, description: string) => void;
+}>) {
+  const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState(initialDescription);
+
+  return (
+    <>
+      <Label className="tw:mb-1" htmlFor="save-as-name">
+        {nameLabel}
+      </Label>
+      <Input
+        id="save-as-name"
+        className="tw:mb-3 tw:w-full"
+        disabled={isLoading}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder={namePlaceholder}
+      />
+      <Label className="tw:mb-1" htmlFor="save-as-description">
+        {descriptionLabel}
+      </Label>
+      <Textarea
+        id="save-as-description"
+        className="tw:mb-3 tw:resize-none"
+        rows={2}
+        disabled={isLoading}
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder={descriptionPlaceholder}
+      />
+      <div className="tw:flex tw:justify-end tw:mb-4">
+        <Button
+          onClick={() => onSave(name, description)}
+          data-testid="save-as-new"
+          disabled={isLoading || isSubmitting || name.trim() === ''}
+        >
+          {saveLabel}
+        </Button>
+      </div>
+    </>
+  );
+}
+
+/**
  * Save As dialog. Lets the user save the current draft either to a brand-new project (name +
  * description) or by overwriting an existing project for this source (with an inline confirm). This
  * component is presentational: it collects the choice and delegates the actual persistence to the
  * caller via {@link onSaveNew} / {@link onOverwrite}.
  *
  * Writing to the project the draft is already open against is an ordinary save rather than a
- * clobber, so that row is presented as a save and needs no confirmation; when the draft holds
- * nothing unsaved, that same write would change nothing and is not offered at all.
+ * clobber, so that row's Overwrite needs no confirmation. When the draft holds nothing unsaved,
+ * that write would change nothing, so the row offers no Overwrite at all.
  *
  * @param props.sourceProjectId - Source project whose existing interlinear projects to list as
  *   overwrite targets. Paratext 9 imports are left out because they are read-only.
@@ -49,8 +121,10 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
  *   currently working against.
  * @param props.hasUnsavedWork - Whether the draft holds work not yet written to the active project;
  *   only meaningful when {@link activeProjectId} names a project in the list.
- * @param props.defaultName - Name prefilled into the new-project field (the draft's suggested
- *   name).
+ * @param props.activeProjectName - Name of the project open as the active Save target, if any. The
+ *   new-project field is prefilled with a copy of this name, numbered past any name that a loaded
+ *   project of the source bears. With no active project, the field starts blank. A later change to
+ *   this name leaves the field as it is.
  * @param props.defaultDescription - Description prefilled into the new-project field.
  * @param props.onSaveNew - Called with the trimmed name/description to save the draft as a new
  *   project.
@@ -63,7 +137,7 @@ export function SaveAsProjectModal({
   sourceProjectId,
   activeProjectId,
   hasUnsavedWork,
-  defaultName,
+  activeProjectName,
   defaultDescription,
   onSaveNew,
   onOverwrite,
@@ -72,7 +146,7 @@ export function SaveAsProjectModal({
   sourceProjectId: string;
   activeProjectId?: string;
   hasUnsavedWork: boolean;
-  defaultName?: string;
+  activeProjectName?: string;
   defaultDescription?: string;
   onSaveNew: (name: string, description?: string) => void | Promise<void>;
   onOverwrite: (project: InterlinearProjectSummary) => void | Promise<void>;
@@ -80,9 +154,16 @@ export function SaveAsProjectModal({
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(SAVE_AS_MODAL_STRING_KEYS);
 
-  const [name, setName] = useState(defaultName ?? '');
-  const [description, setDescription] = useState(defaultDescription ?? '');
   const { projects, isLoading } = useProjectsForSource(sourceProjectId);
+  const initialName =
+    isLoading || activeProjectName === undefined
+      ? ''
+      : uniqueDefaultName(
+          projects.map((project) => project.name),
+          localizedStrings['%interlinearizer_modal_saveAs_defaultName%'],
+          localizedStrings['%interlinearizer_modal_saveAs_defaultNameNumbered%'],
+          { name: activeProjectName },
+        );
   const overwriteTargets = projects.filter((project) => project.pt9Import === undefined);
 
   // Guards the save controls against double-submit; `isSubmitting` disables them while a save runs.
@@ -105,11 +186,11 @@ export function SaveAsProjectModal({
    * duplicate projects.
    */
   const handleSaveNew = useCallback(
-    () =>
+    (name: string, description: string) =>
       runGuarded(async () => {
         await onSaveNew(name.trim(), description.trim() || undefined);
       }),
-    [name, description, onSaveNew, runGuarded],
+    [onSaveNew, runGuarded],
   );
 
   /**
@@ -148,36 +229,22 @@ export function SaveAsProjectModal({
       <h3 className="tw:text-sm tw:font-medium tw:mb-2">
         {localizedStrings['%interlinearizer_modal_saveAs_new_section%']}
       </h3>
-      <Label className="tw:mb-1" htmlFor="save-as-name">
-        {localizedStrings['%interlinearizer_modal_create_name_label%']}
-      </Label>
-      <Input
-        id="save-as-name"
-        className="tw:mb-3 tw:w-full"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
+      {/* Remounts the form when the list loads; only then is the prefilled name ready. */}
+      <SaveAsNewForm
+        key={isLoading ? 'loading' : 'ready'}
+        initialName={initialName}
+        initialDescription={defaultDescription ?? ''}
+        isLoading={isLoading}
+        isSubmitting={isSubmitting}
+        nameLabel={localizedStrings['%interlinearizer_modal_create_name_label%']}
+        namePlaceholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
+        descriptionLabel={localizedStrings['%interlinearizer_modal_create_description_label%']}
+        descriptionPlaceholder={
+          localizedStrings['%interlinearizer_modal_create_description_placeholder%']
+        }
+        saveLabel={localizedStrings['%interlinearizer_modal_saveAs_save_new%']}
+        onSave={handleSaveNew}
       />
-      <Label className="tw:mb-1" htmlFor="save-as-description">
-        {localizedStrings['%interlinearizer_modal_create_description_label%']}
-      </Label>
-      <Textarea
-        id="save-as-description"
-        className="tw:mb-3 tw:resize-none"
-        rows={2}
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
-      />
-      <div className="tw:flex tw:justify-end tw:mb-4">
-        <Button
-          onClick={handleSaveNew}
-          data-testid="save-as-new"
-          disabled={isSubmitting || name.trim() === ''}
-        >
-          {localizedStrings['%interlinearizer_modal_saveAs_save_new%']}
-        </Button>
-      </div>
 
       <h3 className="tw:text-sm tw:font-medium tw:mb-2">
         {localizedStrings['%interlinearizer_modal_saveAs_existing_section%']}
@@ -191,9 +258,8 @@ export function SaveAsProjectModal({
           {overwriteTargets.map((project) => {
             const projectName =
               project.name ?? localizedStrings['%interlinearizer_modal_select_name_unnamed%'];
-            // The active project is the one the draft is already open on, so writing to it is the
-            // plain Save — nothing is at risk and no confirmation is warranted. A clean draft has
-            // nothing left to write there at all.
+            // The draft is already open on the active project. Writing to it risks nothing and
+            // needs no confirmation. A clean draft has nothing left to write there at all.
             const isActive = project.id === activeProjectId;
             const isNoOp = isActive && !hasUnsavedWork;
             // Show the confirm inline under the row whose Overwrite was pressed, and highlight that
@@ -242,13 +308,7 @@ export function SaveAsProjectModal({
                     }
                     disabled={isSubmitting || isConfirming}
                   >
-                    {
-                      localizedStrings[
-                        isActive
-                          ? '%interlinearizer_modal_saveAs_save_active%'
-                          : '%interlinearizer_modal_saveAs_overwrite%'
-                      ]
-                    }
+                    {localizedStrings['%interlinearizer_modal_saveAs_overwrite%']}
                   </Button>
                 )}
                 {isConfirming && (
@@ -289,7 +349,7 @@ export function SaveAsProjectModal({
 
       <div className="tw:modal-actions">
         <Button variant="secondary" onClick={onClose} disabled={isLoading || isSubmitting}>
-          {localizedStrings['%interlinearizer_modal_saveAs_cancel%']}
+          {localizedStrings['%interlinearizer_modal_saveAs_close%']}
         </Button>
       </div>
     </ModalShell>

@@ -4,13 +4,13 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import CatalogStaleLocations, {
   STALE_LOCATION_STRING_KEYS,
 } from '../../components/CatalogStaleLocations';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
 import type { CatalogUsage } from '../../utils/analysis-query';
 import { defaultScrRef, makeScrollGroupHook } from '../test-helpers';
+import { EmptyAnalysisProvider } from './test-helpers';
 
 /**
  * Each key resolving to itself, but for the apply label, whose template has to resolve for the
@@ -48,7 +48,7 @@ function renderPlaces(overrides: PlacesOptions = {}) {
   const onReapply = jest.fn();
   render(
     <InterlinearNavProvider useWebViewScrollGroupScrRef={makeScrollGroupHook(defaultScrRef)}>
-      <AnalysisStoreProvider analysisLanguage="en" readOnly={overrides.readOnly}>
+      <EmptyAnalysisProvider analysisLanguage="en" readOnly={overrides.readOnly}>
         <FocusPublishProbe tokenRef={overrides.focusedTokenRef} />
         <CatalogStaleLocations
           inlineLimit={overrides.inlineLimit ?? 12}
@@ -60,7 +60,7 @@ function renderPlaces(overrides: PlacesOptions = {}) {
           onReapply={onReapply}
           onSelect={onSelect}
         />
-      </AnalysisStoreProvider>
+      </EmptyAnalysisProvider>
     </InterlinearNavProvider>,
   );
   return { onSelect, onDiscard, onReapply };
@@ -111,19 +111,37 @@ describe('CatalogStaleLocations', () => {
     expect(onReapply).toHaveBeenCalledWith(place('GEN 1:2:7', 2), 'GEN 1:2:0', 'λόγου');
   });
 
-  it('withholds applying while no word is focused', () => {
+  it('says where to choose a word while no word is focused', () => {
     renderPlaces();
 
-    const apply = within(onlyPlace()).getByTestId('catalog-stale-location-apply');
-    expect(apply).toBeDisabled();
-    expect(apply).toHaveTextContent('%interlinearizer_analysisCatalog_staleApplyNoTarget%');
+    expect(within(onlyPlace()).getByTestId('catalog-stale-location-apply-hint')).toHaveTextContent(
+      '%interlinearizer_analysisCatalog_staleApplyNoTarget%',
+    );
+  });
+
+  it('offers no apply button while no word is focused', () => {
+    renderPlaces();
+
+    expect(
+      within(onlyPlace()).queryByTestId('catalog-stale-location-apply'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('drops the hint once a word is focused', () => {
+    renderPlaces({ focusedTokenRef: 'GEN 1:2:0' });
+
+    expect(
+      within(onlyPlace()).queryByTestId('catalog-stale-location-apply-hint'),
+    ).not.toBeInTheDocument();
   });
 
   // A focus the view left in a book no longer loaded has no text to name.
   it('withholds applying to a focused word whose text cannot be read', () => {
     renderPlaces({ focusedTokenRef: 'EXO 1:1:0', liveSurfaceText: () => undefined });
 
-    expect(within(onlyPlace()).getByTestId('catalog-stale-location-apply')).toBeDisabled();
+    expect(
+      within(onlyPlace()).queryByTestId('catalog-stale-location-apply'),
+    ).not.toBeInTheDocument();
   });
 
   it('offers neither applying nor discarding in a read-only analysis', () => {
@@ -134,6 +152,14 @@ describe('CatalogStaleLocations', () => {
     ).not.toBeInTheDocument();
     expect(
       within(onlyPlace()).queryByTestId('catalog-stale-location-discard'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('gives no hint in a read-only analysis', () => {
+    renderPlaces({ readOnly: true });
+
+    expect(
+      within(onlyPlace()).queryByTestId('catalog-stale-location-apply-hint'),
     ).not.toBeInTheDocument();
   });
 

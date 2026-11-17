@@ -4,11 +4,9 @@ import type { ReactNode } from 'react';
 
 /**
  * The boundary-editing operations available to the deep leaves that trigger them — the
- * cross-segment link icon and the merge/split boundary controls. Each one auto-saves its result.
- *
- * Each operation closes over the draft's current boundary delta and the original verse-tokenized
- * book. Edits flow from draft through re-segmentation to a new segment list, so consumers only ever
- * call a method here and never see the delta itself.
+ * cross-segment link icon and the merge/split boundary controls. Each one is sent to the session,
+ * which re-segments the book by the boundaries it then stores, so consumers only ever call a method
+ * here and never see the boundary delta itself.
  */
 export type SegmentationDispatch = Readonly<{
   /** Merges the segment that begins at `secondSegmentStartRef` into the segment before it. */

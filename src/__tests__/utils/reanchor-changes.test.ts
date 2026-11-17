@@ -10,7 +10,7 @@ import {
   reanchorDraftToBook,
 } from '../../utils/reanchor-changes';
 import { missingBook } from '../../utils/reanchor-analysis';
-import { expectHostReanchorParity } from '../host-reanchor-parity';
+import { expectHostReanchor } from '../host-reanchor';
 import { FIXTURE_STAMPS, makeTokenLink, makeVerseBook, tokenRefOf } from '../test-helpers';
 
 beforeAll(() => {
@@ -57,7 +57,7 @@ function splitBeforeBeta(): SegmentationDelta {
 /** Runs `pass` over `content` for `bookCode`, checking that the host's re-anchor gives the same. */
 function run(pass: BookPass<DraftContent>, bookCode: string, content: DraftContent): DraftContent {
   const reanchored = pass(content);
-  expectHostReanchorParity(content, bookCode, pass, reanchored);
+  expectHostReanchor(content, bookCode, pass, reanchored);
   return reanchored;
 }
 
@@ -248,7 +248,7 @@ describe('reanchorChangesForBook', () => {
     const draft = {
       ...draftOf(emptyAnalysis(), splitBeforeBeta()),
       analysisLanguages: ['fr'],
-      suggestedName: 'Named',
+      suggestedDescription: 'Named',
       dirty: true,
     };
 
@@ -257,7 +257,7 @@ describe('reanchorChangesForBook', () => {
     expect(scope).toEqual(
       expect.objectContaining({
         analysisLanguages: ['fr'],
-        suggestedName: 'Named',
+        suggestedDescription: 'Named',
         segmentation: {
           removedVerseStarts: [],
           addedStarts: [{ tokenRef: 'GEN 1:1:10', surfaceText: 'beta' }],

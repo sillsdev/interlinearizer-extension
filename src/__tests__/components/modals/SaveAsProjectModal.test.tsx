@@ -14,6 +14,8 @@ const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_saveAs_title%': 'Save As',
   '%interlinearizer_modal_saveAs_new_section%': 'Save as new project',
+  '%interlinearizer_modal_saveAs_defaultName%': 'Copy of {name}',
+  '%interlinearizer_modal_saveAs_defaultNameNumbered%': 'Copy ({number}) of {name}',
   '%interlinearizer_modal_create_name_label%': 'Name',
   '%interlinearizer_modal_create_name_placeholder%': 'e.g. Greek NT glossing',
   '%interlinearizer_modal_create_description_label%': 'Description',
@@ -25,9 +27,8 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_saveAs_overwrite_confirm_body%': 'Overwrite this project with the draft?',
   '%interlinearizer_modal_saveAs_overwrite_confirm_ok%': 'Overwrite',
   '%interlinearizer_modal_saveAs_overwrite_confirm_cancel%': 'Keep project',
-  '%interlinearizer_modal_saveAs_save_active%': 'Save',
   '%interlinearizer_modal_saveAs_save_active_clean%': 'No changes to save.',
-  '%interlinearizer_modal_saveAs_cancel%': 'Cancel',
+  '%interlinearizer_modal_saveAs_close%': 'Close',
   '%interlinearizer_modal_select_name_unnamed%': 'Unnamed',
   '%interlinearizer_modal_select_active_badge%': 'Active',
   '%interlinearizer_modal_select_modified_prefix%': 'Modified',
@@ -69,22 +70,53 @@ describe('SaveAsProjectModal', () => {
     );
   });
 
-  it('prefills the name and description fields from the defaults', async () => {
-    render(
-      <SaveAsProjectModal
-        {...defaultProps}
-        defaultName="Draft name"
-        defaultDescription="Draft description"
-      />,
+  it('holds the new-project fields blank and disabled until the project list loads', async () => {
+    let resolveList: (json: string) => void = () => {};
+    mockSendCommand.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveList = resolve;
+      }),
     );
+    render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
 
-    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Draft name'));
-    expect(screen.getByLabelText('Description')).toHaveValue('Draft description');
+    expect(screen.getByLabelText('Name')).toHaveValue('');
+    expect(screen.getByLabelText('Name')).toBeDisabled();
+    expect(screen.getByLabelText('Description')).toBeDisabled();
+    expect(screen.getByTestId('save-as-new')).toBeDisabled();
+
+    resolveList(JSON.stringify([makeProjectSummary({ name: 'Copy of Greek' })]));
+
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Copy (2) of Greek'));
+  });
+
+  it('keeps the prefilled name when the active project changes under the open modal', async () => {
+    const { rerender } = render(<SaveAsProjectModal {...defaultProps} activeProjectName="Greek" />);
+    await waitFor(() => expect(screen.getByLabelText('Name')).toHaveValue('Copy of Greek'));
+
+    rerender(<SaveAsProjectModal {...defaultProps} activeProjectName="Copy of Greek" />);
+
+    expect(screen.getByLabelText('Name')).toHaveValue('Copy of Greek');
+  });
+
+  it('leaves the name blank when no project is active', async () => {
+    render(<SaveAsProjectModal {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close' })).toBeEnabled());
+    expect(screen.getByLabelText('Name')).toHaveValue('');
+  });
+
+  it('prefills the description from the default', async () => {
+    render(<SaveAsProjectModal {...defaultProps} defaultDescription="Draft description" />);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Description')).toHaveValue('Draft description'),
+    );
   });
 
   it('calls onSaveNew with the trimmed name and description', async () => {
     const onSaveNew = jest.fn();
     render(<SaveAsProjectModal {...defaultProps} onSaveNew={onSaveNew} />);
+    await waitFor(() => expect(screen.getByLabelText('Name')).toBeEnabled());
 
     await userEvent.type(screen.getByLabelText('Name'), '  My Project  ');
     await userEvent.type(screen.getByLabelText('Description'), '  My Description  ');
@@ -96,6 +128,7 @@ describe('SaveAsProjectModal', () => {
   it('calls onSaveNew with an undefined description when the description field is blank', async () => {
     const onSaveNew = jest.fn();
     render(<SaveAsProjectModal {...defaultProps} onSaveNew={onSaveNew} />);
+    await waitFor(() => expect(screen.getByLabelText('Name')).toBeEnabled());
 
     await userEvent.type(screen.getByLabelText('Name'), 'My Project');
     await userEvent.type(screen.getByLabelText('Description'), '   ');
@@ -194,7 +227,7 @@ describe('SaveAsProjectModal', () => {
     render(<SaveAsProjectModal {...defaultProps} />);
 
     // The empty message also shows while the list loads, so wait for the load to settle first.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close' })).toBeEnabled());
     expect(screen.getByText('No existing projects for this source.')).toBeInTheDocument();
     expect(screen.queryByText('Imported glosses')).not.toBeInTheDocument();
   });
@@ -296,7 +329,7 @@ describe('SaveAsProjectModal', () => {
         }),
     );
     render(<SaveAsProjectModal {...defaultProps} onClose={onClose} />);
-    await waitFor(() => expect(screen.getByRole('button', { name: /^cancel$/i })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^close$/i })).toBeDisabled());
 
     await userEvent.keyboard('{Escape}');
 
@@ -305,7 +338,7 @@ describe('SaveAsProjectModal', () => {
     // Settle the held load so its state update lands inside the test rather than after teardown.
     resolveLoad('[]');
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /^cancel$/i })).not.toBeDisabled(),
+      expect(screen.getByRole('button', { name: /^close$/i })).not.toBeDisabled(),
     );
   });
 
@@ -326,11 +359,11 @@ describe('SaveAsProjectModal', () => {
       ) : undefined;
     }
     render(<Host />);
-    await waitFor(() => expect(screen.getByRole('button', { name: /^cancel$/i })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: /^close$/i })).toBeDisabled());
 
     await userEvent.keyboard('{Escape}');
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument(),
+      expect(screen.queryByRole('button', { name: /^close$/i })).not.toBeInTheDocument(),
     );
 
     rejectLoad(new Error('failed after dismissal'));
@@ -362,15 +395,14 @@ describe('SaveAsProjectModal', () => {
     expect(screen.queryByText('Overwrite this project with the draft?')).not.toBeInTheDocument();
   });
 
-  it('labels the active row Save rather than Overwrite', async () => {
+  it('labels the active row Overwrite', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
     render(<SaveAsProjectModal {...defaultProps} activeProjectId={STUB_PROJECT_2.id} />);
 
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
     const activeRow = screen.getByText('French glosses').closest('li');
     if (!activeRow) throw new Error('expected the active project row to be present');
-    expect(within(activeRow).getByRole('button', { name: 'Save' })).toBeInTheDocument();
-    expect(within(activeRow).queryByRole('button', { name: 'Overwrite' })).not.toBeInTheDocument();
+    expect(within(activeRow).getByRole('button', { name: 'Overwrite' })).toBeInTheDocument();
   });
 
   it('keeps the Overwrite label on rows that are not the active project', async () => {
@@ -397,13 +429,13 @@ describe('SaveAsProjectModal', () => {
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
     const activeRow = screen.getByText('French glosses').closest('li');
     if (!activeRow) throw new Error('expected the active project row to be present');
-    await userEvent.click(within(activeRow).getByRole('button', { name: 'Save' }));
+    await userEvent.click(within(activeRow).getByRole('button', { name: 'Overwrite' }));
 
     expect(onOverwrite).toHaveBeenCalledWith(STUB_PROJECT_2);
     expect(screen.queryByTestId('save-as-overwrite-confirm')).not.toBeInTheDocument();
   });
 
-  it('disables the active row Save while its write is in flight to block duplicate submits', async () => {
+  it('disables the active row Overwrite while its write is in flight to block duplicate submits', async () => {
     let resolveSave: () => void = () => {};
     const onOverwrite = jest.fn(
       () =>
@@ -421,7 +453,7 @@ describe('SaveAsProjectModal', () => {
     );
 
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
-    const saveButton = screen.getByRole('button', { name: 'Save' });
+    const saveButton = screen.getByRole('button', { name: 'Overwrite' });
     await userEvent.click(saveButton);
 
     // Nothing stands between this button and a duplicate write but its own disabled state: the
@@ -467,7 +499,7 @@ describe('SaveAsProjectModal', () => {
     const activeRow = screen.getByText('French glosses').closest('li');
     if (!activeRow) throw new Error('expected the active project row to be present');
     expect(within(activeRow).getByText('No changes to save.')).toBeInTheDocument();
-    expect(within(activeRow).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(within(activeRow).queryByRole('button', { name: 'Overwrite' })).not.toBeInTheDocument();
   });
 
   it('still offers a write to non-active rows when the draft holds no unsaved work', async () => {
@@ -488,16 +520,16 @@ describe('SaveAsProjectModal', () => {
     expect(within(otherRow).getByRole('button', { name: 'Overwrite' })).toBeInTheDocument();
   });
 
-  it('withdraws the active row Save when the draft goes clean under the open modal', async () => {
+  it('withdraws the active row Overwrite when the draft goes clean under the open modal', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT_2]));
     const { rerender } = render(
       <SaveAsProjectModal {...defaultProps} activeProjectId={STUB_PROJECT_2.id} />,
     );
 
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Overwrite' })).toBeInTheDocument();
 
-    // An autosave landing behind the open modal would otherwise leave a live Save button over a
+    // An edit landing behind the open modal would otherwise leave a live Overwrite button over a
     // write that has nothing left to persist.
     rerender(
       <SaveAsProjectModal
@@ -507,7 +539,7 @@ describe('SaveAsProjectModal', () => {
       />,
     );
 
-    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Overwrite' })).not.toBeInTheDocument();
     expect(screen.getByText('No changes to save.')).toBeInTheDocument();
   });
 
@@ -527,15 +559,14 @@ describe('SaveAsProjectModal', () => {
     );
   });
 
-  it('calls onClose when the Cancel button is clicked', async () => {
+  it('calls onClose when the Close button is clicked', async () => {
     const onClose = jest.fn();
     render(<SaveAsProjectModal {...defaultProps} onClose={onClose} />);
 
-    // The Cancel button is disabled until the initial load resolves.
-    const cancelButton = screen.getByRole('button', { name: 'Cancel' });
-    await waitFor(() => expect(cancelButton).not.toBeDisabled());
+    // The Close button is disabled until the initial load resolves.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close' })).not.toBeDisabled());
 
-    await userEvent.click(cancelButton);
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -572,10 +603,12 @@ describe('SaveAsProjectModal', () => {
           resolveSave = resolve;
         }),
     );
-    render(<SaveAsProjectModal {...defaultProps} defaultName="Draft name" onSaveNew={onSaveNew} />);
+    render(
+      <SaveAsProjectModal {...defaultProps} activeProjectName="Draft" onSaveNew={onSaveNew} />,
+    );
 
     // Let the mount's project-list load settle before interacting, so its state update is flushed.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close' })).not.toBeDisabled());
 
     const saveButton = screen.getByTestId('save-as-new');
     await userEvent.click(saveButton);

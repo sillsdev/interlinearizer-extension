@@ -9,6 +9,12 @@ export function prefersLink(link: AnalysisLink, rival: AnalysisLink): boolean {
   return link.id < rival.id;
 }
 
+/** Orders links as {@link prefersLink} ranks them, the preferred first, for `Array.prototype.sort`. */
+export function byPreference(link: AnalysisLink, rival: AnalysisLink): number {
+  if (prefersLink(link, rival)) return -1;
+  return prefersLink(rival, link) ? 1 : 0;
+}
+
 /** The link an approval tie picks from `links`, or `undefined` when there are none. */
 export function preferredLink<L extends AnalysisLink>(links: readonly L[]): L | undefined {
   return links.reduce<L | undefined>(

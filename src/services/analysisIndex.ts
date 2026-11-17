@@ -10,6 +10,7 @@ import type {
 } from 'interlinearizer';
 import type {
   AnalysisLinks,
+  AnalysisPayloads,
   ChangeSet,
   IndexDifference,
   RecordChanges,
@@ -284,6 +285,15 @@ export class AnalysisIndex {
     ];
   }
 
+  /** The payloads of every kind that no link names. */
+  unlinkedPayloads(): AnalysisPayloads {
+    return {
+      tokenAnalyses: unlinkedPayloads(this.tokenAnalyses, this.tokenLinks),
+      phraseAnalyses: unlinkedPayloads(this.phraseAnalyses, this.phraseLinks),
+      segmentAnalyses: unlinkedPayloads(this.segmentAnalyses, this.segmentLinks),
+    };
+  }
+
   /** The keys of the partitions {@link splitAnalysisByBook} would split the records into. */
   partitionKeys(): string[] {
     const keys = new Set(this.linkedBooks());
@@ -303,9 +313,7 @@ export class AnalysisIndex {
    */
   partition(key: string): TextAnalysis | undefined {
     if (key === BOOKLESS_PARTITION) {
-      const segmentAnalyses = unlinkedPayloads(this.segmentAnalyses, this.segmentLinks);
-      const tokenAnalyses = unlinkedPayloads(this.tokenAnalyses, this.tokenLinks);
-      const phraseAnalyses = unlinkedPayloads(this.phraseAnalyses, this.phraseLinks);
+      const { segmentAnalyses, tokenAnalyses, phraseAnalyses } = this.unlinkedPayloads();
       if (segmentAnalyses.length + tokenAnalyses.length + phraseAnalyses.length === 0)
         return undefined;
       return {

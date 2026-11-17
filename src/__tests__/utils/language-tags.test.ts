@@ -1,6 +1,11 @@
 /// <reference types="jest" />
 
-import { collatorForTag, languageNameForTag, parseLanguageTags } from '../../utils/language-tags';
+import {
+  collatorForTag,
+  languageNameForTag,
+  parseLanguageTags,
+  readLanguageCode,
+} from '../../utils/language-tags';
 
 describe('parseLanguageTags', () => {
   it('keeps a repeated tag only where it first appears', () => {
@@ -52,5 +57,61 @@ describe('languageNameForTag', () => {
 
   it('gives back a tag Intl rejects', () => {
     expect(languageNameForTag('en_US')).toBe('en_US');
+  });
+});
+
+describe('readLanguageCode', () => {
+  it.each([
+    [' EN-us ', 'en-US'],
+    ['ZH-hant-tw', 'zh-Hant-TW'],
+    ['ES-419', 'es-419'],
+    ['SL-ROZAJ', 'sl-rozaj'],
+    ['EN-x-AB', 'en-x-ab'],
+  ])('reads the well-formed code %p in standard casing', (input, code) => {
+    expect(readLanguageCode(input, [])).toBe(code);
+  });
+
+  it.each(['swh', 'iw', 'TL'])(
+    'keeps the deprecated alias %p rather than replacing it',
+    (input) => {
+      expect(readLanguageCode(input, [])).toBe(input.toLowerCase());
+    },
+  );
+
+  it('reads a code matching a known tag apart from case as that tag', () => {
+    expect(readLanguageCode('EN', ['fr', 'En'])).toBe('En');
+  });
+
+  it('reads a code that a known tag is a deprecated alias of as that tag, and the reverse', () => {
+    expect(readLanguageCode('sw', ['swh'])).toBe('swh');
+    expect(readLanguageCode('swh', ['sw'])).toBe('sw');
+  });
+
+  it('reads a new code past a known tag that is not well formed', () => {
+    expect(readLanguageCode('fr', ['en_US'])).toBe('fr');
+  });
+
+  it('reads a known tag that is not well formed as that tag', () => {
+    expect(readLanguageCode('EN_us', ['en_US'])).toBe('en_US');
+  });
+
+  it('reads a private-use-only code in lower case', () => {
+    expect(readLanguageCode('X-Foo-Bar', [])).toBe('x-foo-bar');
+  });
+
+  it.each([
+    '',
+    '   ',
+    'not a tag',
+    'en_US',
+    'en-',
+    'e_n',
+    'x-',
+    'x-toolongtag',
+    'aaaa',
+    'aaaaa',
+    'abcdefgh-Latn',
+  ])('reads %p as no code', (input) => {
+    expect(readLanguageCode(input, [])).toBeUndefined();
   });
 });

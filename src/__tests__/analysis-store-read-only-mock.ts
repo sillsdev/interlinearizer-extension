@@ -3,7 +3,7 @@
  * that render components under `useAnalysisReadOnly`.
  *
  * This lives apart from `test-helpers` on purpose: that module imports the real
- * `AnalysisStoreProvider`, so in a file that mocks `AnalysisStore` its `withAnalysisStore` would
+ * `SessionAnalysisProvider`, so in a file that mocks `AnalysisStore` its `withEmptyAnalysis` would
  * silently render the mock's provider instead.
  */
 

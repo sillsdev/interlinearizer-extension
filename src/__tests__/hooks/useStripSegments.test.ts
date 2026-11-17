@@ -2,7 +2,7 @@
 
 import { act, renderHook } from '@testing-library/react';
 import type { Book } from 'interlinearizer';
-import type { SegmentPages } from '../../hooks/useSegmentPages';
+import type { SegmentPages } from '../../types/segment-pages';
 import useStripSegments, {
   STRIP_PREFETCH_SEGMENTS,
   type UseStripSegmentsArgs,
@@ -44,8 +44,17 @@ function makePages(book: Book, start = 0, end = book.segments.length) {
     bookRef: book.bookRef,
     outline: outlineOf(book.segments),
     segmentationVersion: 0,
+    boundaries: { formerBoundaries: {}, unmergeableStarts: [], lostBoundaries: [] },
+    duplicateVerseIds: [],
     segmentAt: (index) =>
       index >= loaded.start && index < loaded.end ? book.segments[index] : undefined,
+    heldRuns: () => [
+      {
+        textVersion: book.textVersion,
+        start: loaded.start,
+        segments: book.segments.slice(loaded.start, loaded.end),
+      },
+    ],
     load: jest.fn(),
     release: jest.fn(),
     subscribe: (onChange) => {

@@ -66,24 +66,6 @@ describe('CopyToEditableModal', () => {
     expect(screen.getByLabelText('Description')).toHaveValue('Editable copy of SRC.');
   });
 
-  it('numbers the default past every name a project of the source already bears', async () => {
-    mockProjectNames(
-      'Copy of Paratext 9 Interlinear',
-      'Copy (2) of Paratext 9 Interlinear',
-      'Paratext 9 Interlinear',
-    );
-    await renderModal();
-
-    expect(screen.getByLabelText('Name')).toHaveValue('Copy (3) of Paratext 9 Interlinear');
-  });
-
-  it('keeps the unnumbered default when only a numbered variant is taken', async () => {
-    mockProjectNames('Copy (2) of Paratext 9 Interlinear');
-    await renderModal();
-
-    expect(screen.getByLabelText('Name')).toHaveValue('Copy of Paratext 9 Interlinear');
-  });
-
   it('disables Create while the project list is loading', () => {
     mockSendCommand.mockReturnValue(new Promise(() => {}));
     render(

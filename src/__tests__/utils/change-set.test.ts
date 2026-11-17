@@ -25,13 +25,13 @@ function draftOf(...tokenAnalyses: TokenAnalysis[]): DraftProject {
 
 describe('scopeRecordOf', () => {
   it("returns the draft's record without its analysis or its dirty flag", () => {
-    const draft = { ...draftOf(payload('a')), suggestedName: 'Draft', dirty: true };
+    const draft = { ...draftOf(payload('a')), suggestedDescription: 'Draft', dirty: true };
 
     expect(scopeRecordOf(draft)).toStrictEqual({
       sourceProjectId: 'src',
       modelVersion: draft.modelVersion,
       analysisLanguages: ['en'],
-      suggestedName: 'Draft',
+      suggestedDescription: 'Draft',
     });
   });
 });
@@ -84,7 +84,7 @@ describe('applyChangeSet', () => {
   });
 
   it("puts the scope's record, restored by putting the one it replaced", () => {
-    const stored = { ...draftOf(), dirty: true, suggestedName: 'Old' };
+    const stored = { ...draftOf(), dirty: true, suggestedDescription: 'Old' };
     const scope = {
       ...scopeRecordOf(draftOf()),
       segmentation: { removedVerseStarts: ['GEN 1:2'], addedStarts: [] },
@@ -112,7 +112,7 @@ describe('applyChangeSet', () => {
 
     applyChangeSet(stored, {
       intent: 'edit',
-      scope: { ...scopeRecordOf(stored), suggestedName: 'New' },
+      scope: { ...scopeRecordOf(stored), suggestedDescription: 'New' },
       tokenAnalyses: { puts: [payload('a', 'ay'), payload('b')], deletes: [] },
     });
 
@@ -238,8 +238,8 @@ describe('mergeChangeSets', () => {
   });
 
   it("keeps the later scope's record when both have one", () => {
-    const earlier = scopeRecordOf({ ...draftOf(), suggestedName: 'Earlier' });
-    const later = scopeRecordOf({ ...draftOf(), suggestedName: 'Later' });
+    const earlier = scopeRecordOf({ ...draftOf(), suggestedDescription: 'Earlier' });
+    const later = scopeRecordOf({ ...draftOf(), suggestedDescription: 'Later' });
 
     expect(
       mergeChangeSets({ intent: 'a', scope: earlier }, { intent: 'b', scope: later }).scope,
@@ -247,7 +247,7 @@ describe('mergeChangeSets', () => {
   });
 
   it("keeps the earlier scope's record when only it has one", () => {
-    const earlier = scopeRecordOf({ ...draftOf(), suggestedName: 'Earlier' });
+    const earlier = scopeRecordOf({ ...draftOf(), suggestedDescription: 'Earlier' });
 
     expect(mergeChangeSets({ intent: 'a', scope: earlier }, { intent: 'b' }).scope).toBe(earlier);
   });

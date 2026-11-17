@@ -459,6 +459,7 @@ export const Button = forwardRef<
     'aria-expanded'?: boolean;
     'aria-haspopup'?: boolean | 'true' | 'false' | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog';
     'aria-controls'?: string;
+    'aria-current'?: 'true' | 'false';
     'aria-hidden'?: boolean;
     'data-testid'?: string;
     /**
@@ -487,6 +488,7 @@ export const Button = forwardRef<
     'aria-expanded': ariaExpanded,
     'aria-haspopup': ariaHaspopup,
     'aria-controls': ariaControls,
+    'aria-current': ariaCurrent,
     'aria-hidden': ariaHidden,
     'data-testid': testId,
     'data-token-ref': tokenRef,
@@ -510,6 +512,7 @@ export const Button = forwardRef<
       aria-expanded={ariaExpanded}
       aria-haspopup={ariaHaspopup}
       aria-controls={ariaControls}
+      aria-current={ariaCurrent}
       aria-hidden={ariaHidden}
       data-testid={testId}
       data-token-ref={tokenRef}
@@ -636,6 +639,32 @@ export function EmptyState({
     <p className={className} data-testid={id} role="status">
       {message}
     </p>
+  );
+}
+
+/** Stub failure view: its message in an `alert`, and a retry button when `onRetry` is given. */
+export function RetryableErrorView({
+  message,
+  retryLabel,
+  onRetry,
+  role = 'alert',
+  className,
+}: Readonly<{
+  message: ReactNode;
+  retryLabel?: ReactNode;
+  onRetry?: () => void;
+  role?: 'alert' | 'status';
+  className?: string;
+}>): ReactElement {
+  return (
+    <div className={className} role={role}>
+      {message}
+      {onRetry && (
+        <button onClick={onRetry} type="button">
+          {retryLabel}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1239,12 +1268,19 @@ export const DialogContent = forwardRef<
     'aria-describedby'?: undefined;
     children?: ReactNode;
     className?: string;
+    'data-allows-undo'?: boolean;
     onCloseAutoFocus?: (event: Event) => void;
     onInteractOutside?: (event: { preventDefault: () => void }) => void;
     showCloseButton?: boolean;
   }>
 >(function DialogContent(
-  { children, className, onCloseAutoFocus, onInteractOutside },
+  {
+    children,
+    className,
+    'data-allows-undo': allowsUndo,
+    onCloseAutoFocus,
+    onInteractOutside,
+  },
   ref,
 ): ReactElement {
   const { onOpenChange, titleId } = useContext(DialogContext);
@@ -1282,6 +1318,7 @@ export const DialogContent = forwardRef<
         aria-labelledby={titleId}
         aria-modal="true"
         className={className}
+        data-allows-undo={allowsUndo}
         data-slot="dialog-content"
         role="dialog"
       >
@@ -1642,15 +1679,18 @@ function OpenDropdownMenuContent({
 
 /**
  * Stub dropdown-menu item rendered as a `role="menuitem"` button. Choosing it fires `onSelect` and
- * then closes the menu unless the handler prevents the event, as the real item does.
+ * then closes the menu unless the handler prevents the event, as the real item does. A disabled
+ * item can't be chosen.
  */
 export function DropdownMenuItem({
   children,
   className,
+  disabled,
   onSelect,
 }: Readonly<{
   children?: ReactNode;
   className?: string;
+  disabled?: boolean;
   onSelect?: (event: Event) => void;
   variant?: 'default' | 'destructive';
 }>): ReactElement {
@@ -1658,6 +1698,7 @@ export function DropdownMenuItem({
   return (
     <button
       className={className}
+      disabled={disabled}
       role="menuitem"
       type="button"
       onClick={() => {
@@ -1669,6 +1710,11 @@ export function DropdownMenuItem({
       {children}
     </button>
   );
+}
+
+/** Stub dropdown-menu separator rendered as a `role="separator"` element. */
+export function DropdownMenuSeparator(): ReactElement {
+  return <div role="separator" />;
 }
 
 /**

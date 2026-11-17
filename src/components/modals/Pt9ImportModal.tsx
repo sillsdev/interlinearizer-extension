@@ -1,10 +1,15 @@
+import { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
+import { Canon } from '@sillsdev/scripture';
 import { Button } from 'platform-bible-react';
-import { formatReplacementString } from 'platform-bible-utils';
-import type {
-  Pt9ClusterDropReason,
-  Pt9ImportReport,
-  Pt9UnreadableFile,
+import { useEffect, useMemo, useState } from 'react';
+import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
+import {
+  PT9_CLUSTER_DROP_REASONS,
+  type Pt9ClusterDrop,
+  type Pt9ClusterDropReason,
+  type Pt9ImportReport,
+  type Pt9UnreadableFile,
 } from '../../converters/pt9';
 import { ModalShell } from './ModalShell';
 
@@ -25,12 +30,21 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_pt9ImportModal_notImportedCount%',
   '%interlinearizer_pt9ImportModal_reason_verseNotFound%',
   '%interlinearizer_pt9ImportModal_reason_formMismatch%',
+  '%interlinearizer_pt9ImportModal_reason_parseFormMismatch%',
   '%interlinearizer_pt9ImportModal_reason_frontMatter%',
   '%interlinearizer_pt9ImportModal_reason_lemmaOrOther%',
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%',
+  '%interlinearizer_pt9ImportModal_reason_blankMorphemeForm%',
+  '%interlinearizer_pt9ImportModal_showDrops%',
+  '%interlinearizer_pt9ImportModal_moreDrops%',
+  '%interlinearizer_pt9ImportModal_copyDrops%',
+  '%interlinearizer_pt9ImportModal_dropsCopied%',
+  '%interlinearizer_pt9ImportModal_copyFailed%',
+  '%interlinearizer_pt9ImportModal_dropLine%',
   '%interlinearizer_pt9ImportModal_missingBooks%',
   '%interlinearizer_pt9ImportModal_filesTooLarge%',
+  '%interlinearizer_pt9ImportModal_filesNeverLoaded%',
   '%interlinearizer_pt9ImportModal_staleKept%',
   '%interlinearizer_pt9ImportModal_open%',
   '%interlinearizer_pt9ImportModal_close%',
@@ -44,19 +58,19 @@ const PT9_IMPORT_MODAL_STRING_KEYS: `%${string}%`[] = [
 export type Pt9ImportModalPhase =
   | { kind: 'running' }
   | { kind: 'report'; report: Pt9ImportReport }
-  /** No conversion ran and the stored import was kept; `files` names what could not be read. */
-  | { kind: 'staleKept'; files: Pt9UnreadableFile[] }
+  /** Nothing was persisted and the stored import was kept. */
+  | ({ kind: 'staleKept' } & LeftOutFiles)
+  /** A first import converted nothing, so no import was created. */
+  | ({ kind: 'notConverted' } & LeftOutFiles)
   | { kind: 'error'; reason?: 'tooLarge' };
 
-/** Every drop reason, for typed iteration over a book report's `clusterDrops`. */
-const DROP_REASONS: readonly Pt9ClusterDropReason[] = [
-  'verseNotFound',
-  'formMismatch',
-  'frontMatter',
-  'lemmaOrOther',
-  'duplicateCluster',
-  'unparseableLexemeId',
-];
+/** The files that a run left out. */
+export interface LeftOutFiles {
+  /** Files too large for any read to take on. */
+  filesTooLarge: Pt9UnreadableFile[];
+  /** Files Paratext 9 never loads from where they are. */
+  filesNeverLoaded: string[];
+}
 
 /**
  * The counts and lists the report summary renders, folded from the per-language reports.
@@ -71,7 +85,46 @@ type ReportTotals = {
   clustersConverted: number;
   phrasesConverted: number;
   drops: { reason: Pt9ClusterDropReason; count: number }[];
+  /** Every dropped cluster, paired with the tag of the gloss language it was in. */
+  droppedClusters: (Pt9ClusterDrop & { language: string })[];
 };
+
+/** Orders book ids canonically. */
+function compareBookIds(a: string, b: string): number {
+  return Canon.bookIdToNumber(a) - Canon.bookIdToNumber(b);
+}
+
+/**
+ * Orders dropped clusters canonically by their verse key, then by language. A verse such as `2-3`
+ * or `2a` sorts by its leading number. A chapter or verse with no ASCII leading number, such as the
+ * Devanagari `२`, sorts after every number.
+ */
+function compareDroppedClusters(
+  a: ReportTotals['droppedClusters'][number],
+  b: ReportTotals['droppedClusters'][number],
+): number {
+  const place = ({ verseRef }: Pt9ClusterDrop) => {
+    const [bookId, chapterVerse = ''] = verseRef.split(' ');
+    const [chapter, verse = ''] = chapterVerse.split(':');
+    return [
+      Canon.bookIdToNumber(bookId),
+      Number.parseInt(chapter, 10),
+      Number.parseInt(verse, 10),
+    ].map((part) => (Number.isNaN(part) ? Infinity : part));
+  };
+  const placeA = place(a);
+  const placeB = place(b);
+  const differing = placeA.findIndex((part, i) => part !== placeB[i]);
+  if (differing >= 0) return placeA[differing] < placeB[differing] ? -1 : 1;
+  return a.language.localeCompare(b.language);
+}
+
+/** Orders files by the book each declares, canonically, with files declaring none last. */
+function compareUnreadableFiles(a: Pt9UnreadableFile, b: Pt9UnreadableFile): number {
+  const bookNumber = (file: Pt9UnreadableFile) =>
+    file.bookId === undefined ? Number.MAX_SAFE_INTEGER : Canon.bookIdToNumber(file.bookId);
+  return bookNumber(a) - bookNumber(b);
+}
 
 /**
  * Renders a byte count in mebibytes, the unit the platform's read ceiling is set in, so the size
@@ -98,6 +151,42 @@ function describeUnreadableFile(file: Pt9UnreadableFile): string {
   return `${name} ${describeMebibytes(file.sizeBytes)}`;
 }
 
+/** One line for each nonempty list of files that a run left out. */
+function LeftOutFileLines({
+  filesTooLarge,
+  filesNeverLoaded,
+  localizedStrings,
+}: Readonly<LeftOutFiles & { localizedStrings: LanguageStrings }>) {
+  return (
+    <>
+      {filesNeverLoaded.length > 0 && (
+        <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-never-loaded">
+          {formatReplacementString(
+            localizedStrings['%interlinearizer_pt9ImportModal_filesNeverLoaded%'],
+            { files: filesNeverLoaded.join(', ') },
+          )}
+        </p>
+      )}
+      {filesTooLarge.length > 0 && (
+        <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-too-large">
+          {formatReplacementString(
+            localizedStrings['%interlinearizer_pt9ImportModal_filesTooLarge%'],
+            {
+              limit: describeMebibytes(
+                Math.max(...filesTooLarge.map((file) => file.maxResponseBytes)),
+              ),
+              files: filesTooLarge
+                .toSorted(compareUnreadableFiles)
+                .map(describeUnreadableFile)
+                .join(', '),
+            },
+          )}
+        </p>
+      )}
+    </>
+  );
+}
+
 /** Folds the per-language, per-book report into the totals the summary shows. */
 function foldReport(report: Pt9ImportReport): ReportTotals {
   const books: string[] = [];
@@ -106,14 +195,16 @@ function foldReport(report: Pt9ImportReport): ReportTotals {
   let clustersConverted = 0;
   let phrasesConverted = 0;
   const dropCounts = new Map<Pt9ClusterDropReason, number>();
+  const droppedClusters: ReportTotals['droppedClusters'] = [];
   report.languages.forEach((language) => {
     language.books.forEach((book) => {
+      book.drops.forEach((drop) => droppedClusters.push({ ...drop, language: language.tag }));
       if (!books.includes(book.bookId)) books.push(book.bookId);
       if (!book.bookFound && !missingBooks.includes(book.bookId)) missingBooks.push(book.bookId);
       clustersTotal += book.clustersTotal;
       clustersConverted += book.clustersConverted;
       phrasesConverted += book.phrasesConverted;
-      DROP_REASONS.forEach((reason) => {
+      PT9_CLUSTER_DROP_REASONS.forEach((reason) => {
         const count = book.clusterDrops[reason];
         if (count > 0) dropCounts.set(reason, (dropCounts.get(reason) ?? 0) + count);
       });
@@ -124,13 +215,103 @@ function foldReport(report: Pt9ImportReport): ReportTotals {
     .sort((a, b) => b.count - a.count);
   return {
     languages: report.languages.map((language) => language.tag),
-    books,
-    missingBooks,
+    books: books.sort(compareBookIds),
+    missingBooks: missingBooks.sort(compareBookIds),
     clustersTotal,
     clustersConverted,
     phrasesConverted,
     drops,
+    droppedClusters: droppedClusters.sort(compareDroppedClusters),
   };
+}
+
+/**
+ * The most dropped-cluster lines the report lays out, because laying out every line of a large
+ * import freezes the WebView. Copy all carries every line.
+ */
+export const MAX_SHOWN_DROPS = 100;
+
+/** How long, in milliseconds, the Copy all button shows the last copy's outcome. */
+export const COPY_FEEDBACK_MS = 2000;
+
+/** The Copy all button's label for each copy outcome; `idle` covers no copy and expired feedback. */
+const COPY_LABEL_KEYS: Record<'copied' | 'failed' | 'idle', `%${string}%`> = {
+  copied: '%interlinearizer_pt9ImportModal_dropsCopied%',
+  failed: '%interlinearizer_pt9ImportModal_copyFailed%',
+  idle: '%interlinearizer_pt9ImportModal_copyDrops%',
+};
+
+/**
+ * A collapsed list of the dropped clusters, one line each, with a button that copies every line.
+ * Lines are built only while the list is open.
+ */
+function DroppedClusterList({
+  droppedClusters,
+  localizedStrings,
+}: Readonly<{
+  droppedClusters: ReportTotals['droppedClusters'];
+  localizedStrings: LanguageStrings;
+}>) {
+  const [open, setOpen] = useState(false);
+  const [copyOutcome, setCopyOutcome] = useState<'copied' | 'failed'>();
+  useEffect(() => {
+    if (copyOutcome === undefined) return undefined;
+    const timer = setTimeout(() => setCopyOutcome(undefined), COPY_FEEDBACK_MS);
+    return () => clearTimeout(timer);
+  }, [copyOutcome]);
+  const describe = (drop: ReportTotals['droppedClusters'][number]) =>
+    formatReplacementString(localizedStrings['%interlinearizer_pt9ImportModal_dropLine%'], {
+      verseRef: drop.verseRef,
+      language: drop.language,
+      lexemeIds: drop.lexemeIds.join(' '),
+      reason: localizedStrings[`%interlinearizer_pt9ImportModal_reason_${drop.reason}%`],
+    });
+  const hiddenCount = droppedClusters.length - MAX_SHOWN_DROPS;
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(droppedClusters.map(describe).join('\n'));
+      setCopyOutcome('copied');
+    } catch (e) {
+      logger.error('Interlinearizer: failed to copy the clusters a Paratext 9 import dropped', e);
+      setCopyOutcome('failed');
+    }
+  };
+  return (
+    <details
+      className="tw:text-sm"
+      data-testid="pt9-import-drops"
+      open={open}
+      onToggle={(event) => {
+        setOpen(event.currentTarget.open);
+        setCopyOutcome(undefined);
+      }}
+    >
+      <summary className="tw:cursor-pointer">
+        {localizedStrings['%interlinearizer_pt9ImportModal_showDrops%']}
+      </summary>
+      {open && (
+        <div className="tw:flex tw:flex-col tw:gap-1 tw:ps-5">
+          <pre
+            className="tw:max-h-48 tw:overflow-auto tw:font-sans tw:text-muted-foreground"
+            data-testid="pt9-import-drop-lines"
+          >
+            {droppedClusters.slice(0, MAX_SHOWN_DROPS).map(describe).join('\n')}
+          </pre>
+          {hiddenCount > 0 && (
+            <p className="tw:text-muted-foreground">
+              {formatReplacementString(
+                localizedStrings['%interlinearizer_pt9ImportModal_moreDrops%'],
+                { count: hiddenCount.toLocaleString() },
+              )}
+            </p>
+          )}
+          <Button className="tw:self-start" size="sm" variant="secondary" onClick={copyAll}>
+            {localizedStrings[COPY_LABEL_KEYS[copyOutcome ?? 'idle']]}
+          </Button>
+        </div>
+      )}
+    </details>
+  );
 }
 
 /** One labeled row of the report summary. */
@@ -206,7 +387,7 @@ export function Pt9ImportModal({
     );
   }
 
-  if (phase.kind === 'error') {
+  if (phase.kind === 'error' || phase.kind === 'notConverted') {
     return (
       <ModalShell
         titleTestId="pt9-import-modal-title"
@@ -215,10 +396,17 @@ export function Pt9ImportModal({
         onClose={onClose}
       >
         <p className="tw:text-sm tw:text-destructive" data-testid="pt9-import-error">
-          {phase.reason === 'tooLarge'
+          {phase.kind === 'error' && phase.reason === 'tooLarge'
             ? localizedStrings['%interlinearizer_pt9ImportModal_tooLarge%']
             : localizedStrings['%interlinearizer_pt9ImportModal_failed%']}
         </p>
+        {phase.kind === 'notConverted' && (
+          <LeftOutFileLines
+            filesTooLarge={phase.filesTooLarge}
+            filesNeverLoaded={phase.filesNeverLoaded}
+            localizedStrings={localizedStrings}
+          />
+        )}
         <div className="tw:modal-actions tw:mt-4">
           <Button onClick={onClose}>
             {localizedStrings['%interlinearizer_pt9ImportModal_close%']}
@@ -239,17 +427,11 @@ export function Pt9ImportModal({
         <p className="tw:text-sm" data-testid="pt9-import-stale-kept">
           {localizedStrings['%interlinearizer_pt9ImportModal_staleKept%']}
         </p>
-        <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-too-large">
-          {formatReplacementString(
-            localizedStrings['%interlinearizer_pt9ImportModal_filesTooLarge%'],
-            {
-              limit: describeMebibytes(
-                Math.max(...phase.files.map((file) => file.maxResponseBytes)),
-              ),
-              files: phase.files.map(describeUnreadableFile).join(', '),
-            },
-          )}
-        </p>
+        <LeftOutFileLines
+          filesTooLarge={phase.filesTooLarge}
+          filesNeverLoaded={phase.filesNeverLoaded}
+          localizedStrings={localizedStrings}
+        />
         <div className="tw:modal-actions tw:mt-4">
           <Button onClick={onClose}>
             {localizedStrings['%interlinearizer_pt9ImportModal_close%']}
@@ -259,7 +441,35 @@ export function Pt9ImportModal({
     );
   }
 
-  const totals = foldReport(phase.report);
+  return (
+    <Pt9ImportReportView
+      report={phase.report}
+      mode={mode}
+      title={title}
+      localizedStrings={localizedStrings}
+      onOpen={onOpen}
+      onClose={onClose}
+    />
+  );
+}
+
+/** The report summary that a finished run shows, with the actions that `mode` offers. */
+function Pt9ImportReportView({
+  report,
+  mode,
+  title,
+  localizedStrings,
+  onOpen,
+  onClose,
+}: Readonly<{
+  report: Pt9ImportReport;
+  mode: 'import' | 'offer' | 'sync';
+  title: string;
+  localizedStrings: LanguageStrings;
+  onOpen?: () => void;
+  onClose: () => void;
+}>) {
+  const totals = useMemo(() => foldReport(report), [report]);
   const dropTotal = totals.drops.reduce((sum, drop) => sum + drop.count, 0);
   const reasonLines = totals.drops.map(
     (drop) =>
@@ -270,10 +480,10 @@ export function Pt9ImportModal({
     <ModalShell
       titleTestId="pt9-import-modal-title"
       title={title}
-      width="tw:w-96"
+      width="tw:w-xl"
       onClose={mode === 'offer' ? onOpen : onClose}
     >
-      <div className="tw:flex tw:flex-col tw:gap-1" data-testid="pt9-import-report">
+      <div className="tw:flex tw:min-w-0 tw:flex-col tw:gap-1" data-testid="pt9-import-report">
         <ReportRow
           label={localizedStrings['%interlinearizer_pt9ImportModal_languages_label%']}
           value={totals.languages.join(', ')}
@@ -315,6 +525,12 @@ export function Pt9ImportModal({
             </ul>
           </>
         )}
+        {totals.droppedClusters.length > 0 && (
+          <DroppedClusterList
+            droppedClusters={totals.droppedClusters}
+            localizedStrings={localizedStrings}
+          />
+        )}
         {totals.missingBooks.length > 0 && (
           <p className="tw:text-sm tw:text-muted-foreground">
             {formatReplacementString(
@@ -323,21 +539,11 @@ export function Pt9ImportModal({
             )}
           </p>
         )}
-        {phase.report.filesTooLargeToRead.length > 0 && (
-          <p className="tw:text-sm tw:text-muted-foreground" data-testid="pt9-files-too-large">
-            {formatReplacementString(
-              localizedStrings['%interlinearizer_pt9ImportModal_filesTooLarge%'],
-              {
-                limit: describeMebibytes(
-                  Math.max(
-                    ...phase.report.filesTooLargeToRead.map((file) => file.maxResponseBytes),
-                  ),
-                ),
-                files: phase.report.filesTooLargeToRead.map(describeUnreadableFile).join(', '),
-              },
-            )}
-          </p>
-        )}
+        <LeftOutFileLines
+          filesTooLarge={report.filesTooLargeToRead}
+          filesNeverLoaded={report.filesPt9NeverLoads}
+          localizedStrings={localizedStrings}
+        />
       </div>
       <div className="tw:modal-actions tw:mt-4">
         {mode === 'import' && (

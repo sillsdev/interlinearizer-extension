@@ -1,17 +1,28 @@
 import type {
-  Book,
+  DraftEnvelope,
   PhraseAnalysisLink,
+  ReadonlyBook,
+  ReadonlySegment,
   SegmentAnalysis,
   SegmentAnalysisLink,
   TokenAnalysis,
 } from 'interlinearizer';
 import type { AnalysisRepository } from '../types/analysis-repository';
 import type { AppliedChange } from './analysisChanges';
-import type { BookOutline, PhraseSpanToken, PoolRead, SegmentPage } from '../types/segment-pages';
+import type {
+  BookOutline,
+  PhraseSpanToken,
+  PoolRead,
+  SegmentPage,
+  StaleGlossPlace,
+  StaleSummary,
+} from '../types/segment-pages';
 import { isWordToken } from '../types/type-guards';
+import { envelopeOf } from '../types/draft-envelope';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { buildBookOutline } from '../utils/book-outline';
+import { outlineBoundaries } from '../utils/segmentation';
 import { touched } from '../utils/change-set';
 import {
   orphanedCardCountAt,
@@ -19,7 +30,6 @@ import {
   placedIdsIn,
   placeStaleFreeTranslations,
   type PlacedStaleFreeTranslations,
-  type StaleFreeTranslation,
 } from '../utils/stale-free-translations';
 import { buildPoolIndex } from '../utils/suggestion-engine';
 
@@ -54,10 +64,7 @@ function uniqueById<T extends { id: string }>(records: readonly T[]): T[] {
   return [...new Map(records.toReversed().map((record) => [record.id, record])).values()];
 }
 
-/** A stale free translation, with the link it was read from. */
-type StaleLink = StaleFreeTranslation & Readonly<{ link: SegmentAnalysisLink }>;
-
-const NOTHING_PLACED: PlacedStaleFreeTranslations<StaleLink> = {
+const NOTHING_PLACED: PlacedStaleFreeTranslations = {
   bySegment: new Map(),
   orphanedAfter: new Map(),
   orphanedAhead: [],
@@ -65,41 +72,89 @@ const NOTHING_PLACED: PlacedStaleFreeTranslations<StaleLink> = {
 
 /** The book's stale free translations, placed, with the links and payloads they were read from. */
 type StalePlacement = {
-  placed: PlacedStaleFreeTranslations<StaleLink>;
+  placed: PlacedStaleFreeTranslations;
   links: SegmentAnalysisLink[];
   payloads: SegmentAnalysis[];
 };
 
 /**
- * Places the stale free translations of `book` as the view does. A stale link whose payload is not
- * stored is passed over.
+ * Places the stale free translations of `book` as the view does, reading the book's stale segment
+ * links from `repository` unless given them. A stale link whose payload is not stored is passed
+ * over.
  *
  * @throws Whatever the repository's lookups throw.
  */
 async function readStalePlacement(
   repository: AnalysisRepository,
-  book: Book,
+  book: ReadonlyBook,
+  segmentAnalysisLinks?: SegmentAnalysisLink[],
 ): Promise<StalePlacement> {
-  const { segmentAnalysisLinks } = await repository.findLinksInBooks([book.bookRef], ['stale']);
+  const staleLinks =
+    segmentAnalysisLinks ??
+    (await repository.findLinksInBooks([book.bookRef], ['stale'])).segmentAnalysisLinks;
   const payloads = await repository.getSegmentAnalyses(
-    segmentAnalysisLinks.map(({ analysisId }) => analysisId),
+    staleLinks.map(({ analysisId }) => analysisId),
   );
   const stored = new Set(payloads.map(({ id }) => id));
-  const links = segmentAnalysisLinks.filter(({ analysisId }) => stored.has(analysisId));
+  const links = staleLinks.filter(({ analysisId }) => stored.has(analysisId));
   // Placing walks the whole book; a book holding no stale translation skips the walk.
   if (links.length === 0) return { placed: NOTHING_PLACED, links, payloads };
-  const stale = links.map((link) => ({
-    analysisId: link.analysisId,
-    segmentId: link.segmentId,
+  const stale = links.map(({ id, analysisId, segmentId }) => ({
+    linkId: id,
+    analysisId,
+    segmentId,
     text: '',
-    link,
   }));
   return { placed: placeStaleFreeTranslations(stale, book), links, payloads };
 }
 
+/** A book's stale analyses, summarized, with its stale free translations placed. */
+type StaleRead = { summary: StaleSummary; placed: PlacedStaleFreeTranslations };
+
+/**
+ * Reads the stale analyses that `book` holds. A stale link whose payload is not stored is passed
+ * over.
+ *
+ * @throws Whatever the repository's lookups throw.
+ */
+async function readStale(repository: AnalysisRepository, book: ReadonlyBook): Promise<StaleRead> {
+  const { tokenAnalysisLinks, segmentAnalysisLinks } = await repository.findLinksInBooks(
+    [book.bookRef],
+    ['stale'],
+  );
+  const stored = new Set(
+    (await repository.getTokenAnalyses(tokenAnalysisLinks.map(({ analysisId }) => analysisId))).map(
+      ({ id }) => id,
+    ),
+  );
+  const places = new Map<string, StaleGlossPlace>();
+  tokenAnalysisLinks.forEach(({ analysisId, token: { tokenRef } }) => {
+    if (stored.has(analysisId))
+      places.set(JSON.stringify([analysisId, tokenRef]), { analysisId, tokenRef });
+  });
+  const { tokenDocOrder } = bookIndexesOf(book.segments);
+  const orderOf = ({ tokenRef }: StaleGlossPlace) =>
+    tokenDocOrder.get(tokenRef) ?? Number.MAX_SAFE_INTEGER;
+  const { placed } = await readStalePlacement(repository, book, segmentAnalysisLinks);
+  const { bySegment, orphanedAfter, orphanedAhead } = placed;
+  return {
+    summary: {
+      glosses: [...places.values()].sort((a, b) => orderOf(a) - orderOf(b)),
+      freeTranslations: book.segments.flatMap(({ id: segmentId }, index) =>
+        [
+          ...(index === 0 ? orphanedAhead : []),
+          ...(bySegment.get(segmentId) ?? []),
+          ...(orphanedAfter.get(segmentId) ?? []),
+        ].map(({ analysisId }) => ({ analysisId, segmentId })),
+      ),
+    },
+    placed,
+  };
+}
+
 /** For each of `links`, by id, the word tokens of the link that `book` holds, with where each sits. */
 function spansOf(
-  book: Book,
+  book: ReadonlyBook,
   links: readonly PhraseAnalysisLink[],
 ): Record<string, readonly PhraseSpanToken[]> {
   const { wordTokenByRef, tokenSegmentMap, tokenDocOrder, gapTextByWordRef } = bookIndexesOf(
@@ -122,26 +177,71 @@ function spansOf(
 
 /**
  * Outlines a book, counting the orphaned free-translation cards that the view shows beside each
- * segment. Each count takes in the cards after its segment; the first also takes in those ahead of
- * it.
+ * segment and flagging the segments where it shows a stale analysis. Each count takes in the cards
+ * after its segment; the first also takes in those ahead of it. The outline also says what the
+ * book's boundary controls need to know of the draft's boundaries.
  *
- * @param repository - The draft whose stale free translations are counted.
+ * @param repository - The draft whose stale analyses are counted and flagged.
  * @param book - The book, segmented by the draft's boundaries.
+ * @param verseBook - The same book, one segment per verse.
  * @throws Whatever the repository's lookups throw.
  */
 export async function readBookOutline(
   repository: AnalysisRepository,
-  book: Book,
+  book: ReadonlyBook,
+  verseBook: ReadonlyBook,
 ): Promise<BookOutline> {
-  const { placed } = await readStalePlacement(repository, book);
+  const { summary, placed } = await readStale(repository, book);
+  const { tokenSegmentMap } = bookIndexesOf(book.segments);
+  const glossSegments = new Set(
+    summary.glosses.map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)),
+  );
+  const translationSegments = new Set(summary.freeTranslations.map(({ segmentId }) => segmentId));
   const outline = buildBookOutline(book, book.segments);
   return {
     ...outline,
+    boundaries: outlineBoundaries(verseBook, (await repository.getScope()).segmentation),
     segments: outline.segments.map((segment, index) => ({
       ...segment,
       orphanedCardCount: orphanedCardCountAt(placed, segment.id, index),
+      hasStaleGloss: glossSegments.has(segment.id),
+      hasStaleFreeTranslation: translationSegments.has(segment.id),
     })),
   };
+}
+
+/**
+ * Reads the draft's envelope: the draft without its analysis or boundaries. When the draft lists no
+ * analysis language, the envelope lists `analysisLanguage`.
+ *
+ * @throws Whatever the repository's lookups throw.
+ */
+export async function readDraftEnvelope(
+  repository: AnalysisRepository,
+  analysisLanguage: string,
+): Promise<DraftEnvelope> {
+  const envelope = envelopeOf(
+    await repository.getScope(),
+    (await repository.getDraftState()).dirty,
+  );
+  return envelope.analysisLanguages.length > 0
+    ? envelope
+    : { ...envelope, analysisLanguages: [analysisLanguage] };
+}
+
+/**
+ * Summarizes the stale analyses that `book` holds. A stale link whose payload is not stored is
+ * passed over.
+ *
+ * @param repository - The draft whose stale analyses are summarized.
+ * @param book - The book, segmented by the draft's boundaries.
+ * @throws Whatever the repository's lookups throw.
+ */
+export async function readStaleSummary(
+  repository: AnalysisRepository,
+  book: ReadonlyBook,
+): Promise<StaleSummary> {
+  return (await readStale(repository, book)).summary;
 }
 
 /**
@@ -155,10 +255,10 @@ export async function readBookOutline(
  */
 export async function readSegmentPage(
   repository: AnalysisRepository,
-  book: Book,
+  book: ReadonlyBook,
   start: number,
   end: number,
-): Promise<SegmentPage> {
+): Promise<SegmentPage<ReadonlySegment>> {
   const from = Math.max(0, start);
   const segments = book.segments.slice(from, Math.max(from, end));
   const tokens = segments.flatMap((segment) => segment.tokens);
@@ -184,12 +284,11 @@ export async function readSegmentPage(
     placement.placed,
     segmentIds,
     from === 0,
-    ({ analysisId }) => analysisId,
+    ({ linkId }) => linkId,
   );
-  const placedIds = placedIdsIn(staleFreeTranslations);
-  const placedLinkIds = placedIdsIn(
-    placedAmong(placement.placed, segmentIds, from === 0, ({ link }) => link.id),
-  );
+  const placedLinkIds = placedIdsIn(staleFreeTranslations);
+  const placedLinks = placement.links.filter(({ id }) => placedLinkIds.has(id));
+  const placedIds = new Set(placedLinks.map(({ analysisId }) => analysisId));
   return {
     textVersion: book.textVersion,
     start: from,
@@ -197,10 +296,7 @@ export async function readSegmentPage(
     analysis: {
       tokenAnalysisLinks,
       phraseAnalysisLinks,
-      segmentAnalysisLinks: uniqueById([
-        ...segmentAnalysisLinks,
-        ...placement.links.filter(({ id }) => placedLinkIds.has(id)),
-      ]),
+      segmentAnalysisLinks: uniqueById([...segmentAnalysisLinks, ...placedLinks]),
       tokenAnalyses: uniqueById([...linked, ...poolAnalyses]),
       phraseAnalyses,
       segmentAnalyses: uniqueById([

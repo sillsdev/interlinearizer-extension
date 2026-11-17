@@ -1,23 +1,21 @@
 /// <reference types="jest" />
 
 import papiBackendMock from '@papi/backend';
-import type { Book, SegmentationDelta } from 'interlinearizer';
+import type { ReadonlyBook, SegmentationDelta } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { UsjDocument } from 'parsers/papi/usjBookExtractor';
 import { createRng, type Rng } from '../../../perf/dataset/rng';
 import {
   closeAllProjects,
-  getBookOutline,
-  getSegments,
-  getTokenizedBook,
+  getOpenBook,
+  getSegmentedBook,
+  getVerseBook,
 } from '../../services/bookService';
-import type { BookOutline, SegmentPage } from '../../types/segment-pages';
 import { buildBookOutline } from '../../utils/book-outline';
 import {
   addBoundaryBefore,
   reanchorSegmentation,
   removeBoundaryAt,
-  segmentationForBook,
 } from '../../utils/segmentation';
 
 function isBackendMock(m: unknown): m is { __mockProjectDataProvidersGet: jest.Mock } {
@@ -133,7 +131,7 @@ function usjOf(text: BookText): UsjDocument {
 /** `delta` with one boundary edit made: a split before any token, or a merge at a segment's start. */
 function editBoundaries(
   rng: Rng,
-  book: Book,
+  book: ReadonlyBook,
   delta: SegmentationDelta | undefined,
 ): SegmentationDelta | undefined {
   const verseSegments = book.segments.filter((segment) => !segment.heading);
@@ -173,27 +171,29 @@ function serveText(initial: BookText): (text: BookText) => Promise<void> {
   };
 }
 
-async function tokenizedBook(): Promise<Book> {
-  const json = await getTokenizedBook('src', 'GEN');
-  if (!json) throw new Error('Expected a tokenized book');
-  return JSON.parse(json);
+async function tokenizedBook(): Promise<ReadonlyBook> {
+  const book = await getVerseBook('src', 'GEN');
+  if (!book) throw new Error('Expected a tokenized book');
+  return book;
 }
 
-/** The host's outline and pages, as JSON, for the boundaries the WebView sends it for `draft`. */
+/**
+ * The outline of the host's open book and the segments it pages, as JSON, for the boundaries that a
+ * session's draft sets as `draft`.
+ */
 async function hostSegments(draft: SegmentationDelta | undefined): Promise<string> {
-  const delta = segmentationForBook(draft, 'GEN');
-  const segmentationJson = delta && JSON.stringify(delta);
-  const outlineJson = await getBookOutline('src', 'GEN', segmentationJson);
-  if (!outlineJson) throw new Error('Expected an outline');
-  const outline: BookOutline = JSON.parse(outlineJson);
-  const pageJson = await getSegments('src', 'GEN', 0, outline.segments.length, segmentationJson);
-  if (!pageJson) throw new Error('Expected a page');
-  const page: SegmentPage = JSON.parse(pageJson);
-  return JSON.stringify({ outline, segments: page.segments });
+  const open = await getOpenBook('src', 'GEN', draft);
+  if (!open) throw new Error('Expected an open book');
+  const paged = await getSegmentedBook('src', 'GEN', draft);
+  if (!paged) throw new Error('Expected a paged book');
+  return JSON.stringify({
+    outline: buildBookOutline(open, open.segments),
+    segments: paged.segments,
+  });
 }
 
-/** The WebView's whole book for `draft`, as JSON in the shape of {@link hostSegments}. */
-function webViewSegments(book: Book, draft: SegmentationDelta | undefined): string {
+/** The tokenized book resegmented whole for `draft`, as JSON in the shape of {@link hostSegments}. */
+function webViewSegments(book: ReadonlyBook, draft: SegmentationDelta | undefined): string {
   const { segments } = resegmentBook(book, reanchorSegmentation(book, draft));
   return JSON.stringify({ outline: buildBookOutline(book, segments), segments });
 }
@@ -201,14 +201,18 @@ function webViewSegments(book: Book, draft: SegmentationDelta | undefined): stri
 afterEach(() => closeAllProjects());
 
 describe("the host's segments", () => {
-  it("match the WebView's whole book under custom boundaries, after a Scripture edit, and after a boundary edit", async () => {
+  it('match the book resegmented whole under custom boundaries, after a Scripture edit, and after a boundary edit', async () => {
     const mismatches: string[] = [];
     await SEEDS.reduce(async (prior, seed) => {
       await prior;
       const rng = createRng('host-segments', seed);
       const text = generateText(rng);
       const editScripture = serveText(text);
-      const check = async (state: string, book: Book, draft: SegmentationDelta | undefined) => {
+      const check = async (
+        state: string,
+        book: ReadonlyBook,
+        draft: SegmentationDelta | undefined,
+      ) => {
         if ((await hostSegments(draft)) !== webViewSegments(book, draft))
           mismatches.push(`seed ${seed}, ${state}`);
       };
@@ -223,7 +227,7 @@ describe("the host's segments", () => {
       await editScripture(editText(rng, text, versesWithBoundaries(draft)));
       const after = await tokenizedBook();
       await check('after a Scripture edit', after, draft);
-      // The WebView then writes the boundaries, re-anchored to the edited text, back to its draft.
+      // The session then writes the boundaries, re-anchored to the edited text, back to its draft.
       draft = reanchorSegmentation(after, draft);
       await check('once the draft is re-anchored', after, draft);
 

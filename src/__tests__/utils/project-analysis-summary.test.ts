@@ -31,11 +31,11 @@ describe('summarizeAnalysis', () => {
 
     expect(summarizeAnalysis(analysis)).toEqual({
       books: ['GEN', 'EXO'],
-      tokenAnalysisCount: 2,
+      analysisCount: 2,
     });
   });
 
-  it('ignores segment and phrase analyses, which the row does not describe', () => {
+  it('counts segment and phrase analyses and the books their links reference', () => {
     const analysis = mkAnalysis({
       tokenAnalyses: [mkTokenAnalysis('a1')],
       tokenAnalysisLinks: [makeTokenLink('a1', 'GEN 1:1:0')],
@@ -53,7 +53,10 @@ describe('summarizeAnalysis', () => {
       phraseAnalysisLinks: [makePhraseLink('p1', ['NUM 1:1:0'])],
     });
 
-    expect(summarizeAnalysis(analysis)).toEqual({ books: ['GEN'], tokenAnalysisCount: 1 });
+    expect(summarizeAnalysis(analysis)).toEqual({
+      books: ['GEN', 'LEV', 'NUM'],
+      analysisCount: 3,
+    });
   });
 
   it('lists each book once, however many links it has', () => {
@@ -94,7 +97,7 @@ describe('summarizeAnalysis', () => {
   });
 
   it('reports no books and a zero count for an untouched analysis', () => {
-    expect(summarizeAnalysis(mkAnalysis())).toEqual({ books: [], tokenAnalysisCount: 0 });
+    expect(summarizeAnalysis(mkAnalysis())).toEqual({ books: [], analysisCount: 0 });
   });
 
   it('counts an analysis payload no link references, so the count matches what is stored', () => {
@@ -103,6 +106,6 @@ describe('summarizeAnalysis', () => {
       tokenAnalysisLinks: [makeTokenLink('a1', 'GEN 1:1:0')],
     });
 
-    expect(summarizeAnalysis(analysis)).toEqual({ books: ['GEN'], tokenAnalysisCount: 2 });
+    expect(summarizeAnalysis(analysis)).toEqual({ books: ['GEN'], analysisCount: 2 });
   });
 });

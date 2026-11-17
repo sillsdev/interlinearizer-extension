@@ -20,7 +20,7 @@ import {
 } from '../../components/SegmentationStore';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
-import type { SegmentPages } from '../../hooks/useSegmentPages';
+import type { SegmentPages } from '../../types/segment-pages';
 import { EXTEND_CHUNK, INITIAL_WINDOW_HALF } from '../../hooks/useSegmentWindow';
 import {
   defaultScrRef,
@@ -146,7 +146,7 @@ jest.mock('../../components/AnalysisStore', () => ({
    * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
    * scope.
    */
-  AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
+  SessionAnalysisProvider({ children }: Readonly<{ children: ReactNode }>) {
     return children;
   },
   useGloss: () => '',
@@ -451,8 +451,6 @@ function renderInterlinearizer({
   segmentationDispatch,
   formerBoundaries,
   unmergeableStarts,
-  asOneStep,
-  dispatchBreaksPhrases,
 }: {
   book?: Book;
   pages?: SegmentPages;
@@ -464,20 +462,15 @@ function renderInterlinearizer({
   segmentationDispatch?: SegmentationDispatch;
   formerBoundaries?: ReadonlyMap<string, string>;
   unmergeableStarts?: ReadonlySet<string>;
-  asOneStep?: (action: () => void) => void;
-  dispatchBreaksPhrases?: boolean;
 } = {}) {
   return render(
     withNav(
       <Interlinearizer
-        book={book}
         pages={pages}
         continuousScroll={continuousScroll}
         segmentationDispatch={segmentationDispatch}
         formerBoundaries={formerBoundaries}
         unmergeableStarts={unmergeableStarts}
-        asOneStep={asOneStep}
-        dispatchBreaksPhrases={dispatchBreaksPhrases}
         scrRef={scrRef}
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
@@ -786,7 +779,6 @@ describe('Interlinearizer', () => {
       rerender(
         withNav(
           <Interlinearizer
-            book={GEN_1_MULTI_BOOK}
             pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
             continuousScroll
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
@@ -895,7 +887,6 @@ describe('Interlinearizer', () => {
       rerender(
         withNav(
           <Interlinearizer
-            book={GEN_1_MULTI_BOOK}
             pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
@@ -929,7 +920,6 @@ describe('Interlinearizer', () => {
       rerender(
         withNav(
           <Interlinearizer
-            book={GEN_1_MULTI_BOOK}
             pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
@@ -968,7 +958,6 @@ describe('Interlinearizer', () => {
     rerender(
       withNav(
         <Interlinearizer
-          book={GEN_1_MULTI_BOOK}
           pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
           continuousScroll
           scrRef={defaultScrRef}
@@ -984,7 +973,6 @@ describe('Interlinearizer', () => {
     rerender(
       withNav(
         <Interlinearizer
-          book={GEN_1_MULTI_BOOK}
           pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
@@ -1024,7 +1012,6 @@ describe('Interlinearizer', () => {
     rerender(
       withNav(
         <Interlinearizer
-          book={GEN_TWO_CHAPTER_BOOK}
           pages={segmentPagesOf(GEN_TWO_CHAPTER_BOOK)}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 2 }}
@@ -1058,7 +1045,6 @@ describe('Interlinearizer', () => {
       rerender(
         withNav(
           <Interlinearizer
-            book={GEN_TWO_CHAPTER_BOOK}
             pages={segmentPagesOf(GEN_TWO_CHAPTER_BOOK)}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 2 }}
@@ -1085,7 +1071,6 @@ describe('Interlinearizer', () => {
     const { rerender } = render(
       withNav(
         <Interlinearizer
-          book={GEN_V1_SPLIT_BOOK}
           pages={segmentPagesOf(GEN_V1_SPLIT_BOOK)}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
@@ -1109,7 +1094,6 @@ describe('Interlinearizer', () => {
     rerender(
       withNav(
         <Interlinearizer
-          book={GEN_V1_SPLIT_BOOK}
           pages={segmentPagesOf(GEN_V1_SPLIT_BOOK)}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
@@ -1141,7 +1125,6 @@ describe('Interlinearizer', () => {
       const { rerender } = render(
         withNav(
           <Interlinearizer
-            book={GEN_V1_SPLIT_BOOK}
             pages={segmentPagesOf(GEN_V1_SPLIT_BOOK)}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
@@ -1166,7 +1149,6 @@ describe('Interlinearizer', () => {
       rerender(
         withNav(
           <Interlinearizer
-            book={GEN_V1_SPLIT_BOOK}
             pages={segmentPagesOf(GEN_V1_SPLIT_BOOK)}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
@@ -1459,7 +1441,6 @@ describe('Interlinearizer', () => {
       rerender(
         withNav(
           <Interlinearizer
-            book={GEN_LONG_TWO_CHAPTER_BOOK}
             pages={segmentPagesOf(GEN_LONG_TWO_CHAPTER_BOOK)}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 30 }}
@@ -1710,8 +1691,8 @@ describe('Interlinearizer', () => {
   it('reserves the stale translations a segment below the window lists for review', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockStaleBySegment.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
-      { analysisId: 'sa-2', segmentId: 'GEN 1:190', text: 'B' },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
+      { linkId: 'link-sa-2', analysisId: 'sa-2', segmentId: 'GEN 1:190', text: 'B' },
     ]);
 
     // The review heading plus a row for each listed translation.
@@ -1721,7 +1702,7 @@ describe('Interlinearizer', () => {
   it('reserves only the buttons of a stale translation the input adopts, however long', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockStaleBySegment.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'a'.repeat(200) },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'a'.repeat(200) },
     ]);
 
     // The text sits in the one-line input, leaving the review its heading and a button row.
@@ -1733,7 +1714,9 @@ describe('Interlinearizer', () => {
       '%interlinearizer_freeTranslationInput_staleNoText%': 'a'.repeat(200),
     });
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
-    mockStaleBySegment.set('GEN 1:190', [{ analysisId: 'sa-1', segmentId: 'GEN 1:190', text: '' }]);
+    mockStaleBySegment.set('GEN 1:190', [
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190', text: '' },
+    ]);
 
     expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(20 + 32 + 2 * 20 + 4);
   });
@@ -1742,7 +1725,7 @@ describe('Interlinearizer', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockApprovedSegments.add('GEN 1:190');
     mockStaleBySegment.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'a'.repeat(200) },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'a'.repeat(200) },
     ]);
 
     // The text wraps onto two lines at the fallback wrap width jsdom leaves, its buttons below them.
@@ -1755,7 +1738,7 @@ describe('Interlinearizer', () => {
     mockReadOnly = true;
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockStaleBySegment.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190', text: 'A' },
     ]);
 
     expect(trailingSpacerPx(STALE_BELOW_WINDOW)).toBe(without);
@@ -1764,8 +1747,8 @@ describe('Interlinearizer', () => {
   it('reserves the cards orphaned after a segment below the window', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockOrphanedAfter.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'A' },
-      { analysisId: 'sa-2', segmentId: 'GEN 1:190:9', text: 'B' },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'A' },
+      { linkId: 'link-sa-2', analysisId: 'sa-2', segmentId: 'GEN 1:190:9', text: 'B' },
     ]);
 
     // Each card's gap and height.
@@ -1775,7 +1758,7 @@ describe('Interlinearizer', () => {
   it('reserves a long orphaned translation no more than a short one', () => {
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockOrphanedAfter.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'a'.repeat(200) },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'a'.repeat(200) },
     ]);
 
     expect(trailingSpacerPx(STALE_BELOW_WINDOW) - without).toBe(8 + 66);
@@ -1791,7 +1774,12 @@ describe('Interlinearizer', () => {
       return height;
     };
     const without = leadingSpacerPx();
-    mockOrphanedAhead.push({ analysisId: 'sa-1', segmentId: 'GEN 1:0', text: 'A' });
+    mockOrphanedAhead.push({
+      linkId: 'link-sa-1',
+      analysisId: 'sa-1',
+      segmentId: 'GEN 1:0',
+      text: 'A',
+    });
 
     expect(leadingSpacerPx() - without).toBe(8 + 66);
   });
@@ -1800,7 +1788,7 @@ describe('Interlinearizer', () => {
     mockReadOnly = true;
     const without = trailingSpacerPx(STALE_BELOW_WINDOW);
     mockOrphanedAfter.set('GEN 1:190', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'A' },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:190:9', text: 'A' },
     ]);
 
     expect(trailingSpacerPx(STALE_BELOW_WINDOW)).toBe(without);
@@ -1816,7 +1804,7 @@ describe('Interlinearizer', () => {
     };
     const without = standInPx();
     mockOrphanedAfter.set('GEN 1:110', [
-      { analysisId: 'sa-1', segmentId: 'GEN 1:110:9', text: 'A' },
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:110:9', text: 'A' },
     ]);
 
     expect(without).toEqual(expect.any(Number));
@@ -1824,7 +1812,9 @@ describe('Interlinearizer', () => {
   });
 
   it('shows a translation orphaned after a segment as a card right after it', () => {
-    mockOrphanedAfter.set('GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' }]);
+    mockOrphanedAfter.set('GEN 1:1', [
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' },
+    ]);
 
     renderInterlinearizer({ book: makeManySegmentBook(3), showFreeTranslation: true });
 
@@ -1835,7 +1825,12 @@ describe('Interlinearizer', () => {
   });
 
   it('shows the translations orphaned ahead of the book in a block before its first segment', () => {
-    mockOrphanedAhead.push({ analysisId: 'sa-1', segmentId: 'GEN 1:0', text: 'A' });
+    mockOrphanedAhead.push({
+      linkId: 'link-sa-1',
+      analysisId: 'sa-1',
+      segmentId: 'GEN 1:0',
+      text: 'A',
+    });
 
     const { container } = renderInterlinearizer({
       book: makeManySegmentBook(3),
@@ -1857,8 +1852,15 @@ describe('Interlinearizer', () => {
   });
 
   it('shows no orphaned translations while free translations are hidden', () => {
-    mockOrphanedAfter.set('GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' }]);
-    mockOrphanedAhead.push({ analysisId: 'sa-2', segmentId: 'GEN 1:0', text: 'A' });
+    mockOrphanedAfter.set('GEN 1:1', [
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' },
+    ]);
+    mockOrphanedAhead.push({
+      linkId: 'link-sa-2',
+      analysisId: 'sa-2',
+      segmentId: 'GEN 1:0',
+      text: 'A',
+    });
 
     renderInterlinearizer({ book: makeManySegmentBook(3), showFreeTranslation: false });
 
@@ -1867,8 +1869,15 @@ describe('Interlinearizer', () => {
 
   it('shows no orphaned translations in a read-only analysis', () => {
     mockReadOnly = true;
-    mockOrphanedAfter.set('GEN 1:1', [{ analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' }]);
-    mockOrphanedAhead.push({ analysisId: 'sa-2', segmentId: 'GEN 1:0', text: 'A' });
+    mockOrphanedAfter.set('GEN 1:1', [
+      { linkId: 'link-sa-1', analysisId: 'sa-1', segmentId: 'GEN 1:9', text: 'A' },
+    ]);
+    mockOrphanedAhead.push({
+      linkId: 'link-sa-2',
+      analysisId: 'sa-2',
+      segmentId: 'GEN 1:0',
+      text: 'A',
+    });
 
     renderInterlinearizer({ book: makeManySegmentBook(3), showFreeTranslation: true });
 
@@ -2037,7 +2046,6 @@ describe('Interlinearizer', () => {
     rerender(
       withNav(
         <Interlinearizer
-          book={GEN_1_MULTI_BOOK}
           pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 99 }}
@@ -2056,7 +2064,6 @@ describe('Interlinearizer', () => {
     render(
       withNav(
         <Interlinearizer
-          book={GEN_1_1_BOOK}
           pages={segmentPagesOf(GEN_1_1_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
@@ -2077,7 +2084,6 @@ describe('Interlinearizer', () => {
     render(
       withNav(
         <Interlinearizer
-          book={GEN_1_1_BOOK}
           pages={segmentPagesOf(GEN_1_1_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
@@ -2096,7 +2102,6 @@ describe('Interlinearizer', () => {
     render(
       withNav(
         <Interlinearizer
-          book={GEN_1_1_BOOK}
           pages={segmentPagesOf(GEN_1_1_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
@@ -2115,7 +2120,6 @@ describe('Interlinearizer', () => {
     render(
       withNav(
         <Interlinearizer
-          book={GEN_1_1_BOOK}
           pages={segmentPagesOf(GEN_1_1_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
@@ -2197,7 +2201,6 @@ describe('Interlinearizer', () => {
       updateRef = setRef;
       return (
         <Interlinearizer
-          book={book}
           pages={segmentPagesOf(book)}
           continuousScroll={false}
           scrRef={ref}
@@ -2272,155 +2275,20 @@ describe('Interlinearizer', () => {
 // Segmentation dispatch force-break wrapper + between-rows merge control
 // ---------------------------------------------------------------------------
 
-describe('segmentation dispatch force-break', () => {
-  /**
-   * Builds a raw segmentation-dispatch spy; the wrapped dispatch the views receive must delegate
-   * every call to it.
-   */
-  function makeRawDispatch(): SegmentationDispatch {
-    return { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
-  }
-
-  /**
-   * Renders with continuous scroll on (so the stubbed ContinuousView captures the segmentation
-   * context) and returns the wrapped dispatch.
-   */
-  function renderAndCaptureDispatch(
-    raw: SegmentationDispatch,
-    book: Book,
-    asOneStep?: (action: () => void) => void,
-  ): SegmentationDispatch {
-    renderInterlinearizer({ book, continuousScroll: true, segmentationDispatch: raw, asOneStep });
-    const dispatch = capturedSegmentation?.dispatch;
-    if (!dispatch) throw new Error('expected a captured segmentation dispatch');
-    return dispatch;
-  }
-
-  it('hands a dispatch that breaks phrases itself straight through', () => {
-    const raw = makeRawDispatch();
+describe('segmentation dispatch', () => {
+  it('hands the dispatch straight through, leaving the phrases a boundary cuts to the session', () => {
+    const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
     mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
       continuousScroll: true,
       segmentationDispatch: raw,
-      dispatchBreaksPhrases: true,
     });
 
     capturedSegmentation?.dispatch.split('GEN 1:2:0');
 
     expect(raw.split).toHaveBeenCalledWith('GEN 1:2:0');
     expect(mockDeletePhrase).not.toHaveBeenCalled();
-  });
-
-  it('passes merge straight through without touching phrases', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
-    dispatch.merge('GEN 1:2:0');
-    expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
-    expect(mockUpdatePhrase).not.toHaveBeenCalled();
-    expect(mockCreatePhrase).not.toHaveBeenCalled();
-    expect(mockDeletePhrase).not.toHaveBeenCalled();
-  });
-
-  it('force-breaks a two-token phrase straddling a split boundary (deletes it), then splits', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
-    dispatch.split('GEN 1:2:0');
-    // Both halves of the straddled two-token phrase are single tokens, so the phrase is deleted.
-    expect(mockDeletePhrase).toHaveBeenCalledWith('p1');
-    expect(raw.split).toHaveBeenCalledWith('GEN 1:2:0');
-    // The break lands before the boundary write so no consumer observes a straddling phrase.
-    expect(mockDeletePhrase.mock.invocationCallOrder[0]).toBeLessThan(
-      jest.mocked(raw.split).mock.invocationCallOrder[0],
-    );
-  });
-
-  it('force-breaks a longer straddling phrase into its two sides at the boundary', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set(
-      'p1',
-      makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0', 'GEN 1:3:0', 'GEN 1:4:0']),
-    );
-    const dispatch = renderAndCaptureDispatch(raw, makeLargeBook(4));
-    dispatch.split('GEN 1:3:0');
-    expect(mockUpdatePhrase).toHaveBeenCalledWith('p1', [
-      { tokenRef: 'GEN 1:1:0', surfaceText: 'GEN 1:1:0' },
-      { tokenRef: 'GEN 1:2:0', surfaceText: 'GEN 1:2:0' },
-    ]);
-    expect(mockCreatePhrase).toHaveBeenCalledWith([
-      { tokenRef: 'GEN 1:3:0', surfaceText: 'GEN 1:3:0' },
-      { tokenRef: 'GEN 1:4:0', surfaceText: 'GEN 1:4:0' },
-    ]);
-    expect(raw.split).toHaveBeenCalledWith('GEN 1:3:0');
-  });
-
-  it('leaves phrases alone when the split boundary cuts none of them', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:3:0', 'GEN 1:4:0']));
-    const dispatch = renderAndCaptureDispatch(raw, makeLargeBook(4));
-    dispatch.split('GEN 1:3:0');
-    expect(mockUpdatePhrase).not.toHaveBeenCalled();
-    expect(mockCreatePhrase).not.toHaveBeenCalled();
-    expect(mockDeletePhrase).not.toHaveBeenCalled();
-    expect(raw.split).toHaveBeenCalledWith('GEN 1:3:0');
-  });
-
-  it('force-breaks at the destination boundary of a move', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
-    dispatch.move('GEN 1:1:0', 'GEN 1:2:0');
-    expect(mockDeletePhrase).toHaveBeenCalledWith('p1');
-    expect(raw.move).toHaveBeenCalledWith('GEN 1:1:0', 'GEN 1:2:0');
-  });
-
-  it("makes a split's force-break and boundary write one undo step", () => {
-    const raw = makeRawDispatch();
-    const writesInStep: string[] = [];
-    let stepOpen = false;
-    const asOneStep = (action: () => void) => {
-      stepOpen = true;
-      action();
-      stepOpen = false;
-    };
-    mockDeletePhrase.mockImplementation(() => stepOpen && writesInStep.push('break'));
-    jest.mocked(raw.split).mockImplementation(() => stepOpen && writesInStep.push('split'));
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK, asOneStep);
-
-    dispatch.split('GEN 1:2:0');
-
-    expect(writesInStep).toEqual(['break', 'split']);
-  });
-
-  it("makes a move's force-break and boundary write one undo step", () => {
-    const raw = makeRawDispatch();
-    const writesInStep: string[] = [];
-    let stepOpen = false;
-    const asOneStep = (action: () => void) => {
-      stepOpen = true;
-      action();
-      stepOpen = false;
-    };
-    mockDeletePhrase.mockImplementation(() => stepOpen && writesInStep.push('break'));
-    jest.mocked(raw.move).mockImplementation(() => stepOpen && writesInStep.push('move'));
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK, asOneStep);
-
-    dispatch.move('GEN 1:1:0', 'GEN 1:2:0');
-
-    expect(writesInStep).toEqual(['break', 'move']);
-  });
-
-  it('skips the force-break when the boundary ref is unknown to the book', () => {
-    const raw = makeRawDispatch();
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
-    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
-    dispatch.split('EXO 9:9:9');
-    expect(mockDeletePhrase).not.toHaveBeenCalled();
-    expect(raw.split).toHaveBeenCalledWith('EXO 9:9:9');
   });
 });
 
@@ -2616,7 +2484,6 @@ describe('between-rows merge control', () => {
     render(
       withNav(
         <Interlinearizer
-          book={GEN_1_MULTI_BOOK}
           pages={segmentPagesOf(GEN_1_MULTI_BOOK)}
           continuousScroll={false}
           scrRef={defaultScrRef}
@@ -2666,7 +2533,6 @@ describe('focus preservation across segmentation edits', () => {
   function interlinearizerEl(book: Book, scrRef: SerializedVerseRef): ReactNode {
     return withNav(
       <Interlinearizer
-        book={book}
         pages={segmentPagesOf(book)}
         continuousScroll
         scrRef={scrRef}
@@ -2748,38 +2614,44 @@ describe('unmergeable starts', () => {
 describe('straddled boundary refs', () => {
   /**
    * Renders with continuous scroll on (so the stubbed ContinuousView captures the segmentation
-   * context) and returns the straddled-boundary set the component computed. Phrase links must be
-   * seeded into `mockPhraseLinkById` before calling.
+   * context) over `book`'s pages, whose analysis holds `phraseLinks`, and returns the
+   * straddled-boundary set the views receive.
    */
-  function renderAndCaptureStraddled(book: Book): ReadonlySet<string> {
-    renderInterlinearizer({ book, continuousScroll: true });
+  function renderAndCaptureStraddled(
+    book: Book,
+    phraseLinks: PhraseAnalysisLink[] = [],
+  ): ReadonlySet<string> {
+    const pages = segmentPagesOf(book);
+    const held = pages.heldRuns().map((page) => ({
+      ...page,
+      analysis: {
+        tokenAnalysisLinks: [],
+        phraseAnalysisLinks: phraseLinks,
+        segmentAnalysisLinks: [],
+        tokenAnalyses: [],
+        phraseAnalyses: [],
+        segmentAnalyses: [],
+        poolBuckets: {},
+        staleFreeTranslations: { bySegment: {}, orphanedAfter: {}, orphanedAhead: [] },
+        phraseSpans: {},
+      },
+    }));
+    renderInterlinearizer({
+      book,
+      pages: { ...pages, heldRuns: () => held },
+      continuousScroll: true,
+    });
     const straddled = capturedSegmentation?.straddledBoundaryRefs;
     if (!straddled) throw new Error('expected a captured straddled-boundary set');
     return straddled;
   }
 
-  it('blocks the word refs strictly inside a contiguous three-word phrase', () => {
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0', 'GEN 1:3:0']));
-    const straddled = renderAndCaptureStraddled(makeLargeBook(4));
-    // A boundary before the 2nd or 3rd word would cut the phrase.
-    expect(straddled.has('GEN 1:2:0')).toBe(true);
-    expect(straddled.has('GEN 1:3:0')).toBe(true);
-  });
+  it('blocks the word refs that a boundary placed before would cut a phrase of the pages at', () => {
+    const straddled = renderAndCaptureStraddled(makeLargeBook(4), [
+      makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0', 'GEN 1:3:0']),
+    ]);
 
-  it('does not block the phrase-leading word ref or the word after the phrase', () => {
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0', 'GEN 1:3:0']));
-    const straddled = renderAndCaptureStraddled(makeLargeBook(4));
-    // A boundary before the phrase's first word or after its last word leaves it intact.
-    expect(straddled.has('GEN 1:1:0')).toBe(false);
-    expect(straddled.has('GEN 1:4:0')).toBe(false);
-  });
-
-  it('blocks the gap word ref inside a discontiguous phrase', () => {
-    // The phrase spans words 1 and 3; word 2 sits in the gap, but a boundary before it would still
-    // put the phrase's halves in different segments.
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:3:0']));
-    const straddled = renderAndCaptureStraddled(makeLargeBook(4));
-    expect(straddled.has('GEN 1:2:0')).toBe(true);
+    expect([...straddled]).toStrictEqual(['GEN 1:2:0', 'GEN 1:3:0']);
   });
 
   it('exposes an empty set when no phrase links exist', () => {
@@ -2796,7 +2668,6 @@ describe('segmentationVersion pass-through', () => {
   function versionedEl(book: Book, segmentationVersion: number): ReactNode {
     return withNav(
       <Interlinearizer
-        book={book}
         pages={segmentPagesOf(book, segmentationVersion)}
         continuousScroll={false}
         scrRef={defaultScrRef}
@@ -2888,7 +2759,6 @@ describe('cross-book focus requests', () => {
       <>
         <NavProbe />
         <Interlinearizer
-          book={book}
           pages={segmentPagesOf(book)}
           continuousScroll
           scrRef={scrRef}

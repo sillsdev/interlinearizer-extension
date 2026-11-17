@@ -112,22 +112,6 @@ describe('Pt9ImportRepository', () => {
     });
   });
 
-  describe('replaceAll', () => {
-    it('refuses every save', async () => {
-      const readProject = jest.fn(async () => makeImport());
-      const repository: AnalysisRepository = new Pt9ImportRepository(
-        'import-id',
-        readProject,
-        NEVER_SYNCED,
-      );
-
-      await expect(repository.replaceAll(emptyDraft('src-project'))).rejects.toThrow(
-        ReadOnlyAnalysisError,
-      );
-      expect(readProject).not.toHaveBeenCalled();
-    });
-  });
-
   describe('apply', () => {
     it('refuses every change', async () => {
       const readProject = jest.fn(async () => makeImport());

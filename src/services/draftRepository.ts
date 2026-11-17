@@ -7,7 +7,6 @@ import type {
   DraftExport,
   IndexDifference,
   KeyValueStorage,
-  ReplaceAllOptions,
   RepositoryCapabilities,
   WarningLogger,
 } from '../types/analysis-repository';
@@ -158,6 +157,9 @@ type LoadedShard = {
  * overwrites a draft written by a newer build.
  *
  * Calls on one instance must not overlap.
+ *
+ * The repository imports nothing from PAPI and reaches storage only through a
+ * {@link KeyValueStorage}. That keeps it runnable in plain Node, straight over the storage files.
  */
 export class DraftRepository extends IndexedRepository implements AnalysisRepository {
   readonly capabilities: RepositoryCapabilities = { readOnly: false };
@@ -280,22 +282,6 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Saves the draft as {@link startOver} does, except for a book whose stored shard cannot be read.
-   * Such a book's shard is kept as it stands, and any analysis the draft carries for the book is
-   * left out rather than written over what could not be read. Starting the draft over, through
-   * `options`, lets the save write or wipe the book like any other.
-   *
-   * @returns The books whose analysis in the draft was left out because their stored shard cannot
-   *   be read; empty when the draft was saved whole.
-   * @throws {Error} If the stored draft was written by a newer build; nothing is written.
-   * @throws If storage rejects a read; nothing is written.
-   * @throws If storage rejects a write.
-   */
-  async replaceAll(draft: DraftProject, options?: ReplaceAllOptions): Promise<string[]> {
-    return this.save(draft, options?.discardUnreadable === true);
-  }
-
-  /**
    * Starts the draft over as `draft`, replacing the stored one whole apart from the
    * {@link CURRENT_MODEL_VERSION} stamp. Stored analysis that could not be read is discarded, so the
    * save writes or wipes those books like any other. A draft written by a newer build is left as it
@@ -308,6 +294,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * Recovery survives a restart. The next load finds a shard the envelope never came to name, and a
    * later save retries a failed deletion. A book dropped from the analysis leaves no shard behind.
    *
+   * Starting over is not part of {@link AnalysisRepository}, because what starting a draft over from
+   * New or Open means for another backend is undecided.
+   *
    * A save that fails leaves no storage call of its own in flight. Once the draft has landed, a
    * wiped book's shard that could not be deleted, or a shard journal that could not be updated, is
    * no failure of the save: each is logged, and a later save retries it.
@@ -317,7 +306,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects a write.
    */
   async startOver(draft: DraftProject): Promise<void> {
-    await this.save(draft, true);
+    await this.save(draft);
   }
 
   /**
@@ -410,18 +399,18 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     return this.current;
   }
 
+  protected unreadableBooks(): string[] {
+    return [...this.unreadableShards].sort();
+  }
+
   /**
-   * Saves `draft` as {@link startOver} describes. Unless `discardUnreadable` is set, a book whose
-   * stored shard cannot be read keeps that shard, and the draft's analysis for the book is left
-   * out.
+   * Saves `draft` as {@link startOver} describes.
    *
-   * @returns The books whose analysis in the draft was left out because their stored shard cannot
-   *   be read.
    * @throws {Error} If the stored draft was written by a newer build; nothing is written.
    * @throws If storage rejects a read; nothing is written.
    * @throws If storage rejects a write.
    */
-  private async save(draft: DraftProject, discardUnreadable: boolean): Promise<string[]> {
+  private async save(draft: DraftProject): Promise<void> {
     this.current = undefined;
     this.exported = undefined;
     if (!this.loaded) {
@@ -436,12 +425,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       this.assertStoredDraftIsWritable(),
     );
     const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(draft.analysis));
-    if (discardUnreadable) this.unreadableShards.clear();
-    const leftOut = [...this.unreadableShards].filter((bookCode) => byBook.has(bookCode));
-    leftOut.forEach((bookCode) => byBook.delete(bookCode));
+    this.unreadableShards.clear();
     const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
     await this.writeDraft(draft, storedBooks, journaled, [...byBook.keys()], byBook);
-    return leftOut;
   }
 
   /**

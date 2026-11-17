@@ -1,11 +1,16 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Pt9ImportModal } from '../../../components/modals/Pt9ImportModal';
-import type { Pt9ImportReport } from '../../../converters/pt9';
+import {
+  COPY_FEEDBACK_MS,
+  MAX_SHOWN_DROPS,
+  Pt9ImportModal,
+} from '../../../components/modals/Pt9ImportModal';
+import type { Pt9ClusterDrop, Pt9ImportReport } from '../../../converters/pt9';
 
 const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_title%': 'Import from Paratext 9: {projectName}',
@@ -23,12 +28,22 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_pt9ImportModal_notImportedCount%': '{count} clusters:',
   '%interlinearizer_pt9ImportModal_reason_verseNotFound%': 'verse not found',
   '%interlinearizer_pt9ImportModal_reason_formMismatch%': 'did not match the text',
+  '%interlinearizer_pt9ImportModal_reason_parseFormMismatch%': "parses that don't spell their word",
+  '%interlinearizer_pt9ImportModal_showDrops%': 'Show what was not imported',
+  '%interlinearizer_pt9ImportModal_moreDrops%': '{count} more not shown',
+  '%interlinearizer_pt9ImportModal_copyDrops%': 'Copy all',
+  '%interlinearizer_pt9ImportModal_dropsCopied%': 'Copied',
+  '%interlinearizer_pt9ImportModal_copyFailed%': "Couldn't copy",
+  '%interlinearizer_pt9ImportModal_dropLine%': '{verseRef} ({language}) {lexemeIds} — {reason}',
   '%interlinearizer_pt9ImportModal_reason_lemmaOrOther%': 'unused legacy data',
   '%interlinearizer_pt9ImportModal_reason_duplicateCluster%': 'duplicate data',
   '%interlinearizer_pt9ImportModal_reason_unparseableLexemeId%': 'unreadable data',
+  '%interlinearizer_pt9ImportModal_reason_blankMorphemeForm%': 'blank morpheme form',
   '%interlinearizer_pt9ImportModal_missingBooks%': 'Books with no text: {books}',
   '%interlinearizer_pt9ImportModal_filesTooLarge%':
     'Larger than the {limit} one read can carry, so left out: {files}',
+  '%interlinearizer_pt9ImportModal_filesNeverLoaded%':
+    'Left out because Paratext 9 never loads them from where they are: {files}',
   '%interlinearizer_pt9ImportModal_staleKept%':
     'Nothing could be read, so the earlier import was kept.',
   '%interlinearizer_pt9ImportModal_open%': 'Open',
@@ -40,10 +55,12 @@ function makeReport(): Pt9ImportReport {
   const emptyDrops = {
     verseNotFound: 0,
     formMismatch: 0,
+    parseFormMismatch: 0,
     frontMatter: 0,
     lemmaOrOther: 0,
     duplicateCluster: 0,
     unparseableLexemeId: 0,
+    blankMorphemeForm: 0,
   };
   return {
     languages: [
@@ -62,6 +79,7 @@ function makeReport(): Pt9ImportReport {
             clustersConverted: 15,
             phrasesConverted: 2,
             clusterDrops: { ...emptyDrops, formMismatch: 4, verseNotFound: 1, duplicateCluster: 1 },
+            drops: [],
             ambiguousAnchors: 0,
             punctuationEntriesIgnored: 0,
           },
@@ -82,6 +100,7 @@ function makeReport(): Pt9ImportReport {
             clustersConverted: 0,
             phrasesConverted: 0,
             clusterDrops: { ...emptyDrops, verseNotFound: 5 },
+            drops: [],
             ambiguousAnchors: 0,
             punctuationEntriesIgnored: 0,
           },
@@ -94,6 +113,9 @@ function makeReport(): Pt9ImportReport {
       approvedDemotedToCandidate: 0,
       sameTagCollisions: [],
       identicalPayloadsMerged: 0,
+      identicalPhrasePayloadsMerged: 0,
+      duplicateLinksDropped: 0,
+      duplicatePhraseLinksDropped: 0,
     },
     senses: {
       specificResolved: 0,
@@ -104,9 +126,14 @@ function makeReport(): Pt9ImportReport {
       senseRefsResolved: 0,
       senseRefsUnresolved: 0,
     },
-    barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
-    booksMissingIdentity: 0,
-    booksDroppedAsDuplicates: 0,
+    barePayloads: {
+      added: 0,
+      skippedExistingIdentical: 0,
+      droppedUnparseable: 0,
+      droppedEmpty: 0,
+      droppedBlankForm: 0,
+    },
+    filesPt9NeverLoads: [],
     filesTooLargeToRead: [],
   };
 }
@@ -216,6 +243,31 @@ describe('Pt9ImportModal', () => {
     expect(report).toHaveTextContent('Books with no text: MRK');
   });
 
+  it('lists books, and books with no text, in canonical order whatever order the files came in', () => {
+    const report = makeReport();
+    const [matthew] = report.languages[0].books;
+    const [mark] = report.languages[1].books;
+    report.languages[0].books = [
+      { ...matthew, bookId: 'REV', bookFound: false },
+      { ...matthew, bookId: '1JN', bookFound: false },
+      matthew,
+    ];
+    report.languages[1].books = [{ ...mark, bookId: 'GEN' }, mark];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    const rendered = screen.getByTestId('pt9-import-report');
+    expect(rendered).toHaveTextContent('Books: GEN, MAT, MRK, 1JN, REV');
+    expect(rendered).toHaveTextContent('Books with no text: GEN, MRK, 1JN, REV');
+  });
+
   it('groups the digits of large counts', () => {
     const report = makeReport();
     report.languages.splice(1, 1);
@@ -241,16 +293,295 @@ describe('Pt9ImportModal', () => {
     expect(rendered).toHaveTextContent('29,525 did not match the text');
   });
 
+  it('lists each drop, collapsed, with its verse, language, lexeme ids and reason', async () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+      { verseRef: 'MAT 1:3', reason: 'parseFormMismatch', lexemeIds: ['Stem:run', 'Suffix:ing'] },
+    ];
+    report.languages[1].books[0].drops = [
+      { verseRef: 'MRK 1:1', reason: 'verseNotFound', lexemeIds: ['Word:bonjour'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    const drops = screen.getByTestId('pt9-import-drops');
+    expect(drops).not.toHaveAttribute('open');
+    expect(screen.queryByTestId('pt9-import-drop-lines')).not.toBeInTheDocument();
+
+    await userEvent.click(within(drops).getByText('Show what was not imported'));
+
+    expect(await screen.findByTestId('pt9-import-drop-lines')).toHaveTextContent(
+      [
+        'MAT 1:2 (en) Word:ghost — did not match the text',
+        "MAT 1:3 (en) Stem:run Suffix:ing — parses that don't spell their word",
+        'MRK 1:1 (fr) Word:bonjour — verse not found',
+      ].join('\n'),
+      { normalizeWhitespace: false },
+    );
+  });
+
+  it('lists and copies drops in canonical order, then by language', async () => {
+    const user = userEvent.setup();
+    const report = makeReport();
+    const [en, fr] = report.languages;
+    report.languages = [fr, en];
+    fr.books[0].drops = [
+      { verseRef: 'MAT 10:1', reason: 'formMismatch', lexemeIds: ['Word:a'] },
+      { verseRef: 'MAT 2:5', reason: 'formMismatch', lexemeIds: ['Word:b'] },
+    ];
+    en.books[0].drops = [
+      { verseRef: 'MAT 2:10', reason: 'formMismatch', lexemeIds: ['Word:c'] },
+      { verseRef: 'MAT 2:5', reason: 'formMismatch', lexemeIds: ['Word:d'] },
+      { verseRef: 'GEN 3:1', reason: 'formMismatch', lexemeIds: ['Word:e'] },
+    ];
+    const expected = [
+      'GEN 3:1 (en) Word:e — did not match the text',
+      'MAT 2:5 (en) Word:d — did not match the text',
+      'MAT 2:5 (fr) Word:b — did not match the text',
+      'MAT 2:10 (en) Word:c — did not match the text',
+      'MAT 10:1 (fr) Word:a — did not match the text',
+    ].join('\n');
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await user.click(screen.getByText('Show what was not imported'));
+
+    expect(await screen.findByTestId('pt9-import-drop-lines')).toHaveTextContent(expected, {
+      normalizeWhitespace: false,
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Copy all' }));
+
+    expect(await navigator.clipboard.readText()).toBe(expected);
+  });
+
+  it('lists a drop whose verse has no ASCII number after every numbered verse', async () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:10', reason: 'verseNotFound', lexemeIds: ['Word:a'] },
+      { verseRef: 'MAT 1:२', reason: 'verseNotFound', lexemeIds: ['Word:b'] },
+      { verseRef: 'MAT 1:2', reason: 'verseNotFound', lexemeIds: ['Word:c'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByText('Show what was not imported'));
+
+    expect(await screen.findByTestId('pt9-import-drop-lines')).toHaveTextContent(
+      [
+        'MAT 1:2 (en) Word:c — verse not found',
+        'MAT 1:10 (en) Word:a — verse not found',
+        'MAT 1:२ (en) Word:b — verse not found',
+      ].join('\n'),
+      { normalizeWhitespace: false },
+    );
+  });
+
+  it('shows only the first lines of a long list and copies every line', async () => {
+    const user = userEvent.setup();
+    const report = makeReport();
+    const total = MAX_SHOWN_DROPS + 2;
+    report.languages[0].books[0].drops = Array.from({ length: total }, (_, i): Pt9ClusterDrop => ({
+      verseRef: `MAT 1:${i + 1}`,
+      reason: 'formMismatch',
+      lexemeIds: ['Word:ghost'],
+    }));
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await user.click(screen.getByText('Show what was not imported'));
+
+    const shown = (await screen.findByTestId('pt9-import-drop-lines')).textContent?.split('\n');
+    expect(shown).toHaveLength(MAX_SHOWN_DROPS);
+    expect(screen.getByTestId('pt9-import-drops')).toHaveTextContent('2 more not shown');
+
+    await user.click(screen.getByRole('button', { name: 'Copy all' }));
+
+    const copied = (await navigator.clipboard.readText()).split('\n');
+    expect(copied).toHaveLength(total);
+    expect(copied[total - 1]).toBe(`MAT 1:${total} (en) Word:ghost — did not match the text`);
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
+  });
+
+  it('logs a failed copy and says so on the button', async () => {
+    const user = userEvent.setup();
+    jest.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await user.click(screen.getByText('Show what was not imported'));
+
+    await user.click(await screen.findByRole('button', { name: 'Copy all' }));
+
+    await waitFor(() => expect(logger.error).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: "Couldn't copy" })).toBeInTheDocument();
+  });
+
+  it('offers to copy again once the feedback has passed', async () => {
+    jest.useFakeTimers();
+    try {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const report = makeReport();
+      report.languages[0].books[0].drops = [
+        { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+      ];
+      render(
+        <Pt9ImportModal
+          phase={{ kind: 'report', report }}
+          mode="import"
+          sourceShortName="SRC"
+          onOpen={jest.fn()}
+          onClose={jest.fn()}
+        />,
+      );
+      await user.click(screen.getByText('Show what was not imported'));
+      await user.click(await screen.findByRole('button', { name: 'Copy all' }));
+      await screen.findByRole('button', { name: 'Copied' });
+
+      act(() => jest.advanceTimersByTime(COPY_FEEDBACK_MS));
+
+      expect(screen.getByRole('button', { name: 'Copy all' })).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('offers to copy again when the list is reopened', async () => {
+    const user = userEvent.setup();
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    const summary = screen.getByText('Show what was not imported');
+    await user.click(summary);
+    await user.click(await screen.findByRole('button', { name: 'Copy all' }));
+    await screen.findByRole('button', { name: 'Copied' });
+
+    await user.click(summary);
+    await waitFor(() =>
+      expect(screen.queryByTestId('pt9-import-drop-lines')).not.toBeInTheDocument(),
+    );
+    await user.click(summary);
+
+    expect(await screen.findByRole('button', { name: 'Copy all' })).toBeInTheDocument();
+  });
+
+  it('notes no hidden lines when every drop is shown', async () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByText('Show what was not imported'));
+
+    await screen.findByTestId('pt9-import-drop-lines');
+    expect(screen.getByTestId('pt9-import-drops')).not.toHaveTextContent('not shown');
+  });
+
+  it('drops the lines again when the list is collapsed', async () => {
+    const report = makeReport();
+    report.languages[0].books[0].drops = [
+      { verseRef: 'MAT 1:2', reason: 'formMismatch', lexemeIds: ['Word:ghost'] },
+    ];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+    const summary = screen.getByText('Show what was not imported');
+    await userEvent.click(summary);
+    await screen.findByTestId('pt9-import-drop-lines');
+
+    await userEvent.click(summary);
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('pt9-import-drop-lines')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('omits the drop list when nothing dropped', () => {
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report: makeReport() }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('pt9-import-drops')).not.toBeInTheDocument();
+  });
+
   it('omits the not-imported and missing-book rows when the import was clean', () => {
     const report = makeReport();
     report.languages.splice(1, 1);
     report.languages[0].books[0].clusterDrops = {
       verseNotFound: 0,
       formMismatch: 0,
+      parseFormMismatch: 0,
       frontMatter: 0,
       lemmaOrOther: 0,
       duplicateCluster: 0,
       unparseableLexemeId: 0,
+      blankMorphemeForm: 0,
     };
     report.languages[0].books[0].phrasesConverted = 0;
     render(
@@ -269,13 +600,11 @@ describe('Pt9ImportModal', () => {
     expect(rendered).not.toHaveTextContent('phrases');
   });
 
-  it('names the files it could not retrieve, pairing a book with its gloss language', () => {
+  it('names the files it could not retrieve in canonical order, pairing a book with its gloss language', () => {
     const report = makeReport();
     report.filesTooLargeToRead = [
       {
-        path: 'Interlinear_en/Interlinear_en_PSA.xml',
-        bookId: 'PSA',
-        glossLanguage: 'en',
+        path: 'Interlinear_en/mystery.xml',
         sizeBytes: 90_000_000,
         maxResponseBytes: 83_886_080,
       },
@@ -286,7 +615,9 @@ describe('Pt9ImportModal', () => {
         maxResponseBytes: 83_886_080,
       },
       {
-        path: 'Interlinear_en/mystery.xml',
+        path: 'Interlinear_en/Interlinear_en_PSA.xml',
+        bookId: 'PSA',
+        glossLanguage: 'en',
         sizeBytes: 90_000_000,
         maxResponseBytes: 83_886_080,
       },
@@ -302,8 +633,8 @@ describe('Pt9ImportModal', () => {
     );
 
     // A book id alone is not unique across gloss languages, so the language is named with it. A
-    // file whose root declares a book but no language is named by the book alone, and one
-    // declaring neither is named by its path.
+    // file whose root declares a book but no language is named by the book alone. A file declaring
+    // neither is named by its path and listed last.
     expect(screen.getByTestId('pt9-files-too-large')).toHaveTextContent(
       'Larger than the 80 MiB one read can carry, so left out: PSA (en) 85.8 MiB, 1TH 85.8 MiB, Interlinear_en/mystery.xml 85.8 MiB',
     );
@@ -314,7 +645,8 @@ describe('Pt9ImportModal', () => {
       <Pt9ImportModal
         phase={{
           kind: 'staleKept',
-          files: [
+          filesNeverLoaded: [],
+          filesTooLarge: [
             {
               path: 'Interlinear_en/Interlinear_en_PSA.xml',
               bookId: 'PSA',
@@ -337,6 +669,80 @@ describe('Pt9ImportModal', () => {
     expect(screen.getByTestId('pt9-files-too-large')).toHaveTextContent(
       'Larger than the 80 MiB one read can carry, so left out: PSA (en) 85.8 MiB',
     );
+  });
+
+  it('names the never-loaded files when the stored import was kept', () => {
+    render(
+      <Pt9ImportModal
+        phase={{
+          kind: 'staleKept',
+          filesTooLarge: [],
+          filesNeverLoaded: ['Interlinear_en/Interlinear_en_opy.xml'],
+        }}
+        mode="sync"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pt9-files-never-loaded')).toHaveTextContent(
+      'Left out because Paratext 9 never loads them from where they are: Interlinear_en/Interlinear_en_opy.xml',
+    );
+    expect(screen.queryByTestId('pt9-files-too-large')).not.toBeInTheDocument();
+  });
+
+  it('names the left-out files when a first import converted nothing', () => {
+    render(
+      <Pt9ImportModal
+        phase={{
+          kind: 'notConverted',
+          filesTooLarge: [],
+          filesNeverLoaded: ['Interlinear_en/Interlinear_en_opy.xml'],
+        }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pt9-import-error')).toHaveTextContent('The import failed.');
+    expect(screen.getByTestId('pt9-files-never-loaded')).toHaveTextContent(
+      'Interlinear_en/Interlinear_en_opy.xml',
+    );
+  });
+
+  it('names the files Paratext 9 never loads', () => {
+    const report = makeReport();
+    report.filesPt9NeverLoads = ['Interlinear_en/Interlinear_en_opy.xml', 'Interlinear_en_GEN.xml'];
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('pt9-files-never-loaded')).toHaveTextContent(
+      'Left out because Paratext 9 never loads them from where they are: Interlinear_en/Interlinear_en_opy.xml, Interlinear_en_GEN.xml',
+    );
+  });
+
+  it('omits the never-loaded row when Paratext 9 loads every file', () => {
+    render(
+      <Pt9ImportModal
+        phase={{ kind: 'report', report: makeReport() }}
+        mode="import"
+        sourceShortName="SRC"
+        onOpen={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('pt9-files-never-loaded')).not.toBeInTheDocument();
   });
 
   it('omits the too-large row when every file was retrieved', () => {

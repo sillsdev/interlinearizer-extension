@@ -1,9 +1,10 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { TooltipProvider } from 'platform-bible-react';
 import type { SenseRef } from 'interlinearizer';
-import type { ResolvedSense } from 'interlinearizer/lexicon';
-import type { ReactElement, ReactNode } from 'react';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
+import type { ResolvedSense, SenseCandidate } from 'interlinearizer/lexicon';
+import { useState, type ReactElement, type ReactNode } from 'react';
+import { PageClient } from '../../cache/pageClient';
+import { SessionAnalysisProvider } from '../../components/AnalysisStore';
 import { LexiconSensesProvider } from '../../components/LexiconSenses';
 import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
 import { ViewOptions } from '../../types/view-options';
@@ -37,21 +38,46 @@ export function mockKeyAsValueLocalizedStrings(overrides: Record<string, string>
   });
 }
 
+/** Throws, standing in for a host that an empty analysis never asks anything of. */
+async function unreachableHost(): Promise<never> {
+  throw new Error('An empty analysis asks nothing of the host');
+}
+
 /**
- * Testing Library render options that wrap a subject in `AnalysisStoreProvider` with the default
- * analysis language ("und") used across component tests.
+ * Gives `children` an analysis provider holding nothing, over a session that is never opened, read
+ * in `analysisLanguage`, and read-only when `readOnly` is set.
+ */
+export function EmptyAnalysisProvider({
+  children,
+  analysisLanguage = 'und',
+  readOnly,
+}: Readonly<{ children: ReactNode; analysisLanguage?: string; readOnly?: boolean }>) {
+  const [client] = useState(
+    () => new PageClient({ getOutline: unreachableHost, getSegments: unreachableHost }),
+  );
+  return (
+    <SessionAnalysisProvider
+      client={client}
+      sessionId="empty"
+      analysisLanguage={analysisLanguage}
+      readOnly={readOnly}
+    >
+      {children}
+    </SessionAnalysisProvider>
+  );
+}
+
+/**
+ * Testing Library render options that wrap a subject in an {@link EmptyAnalysisProvider} read in
+ * "und".
  *
  * Supplies a {@link withTooltipProvider} wrapper too: a `Tooltip` throws without one, so a subject
  * that renders tooltips under an enclosing provider in the app needs it to mount in isolation at
  * all.
  */
-export const withAnalysisStore = {
+export const withEmptyAnalysis = {
   wrapper({ children }: Readonly<{ children: ReactNode }>) {
-    return (
-      <AnalysisStoreProvider analysisLanguage="und">
-        {withTooltipProvider(children)}
-      </AnalysisStoreProvider>
-    );
+    return <EmptyAnalysisProvider>{withTooltipProvider(children)}</EmptyAnalysisProvider>;
   },
 };
 
@@ -74,14 +100,23 @@ export function testSenseRef(senseId: string): SenseRef {
 
 /**
  * One connected lexicon holding `senses`, keyed by sense id. A ref naming any other authority is
- * foreign to it.
+ * foreign to it. The lexicon can search when `searchByForm` is given, and cannot otherwise.
  *
  * @returns The registry, and the lexicon's sense look-up so a test can see what was asked.
  */
-export function stubLexiconRegistry(senses: Record<string, ResolvedSense> = {}) {
-  const resolveSense = jest.fn(async ({ senseId }: SenseRef) => senses[senseId]);
+export function stubLexiconRegistry(
+  senses?: Record<string, ResolvedSense>,
+  searchByForm?: (form: string) => Promise<SenseCandidate[]>,
+) {
+  const resolveSense = jest.fn(async ({ senseId }: SenseRef) => senses?.[senseId]);
   const registry = createLexiconRegistry([
-    { ...nullLexiconResolver, authorities: [TEST_LEXICON_AUTHORITY], resolveSense },
+    {
+      ...nullLexiconResolver,
+      authorities: [TEST_LEXICON_AUTHORITY],
+      capabilities: { ...nullLexiconResolver.capabilities, search: searchByForm !== undefined },
+      resolveSense,
+      ...(searchByForm && { searchByForm }),
+    },
   ]);
   return { registry, resolveSense };
 }
@@ -92,8 +127,12 @@ export function stubLexiconRegistry(senses: Record<string, ResolvedSense> = {}) 
  *
  * @returns The wrapped subject, and the lexicon's sense look-up so a test can see what was asked.
  */
-export function withLexicon(children: ReactNode, senses: Record<string, ResolvedSense> = {}) {
-  const { registry, resolveSense } = stubLexiconRegistry(senses);
+export function withLexicon(
+  children: ReactNode,
+  senses?: Record<string, ResolvedSense>,
+  searchByForm?: (form: string) => Promise<SenseCandidate[]>,
+) {
+  const { registry, resolveSense } = stubLexiconRegistry(senses, searchByForm);
   return {
     ui: <LexiconSensesProvider registry={registry}>{children}</LexiconSensesProvider>,
     resolveSense,

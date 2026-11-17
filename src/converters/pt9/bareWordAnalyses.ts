@@ -2,6 +2,7 @@ import type { MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
 import type { Pt9Lexicon, Pt9WordParse } from 'platform-scripture';
 import { composeLexemeKeyId, LexemeKeyData, parseLexemeKeyId } from 'parsers/pt9/lexemeKey';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
+import { isBlankForm } from './clusterAnchoring';
 import type { Pt9LexiconResolver } from './lexiconResolver';
 import type { Pt9GlossSource } from './pt9GlossSource';
 import type { Pt9ImportReport } from './report';
@@ -54,6 +55,10 @@ export function buildBareWordAnalyses(args: {
   const addAnalysis = (word: string, keys: LexemeKeyData[]): void => {
     if (keys.length === 0) {
       report.barePayloads.droppedEmpty += 1;
+      return;
+    }
+    if (keys.some((key) => isBlankForm(key.Form))) {
+      report.barePayloads.droppedBlankForm += 1;
       return;
     }
     const signature = keys.map(composeLexemeKeyId).join('/');

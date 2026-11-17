@@ -12,6 +12,7 @@ const DELETE_PROJECT_CONFIRM_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_confirm_deleteProject_title_unnamed%',
   '%interlinearizer_confirm_deleteProject_body%',
   '%interlinearizer_confirm_deleteProject_pt9Unaffected%',
+  '%interlinearizer_confirm_deleteProject_draftKept%',
   '%interlinearizer_confirm_deleteProject_ok%',
   '%interlinearizer_confirm_deleteProject_cancel%',
 ];
@@ -25,6 +26,8 @@ const DELETE_PROJECT_CONFIRM_STRING_KEYS: `%${string}%`[] = [
  * @param props.projectName - The project's name, shown in the title; absent for an unnamed project.
  * @param props.isPt9Import - Whether the project is a Paratext 9 import. Only an import's dialog
  *   says that the Paratext 9 data stays untouched.
+ * @param props.isActiveProject - Whether the project is the draft's Save target. Only then does the
+ *   dialog say that the open draft is kept as unsaved changes.
  * @param props.onCancel - Called when the user backs out, leaving the project in place.
  * @param props.onDeleted - Called with the project's UUID once the delete has landed.
  * @param props.returnFocusTo - Element to focus once the dialog closes; defaults to whatever held
@@ -35,6 +38,7 @@ export function DeleteProjectConfirm({
   projectId,
   projectName,
   isPt9Import,
+  isActiveProject,
   onCancel,
   onDeleted,
   returnFocusTo,
@@ -42,6 +46,7 @@ export function DeleteProjectConfirm({
   projectId: string;
   projectName?: string;
   isPt9Import: boolean;
+  isActiveProject: boolean;
   onCancel: () => void;
   onDeleted: (deletedProjectId: string) => void;
   returnFocusTo?: HTMLElement;
@@ -86,6 +91,12 @@ export function DeleteProjectConfirm({
           <>
             <br />
             {localizedStrings['%interlinearizer_confirm_deleteProject_pt9Unaffected%']}
+          </>
+        )}
+        {isActiveProject && (
+          <>
+            <br />
+            {localizedStrings['%interlinearizer_confirm_deleteProject_draftKept%']}
           </>
         )}
       </p>

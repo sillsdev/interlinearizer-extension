@@ -243,7 +243,7 @@ export default function SegmentFreeTranslationInput({
               className="tw:flex tw:flex-wrap tw:items-center tw:gap-1"
               data-analysis-id={translation.analysisId}
               data-testid="stale-free-translation"
-              key={translation.analysisId}
+              key={translation.linkId}
             >
               <span className="tw:gloss-stale">
                 {translation.text ||

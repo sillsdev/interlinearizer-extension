@@ -44,21 +44,18 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     'Heap in use before the view opens, then how far it has grown at each later point. The host heap belongs to the whole platform, not just this extension.',
   'app.cold': "The packaged app restarts before each run, then the view opens on the tier's book.",
   'app.open':
-    "A new view opens on the tier's book in an app that is already running. Some steps run at the same time, so they do not add up to the total.",
+    "A new view opens on the tier's book in an app that is already running. The session re-anchors the draft to that book before the outline answers. Some steps run at the same time, so they do not add up to the total.",
   'app.switchBook':
     "With the view open, the book changes to Jude and back; the times are for the return. Book change to rendered includes fetching the book's text.",
   'app.edit':
-    'One gloss typed and committed with Tab, then the autosave that commit sets off. `gloss-settle` ends once the view shows the gloss and, when the Tab moves the focus, that move. The host path times it the same way.',
-  'app.picker':
-    'The Select Interlinear Project dialog opens, listing every saved project for the source.',
+    "One gloss typed and committed with Tab, with the session reading no text. `edit-command` is the command's round trip, and its `:outbound` and `:inbound` rows split the transport at the host's start and end. `reply-apply` takes the reply into the view's pages. `gloss-settle` ends once the view shows the gloss and, when the Tab moves the focus, that move.",
+  'app.picker': 'The Select interlinear dialog opens, listing every saved project for the source.',
   'app.save': 'Save from the Project menu writes the analysis to the project it came from.',
   'app.concordance':
-    "The concordance opens in a fresh view, which reads and indexes every book of the source and re-anchors the draft to each book it analyzes beyond the open one. Only large-loadable's draft spans more than the open book, so only its read includes re-anchoring.",
-  'bench.timings.load': 'The steps of opening the view on a book.',
+    'The concordance panel opens in a fresh view and is timed until the first concordance page arrives. That page waits for the host to read every book of the source.',
+  'bench.timings.load': 'Tokenizing the view book and parsing the draft.',
   'bench.timings.storage':
     'Splitting the draft into per-book shards to store it, and merging them back.',
-  'bench.timings.edit':
-    "Committing one gloss to the store and rerunning the view's selectors, then serializing the draft to save it.",
   'bench.timings.concordance':
     'Indexing every book of the source and deriving the concordance rows.',
   'bench.timings.text':
@@ -67,47 +64,41 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     "One edit applied through the host's draft repository, with its draft loaded and indexed and its storage in memory, the writes to storage included.",
   'bench.applyBooksReached':
     'How many books each timed apply rewrites, which its time should follow.',
-  'bench.formsNotInText':
-    "How many of the catalog's forms the text lacks, by the WebView's whole-text read and by the host's form index, and how many forms the two disagree on.",
   'app.textRead':
-    "With a view open, the host reads every book of the source and files its word forms, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes each book's USJ, which the platform keeps for every book subscription.",
+    "With a view open, the host reads every book of the source and files its word forms and occurrences, from the first `getTextReadStatus` until it reports every book read. Tokenizing is summed over the books, which are read a few at a time. The host heap with the whole text read includes the occurrence index and each book's USJ, which the platform keeps for every book subscription.",
   'app.scriptureSave':
     "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
-  'app.hostOpen':
-    "On the host path, a new view opens on the tier's book, with no feature needing the whole text, so the session reads none.",
-  'app.hostEditDuringRead':
-    "On the host path, one gloss committed while the session's whole-text read runs, started as a feature needing the text would start it. Only edits that the read outlasts are counted.",
-  'app.hostEdit':
-    "On the host path, one gloss committed once the session's whole-text read has finished. `edit-command` is the command's round trip, and its `:outbound` and `:inbound` rows split the transport at the host's start and end. `reply-apply` takes the reply into the view's pages. `gloss-settle` ends once the view shows the gloss and, when the Tab moves the focus, that move.",
-  'app.hostScriptureSave':
-    'As the Scripture save above, on the host path before any feature needs the whole text, so the session reads none.',
-  'app.hostScriptureSaveAfterRead':
-    "As the Scripture save above, on the host path with the session's whole-text read finished, so the host watches every book.",
-  'bench.memory': 'Heap held by the parsed draft, and by an undo history filled to its limit.',
+  'app.editDuringRead':
+    "One gloss committed while the session's whole-text read runs, started as a feature needing the text would start it. Only edits that the read outlasts are counted.",
+  'app.editAfterRead': "As the edit above, once the session's whole-text read has finished.",
+  'app.scriptureSaveAfterRead':
+    "As the Scripture save above, with the session's whole-text read finished, so the host watches every book.",
+  'bench.memory': 'Heap held by the parsed draft.',
 };
 
-/** What the host-path sections measure when their sessions read no text. */
+/** What the after-read sections measure when their sessions read no text. */
 const SKIPPED_READ_DESCRIPTIONS: Record<string, string> = {
-  'app.hostEdit': 'On the host path, one gloss committed, with the session reading no text.',
-  'app.hostScriptureSaveAfterRead':
-    'As the Scripture save above, on the host path with the session reading no text.',
+  'app.editAfterRead': 'As the edit above, with the session reading no text.',
+  'app.scriptureSaveAfterRead': 'As the Scripture save above, with the session reading no text.',
 };
 
 /**
- * What the host-path sections measured in results that lack `hostScriptureSaveAfterRead`. Those
- * were recorded when a session's read still started at open.
+ * What the host-path sections measured in results that have `hostOpen` but lack
+ * `hostScriptureSaveAfterRead`. Those were recorded when a session's read still started at open.
  */
 const READ_AT_OPEN_DESCRIPTIONS: Record<string, string> = {
   'app.hostOpen':
     "On the host path, a new view opens on the tier's book while the session's whole-text read starts. The view's first pages wait only for the re-anchor passes queued before them.",
-  'app.hostScriptureSave': SECTION_DESCRIPTIONS['app.hostScriptureSaveAfterRead'],
+  'app.hostScriptureSave':
+    "As the Scripture save above, on the host path with the session's whole-text read finished, so the host watches every book.",
 };
 
 /** {@link READ_AT_OPEN_DESCRIPTIONS} for results whose sessions read no text. */
 const READ_AT_OPEN_SKIPPED_DESCRIPTIONS: Record<string, string> = {
   'app.hostOpen':
     "On the host path, a new view opens on the tier's book, with the session reading no text.",
-  'app.hostScriptureSave': SKIPPED_READ_DESCRIPTIONS['app.hostScriptureSaveAfterRead'],
+  'app.hostScriptureSave':
+    'As the Scripture save above, on the host path with the session reading no text.',
 };
 
 /** The memory reading every other one in its section is taken against. */
@@ -126,12 +117,9 @@ const SECTION_LABELS: Record<string, string> = {
   concordance: 'Open the concordance',
   textRead: 'Read the whole text in the host',
   scriptureSave: 'Save a Scripture chapter',
-  hostOpen: 'Host path: open the view in a running app',
-  hostEditDuringRead: 'Host path: edit one gloss during the whole-text read',
-  hostEdit: 'Host path: edit one gloss',
-  hostScriptureSave: 'Host path: save a Scripture chapter',
-  hostScriptureSaveAfterRead: 'Host path: save a Scripture chapter after the whole-text read',
-  formsNotInText: 'Catalog forms not in the text',
+  editDuringRead: 'Edit one gloss during the whole-text read',
+  editAfterRead: 'Edit one gloss after the whole-text read',
+  scriptureSaveAfterRead: 'Save a Scripture chapter after the whole-text read',
   applyBooksReached: 'Books an apply reaches',
   'timings.load': 'Load',
   'timings.storage': 'Storage',
@@ -148,8 +136,6 @@ const METRIC_LABELS: Record<string, string> = {
   'app-startup': 'App startup',
   'usj-fetch': 'Fetch book text',
   tokenize: 'Tokenize book',
-  'book-fetch': 'Fetch tokenized book',
-  'book-parse': 'Parse tokenized book',
   'outline-fetch': 'Fetch book outline',
   'outline-parse': 'Parse book outline',
   'page-fetch': 'Fetch a page of segments',
@@ -171,14 +157,10 @@ const METRIC_LABELS: Record<string, string> = {
   'projects-fetch': 'Fetch saved projects',
   save: 'Save',
   'save-bytes': 'Request sent',
-  'concordance-read': 'Read every book',
-  'concordance-entries': 'Build entries',
+  'concordance-entries': 'Open to first page',
   'text-read': 'Read every book',
   'text-read-tokenize': 'Tokenize every book, summed',
   formIndex: "Index every book's forms",
-  byWebViewRead: "By the WebView's read",
-  byHostIndex: "By the host's index",
-  disagreeing: 'Disagreeing',
   parseDraft: 'Parse draft',
   storeMount: 'Mount analysis store',
   readShards: 'Parse and merge shards',
@@ -373,7 +355,7 @@ function report(result: Json): string {
     DATASET_NOTE,
     ...tierProblems(tiers),
   ].filter(Boolean);
-  const readAtOpen = !sections.has('hostScriptureSaveAfterRead');
+  const readAtOpen = sections.has('hostOpen') && !sections.has('hostScriptureSaveAfterRead');
   const tables = [...sections].map(([section, rows]) => {
     const caveat = kind === 'app' && section === 'memory' ? memoryCaveat(tiers) : undefined;
     const key = `${kind}.${section}`;

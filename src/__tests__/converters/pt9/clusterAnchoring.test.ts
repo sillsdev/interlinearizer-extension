@@ -2,7 +2,14 @@
 
 import { anchorVerseClusters, classifyCluster } from '../../../converters/pt9/clusterAnchoring';
 import { makePunctToken, makeSegment, makeVerseBook, makeWordToken } from '../../test-helpers';
+import type { VerseAnchorResult } from '../../../converters/pt9/clusterAnchoring';
+import type { Pt9ClusterDropReason } from '../../../converters/pt9/report';
 import { mkCluster } from './test-helpers';
+
+/** How many of a verse's clusters dropped for the given reason. */
+function countDrops(result: VerseAnchorResult, reason: Pt9ClusterDropReason): number {
+  return result.drops.filter((drop) => drop.reason === reason).length;
+}
 
 /** A segment whose word tokens carry real offsets within the given text. */
 function segmentOf(text: string): ReturnType<typeof makeSegment> {
@@ -50,6 +57,19 @@ describe('classifyCluster', () => {
     });
   });
 
+  it.each([
+    ['an all-blank parse', mkCluster(0, 4, [['Stem:'], ['Suffix:']])],
+    ['a parse with one blank morpheme', mkCluster(0, 4, [['Stem:'], ['Stem:giving']])],
+    ['a blank-form word', mkCluster(0, 4, [['Word::2']])],
+    ['a whitespace-only form', mkCluster(0, 4, [['Stem: ']])],
+  ])('drops %s as blankMorphemeForm', (_label, cluster) => {
+    expect(classifyCluster(cluster)).toStrictEqual({
+      kind: 'drop',
+      cluster,
+      reason: 'blankMorphemeForm',
+    });
+  });
+
   it('drops a cluster whose lexeme carries no id', () => {
     const cluster = mkCluster(0, 4, [[undefined]]);
     expect(classifyCluster(cluster)).toStrictEqual({
@@ -81,17 +101,105 @@ describe('anchorVerseClusters', () => {
       const segment = segmentOf('hello world');
       const result = anchorVerseClusters(
         [segment],
+        [mkCluster(0, 5, [['Word:hello', 'S1']]), mkCluster(0, 5, [['Stem:hel'], ['Suffix:lo']])],
+      );
+
+      expect(result.groups).toHaveLength(1);
+      expect(result.groups[0].word).toBeDefined();
+      expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual(['hel', 'lo']);
+    });
+
+    it('drops a parse that does not spell out the token its word cluster anchored', () => {
+      const segment = segmentOf('hello world');
+      const result = anchorVerseClusters(
+        [segment],
         [
           mkCluster(0, 5, [['Word:hello', 'S1']]),
           mkCluster(0, 5, [['Stem:hello'], ['Suffix:ing']]),
         ],
       );
 
+      expect(countDrops(result, 'parseFormMismatch')).toBe(1);
       expect(result.groups).toHaveLength(1);
-      expect(result.groups[0].word).toBeDefined();
+      expect(result.groups[0].word?.lexeme.senseId).toBe('S1');
+      expect(result.groups[0].parse).toBeUndefined();
+    });
+
+    it('matches a parse whose forms carry typed morph-type indicators', () => {
+      const segment = segmentOf('from here');
+      const result = anchorVerseClusters([segment], [mkCluster(0, 4, [['Stem:fr'], ['Stem:-om']])]);
+
+      expect(countDrops(result, 'formMismatch')).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('from');
+      expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual(['fr', '-om']);
+    });
+
+    it('matches a parse against a word whose own surface carries an indicator character', () => {
+      const segment = segmentOf('twenty-one days');
+      const result = anchorVerseClusters(
+        [segment],
+        [
+          mkCluster(0, 10, [['Word:twenty-one']]),
+          mkCluster(0, 10, [['Stem:twenty'], ['Stem:one']]),
+        ],
+      );
+
+      expect(countDrops(result, 'formMismatch')).toBe(0);
+      expect(result.groups[0].parse).toBeDefined();
+    });
+
+    it('drops a parse whose form spells a hyphen its word lacks', () => {
+      const segment = segmentOf('recover now');
+      const result = anchorVerseClusters([segment], [mkCluster(0, 7, [['Stem:re-cover']])]);
+
+      expect(countDrops(result, 'formMismatch')).toBe(1);
+      expect(result.groups).toHaveLength(0);
+    });
+
+    it('matches a parse whose form spells a hyphen its word carries', () => {
+      const segment = segmentOf('re-cover now');
+      const result = anchorVerseClusters([segment], [mkCluster(0, 8, [['Stem:re-cover']])]);
+
+      expect(countDrops(result, 'formMismatch')).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('re-cover');
+    });
+
+    it('anchors a parse-only cluster whose suffix starts with a combining mark', () => {
+      const segment = segmentOf('cafe\u0301 noir'.normalize('NFC'));
+      const result = anchorVerseClusters(
+        [segment],
+        [mkCluster(0, 4, [['Stem:cafe'], ['Suffix:\u0301']])],
+      );
+
+      expect(countDrops(result, 'formMismatch')).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('caf\u00e9');
+    });
+
+    it('anchors a parse whose combining-mark suffix sorts before the mark its stem ends with', () => {
+      const segment = segmentOf('a\u0301\u0327 noir'.normalize('NFC'));
+      const result = anchorVerseClusters(
+        [segment],
+        [mkCluster(0, 2, [['Stem:\u00e1'], ['Suffix:\u0327']])],
+      );
+
+      expect(countDrops(result, 'formMismatch')).toBe(0);
+      expect(result.groups[0].token.surfaceText).toBe('a\u0301\u0327'.normalize('NFC'));
+    });
+
+    it('keeps a paired parse whose suffix starts with a combining mark', () => {
+      const segment = segmentOf('cafe\u0301 noir'.normalize('NFC'));
+      const result = anchorVerseClusters(
+        [segment],
+        [
+          mkCluster(0, 4, [['Word:caf\u00e9']]),
+          mkCluster(0, 4, [['Stem:cafe'], ['Suffix:\u0301']]),
+        ],
+      );
+
+      expect(countDrops(result, 'formMismatch')).toBe(0);
       expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual([
-        'hello',
-        'ing',
+        'cafe',
+        '\u0301',
       ]);
     });
 
@@ -119,7 +227,7 @@ describe('anchorVerseClusters', () => {
         ],
       );
 
-      expect(result.dropCounts.duplicateCluster).toBe(2);
+      expect(countDrops(result, 'duplicateCluster')).toBe(2);
       expect(result.groups).toHaveLength(1);
       expect(result.groups[0].word?.lexeme.senseId).toBe('S1');
       expect(result.groups[0].parse?.lexemes.map((l) => l.key.Form)).toStrictEqual(['hel', 'lo']);
@@ -132,7 +240,7 @@ describe('anchorVerseClusters', () => {
         [mkCluster(0, 3, [['Word:zzz']]), mkCluster(0, 3, [['Stem:zz'], ['Suffix:z']])],
       );
 
-      expect(result.dropCounts.formMismatch).toBe(2);
+      expect(countDrops(result, 'formMismatch')).toBe(2);
       expect(result.groups).toHaveLength(0);
     });
   });
@@ -171,7 +279,7 @@ describe('anchorVerseClusters', () => {
 
       expect(result.groups).toHaveLength(1);
       expect(result.groups[0].token.surfaceText).toBe('a');
-      expect(result.dropCounts.formMismatch).toBe(1);
+      expect(countDrops(result, 'formMismatch')).toBe(1);
     });
 
     it('keeps a footnote cluster from claiming a later token at the cost of the clusters before it', () => {
@@ -201,7 +309,7 @@ describe('anchorVerseClusters', () => {
         'S-the',
         'S-heavens',
       ]);
-      expect(result.dropCounts.formMismatch).toBe(1);
+      expect(countDrops(result, 'formMismatch')).toBe(1);
     });
 
     it('disambiguates repeated surface forms by the proportional-position prior', () => {
@@ -236,8 +344,8 @@ describe('anchorVerseClusters', () => {
         [mkCluster(0, 4, [['Lemma:go']]), mkCluster(0, 4, [['nonsense']])],
       );
 
-      expect(result.dropCounts.lemmaOrOther).toBe(1);
-      expect(result.dropCounts.unparseableLexemeId).toBe(1);
+      expect(countDrops(result, 'lemmaOrOther')).toBe(1);
+      expect(countDrops(result, 'unparseableLexemeId')).toBe(1);
     });
   });
 
@@ -265,14 +373,14 @@ describe('anchorVerseClusters', () => {
       const result = anchorVerseClusters([segment], [mkCluster(0, 6, [['Phrase:on the']])]);
 
       expect(result.phrases).toHaveLength(0);
-      expect(result.dropCounts.formMismatch).toBe(1);
+      expect(countDrops(result, 'formMismatch')).toBe(1);
     });
 
-    it('drops a phrase whose form folds to no words', () => {
+    it('counts a phrase with a blank form as blankMorphemeForm', () => {
       const segment = segmentOf('in the book');
       const result = anchorVerseClusters([segment], [mkCluster(0, 1, [['Phrase: ']])]);
 
-      expect(result.dropCounts.formMismatch).toBe(1);
+      expect(countDrops(result, 'blankMorphemeForm')).toBe(1);
     });
 
     it('assigns repeated phrase windows monotonically by range order', () => {
@@ -305,7 +413,7 @@ describe('anchorVerseClusters', () => {
       expect(result.phrases.map((p) => p.tokens.map((t) => t.surfaceText).join(' '))).toStrictEqual(
         ['God created', 'the Lord'],
       );
-      expect(result.dropCounts.formMismatch).toBe(1);
+      expect(countDrops(result, 'formMismatch')).toBe(1);
     });
 
     it('disambiguates a repeated phrase window by the proportional-position prior', () => {
@@ -339,14 +447,7 @@ describe('anchorVerseClusters', () => {
     expect(anchorVerseClusters([segment], [])).toStrictEqual({
       groups: [],
       phrases: [],
-      dropCounts: {
-        verseNotFound: 0,
-        formMismatch: 0,
-        frontMatter: 0,
-        lemmaOrOther: 0,
-        duplicateCluster: 0,
-        unparseableLexemeId: 0,
-      },
+      drops: [],
       ambiguousCount: 0,
     });
   });
@@ -381,7 +482,7 @@ describe('anchorVerseClusters', () => {
         'PHP 1:2/s:0',
         'PHP 1:2/s:13',
       ]);
-      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(countDrops(result, 'formMismatch')).toBe(0);
     });
 
     it('places a form repeated in the verse and the heading by where the cluster falls', () => {
@@ -493,7 +594,7 @@ describe('anchorVerseClusters', () => {
       ]);
 
       expect(result.phrases).toEqual([]);
-      expect(result.dropCounts.formMismatch).toBe(1);
+      expect(countDrops(result, 'formMismatch')).toBe(1);
     });
   });
 
@@ -534,8 +635,8 @@ describe('anchorVerseClusters', () => {
         ['GEN 1:0/s1:0', 'heading'],
         ['GEN 1:0/s1:4', 'heading'],
       ]);
-      expect(result.dropCounts.frontMatter).toBe(2);
-      expect(result.dropCounts.formMismatch).toBe(0);
+      expect(countDrops(result, 'frontMatter')).toBe(2);
+      expect(countDrops(result, 'formMismatch')).toBe(0);
     });
 
     it('counts a phrase over the front matter as a front-matter drop', () => {
@@ -548,7 +649,7 @@ describe('anchorVerseClusters', () => {
       );
 
       expect(result.phrases).toEqual([]);
-      expect(result.dropCounts.frontMatter).toBe(1);
+      expect(countDrops(result, 'frontMatter')).toBe(1);
     });
 
     it('accounts for front matter filed alone, with no chapter opening', () => {
@@ -561,7 +662,7 @@ describe('anchorVerseClusters', () => {
       );
 
       expect(result.groups).toEqual([]);
-      expect(result.dropCounts.frontMatter).toBe(1);
+      expect(countDrops(result, 'frontMatter')).toBe(1);
     });
   });
 });

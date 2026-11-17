@@ -7,6 +7,7 @@ import type {
   ChangedBook,
   DraftProject,
   PhraseAnalysisLink,
+  ReadonlySegment,
   SegmentAnalysisLink,
   SegmentationDelta,
   SessionAnalysisChange,
@@ -33,8 +34,12 @@ import * as phraseCommands from '../../src/services/commands/phraseCommands';
 import * as staleCommands from '../../src/services/commands/staleCommands';
 import * as tokenCommands from '../../src/services/commands/tokenCommands';
 import { DraftRepository } from '../../src/services/draftRepository';
-import { readBookOutline, readSegmentPage } from '../../src/services/sessionPages';
-import { selectPoolIndex, selectStaleFreeTranslations } from '../../src/store/analysisSlice';
+import {
+  readBookOutline,
+  readSegmentPage,
+  readStaleSummary,
+} from '../../src/services/sessionPages';
+import { selectPoolIndex, selectStaleFreeTranslations } from '../../src/utils/analysis-selectors';
 import type {
   ChangeSet,
   KeyValueStorage,
@@ -85,7 +90,9 @@ function sessionHost(
     getInterfaceLanguages: async () => ['en'],
     startTextRead: async () => {},
     stopTextRead: async () => {},
+    holdTextRead: () => {},
     heldBook: (_source, bookId, segmentation) => heldBook(bookId, segmentation),
+    getOpenVerseBook: async (_source, bookId) => heldBook(bookId, undefined),
     reportChange,
   };
 }
@@ -103,6 +110,11 @@ function memoryStorage(): KeyValueStorage {
       records.delete(key);
     },
   };
+}
+
+/** A page sent through JSON, as the host sends one, so that its holder owns its segments. */
+async function served(page: Promise<SegmentPage<ReadonlySegment>>): Promise<SegmentPage> {
+  return JSON.parse(JSON.stringify(await page));
 }
 
 function pick<T>(rng: Rng, items: readonly T[]): T {
@@ -149,7 +161,7 @@ function seedOrphans(draft: DraftProject, books: readonly Book[]): void {
   });
 }
 
-/** What the WebView's store holds for each range of a book, read from the whole analysis. */
+/** What the selectors derive from the whole analysis for each range of a book. */
 function expectedPages(analysis: TextAnalysis, book: Book) {
   const state = { analysis, analysisLanguage: 'en' };
   const pool = selectPoolIndex(state);
@@ -177,9 +189,7 @@ function expectedPages(analysis: TextAnalysis, book: Book) {
     list.push(link);
     segmentLinksById.set(link.segmentId, list);
   });
-  const staleLinkByAnalysisId = new Map(
-    analysis.segmentAnalysisLinks.filter((l) => l.status === 'stale').map((l) => [l.analysisId, l]),
-  );
+  const segmentLinkById = new Map(analysis.segmentAnalysisLinks.map((l) => [l.id, l]));
 
   return (start: number, end: number) => {
     const segments = book.segments.slice(start, end);
@@ -190,8 +200,8 @@ function expectedPages(analysis: TextAnalysis, book: Book) {
         tokens.flatMap(({ ref }) => phrasesByRef.get(ref) ?? []).map((l) => [l.id, l]),
       ).values(),
     ];
-    const ids = (list: readonly { analysisId: string }[] | undefined) =>
-      list?.map(({ analysisId }) => analysisId);
+    const ids = (list: readonly { linkId: string }[] | undefined) =>
+      list?.map(({ linkId }) => linkId);
     const bySegment: Record<string, readonly string[]> = {};
     const orphanedAfter: Record<string, readonly string[]> = {};
     segments.forEach(({ id }) => {
@@ -200,14 +210,14 @@ function expectedPages(analysis: TextAnalysis, book: Book) {
       const orphaned = ids(placed.orphanedAfter.get(id));
       if (orphaned) orphanedAfter[id] = orphaned;
     });
-    const orphanedAhead = start === 0 ? placed.orphanedAhead.map((t) => t.analysisId) : [];
+    const orphanedAhead = start === 0 ? placed.orphanedAhead.map((t) => t.linkId) : [];
     const placedLinks = [
       ...Object.values(bySegment),
       ...Object.values(orphanedAfter),
       orphanedAhead,
     ]
       .flat()
-      .flatMap((analysisId) => staleLinkByAnalysisId.get(analysisId) ?? []);
+      .flatMap((linkId) => segmentLinkById.get(linkId) ?? []);
     const segmentLinks = [
       ...new Map(
         [...segments.flatMap(({ id }) => segmentLinksById.get(id) ?? []), ...placedLinks].map(
@@ -249,7 +259,47 @@ function expectedPages(analysis: TextAnalysis, book: Book) {
 }
 
 /**
- * Compares each page and the outline of every book with what the WebView's store holds for them.
+ * What the selectors derive from the whole analysis for the stale notice and the outline's stale
+ * flags of `book`. Gloss keys are sorted; free-translation keys keep document order.
+ */
+function expectedStale(analysis: TextAnalysis, book: Book) {
+  const stored = new Set(analysis.tokenAnalyses.map(({ id }) => id));
+  const staleGlosses = analysis.tokenAnalysisLinks.filter(
+    (link) =>
+      link.status === 'stale' &&
+      stored.has(link.analysisId) &&
+      bookOfRef(link.token.tokenRef) === book.bookRef,
+  );
+  const placed = placeStaleFreeTranslations(
+    selectStaleFreeTranslations({ analysis, analysisLanguage: 'en' }),
+    book,
+  );
+  const freeTranslations = book.segments.flatMap(({ id: segmentId }, index) =>
+    [
+      ...(index === 0 ? placed.orphanedAhead : []),
+      ...(placed.bySegment.get(segmentId) ?? []),
+      ...(placed.orphanedAfter.get(segmentId) ?? []),
+    ].map((t) => `freeTranslation ${t.analysisId} at ${segmentId}`),
+  );
+  const { tokenSegmentMap } = bookIndexesOf(book.segments);
+  const glossSegments = new Set(
+    staleGlosses.map(({ token }) => tokenSegmentMap.get(token.tokenRef)),
+  );
+  const translationSegments = new Set(
+    freeTranslations.map((key) => key.slice(key.lastIndexOf(' at ') + 4)),
+  );
+  return {
+    glosses: [
+      ...new Set(staleGlosses.map((l) => `gloss ${l.analysisId} ${l.token.tokenRef}`)),
+    ].sort(),
+    freeTranslations,
+    flags: book.segments.map(({ id }) => [glossSegments.has(id), translationSegments.has(id)]),
+  };
+}
+
+/**
+ * Compares each page and the outline of every book with what the selectors derive for them from the
+ * whole analysis.
  *
  * @returns The pages that differ, by book and start, with what differed.
  */
@@ -267,16 +317,41 @@ async function checkPages(
   for (const book of books) {
     const expectedFor = expectedPages(analysis, book);
     // eslint-disable-next-line no-await-in-loop -- one book's reads at a time
-    const outline = await readBookOutline(repository, book);
+    const outline = await readBookOutline(repository, book, book);
     const counts = outline.segments.map((s) => s.orphanedCardCount);
     if (
       JSON.stringify(counts) !==
       JSON.stringify(counts.map((_c, i) => expectedFor(0, 0).orphanedCardCount(i)))
     )
       mismatches.push(`${book.bookRef} outline orphaned cards`);
+    const stale = expectedStale(analysis, book);
+    if (
+      JSON.stringify(outline.segments.map((s) => [s.hasStaleGloss, s.hasStaleFreeTranslation])) !==
+      JSON.stringify(stale.flags)
+    )
+      mismatches.push(`${book.bookRef} outline stale flags`);
+    // eslint-disable-next-line no-await-in-loop -- one book's reads at a time
+    const summary = await readStaleSummary(repository, book);
+    if (
+      JSON.stringify(summary.glosses.map((g) => `gloss ${g.analysisId} ${g.tokenRef}`).sort()) !==
+      JSON.stringify(stale.glosses)
+    )
+      mismatches.push(`${book.bookRef} stale summary glosses`);
+    const { tokenDocOrder } = bookIndexesOf(book.segments);
+    const glossOrders = summary.glosses.map(
+      ({ tokenRef }) => tokenDocOrder.get(tokenRef) ?? Number.MAX_SAFE_INTEGER,
+    );
+    if (glossOrders.some((order, i) => i > 0 && order < glossOrders[i - 1]))
+      mismatches.push(`${book.bookRef} stale summary gloss order`);
+    if (
+      JSON.stringify(
+        summary.freeTranslations.map((t) => `freeTranslation ${t.analysisId} at ${t.segmentId}`),
+      ) !== JSON.stringify(stale.freeTranslations)
+    )
+      mismatches.push(`${book.bookRef} stale summary free translations`);
     for (let start = 0; start < book.segments.length; start += PAGE_SIZE) {
       // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
-      const page: SegmentPage = await readSegmentPage(repository, book, start, start + PAGE_SIZE);
+      const page = await readSegmentPage(repository, book, start, start + PAGE_SIZE);
       const expected = expectedFor(start, start + PAGE_SIZE);
       const got = page.analysis;
       pages += 1;
@@ -329,7 +404,7 @@ async function checkPages(
       const held: SegmentPage[] = [];
       for (let index = 0; index < book.segments.length; index += 2) {
         // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
-        held.push(await readSegmentPage(repository, book, index, index + 1));
+        held.push(await served(readSegmentPage(repository, book, index, index + 1)));
       }
       const bookPhrases = analysis.phraseAnalysisLinks.filter(
         ({ tokens }) => bookOfRef(tokens[0].tokenRef) === book.bookRef,
@@ -343,8 +418,10 @@ async function checkPages(
         // eslint-disable-next-line no-restricted-syntax -- calls for one draft must not overlap
         for (const target of targets) {
           const range = outlineRangeOf(outline.segments, target);
-          // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
-          const page = range && (await readSegmentPage(repository, book, range.start, range.end));
+          const page =
+            range &&
+            // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
+            (await served(readSegmentPage(repository, book, range.start, range.end)));
           const landed = page && buildPageIndexes(outline.segments, [...held, page]);
           const holds =
             target === segment.id
@@ -558,13 +635,20 @@ function expectedChange(
   const staleBooks = new Set(
     segmentLinks.filter((l) => l.status === 'stale').map((l) => bookOfRef(l.segmentId)),
   );
+  const staleGlossBooks = new Set(
+    tokenLinks.filter((l) => l.status === 'stale').map((l) => bookOfRef(l.token.tokenRef)),
+  );
   const changedBooks: ChangedBook[] = [...new Set([...whole, ...indexes.keys()])]
     .sort()
     .map((bookId) => {
       const set = indexes.get(bookId);
       const book: ChangedBook =
         whole.has(bookId) || !set ? { bookId } : { bookId, ranges: rangesOf(set) };
-      return staleBooks.has(bookId) ? { ...book, staleTranslations: true } : book;
+      return {
+        ...book,
+        ...(staleBooks.has(bookId) && { staleTranslations: true }),
+        ...(staleGlossBooks.has(bookId) && { staleGlosses: true }),
+      };
     });
   const payloadsAfter = new Map(is.tokenAnalyses.map((p) => [p.id, p]));
   const forms = new Set(
@@ -585,7 +669,8 @@ function expectedChange(
   if (tokenPayloads.length + tokenLinks.length > 0)
     queries.push('getCatalogRows', 'getConcordance');
   const stalePayload = [...tokenPayloads, ...segmentPayloads].some(({ id }) => staleIds.has(id));
-  if (links.some(({ status }) => status === 'stale') || stalePayload)
+  const resegmented = booksResegmentedBetween(before.segmentation, after.segmentation).length > 0;
+  if (resegmented || links.some(({ status }) => status === 'stale') || stalePayload)
     queries.push('getStaleSummary');
   return {
     books: changedBooks,
@@ -622,7 +707,7 @@ async function checkEvents(
   steps: number,
 ): Promise<{ changes: number; mismatches: string[]; races: number }> {
   const storage = memoryStorage();
-  await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
+  await new DraftRepository(storage, draft.sourceProjectId, SILENT).startOver(draft);
   const segmented = segmenter(new Map(books.map((b) => [b.bookRef, b])));
   const reported = new Map<string, SessionAnalysisChange>();
   let hear: (change: SessionAnalysisChange) => void = () => {};
@@ -642,7 +727,11 @@ async function checkEvents(
     return w.slice(1).map((t, i) => [w[i], t]);
   });
   const now = () => new Date().toISOString();
-  const saved = { analysis: draft.analysis, segmentation: draft.segmentation };
+  const saved = {
+    analysis: draft.analysis,
+    segmentation: draft.segmentation,
+    analysisLanguages: draft.analysisLanguages,
+  };
   const ids = () => ({
     analysisId: crypto.randomUUID(),
     linkId: crypto.randomUUID(),
@@ -655,7 +744,11 @@ async function checkEvents(
 
   const commands: [
     string,
-    (buffer: ChangeBuffer, current: DraftProject) => Promise<void | EditOutcome>,
+    (
+      buffer: ChangeBuffer,
+      current: DraftProject,
+      reader: discardCommands.DiscardReader,
+    ) => Promise<void | EditOutcome>,
   ][] = [
     [
       'writeGloss',
@@ -766,10 +859,10 @@ async function checkEvents(
     ],
     [
       'discardBook',
-      async (buffer, current) => {
-        const { changedBooks } = discardCommands.discardBook(
+      async (buffer, _current, reader) => {
+        const { changedBooks } = await discardCommands.discardBook(
           buffer,
-          { draft: current, unreadableBooks: [] },
+          reader,
           viewBook.bookRef,
           saved,
         );
@@ -803,11 +896,11 @@ async function checkEvents(
   };
   const fetchPage = (start: number, end: number) =>
     sessions.run(sessionId, async (session) =>
-      readSegmentPage(session.repository, await sessionBook(session), start, end),
+      served(readSegmentPage(session.repository, await sessionBook(session), start, end)),
     );
   const fetchOutline = () =>
     sessions.run(sessionId, async (session) =>
-      readBookOutline(session.repository, await sessionBook(session)),
+      readBookOutline(session.repository, await sessionBook(session), viewBook),
     );
   const client = new PageClient({ getOutline: fetchOutline, getSegments: fetchPage });
   hear = (change) => client.hear(change);
@@ -846,7 +939,12 @@ async function checkEvents(
       name = intent;
       send = (id) =>
         sessions
-          .edit(sessionId, intent, (buffer) => command(buffer, before), { changeId: id })
+          .edit(
+            sessionId,
+            intent,
+            (buffer, session) => command(buffer, before, session.repository),
+            { changeId: id },
+          )
           // A random edit that the approval rule refuses applies nothing, as the host intends.
           .catch((e) => {
             if (e instanceof ApprovalRuleError) return undefined;
@@ -923,7 +1021,7 @@ async function timeFirstRequest(
   viewBook: Book,
 ): Promise<{ open: number; first: number; next: number }> {
   const storage = memoryStorage();
-  await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
+  await new DraftRepository(storage, draft.sourceProjectId, SILENT).startOver(draft);
   const sessions = new AnalysisSessions(
     sessionHost(
       storage,
@@ -950,7 +1048,7 @@ async function timeFirstRequest(
 
 async function checkTier(tier: TierSpec): Promise<boolean> {
   const meta = readCaptureMeta();
-  const manifest = readManifest(tier.name);
+  const manifest = readManifest(tier.name, meta);
   const books = loadBooks(meta, manifest.books);
   const draft: DraftProject = JSON.parse(readDraftJson(tier.name));
   seedOrphans(draft, books);
@@ -960,7 +1058,7 @@ async function checkTier(tier: TierSpec): Promise<boolean> {
   const timing = await timeFirstRequest(draft, viewBook);
 
   const storage = memoryStorage();
-  await new DraftRepository(storage, draft.sourceProjectId, SILENT).replaceAll(draft);
+  await new DraftRepository(storage, draft.sourceProjectId, SILENT).startOver(draft);
   const repository = new DraftRepository(storage, draft.sourceProjectId, SILENT);
   const pages = await checkPages(repository, draft.analysis, books, tier.viewBook);
 

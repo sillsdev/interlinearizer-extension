@@ -26,7 +26,9 @@ function makeReport() {
               lemmaOrOther: 0,
               duplicateCluster: 0,
               unparseableLexemeId: 0,
+              blankMorphemeForm: 0,
             },
+            drops: [{ verseRef: 'MAT 1:1', reason: 'formMismatch', lexemeIds: ['Word:hello'] }],
             ambiguousAnchors: 0,
             punctuationEntriesIgnored: 0,
           },
@@ -39,6 +41,9 @@ function makeReport() {
       approvedDemotedToCandidate: 0,
       sameTagCollisions: [],
       identicalPayloadsMerged: 0,
+      identicalPhrasePayloadsMerged: 0,
+      duplicateLinksDropped: 0,
+      duplicatePhraseLinksDropped: 0,
     },
     senses: {
       specificResolved: 0,
@@ -49,7 +54,14 @@ function makeReport() {
       senseRefsResolved: 0,
       senseRefsUnresolved: 0,
     },
-    barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
+    barePayloads: {
+      added: 0,
+      skippedExistingIdentical: 0,
+      droppedUnparseable: 0,
+      droppedEmpty: 0,
+      droppedBlankForm: 0,
+    },
+    filesPt9NeverLoads: [],
     filesTooLargeToRead: [],
   };
 }
@@ -79,6 +91,14 @@ describe('isPt9ImportReport', () => {
     ).toBe(true);
   });
 
+  it('rejects a report whose never-loaded file list is missing', () => {
+    expect(isPt9ImportReport({ ...makeReport(), filesPt9NeverLoads: undefined })).toBe(false);
+  });
+
+  it('rejects a never-loaded file list holding a non-path', () => {
+    expect(isPt9ImportReport({ ...makeReport(), filesPt9NeverLoads: [1] })).toBe(false);
+  });
+
   it('rejects a language without a tag', () => {
     const report = makeReport();
     expect(isPt9ImportReport({ ...report, languages: [{ books: [] }] })).toBe(false);
@@ -98,6 +118,35 @@ describe('isPt9ImportReport', () => {
     const book: Record<string, unknown> = {
       ...report.languages[0].books[0],
       clusterDrops: { verseNotFound: 'many' },
+    };
+    expect(
+      isPt9ImportReport({ ...report, languages: [{ ...report.languages[0], books: [book] }] }),
+    ).toBe(false);
+  });
+
+  it('rejects a book without a drop list', () => {
+    const report = makeReport();
+    const book: Record<string, unknown> = { ...report.languages[0].books[0], drops: undefined };
+    expect(
+      isPt9ImportReport({ ...report, languages: [{ ...report.languages[0], books: [book] }] }),
+    ).toBe(false);
+  });
+
+  it('rejects a drop whose lexeme ids are not strings', () => {
+    const report = makeReport();
+    const book: Record<string, unknown> = {
+      ...report.languages[0].books[0],
+      drops: [{ verseRef: 'MAT 1:1', reason: 'formMismatch', lexemeIds: [3] }],
+    };
+    expect(
+      isPt9ImportReport({ ...report, languages: [{ ...report.languages[0], books: [book] }] }),
+    ).toBe(false);
+  });
+  it('rejects a drop whose reason is not a drop reason', () => {
+    const report = makeReport();
+    const book: Record<string, unknown> = {
+      ...report.languages[0].books[0],
+      drops: [{ verseRef: 'MAT 1:1', reason: 'formMismtach', lexemeIds: ['Word:hello'] }],
     };
     expect(
       isPt9ImportReport({ ...report, languages: [{ ...report.languages[0], books: [book] }] }),

@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import type { DraftProject, TextAnalysis } from 'interlinearizer';
+import type { DraftProject, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { AnalysisLinks, AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
@@ -17,15 +17,19 @@ import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from './test-helpers';
  * - `undo`: the inverse that {@link AnalysisRepository.apply} returns. Without it, `apply` may return
  *   an inverse that restores nothing (`{ intent }`), which no other group reads.
  * - `draftState`: the unsaved mark (`dirty`, `keepDirty`, `wasDirty`, and
- *   {@link AnalysisRepository.markClean}) and {@link AnalysisRepository.exportForCopy}. Without it,
- *   `apply` may report `wasDirty: false`, which no other group reads.
+ *   {@link AnalysisRepository.markClean}), {@link AnalysisRepository.exportForCopy},
+ *   {@link AnalysisRepository.getDraftState}, and {@link AnalysisRepository.findUnlinkedPayloads}.
+ *   Without it, `apply` may report `wasDirty: false`, which no other group reads.
  * - `wholeRead`: {@link AnalysisRepository.exportAll} and {@link AnalysisRepository.getWholeDraft}
  *   themselves, and loading a draft again through `exportAll` after another repository changes it.
+ * - `danglingLinks`: storing a link that names an analysis that the changes leave unstored, and
+ *   passing over it in lookups. Without it, `apply` must refuse such a link, applying nothing.
  * - `storage`: how today's storage keeps a draft: unreadable books, the refusal of a newer build's
  *   draft, cleanup and leftovers, and the whole-draft save. It runs only alongside `scope`,
  *   `draftState`, and `wholeRead`, and needs {@link ConformanceStore.storage}.
  */
-export type ConformanceGroup = 'scope' | 'undo' | 'draftState' | 'wholeRead' | 'storage';
+export type ConformanceGroup =
+  'scope' | 'undo' | 'draftState' | 'wholeRead' | 'danglingLinks' | 'storage';
 
 /** One empty store an {@link AnalysisRepository} implementation keeps drafts in. */
 export interface ConformanceStore {
@@ -259,7 +263,6 @@ function fullDraft(): DraftProject {
     modelVersion: CURRENT_MODEL_VERSION,
     analysisLanguages: ['fr', 'en'],
     targetProjectId: 'target-project',
-    suggestedName: 'Genesis draft',
     suggestedDescription: 'A draft of Genesis and Exodus.',
     analysis: fullAnalysis(),
     dirty: true,
@@ -422,6 +425,28 @@ function translatingExodus(): ChangeSet {
       puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
       deletes: [],
     },
+  };
+}
+
+/**
+ * An approved link on GEN 1:1's "and" naming an analysis not stored, updated after the stored link
+ * that it ties with.
+ */
+function missingAnalysisLink(): TokenAnalysisLink {
+  const [genAnd] = fullAnalysis().tokenAnalysisLinks;
+  return {
+    ...genAnd,
+    id: ID.tlGenMissing,
+    analysisId: ID.taMissing,
+    updatedAt: '2026-02-01T00:00:00.000Z',
+  };
+}
+
+/** Puts {@link missingAnalysisLink}. */
+function linkingMissingAnalysis(): ChangeSet {
+  return {
+    intent: 'linkMissing',
+    tokenAnalysisLinks: { puts: [missingAnalysisLink()], deletes: [] },
   };
 }
 
@@ -787,6 +812,33 @@ export function describeAnalysisRepositoryConformance(
           await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
         });
 
+        if (!supports.has('danglingLinks')) {
+          it('refuses a link naming an analysis not stored, applying nothing', async () => {
+            const repository = await overFullDraft();
+
+            await expect(repository.apply(linkingMissingAnalysis())).rejects.toThrow();
+
+            await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
+          });
+
+          it('refuses a link naming an analysis the same changes delete, applying nothing', async () => {
+            const repository = await overFullDraft();
+
+            await expect(
+              repository.apply({
+                intent: 'linkAndDelete',
+                tokenAnalyses: { puts: [], deletes: [ID.taUnlinked] },
+                tokenAnalysisLinks: {
+                  puts: [{ ...missingAnalysisLink(), analysisId: ID.taUnlinked }],
+                  deletes: [],
+                },
+              }),
+            ).rejects.toThrow();
+
+            await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
+          });
+        }
+
         it('keeps the drafts of different source projects apart', async () => {
           await store.seed(SOURCE, fullDraft());
 
@@ -993,30 +1045,6 @@ export function describeAnalysisRepositoryConformance(
           ).resolves.toStrictEqual({ [ID.taAnd]: 1, [ID.taBeginning]: 1 });
         });
 
-        it('passes over an approved link naming no stored payload when picking a tie', async () => {
-          const repository = await overFullDraft();
-          const [genAnd] = fullAnalysis().tokenAnalysisLinks;
-
-          await repository.apply({
-            intent: 'approveMissing',
-            tokenAnalysisLinks: {
-              puts: [
-                {
-                  ...genAnd,
-                  id: ID.tlGenMissing,
-                  analysisId: ID.taMissing,
-                  updatedAt: '2026-02-01T00:00:00.000Z',
-                },
-              ],
-              deletes: [],
-            },
-          });
-
-          await expect(repository.countApprovals([ID.taAnd, ID.taMissing])).resolves.toStrictEqual({
-            [ID.taAnd]: 2,
-          });
-        });
-
         it('counts from the records the applied changes leave', async () => {
           const repository = await overFullDraft();
           await repository.countApprovals([ID.taAnd]);
@@ -1150,6 +1178,32 @@ export function describeAnalysisRepositoryConformance(
         });
       });
     });
+
+    if (supports.has('danglingLinks')) {
+      describe('danglingLinks', () => {
+        it('stores a link naming an analysis not stored', async () => {
+          const repository = await overFullDraft();
+
+          await repository.apply(linkingMissingAnalysis());
+
+          await expect(
+            repository
+              .findLinksToAnalyses([ID.taMissing])
+              .then(({ tokenAnalysisLinks }) => idsOf(tokenAnalysisLinks)),
+          ).resolves.toStrictEqual([ID.tlGenMissing]);
+        });
+
+        it('passes over an approved link naming no stored payload when picking a tie', async () => {
+          const repository = await overFullDraft();
+
+          await repository.apply(linkingMissingAnalysis());
+
+          await expect(repository.countApprovals([ID.taAnd, ID.taMissing])).resolves.toStrictEqual({
+            [ID.taAnd]: 2,
+          });
+        });
+      });
+    }
 
     if (supports.has('scope')) {
       describe('scope', () => {
@@ -1331,6 +1385,64 @@ export function describeAnalysisRepositoryConformance(
             await expect(reloadForCopy()).resolves.toStrictEqual({
               draft: comparable(emptyDraft(SOURCE)),
               unreadableBooks: [],
+            });
+          });
+        });
+
+        describe('getDraftState', () => {
+          it('tells the state of a saved draft', async () => {
+            const repository = await overFullDraft();
+
+            await expect(repository.getDraftState()).resolves.toStrictEqual({
+              dirty: true,
+              empty: false,
+              hasFreeTranslations: true,
+              unreadableBooks: [],
+            });
+          });
+
+          it('tells an empty, saved state when no draft is saved', async () => {
+            await expect((await store.open(SOURCE)).getDraftState()).resolves.toStrictEqual({
+              dirty: false,
+              empty: true,
+              hasFreeTranslations: false,
+              unreadableBooks: [],
+            });
+          });
+
+          it('tells a draft that only moves boundaries as not empty', async () => {
+            await store.seed(SOURCE, {
+              ...emptyDraft(SOURCE),
+              segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+            });
+
+            await expect((await store.open(SOURCE)).getDraftState()).resolves.toMatchObject({
+              empty: false,
+            });
+          });
+
+          it('tells a free translation that its own apply puts', async () => {
+            const repository = await store.open(SOURCE);
+            await expect(repository.getDraftState()).resolves.toMatchObject({
+              hasFreeTranslations: false,
+            });
+
+            await repository.apply(translatingExodus());
+
+            await expect(repository.getDraftState()).resolves.toMatchObject({
+              hasFreeTranslations: true,
+            });
+          });
+        });
+
+        describe('findUnlinkedPayloads', () => {
+          it('finds the payloads that no link names', async () => {
+            const repository = await overFullDraft();
+
+            await expect(repository.findUnlinkedPayloads()).resolves.toStrictEqual({
+              tokenAnalyses: fullAnalysis().tokenAnalyses.filter(({ id }) => id === ID.taUnlinked),
+              phraseAnalyses: [],
+              segmentAnalyses: [],
             });
           });
         });
@@ -1637,6 +1749,15 @@ export function describeAnalysisRepositoryConformance(
             },
           );
 
+          it('names a book whose stored analysis is unreadable in the state it tells', async () => {
+            await store.seed(SOURCE, fullDraft());
+            await hooks.damageBook(SOURCE, 'GEN', 'corrupt');
+
+            await expect((await store.open(SOURCE)).getDraftState()).resolves.toMatchObject({
+              unreadableBooks: ['GEN'],
+            });
+          });
+
           it('loads an unusable draft as an empty one', async () => {
             await store.seed(SOURCE, fullDraft());
             await hooks.damageDraft(SOURCE);
@@ -1670,236 +1791,6 @@ export function describeAnalysisRepositoryConformance(
             await hooks.storeNewerBuildDraft(SOURCE);
 
             await expect((await store.open(SOURCE)).exportForCopy()).rejects.toThrow();
-          });
-        });
-
-        describe('replaceAll', () => {
-          it('saves every record kind and optional field for the same repository to load', async () => {
-            const repository = await store.open(SOURCE);
-            await repository.replaceAll(fullDraft());
-
-            await expect(load(repository)).resolves.toStrictEqual(comparable(fullDraft()));
-          });
-
-          it('saves a draft for a newly opened repository to load', async () => {
-            await (await store.open(SOURCE)).replaceAll(fullDraft());
-
-            await expect(reload()).resolves.toStrictEqual(comparable(fullDraft()));
-          });
-
-          it('keeps a payload linked from several books as one record', async () => {
-            await (await store.open(SOURCE)).replaceAll(fullDraft());
-
-            const { analysis } = await reload();
-
-            expect(analysis.tokenAnalyses.filter(({ id }) => id === ID.taAnd)).toHaveLength(1);
-          });
-
-          it('saves an edit to a payload linked from several books', async () => {
-            const repository = await store.open(SOURCE);
-            await repository.replaceAll(fullDraft());
-            const { draft } = await repository.exportAll();
-            draft.analysis.tokenAnalyses = draft.analysis.tokenAnalyses.map((payload) =>
-              payload.id === ID.taAnd ? { ...payload, gloss: { en: 'and then' } } : payload,
-            );
-
-            await repository.replaceAll(draft);
-
-            await expect(reload()).resolves.toStrictEqual(comparable(draft));
-            await hooks.damageBook(SOURCE, 'GEN', 'corrupt');
-            const {
-              draft: { analysis },
-            } = await reloadForCopy();
-            expect(analysis.tokenAnalyses.find(({ id }) => id === ID.taAnd)?.gloss).toStrictEqual({
-              en: 'and then',
-            });
-          });
-
-          it('stamps what it saves with the current model version', async () => {
-            await (
-              await store.open(SOURCE)
-            ).replaceAll({ ...fullDraft(), modelVersion: CURRENT_MODEL_VERSION - 1 });
-
-            const { modelVersion } = await reload();
-
-            expect(modelVersion).toBe(CURRENT_MODEL_VERSION);
-          });
-
-          it('replaces the stored draft whole, dropping records the saved draft lacks', async () => {
-            const repository = await store.open(SOURCE);
-            await repository.replaceAll(fullDraft());
-            await repository.exportAll();
-
-            await repository.replaceAll(exodusOnlyDraft());
-
-            await expect(reload()).resolves.toStrictEqual(comparable(exodusOnlyDraft()));
-          });
-
-          it('drops records the saved draft lacks even when this repository never loaded them', async () => {
-            await (await store.open(SOURCE)).replaceAll(fullDraft());
-
-            await (await store.open(SOURCE)).replaceAll(exodusOnlyDraft());
-
-            await expect(reload()).resolves.toStrictEqual(comparable(exodusOnlyDraft()));
-          });
-
-          it('saves in full after reloading a draft another repository replaced', async () => {
-            const repository = await store.open(SOURCE);
-            await repository.replaceAll(fullDraft());
-            await (await store.open(SOURCE)).replaceAll(exodusOnlyDraft());
-            await expect(load(repository)).resolves.toStrictEqual(comparable(exodusOnlyDraft()));
-
-            await repository.replaceAll(fullDraft());
-
-            await expect(reload()).resolves.toStrictEqual(comparable(fullDraft()));
-          });
-
-          it('saves an emptied analysis as empty', async () => {
-            const repository = await store.open(SOURCE);
-            await repository.replaceAll(fullDraft());
-
-            await repository.replaceAll({ ...fullDraft(), analysis: emptyAnalysis() });
-
-            await expect(reload()).resolves.toStrictEqual(
-              comparable({ ...fullDraft(), analysis: emptyAnalysis() }),
-            );
-          });
-
-          it('restores records a later save brings back', async () => {
-            const repository = await store.open(SOURCE);
-            await repository.replaceAll(fullDraft());
-            await repository.replaceAll(exodusOnlyDraft());
-
-            await repository.replaceAll(fullDraft());
-
-            await expect(reload()).resolves.toStrictEqual(comparable(fullDraft()));
-          });
-
-          it('stores what it was given, unaffected by later changes to that draft', async () => {
-            const repository = await store.open(SOURCE);
-            const draft = fullDraft();
-            await repository.replaceAll(draft);
-
-            changeInPlace(draft);
-
-            await expect(load(repository)).resolves.toStrictEqual(comparable(fullDraft()));
-            await expect(reload()).resolves.toStrictEqual(comparable(fullDraft()));
-          });
-
-          it('stores in-place changes to a saved draft when that draft is saved again', async () => {
-            const repository = await store.open(SOURCE);
-            const draft = fullDraft();
-            await repository.replaceAll(draft);
-            changeInPlace(draft);
-
-            await repository.replaceAll(draft);
-
-            await expect(reload()).resolves.toStrictEqual(comparable(draft));
-          });
-
-          it('keeps the drafts of different source projects apart', async () => {
-            const other = { ...exodusOnlyDraft(), sourceProjectId: 'other-project' };
-            await (await store.open(SOURCE)).replaceAll(fullDraft());
-
-            await (await store.open('other-project')).replaceAll(other);
-
-            await expect(reload()).resolves.toStrictEqual(comparable(fullDraft()));
-            await expect(reload('other-project')).resolves.toStrictEqual(comparable(other));
-          });
-
-          it('leaves a draft written by a newer build in place, refusing to overwrite it', async () => {
-            await hooks.storeNewerBuildDraft(SOURCE);
-
-            await expect((await store.open(SOURCE)).replaceAll(fullDraft())).rejects.toThrow();
-
-            await expect((await store.open(SOURCE)).exportAll()).rejects.toThrow();
-          });
-
-          it('resolves once the draft has landed even if cleanup after it fails, and a later save finishes that cleanup', async () => {
-            await (await store.open(SOURCE)).replaceAll(fullDraft());
-            const restore = hooks.failCleanup(SOURCE);
-
-            await expect(
-              (await store.open(SOURCE)).replaceAll(exodusOnlyDraft()),
-            ).resolves.toStrictEqual([]);
-            await expect(hooks.holdsLeftovers(SOURCE)).resolves.toBe(true);
-
-            restore();
-            await expect(reload()).resolves.toStrictEqual(comparable(exodusOnlyDraft()));
-            await (await store.open(SOURCE)).replaceAll(exodusOnlyDraft());
-            await expect(hooks.holdsLeftovers(SOURCE)).resolves.toBe(false);
-          });
-
-          it('lets the next apply build on the save, not on an apply before it', async () => {
-            const repository = await store.open(SOURCE);
-            await repository.apply(puttingNewRecords());
-            await repository.replaceAll(fullDraft());
-
-            await repository.apply({
-              intent: 'deleteUnlinked',
-              tokenAnalyses: { puts: [], deletes: [ID.taUnlinked] },
-            });
-
-            await expect(reload()).resolves.toStrictEqual(
-              comparable({
-                ...fullDraft(),
-                analysis: {
-                  ...fullAnalysis(),
-                  tokenAnalyses: fullAnalysis().tokenAnalyses.filter(
-                    ({ id }) => id !== ID.taUnlinked,
-                  ),
-                },
-              }),
-            );
-          });
-        });
-
-        describe('replaceAll after loading a book that could not be read', () => {
-          it('keeps the book as stored when the draft carries nothing for it, leaving out no book', async () => {
-            const repository = await loadedWithUnreadableGenesis();
-
-            await expect(repository.replaceAll(exodusOnlyDraft())).resolves.toStrictEqual([]);
-
-            await expect(reloadForCopy()).resolves.toStrictEqual({
-              draft: comparable(exodusOnlyDraft()),
-              unreadableBooks: ['GEN'],
-            });
-          });
-
-          it('resolves with the book, keeping it as stored, when the draft carries analysis for it', async () => {
-            const repository = await loadedWithUnreadableGenesis();
-            const withoutSegments = (draft: DraftProject): DraftProject => ({
-              ...draft,
-              analysis: { ...draft.analysis, segmentAnalyses: [], segmentAnalysisLinks: [] },
-            });
-
-            await expect(
-              repository.replaceAll(withoutSegments(fullDraft())),
-            ).resolves.toStrictEqual(['GEN']);
-
-            await expect(reloadForCopy()).resolves.toStrictEqual({
-              draft: comparable(withoutSegments(fullDraftWithoutGenesis())),
-              unreadableBooks: ['GEN'],
-            });
-          });
-
-          it('writes the book like any other once told to discard what could not be read', async () => {
-            const repository = await loadedWithUnreadableGenesis();
-
-            await expect(
-              repository.replaceAll(fullDraft(), { discardUnreadable: true }),
-            ).resolves.toStrictEqual([]);
-
-            await expect(reload()).resolves.toStrictEqual(comparable(fullDraft()));
-          });
-
-          it('wipes the book the draft carries nothing for once told to discard what could not be read', async () => {
-            const repository = await loadedWithUnreadableGenesis();
-
-            await repository.replaceAll(exodusOnlyDraft(), { discardUnreadable: true });
-
-            await expect(reload()).resolves.toStrictEqual(comparable(exodusOnlyDraft()));
-            await expect(hooks.holdsLeftovers(SOURCE)).resolves.toBe(false);
           });
         });
 
@@ -2086,13 +1977,22 @@ export function describeReadOnlyRepositoryConformance(
       ]);
     });
 
-    it('refuses a save, leaving what it loads unchanged', async () => {
+    it('tells the analysis it was opened over as not empty, naming no unreadable book', async () => {
       const repository = await store.openReadOnly(fullDraft());
 
-      await expect(repository.replaceAll(exodusOnlyDraft())).rejects.toThrow(ReadOnlyAnalysisError);
+      await expect(repository.getDraftState()).resolves.toMatchObject({
+        empty: false,
+        unreadableBooks: [],
+      });
+    });
 
-      await expect(analysisLoadedBy(repository)).resolves.toStrictEqual(
-        inIdOrder(fullDraft()).analysis,
+    it('finds the payloads that no link names in the analysis it was opened over', async () => {
+      const repository = await store.openReadOnly(fullDraft());
+
+      await expect(
+        repository.findUnlinkedPayloads().then(({ tokenAnalyses }) => tokenAnalyses),
+      ).resolves.toStrictEqual(
+        fullAnalysis().tokenAnalyses.filter(({ id }) => id === ID.taUnlinked),
       );
     });
 

@@ -6,10 +6,10 @@ type TokenAnalysisLayer = Pick<TextAnalysis, 'tokenAnalyses' | 'tokenAnalysisLin
 
 /**
  * Folds content-identical token analyses onto one shared payload, as glossing them by hand would
- * have stored them, counting each fold on `report`. The first of each identical set survives and
- * every link to the rest moves onto it, keeping its own token snapshot. A token left holding two
- * links to the survivor keeps one: the approved link if either is, a rejected one only if both are,
- * otherwise the earlier.
+ * have stored them, counting each fold and each dropped link on `report`. The first of each
+ * identical set survives and every link to the rest moves onto it, keeping its own token snapshot.
+ * A token left holding two links to the survivor keeps one: the approved link if either is, a
+ * rejected one only if both are, otherwise the earlier.
  */
 export function dedupeTokenAnalyses(
   layer: TokenAnalysisLayer,
@@ -42,7 +42,10 @@ export function dedupeTokenAnalyses(
     if (heldAt === undefined) {
       indexByTokenAndAnalysis.set(key, tokenAnalysisLinks.length);
       tokenAnalysisLinks.push(repointed);
-    } else if (
+      return;
+    }
+    report.merge.duplicateLinksDropped += 1;
+    if (
       repointed.status === 'approved' ||
       (tokenAnalysisLinks[heldAt].status === 'rejected' && repointed.status !== 'rejected')
     )

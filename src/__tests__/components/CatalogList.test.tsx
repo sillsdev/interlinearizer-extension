@@ -27,6 +27,15 @@ describe('CatalogList', () => {
     expect(screen.getAllByTestId('row').map((el) => el.textContent)).toEqual(['a', 'b']);
   });
 
+  it('gives the lexicon link control a column of its own after the surface form', () => {
+    renderList(['a']);
+
+    // Check box, chevron, surface form, link control, then the gloss and the counts.
+    expect(screen.getByRole('list').className).toContain(
+      'grid-cols-[auto_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_auto_auto_auto]',
+    );
+  });
+
   it('places the sentinel after the last row', () => {
     renderList(['a', 'b']);
 

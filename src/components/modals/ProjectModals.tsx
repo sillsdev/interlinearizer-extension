@@ -1,19 +1,33 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
-import type { DraftProject } from 'interlinearizer';
+import { useLocalizedStrings } from '@papi/frontend/react';
+import type { DraftEnvelope } from 'interlinearizer';
+import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import { useCallback, useEffect, useState } from 'react';
-import type { DraftCopyResult, NewDraftConfig } from '../../hooks/useDraftProject';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
+import type { DraftCopyResult, NewDraftConfig } from '../../types/project-api';
 import { isInterlinearProjectSummary, isSavedAsProject } from '../../types/type-guards';
+import type {
+  AnalysisLanguagesChange,
+  AnalysisLanguagesChangeOutcome,
+} from '../../types/analysis-languages-change';
+import type { TextCountsByTag } from '../../utils/text-counts';
+import type { GlossRetagCounts } from '../../utils/retag-glosses';
 import type { Settles } from '../../utils/settles';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
+import {
+  describeTextCounts,
+  hasText,
+  LANGUAGE_TEXT_COUNTS_STRING_KEYS,
+} from './language-text-counts';
 import { DiscardDraftConfirm } from './DiscardDraftConfirm';
 import { DeleteProjectConfirm } from './DeleteProjectConfirm';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
 import { SaveAsProjectModal } from './SaveAsProjectModal';
 import { SelectInterlinearProjectModal } from './SelectInterlinearProjectModal';
+import useInterlinearizerWebViewState from '../../hooks/useInterlinearizerWebViewState';
 
 /** Which project-related modal is currently open; `'none'` means no modal is visible. */
 export type ModalState =
@@ -26,6 +40,53 @@ export type ModalState =
  */
 type PendingReplace =
   { kind: 'new'; config: CreateDraftConfig } | { kind: 'open'; project: InterlinearProjectSummary };
+
+/** Localized string keys this component formats itself. */
+const PROJECT_MODALS_STRING_KEYS: `%${string}%`[] = [
+  '%interlinearizer_retagGlosses_changed%',
+  '%interlinearizer_retagGlosses_movedWords%',
+  '%interlinearizer_retagGlosses_movedMorphemes%',
+  '%interlinearizer_retagGlosses_movedFreeTranslations%',
+  '%interlinearizer_retagGlosses_skipped%',
+  '%interlinearizer_deleteLanguageText_deleted%',
+  ...LANGUAGE_TEXT_COUNTS_STRING_KEYS,
+];
+
+/** Whether a move has anything to report: text it moved, or text it left hidden under `from`. */
+function hasReport({ words, morphemes, freeTranslations, skipped }: GlossRetagCounts): boolean {
+  return words + morphemes + freeTranslations > 0 || hasText(skipped);
+}
+
+/** The message telling the reader what a move from `from` to `to` did, leaving out zero counts. */
+function retagMessage(
+  from: string,
+  to: string,
+  counts: GlossRetagCounts,
+  localizedStrings: LanguageStrings,
+): string {
+  const { words, morphemes, freeTranslations, skipped } = counts;
+  const moved: [key: `%${string}%`, count: number][] = [
+    ['%interlinearizer_retagGlosses_movedWords%', words],
+    ['%interlinearizer_retagGlosses_movedMorphemes%', morphemes],
+    ['%interlinearizer_retagGlosses_movedFreeTranslations%', freeTranslations],
+  ];
+  const replacers = { from, to, words, morphemes, freeTranslations };
+  return [
+    formatReplacementString(localizedStrings['%interlinearizer_retagGlosses_changed%'], replacers),
+    ...moved
+      .filter(([, count]) => count > 0)
+      .map(([key]) => formatReplacementString(localizedStrings[key], replacers)),
+    ...(hasText(skipped)
+      ? [
+          formatReplacementString(localizedStrings['%interlinearizer_retagGlosses_skipped%'], {
+            from,
+            to,
+            counts: describeTextCounts(skipped, localizedStrings),
+          }),
+        ]
+      : []),
+  ].join(' ');
+}
 
 /**
  * Single mount point for all project-related dialogs. Renders the active one of
@@ -40,26 +101,37 @@ type PendingReplace =
  *
  * @param props.activeProject - The currently active interlinear project (the Save target), read
  *   from WebView state by the parent.
+ * @param props.announceUndoable - Announces a message about the step just made, with an offer to
+ *   undo that step.
+ * @param props.changeDraftAnalysisLanguages - Gives the draft new analysis languages as one
+ *   undoable step, moving or deleting any text the change names. Resolves what it did to the text.
+ * @param props.countDraftLanguageText - Counts the draft's glosses and free translations under each
+ *   language tag that has any.
+ * @param props.subscribeToDraftEdits - Calls a listener after each edit, undo, or redo of the
+ *   draft, until the returned function is called.
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
  *   initial value of the analysis language field; should be the platform UI language.
+ * @param props.isDraftLoading - Whether the draft is still loading. Project Info disables the
+ *   active project's language actions and Save until the draft loads, because the project's
+ *   analysis languages come from the draft.
  * @param props.hasUnsavedWork - Whether the draft has unsaved work — either committed-but-unsaved
  *   changes or uncommitted text still sitting in a gloss input (matching the tab's unsaved marker).
  *   When true, New / Open are gated behind the discard confirmation so neither kind of unsaved work
  *   is silently lost by the draft-replacing swap. When false, Save As reports the active project as
  *   having nothing to save rather than offering a write that would change nothing.
- * @param props.getDraftSnapshot - Returns the latest draft envelope (analysis + config).
+ * @param props.getDraftSnapshot - Returns the latest draft envelope.
  * @param props.detachFromProject - Records that the active project, the draft's Save target, was
  *   deleted.
  * @param props.commitDraft - Runs a Save As through the draft: once the stored draft is current,
- *   runs the given copy with the draft snapshot and, on the host path, the session's id. Marks the
- *   draft synced when the copy reports it landed whole. Resolves whether the copy landed, or
- *   `false` when no save could run.
+ *   runs the given copy with the draft snapshot and the session's id. Marks the draft synced when
+ *   the copy reports it landed whole. Resolves whether the copy landed, or `false` when no save
+ *   could run.
  * @param props.loadFromProject - Loads the analysis and config of the project with the given id
- *   into the draft (the "Open" flow). Rejects when the project can't be read; on the host path,
- *   also when the draft can't be stored.
+ *   into the draft (the "Open" flow). Rejects when the project can't be read or the draft can't be
+ *   stored.
  * @param props.newDraft - Seeds the draft with empty analysis and the given config; called before
- *   the New flow's backend round-trip so the editor is ready regardless of whether persistence
- *   succeeds. On the host path, settles once the draft is stored, and rejects when it can't be.
+ *   the New flow creates its project. Settles once the draft is stored, and rejects when it can't
+ *   be.
  * @param props.modal - Which modal is currently open.
  * @param props.onImportPt9 - Called when the user chooses "Import from Paratext 9" in the select
  *   modal; the caller owns the import run and its modal.
@@ -79,7 +151,12 @@ type PendingReplace =
  */
 export default function ProjectModals({
   activeProject,
+  announceUndoable,
+  changeDraftAnalysisLanguages,
+  countDraftLanguageText,
+  subscribeToDraftEdits,
   defaultAnalysisLanguage,
+  isDraftLoading,
   hasUnsavedWork,
   getDraftSnapshot,
   detachFromProject,
@@ -96,12 +173,19 @@ export default function ProjectModals({
   useWebViewState,
 }: Readonly<{
   activeProject: InterlinearProjectSummary | undefined;
+  announceUndoable: (message: string) => void;
+  changeDraftAnalysisLanguages: (
+    change: AnalysisLanguagesChange,
+  ) => Promise<AnalysisLanguagesChangeOutcome>;
+  countDraftLanguageText: () => Promise<TextCountsByTag>;
+  subscribeToDraftEdits: (listener: () => void) => () => void;
   defaultAnalysisLanguage?: string;
+  isDraftLoading: boolean;
   hasUnsavedWork: boolean;
-  getDraftSnapshot: () => DraftProject | undefined;
+  getDraftSnapshot: () => DraftEnvelope | undefined;
   detachFromProject: () => void;
   commitDraft: (
-    copy: (snapshot: DraftProject, sessionId?: string) => Promise<DraftCopyResult>,
+    copy: (snapshot: DraftEnvelope, sessionId: string) => Promise<DraftCopyResult>,
   ) => Promise<boolean>;
   loadFromProject: (projectId: string) => Settles<void>;
   newDraft: (config: NewDraftConfig) => Settles<void>;
@@ -118,9 +202,11 @@ export default function ProjectModals({
   sourceShortName: string;
   useWebViewState: UseWebViewStateHook;
 }>) {
-  const [, setActiveProject, resetActiveProject] = useWebViewState<
-    InterlinearProjectSummary | undefined
-  >('activeProject', undefined);
+  const [, setActiveProject, resetActiveProject] = useInterlinearizerWebViewState(
+    useWebViewState,
+    'activeProject',
+    undefined,
+  );
 
   /**
    * The project currently open in the metadata modal. Set when the user chooses Get info in the
@@ -148,6 +234,8 @@ export default function ProjectModals({
 
   /** A draft-replacing action awaiting confirmation because the draft has unsaved changes. */
   const [pendingReplace, setPendingReplace] = useState<PendingReplace | undefined>(undefined);
+
+  const [localizedStrings] = useLocalizedStrings(PROJECT_MODALS_STRING_KEYS);
 
   /**
    * Guards the project-creation round-trip against double-submit; `isSubmitting` disables the
@@ -182,22 +270,46 @@ export default function ProjectModals({
   );
 
   /**
-   * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
-   * project is the currently active one, carrying through the server-refreshed `updatedAt` so the
-   * cached Modified time (shown in the picker and on modal reopen) stays current.
-   *
-   * @param updated - The updated name, description, analysisLanguages, and refreshed `updatedAt`.
+   * Applies a change to the draft's analysis languages from Project Info. When the change moved,
+   * skipped, or deleted any text, tells the reader, offering to undo it. A failure is logged, and
+   * the reader is told.
+   */
+  const changeDraftLanguages = useCallback(
+    async (change: AnalysisLanguagesChange) => {
+      try {
+        const { glossRetag, deletedText } = await changeDraftAnalysisLanguages(change);
+        if (change.retag && glossRetag && hasReport(glossRetag))
+          announceUndoable(
+            retagMessage(change.retag.from, change.retag.to, glossRetag, localizedStrings),
+          );
+        if (change.deleteTextOf !== undefined && hasText(deletedText))
+          announceUndoable(
+            formatReplacementString(
+              localizedStrings['%interlinearizer_deleteLanguageText_deleted%'],
+              {
+                tag: change.deleteTextOf,
+                counts: describeTextCounts(deletedText, localizedStrings),
+              },
+            ),
+          );
+      } catch (e) {
+        logger.error("Interlinearizer: failed to change the draft's analysis languages", e);
+        await papi.notifications
+          .send({ message: '%interlinearizer_error_changeAnalysisLanguages%', severity: 'error' })
+          .catch(() => {});
+      }
+    },
+    [announceUndoable, changeDraftAnalysisLanguages, localizedStrings],
+  );
+
+  /**
+   * Called when the metadata modal saves changes. When the edited project is the active one, merges
+   * the saved fields into `activeProject`, the refreshed `updatedAt` included.
    */
   const handleMetadataProjectSaved = useCallback(
-    (updated: {
-      name?: string;
-      description?: string;
-      analysisLanguages: string[];
-      updatedAt?: string;
-    }) => {
-      if (activeProject && resolvedMetadataProject?.id === activeProject.id) {
+    (updated: { name?: string; description?: string; updatedAt?: string }) => {
+      if (activeProject && resolvedMetadataProject?.id === activeProject.id)
         setActiveProject({ ...activeProject, ...updated });
-      }
     },
     [activeProject, resolvedMetadataProject, setActiveProject],
   );
@@ -239,12 +351,11 @@ export default function ProjectModals({
   /**
    * Creates a new project in storage with the given config and an empty analysis, then seeds the
    * draft from it so Save targets the newly created project. This is the "New" flow: the project is
-   * persisted immediately so it shows up in "Select Interlinear Project" right away.
+   * persisted immediately so it shows up in the Select interlinear dialog right away.
    *
-   * `newDraft` is called before the backend round-trip so the editor is ready regardless of whether
-   * persistence succeeds. On the host path it settles once the draft is stored, and the project is
-   * created only after; a draft that can't be stored creates none. This is safe: when
-   * `hasUnsavedWork` is `false` the draft is either already committed to the active project or
+   * `newDraft` is called before the project is created. It settles once the draft is stored, and
+   * the project is created only after, so a draft that can't be stored creates none. This is safe:
+   * when `hasUnsavedWork` is `false` the draft is either already committed to the active project or
    * empty (nothing to lose); when `hasUnsavedWork` is `true` the {@link DiscardDraftConfirm} dialog
    * has already obtained consent to discard.
    *
@@ -261,7 +372,6 @@ export default function ProjectModals({
       try {
         await newDraft({
           analysisLanguages: config.analysisLanguages,
-          suggestedName: config.name,
           ...(config.description !== undefined && { suggestedDescription: config.description }),
         });
       } catch (e) {
@@ -413,25 +523,15 @@ export default function ProjectModals({
       try {
         const saved = await commitDraft(async (snapshot, sessionId) => {
           const { analysisLanguages, targetProjectId } = snapshot;
-          const createdJson =
-            sessionId === undefined
-              ? await papi.commands.sendCommand(
-                  'interlinearizer.saveDraftAsProject',
-                  projectId,
-                  analysisLanguages,
-                  targetProjectId,
-                  name,
-                  description,
-                )
-              : await papi.commands.sendCommand(
-                  'interlinearizer.saveDraftAsProject',
-                  projectId,
-                  analysisLanguages,
-                  targetProjectId,
-                  name,
-                  description,
-                  sessionId,
-                );
+          const createdJson = await papi.commands.sendCommand(
+            'interlinearizer.saveDraftAsProject',
+            sessionId,
+            projectId,
+            analysisLanguages,
+            targetProjectId,
+            name,
+            description,
+          );
           const created: unknown = JSON.parse(createdJson);
           if (!isSavedAsProject(created)) {
             await papi.notifications
@@ -463,25 +563,14 @@ export default function ProjectModals({
     async (project: InterlinearProjectSummary) => {
       try {
         const saved = await commitDraft(async (snapshot, sessionId) => {
-          const config = {
-            analysisLanguages: snapshot.analysisLanguages,
-            targetProjectId: snapshot.targetProjectId,
-          };
-          const savedJson =
-            sessionId === undefined
-              ? await papi.commands.sendCommand(
-                  'interlinearizer.saveDraftToProject',
-                  projectId,
-                  project.id,
-                  config,
-                )
-              : await papi.commands.sendCommand(
-                  'interlinearizer.saveDraftToProject',
-                  projectId,
-                  project.id,
-                  config,
-                  sessionId,
-                );
+          const config = { targetProjectId: snapshot.targetProjectId };
+          const savedJson = await papi.commands.sendCommand(
+            'interlinearizer.saveDraftToProject',
+            sessionId,
+            projectId,
+            project.id,
+            config,
+          );
           // `undefined` means the project no longer exists, so nothing was persisted.
           if (!savedJson) {
             await papi.notifications
@@ -539,12 +628,23 @@ export default function ProjectModals({
   }, [metadataSourceIsSelect, setModal]);
 
   const draftSnapshot = getDraftSnapshot();
+  // The open project's languages come from its draft, which holds any unsaved change to them. An
+  // import is never edited in the draft.
+  const metadataLanguagesInDraft =
+    resolvedMetadataProject !== undefined &&
+    resolvedMetadataProject.id === activeProject?.id &&
+    resolvedMetadataProject.pt9Import === undefined;
+  const metadataLanguages =
+    metadataLanguagesInDraft && draftSnapshot
+      ? draftSnapshot.analysisLanguages
+      : (resolvedMetadataProject?.analysisLanguages ?? []);
 
   return (
     <div>
       {modal === 'select' && (
         <SelectInterlinearProjectModal
           sourceProjectId={projectId}
+          sourceShortName={sourceShortName}
           activeProjectId={activeProject?.id}
           isOpening={openGuard.isSubmitting}
           onSelect={handleSelectProject}
@@ -562,6 +662,7 @@ export default function ProjectModals({
           isSubmitting={createGuard.isSubmitting}
           onClose={handleCreateClose}
           onCreateDraft={handleCreateDraft}
+          sourceShortName={sourceShortName}
         />
       )}
 
@@ -570,7 +671,7 @@ export default function ProjectModals({
           sourceProjectId={projectId}
           activeProjectId={activeProject?.id}
           hasUnsavedWork={hasUnsavedWork}
-          defaultName={draftSnapshot?.suggestedName}
+          activeProjectName={activeProject?.name}
           defaultDescription={draftSnapshot?.suggestedDescription}
           onSaveNew={handleSaveAsNew}
           onOverwrite={handleOverwrite}
@@ -585,10 +686,14 @@ export default function ProjectModals({
           name={resolvedMetadataProject.name}
           description={resolvedMetadataProject.description}
           targetProjectId={resolvedMetadataProject.targetProjectId}
-          analysisLanguages={resolvedMetadataProject.analysisLanguages}
+          analysisLanguages={metadataLanguages}
           createdAt={resolvedMetadataProject.createdAt}
           updatedAt={resolvedMetadataProject.updatedAt}
           pt9ImportedAt={resolvedMetadataProject.pt9Import?.importedAt}
+          isSaveBlocked={isDraftLoading && resolvedMetadataProject.id === activeProject?.id}
+          countLanguageText={metadataLanguagesInDraft ? countDraftLanguageText : undefined}
+          subscribeToDraftEdits={metadataLanguagesInDraft ? subscribeToDraftEdits : undefined}
+          onChangeLanguages={metadataLanguagesInDraft ? changeDraftLanguages : undefined}
           onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}
         />
@@ -599,6 +704,7 @@ export default function ProjectModals({
           projectId={activeProject.id}
           projectName={activeProject.name}
           isPt9Import={activeProject.pt9Import !== undefined}
+          isActiveProject={activeProject.pt9Import === undefined}
           onCancel={() => setModal('none')}
           onDeleted={(deletedId) => {
             handleProjectDeleted(deletedId);

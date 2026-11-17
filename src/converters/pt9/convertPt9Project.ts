@@ -9,6 +9,7 @@ import {
   LangTokenRecord,
 } from './languageAnalysisBuilder';
 import { Pt9LexiconResolver, unresolvedPt9LexiconResolver } from './lexiconResolver';
+import { dedupePhraseAnalyses } from './phraseAnalysisDedupe';
 import { createPt9GlossSource } from './pt9GlossSource';
 import { emptyPt9ImportReport, Pt9ImportReport, Pt9LanguageReport } from './report';
 import { dedupeTokenAnalyses } from './tokenAnalysisDedupe';
@@ -50,39 +51,29 @@ interface LanguageGroup {
 
 /**
  * Converts a PT9 project's interlinear data into the extension's analysis layer, paired with a
- * report of what converted, what was dropped, and why. When several books carry the same gloss
- * language and book id (a Send/Receive merge can leave a root-level twin beside the canonical
- * file), the one PT9's own reader loads wins and the rest are counted, never converted.
+ * report of what converted, what was dropped, and why. Only the files that PT9's own reader loads
+ * are converted, because PT9 never shows the rest. The report lists the rest by path.
  */
 export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResult {
   const { data, books, importedAt } = input;
   const resolver = input.resolver ?? unresolvedPt9LexiconResolver;
   const report = emptyPt9ImportReport();
 
-  const identified = data.books.flatMap((interlinear): IdentifiedBook[] => {
-    if (interlinear.glossLanguage === undefined || interlinear.bookId === undefined) {
-      report.booksMissingIdentity += 1;
+  const loaded = data.books.flatMap((interlinear): IdentifiedBook[] => {
+    if (!interlinear.isCanonicalPath) {
+      report.filesPt9NeverLoads.push(interlinear.filePath);
       return [];
+    }
+    /* v8 ignore next 3 -- the platform marks a file canonical only when it names its gloss language and book id */
+    if (interlinear.glossLanguage === undefined || interlinear.bookId === undefined) {
+      throw new Error(`Canonical PT9 interlinear file ${interlinear.filePath} lacks its identity`);
     }
     return [{ glossLanguage: interlinear.glossLanguage, bookId: interlinear.bookId, interlinear }];
   });
 
-  const byIdentity = new Map<string, IdentifiedBook[]>();
-  identified.forEach((entry) => {
-    const bookKey = `${entry.glossLanguage}\n${entry.bookId}`;
-    const twins = byIdentity.get(bookKey);
-    if (twins === undefined) byIdentity.set(bookKey, [entry]);
-    else twins.push(entry);
-  });
-  const winners: IdentifiedBook[] = [];
-  byIdentity.forEach((twins) => {
-    winners.push(twins.find((entry) => entry.interlinear.isCanonicalPath) ?? twins[0]);
-    report.booksDroppedAsDuplicates += twins.length - 1;
-  });
-
   const languageGroups: LanguageGroup[] = [];
   const groupByRaw = new Map<string, LanguageGroup>();
-  winners.forEach((entry) => {
+  loaded.forEach((entry) => {
     let group = groupByRaw.get(entry.glossLanguage);
     if (group === undefined) {
       const resolved = resolveGlossLanguageTag(entry.glossLanguage);
@@ -166,8 +157,13 @@ export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResul
       },
       report,
     ),
-    phraseAnalyses: merged.phraseAnalyses,
-    phraseAnalysisLinks: merged.phraseAnalysisLinks,
+    ...dedupePhraseAnalyses(
+      {
+        phraseAnalyses: merged.phraseAnalyses,
+        phraseAnalysisLinks: merged.phraseAnalysisLinks,
+      },
+      report,
+    ),
   };
 
   // Read-only views show approved glosses only, so those rank first.
@@ -198,7 +194,7 @@ export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResul
       link.tokens.map((token) => token.tokenRef),
     );
   });
-  // A merged link keeps a rejected contribution's gloss, so the fallback tally reads the records.
+  // The fallback tally counts every unrejected gloss, read from the records.
   records.forEach((record) => {
     if (record.status === 'rejected') return;
     const glossed =

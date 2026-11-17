@@ -79,11 +79,6 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
   }
 
   /** @throws {ReadOnlyAnalysisError} Always; nothing is written. */
-  async replaceAll(): Promise<string[]> {
-    throw this.readOnlyError();
-  }
-
-  /** @throws {ReadOnlyAnalysisError} Always; nothing is written. */
   async markClean(): Promise<void> {
     throw this.readOnlyError();
   }
@@ -112,6 +107,12 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
   protected keptIndex(): IndexedDraft | undefined {
     if (this.loaded?.revision !== this.revision()) this.loaded = undefined;
     return this.loaded;
+  }
+
+  /** None, since an import is read whole or not at all. */
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this -- the base class's method, with nothing to read
+  protected unreadableBooks(): string[] {
+    return [];
   }
 
   /**

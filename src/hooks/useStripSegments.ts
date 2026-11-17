@@ -2,7 +2,7 @@ import type { Segment } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { loadedRun, stripTarget } from '../utils/strip-range';
 import type { PageCaller } from '../cache/pageClient';
-import type { SegmentPages } from './useSegmentPages';
+import type { SegmentPages } from '../types/segment-pages';
 import useLatestRef from './useLatestRef';
 
 /** Segments asked for past each end of the strip's target, so a page loads before it is reached. */
@@ -22,7 +22,7 @@ export interface UseStripSegmentsArgs {
   focusTokenRef: string | undefined;
   /** The focus the strip is moving to, whose pages load while the strip fades out. */
   nextFocusTokenRef: string | undefined;
-  /** Maps every token ref to the id of the segment that contains it. */
+  /** Each token held, or spanned by a phrase, to the id of its segment. */
   tokenSegmentMap: ReadonlyMap<string, string>;
 }
 

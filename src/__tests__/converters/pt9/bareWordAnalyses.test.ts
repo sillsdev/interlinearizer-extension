@@ -142,6 +142,19 @@ describe('buildBareWordAnalyses', () => {
     expect(report.barePayloads.droppedEmpty).toBe(1);
   });
 
+  it.each([
+    ['an all-blank parse', ['Stem:', 'Stem:']],
+    ['a parse with one blank morpheme', ['Stem:', 'Stem:giving']],
+    ['a lone blank stem', ['Stem::2']],
+  ])('drops %s whole', (_label, ids) => {
+    const { payloads, report } = build({
+      wordAnalyses: [{ word: 'thanksgiving', analyses: [ids] }],
+    });
+
+    expect(payloads).toHaveLength(0);
+    expect(report.barePayloads.droppedBlankForm).toBe(1);
+  });
+
   it('resolves a sense ref when every language finding a default agrees on it', () => {
     const resolver: Pt9LexiconResolver = {
       resolveEntry: (key) => ({ authority: 'test', entryId: `entry-${key.Form}` }),

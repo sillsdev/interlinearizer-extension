@@ -566,6 +566,104 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task ApplyRefusesALinkNamingAnotherProjectsAnalysisApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var (other, _, _) = await OtherProject();
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => other.Apply(new ChangeSet
+        {
+            Intent = "borrow",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), TaAnd, "GEN 1:1:9", "beginning")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyRefusesALinkNamingAnAnalysisNeverStoredApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "link to nothing",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), Guid.NewGuid(), "GEN 1:1:9", "beginning")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyRefusesALinkNamingADeletedAnalysisApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "link to deleted",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), TaUnlinked, "GEN 1:1:9", "beginning")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyRefusesALinkNamingAnAnalysisTheSameChangesDeleteApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "link and delete",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked),
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), TaUnlinked, "GEN 1:1:9", "beginning")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+    }
+
+    [Test]
+    public async Task ApplyRefusesAPutUnderAnIdDeletedAsAnotherKindApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => ApplyNext(new ChangeSet
+        {
+            Intent = "reuse as another kind",
+            PhraseAnalyses = RecordChanges<PhraseAnalysis>.Put(new PhraseAnalysis { Id = TaUnlinked, SurfaceText = "in the" }),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+        await Assert.That(await Repository.GetPhraseAnalyses([TaUnlinked])).IsEmpty();
+    }
+
+    [Test]
+    public async Task ApplyRefusesAPutUnderAnIdDeletedInAnotherProjectApplyingNothing()
+    {
+        await ApplyNext(FullAnalysis());
+        await ApplyNext(new ChangeSet { Intent = "delete", TokenAnalyses = RecordChanges<TokenAnalysis>.Delete(TaUnlinked) });
+        var (other, _, _) = await OtherProject();
+        var commits = await DbContext.Commits.CountAsync();
+
+        await Assert.That(() => other.Apply(new ChangeSet
+        {
+            Intent = "reuse in another project",
+            TokenAnalyses = RecordChanges<TokenAnalysis>.Put(Token(TaUnlinked, "spare", "spare")),
+        })).Throws<ArgumentException>();
+
+        await Assert.That(await DbContext.Commits.CountAsync()).IsEqualTo(commits);
+        await Assert.That(await other.GetTokenAnalyses([TaUnlinked])).IsEmpty();
+    }
+
+    [Test]
     public async Task ApplyStampsCreatedRecordsWithTheProject()
     {
         await ApplyNext(FullAnalysis());
@@ -718,14 +816,17 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
-    public async Task PassesOverAnApprovedLinkNamingNoStoredPayloadWhenPickingATie()
+    public async Task PassesOverAnApprovedLinkNamingNoStoredTokenPayloadWhenPickingATie()
     {
         await ApplyNext(FullAnalysis());
+        var phraseNamed = Guid.NewGuid();
+        // A link naming no stored record at all lands deleted, so this one names a phrase payload.
         await ApplyNext(new ChangeSet
         {
-            Intent = "approveMissing",
-            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(Guid.NewGuid(), Guid.NewGuid(), "GEN 1:1:0", "and")),
+            Intent = "approvePhrasePayload",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(phraseNamed, PaInThe, "GEN 1:1:0", "and")),
         });
+        await Assert.That(IdsOf((await Repository.FindLinksByToken(["GEN 1:1:0"])).TokenAnalysisLinks)).Contains(phraseNamed);
 
         var counts = await Repository.CountApprovals([TaAnd]);
 

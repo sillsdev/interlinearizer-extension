@@ -113,7 +113,7 @@ The general file structure for an extension is as follows:
   - `src/types/interlinearizer.d.ts` is this extension's types file that defines how other extensions can use this extension through the `papi`. It is copied into the build folder
   - `*.web-view.tsx` files will be treated as React WebViews
   - `*.web-view.scss` files provide styles for WebViews
-  - `src/components/` and `src/hooks/` contain the WebView's React components and hooks, and `src/store/` its Redux store
+  - `src/components/` and `src/hooks/` contain the WebView's React components and hooks
   - `src/services/` contains the extension host's services, among them project storage and Paratext 9 import
   - `src/parsers/papi/` turns Platform.Bible's USJ into tokenized books, and `src/parsers/pt9/` parses Paratext 9 lexeme ids and documents its interlinear XML
   - `src/converters/pt9/` converts Paratext 9 interlinear data into this extension's analysis model

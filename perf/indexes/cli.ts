@@ -295,7 +295,7 @@ async function checkTier(tier: TierSpec): Promise<boolean> {
   const draft: DraftProject = JSON.parse(readDraftJson(tier.name));
   const { sourceProjectId, analysis } = draft;
   const storage = memoryStorage();
-  await new DraftRepository(storage, sourceProjectId, SILENT).replaceAll(draft);
+  await new DraftRepository(storage, sourceProjectId, SILENT).startOver(draft);
   const repository = new DraftRepository(storage, sourceProjectId, SILENT);
   const history = new EditHistory(repository);
   const rng = createRng('indexes', tier.name);

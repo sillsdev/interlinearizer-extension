@@ -143,9 +143,10 @@ describe('CSharpRepository', () => {
 
   const unsupported: { method: string; call: (r: AnalysisRepository) => Promise<unknown> }[] = [
     { method: 'exportForCopy', call: (r) => r.exportForCopy() },
-    { method: 'replaceAll', call: (r) => r.replaceAll(emptyDraft(SOURCE)) },
     { method: 'markClean', call: (r) => r.markClean() },
     { method: 'getScope', call: (r) => r.getScope() },
+    { method: 'getDraftState', call: (r) => r.getDraftState() },
+    { method: 'findUnlinkedPayloads', call: (r) => r.findUnlinkedPayloads() },
   ];
 
   it.each(unsupported)('$method throws, since the host stores no draft record', async (c) => {

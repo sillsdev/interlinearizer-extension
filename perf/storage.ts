@@ -47,13 +47,13 @@ export async function readDraft(dir: string, sourceProjectId: string): Promise<D
 }
 
 /**
- * Writes a draft to the extension storage in `dir` as the app would save it. An app running over
- * `dir` sees it from its next load of that draft.
+ * Writes a draft to the extension storage in `dir` as starting the draft over saves it. An app
+ * running over `dir` sees it from its next load of that draft.
  *
  * @throws If the stored draft was written by a newer build, or a record cannot be written.
  */
 export async function writeDraft(dir: string, draft: DraftProject): Promise<void> {
-  await new DraftRepository(fileStorage(dir), draft.sourceProjectId, console).replaceAll(draft);
+  await new DraftRepository(fileStorage(dir), draft.sourceProjectId, console).startOver(draft);
 }
 
 /**

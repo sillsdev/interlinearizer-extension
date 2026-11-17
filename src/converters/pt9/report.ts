@@ -6,20 +6,30 @@
  * - `formMismatch`: no token (or token run, for phrases) folds to the cluster's expected surface.
  *   Subsumes word-division disagreements and text PT9 analyzed that the text layer leaves out, such
  *   as footnotes, which are indistinguishable from plain mismatches without PT9's own text.
+ * - `parseFormMismatch`: a parse's forms do not spell out the token that its word cluster anchored
+ *   to. The word converts without its morphemes. Deliberate analyses land here too, such as a
+ *   suffix written in one form across vowel harmony, a stem's citation form, or a zero morpheme.
  * - `frontMatter`: the cluster analyzes text ahead of the book's first chapter — its identification
  *   line, titles, or introduction — which the text layer leaves out.
  * - `lemmaOrOther`: the cluster is a Lemma or Other-type cluster, inert legacy data in modern PT9.
  * - `duplicateCluster`: a second cluster of the same kind at the same range; only the first converts.
  * - `unparseableLexemeId`: a lexeme carries no id, or one that does not match PT9's
  *   `Type:Form[:Homograph]` grammar.
+ * - `blankMorphemeForm`: a lexeme's id parses but names a blank form, such as `Stem::2`.
  */
-export type Pt9ClusterDropReason =
-  | 'verseNotFound'
-  | 'formMismatch'
-  | 'frontMatter'
-  | 'lemmaOrOther'
-  | 'duplicateCluster'
-  | 'unparseableLexemeId';
+export type Pt9ClusterDropReason = (typeof PT9_CLUSTER_DROP_REASONS)[number];
+
+/** Every {@link Pt9ClusterDropReason}. */
+export const PT9_CLUSTER_DROP_REASONS = [
+  'verseNotFound',
+  'formMismatch',
+  'parseFormMismatch',
+  'frontMatter',
+  'lemmaOrOther',
+  'duplicateCluster',
+  'unparseableLexemeId',
+  'blankMorphemeForm',
+] as const;
 
 /** Conversion outcome counts for one book of one gloss language. */
 export interface Pt9BookReport {
@@ -37,6 +47,11 @@ export interface Pt9BookReport {
   /** Phrase clusters that anchored and produced a phrase record. */
   phrasesConverted: number;
   clusterDrops: Record<Pt9ClusterDropReason, number>;
+  /**
+   * Each dropped cluster, grouped by verse in the book's verse order. Empty for a book the project
+   * has no text for; `clusterDrops` still counts that book's drops.
+   */
+  drops: Pt9ClusterDrop[];
   /** Anchors chosen among several candidate tokens rather than matched uniquely. */
   ambiguousAnchors: number;
   /**
@@ -44,6 +59,15 @@ export interface Pt9BookReport {
    * punctuation, which the analysis model has no place for.
    */
   punctuationEntriesIgnored: number;
+}
+
+/** One cluster that did not convert, named so a user can find it and redo it. */
+export interface Pt9ClusterDrop {
+  /** The verse key PT9 filed the cluster under, such as `GEN 1:1`. */
+  verseRef: string;
+  reason: Pt9ClusterDropReason;
+  /** The cluster's lexeme ids as PT9 wrote them, leaving out any lexeme that carries none. */
+  lexemeIds: string[];
 }
 
 /** Conversion outcome counts for one gloss language across its books. */
@@ -69,6 +93,15 @@ export interface Pt9MergeReport {
   sameTagCollisions: string[][];
   /** Token analyses folded onto an earlier content-identical one, their links moved with them. */
   identicalPayloadsMerged: number;
+  /** Phrase analyses folded onto an earlier content-identical one, their links moved with them. */
+  identicalPhrasePayloadsMerged: number;
+  /** Token links dropped because a fold left their token holding another link to the same payload. */
+  duplicateLinksDropped: number;
+  /**
+   * Phrase links dropped because a fold left their token run holding another link to the same
+   * payload.
+   */
+  duplicatePhraseLinksDropped: number;
 }
 
 /** Gloss and lexicon-reference resolution outcomes. */
@@ -94,6 +127,8 @@ export interface Pt9BarePayloadReport {
   droppedUnparseable: number;
   /** Analyses dropped because they carried no lexemes at all. */
   droppedEmpty: number;
+  /** Analyses dropped because a lexeme's form was blank. */
+  droppedBlankForm: number;
 }
 
 /** The import report returned to the caller: the quality signal for the whole conversion. */
@@ -103,15 +138,11 @@ export interface Pt9ImportReport {
   senses: Pt9SenseReport;
   barePayloads: Pt9BarePayloadReport;
   /**
-   * Books of interlinear data dropped whole because they carry no gloss language or no book id;
-   * nothing in them converts.
+   * Project-relative paths of interlinear files that PT9's own reader never loads, such as
+   * Send/Receive merge residue, a copy left by an older Paratext, or a file naming no gloss
+   * language or book id. None converts.
    */
-  booksMissingIdentity: number;
-  /**
-   * Books dropped because another file supplied the same gloss language and book; the file PT9's
-   * own reader loads wins.
-   */
-  booksDroppedAsDuplicates: number;
+  filesPt9NeverLoads: string[];
   /**
    * Interlinear files the source holds that no read could retrieve, because each is larger on its
    * own than one response may carry. Filled in from the probe before any reading, so a report can
@@ -139,36 +170,19 @@ export interface Pt9UnreadableFile {
   maxResponseBytes: number;
 }
 
-/** Every drop reason, for typed iteration over `clusterDrops` records. */
-const PT9_CLUSTER_DROP_REASONS: readonly Pt9ClusterDropReason[] = [
-  'verseNotFound',
-  'formMismatch',
-  'frontMatter',
-  'lemmaOrOther',
-  'duplicateCluster',
-  'unparseableLexemeId',
-];
-
-/** Adds every count in `source` onto `target` in place. */
-export function addClusterDrops(
-  target: Record<Pt9ClusterDropReason, number>,
-  source: Record<Pt9ClusterDropReason, number>,
-): void {
-  PT9_CLUSTER_DROP_REASONS.forEach((reason) => {
-    target[reason] += source[reason];
-  });
-}
-
 /** A `clusterDrops` record with every reason at zero. */
 export function emptyClusterDrops(): Record<Pt9ClusterDropReason, number> {
-  return {
-    verseNotFound: 0,
-    formMismatch: 0,
-    frontMatter: 0,
-    lemmaOrOther: 0,
-    duplicateCluster: 0,
-    unparseableLexemeId: 0,
-  };
+  const drops = Object.fromEntries(PT9_CLUSTER_DROP_REASONS.map((reason) => [reason, 0]));
+  /* v8 ignore next -- the entries above name every reason */
+  if (!countsEveryReason(drops)) throw new Error('A cluster drop reason has no count');
+  return drops;
+}
+
+/** Whether `counts` holds a count for every {@link Pt9ClusterDropReason}. */
+function countsEveryReason(
+  counts: Record<string, number>,
+): counts is Record<Pt9ClusterDropReason, number> {
+  return PT9_CLUSTER_DROP_REASONS.every((reason) => reason in counts);
 }
 
 /** A book report with every count at zero. */
@@ -183,6 +197,7 @@ export function emptyBookReport(bookId: string, bookFound: boolean): Pt9BookRepo
     clustersConverted: 0,
     phrasesConverted: 0,
     clusterDrops: emptyClusterDrops(),
+    drops: [],
     ambiguousAnchors: 0,
     punctuationEntriesIgnored: 0,
   };
@@ -198,6 +213,9 @@ export function emptyPt9ImportReport(): Pt9ImportReport {
       approvedDemotedToCandidate: 0,
       sameTagCollisions: [],
       identicalPayloadsMerged: 0,
+      identicalPhrasePayloadsMerged: 0,
+      duplicateLinksDropped: 0,
+      duplicatePhraseLinksDropped: 0,
     },
     senses: {
       specificResolved: 0,
@@ -208,14 +226,19 @@ export function emptyPt9ImportReport(): Pt9ImportReport {
       senseRefsResolved: 0,
       senseRefsUnresolved: 0,
     },
-    barePayloads: { added: 0, skippedExistingIdentical: 0, droppedUnparseable: 0, droppedEmpty: 0 },
-    booksMissingIdentity: 0,
-    booksDroppedAsDuplicates: 0,
+    barePayloads: {
+      added: 0,
+      skippedExistingIdentical: 0,
+      droppedUnparseable: 0,
+      droppedEmpty: 0,
+      droppedBlankForm: 0,
+    },
+    filesPt9NeverLoads: [],
     filesTooLargeToRead: [],
   };
 }
 
-/** Validates one per-book section of a conversion report: identity, counts, and drop reasons. */
+/** Validates one per-book section of a conversion report: identity, counts, and drops. */
 function isPt9BookReport(value: unknown): boolean {
   return (
     !!value &&
@@ -233,7 +256,21 @@ function isPt9BookReport(value: unknown): boolean {
     'clusterDrops' in value &&
     !!value.clusterDrops &&
     typeof value.clusterDrops === 'object' &&
-    Object.values(value.clusterDrops).every((count) => typeof count === 'number')
+    Object.values(value.clusterDrops).every((count) => typeof count === 'number') &&
+    'drops' in value &&
+    Array.isArray(value.drops) &&
+    value.drops.every(
+      (drop) =>
+        !!drop &&
+        typeof drop === 'object' &&
+        'verseRef' in drop &&
+        typeof drop.verseRef === 'string' &&
+        'reason' in drop &&
+        PT9_CLUSTER_DROP_REASONS.some((reason) => reason === drop.reason) &&
+        'lexemeIds' in drop &&
+        Array.isArray(drop.lexemeIds) &&
+        drop.lexemeIds.every((id: unknown) => typeof id === 'string'),
+    )
   );
 }
 
@@ -280,6 +317,9 @@ export function isPt9ImportReport(value: unknown): value is Pt9ImportReport {
     'barePayloads' in value &&
     !!value.barePayloads &&
     typeof value.barePayloads === 'object' &&
+    'filesPt9NeverLoads' in value &&
+    Array.isArray(value.filesPt9NeverLoads) &&
+    value.filesPt9NeverLoads.every((path) => typeof path === 'string') &&
     'filesTooLargeToRead' in value &&
     isPt9UnreadableFileList(value.filesTooLargeToRead) &&
     'languages' in value &&

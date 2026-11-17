@@ -9,25 +9,28 @@ import {
 
 /**
  * The project-related modals reachable from the Interlinearizer's ≡ (Project) menu, each with the
- * menu item that opens it and the test id on the title element that identifies it. The tour is
- * read-only: each modal is opened, verified, and canceled — no project is created, saved, or
- * deleted, so the shared CDP instance is left untouched.
+ * menu item that opens it, the test id on the title element that identifies it, and the footer
+ * button that dismisses it. The tour is read-only: each modal is opened, verified, and dismissed.
+ * No project is created, saved, or deleted, so the shared CDP instance is left untouched.
  */
 const MODAL_TOURS = [
   {
     name: 'Select interlinear',
     menuItem: /Select interlinear/i,
     titleTestId: 'select-project-modal-title',
+    dismissButton: 'Cancel',
   },
   {
     name: 'New interlinear',
     menuItem: /New interlinear/i,
     titleTestId: 'create-project-modal-title',
+    dismissButton: 'Cancel',
   },
   {
     name: 'Save As',
     menuItem: /^Save As/i,
     titleTestId: 'save-as-modal-title',
+    dismissButton: 'Close',
   },
 ];
 
@@ -46,7 +49,9 @@ test.describe('Project modals cancel tour', () => {
       const modalTitle = frame.getByTestId(modal.titleTestId);
       await expect(modalTitle).toBeVisible({ timeout: 5_000 });
 
-      await modalDialog(frame).getByRole('button', { name: 'Cancel' }).click();
+      await modalDialog(frame)
+        .getByRole('button', { name: modal.dismissButton, exact: true })
+        .click();
       await expect(modalTitle).not.toBeVisible({ timeout: 5_000 });
 
       // The underlying view must still be interactive after the modal unmounts — a stuck

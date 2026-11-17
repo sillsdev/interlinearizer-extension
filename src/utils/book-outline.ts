@@ -32,5 +32,6 @@ export function buildBookOutline(
     textVersion: book.textVersion,
     segments: segments.map(outlineSegment),
     duplicateVerseIds: book.duplicateVerseIds,
+    invalidVerseIds: book.invalidVerseIds,
   };
 }

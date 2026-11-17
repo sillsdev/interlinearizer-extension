@@ -29,6 +29,14 @@ describe('tokenizeBook', () => {
     ).toEqual([]);
   });
 
+  it('forwards invalid verse SIDs onto the Book', () => {
+    const raw = {
+      ...makeRawBook([{ sid: 'GEN 1:1', text: 'First.' }]),
+      invalidVerseIds: ['GEN 1:'],
+    };
+    expect(tokenizeBook(raw).invalidVerseIds).toEqual(['GEN 1:']);
+  });
+
   it('produces one segment per verse in order', () => {
     const raw = makeRawBook([
       { sid: 'GEN 1:1', text: 'First.' },
@@ -92,6 +100,7 @@ describe('tokenizeBook', () => {
       writingSystem: 'en',
       contentHash: 'abc123',
       duplicateVerseIds: [],
+      invalidVerseIds: [],
       frontMatter: [],
       segments: [{ kind: 'verse', sid: 'PSA 3:0', number: '0', text: 'A Psalm by David.' }],
     };

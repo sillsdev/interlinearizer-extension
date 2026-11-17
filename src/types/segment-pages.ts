@@ -60,6 +60,8 @@ export type BookOutline = Readonly<{
   segments: readonly OutlineSegment[];
   /** The verse markers that the book repeats; the text under each repeat is not shown. */
   duplicateVerseIds: readonly string[];
+  /** The verse markers that name no verse; the text under each is not shown. */
+  invalidVerseIds: readonly string[];
   /** Present only when a session asked for the outline. */
   boundaries?: OutlineBoundaries;
 }>;
@@ -189,6 +191,8 @@ export interface SegmentPages {
   boundaries: OutlineBoundaries;
   /** The verse markers that the book repeats; the text under each repeat is not shown. */
   duplicateVerseIds: readonly string[];
+  /** The verse markers that name no verse; the text under each is not shown. */
+  invalidVerseIds: readonly string[];
   /** The segment at `index` of the outline, `undefined` until its page has loaded. */
   segmentAt: (index: number) => Segment | undefined;
   /**

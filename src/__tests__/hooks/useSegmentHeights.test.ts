@@ -5,15 +5,14 @@ import type { Book } from 'interlinearizer';
 import { useRef } from 'react';
 import useSegmentHeights from '../../hooks/useSegmentHeights';
 import type { HeightConfig } from '../../utils/segment-heights';
-import { makeSegment, makeWordToken, outlineOf } from '../test-helpers';
+import { EMPTY_GEN_BOOK, makeSegment, makeWordToken, outlineOf } from '../test-helpers';
 
 /** Builds a book whose segments each carry one word token. */
 function makeBook(count: number): Book {
   return {
+    ...EMPTY_GEN_BOOK,
     id: 'PSA',
     bookRef: 'PSA',
-    textVersion: 'v1',
-    duplicateVerseIds: [],
     segments: Array.from({ length: count }, (_unused, i) =>
       makeSegment(`PSA 1:${i + 1}`, 'a', [makeWordToken(`PSA 1:${i + 1}:0`, 'a')]),
     ),
@@ -44,10 +43,9 @@ function stubRect(el: Element, { width = 0, height = 0 } = {}) {
 /** A one-segment book whose four chips fit one row of a wide box but wrap inside a narrow one. */
 function wideSegmentBook(): Book {
   return {
+    ...EMPTY_GEN_BOOK,
     id: 'PSA',
     bookRef: 'PSA',
-    textVersion: 'v1',
-    duplicateVerseIds: [],
     segments: [
       makeSegment(
         'PSA 1:1',

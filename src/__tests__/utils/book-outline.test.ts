@@ -2,7 +2,7 @@
 
 import type { Book } from 'interlinearizer';
 import { buildBookOutline, outlineSegment } from '../../utils/book-outline';
-import { makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
+import { EMPTY_GEN_BOOK, makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
 
 describe('outlineSegment', () => {
   it('keeps where the segment falls', () => {
@@ -45,19 +45,27 @@ describe('outlineSegment', () => {
 describe('buildBookOutline', () => {
   it('outlines the segments given, under the book and its text version', () => {
     const segments = [makeSegment('GEN 1:1', 'a', [makeWordToken('GEN 1:1:0', 'a')])];
-    const book: Book = {
-      id: 'GEN',
-      bookRef: 'GEN',
-      textVersion: 'v1',
-      segments: [],
-      duplicateVerseIds: [],
-    };
+    const book: Book = { ...EMPTY_GEN_BOOK };
 
     expect(buildBookOutline(book, segments)).toEqual({
       bookRef: 'GEN',
       textVersion: 'v1',
       segments: segments.map(outlineSegment),
       duplicateVerseIds: [],
+      invalidVerseIds: [],
+    });
+  });
+
+  it("carries the book's skipped verse markers", () => {
+    const book: Book = {
+      ...EMPTY_GEN_BOOK,
+      duplicateVerseIds: ['GEN 1:1'],
+      invalidVerseIds: ['GEN 1:'],
+    };
+
+    expect(buildBookOutline(book, [])).toMatchObject({
+      duplicateVerseIds: ['GEN 1:1'],
+      invalidVerseIds: ['GEN 1:'],
     });
   });
 });

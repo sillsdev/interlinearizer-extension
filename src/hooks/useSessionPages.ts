@@ -55,6 +55,7 @@ function segmentPagesOf(client: PageClient, outline: BookOutline, version: numbe
     /* v8 ignore next -- a session's outline always names its boundaries */
     boundaries: outline.boundaries ?? NO_BOUNDARIES,
     duplicateVerseIds: outline.duplicateVerseIds,
+    invalidVerseIds: outline.invalidVerseIds,
     segmentAt: (index) => client.segmentAt(index),
     heldRuns: () => client.heldRuns(),
     load: (start, end, caller) => client.load(start, end, caller),

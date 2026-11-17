@@ -30,7 +30,7 @@ import type { TextReadStatus } from '../../types/text-read-status';
 import { buildBookOutline } from '../../utils/book-outline';
 import * as perfMarks from '../../utils/perf-marks';
 import { reanchorSegmentation } from '../../utils/segmentation';
-import { makeSegment, makeWordToken } from '../test-helpers';
+import { EMPTY_GEN_BOOK, makeSegment, makeWordToken } from '../test-helpers';
 
 // Tokenizing is the parsers' concern; these stand-ins name the book, text and tag they came from.
 jest.mock('parsers/papi/bookTokenizer');
@@ -159,10 +159,10 @@ function subscriptionsTo(project: ReturnType<typeof serveProject>, bookId: strin
  */
 function tokenizeToWords() {
   jest.mocked(tokenizeBook).mockImplementation((raw) => ({
+    ...EMPTY_GEN_BOOK,
     id: raw.bookCode,
     bookRef: raw.bookCode,
     textVersion: `${raw.contentHash}@${raw.writingSystem}`,
-    duplicateVerseIds: [],
     segments: [
       makeSegment(`${raw.bookCode} 1:1`, `shared ${raw.bookCode}-${raw.contentHash}`, [
         makeWordToken(`${raw.bookCode} 1:1:0`, 'shared'),
@@ -174,10 +174,8 @@ function tokenizeToWords() {
 
 /** A tokenized Genesis 1:1–3, standing in for whatever text the project holds. */
 const VERSE_BOOK: Book = {
-  id: 'GEN',
-  bookRef: 'GEN',
+  ...EMPTY_GEN_BOOK,
   textVersion: 'v1@en',
-  duplicateVerseIds: [],
   segments: [1, 2, 3].map((verse) =>
     makeSegment(`GEN 1:${verse}`, 'word', [makeWordToken(`GEN 1:${verse}:0`, 'word')]),
   ),
@@ -216,6 +214,7 @@ function segmentStandIns() {
       textLength: 0,
     })),
     duplicateVerseIds: [],
+    invalidVerseIds: [],
   }));
 }
 
@@ -225,15 +224,15 @@ beforeEach(() => {
     contentHash: String(doc.content[1]),
     writingSystem,
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     segments: [],
     frontMatter: [],
   }));
   jest.mocked(tokenizeBook).mockImplementation((raw) => ({
+    ...EMPTY_GEN_BOOK,
     id: raw.bookCode,
     bookRef: raw.bookCode,
     textVersion: `${raw.contentHash}@${raw.writingSystem}`,
-    segments: [],
-    duplicateVerseIds: [],
   }));
 });
 

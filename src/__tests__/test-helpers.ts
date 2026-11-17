@@ -20,7 +20,6 @@ import {
   type PhraseStripContextValue,
 } from '../components/PhraseStripContext';
 import type { usePhraseDispatch } from '../cache/sessionEdits';
-import type { SegmentPages, OutlineSegment } from '../types/segment-pages';
 import { summarizeProject } from '../services/projectSummaries';
 import type {
   AnalysisRepository,
@@ -30,6 +29,7 @@ import type {
 import { emptyAnalysis } from '../types/empty-factories';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
+import type { SegmentPages, OutlineSegment } from '../types/segment-pages';
 import { scopeRecordOf } from '../utils/change-set';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
@@ -218,6 +218,7 @@ export function segmentPagesOf(book: Book, segmentationVersion = 0): SegmentPage
       segmentationVersion,
       boundaries: { formerBoundaries: {}, unmergeableStarts: [], lostBoundaries: [] },
       duplicateVerseIds: [],
+      invalidVerseIds: [],
       segmentAt: (index) => book.segments[index],
       heldRuns: () => held,
       load: jest.fn(),
@@ -230,13 +231,23 @@ export function segmentPagesOf(book: Book, segmentationVersion = 0): SegmentPage
   return pages;
 }
 
-/** Pre-built Book with one GEN 1:1 segment and a single word token. */
-export const GEN_1_1_BOOK: Book = {
+/**
+ * A GEN book with no segments and no skipped verse markers. Spreading it into a fixture defaults
+ * every `Book` field the fixture does not test.
+ */
+export const EMPTY_GEN_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
-  segments: [makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')])],
+  segments: [],
   duplicateVerseIds: [],
+  invalidVerseIds: [],
+};
+
+/** Pre-built Book with one GEN 1:1 segment and a single word token. */
+export const GEN_1_1_BOOK: Book = {
+  ...EMPTY_GEN_BOOK,
+  segments: [makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')])],
 };
 
 /** Minimal elevated privileges for tests (all properties optional per papi type). */
@@ -345,6 +356,7 @@ export function makeRawBook(
     writingSystem: 'en',
     contentHash: 'abc123',
     duplicateVerseIds: [],
+    invalidVerseIds: [],
     frontMatter,
     segments: entries.map((entry) => {
       if ('sid' in entry) {

@@ -109,6 +109,12 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
     return this.loaded;
   }
 
+  /** None, since an import is read whole or not at all. */
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this -- the base class's method, with nothing to read
+  protected unreadableBooks(): string[] {
+    return [];
+  }
+
   /**
    * Reads the import as {@link exportAll} describes.
    *

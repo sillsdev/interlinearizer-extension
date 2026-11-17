@@ -6,8 +6,6 @@ import {
   type SelectionSummary,
 } from '../services/catalogPages';
 import type { CatalogRowsRequest } from '../services/sessionCatalogHandlers';
-import type { StaleSummary } from '../types/segment-pages';
-import type { TextReadStatus } from '../types/text-read-status';
 import type { CatalogFacets, CatalogRow } from '../utils/analysis-query';
 import type { AnalysisDeletionOutcome } from '../utils/analysis-selectors';
 import { useNamedFetch } from './namedQueryHooks';
@@ -67,27 +65,6 @@ export function useCatalogView(
   const view = fetched?.value;
   const retry = fetched?.failed ? fetched.retry : undefined;
   return useMemo(() => ({ view, retry }), [view, retry]);
-}
-
-/**
- * How far the session's whole-text read has got, or `'error'` when the read could not start. Asking
- * starts the read.
- *
- * @returns `undefined` while the text is not `wanted`, and until the first answer arrives.
- */
-export function useTextReadStatus(wanted: boolean): TextReadStatus | 'error' | undefined {
-  const { sessionId } = usePageSession();
-  const status = useNamedFetch(
-    'getTextReadStatus',
-    "the session's text read",
-    wanted ? 'text' : undefined,
-    async (): Promise<TextReadStatus> =>
-      JSON.parse(
-        await papi.commands.sendCommand('interlinearizer.getTextReadStatus', { sessionId }),
-      ),
-    true,
-  );
-  return status?.failed ? 'error' : status?.value;
 }
 
 /** The rows of the analyses `analysisIds` names, in that order, leaving out unstored ids. */
@@ -204,24 +181,6 @@ export function useDeletionPreview(analysisId: string): DeletionPreviewState {
   return preview.failed && !preview.retrying
     ? { status: 'failed', retry: preview.retry }
     : { status: 'loading' };
-}
-
-/** The stale analyses that the session's draft holds in `bookId`; `undefined` until they arrive. */
-export function useStaleSummary(bookId: string): StaleSummary | undefined {
-  const { sessionId } = usePageSession();
-  return useNamedFetch<StaleSummary | undefined>(
-    'getStaleSummary',
-    'the stale summary',
-    `${sessionId} ${bookId}`,
-    async () => {
-      const json = await papi.commands.sendCommand('interlinearizer.getStaleSummary', {
-        sessionId,
-        bookId,
-      });
-      /* v8 ignore next -- defensive: the notice asks only of a book whose text has loaded */
-      return json === undefined ? undefined : JSON.parse(json);
-    },
-  )?.value;
 }
 
 /** One-off catalog reads, for a count or a row an edit needs before it is sent. */

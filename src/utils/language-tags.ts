@@ -69,3 +69,76 @@ export function languageNameForTag(tag: string, locales?: readonly string[]): st
     return tag;
   }
 }
+
+/**
+ * A private-use-only BCP 47 tag, such as `x-foo`. Well formed, though `Intl` refuses it because it
+ * isn't a Unicode locale identifier.
+ */
+const PRIVATE_USE_TAG = /^x(-[a-z0-9]{1,8})+$/i;
+
+/**
+ * The longest language subtag a typed code may start with: an ISO 639 code. BCP 47 also allows five
+ * to eight letters, for languages registered by name, but none are in use.
+ */
+const MAX_LANGUAGE_SUBTAG_LENGTH = 3;
+
+/** `tag` in its canonical form, or as it is when `Intl` refuses it. */
+function canonicalOrSelf(tag: string): string {
+  try {
+    /* v8 ignore next -- a well-formed tag always has a canonical form */
+    return Intl.getCanonicalLocales(tag)[0] ?? tag;
+  } catch {
+    return tag;
+  }
+}
+
+/**
+ * `tag` in the standard BCP 47 casing: scripts in title case, regions in upper case, and every
+ * other subtag in lower case. Subtags after a singleton, such as `x`, are all lower case.
+ */
+function inStandardCase(tag: string): string {
+  let afterSingleton = false;
+  return tag
+    .split('-')
+    .map((subtag, index) => {
+      const lower = subtag.toLowerCase();
+      if (lower.length === 1) afterSingleton = true;
+      if (index === 0 || afterSingleton) return lower;
+      if (/^[a-z]{4}$/.test(lower)) return lower[0].toUpperCase() + lower.slice(1);
+      return /^[a-z]{2}$/.test(lower) ? lower.toUpperCase() : lower;
+    })
+    .join('-');
+}
+
+/**
+ * Reads a language code typed by the user. A code that matches one of `knownTags`, apart from case
+ * or a deprecated alias (`sw` finds `swh`), is read as that known tag. Text already written under
+ * the known tag then stays reachable, even when the tag isn't well formed.
+ *
+ * Any other well-formed code is read as typed, in standard casing. A deprecated alias is kept, not
+ * replaced by its preferred code.
+ *
+ * @returns The tag, or `undefined` when the input is blank, or is none of a known tag, a
+ *   private-use `x-…` code, or a language tag `Intl` accepts whose language subtag is at most
+ *   {@link MAX_LANGUAGE_SUBTAG_LENGTH} letters.
+ */
+export function readLanguageCode(input: string, knownTags: readonly string[]): string | undefined {
+  const typed = input.trim();
+  if (typed === '') return undefined;
+  const known = knownTags.find((tag) => tag.toLowerCase() === typed.toLowerCase());
+  if (known !== undefined) return known;
+  if (typed.split('-')[0].length > MAX_LANGUAGE_SUBTAG_LENGTH) return undefined;
+  let canonical: string | undefined;
+  try {
+    [canonical] = Intl.getCanonicalLocales(typed);
+  } catch {
+    if (!PRIVATE_USE_TAG.test(typed)) return undefined;
+    canonical = typed;
+  }
+  /* v8 ignore next -- a well-formed tag always has a canonical form */
+  if (canonical === undefined) return undefined;
+  const lowered = canonical.toLowerCase();
+  return (
+    knownTags.find((tag) => canonicalOrSelf(tag).toLowerCase() === lowered) ?? inStandardCase(typed)
+  );
+}

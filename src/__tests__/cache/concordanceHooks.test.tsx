@@ -6,6 +6,7 @@ import {
   useConcordanceOccurrences,
   useConcordanceView,
   useRetryTextRead,
+  useTextReadStatus,
 } from '../../cache/concordanceHooks';
 import { settle } from '../components/analysis-provider';
 import { BOOK, ref } from './session-source';
@@ -179,6 +180,50 @@ describe('useConcordanceOccurrences', () => {
       "Interlinearizer: could not fetch a form's occurrences",
       expect.any(Error),
     );
+  });
+});
+
+describe('useTextReadStatus', () => {
+  it('asks nothing until the text is wanted', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useTextReadStatus(false), { wrapper });
+    await settle();
+
+    expect(result.current).toBeUndefined();
+    expect(timesSent('interlinearizer.getTextReadStatus')).toBe(0);
+  });
+
+  it('reports how far the read has got once the text is wanted', async () => {
+    const wrapper = await wrapperOver();
+
+    const { result } = renderHook(() => useTextReadStatus(true), { wrapper });
+
+    await waitFor(() =>
+      expect(result.current).toStrictEqual({ booksRead: 1, bookCount: 1, failedBookIds: [] }),
+    );
+  });
+
+  it('asks again when a change to the session names the read status', async () => {
+    const wrapper = await wrapperOver();
+    renderHook(() => useTextReadStatus(true), { wrapper });
+    await settle();
+
+    relayChange(
+      changeNaming(sessionIdOf('interlinearizer.getTextReadStatus'), ['getTextReadStatus']),
+    );
+    await settle();
+
+    expect(timesSent('interlinearizer.getTextReadStatus')).toBe(2);
+  });
+
+  it('reports an error when the read could not start', async () => {
+    const wrapper = await wrapperOver();
+    failing('interlinearizer.getTextReadStatus');
+
+    const { result } = renderHook(() => useTextReadStatus(true), { wrapper });
+
+    await waitFor(() => expect(result.current).toBe('error'));
   });
 });
 

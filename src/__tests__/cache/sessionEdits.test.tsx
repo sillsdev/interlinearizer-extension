@@ -331,6 +331,60 @@ describe('useAnalysisRowDispatch', () => {
     );
   });
 
+  const SENSE = { authority: 'x-test', senseId: 'sense-in' };
+  const ENTRY = { authority: 'x-test', entryId: 'entry-in' };
+  const senseCommands: [
+    string,
+    (dispatch: ReturnType<typeof useAnalysisRowDispatch>) => Promise<unknown>,
+    object,
+  ][] = [
+    [
+      'linkAnalysisSense',
+      (dispatch) => dispatch.linkSense('ta-in', SENSE),
+      { analysisId: 'ta-in', senseRef: SENSE },
+    ],
+    [
+      'unlinkAnalysisSense',
+      (dispatch) => dispatch.unlinkSense('ta-in', 'at'),
+      { analysisId: 'ta-in', keepGloss: 'at' },
+    ],
+    [
+      'linkAnalysisMorphemeSense',
+      (dispatch) => dispatch.linkMorphemeSense('ta-in', 'm-1', ENTRY, SENSE),
+      { analysisId: 'ta-in', morphemeId: 'm-1', entryRef: ENTRY, senseRef: SENSE },
+    ],
+    [
+      'unlinkAnalysisMorphemeSense',
+      (dispatch) => dispatch.unlinkMorphemeSense('ta-in', 'm-1', 'at'),
+      { analysisId: 'ta-in', morphemeId: 'm-1', keepGloss: 'at' },
+    ],
+    [
+      'adoptAnalysisSenseGloss',
+      (dispatch) => dispatch.adoptSenseGloss('ta-in', 'at'),
+      { analysisId: 'ta-in', value: 'at' },
+    ],
+    [
+      'adoptAnalysisMorphemeSenseGloss',
+      (dispatch) => dispatch.adoptMorphemeSenseGloss('ta-in', 'm-1', 'at'),
+      { analysisId: 'ta-in', morphemeId: 'm-1', value: 'at' },
+    ],
+  ];
+
+  it.each(senseCommands)(
+    'sends %s and hands back where the reply says it left its record',
+    async (command, run, args) => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValue(catalogReply({ outcome: MERGED }));
+      const { wrapper } = await sessionWrapper();
+      const { result } = renderHook(() => useAnalysisRowDispatch(), { wrapper });
+
+      await expect(run(result.current)).resolves.toStrictEqual(MERGED);
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        `interlinearizer.${command}`,
+        expect.objectContaining(args),
+      );
+    },
+  );
+
   it('hands back where the reply says a merge left its survivor', async () => {
     jest
       .mocked(papi.commands.sendCommand)

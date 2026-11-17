@@ -236,15 +236,11 @@ export class ChangeBuffer {
     const phraseIds = named(kept.phraseAnalysisLinks, this.staged.phraseAnalysisLinks);
     const segmentIds = named(kept.segmentAnalysisLinks, this.staged.segmentAnalysisLinks);
     const stored = new Set(
-      (
-        await Promise.all([
-          tokenIds.length > 0 ? this.getTokenAnalyses(tokenIds) : [],
-          phraseIds.length > 0 ? this.getPhraseAnalyses(phraseIds) : [],
-          segmentIds.length > 0 ? this.getSegmentAnalyses(segmentIds) : [],
-        ])
-      )
-        .flat()
-        .map(({ id }) => id),
+      [
+        ...(tokenIds.length > 0 ? await this.getTokenAnalyses(tokenIds) : []),
+        ...(phraseIds.length > 0 ? await this.getPhraseAnalyses(phraseIds) : []),
+        ...(segmentIds.length > 0 ? await this.getSegmentAnalyses(segmentIds) : []),
+      ].map(({ id }) => id),
     );
     const missing = [...tokenIds, ...phraseIds, ...segmentIds].filter((id) => !stored.has(id));
     if (missing.length > 0) throw new LinkedAnalysisDeleteError([...new Set(missing)].sort());

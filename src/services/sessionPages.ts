@@ -1,6 +1,8 @@
 import type {
-  Book,
+  DraftEnvelope,
   PhraseAnalysisLink,
+  ReadonlyBook,
+  ReadonlySegment,
   SegmentAnalysis,
   SegmentAnalysisLink,
   TokenAnalysis,
@@ -16,6 +18,7 @@ import type {
   StaleSummary,
 } from '../types/segment-pages';
 import { isWordToken } from '../types/type-guards';
+import { envelopeOf } from '../types/draft-envelope';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { buildBookOutline } from '../utils/book-outline';
@@ -83,7 +86,7 @@ type StalePlacement = {
  */
 async function readStalePlacement(
   repository: AnalysisRepository,
-  book: Book,
+  book: ReadonlyBook,
   segmentAnalysisLinks?: SegmentAnalysisLink[],
 ): Promise<StalePlacement> {
   const staleLinks =
@@ -114,7 +117,7 @@ type StaleRead = { summary: StaleSummary; placed: PlacedStaleFreeTranslations };
  *
  * @throws Whatever the repository's lookups throw.
  */
-async function readStale(repository: AnalysisRepository, book: Book): Promise<StaleRead> {
+async function readStale(repository: AnalysisRepository, book: ReadonlyBook): Promise<StaleRead> {
   const { tokenAnalysisLinks, segmentAnalysisLinks } = await repository.findLinksInBooks(
     [book.bookRef],
     ['stale'],
@@ -151,7 +154,7 @@ async function readStale(repository: AnalysisRepository, book: Book): Promise<St
 
 /** For each of `links`, by id, the word tokens of the link that `book` holds, with where each sits. */
 function spansOf(
-  book: Book,
+  book: ReadonlyBook,
   links: readonly PhraseAnalysisLink[],
 ): Record<string, readonly PhraseSpanToken[]> {
   const { wordTokenByRef, tokenSegmentMap, tokenDocOrder, gapTextByWordRef } = bookIndexesOf(
@@ -185,8 +188,8 @@ function spansOf(
  */
 export async function readBookOutline(
   repository: AnalysisRepository,
-  book: Book,
-  verseBook: Book,
+  book: ReadonlyBook,
+  verseBook: ReadonlyBook,
 ): Promise<BookOutline> {
   const { summary, placed } = await readStale(repository, book);
   const { tokenSegmentMap } = bookIndexesOf(book.segments);
@@ -208,6 +211,25 @@ export async function readBookOutline(
 }
 
 /**
+ * Reads the draft's envelope: the draft without its analysis or boundaries. When the draft lists no
+ * analysis language, the envelope lists `analysisLanguage`.
+ *
+ * @throws Whatever the repository's lookups throw.
+ */
+export async function readDraftEnvelope(
+  repository: AnalysisRepository,
+  analysisLanguage: string,
+): Promise<DraftEnvelope> {
+  const envelope = envelopeOf(
+    await repository.getScope(),
+    (await repository.getDraftState()).dirty,
+  );
+  return envelope.analysisLanguages.length > 0
+    ? envelope
+    : { ...envelope, analysisLanguages: [analysisLanguage] };
+}
+
+/**
  * Summarizes the stale analyses that `book` holds. A stale link whose payload is not stored is
  * passed over.
  *
@@ -217,7 +239,7 @@ export async function readBookOutline(
  */
 export async function readStaleSummary(
   repository: AnalysisRepository,
-  book: Book,
+  book: ReadonlyBook,
 ): Promise<StaleSummary> {
   return (await readStale(repository, book)).summary;
 }
@@ -233,10 +255,10 @@ export async function readStaleSummary(
  */
 export async function readSegmentPage(
   repository: AnalysisRepository,
-  book: Book,
+  book: ReadonlyBook,
   start: number,
   end: number,
-): Promise<SegmentPage> {
+): Promise<SegmentPage<ReadonlySegment>> {
   const from = Math.max(0, start);
   const segments = book.segments.slice(from, Math.max(from, end));
   const tokens = segments.flatMap((segment) => segment.tokens);

@@ -1,6 +1,6 @@
 import papi, { logger } from '@papi/backend';
 import { Canon } from '@sillsdev/scripture';
-import type { Book, Segment, SegmentationDelta } from 'interlinearizer';
+import type { Book, ReadonlyBook, ReadonlySegment, SegmentationDelta } from 'interlinearizer';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
@@ -27,11 +27,11 @@ interface HeldBook {
   bookId: string;
   writingSystem: string;
   /** `undefined` when the project has no text for the book. */
-  book: Promise<Book | undefined>;
+  book: Promise<ReadonlyBook | undefined>;
   /** The book once tokenized; absent until then, and when the project has no text for it. */
-  tokenized?: Book;
+  tokenized?: ReadonlyBook;
   /** The book segmented by the boundaries last asked for, keyed by the JSON of the book's own. */
-  segmented?: { key: string; segments: Segment[] };
+  segmented?: { key: string; segments: readonly ReadonlySegment[] };
   watch: BookTextWatch;
 }
 
@@ -106,6 +106,35 @@ const textReads = new Map<string, TextRead>();
  */
 const heldReads = new Set<string>();
 
+/** What each source project's whole-text read waits on before it fetches or tokenizes a book. */
+const readHolds = new Map<string, Set<Promise<unknown>>>();
+
+/**
+ * Holds the source project's whole-text read until `until` settles: the read fetches and tokenizes
+ * no further book meanwhile, so that work it would share the host with goes first. The open book's
+ * text is still read again at once when it changes, so that the view need not wait out the hold.
+ */
+export function holdTextRead(sourceProjectId: string, until: Promise<unknown>): void {
+  const holds = readHolds.get(sourceProjectId) ?? new Set<Promise<unknown>>();
+  readHolds.set(sourceProjectId, holds);
+  const hold = Promise.allSettled([until]).finally(() => {
+    holds.delete(hold);
+    if (holds.size === 0 && readHolds.get(sourceProjectId) === holds)
+      readHolds.delete(sourceProjectId);
+  });
+  holds.add(hold);
+}
+
+/** Settles once no hold on the source project's whole-text read remains. Never rejects. */
+async function readHeldOff(sourceProjectId: string): Promise<void> {
+  let holds = readHolds.get(sourceProjectId);
+  while (holds?.size) {
+    // eslint-disable-next-line no-await-in-loop
+    await Promise.all(holds);
+    holds = readHolds.get(sourceProjectId);
+  }
+}
+
 /** Receives the source project and book of each edit to a watched book's text. */
 type BookTextListener = (sourceProjectId: string, bookId: string) => void;
 
@@ -119,7 +148,7 @@ function reportEdit(sourceProjectId: string, bookId: string): void {
  * Receives the source project and tokenized text of each book that a whole-text read takes in, and
  * of the open book once it is edited. Also receives whether the text is an edit's.
  */
-type BookReadListener = (sourceProjectId: string, book: Book, edited: boolean) => void;
+type BookReadListener = (sourceProjectId: string, book: ReadonlyBook, edited: boolean) => void;
 
 const bookReadListeners = new Set<BookReadListener>();
 
@@ -154,7 +183,7 @@ function finishRead(
   sourceProjectId: string,
   bookId: string,
   readNumber: number,
-  book: Book | undefined,
+  book: ReadonlyBook | undefined,
   edited: boolean,
 ): void {
   const finished = finishedReads.get(sourceProjectId) ?? new Map<string, number>();
@@ -354,10 +383,10 @@ async function keepBook(
  */
 function segmentsOf(
   held: HeldBook,
-  book: Book,
+  book: ReadonlyBook,
   segmentation: SegmentationDelta | undefined,
   call: 'getBookOutline' | 'getSegmentedBook' | 'heldBook',
-): Segment[] {
+): readonly ReadonlySegment[] {
   const delta = segmentationForBook(segmentation, held.bookId);
   const key = delta ? JSON.stringify(delta) : '';
   if (held.segmented?.key !== key) {
@@ -422,8 +451,7 @@ export function onTextReadProgress(listener: TextReadProgressListener): () => bo
 
 /**
  * Reads a book of the source project, segmented by the boundaries that `segmentation` sets in it.
- * The book becomes the project's open book, whose edits {@link onBookTextChanged} reports. The
- * book's segments are shared, so the caller must not change them.
+ * The book becomes the project's open book, whose edits {@link onBookTextChanged} reports.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or tokenized.
@@ -432,7 +460,7 @@ export async function getOpenBook(
   sourceProjectId: string,
   bookId: string,
   segmentation?: SegmentationDelta,
-): Promise<Book | undefined> {
+): Promise<ReadonlyBook | undefined> {
   const held = await keepBook(sourceProjectId, bookId, true);
   const book = await held.book;
   if (!book) return undefined;
@@ -441,8 +469,7 @@ export async function getOpenBook(
 
 /**
  * The source project's book, segmented by the boundaries that `segmentation` sets in it, when the
- * project keeps a tokenized copy as its open or latest book. Reads nothing. The book's segments are
- * shared, so the caller must not change them.
+ * project keeps a tokenized copy as its open or latest book. Reads nothing.
  *
  * @returns `undefined` when the project keeps no tokenized copy of the book.
  */
@@ -450,7 +477,7 @@ export function heldBook(
   sourceProjectId: string,
   bookId: string,
   segmentation?: SegmentationDelta,
-): Book | undefined {
+): ReadonlyBook | undefined {
   const held = [openBooks.get(sourceProjectId), latestBooks.get(sourceProjectId)].find(
     (kept) => kept?.bookId === bookId && kept.tokenized,
   );
@@ -474,7 +501,7 @@ async function keptBook(sourceProjectId: string, bookId: string): Promise<HeldBo
 
 /**
  * Reads a book of the source project, tokenized one segment per verse: the book that a session's
- * pages resegment. The book is shared, so the caller must not change it.
+ * pages resegment.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book's text or the project's language tag cannot be read, or the text cannot be
@@ -483,14 +510,13 @@ async function keptBook(sourceProjectId: string, bookId: string): Promise<HeldBo
 export async function getVerseBook(
   sourceProjectId: string,
   bookId: string,
-): Promise<Book | undefined> {
+): Promise<ReadonlyBook | undefined> {
   return (await keptBook(sourceProjectId, bookId)).book;
 }
 
 /**
  * Reads a book of the source project, tokenized one segment per verse. The book becomes the
- * project's open book, whose edits {@link onBookTextChanged} reports. The book is shared, so the
- * caller must not change it.
+ * project's open book, whose edits {@link onBookTextChanged} reports.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book's text or the project's language tag cannot be read, or the text cannot be
@@ -499,14 +525,13 @@ export async function getVerseBook(
 export async function getOpenVerseBook(
   sourceProjectId: string,
   bookId: string,
-): Promise<Book | undefined> {
+): Promise<ReadonlyBook | undefined> {
   return (await keepBook(sourceProjectId, bookId, true)).book;
 }
 
 /**
  * Reads a book of the source project, segmented by the boundaries that `segmentation` sets in it,
- * as a session's pages segment it. The book's segments are shared, so the caller must not change
- * them.
+ * as a session's pages segment it.
  *
  * @returns `undefined` when the project has no text for the book.
  * @throws If the book cannot be read or tokenized.
@@ -515,7 +540,7 @@ export async function getSegmentedBook(
   sourceProjectId: string,
   bookId: string,
   segmentation?: SegmentationDelta,
-): Promise<Book | undefined> {
+): Promise<ReadonlyBook | undefined> {
   const held = await keptBook(sourceProjectId, bookId);
   const book = await held.book;
   if (!book) return undefined;
@@ -559,13 +584,17 @@ async function readTextBook(
   );
   read.watches.set(bookId, stop);
   const delivered = await Promise.all([perfTrack('readText:usj', text), readNumber])
-    .then(([usj, number]): { book?: Book; forms: Set<string>; readNumber: number } => {
-      if (!usj) return { forms: new Set<string>(), readNumber: number };
-      return perfTime('readText:tokenize', () => {
-        const book = tokenizeBook(extractBookFromUsj(usj, read.writingSystem));
-        return { book, forms: formsOfBook(book), readNumber: number };
-      });
-    })
+    .then(
+      async ([usj, number]): Promise<{ book?: Book; forms: Set<string>; readNumber: number }> => {
+        if (!usj) return { forms: new Set<string>(), readNumber: number };
+        const isOpenBookEdit = edited && openBooks.get(sourceProjectId)?.bookId === bookId;
+        if (!isOpenBookEdit && readHolds.has(sourceProjectId)) await readHeldOff(sourceProjectId);
+        return perfTime('readText:tokenize', () => {
+          const book = tokenizeBook(extractBookFromUsj(usj, read.writingSystem));
+          return { book, forms: formsOfBook(book), readNumber: number };
+        });
+      },
+    )
     .catch((e) => {
       logger.warn(`Could not read ${bookId} of project ${sourceProjectId}: ${e}`);
       return undefined;
@@ -658,6 +687,10 @@ async function readTextBooks(
   const readNext = async (): Promise<void> => {
     const bookId = unread.shift();
     if (bookId === undefined || textReads.get(sourceProjectId) !== read) return;
+    if (readHolds.has(sourceProjectId)) {
+      await readHeldOff(sourceProjectId);
+      if (textReads.get(sourceProjectId) !== read) return;
+    }
     await readTextBook(sourceProjectId, read, bookId, false);
     await readNext();
   };

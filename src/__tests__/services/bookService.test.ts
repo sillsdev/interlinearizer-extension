@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import papiBackendMock from '@papi/backend';
-import type { Book, SegmentationDelta } from 'interlinearizer';
+import type { Book, ReadonlyBook, SegmentationDelta } from 'interlinearizer';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';
@@ -16,6 +16,7 @@ import {
   getVerseBook,
   getWritingSystem,
   heldBook,
+  holdTextRead,
   isFormInText,
   onBookRead,
   onBookTextChanged,
@@ -126,7 +127,7 @@ function settle() {
   });
 }
 
-function parseBook(book: Book | undefined): Book {
+function parseBook(book: ReadonlyBook | undefined): ReadonlyBook {
   if (!book) throw new Error('Expected a tokenized book');
   return book;
 }
@@ -1219,7 +1220,9 @@ describe('onBookRead', () => {
   const unsubscribers: Array<() => boolean> = [];
 
   /** A listener for books read, registered for the test and removed once it ends. */
-  function listenForBooks(onCall?: (sourceProjectId: string, book: Book, edited: boolean) => void) {
+  function listenForBooks(
+    onCall?: (sourceProjectId: string, book: ReadonlyBook, edited: boolean) => void,
+  ) {
     const listener = jest.fn(onCall);
     unsubscribers.push(onBookRead(listener));
     return listener;
@@ -1761,6 +1764,152 @@ describe('onTextRead', () => {
 
     expect(project.subscriptions).toHaveLength(1);
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('holdTextRead', () => {
+  const unsubscribers: Array<() => boolean> = [];
+
+  afterEach(() => {
+    unsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
+  });
+
+  it('fetches no book until the hold settles', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const hold = Promise.withResolvers<void>();
+    holdTextRead('src', hold.promise);
+
+    readStatus();
+    await settle();
+
+    expect(project.subscriptions).toHaveLength(0);
+    hold.resolve();
+    await settle();
+    expect(await readStatus()).toEqual({ booksRead: 1, bookCount: 1, failedBookIds: [] });
+  });
+
+  it('files no book whose text arrives during a hold until the hold settles', async () => {
+    const project = serveProject();
+    project.booksPresent = '1';
+    readStatus();
+    await settle();
+    const hold = Promise.withResolvers<void>();
+    holdTextRead('src', hold.promise);
+
+    project.subscriptions[0].deliver(usj('GEN'));
+    await settle();
+
+    expect((await readStatus()).booksRead).toBe(0);
+    hold.resolve();
+    await settle();
+    expect((await readStatus()).booksRead).toBe(1);
+  });
+
+  it('fetches no book once the read ends during a hold', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const hold = Promise.withResolvers<void>();
+    holdTextRead('src', hold.promise);
+    readStatus();
+    await settle();
+
+    await stopTextRead('src');
+    hold.resolve();
+    await settle();
+
+    expect(project.subscriptions).toHaveLength(0);
+  });
+
+  it('goes on once a hold rejects', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const hold = Promise.withResolvers<void>();
+    holdTextRead('src', hold.promise);
+    readStatus();
+    await settle();
+
+    hold.reject(new Error('edit failed'));
+    await settle();
+
+    expect((await readStatus()).booksRead).toBe(1);
+  });
+
+  it('stays held until every hold settles, one placed while waiting included', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const first = Promise.withResolvers<void>();
+    const second = Promise.withResolvers<void>();
+    holdTextRead('src', first.promise);
+    readStatus();
+    await settle();
+
+    holdTextRead('src', second.promise);
+    first.resolve();
+    await settle();
+
+    expect(project.subscriptions).toHaveLength(0);
+    second.resolve();
+    await settle();
+    expect(project.subscriptions).toHaveLength(1);
+  });
+
+  it('reports an edit to the open book during a hold', async () => {
+    let version = 'v1';
+    const project = serveProject((bookId) => usj(bookId, version));
+    project.booksPresent = '1';
+    const edited = jest.fn();
+    unsubscribers.push(onBookTextChanged(edited));
+    segmentStandIns();
+    await getOpenBook('src', 'GEN');
+    readStatus();
+    await settle();
+    const hold = Promise.withResolvers<void>();
+    holdTextRead('src', hold.promise);
+
+    version = 'v2';
+    subscriptionsTo(project, 'GEN').forEach((s) => s.deliver(usj('GEN', version)));
+    await settle();
+
+    const heardDuringHold = [...edited.mock.calls];
+    hold.resolve();
+    expect(heardDuringHold).toEqual([['src', 'GEN']]);
+  });
+
+  it('reports an edit to a book that is not open only once the hold settles', async () => {
+    let version = 'v1';
+    const project = serveProject((bookId) => usj(bookId, version));
+    project.booksPresent = '11';
+    const edited = jest.fn();
+    unsubscribers.push(onBookTextChanged(edited));
+    segmentStandIns();
+    await getOpenBook('src', 'GEN');
+    readStatus();
+    await settle();
+    const hold = Promise.withResolvers<void>();
+    holdTextRead('src', hold.promise);
+
+    version = 'v2';
+    subscriptionsTo(project, 'EXO').forEach((s) => s.deliver(usj('EXO', version)));
+    await settle();
+
+    expect(edited).not.toHaveBeenCalled();
+    hold.resolve();
+    await settle();
+    expect(edited).toHaveBeenCalledWith('src', 'EXO');
+  });
+
+  it('leaves the reads of other projects unheld', async () => {
+    const project = serveProject((bookId) => usj(bookId));
+    project.booksPresent = '1';
+    const hold = Promise.withResolvers<void>();
+    holdTextRead('other', hold.promise);
+
+    readStatus();
+    await settle();
+
+    expect((await readStatus()).booksRead).toBe(1);
+    hold.resolve();
   });
 });
 

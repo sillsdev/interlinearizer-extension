@@ -1,16 +1,37 @@
 import type { DraftEnvelope } from 'interlinearizer';
-import type { ChangeSet } from '../types/analysis-repository';
+import type { ChangeSet, ScopeRecord } from '../types/analysis-repository';
 import { deepEqual } from '../utils/analysis-identity';
 import { isEmptyChangeSet } from '../utils/change-set';
 
 /** Whether changes left the draft unsaved, or `'kept'` when they left its unsaved mark as it was. */
 type Mark = boolean | 'kept';
 
+/** What changes taken in do to an envelope: the scope record they put, and their mark. */
+type Taken = Readonly<{ scope: ScopeRecord | undefined; mark: Mark | undefined }>;
+
 /** Marks `envelope` as `mark` says, or unsaved when `mark` is absent. */
 function marked(envelope: DraftEnvelope, mark: Mark | undefined): DraftEnvelope {
   if (mark === 'kept') return envelope;
   const dirty = mark ?? true;
   return envelope.dirty === dirty ? envelope : { ...envelope, dirty };
+}
+
+/** `envelope` with the fields of `scope`, when there is one. */
+function scoped(envelope: DraftEnvelope, scope: ScopeRecord | undefined): DraftEnvelope {
+  if (!scope) return envelope;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave it out
+  const { segmentation, ...fields } = scope;
+  // A scope record listing no analysis language keeps the envelope's languages, because the host
+  // fills in the session's.
+  const analysisLanguages =
+    fields.analysisLanguages.length > 0 ? fields.analysisLanguages : envelope.analysisLanguages;
+  const next = { ...fields, analysisLanguages, dirty: envelope.dirty };
+  return deepEqual(envelope, next) ? envelope : next;
+}
+
+/** `envelope` as changes taken in leave it. */
+function applied(envelope: DraftEnvelope, { scope, mark }: Taken): DraftEnvelope {
+  return marked(scoped(envelope, scope), mark);
 }
 
 /**
@@ -29,17 +50,14 @@ export class DraftEnvelopeStore {
   /** The fetch that runs once the one under way settles, shared by every refresh asked meanwhile. */
   private queued: Promise<void> | undefined;
 
-  /**
-   * The marks of the changes taken in since the fetch under way was sent; `undefined` while none
-   * is.
-   */
-  private marksDuringFetch: (Mark | undefined)[] | undefined;
+  /** The changes taken in since the fetch under way was sent; `undefined` while none is. */
+  private takenDuringFetch: Taken[] | undefined;
 
   constructor(fetch: () => Promise<DraftEnvelope>) {
     this.fetch = fetch;
   }
 
-  /** The envelope that the latest successful fetch got, as changes since have marked it. */
+  /** The envelope that the latest successful fetch got, as changes taken in since have left it. */
   get envelope(): DraftEnvelope | undefined {
     return this.held;
   }
@@ -66,18 +84,20 @@ export class DraftEnvelopeStore {
   }
 
   /**
-   * Marks the held envelope as the session's `changes` leave it: as `mark` says, or unsaved when
-   * `mark` is absent. Tells each listener when the mark moves. Changes that touch no record leave
-   * the mark as it was.
+   * Updates the held envelope as the session's `changes` leave it. The envelope takes the scope
+   * record they put, if any. It is marked as `mark` says, or unsaved when `mark` is absent.
    *
-   * A fetch under way lands marked by the changes too, because the host may have answered it before
-   * applying them.
+   * Tells each listener when the envelope changes. Changes that touch no record leave it as it was.
+   *
+   * A fetch under way lands updated by the changes too, because the host may have answered it
+   * before applying them.
    */
   take(changes: ChangeSet, mark?: Mark): void {
     if (isEmptyChangeSet(changes)) return;
-    this.marksDuringFetch?.push(mark);
+    const taken = { scope: changes.scope, mark };
+    this.takenDuringFetch?.push(taken);
     if (!this.held) return;
-    const next = marked(this.held, mark);
+    const next = applied(this.held, taken);
     if (next === this.held) return;
     this.held = next;
     this.notify();
@@ -90,13 +110,13 @@ export class DraftEnvelopeStore {
   }
 
   private async fetchNow(): Promise<void> {
-    const marks: (Mark | undefined)[] = [];
-    this.marksDuringFetch = marks;
+    const taken: Taken[] = [];
+    this.takenDuringFetch = taken;
     let next: DraftEnvelope;
     try {
-      next = marks.reduce(marked, await this.fetch());
+      next = taken.reduce(applied, await this.fetch());
     } finally {
-      this.marksDuringFetch = undefined;
+      this.takenDuringFetch = undefined;
     }
     // An envelope fetched again unchanged keeps the held one, so its readers render nothing new.
     if (this.held && deepEqual(this.held, next)) return;

@@ -1,5 +1,5 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book } from 'interlinearizer';
+import type { ReadonlyBook } from 'interlinearizer';
 import type { OutlineSegment, PlacedFreeTranslations } from '../types/segment-pages';
 import { bookOfRef } from './analysis-book';
 import { verseOfTokenRef } from './reanchor-analysis';
@@ -41,7 +41,7 @@ type Place = Readonly<{
  * Indexes the book's tokens by the verse their refs name, each list in document order, and each
  * verse holding no tokens by its segment alone.
  */
-function indexPlacesByVerse(book: Book): ReadonlyMap<string, Place[]> {
+function indexPlacesByVerse(book: ReadonlyBook): ReadonlyMap<string, Place[]> {
   const byVerse = new Map<string, Place[]>();
   let order = 0;
   const add = (verse: string, offset: number, segmentId: string) => {
@@ -243,7 +243,7 @@ function fileUnder<T>(map: Map<string, T[]>, key: string, translation: T) {
  */
 export function placeStaleFreeTranslations<T extends StaleFreeTranslation>(
   stale: readonly T[],
-  book: Book,
+  book: ReadonlyBook,
 ): PlacedStaleFreeTranslations<T> {
   const placesByVerse = indexPlacesByVerse(book);
   let inOrder: readonly VersePlace[] | undefined;

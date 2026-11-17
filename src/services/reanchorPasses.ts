@@ -1,8 +1,9 @@
-import type { Book, DraftProject, SegmentAnalysisLink } from 'interlinearizer';
+import type { DraftProject, ReadonlyBook, SegmentAnalysisLink } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import { booksLinkedIn } from '../utils/analysis-book';
 import { applyChangeSet, mergeChangeSets } from '../utils/change-set';
+import { byPreference } from '../utils/pick-rules';
 import { reanchorChangesForBook } from '../utils/reanchor-changes';
 import { segmentationForBook } from '../utils/segmentation';
 import type { AppliedChange } from './analysisChanges';
@@ -26,9 +27,25 @@ async function readBooks(
   return { ...scope, dirty: false, analysis: { ...emptyAnalysis(), ...links, segmentAnalyses } };
 }
 
-/** The changes that re-anchor `draft` to each of `books` in turn, `undefined` when there are none. */
-function reanchorInTurn(draft: DraftProject, books: readonly Book[]): ChangeSet | undefined {
-  let current = draft;
+/**
+ * The changes that re-anchor `draft` to each of `books` in turn, `undefined` when there are none.
+ * The changes do not depend on the order in which the repository returns links. Where links tie,
+ * the most recently updated wins, then the one with the smaller id.
+ */
+function reanchorInTurn(
+  draft: DraftProject,
+  books: readonly ReadonlyBook[],
+): ChangeSet | undefined {
+  const { analysis } = draft;
+  let current: DraftProject = {
+    ...draft,
+    analysis: {
+      ...analysis,
+      tokenAnalysisLinks: [...analysis.tokenAnalysisLinks].sort(byPreference),
+      phraseAnalysisLinks: [...analysis.phraseAnalysisLinks].sort(byPreference),
+      segmentAnalysisLinks: [...analysis.segmentAnalysisLinks].sort(byPreference),
+    },
+  };
   let changes: ChangeSet | undefined;
   books.forEach((book) => {
     const bookChanges = reanchorChangesForBook(current, book);
@@ -56,7 +73,7 @@ function reanchorInTurn(draft: DraftProject, books: readonly Book[]): ChangeSet 
 export async function reanchorStoredBook(
   repository: AnalysisRepository,
   history: EditHistory,
-  book: Book,
+  book: ReadonlyBook,
 ): Promise<AppliedChange | undefined> {
   const draft = await readBooks(repository, [book.bookRef]);
   return history.applyPass(book, reanchorInTurn(draft, [book]));

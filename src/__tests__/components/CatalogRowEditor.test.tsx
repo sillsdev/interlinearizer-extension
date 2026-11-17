@@ -3,6 +3,9 @@
 
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { MorphemeAnalysis } from 'interlinearizer';
+import type { SenseCandidate } from 'interlinearizer/lexicon';
+import type { ComponentProps } from 'react';
 import CatalogRowEditor, {
   createGlossRetry,
   type GlossRetry,
@@ -11,7 +14,13 @@ import CatalogRowEditor, {
 import type { CatalogRow } from '../../utils/analysis-query';
 import type { Settles } from '../../utils/settles';
 import { FIXTURE_STAMPS } from '../test-helpers';
-import { EmptyAnalysisProvider } from './test-helpers';
+import {
+  EmptyAnalysisProvider,
+  TEST_LEXICON_AUTHORITY,
+  testSenseRef,
+  withLexicon,
+  withTooltipProvider,
+} from './test-helpers';
 
 const STRINGS = Object.fromEntries(ROW_EDITOR_STRING_KEYS.map((key) => [key, key]));
 
@@ -37,6 +46,9 @@ function editor(
         onMorphemesCommit={() => {}}
         onMorphemesConfirm={() => {}}
         onMorphemeGlossCommit={() => {}}
+        onLinkMorphemeSense={() => {}}
+        onUnlinkMorphemeSense={() => {}}
+        onAdoptMorphemeSenseGloss={() => {}}
         breakdownDraft={undefined}
         onBreakdownDraftChange={() => {}}
         localizedStrings={STRINGS}
@@ -306,8 +318,190 @@ describe('CatalogRowEditor', () => {
   });
 });
 
+/** A morpheme of the form `form`, carrying only what a case sets beyond that. */
+function morpheme(id: string, form: string, overrides: Partial<MorphemeAnalysis> = {}) {
+  return { id, form, writingSystem: 'el', ...FIXTURE_STAMPS, ...overrides };
+}
+
+/** A search hit for the sense `senseId`. */
+function candidate(senseId: string): SenseCandidate {
+  return {
+    gloss: { en: senseId },
+    entryRef: { authority: TEST_LEXICON_AUTHORITY, entryId: `e-${senseId}` },
+    senseRef: testSenseRef(senseId),
+  };
+}
+
+describe('CatalogRowEditor lexicon links', () => {
+  const SENSES = { 's-word': { gloss: { en: 'word' } }, 's-stem': { gloss: { en: 'speak' } } };
+  const search = async () => [candidate('s-other')];
+  const LABEL = '%interlinearizer_analysisCatalog_morphemeSenseLinks%';
+
+  /** The editor over `props`, beneath a lexicon holding {@link SENSES}, which can search or not. */
+  async function renderEditor(
+    props: Partial<ComponentProps<typeof CatalogRowEditor>> = {},
+    { readOnly = false, canSearch = true }: { readOnly?: boolean; canSearch?: boolean } = {},
+  ) {
+    const handlers = {
+      onLinkMorphemeSense: jest.fn(),
+      onUnlinkMorphemeSense: jest.fn(),
+      onAdoptMorphemeSenseGloss: jest.fn(),
+    };
+    const { ui } = withLexicon(
+      withTooltipProvider(
+        <EmptyAnalysisProvider analysisLanguage="en" readOnly={readOnly}>
+          <CatalogRowEditor
+            analysisId="ta-1"
+            analysisLanguage="en"
+            breakdownDraft={undefined}
+            gloss=""
+            glossRetry={createGlossRetry(jest.fn())}
+            localizedStrings={STRINGS}
+            morphemes={[morpheme('m-1', 'λογ'), morpheme('m-2', 'ος')]}
+            onBreakdownDraftChange={() => {}}
+            onGlossCommit={() => {}}
+            onMorphemeGlossCommit={() => {}}
+            onMorphemesCommit={() => {}}
+            onMorphemesConfirm={() => {}}
+            showMorphology
+            surfaceText="λόγος"
+            usageCount={1}
+            {...handlers}
+            {...props}
+          />
+        </EmptyAnalysisProvider>,
+      ),
+      SENSES,
+      canSearch ? search : undefined,
+    );
+    render(ui);
+    // Lets the sense look-ups that rendering started land, so none updates a row after the test.
+    await act(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    });
+    return handlers;
+  }
+
+  it("offers the linked sense's gloss as the gloss input's placeholder, leaving it empty", async () => {
+    await renderEditor({ glossSenseRef: testSenseRef('s-word') });
+
+    const input = screen.getByTestId('catalog-row-gloss-input');
+    await waitFor(() => expect(input).toHaveAttribute('placeholder', 'word'));
+    expect(input).toHaveValue('');
+  });
+
+  it('gives a gloss input no placeholder where the analysis links to no sense', async () => {
+    await renderEditor();
+
+    expect(screen.getByTestId('catalog-row-gloss-input')).not.toHaveAttribute('placeholder');
+  });
+
+  it("offers each morpheme's linked sense's gloss as its gloss input's placeholder", async () => {
+    await renderEditor({
+      morphemes: [
+        morpheme('m-1', 'λογ', { senseRef: testSenseRef('s-stem') }),
+        morpheme('m-2', 'ος'),
+      ],
+    });
+
+    const [first, second] = screen.getAllByTestId('catalog-row-morpheme-gloss-input');
+    await waitFor(() => expect(first).toHaveAttribute('placeholder', 'speak'));
+    expect(first).toHaveValue('');
+    expect(second).not.toHaveAttribute('placeholder');
+  });
+
+  it('places each morpheme gloss input in the box row for glosses and its control in the next', async () => {
+    await renderEditor();
+
+    const [input] = screen.getAllByTestId('catalog-row-morpheme-gloss-input');
+    const [control] = screen.getAllByTestId('catalog-sense-control');
+    expect(input).toHaveStyle({ gridRow: '2', gridColumn: '2' });
+    expect(control).toHaveStyle({ gridRow: '3', gridColumn: '2' });
+  });
+
+  it('labels the link row of an editable breakdown the lexicon can search for', async () => {
+    await renderEditor();
+
+    expect(screen.getByText(LABEL)).toBeInTheDocument();
+  });
+
+  it('leaves the link row unlabeled when nothing can be linked or shown there', async () => {
+    await renderEditor({}, { canSearch: false });
+
+    expect(screen.queryByText(LABEL)).not.toBeInTheDocument();
+  });
+
+  it('leaves the link row unlabeled when no morpheme has a form to search for', async () => {
+    await renderEditor({ morphemes: [morpheme('m-1', '')] });
+
+    expect(screen.queryByText(LABEL)).not.toBeInTheDocument();
+  });
+
+  it('labels the link row of a breakdown with a link even where nothing can be searched', async () => {
+    await renderEditor(
+      { morphemes: [morpheme('m-1', 'λογ', { senseRef: testSenseRef('s-stem') })] },
+      { canSearch: false },
+    );
+
+    expect(screen.getByText(LABEL)).toBeInTheDocument();
+  });
+
+  it('links a morpheme to the sense picked from a search', async () => {
+    const { onLinkMorphemeSense } = await renderEditor();
+
+    await userEvent.click(screen.getAllByTestId('catalog-sense-control')[1]);
+    await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseLinkAction%'));
+    await userEvent.click(await screen.findByTestId('catalog-sense-candidate'));
+
+    expect(onLinkMorphemeSense).toHaveBeenCalledWith('m-2', candidate('s-other'));
+  });
+
+  it("adopts and drops a morpheme's link by its id", async () => {
+    const { onAdoptMorphemeSenseGloss, onUnlinkMorphemeSense } = await renderEditor({
+      morphemes: [morpheme('m-1', 'λογ', { senseRef: testSenseRef('s-stem') })],
+    });
+
+    await userEvent.click(await screen.findByTestId('catalog-sense-control'));
+    await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseAdoptGloss%'));
+    await userEvent.click(screen.getByTestId('catalog-sense-control'));
+    await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseUnlink%'));
+    await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseKeepGloss%'));
+
+    expect(onAdoptMorphemeSenseGloss).toHaveBeenCalledWith('m-1', 'speak');
+    expect(onUnlinkMorphemeSense).toHaveBeenCalledWith('m-1', 'speak');
+  });
+
+  describe('read-only', () => {
+    it("shows the sense's gloss for the analysis and its morphemes, each link as a mark", async () => {
+      await renderEditor(
+        {
+          glossSenseRef: testSenseRef('s-word'),
+          morphemes: [morpheme('m-1', 'λογ', { senseRef: testSenseRef('s-stem') })],
+        },
+        { readOnly: true },
+      );
+
+      await waitFor(() =>
+        expect(screen.getByTestId('readonly-catalog-gloss')).toHaveTextContent('word'),
+      );
+      expect(screen.getByTestId('readonly-catalog-morpheme-gloss')).toHaveTextContent('speak');
+      expect(screen.getByTestId('catalog-sense-link')).toBeInTheDocument();
+      expect(screen.queryByTestId('catalog-sense-control')).not.toBeInTheDocument();
+      expect(screen.getByText(LABEL)).toBeInTheDocument();
+    });
+
+    it('leaves the link row unlabeled where no morpheme links to a sense', async () => {
+      await renderEditor({}, { readOnly: true });
+
+      expect(screen.queryByText(LABEL)).not.toBeInTheDocument();
+    });
+  });
+});
+
 describe('createGlossRetry', () => {
-  it('runs a call after commits at once when none is in flight', () => {
+  it('runs a call after commits at once when none is in flight', async () => {
     const then = jest.fn();
 
     createGlossRetry(jest.fn()).afterCommits(then);

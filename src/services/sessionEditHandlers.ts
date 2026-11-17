@@ -1,7 +1,7 @@
 import type {
-  Book,
   ChangeId,
   InterlinearProject,
+  ReadonlyBook,
   RemovalPreviewRequest,
   TokenSnapshot,
 } from 'interlinearizer';
@@ -13,18 +13,18 @@ import * as catalogCommands from './commands/catalogCommands';
 import { ChangeBuffer } from './commands/changeBuffer';
 import * as discardCommands from './commands/discardCommands';
 import * as freeTranslationCommands from './commands/freeTranslationCommands';
+import * as languageCommands from './commands/languageCommands';
 import * as morphemeCommands from './commands/morphemeCommands';
 import * as phraseCommands from './commands/phraseCommands';
 import * as staleCommands from './commands/staleCommands';
 import * as tokenCommands from './commands/tokenCommands';
 import type { EditOptions } from './editHistory';
 import { catalogStepOf, deletionStepOf, phraseStartOf } from './editSteps';
-import type { DraftExport } from '../types/analysis-repository';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from '../types/command-reply';
-import type { DraftContent } from '../types/draft-content';
-import type { EditStep } from '../types/edit-step';
+import type { EditStep, StepSummary } from '../types/edit-step';
 import { bookOfRef } from '../utils/analysis-book';
+import { countTextOfEveryTag } from '../utils/text-counts';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { readEditOutcome, type AnalysisEditOutcome } from '../utils/edit-outcome';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
@@ -140,7 +140,7 @@ export function sessionEditHandlers({
   function runCatalogEdit(
     target: EditTarget,
     intent: string,
-    kind: 'catalogEdit' | 'catalogMerge',
+    kind: Parameters<typeof catalogStepOf>[1],
     analysisId: string,
     edit: (buffer: ChangeBuffer, session: Session) => Promise<string | undefined>,
   ): Promise<string> {
@@ -507,6 +507,185 @@ export function sessionEditHandlers({
   }
 
   /**
+   * Links a token analysis to a lexicon sense, for every token linked to it.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws As {@link runSessionEdit} does.
+   */
+  function linkAnalysisSense({
+    sessionId,
+    analysisId,
+    senseRef,
+    changeId,
+  }: ArgsOf<'interlinearizer.linkAnalysisSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'linkAnalysisSense',
+      'catalogLinkSense',
+      analysisId,
+      (buffer) =>
+        catalogCommands.linkAnalysisSense(buffer, {
+          analysisId,
+          senseRef,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
+   * Drops a token analysis's lexicon sense link, for every token linked to it, first keeping
+   * `keepGloss` as the gloss in the session's analysis language when it is not blank.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws As {@link runSessionEdit} does.
+   */
+  function unlinkAnalysisSense({
+    sessionId,
+    analysisId,
+    keepGloss,
+    changeId,
+  }: ArgsOf<'interlinearizer.unlinkAnalysisSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'unlinkAnalysisSense',
+      'catalogUnlinkSense',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.unlinkAnalysisSense(buffer, {
+          analysisId,
+          keepGloss,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
+   * Links one morpheme of a token analysis to a lexicon sense, for every token linked to it.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws As {@link runSessionEdit} does.
+   */
+  function linkAnalysisMorphemeSense({
+    sessionId,
+    analysisId,
+    morphemeId,
+    entryRef,
+    senseRef,
+    changeId,
+  }: ArgsOf<'interlinearizer.linkAnalysisMorphemeSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'linkAnalysisMorphemeSense',
+      'catalogLinkSense',
+      analysisId,
+      (buffer) =>
+        catalogCommands.linkAnalysisMorphemeSense(buffer, {
+          analysisId,
+          morphemeId,
+          entryRef,
+          senseRef,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
+   * Drops every lexicon reference of one morpheme of a token analysis, for every token linked to
+   * it, first keeping `keepGloss` as the morpheme's gloss in the session's analysis language when
+   * it is not blank.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws As {@link runSessionEdit} does.
+   */
+  function unlinkAnalysisMorphemeSense({
+    sessionId,
+    analysisId,
+    morphemeId,
+    keepGloss,
+    changeId,
+  }: ArgsOf<'interlinearizer.unlinkAnalysisMorphemeSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'unlinkAnalysisMorphemeSense',
+      'catalogUnlinkSense',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.unlinkAnalysisMorphemeSense(buffer, {
+          analysisId,
+          morphemeId,
+          keepGloss,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
+   * Writes a linked sense's gloss as a token analysis's gloss in the session's analysis language,
+   * keeping the link.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws If `value` is blank, or as {@link runSessionEdit} does.
+   */
+  function adoptAnalysisSenseGloss({
+    sessionId,
+    analysisId,
+    value,
+    changeId,
+  }: ArgsOf<'interlinearizer.adoptAnalysisSenseGloss'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'adoptAnalysisSenseGloss',
+      'catalogAdoptGloss',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.adoptAnalysisSenseGloss(buffer, {
+          analysisId,
+          value,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
+   * Writes a linked sense's gloss as one morpheme's gloss in the session's analysis language,
+   * keeping the link.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws If `value` is blank, or as {@link runSessionEdit} does.
+   */
+  function adoptAnalysisMorphemeSenseGloss({
+    sessionId,
+    analysisId,
+    morphemeId,
+    value,
+    changeId,
+  }: ArgsOf<'interlinearizer.adoptAnalysisMorphemeSenseGloss'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'adoptAnalysisMorphemeSenseGloss',
+      'catalogAdoptGloss',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.adoptAnalysisMorphemeSenseGloss(buffer, {
+          analysisId,
+          morphemeId,
+          value,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  /**
    * Removes token analyses with every token link to them.
    *
    * @returns A JSON string of the {@link CommandReply}.
@@ -762,7 +941,7 @@ export function sessionEditHandlers({
    *
    * @throws If the project has no text for that book, or the book cannot be read or tokenized.
    */
-  function verseBookOf(session: Session, tokenRef: string): Promise<Book> {
+  function verseBookOf(session: Session, tokenRef: string): Promise<ReadonlyBook> {
     return readBookOf(session, tokenRef, getVerseBook);
   }
 
@@ -913,18 +1092,115 @@ export function sessionEditHandlers({
   }
 
   /**
-   * The content of the project that the session's draft saves to, or `undefined` when it has none.
+   * The project that the session's draft saves to, as a discard restores it, or `undefined` when
+   * the draft has none.
    *
    * @throws If the project is not stored, or reading it fails.
    */
-  async function savedContentOf(session: Session): Promise<DraftContent | undefined> {
+  async function savedContentOf(
+    session: Session,
+  ): Promise<discardCommands.SavedProject | undefined> {
     const { interlinearProjectId } = session.scope;
     if (interlinearProjectId === undefined) return undefined;
     const project = await getProject(interlinearProjectId);
     if (!project) {
       throw new Error(`Interlinearizer: interlinear project ${interlinearProjectId} is not stored`);
     }
-    return { analysis: project.analysis, segmentation: project.segmentation };
+    const { analysis, segmentation, analysisLanguages } = project;
+    return { analysis, segmentation, analysisLanguages };
+  }
+
+  /**
+   * Gives a session's draft new analysis languages, primary first, as one undoable step that leaves
+   * the draft unsaved. The step can also move or delete one tag's glosses and free translations:
+   *
+   * - With `retag`, those under `retag.from` move to `retag.to`. One that already has different text
+   *   there stays where it is.
+   * - With `deleteTextOf`, those under that tag are deleted.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `glossRetag` (what moved) when `retag`
+   *   was given, and `deletedText` (what was deleted) when `deleteTextOf` was.
+   * @throws If the languages are empty, `retag` moves a tag to itself, both `retag` and
+   *   `deleteTextOf` are given, a move or deletion is asked while a book of the draft can't be
+   *   read, the session is read-only or not open, or the edit is refused or fails. The error is
+   *   logged before rethrowing.
+   */
+  async function changeAnalysisLanguages({
+    sessionId,
+    analysisLanguages,
+    retag,
+    deleteTextOf,
+    changeId,
+  }: ArgsOf<'interlinearizer.changeAnalysisLanguages'>): Promise<string> {
+    const intent = 'changeAnalysisLanguages';
+    try {
+      if (analysisLanguages.length === 0)
+        throw new Error('Interlinearizer: a draft needs an analysis language');
+      if (retag && retag.from === retag.to)
+        throw new Error(`Interlinearizer: glosses cannot move from ${retag.to} to itself`);
+      if (retag && deleteTextOf !== undefined)
+        throw new Error('Interlinearizer: a language change either moves text or deletes it');
+      const target: EditTarget = { sessionId, changeId };
+      const reply = await sessions.edit(
+        sessionId,
+        intent,
+        async (buffer, session) => {
+          const draft = await session.repository.getWholeDraft();
+          const { unreadableBooks } = await session.repository.getDraftState();
+          // A book that can't be read would keep the text this change moves or deletes.
+          if ((retag || deleteTextOf !== undefined) && unreadableBooks.length > 0)
+            throw new Error(
+              `Interlinearizer: cannot move or delete language text while ${unreadableBooks.join(', ')} cannot be read`,
+            );
+          const outcome = await languageCommands.changeAnalysisLanguages(buffer, draft.analysis, {
+            analysisLanguages,
+            retag,
+            deleteTextOf,
+            now: editStamp().now,
+          });
+          const { glossRetag, deletedText } = outcome;
+          let summary: StepSummary = { kind: 'changeAnalysisLanguages' };
+          if (retag && glossRetag)
+            summary = {
+              kind: 'retagGlosses',
+              from: retag.from,
+              to: retag.to,
+              words: glossRetag.words,
+              morphemes: glossRetag.morphemes,
+              freeTranslations: glossRetag.freeTranslations,
+            };
+          else if (deleteTextOf !== undefined && deletedText)
+            summary = { kind: 'deleteLanguageText', tag: deleteTextOf, ...deletedText };
+          target.step = { summary };
+          return glossRetag || deletedText ? outcome : undefined;
+        },
+        { changeId, step: () => target.step },
+      );
+      return JSON.stringify(reply);
+    } catch (e) {
+      logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
+      throw e;
+    }
+  }
+
+  /**
+   * Counts the glosses and free translations of a session's draft under each language tag that has
+   * any. A book whose stored analysis can't be read counts as having none.
+   *
+   * @returns A JSON string of the counts, keyed by tag.
+   * @throws If the session is not open, or its draft can't be read. The error is logged before
+   *   rethrowing.
+   */
+  async function countLanguageText({
+    sessionId,
+  }: ArgsOf<'interlinearizer.countLanguageText'>): Promise<string> {
+    try {
+      const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+      return JSON.stringify(countTextOfEveryTag(draft.analysis));
+    } catch (e) {
+      logger.error(`Interlinearizer: failed to count language text in session ${sessionId}`, e);
+      throw e;
+    }
   }
 
   /**
@@ -946,9 +1222,9 @@ export function sessionEditHandlers({
     intent: string,
     stage: (
       buffer: ChangeBuffer,
-      stored: DraftExport,
-      saved: DraftContent | undefined,
-    ) => discardCommands.DiscardOutcome,
+      reader: discardCommands.DiscardReader,
+      saved: discardCommands.SavedProject | undefined,
+    ) => Promise<discardCommands.DiscardOutcome>,
     unsavedMark: (savesToProject: boolean) => EditOptions['unsavedMark'],
   ): Promise<string> {
     try {
@@ -957,7 +1233,7 @@ export function sessionEditHandlers({
         intent,
         async (buffer, session) => {
           const saved = await savedContentOf(session);
-          const outcome = stage(buffer, await session.repository.exportAll(), saved);
+          const outcome = await stage(buffer, session.repository, saved);
           const { sourceProjectId } = session.scope;
           const reanchorTo = await Promise.all(
             outcome.changedBooks.map(
@@ -965,7 +1241,7 @@ export function sessionEditHandlers({
                 (await getVerseBook(sourceProjectId, bookCode)) ?? missingBook(bookCode),
             ),
           );
-          return { reanchorTo, hasFreeTranslations: outcome.hasFreeTranslations };
+          return { reanchorTo, reportsFreeTranslations: true };
         },
         {
           unsavedMark: ({ scope }) => unsavedMark(scope.interlinearProjectId !== undefined),
@@ -1000,7 +1276,7 @@ export function sessionEditHandlers({
     return runDiscard(
       { sessionId, changeId, step: { summary: { kind: 'discardBook', book: bookCode } } },
       'discardBook',
-      (buffer, stored, saved) => discardCommands.discardBook(buffer, stored, bookCode, saved),
+      (buffer, reader, saved) => discardCommands.discardBook(buffer, reader, bookCode, saved),
       (savesToProject) => (savesToProject ? 'keep' : undefined),
     );
   }
@@ -1139,6 +1415,12 @@ export function sessionEditHandlers({
     'interlinearizer.writeAnalysisMorphemes': writeAnalysisMorphemes,
     'interlinearizer.confirmAnalysisMorphemes': confirmAnalysisMorphemes,
     'interlinearizer.writeAnalysisMorphemeGloss': writeAnalysisMorphemeGloss,
+    'interlinearizer.linkAnalysisSense': linkAnalysisSense,
+    'interlinearizer.unlinkAnalysisSense': unlinkAnalysisSense,
+    'interlinearizer.linkAnalysisMorphemeSense': linkAnalysisMorphemeSense,
+    'interlinearizer.unlinkAnalysisMorphemeSense': unlinkAnalysisMorphemeSense,
+    'interlinearizer.adoptAnalysisSenseGloss': adoptAnalysisSenseGloss,
+    'interlinearizer.adoptAnalysisMorphemeSenseGloss': adoptAnalysisMorphemeSenseGloss,
     'interlinearizer.deleteAnalyses': deleteAnalyses,
     'interlinearizer.mergeAnalysesInto': mergeAnalysesInto,
     'interlinearizer.createPhrase': createPhrase,
@@ -1154,6 +1436,8 @@ export function sessionEditHandlers({
     'interlinearizer.moveBoundary': moveBoundary,
     'interlinearizer.discardBook': discardBook,
     'interlinearizer.discardAll': discardAll,
+    'interlinearizer.changeAnalysisLanguages': changeAnalysisLanguages,
+    'interlinearizer.countLanguageText': countLanguageText,
     'interlinearizer.previewRemovals': previewRemovals,
     'interlinearizer.previewBreakdownEdit': previewBreakdownEdit,
   } satisfies Partial<CommandHandlers>;

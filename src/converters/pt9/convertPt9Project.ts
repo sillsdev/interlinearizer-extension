@@ -194,7 +194,7 @@ export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResul
       link.tokens.map((token) => token.tokenRef),
     );
   });
-  // A merged link keeps a rejected contribution's gloss, so the fallback tally reads the records.
+  // The fallback tally counts every unrejected gloss, read from the records.
   records.forEach((record) => {
     if (record.status === 'rejected') return;
     const glossed =

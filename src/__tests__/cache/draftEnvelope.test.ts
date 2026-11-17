@@ -2,13 +2,19 @@
 
 import type { DraftEnvelope } from 'interlinearizer';
 import { DraftEnvelopeStore } from '../../cache/draftEnvelope';
-import type { ChangeSet } from '../../types/analysis-repository';
+import type { ChangeSet, ScopeRecord } from '../../types/analysis-repository';
 import { emptyDraft } from '../../types/empty-factories';
 import { envelopeOf as draftEnvelopeOf } from '../../types/draft-envelope';
+import { scopeRecordOf } from '../../utils/change-set';
 
 /** The envelope of a draft for the source `src`, saved unless `dirty`. */
 function envelopeOf(dirty = false, analysisLanguages = ['en']): DraftEnvelope {
-  return { ...draftEnvelopeOf(emptyDraft('src')), analysisLanguages, dirty };
+  return { ...draftEnvelopeOf(scopeRecordOf(emptyDraft('src')), dirty), analysisLanguages };
+}
+
+/** The scope record of a draft for the source `src` that lists `analysisLanguages`. */
+function scopeWith(analysisLanguages: string[]): ScopeRecord {
+  return { ...scopeRecordOf(emptyDraft('src')), analysisLanguages };
 }
 
 /** Changes that delete a payload. */
@@ -168,6 +174,53 @@ describe('DraftEnvelopeStore', () => {
     await refreshed;
 
     expect(store.envelope).toStrictEqual(envelopeOf());
+  });
+
+  it('takes in the fields of a scope record the changes put, telling its listeners', async () => {
+    const store = new DraftEnvelopeStore(async () => envelopeOf(false, ['en']));
+    await store.refresh();
+    const listener = jest.fn();
+    store.subscribe(listener);
+
+    store.take({ intent: 'x', scope: scopeWith(['fr', 'en']) }, false);
+
+    expect(store.envelope).toStrictEqual(envelopeOf(false, ['fr', 'en']));
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the envelope it holds, telling no listener, for a scope record that changes no field', async () => {
+    const store = new DraftEnvelopeStore(async () => envelopeOf(false, ['en']));
+    await store.refresh();
+    const held = store.envelope;
+    const listener = jest.fn();
+    store.subscribe(listener);
+
+    store.take({ intent: 'x', scope: scopeWith(['en']) }, 'kept');
+
+    expect(store.envelope).toBe(held);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('keeps the languages it holds for a scope record that lists none', async () => {
+    const store = new DraftEnvelopeStore(async () => envelopeOf(false, ['en']));
+    await store.refresh();
+    const held = store.envelope;
+
+    store.take({ intent: 'x', scope: scopeWith([]) }, false);
+
+    expect(store.envelope).toBe(held);
+  });
+
+  it('lands a fetch with the scope record that the changes taken in meanwhile put', async () => {
+    const { fetch, resolveNext } = heldFetch();
+    const store = new DraftEnvelopeStore(fetch);
+    const refreshed = store.refresh();
+
+    store.take({ intent: 'x', scope: scopeWith(['fr']) });
+    await resolveNext(envelopeOf(false, ['en']));
+    await refreshed;
+
+    expect(store.envelope).toStrictEqual(envelopeOf(true, ['fr']));
   });
 
   it('holds no envelope for changes taken in before its first fetch lands', () => {

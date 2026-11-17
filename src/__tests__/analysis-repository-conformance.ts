@@ -17,8 +17,9 @@ import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from './test-helpers';
  * - `undo`: the inverse that {@link AnalysisRepository.apply} returns. Without it, `apply` may return
  *   an inverse that restores nothing (`{ intent }`), which no other group reads.
  * - `draftState`: the unsaved mark (`dirty`, `keepDirty`, `wasDirty`, and
- *   {@link AnalysisRepository.markClean}) and {@link AnalysisRepository.exportForCopy}. Without it,
- *   `apply` may report `wasDirty: false`, which no other group reads.
+ *   {@link AnalysisRepository.markClean}), {@link AnalysisRepository.exportForCopy},
+ *   {@link AnalysisRepository.getDraftState}, and {@link AnalysisRepository.findUnlinkedPayloads}.
+ *   Without it, `apply` may report `wasDirty: false`, which no other group reads.
  * - `wholeRead`: {@link AnalysisRepository.exportAll} and {@link AnalysisRepository.getWholeDraft}
  *   themselves, and loading a draft again through `exportAll` after another repository changes it.
  * - `danglingLinks`: storing a link that names an analysis that the changes leave unstored, and
@@ -1400,6 +1401,64 @@ export function describeAnalysisRepositoryConformance(
           });
         });
 
+        describe('getDraftState', () => {
+          it('tells the state of a saved draft', async () => {
+            const repository = await overFullDraft();
+
+            await expect(repository.getDraftState()).resolves.toStrictEqual({
+              dirty: true,
+              empty: false,
+              hasFreeTranslations: true,
+              unreadableBooks: [],
+            });
+          });
+
+          it('tells an empty, saved state when no draft is saved', async () => {
+            await expect((await store.open(SOURCE)).getDraftState()).resolves.toStrictEqual({
+              dirty: false,
+              empty: true,
+              hasFreeTranslations: false,
+              unreadableBooks: [],
+            });
+          });
+
+          it('tells a draft that only moves boundaries as not empty', async () => {
+            await store.seed(SOURCE, {
+              ...emptyDraft(SOURCE),
+              segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+            });
+
+            await expect((await store.open(SOURCE)).getDraftState()).resolves.toMatchObject({
+              empty: false,
+            });
+          });
+
+          it('tells a free translation that its own apply puts', async () => {
+            const repository = await store.open(SOURCE);
+            await expect(repository.getDraftState()).resolves.toMatchObject({
+              hasFreeTranslations: false,
+            });
+
+            await repository.apply(translatingExodus());
+
+            await expect(repository.getDraftState()).resolves.toMatchObject({
+              hasFreeTranslations: true,
+            });
+          });
+        });
+
+        describe('findUnlinkedPayloads', () => {
+          it('finds the payloads that no link names', async () => {
+            const repository = await overFullDraft();
+
+            await expect(repository.findUnlinkedPayloads()).resolves.toStrictEqual({
+              tokenAnalyses: fullAnalysis().tokenAnalyses.filter(({ id }) => id === ID.taUnlinked),
+              phraseAnalyses: [],
+              segmentAnalyses: [],
+            });
+          });
+        });
+
         describe('markClean', () => {
           it('records the stored draft as clean, leaving its content as it stands', async () => {
             await store.seed(SOURCE, fullDraft());
@@ -1702,6 +1761,15 @@ export function describeAnalysisRepositoryConformance(
             },
           );
 
+          it('names a book whose stored analysis is unreadable in the state it tells', async () => {
+            await store.seed(SOURCE, fullDraft());
+            await hooks.damageBook(SOURCE, 'GEN', 'corrupt');
+
+            await expect((await store.open(SOURCE)).getDraftState()).resolves.toMatchObject({
+              unreadableBooks: ['GEN'],
+            });
+          });
+
           it('loads an unusable draft as an empty one', async () => {
             await store.seed(SOURCE, fullDraft());
             await hooks.damageDraft(SOURCE);
@@ -1919,6 +1987,25 @@ export function describeReadOnlyRepositoryConformance(
       await expect(repository.getTokenAnalyses([ID.taAnd])).resolves.toStrictEqual([
         fullAnalysis().tokenAnalyses[0],
       ]);
+    });
+
+    it('tells the analysis it was opened over as not empty, naming no unreadable book', async () => {
+      const repository = await store.openReadOnly(fullDraft());
+
+      await expect(repository.getDraftState()).resolves.toMatchObject({
+        empty: false,
+        unreadableBooks: [],
+      });
+    });
+
+    it('finds the payloads that no link names in the analysis it was opened over', async () => {
+      const repository = await store.openReadOnly(fullDraft());
+
+      await expect(
+        repository.findUnlinkedPayloads().then(({ tokenAnalyses }) => tokenAnalyses),
+      ).resolves.toStrictEqual(
+        fullAnalysis().tokenAnalyses.filter(({ id }) => id === ID.taUnlinked),
+      );
     });
 
     it('loads for copying what it loads', async () => {

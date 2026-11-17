@@ -2,7 +2,6 @@
 
 import papi, { logger } from '@papi/frontend';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import type { TextAnalysis } from 'interlinearizer';
 import { useMemo } from 'react';
 import {
   useCatalogRowsByIds,
@@ -10,15 +9,10 @@ import {
   useDeletionPreview,
   useHomographRows,
   useSelectionSummary,
-  useStaleSummary,
-  useTextReadStatus,
 } from '../../cache/catalogHooks';
 import { settle } from '../components/analysis-provider';
-import { makeTokenLink } from '../test-helpers';
 import { relayChange } from './fake-host';
-import { ref } from './session-source';
 import {
-  ANALYSIS,
   changeNaming,
   failing,
   sessionIdOf,
@@ -176,50 +170,6 @@ describe('useCatalogView', () => {
     await settle();
 
     expect(result.current.view?.keptIds).toStrictEqual(['ta-beginning']);
-  });
-});
-
-describe('useTextReadStatus', () => {
-  it('asks nothing until the text is wanted', async () => {
-    const wrapper = await wrapperOver();
-
-    const { result } = renderHook(() => useTextReadStatus(false), { wrapper });
-    await settle();
-
-    expect(result.current).toBeUndefined();
-    expect(timesSent('interlinearizer.getTextReadStatus')).toBe(0);
-  });
-
-  it('reports how far the read has got once the text is wanted', async () => {
-    const wrapper = await wrapperOver();
-
-    const { result } = renderHook(() => useTextReadStatus(true), { wrapper });
-
-    await waitFor(() =>
-      expect(result.current).toStrictEqual({ booksRead: 1, bookCount: 1, failedBookIds: [] }),
-    );
-  });
-
-  it('asks again when a change to the session names the read status', async () => {
-    const wrapper = await wrapperOver();
-    renderHook(() => useTextReadStatus(true), { wrapper });
-    await settle();
-
-    relayChange(
-      changeNaming(sessionIdOf('interlinearizer.getTextReadStatus'), ['getTextReadStatus']),
-    );
-    await settle();
-
-    expect(timesSent('interlinearizer.getTextReadStatus')).toBe(2);
-  });
-
-  it('reports an error when the read could not start', async () => {
-    const wrapper = await wrapperOver();
-    failing('interlinearizer.getTextReadStatus');
-
-    const { result } = renderHook(() => useTextReadStatus(true), { wrapper });
-
-    await waitFor(() => expect(result.current).toBe('error'));
   });
 });
 
@@ -420,56 +370,5 @@ describe('a change of analysis language', () => {
     await setLanguage('interlinearizer.previewDeletion', 'fr');
 
     await waitFor(() => expect(timesSent('interlinearizer.previewDeletion')).toBe(2));
-  });
-});
-
-describe('useStaleSummary', () => {
-  const STALE: TextAnalysis = {
-    ...ANALYSIS,
-    tokenAnalysisLinks: [
-      makeTokenLink('ta-beginning', ref('beginning'), {
-        surfaceText: 'beginning',
-        id: 'tl-beginning',
-        status: 'stale',
-      }),
-    ],
-  };
-
-  it("summarizes the book's stale analyses", async () => {
-    const wrapper = await wrapperOver(undefined, STALE);
-
-    const { result } = renderHook(() => useStaleSummary('GEN'), { wrapper });
-
-    await waitFor(() =>
-      expect(result.current).toStrictEqual({
-        glosses: [{ analysisId: 'ta-beginning', tokenRef: ref('beginning') }],
-        freeTranslations: [],
-      }),
-    );
-  });
-
-  it('fetches again when a change to the session names the stale summary', async () => {
-    const wrapper = await wrapperOver(undefined, STALE);
-    renderHook(() => useStaleSummary('GEN'), { wrapper });
-    await settle();
-    const before = timesSent('interlinearizer.getStaleSummary');
-
-    relayChange(changeNaming(sessionIdOf('interlinearizer.getStaleSummary'), ['getStaleSummary']));
-    await settle();
-
-    expect(timesSent('interlinearizer.getStaleSummary')).toBe(before + 1);
-  });
-
-  it('logs a summary that could not be fetched', async () => {
-    const wrapper = await wrapperOver(undefined, STALE);
-    failing('interlinearizer.getStaleSummary');
-
-    renderHook(() => useStaleSummary('GEN'), { wrapper });
-    await settle();
-
-    expect(logger.warn).toHaveBeenCalledWith(
-      'Interlinearizer: could not fetch the stale summary',
-      expect.any(Error),
-    );
   });
 });

@@ -395,7 +395,7 @@ describe('RecordCache and discards', () => {
     cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reply = await edit('discardBook', async (buffer, session) => {
-      discardCommands.discardBook(buffer, await session.repository.exportAll(), 'GEN', undefined);
+      await discardCommands.discardBook(buffer, session.repository, 'GEN', undefined);
       return { reanchorTo: [BOOK] };
     });
 
@@ -409,7 +409,7 @@ describe('RecordCache and discards', () => {
     cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reply = await edit('discardAll', async (buffer, session) => {
-      discardCommands.discardAll(buffer, await session.repository.exportAll(), undefined);
+      await discardCommands.discardAll(buffer, session.repository, undefined);
       return { reanchorTo: [BOOK] };
     });
 
@@ -426,7 +426,7 @@ describe('RecordCache and discards', () => {
     cache.absorb(await fetchPage(0, 3), cache.beginFetch());
 
     const reply = await edit('discardBook', async (buffer, session) => {
-      discardCommands.discardBook(buffer, await session.repository.exportAll(), 'GEN', undefined);
+      await discardCommands.discardBook(buffer, session.repository, 'GEN', undefined);
       return { reanchorTo: [BOOK] };
     });
 

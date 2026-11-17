@@ -1,5 +1,5 @@
-import type { MergedContent, TokenAnalysis } from 'interlinearizer';
-import { reconcileMorphemes } from '../../utils/analysis-identity';
+import type { EntryRef, MergedContent, SenseRef, TokenAnalysis } from 'interlinearizer';
+import { deepEqual, reconcileMorphemes } from '../../utils/analysis-identity';
 import {
   applyMergedContent,
   carryOverUnsettledContent,
@@ -55,6 +55,46 @@ export type WriteAnalysisMorphemeGlossRequest = CatalogEdit & {
   /** BCP 47 tag of the language the gloss is written in. */
   analysisLanguage: string;
 };
+
+/** What linking a token analysis to a lexicon sense needs. */
+export type LinkAnalysisSenseRequest = CatalogEdit & {
+  /** The sense the analysis's gloss resolves through. */
+  senseRef: SenseRef;
+};
+
+/** What unlinking a token analysis from its lexicon sense needs. */
+export type UnlinkAnalysisSenseRequest = CatalogEdit & {
+  /** Gloss written in `analysisLanguage` before the link is dropped; blank or absent keeps none. */
+  keepGloss?: string;
+  /** BCP 47 tag of the language `keepGloss` is written in. */
+  analysisLanguage: string;
+};
+
+/** What linking one morpheme of a token analysis to a lexicon sense needs. */
+export type LinkAnalysisMorphemeSenseRequest = CatalogEdit & {
+  /** `MorphemeAnalysis.id` of the morpheme linked. */
+  morphemeId: string;
+  /** The entry that owns `senseRef`. */
+  entryRef: EntryRef;
+  /** The sense the morpheme is linked to. */
+  senseRef: SenseRef;
+};
+
+/** What unlinking one morpheme of a token analysis from the lexicon needs. */
+export type UnlinkAnalysisMorphemeSenseRequest = CatalogEdit & {
+  /** `MorphemeAnalysis.id` of the morpheme unlinked. */
+  morphemeId: string;
+  /** Gloss written in `analysisLanguage` before the links are dropped; blank or absent keeps none. */
+  keepGloss?: string;
+  /** BCP 47 tag of the language `keepGloss` is written in. */
+  analysisLanguage: string;
+};
+
+/** What adopting a linked sense's gloss onto a token analysis needs. */
+export type AdoptAnalysisSenseGlossRequest = WriteAnalysisGlossRequest;
+
+/** What adopting a linked sense's gloss onto one morpheme of a token analysis needs. */
+export type AdoptAnalysisMorphemeSenseGlossRequest = WriteAnalysisMorphemeGlossRequest;
 
 /** What folding several token analyses into one needs. */
 export type MergeAnalysesIntoRequest = {
@@ -222,6 +262,149 @@ export async function writeAnalysisMorphemeGloss(
   analysis.updatedAt = now;
   buffer.put('tokenAnalyses', analysis);
   return (await mergeIntoIdenticalPayload(buffer, analysis, now)) ?? analysis.id;
+}
+
+/**
+ * Stages setting the `glossSenseRef` of the token analysis `analysisId`, for every token linked to
+ * it. The analysis's typed gloss is untouched.
+ *
+ * An analysis the link makes identical to another payload is folded into that payload. Nothing is
+ * staged when the analysis isn't stored.
+ *
+ * @returns The id of the analysis that holds the edited content afterward, or `undefined` when the
+ *   analysis isn't stored.
+ */
+export async function linkAnalysisSense(
+  buffer: ChangeBuffer,
+  { analysisId, senseRef, now }: LinkAnalysisSenseRequest,
+): Promise<string | undefined> {
+  const [analysis] = await buffer.getTokenAnalyses([analysisId]);
+  if (!analysis) return undefined;
+  analysis.glossSenseRef = senseRef;
+  analysis.updatedAt = now;
+  return settleEditedAnalysis(buffer, analysis, now);
+}
+
+/**
+ * Stages dropping the `glossSenseRef` of the token analysis `analysisId`, for every token linked to
+ * it. A non-blank `keepGloss` is first written as the gloss in `analysisLanguage`.
+ *
+ * An analysis the unlink leaves empty goes with every token link to it. One the unlink makes
+ * identical to another payload is folded into that payload. Nothing is staged when the analysis
+ * isn't stored or has no `glossSenseRef`.
+ *
+ * @returns The id of the analysis that holds the edited content afterward, or `undefined` when
+ *   nothing was staged or the edit left the analysis empty.
+ */
+export async function unlinkAnalysisSense(
+  buffer: ChangeBuffer,
+  { analysisId, keepGloss, analysisLanguage: lang, now }: UnlinkAnalysisSenseRequest,
+): Promise<string | undefined> {
+  const [analysis] = await buffer.getTokenAnalyses([analysisId]);
+  if (!analysis?.glossSenseRef) return undefined;
+  if (keepGloss !== undefined && keepGloss.trim() !== '') {
+    analysis.gloss = { ...analysis.gloss, [lang]: keepGloss };
+  }
+  delete analysis.glossSenseRef;
+  analysis.updatedAt = now;
+  return settleEditedAnalysis(buffer, analysis, now);
+}
+
+/**
+ * Stages setting the lexicon references of one morpheme of the token analysis `analysisId`, for
+ * every token linked to it. A link to a different entry also drops the morpheme's `allomorphRef`
+ * and `grammarRef`, because they name parts of the entry it leaves.
+ *
+ * An analysis the link makes identical to another payload is folded into that payload. Nothing is
+ * staged when the analysis isn't stored or has no such morpheme.
+ *
+ * @returns The id of the analysis that holds the edited content afterward, or `undefined` when
+ *   nothing was staged.
+ */
+export async function linkAnalysisMorphemeSense(
+  buffer: ChangeBuffer,
+  { analysisId, morphemeId, entryRef, senseRef, now }: LinkAnalysisMorphemeSenseRequest,
+): Promise<string | undefined> {
+  const [analysis] = await buffer.getTokenAnalyses([analysisId]);
+  const morpheme = analysis?.morphemes?.find(({ id }) => id === morphemeId);
+  if (!analysis || !morpheme) return undefined;
+  if (!deepEqual(morpheme.entryRef, entryRef)) {
+    delete morpheme.allomorphRef;
+    delete morpheme.grammarRef;
+  }
+  morpheme.entryRef = entryRef;
+  morpheme.senseRef = senseRef;
+  analysis.updatedAt = now;
+  buffer.put('tokenAnalyses', analysis);
+  return (await mergeIntoIdenticalPayload(buffer, analysis, now)) ?? analysis.id;
+}
+
+/**
+ * Stages dropping every lexicon reference of one morpheme of the token analysis `analysisId`, for
+ * every token linked to it. A non-blank `keepGloss` is first written as the morpheme's gloss in
+ * `analysisLanguage`.
+ *
+ * An analysis the unlink makes identical to another payload is folded into that payload. Nothing is
+ * staged when the analysis isn't stored, has no such morpheme, or the morpheme has no `senseRef`.
+ *
+ * @returns The id of the analysis that holds the edited content afterward, or `undefined` when
+ *   nothing was staged.
+ */
+export async function unlinkAnalysisMorphemeSense(
+  buffer: ChangeBuffer,
+  {
+    analysisId,
+    morphemeId,
+    keepGloss,
+    analysisLanguage: lang,
+    now,
+  }: UnlinkAnalysisMorphemeSenseRequest,
+): Promise<string | undefined> {
+  const [analysis] = await buffer.getTokenAnalyses([analysisId]);
+  const morpheme = analysis?.morphemes?.find(({ id }) => id === morphemeId);
+  if (!analysis || !morpheme?.senseRef) return undefined;
+  if (keepGloss !== undefined && keepGloss.trim() !== '') {
+    morpheme.gloss = { ...morpheme.gloss, [lang]: keepGloss };
+  }
+  delete morpheme.entryRef;
+  delete morpheme.senseRef;
+  delete morpheme.allomorphRef;
+  delete morpheme.grammarRef;
+  analysis.updatedAt = now;
+  buffer.put('tokenAnalyses', analysis);
+  return (await mergeIntoIdenticalPayload(buffer, analysis, now)) ?? analysis.id;
+}
+
+/**
+ * Stages writing `value` as the gloss of the token analysis `analysisId` in `analysisLanguage`,
+ * replacing any typed gloss and keeping the `glossSenseRef`.
+ *
+ * @returns The id of the analysis that holds the edited content afterward, or `undefined` when the
+ *   analysis isn't stored.
+ * @throws If `value` is blank, because an adopt never clears.
+ */
+export async function adoptAnalysisSenseGloss(
+  buffer: ChangeBuffer,
+  request: AdoptAnalysisSenseGlossRequest,
+): Promise<string | undefined> {
+  if (request.value.trim() === '') throw new Error('A sense gloss to adopt must not be blank');
+  return writeAnalysisGloss(buffer, request);
+}
+
+/**
+ * Stages writing `value` as the gloss of one morpheme of the token analysis `analysisId` in
+ * `analysisLanguage`, replacing any typed gloss and keeping the morpheme's lexicon references.
+ *
+ * @returns The id of the analysis that holds the edited content afterward, or `undefined` when the
+ *   analysis isn't stored or has no such morpheme.
+ * @throws If `value` is blank, because an adopt never clears.
+ */
+export async function adoptAnalysisMorphemeSenseGloss(
+  buffer: ChangeBuffer,
+  request: AdoptAnalysisMorphemeSenseGlossRequest,
+): Promise<string | undefined> {
+  if (request.value.trim() === '') throw new Error('A sense gloss to adopt must not be blank');
+  return writeAnalysisMorphemeGloss(buffer, request);
 }
 
 /**

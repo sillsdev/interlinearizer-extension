@@ -53,9 +53,9 @@ interface MergedParse {
 }
 
 /**
- * Every language's contributions for one token that share one parse (or none), merged so the token
- * gets a single record with MultiString glosses; a conflicting parse starts a separate competing
- * record instead.
+ * Every language's contributions for one token that share one parse (or none) and one status,
+ * merged so the token gets a single record with MultiString glosses. A conflicting parse or status
+ * starts a separate competing record instead.
  */
 interface MergedToken {
   tokenRef: string;
@@ -67,29 +67,23 @@ interface MergedToken {
   /** Tag -> the word facet's effective sense id (first contribution per tag wins). */
   wordSenses: Map<string, string | undefined>;
   parse?: MergedParse;
-  statuses: LangRecordStatus[];
+  status: LangRecordStatus;
   ambiguous: boolean;
   tags: Set<string>;
 }
 
 /**
- * Every language's contributions for one phrase occurrence (same phrase lexeme on the same token
- * run), merged so the phrase gets a single record with MultiString glosses.
+ * Every language's contributions for one phrase occurrence that share one status, merged so the
+ * phrase gets a single record with MultiString glosses. An occurrence is one phrase lexeme on one
+ * token run.
  */
 interface MergedPhrase {
   key: LexemeKeyData;
   tokens: { ref: string; surface: string }[];
   glosses: Map<string, string>;
   senses: Map<string, string | undefined>;
-  statuses: LangRecordStatus[];
+  status: LangRecordStatus;
   ambiguous: boolean;
-}
-
-/** Merged review status: approved or rejected only when every contribution agrees. */
-function mergeStatus(statuses: LangRecordStatus[]): LangRecordStatus {
-  if (statuses.every((s) => s === 'approved')) return 'approved';
-  if (statuses.every((s) => s === 'rejected')) return 'rejected';
-  return 'suggested';
 }
 
 /**
@@ -131,11 +125,17 @@ function unanimous(values: Iterable<string | undefined>): string | undefined {
 /**
  * Merges per-language contributions into the final analysis layer.
  *
- * Contributions sharing a token and word lexeme become one record whose glosses are keyed by
- * language tag; a parse from any language fills a record that lacks one, while a genuinely
- * different parse on the same token becomes a separate competing record. A sense reference is kept
- * only where every contributing language agrees on the sense. At most one record per token may be
- * approved, so later would-be-approved records are demoted to candidate.
+ * Contributions sharing a token, word lexeme and status become one record whose glosses are keyed
+ * by language tag. A parse from any language of that status fills a record that lacks one. A
+ * genuinely different parse on the same token becomes a separate competing record.
+ *
+ * Each language's status stands alone, as it does in Paratext 9. Where languages disagree on a
+ * token's or phrase's status, each status gets its own record. Two such records that carry
+ * identical payloads still fold into one link when the import dedupes payloads; a link's status
+ * names no language.
+ *
+ * A sense reference is kept only where every contributing language agrees on the sense. At most one
+ * record per token may be approved, so later would-be-approved records are demoted to candidate.
  */
 export function mergeLanguageAnalyses(args: {
   records: LangTokenRecord[];
@@ -150,7 +150,7 @@ export function mergeLanguageAnalyses(args: {
 
   const merged: MergedToken[] = [];
   const mergedByKey = new Map<string, MergedToken>();
-  const byToken = new Map<string, MergedToken[]>();
+  const byTokenAndStatus = new Map<string, MergedToken[]>();
 
   const createMerged = (key: string, record: LangTokenRecord): MergedToken => {
     const entry: MergedToken = {
@@ -159,23 +159,23 @@ export function mergeLanguageAnalyses(args: {
       writingSystem: record.tokenWritingSystem,
       glosses: new Map(),
       wordSenses: new Map(),
-      statuses: [],
+      status: record.status,
       ambiguous: false,
       tags: new Set(),
     };
     merged.push(entry);
     mergedByKey.set(key, entry);
-    let list = byToken.get(record.tokenRef);
+    const fuseGroup = `${record.tokenRef}|${record.status}`;
+    let list = byTokenAndStatus.get(fuseGroup);
     if (list === undefined) {
       list = [];
-      byToken.set(record.tokenRef, list);
+      byTokenAndStatus.set(fuseGroup, list);
     }
     list.push(entry);
     return entry;
   };
 
   const contribute = (entry: MergedToken, record: LangTokenRecord): void => {
-    entry.statuses.push(record.status);
     entry.ambiguous = entry.ambiguous || record.ambiguous;
     entry.tags.add(record.tag);
     if (record.word !== undefined) {
@@ -201,7 +201,7 @@ export function mergeLanguageAnalyses(args: {
 
   records.forEach((record) => {
     if (record.word !== undefined) {
-      const baseKey = `${record.tokenRef}|w|${record.word.keyId}`;
+      const baseKey = `${record.tokenRef}|${record.status}|w|${record.word.keyId}`;
       const existing = mergedByKey.get(baseKey);
       if (existing === undefined) {
         contribute(createMerged(baseKey, record), record);
@@ -226,16 +226,17 @@ export function mergeLanguageAnalyses(args: {
       contribute(createMerged(conflictKey, record), record);
       return;
     }
-    // Parse-only contribution: keyed by its signature; fused onto word records afterward.
-    const parseKey = `${record.tokenRef}|p|${record.parse?.signature}`;
+    // Parse-only contribution: keyed by its status and signature, and fused onto word records
+    // afterward.
+    const parseKey = `${record.tokenRef}|${record.status}|p|${record.parse?.signature}`;
     const existing = mergedByKey.get(parseKey);
     contribute(existing ?? createMerged(parseKey, record), record);
   });
 
-  // Fuse parse-only records onto the word record they complete: the one sharing their parse, or
-  // the sole word record still lacking a parse. An ambiguous target leaves them standalone.
+  // Fuse each parse-only record onto the same-status word record it completes: the one sharing its
+  // parse, or the sole one still lacking a parse. An ambiguous target leaves it standalone.
   const removed = new Set<MergedToken>();
-  byToken.forEach((list) => {
+  byTokenAndStatus.forEach((list) => {
     list
       .filter((entry) => entry.wordKey === undefined && entry.parse !== undefined)
       .forEach((standalone) => {
@@ -265,7 +266,6 @@ export function mergeLanguageAnalyses(args: {
             addParseColumns(targetParse, tag, columns),
           );
         }
-        target.statuses.push(...standalone.statuses);
         target.ambiguous = target.ambiguous || standalone.ambiguous;
         standalone.tags.forEach((tag) => target.tags.add(tag));
         removed.add(standalone);
@@ -291,7 +291,8 @@ export function mergeLanguageAnalyses(args: {
     .forEach((entry) => {
       if (entry.tags.size > 1) report.merge.mergedTokenRecords += 1;
 
-      let status: AssignmentStatus = mergeStatus(entry.statuses);
+      const { status: recordStatus } = entry;
+      let status: AssignmentStatus = recordStatus;
       if (status === 'approved') {
         if (approvedTokenSeen.has(entry.tokenRef)) {
           status = 'candidate';
@@ -357,13 +358,13 @@ export function mergeLanguageAnalyses(args: {
       });
     });
 
-  // Phrases merge on their token run plus phrase lexeme, then honor the one-approved-phrase-per-
-  // token invariant in insertion order.
+  // Phrases merge on their token run, status and phrase lexeme. They then honor the
+  // one-approved-phrase-per-token invariant in insertion order.
   const mergedPhrases: MergedPhrase[] = [];
   const phrasesByKey = new Map<string, MergedPhrase>();
   phrases.forEach((record) => {
     // Token refs contain spaces, so the joiner must be a character no ref can carry.
-    const key = `${record.tokens.map((t) => t.ref).join('\n')}|${record.phrase.keyId}`;
+    const key = `${record.tokens.map((t) => t.ref).join('\n')}|${record.status}|${record.phrase.keyId}`;
     let entry = phrasesByKey.get(key);
     if (entry === undefined) {
       entry = {
@@ -371,13 +372,12 @@ export function mergeLanguageAnalyses(args: {
         tokens: record.tokens,
         glosses: new Map(),
         senses: new Map(),
-        statuses: [],
+        status: record.status,
         ambiguous: false,
       };
       mergedPhrases.push(entry);
       phrasesByKey.set(key, entry);
     }
-    entry.statuses.push(record.status);
     entry.ambiguous = entry.ambiguous || record.ambiguous;
     if (!entry.senses.has(record.tag)) entry.senses.set(record.tag, record.phrase.senseId);
     if (record.phrase.glossText !== undefined && !entry.glosses.has(record.tag))
@@ -389,7 +389,8 @@ export function mergeLanguageAnalyses(args: {
   const approvedPhraseTokens = new Set<string>();
   const phraseIdCounters = new Map<string, number>();
   mergedPhrases.forEach((entry) => {
-    let status: AssignmentStatus = mergeStatus(entry.statuses);
+    const { status: recordStatus } = entry;
+    let status: AssignmentStatus = recordStatus;
     if (status === 'approved') {
       if (entry.tokens.some((t) => approvedPhraseTokens.has(t.ref))) {
         status = 'candidate';

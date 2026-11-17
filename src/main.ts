@@ -24,12 +24,7 @@ import {
 } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-import {
-  AnalysisSessions,
-  isEmptyDraft,
-  type OpenedSession,
-  type Session,
-} from './services/analysisSessions';
+import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
 import * as bookService from './services/bookService';
 import { startCSharpHost } from './services/csharpHost';
 import {
@@ -44,7 +39,12 @@ import type { Pt9ImportResult } from './services/pt9ImportService';
 import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
 import { sessionConcordanceHandlers } from './services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
-import { readBookOutline, readSegmentPage, readStaleSummary } from './services/sessionPages';
+import {
+  readBookOutline,
+  readDraftEnvelope,
+  readSegmentPage,
+  readStaleSummary,
+} from './services/sessionPages';
 import { UnreadableBooksError } from './types/analysis-repository';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from './types/command-reply';
@@ -58,7 +58,8 @@ import { CURRENT_MODEL_VERSION } from './types/model-version';
 import type { TextReadStatus } from './types/text-read-status';
 import { isDraftProject, isInterlinearProjectSummary } from './types/type-guards';
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
-import { envelopeOf } from './types/draft-envelope';
+import { isEmptyDraft } from './utils/empty-draft';
+import type { InterlinearizerWebViewState } from './types/webview-state';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 
 // #region WebView provider
@@ -70,21 +71,10 @@ import { perfTime, perfTimeAsync } from './utils/perf-marks';
 const mainWebViewType = 'interlinearizer.mainWebView';
 
 /** Options passed to `papi.webViews.openWebView` when opening the Interlinearizer. */
-export interface InterlinearizerOpenOptions extends OpenWebViewOptions {
+export interface InterlinearizerOpenOptions
+  extends OpenWebViewOptions, Partial<InterlinearizerWebViewState> {
   /** Paratext project ID to load in the Interlinearizer WebView. */
   projectId?: string;
-  /**
-   * Whether the WebView should offer converting the source's Paratext 9 interlinear data: set on an
-   * explicit open when the source has no interlinearizer state stored yet. The WebView probes the
-   * source for convertible data and shows the offer only if it finds any. Carried into the
-   * WebView's state, where answering the offer clears it.
-   */
-  offerPt9Import?: boolean;
-  /**
-   * The interlinear project the source's view last had active, set on an explicit open that creates
-   * the tab. Carried into the WebView's state, so the new tab opens on that project.
-   */
-  activeProject?: InterlinearProjectSummary;
 }
 
 /** Tab title used when there is no project to name or the localized title format cannot be read. */
@@ -217,6 +207,7 @@ function createSessions(
       if (!sessionReadsAreSkipped()) await bookService.startTextRead(sourceProjectId);
     },
     stopTextRead: (sourceProjectId) => bookService.stopTextRead(sourceProjectId),
+    holdTextRead: bookService.holdTextRead,
     heldBook: (sourceProjectId, bookId, segmentation) =>
       bookService.heldBook(sourceProjectId, bookId, segmentation),
     getOpenVerseBook: bookService.getOpenVerseBook,
@@ -298,7 +289,8 @@ function rememberActiveProject(
   sourceProjectId: string,
   state: SavedWebViewDefinition['state'],
 ): void {
-  const active = state?.activeProject;
+  const activeProjectKey: keyof InterlinearizerWebViewState = 'activeProject';
+  const active = state?.[activeProjectKey];
   const activeId = isInterlinearProjectSummary(active) ? active.id : undefined;
   if (
     rememberedActiveProjects.has(sourceProjectId) &&
@@ -399,25 +391,21 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
 }
 
 /**
- * Updates the metadata of an existing interlinearizer project. Called from the WebView when the
- * user saves edits in the project info modal.
+ * Updates the metadata of an existing interlinearizer project.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisLanguages - New BCP 47 analysis language tags. Required and must be non-empty;
- *   pass the current value to leave it unchanged.
  * @param targetProjectId - New target-project ID; omit to clear the target binding.
  * @returns The updated project as a JSON string, or `undefined` if no project with the given ID
  *   exists.
- * @throws If storage fails. The error is logged and an error notification is sent before rethrowing
- *   so the frontend `catch` block can suppress it without sending a second notification.
+ * @throws If storage fails. The error is logged and an error notification is sent before
+ *   rethrowing.
  */
 async function updateProjectMetadata(
   interlinearProjectId: string,
   name: string | undefined,
   description: string | undefined,
-  analysisLanguages: string[],
   targetProjectId?: string,
 ): Promise<string | undefined> {
   try {
@@ -426,7 +414,6 @@ async function updateProjectMetadata(
       interlinearProjectId,
       name,
       description,
-      analysisLanguages,
       targetProjectId,
     );
     return updated ? JSON.stringify(updated) : undefined;
@@ -628,8 +615,9 @@ async function savingInSession<T>(
  *   session's history marks the draft saved.
  * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
  * @param interlinearProjectId - UUID of the interlinearizer project to save into.
- * @param config - The configuration to set on the project in the same write; omit to leave the
- *   project's configuration unchanged.
+ * @param config - The target to set on the project in the same write, along with the draft's
+ *   analysis languages; omit to leave the project's configuration unchanged. A draft that lists no
+ *   analysis languages leaves the configuration unchanged too, target included.
  * @returns The saved project's `InterlinearProjectSummary` (carrying the refreshed `updatedAt`) as
  *   a JSON string, or `undefined` if no project with the given ID exists.
  * @throws If `sessionId` names no open session, if the draft cannot be read for some book, if the
@@ -640,7 +628,7 @@ async function saveDraftToProject(
   sessionId: string,
   sourceProjectId: string,
   interlinearProjectId: string,
-  config?: ProjectConfig,
+  config?: Pick<ProjectConfig, 'targetProjectId'>,
 ): Promise<string | undefined> {
   try {
     return await perfTimeAsync('saveDraftToProject', async () => {
@@ -1140,12 +1128,9 @@ async function getDraftEnvelope({
 }: ArgsOf<'interlinearizer.getDraftEnvelope'>): Promise<string> {
   try {
     return JSON.stringify(
-      await sessions.run(sessionId, async ({ repository, analysisLanguage }) => {
-        const envelope = envelopeOf(await repository.getWholeDraft());
-        return envelope.analysisLanguages.length > 0
-          ? envelope
-          : { ...envelope, analysisLanguages: [analysisLanguage] };
-      }),
+      await sessions.run(sessionId, ({ repository, analysisLanguage }) =>
+        readDraftEnvelope(repository, analysisLanguage),
+      ),
     );
   } catch (e) {
     logger.error(`Interlinearizer: failed to read the draft envelope of session ${sessionId}`, e);
@@ -1523,14 +1508,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             name: 'config',
             required: false,
             summary:
-              "The project's analysis languages and target to set in the same write, a missing target clearing the binding; omit to leave its configuration unchanged",
+              "The project's target to set in the same write, along with the draft's analysis languages, a missing target clearing the binding; omit to leave its configuration unchanged",
             schema: {
               type: 'object',
               properties: {
-                analysisLanguages: { type: 'array', items: { type: 'string' } },
                 targetProjectId: { type: 'string' },
               },
-              required: ['analysisLanguages'],
             },
           },
         ],
@@ -2228,6 +2211,85 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     result: editResult,
   });
 
+  const senseRefParam = {
+    name: 'senseRef',
+    required: true,
+    summary: 'SenseRef of the lexicon sense linked',
+    schema: { type: 'object' },
+  } as const;
+  const keepGlossParam = {
+    name: 'keepGloss',
+    required: false,
+    summary:
+      "Gloss to write in the session's analysis language before the link is dropped; omit or leave blank to keep none",
+    schema: { type: 'string' },
+  } as const;
+  const morphemeIdParam = {
+    name: 'morphemeId',
+    required: true,
+    summary: 'MorphemeAnalysis.id of the morpheme edited',
+    schema: { type: 'string' },
+  } as const;
+  const adoptValueParam = {
+    name: 'value',
+    required: true,
+    summary: "The linked sense's gloss, which is never blank",
+    schema: { type: 'string' },
+  } as const;
+
+  await registerSessionCommand('interlinearizer.linkAnalysisSense', {
+    summary:
+      'Link a token analysis to a lexicon sense, for every token linked to it, replacing any sense it had',
+    params: sessionArgs(catalogAnalysisParam, senseRefParam, changeIdParam),
+    result: editResult,
+  });
+
+  await registerSessionCommand('interlinearizer.unlinkAnalysisSense', {
+    summary:
+      "Drop a token analysis's lexicon sense link, for every token linked to it, optionally keeping a gloss",
+    params: sessionArgs(catalogAnalysisParam, keepGlossParam, changeIdParam),
+    result: editResult,
+  });
+
+  await registerSessionCommand('interlinearizer.linkAnalysisMorphemeSense', {
+    summary:
+      'Link one morpheme of a token analysis to a lexicon sense, for every token linked to it; a different entry drops its allomorph and grammar references',
+    params: sessionArgs(
+      catalogAnalysisParam,
+      morphemeIdParam,
+      {
+        name: 'entryRef',
+        required: true,
+        summary: 'EntryRef of the lexicon entry that owns the sense',
+        schema: { type: 'object' },
+      },
+      senseRefParam,
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
+  await registerSessionCommand('interlinearizer.unlinkAnalysisMorphemeSense', {
+    summary:
+      'Drop every lexicon reference of one morpheme of a token analysis, for every token linked to it, optionally keeping a gloss',
+    params: sessionArgs(catalogAnalysisParam, morphemeIdParam, keepGlossParam, changeIdParam),
+    result: editResult,
+  });
+
+  await registerSessionCommand('interlinearizer.adoptAnalysisSenseGloss', {
+    summary:
+      "Write a linked sense's gloss as a token analysis's gloss in a session's analysis language, keeping the link",
+    params: sessionArgs(catalogAnalysisParam, adoptValueParam, changeIdParam),
+    result: editResult,
+  });
+
+  await registerSessionCommand('interlinearizer.adoptAnalysisMorphemeSenseGloss', {
+    summary:
+      "Write a linked sense's gloss as one morpheme's gloss in a session's analysis language, keeping the link",
+    params: sessionArgs(catalogAnalysisParam, morphemeIdParam, adoptValueParam, changeIdParam),
+    result: editResult,
+  });
+
   await registerSessionCommand('interlinearizer.deleteAnalyses', {
     summary: 'Remove token analyses with every token link to them',
     params: sessionArgs(analysisIdsParam, changeIdParam),
@@ -2494,6 +2556,48 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       "Discard every unsaved change to a session's draft, restoring what the project it saves to holds",
     params: sessionArgs(changeIdParam),
     result: discardResult,
+  });
+
+  await registerSessionCommand('interlinearizer.changeAnalysisLanguages', {
+    summary:
+      "Give a session's draft new analysis languages, optionally moving or deleting one tag's glosses and free translations",
+    params: sessionArgs(
+      {
+        name: 'analysisLanguages',
+        required: true,
+        summary: 'BCP 47 tags, primary first; never empty',
+        schema: { type: 'array', items: { type: 'string' } },
+      },
+      {
+        name: 'retag',
+        required: false,
+        summary: 'Glosses and free translations to move from one tag to another',
+        schema: {
+          type: 'object',
+          properties: { from: { type: 'string' }, to: { type: 'string' } },
+          required: ['from', 'to'],
+        },
+      },
+      {
+        name: 'deleteTextOf',
+        required: false,
+        summary: 'The tag whose glosses and free translations are deleted',
+        schema: { type: 'string' },
+      },
+      changeIdParam,
+    ),
+    result: editResult,
+  });
+
+  await registerSessionCommand('interlinearizer.countLanguageText', {
+    summary:
+      "Count the glosses and free translations of a session's draft under each language tag that has any",
+    params: sessionArgs(),
+    result: {
+      name: 'return value',
+      summary: 'JSON-stringified counts keyed by tag',
+      schema: { type: 'string' },
+    },
   });
 
   await registerSessionCommand('interlinearizer.previewRemovals', {
@@ -2763,8 +2867,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     updateProjectMetadata,
     {
       method: {
-        summary:
-          'Update the name, description, and analysis language of an existing interlinearizer project',
+        summary: 'Update the name, description, and target of an existing interlinearizer project',
         params: [
           {
             name: 'interlinearProjectId',
@@ -2783,13 +2886,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             required: false,
             summary: 'New user-facing description; omit to clear',
             schema: { type: 'string' },
-          },
-          {
-            name: 'analysisLanguages',
-            required: true,
-            summary:
-              'New BCP 47 analysis language tags; must be non-empty (pass current value to leave unchanged)',
-            schema: { type: 'array', items: { type: 'string' } },
           },
           {
             name: 'targetProjectId',
@@ -3132,7 +3228,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
 /**
  * Extension teardown. Called by the platform when the extension is unloaded. Registrations added
- * during activate are disposed by the platform.
+ * during activate are disposed by the platform. Forgets which tab holds each project and which tabs
+ * duplicate it, so the next activation tracks tabs afresh.
  *
  * @returns True to indicate successful deactivation; the platform may use this for logging.
  */

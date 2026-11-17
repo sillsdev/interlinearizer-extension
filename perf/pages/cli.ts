@@ -7,6 +7,7 @@ import type {
   ChangedBook,
   DraftProject,
   PhraseAnalysisLink,
+  ReadonlySegment,
   SegmentAnalysisLink,
   SegmentationDelta,
   SessionAnalysisChange,
@@ -89,7 +90,9 @@ function sessionHost(
     getInterfaceLanguages: async () => ['en'],
     startTextRead: async () => {},
     stopTextRead: async () => {},
+    holdTextRead: () => {},
     heldBook: (_source, bookId, segmentation) => heldBook(bookId, segmentation),
+    getOpenVerseBook: async (_source, bookId) => heldBook(bookId, undefined),
     reportChange,
   };
 }
@@ -107,6 +110,11 @@ function memoryStorage(): KeyValueStorage {
       records.delete(key);
     },
   };
+}
+
+/** A page sent through JSON, as the host sends one, so that its holder owns its segments. */
+async function served(page: Promise<SegmentPage<ReadonlySegment>>): Promise<SegmentPage> {
+  return JSON.parse(JSON.stringify(await page));
 }
 
 function pick<T>(rng: Rng, items: readonly T[]): T {
@@ -343,7 +351,7 @@ async function checkPages(
       mismatches.push(`${book.bookRef} stale summary free translations`);
     for (let start = 0; start < book.segments.length; start += PAGE_SIZE) {
       // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
-      const page: SegmentPage = await readSegmentPage(repository, book, start, start + PAGE_SIZE);
+      const page = await readSegmentPage(repository, book, start, start + PAGE_SIZE);
       const expected = expectedFor(start, start + PAGE_SIZE);
       const got = page.analysis;
       pages += 1;
@@ -396,7 +404,7 @@ async function checkPages(
       const held: SegmentPage[] = [];
       for (let index = 0; index < book.segments.length; index += 2) {
         // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
-        held.push(await readSegmentPage(repository, book, index, index + 1));
+        held.push(await served(readSegmentPage(repository, book, index, index + 1)));
       }
       const bookPhrases = analysis.phraseAnalysisLinks.filter(
         ({ tokens }) => bookOfRef(tokens[0].tokenRef) === book.bookRef,
@@ -410,8 +418,10 @@ async function checkPages(
         // eslint-disable-next-line no-restricted-syntax -- calls for one draft must not overlap
         for (const target of targets) {
           const range = outlineRangeOf(outline.segments, target);
-          // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
-          const page = range && (await readSegmentPage(repository, book, range.start, range.end));
+          const page =
+            range &&
+            // eslint-disable-next-line no-await-in-loop -- calls for one draft must not overlap
+            (await served(readSegmentPage(repository, book, range.start, range.end)));
           const landed = page && buildPageIndexes(outline.segments, [...held, page]);
           const holds =
             target === segment.id
@@ -717,7 +727,11 @@ async function checkEvents(
     return w.slice(1).map((t, i) => [w[i], t]);
   });
   const now = () => new Date().toISOString();
-  const saved = { analysis: draft.analysis, segmentation: draft.segmentation };
+  const saved = {
+    analysis: draft.analysis,
+    segmentation: draft.segmentation,
+    analysisLanguages: draft.analysisLanguages,
+  };
   const ids = () => ({
     analysisId: crypto.randomUUID(),
     linkId: crypto.randomUUID(),
@@ -730,7 +744,11 @@ async function checkEvents(
 
   const commands: [
     string,
-    (buffer: ChangeBuffer, current: DraftProject) => Promise<void | EditOutcome>,
+    (
+      buffer: ChangeBuffer,
+      current: DraftProject,
+      reader: discardCommands.DiscardReader,
+    ) => Promise<void | EditOutcome>,
   ][] = [
     [
       'writeGloss',
@@ -841,10 +859,10 @@ async function checkEvents(
     ],
     [
       'discardBook',
-      async (buffer, current) => {
-        const { changedBooks } = discardCommands.discardBook(
+      async (buffer, _current, reader) => {
+        const { changedBooks } = await discardCommands.discardBook(
           buffer,
-          { draft: current, unreadableBooks: [] },
+          reader,
           viewBook.bookRef,
           saved,
         );
@@ -878,7 +896,7 @@ async function checkEvents(
   };
   const fetchPage = (start: number, end: number) =>
     sessions.run(sessionId, async (session) =>
-      readSegmentPage(session.repository, await sessionBook(session), start, end),
+      served(readSegmentPage(session.repository, await sessionBook(session), start, end)),
     );
   const fetchOutline = () =>
     sessions.run(sessionId, async (session) =>
@@ -921,7 +939,12 @@ async function checkEvents(
       name = intent;
       send = (id) =>
         sessions
-          .edit(sessionId, intent, (buffer) => command(buffer, before), { changeId: id })
+          .edit(
+            sessionId,
+            intent,
+            (buffer, session) => command(buffer, before, session.repository),
+            { changeId: id },
+          )
           // A random edit that the approval rule refuses applies nothing, as the host intends.
           .catch((e) => {
             if (e instanceof ApprovalRuleError) return undefined;

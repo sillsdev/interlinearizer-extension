@@ -157,6 +157,9 @@ type LoadedShard = {
  * overwrites a draft written by a newer build.
  *
  * Calls on one instance must not overlap.
+ *
+ * The repository imports nothing from PAPI and reaches storage only through a
+ * {@link KeyValueStorage}. That keeps it runnable in plain Node, straight over the storage files.
  */
 export class DraftRepository extends IndexedRepository implements AnalysisRepository {
   readonly capabilities: RepositoryCapabilities = { readOnly: false };
@@ -291,6 +294,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * Recovery survives a restart. The next load finds a shard the envelope never came to name, and a
    * later save retries a failed deletion. A book dropped from the analysis leaves no shard behind.
    *
+   * Starting over is not part of {@link AnalysisRepository}, because what starting a draft over from
+   * New or Open means for another backend is undecided.
+   *
    * A save that fails leaves no storage call of its own in flight. Once the draft has landed, a
    * wiped book's shard that could not be deleted, or a shard journal that could not be updated, is
    * no failure of the save: each is logged, and a later save retries it.
@@ -391,6 +397,10 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
 
   protected keptIndex(): IndexedDraft | undefined {
     return this.current;
+  }
+
+  protected unreadableBooks(): string[] {
+    return [...this.unreadableShards].sort();
   }
 
   /**

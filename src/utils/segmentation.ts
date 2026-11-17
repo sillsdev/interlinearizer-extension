@@ -5,7 +5,7 @@
  * Every transform takes the _original_ verse-tokenized book — never the re-segmented one — because
  * that is what the default verse starts are derived from, and returns a normalized delta.
  */
-import type { Book, SegmentationDelta, TokenSnapshot } from 'interlinearizer';
+import type { ReadonlyBook, SegmentationDelta, TokenSnapshot } from 'interlinearizer';
 import { bookOfRef } from './analysis-book';
 import { normalizeSurfaceForm } from './analysis-identity';
 import { reanchorSnapshots, verseOfTokenRef } from './reanchor-analysis';
@@ -52,9 +52,9 @@ type BookLookups = Readonly<{
  * Per-book cache of {@link BookLookups}. A tokenized book's identity is stable until it is
  * re-tokenized, so every operation reuses one traversal.
  */
-const bookLookupsCache = new WeakMap<Book, BookLookups>();
+const bookLookupsCache = new WeakMap<ReadonlyBook, BookLookups>();
 
-function bookLookups(verseBook: Book): BookLookups {
+function bookLookups(verseBook: ReadonlyBook): BookLookups {
   const cached = bookLookupsCache.get(verseBook);
   if (cached) return cached;
   const defaults = new Set<string>();
@@ -101,7 +101,7 @@ function bookLookups(verseBook: Book): BookLookups {
  * The default segment-start refs — each verse segment's first token, of any type, so a verse's
  * leading punctuation stays with that verse.
  */
-export function defaultVerseStarts(verseBook: Book): ReadonlySet<string> {
+export function defaultVerseStarts(verseBook: ReadonlyBook): ReadonlySet<string> {
   return bookLookups(verseBook).defaults;
 }
 
@@ -118,7 +118,7 @@ function namesItsWord({ surfaces }: BookLookups, start: TokenSnapshot): boolean 
  * The default segment starts no merge can remove, having no preceding run to merge into: the book's
  * first verse and any verse following a token-less verse marker or a heading.
  */
-export function unmergeableVerseStarts(verseBook: Book): ReadonlySet<string> {
+export function unmergeableVerseStarts(verseBook: ReadonlyBook): ReadonlySet<string> {
   return bookLookups(verseBook).unmergeable;
 }
 
@@ -129,7 +129,7 @@ export function unmergeableVerseStarts(verseBook: Book): ReadonlySet<string> {
  * single definition of where a segment begins, so no two boundary operations can disagree.
  */
 export function effectiveStarts(
-  verseBook: Book,
+  verseBook: ReadonlyBook,
   delta: SegmentationDelta | undefined,
 ): Set<string> {
   const lookups = bookLookups(verseBook);
@@ -183,7 +183,7 @@ function startKey(start: TokenSnapshot): string {
  *
  * Only this book's honored anchors have a document order to sort by; the two tails sort by ref.
  */
-function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta {
+function normalize(verseBook: ReadonlyBook, delta: SegmentationDelta): SegmentationDelta {
   const lookups = bookLookups(verseBook);
   const { order } = lookups;
   const honors = honorsAnchor(lookups);
@@ -231,7 +231,7 @@ function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta
  * segment whichever kind of anchor already named it.
  */
 export function addBoundaryBefore(
-  verseBook: Book,
+  verseBook: ReadonlyBook,
   delta: SegmentationDelta | undefined,
   ref: string,
 ): SegmentationDelta {
@@ -258,7 +258,7 @@ export function addBoundaryBefore(
  * beginning a segment whichever kind of anchor already named it.
  */
 export function removeBoundaryAt(
-  verseBook: Book,
+  verseBook: ReadonlyBook,
   delta: SegmentationDelta | undefined,
   ref: string,
 ): SegmentationDelta {
@@ -277,7 +277,7 @@ export function removeBoundaryAt(
  * edge token across a segment boundary.
  */
 export function moveBoundary(
-  verseBook: Book,
+  verseBook: ReadonlyBook,
   delta: SegmentationDelta | undefined,
   fromRef: string,
   toRef: string,
@@ -292,7 +292,7 @@ export function moveBoundary(
  * the merge intent.
  */
 export function mergeSegments(
-  verseBook: Book,
+  verseBook: ReadonlyBook,
   delta: SegmentationDelta | undefined,
   secondSegmentStartRef: string,
 ): SegmentationDelta {
@@ -305,7 +305,7 @@ export function mergeSegments(
  * split intent.
  */
 export function splitSegmentBefore(
-  verseBook: Book,
+  verseBook: ReadonlyBook,
   delta: SegmentationDelta | undefined,
   ref: string,
 ): SegmentationDelta {
@@ -356,7 +356,7 @@ export function sameSegmentation(
  * book of its draft, so a delta that is custom overall may still say nothing about this book.
  */
 export function isDefaultSegmentationForBook(
-  verseBook: Book,
+  verseBook: ReadonlyBook,
   delta: SegmentationDelta | undefined,
 ): boolean {
   if (!delta) return true;
@@ -374,7 +374,7 @@ export function isDefaultSegmentationForBook(
  * @returns The re-anchored delta, or `delta` itself when no anchor moved.
  */
 export function reanchorSegmentation(
-  verseBook: Book,
+  verseBook: ReadonlyBook,
   delta: SegmentationDelta | undefined,
 ): SegmentationDelta | undefined {
   if (!delta) return delta;
@@ -408,7 +408,7 @@ export function reanchorSegmentation(
  * delta is left intact either way, so a source that reverts brings its boundaries back.
  */
 export function lostBoundaries(
-  verseBook: Book,
+  verseBook: ReadonlyBook,
   delta: SegmentationDelta | undefined,
 ): readonly string[] {
   if (!delta) return [];
@@ -429,7 +429,7 @@ export function lostBoundaries(
  * re-anchored to the book's text as its segments are.
  */
 export function outlineBoundaries(
-  verseBook: Book,
+  verseBook: ReadonlyBook,
   delta: SegmentationDelta | undefined,
 ): OutlineBoundaries {
   const forBook = reanchorSegmentation(verseBook, segmentationForBook(delta, verseBook.bookRef));

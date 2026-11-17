@@ -197,7 +197,6 @@ const getUpdateProjectMetadataHandler = () =>
       id: string,
       name: string | undefined,
       description: string | undefined,
-      analysisLanguages: string[],
     ) => Promise<string | undefined>
   >('interlinearizer.updateProjectMetadata');
 
@@ -663,6 +662,8 @@ describe('main', () => {
           'interlinearizer.redo',
           'interlinearizer.undoFromNotification',
           'interlinearizer.updateProjectMetadata',
+          'interlinearizer.changeAnalysisLanguages',
+          'interlinearizer.countLanguageText',
           'interlinearizer.deleteProject',
         ]),
       );
@@ -1742,33 +1743,13 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockResolvedValue({ ...stubProject, name: 'My Name' });
       const handler = await getUpdateProjectMetadataHandler();
 
-      await handler('proj-id', 'My Name', 'My Desc', ['en']);
+      await handler('proj-id', 'My Name', 'My Desc');
 
       expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
         expect.anything(),
         'proj-id',
         'My Name',
         'My Desc',
-        ['en'],
-        undefined,
-      );
-    });
-
-    it('passes analysisLanguages to projectStorage.updateProjectMetadata', async () => {
-      mockUpdateProjectMetadata.mockResolvedValue({
-        ...stubProject,
-        analysisLanguages: ['fr', 'de'],
-      });
-      const handler = await getUpdateProjectMetadataHandler();
-
-      await handler('proj-id', undefined, undefined, ['fr', 'de']);
-
-      expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
-        expect.anything(),
-        'proj-id',
-        undefined,
-        undefined,
-        ['fr', 'de'],
         undefined,
       );
     });
@@ -1777,7 +1758,7 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockResolvedValue(undefined);
       const handler = await getUpdateProjectMetadataHandler();
 
-      const result = await handler('missing', undefined, undefined, ['en']);
+      const result = await handler('missing', undefined, undefined);
 
       expect(result).toBeUndefined();
     });
@@ -1786,7 +1767,7 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockRejectedValue(new Error('disk full'));
       const handler = await getUpdateProjectMetadataHandler();
 
-      await expect(handler('proj-id', 'My Name', 'My Desc', ['en'])).rejects.toThrow('disk full');
+      await expect(handler('proj-id', 'My Name', 'My Desc')).rejects.toThrow('disk full');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to update project metadata',
         expect.any(Error),
@@ -2398,6 +2379,24 @@ describe('main', () => {
         writeAnalysisMorphemeGloss: handler<
           CommandHandlers['interlinearizer.writeAnalysisMorphemeGloss']
         >('interlinearizer.writeAnalysisMorphemeGloss'),
+        linkAnalysisSense: handler<CommandHandlers['interlinearizer.linkAnalysisSense']>(
+          'interlinearizer.linkAnalysisSense',
+        ),
+        unlinkAnalysisSense: handler<CommandHandlers['interlinearizer.unlinkAnalysisSense']>(
+          'interlinearizer.unlinkAnalysisSense',
+        ),
+        linkAnalysisMorphemeSense: handler<
+          CommandHandlers['interlinearizer.linkAnalysisMorphemeSense']
+        >('interlinearizer.linkAnalysisMorphemeSense'),
+        unlinkAnalysisMorphemeSense: handler<
+          CommandHandlers['interlinearizer.unlinkAnalysisMorphemeSense']
+        >('interlinearizer.unlinkAnalysisMorphemeSense'),
+        adoptAnalysisSenseGloss: handler<
+          CommandHandlers['interlinearizer.adoptAnalysisSenseGloss']
+        >('interlinearizer.adoptAnalysisSenseGloss'),
+        adoptAnalysisMorphemeSenseGloss: handler<
+          CommandHandlers['interlinearizer.adoptAnalysisMorphemeSenseGloss']
+        >('interlinearizer.adoptAnalysisMorphemeSenseGloss'),
         deleteAnalyses: handler<CommandHandlers['interlinearizer.deleteAnalyses']>(
           'interlinearizer.deleteAnalyses',
         ),
@@ -2509,9 +2508,9 @@ describe('main', () => {
 
     it('warns which books of the draft could not be read when it opens a session', async () => {
       const repository = await seedDraft({});
-      const read = repository.exportAll.bind(repository);
+      const read = repository.getDraftState.bind(repository);
       jest
-        .spyOn(repository, 'exportAll')
+        .spyOn(repository, 'getDraftState')
         .mockImplementation(async () => ({ ...(await read()), unreadableBooks: ['JHN'] }));
       __mockGetLocalizedString.mockResolvedValue('Opened without: {books}');
       const { openSession } = await activateSessionCommands();
@@ -4274,6 +4273,165 @@ describe('main', () => {
       });
     });
 
+    describe('lexicon sense links', () => {
+      const SENSE = { authority: 'x-test', senseId: 'sense-in' };
+      const ENTRY = { authority: 'x-test', entryId: 'entry-in' };
+      const linked = {
+        tokenAnalyses: [
+          {
+            id: 'ta-in',
+            ...FIXTURE_STAMPS,
+            surfaceText: 'In',
+            gloss: { en: 'at' },
+            glossSenseRef: SENSE,
+            morphemes: [
+              {
+                id: 'm-in',
+                form: 'In',
+                writingSystem: 'qaa',
+                gloss: { fr: 'dans' },
+                entryRef: ENTRY,
+                senseRef: SENSE,
+              },
+            ],
+          },
+        ],
+        tokenAnalysisLinks: glossedIn.tokenAnalysisLinks,
+      };
+
+      it('links an analysis to a sense, recording a link step', async () => {
+        await seedDraft(glossedIn);
+        const { openSession, linkAnalysisSense } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        const { changes, step } = JSON.parse(
+          await linkAnalysisSense({ sessionId, analysisId: 'ta-in', senseRef: SENSE }),
+        );
+
+        expect(changes).toMatchObject({
+          intent: 'linkAnalysisSense',
+          tokenAnalyses: { puts: [{ id: 'ta-in', gloss: { en: 'at' }, glossSenseRef: SENSE }] },
+        });
+        expect(step.summary).toStrictEqual({
+          kind: 'catalogLinkSense',
+          form: 'In',
+          analysisId: 'ta-in',
+          survivingAnalysisId: 'ta-in',
+        });
+      });
+
+      it("unlinks an analysis, keeping a gloss in the session's language", async () => {
+        await seedDraft(linked);
+        const { openSession, setAnalysisLanguage, unlinkAnalysisSense } =
+          await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await setAnalysisLanguage({ sessionId, analysisLanguage: 'fr' });
+
+        const { changes, step } = JSON.parse(
+          await unlinkAnalysisSense({ sessionId, analysisId: 'ta-in', keepGloss: 'dans' }),
+        );
+
+        expect(changes.tokenAnalyses.puts).toStrictEqual([
+          expect.objectContaining({ gloss: { en: 'at', fr: 'dans' } }),
+        ]);
+        expect(changes.tokenAnalyses.puts[0]).not.toHaveProperty('glossSenseRef');
+        expect(step.summary.kind).toBe('catalogUnlinkSense');
+      });
+
+      it('links a morpheme to a sense, recording a link step', async () => {
+        await seedDraft(glossedIn);
+        const { openSession, linkAnalysisMorphemeSense } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        const { changes, step } = JSON.parse(
+          await linkAnalysisMorphemeSense({
+            sessionId,
+            analysisId: 'ta-in',
+            morphemeId: 'm-in',
+            entryRef: ENTRY,
+            senseRef: SENSE,
+          }),
+        );
+
+        expect(changes).toMatchObject({
+          intent: 'linkAnalysisMorphemeSense',
+          tokenAnalyses: {
+            puts: [{ morphemes: [{ id: 'm-in', entryRef: ENTRY, senseRef: SENSE }] }],
+          },
+        });
+        expect(step.summary.kind).toBe('catalogLinkSense');
+      });
+
+      it("unlinks a morpheme, keeping a gloss in the session's language", async () => {
+        await seedDraft(linked);
+        const { openSession, setAnalysisLanguage, unlinkAnalysisMorphemeSense } =
+          await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+        await setAnalysisLanguage({ sessionId, analysisLanguage: 'en' });
+
+        const { changes, step } = JSON.parse(
+          await unlinkAnalysisMorphemeSense({
+            sessionId,
+            analysisId: 'ta-in',
+            morphemeId: 'm-in',
+            keepGloss: 'in',
+          }),
+        );
+
+        expect(changes.tokenAnalyses.puts[0].morphemes).toStrictEqual([
+          { id: 'm-in', form: 'In', writingSystem: 'qaa', gloss: { fr: 'dans', en: 'in' } },
+        ]);
+        expect(step.summary.kind).toBe('catalogUnlinkSense');
+      });
+
+      it("adopts a sense's gloss on an analysis, keeping the link", async () => {
+        await seedDraft(linked);
+        const { openSession, adoptAnalysisSenseGloss } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        const { changes, step } = JSON.parse(
+          await adoptAnalysisSenseGloss({ sessionId, analysisId: 'ta-in', value: 'in' }),
+        );
+
+        expect(changes.tokenAnalyses.puts).toStrictEqual([
+          expect.objectContaining({ gloss: { en: 'in' }, glossSenseRef: SENSE }),
+        ]);
+        expect(step.summary.kind).toBe('catalogAdoptGloss');
+      });
+
+      it("adopts a sense's gloss on a morpheme, keeping the links", async () => {
+        await seedDraft(linked);
+        const { openSession, adoptAnalysisMorphemeSenseGloss } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        const { changes, step } = JSON.parse(
+          await adoptAnalysisMorphemeSenseGloss({
+            sessionId,
+            analysisId: 'ta-in',
+            morphemeId: 'm-in',
+            value: 'in',
+          }),
+        );
+
+        expect(changes.tokenAnalyses.puts[0].morphemes[0]).toMatchObject({
+          gloss: { en: 'in', fr: 'dans' },
+          entryRef: ENTRY,
+          senseRef: SENSE,
+        });
+        expect(step.summary.kind).toBe('catalogAdoptGloss');
+      });
+
+      it('rejects adopting a blank gloss', async () => {
+        await seedDraft(linked);
+        const { openSession, adoptAnalysisSenseGloss } = await activateSessionCommands();
+        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+
+        await expect(
+          adoptAnalysisSenseGloss({ sessionId, analysisId: 'ta-in', value: '' }),
+        ).rejects.toThrow('must not be blank');
+      });
+    });
+
     it('deletes token analyses with their links, replying with the changes', async () => {
       await seedDraft(glossedIn);
       const { openSession, deleteAnalyses } = await activateSessionCommands();
@@ -4526,6 +4684,35 @@ describe('main', () => {
 
       expect(first.hasFreeTranslations).toBe(true);
       expect(retried).toStrictEqual(first);
+    });
+
+    it('reads its envelope and discards changes to a book and then to the whole draft, never reading the draft whole', async () => {
+      const repository = await seedDraft({});
+      storeProjectHolding(glossedIn);
+      const exportAll = jest.spyOn(repository, 'exportAll');
+      const getWholeDraft = jest.spyOn(repository, 'getWholeDraft');
+      const { openSession, getDraftEnvelope, writeGloss, discardBook, discardAll } =
+        await activateSessionCommands();
+
+      const { sessionId } = JSON.parse(
+        await openSession({ sourceProjectId: 'src-project', interlinearProjectId: 'proj-1' }),
+      );
+      await getDraftEnvelope({ sessionId });
+      const gloss = { sessionId, tokenRef: 'GEN 1:2:0', surfaceText: 'And', value: 'and' };
+      await writeGloss(gloss);
+      const bookReply = JSON.parse(await discardBook({ sessionId, bookCode: 'GEN' }));
+      await writeGloss(gloss);
+      const allReply = JSON.parse(await discardAll({ sessionId }));
+
+      expect(bookReply.changes).toMatchObject({
+        tokenAnalyses: { puts: [{ id: 'ta-in' }] },
+        tokenAnalysisLinks: { puts: [{ id: 'tl-in' }] },
+      });
+      expect(bookReply.changes.tokenAnalysisLinks.deletes).toHaveLength(1);
+      expect(allReply.changes.tokenAnalysisLinks.deletes).toHaveLength(1);
+      expect(allReply.changes.tokenAnalysisLinks.puts ?? []).toStrictEqual([]);
+      expect(exportAll).not.toHaveBeenCalled();
+      expect(getWholeDraft).not.toHaveBeenCalled();
     });
 
     it('stales what it restores into a book the text lacks', async () => {

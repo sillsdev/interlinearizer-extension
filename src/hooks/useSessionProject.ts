@@ -5,7 +5,12 @@ import type { HeardChange } from '../cache/pageClient';
 import { DraftEnvelopeStore } from '../cache/draftEnvelope';
 import type { SegmentationDispatch } from '../components/SegmentationStore';
 import type { CommandReply } from '../types/command-reply';
+import {
+  analysisLanguagesChangeOutcomeOf,
+  type AnalysisLanguagesChange,
+} from '../types/analysis-languages-change';
 import type { EditStep } from '../types/edit-step';
+import { isTextCountsByTag, type TextCountsByTag } from '../utils/text-counts';
 import type {
   ProjectApi,
   ProjectViewOptions,
@@ -36,6 +41,9 @@ const NO_ENVELOPE = new DraftEnvelopeStore(async () => {
  * and when the source, the import, or the import's version changes. New and Open have the host
  * start the draft over, then open a fresh session, which has nothing to undo. Undo, redo, discards
  * and boundary edits are commands to the session.
+ *
+ * Of the draft, the view holds only its envelope and the pages it shows. The whole analysis stays
+ * on the host, which serves the view one page at a time.
  */
 export default function useSessionProject(
   sourceProjectId: string,
@@ -213,22 +221,30 @@ export default function useSessionProject(
   useEffect(() => heldClient?.subscribeReplies(takeReply), [heldClient, takeReply]);
 
   /**
-   * Sends an edit through the client so that its reply lands in the pages.
+   * Sends an edit through the client so that its reply lands in the pages. Before the first pages
+   * load, the edit goes straight to the session, and its reply updates only the whole draft.
    *
+   * @returns The reply, or `undefined` when no session is open or the edit applied nothing.
    * @throws If the pages' outline has not loaded yet, or whatever the edit's command throws.
    */
   const sendEditOrThrow = useCallback(
     async (
       call: (args: SessionEditArgs) => Promise<string | undefined>,
     ): Promise<CommandReply | undefined> => {
-      /* v8 ignore next -- edits come only from a view whose pages have loaded */
-      if (!heldClient || sessionId === undefined) return undefined;
+      /* v8 ignore next -- edits come only from a view whose session has opened */
+      if (sessionId === undefined) return undefined;
+      if (!heldClient) {
+        const json = await call({ sessionId, changeId: crypto.randomUUID() });
+        const reply: CommandReply | undefined = json === undefined ? undefined : JSON.parse(json);
+        if (reply) takeReply(reply);
+        return reply;
+      }
       return heldClient.send(async (changeId) => {
         const reply = await call({ sessionId, changeId });
         return reply === undefined ? undefined : JSON.parse(reply);
       });
     },
-    [heldClient, sessionId],
+    [heldClient, sessionId, takeReply],
   );
 
   /**
@@ -389,6 +405,42 @@ export default function useSessionProject(
     () => discard((args) => papi.commands.sendCommand('interlinearizer.discardAll', args)),
     [discard],
   );
+
+  /**
+   * Gives the draft new analysis languages as one undoable step, moving or deleting any text the
+   * change names.
+   *
+   * @throws If no session is open, or whatever the edit's command throws.
+   */
+  const changeAnalysisLanguages = useCallback(
+    async (change: AnalysisLanguagesChange) => {
+      const call = (args: SessionEditArgs) =>
+        papi.commands.sendCommand('interlinearizer.changeAnalysisLanguages', {
+          ...args,
+          analysisLanguages: change.analysisLanguages,
+          ...(change.retag && { retag: { ...change.retag } }),
+          ...(change.deleteTextOf !== undefined && { deleteTextOf: change.deleteTextOf }),
+        });
+      if (sessionId === undefined)
+        throw new Error('Interlinearizer: no session is open to change its analysis languages');
+      return analysisLanguagesChangeOutcomeOf(await sendEditOrThrow(call));
+    },
+    [sessionId, sendEditOrThrow],
+  );
+  /**
+   * Counts the draft's glosses and free translations under each language tag that has any.
+   *
+   * @returns The counts, or `{}` when the host's answer is malformed.
+   * @throws If no session is open, or whatever the query throws.
+   */
+  const countLanguageText = useCallback(async (): Promise<TextCountsByTag> => {
+    if (sessionId === undefined)
+      throw new Error('Interlinearizer: no session is open to count its language text');
+    const counts: unknown = JSON.parse(
+      await papi.commands.sendCommand('interlinearizer.countLanguageText', { sessionId }),
+    );
+    return isTextCountsByTag(counts) ? counts : {};
+  }, [sessionId]);
   const getHistoryRevision = useCallback(() => historyRevision.current, []);
   const subscribeToHistoryRevisions = useCallback((listener: () => void) => {
     revisionListeners.current.add(listener);
@@ -409,6 +461,8 @@ export default function useSessionProject(
     newDraft,
     discardBook,
     discardAll,
+    changeAnalysisLanguages,
+    countLanguageText,
     detachFromProject,
     canUndo,
     canRedo,

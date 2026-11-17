@@ -687,6 +687,23 @@ describe('main', () => {
       expect(context.registrations.unsubscribers.size).toBe(expectedRegistrationCount);
     });
 
+    it('disposes the commands registered before a registration that fails', async () => {
+      const unsubscribers: jest.Mock[] = [];
+      __mockRegisterCommand.mockImplementation(async (commandName: string) => {
+        if (commandName === 'interlinearizer.writeGloss') throw new Error('registration failed');
+        const unsubscriber = jest.fn(async () => true);
+        unsubscribers.push(unsubscriber);
+        return unsubscriber;
+      });
+      const context = createTestActivationContext();
+
+      await expect(activate(context)).rejects.toThrow('registration failed');
+      await context.registrations.runAllUnsubscribers();
+
+      expect(unsubscribers.length).toBeGreaterThan(0);
+      unsubscribers.forEach((unsubscribe) => expect(unsubscribe).toHaveBeenCalled());
+    });
+
     it('logs activation start and finish', async () => {
       const context = createTestActivationContext();
 
@@ -1192,6 +1209,7 @@ describe('main', () => {
         'interlinearizer.createProject',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -1609,6 +1627,7 @@ describe('main', () => {
         'interlinearizer.deleteProject',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -1650,6 +1669,7 @@ describe('main', () => {
         'interlinearizer.getProjectsForSource',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -1688,6 +1708,7 @@ describe('main', () => {
         'interlinearizer.updateProjectMetadata',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -1752,6 +1773,7 @@ describe('main', () => {
         'interlinearizer.saveDraftToProject',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -1869,6 +1891,7 @@ describe('main', () => {
         'interlinearizer.saveDraftAsProject',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 
@@ -2506,6 +2529,18 @@ describe('main', () => {
       await closeSession({ sessionId });
 
       expect(projectStorage.releaseDraftRepository).toHaveBeenCalledWith('src-project');
+    });
+
+    it('logs and rethrows when closing a session fails', async () => {
+      const { openSession, closeSession } = await activateSessionCommands();
+      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
+      jest.spyOn(AnalysisSessions.prototype, 'close').mockRejectedValue(new Error('close failed'));
+
+      await expect(closeSession({ sessionId })).rejects.toThrow('close failed');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        `Interlinearizer: failed to close session ${sessionId}`,
+        expect.any(Error),
+      );
     });
 
     it('sets the analysis language of an open session', async () => {
@@ -4911,6 +4946,7 @@ describe('main', () => {
         'interlinearizer.createEditableCopy',
         expect.any(Function),
         expect.any(Object),
+        undefined,
       );
     });
 

@@ -114,15 +114,6 @@ export function sessionConcordanceHandlers({
     return entries;
   }
 
-  /**
-   * Serves one page of a session's concordance: of the forms of its source's whole text, the most
-   * frequent first, or of one form's occurrences, either joined to the draft's approved analyses.
-   *
-   * @returns A JSON string of the `ConcordancePage`, or of the `ConcordanceOccurrencePage` when the
-   *   request names a form; `"null"` until the whole text has been read.
-   * @throws If the session is not open, or its analysis or its source's language tag cannot be
-   *   read. The error is logged before rethrowing.
-   */
   async function getConcordance({
     sessionId,
     request,

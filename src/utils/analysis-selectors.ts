@@ -8,7 +8,6 @@ import type {
   TokenAnalysisLink,
 } from 'interlinearizer';
 import { morphemeCarriesAnnotation } from './analysis-identity';
-import { buildCatalogRows, type HeadingPlacement } from './analysis-query';
 import type { StaleFreeTranslation } from './stale-free-translations';
 import { preferredLinkByKey } from './pick-rules';
 import {
@@ -140,9 +139,6 @@ const selectRejectedAnalysisIdsByTokenRef = createSelector(selectTokenAnalysisLi
   return index;
 });
 
-/** Returns the `TextAnalysis` that `state` holds. */
-export const selectAnalysis = (state: AnalysisState) => state.analysis;
-
 /**
  * Returns the approved gloss string for `tokenRef` in the active analysis language, or `''` when no
  * approved analysis exists or the analysis has no gloss for the active language.
@@ -186,20 +182,6 @@ const selectApprovedTokenCountByAnalysisId = createSelector(
 );
 
 /**
- * Memoized selector mapping each `TokenAnalysis.id` to the number of distinct tokens linking it at
- * any status — the tokens a per-token edit must fork around.
- */
-const selectLinkedTokenCountByAnalysisId = createSelector(selectTokenAnalysisLinks, (links) => {
-  const tokenRefsById = new Map<string, Set<string>>();
-  links.forEach((l) => {
-    const tokenRefs = tokenRefsById.get(l.analysisId);
-    if (tokenRefs) tokenRefs.add(l.token.tokenRef);
-    else tokenRefsById.set(l.analysisId, new Set([l.token.tokenRef]));
-  });
-  return new Map([...tokenRefsById].map(([id, tokenRefs]) => [id, tokenRefs.size]));
-});
-
-/**
  * Memoized selector that builds the suggestion-engine pool index from the approved analyses: each
  * distinct approved payload filed under its normalized surface form with its approval frequency.
  * This is the read-only corpus the engine derives suggestions from — only approved analyses enter,
@@ -210,33 +192,6 @@ export const selectPoolIndex = createSelector(
   selectAnalysisById,
   selectApprovedTokenCountByAnalysisId,
   buildPoolIndex,
-);
-
-/**
- * Memoized selector building the Analysis Catalog's rows — one per distinct token analysis, with
- * its usage counts and locations — against the book named as the second argument, placing heading
- * usages by the optional third. Only a change to the analysis it reads, to the named book, or to
- * the placements rebuilds the rows, so searching and sorting the result never does.
- *
- * Rows are cached per book code and placements asked for rather than in a single slot, so two
- * components reading different books do not thrash. The canon bounds how many books there can be,
- * and an entry for a placements map goes once nothing else holds that map.
- */
-export const selectCatalogRows = createSelector(
-  selectTokenAnalyses,
-  selectTokenAnalysisLinks,
-  selectAnalysisLanguage,
-  (_state: AnalysisState, currentBook: string) => currentBook,
-  (
-    _state: AnalysisState,
-    _currentBook: string,
-    headingPlacements?: ReadonlyMap<string, HeadingPlacement>,
-  ) => headingPlacements,
-  (tokenAnalyses, tokenAnalysisLinks, analysisLanguage, currentBook, headingPlacements) =>
-    buildCatalogRows(
-      { tokenAnalyses, tokenAnalysisLinks },
-      { analysisLanguage, currentBook, headingPlacements },
-    ),
 );
 
 /**
@@ -276,13 +231,15 @@ export interface AnalysisDeletionOutcome {
  *
  * Judges each affected token's fallback as the renderer will: its own surviving unapproved records
  * first, then the pool's match for its text as it now stands less any analysis it rejected, read
- * through `liveSurfaceText` — which covers the loaded book alone, giving `undefined` for a ref in
- * any other.
+ * through `liveSurfaceText`. A ref with no live text is skipped when `isReadable` accepts it,
+ * because the text that was read no longer holds that token. Any other ref with no live text leaves
+ * the outcome `uncertain`.
  */
 export function selectAnalysisDeletionOutcome(
   state: AnalysisState,
   analysisId: string,
   liveSurfaceText: (tokenRef: string) => string | undefined,
+  isReadable: (tokenRef: string) => boolean,
 ): AnalysisDeletionOutcome | undefined {
   const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === analysisId);
   if (!analysis) return undefined;
@@ -332,6 +289,7 @@ export function selectAnalysisDeletionOutcome(
     }
     const live = liveSurfaceText(tokenRef);
     if (live === undefined) {
+      if (isReadable(tokenRef)) return;
       unreadable = true;
       return;
     }
@@ -436,49 +394,6 @@ export function selectSuggestionAfterClearing(
     deriveTokenSuggestion(pool, surfaceText, approvedId),
   );
   return suggestion ? { status: 'suggested', ...suggestion } : undefined;
-}
-
-/**
- * Reports whether removing `tokenRef`'s morpheme breakdown would destroy annotation no other token
- * still holds — the condition under which the morpheme editor confirms before resetting. True only
- * when at least one morpheme carries a gloss or a lexicon reference AND no other token links its
- * approved payload. A payload shared with other tokens is forked rather than emptied, so the
- * co-linked tokens keep their morphemes and nothing is lost project-wide; an unannotated breakdown
- * is bare segmentation that is cheap to retype. Sharing is judged by the same linked-token count
- * the write path tests before it forks, so the two can never disagree about what "shared" means.
- */
-export function selectMorphemeResetLosesAnnotation(
-  state: AnalysisState,
-  tokenRef: string,
-): boolean {
-  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
-  if (approvedId === undefined) return false;
-  const analysis = selectAnalysisById(state).get(approvedId);
-  const hasAnnotatedMorpheme = analysis?.morphemes?.some(morphemeCarriesAnnotation) ?? false;
-  if (!hasAnnotatedMorpheme) return false;
-  // A payload another token links is forked rather than emptied, so only a sole owner loses anything.
-  /* v8 ignore next -- this token's own link is among those counted, so approvedId is always present */
-  const linkedTokenCount = selectLinkedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
-  return linkedTokenCount <= 1;
-}
-
-/**
- * Reports whether no token besides `tokenRef` links its approved payload, so a breakdown edit here
- * destroys what it drops instead of leaving it with co-linked tokens. False when the token has no
- * approval at all.
- *
- * Sharing is judged by the same linked-token count a breakdown write forks on, so the two can never
- * disagree about which edits are recoverable.
- */
-export function selectMorphemePayloadIsSolelyOwned(
-  state: AnalysisState,
-  tokenRef: string,
-): boolean {
-  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
-  if (approvedId === undefined) return false;
-  /* v8 ignore next -- this token's own link is among those counted, so approvedId is always present */
-  const linkedTokenCount = selectLinkedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
-  return linkedTokenCount <= 1;
 }
 
 /**
@@ -657,6 +572,7 @@ export const selectStaleFreeTranslations = createSelector(
       if (link.status !== 'stale' || !analysis) return [];
       return [
         {
+          linkId: link.id,
           analysisId: link.analysisId,
           segmentId: link.segmentId,
           text: analysis.freeTranslation?.[language] ?? '',
@@ -664,14 +580,6 @@ export const selectStaleFreeTranslations = createSelector(
       ];
     });
   },
-);
-
-/** Memoized selector listing every stale token link whose payload exists, in link order. */
-export const selectStaleTokenLinks = createSelector(
-  selectTokenAnalysisLinks,
-  selectAnalysisById,
-  (links, byId): readonly TokenAnalysisLink[] =>
-    links.filter((link) => link.status === 'stale' && byId.has(link.analysisId)),
 );
 
 // #endregion

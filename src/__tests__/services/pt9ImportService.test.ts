@@ -266,13 +266,16 @@ describe('importPt9Project', () => {
     });
   });
 
-  it('names the import after the project id when the short name is blank', async () => {
-    mockPdps({ shortName: async () => '' });
+  it.each(['', '  '])(
+    'names the import after the project id when the short name is %j',
+    async (shortName) => {
+      mockPdps({ shortName: async () => shortName });
 
-    await importPt9Project(token, 'src-project');
+      await importPt9Project(token, 'src-project');
 
-    expect(writtenProject()).toMatchObject({ name: 'Paratext 9 Interlinear: src-project' });
-  });
+      expect(writtenProject()).toMatchObject({ name: 'Paratext 9 Interlinear: src-project' });
+    },
+  );
 
   it('replaces the existing import on sync, keeping its id', async () => {
     const existing = {

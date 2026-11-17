@@ -106,6 +106,22 @@ const formatReplacementString = (str: string, replacers: { [key: string]: unknow
     .map((part) => String(part))
     .join('');
 
+/** The project's short name when it is a non-blank string, otherwise its id, as the real one does. */
+const getProjectDisplayName = (projectId: string, projectName: unknown): string =>
+  typeof projectName === 'string' && projectName.trim().length > 0 ? projectName : projectId;
+
+/** Replaces `{projectName}` with {@link getProjectDisplayName}'s choice, as the real one does. */
+const formatProjectTitle = (
+  titleFormat: string,
+  projectId: string,
+  projectName: unknown,
+  replacements?: { [key: string]: unknown },
+): string =>
+  formatReplacementString(titleFormat, {
+    ...replacements,
+    projectName: getProjectDisplayName(projectId, projectName),
+  });
+
 /**
  * Language-sensitive string comparison, wrapping `Intl.Collator` as the real class does. Throws on
  * a tag `Intl` cannot parse, as the real one does.
@@ -139,8 +155,10 @@ const formatScrRef = (scrRef: SerializedVerseRef): string =>
 export {
   Collator,
   UnsubscriberAsyncList,
+  formatProjectTitle,
   formatReplacementString,
   formatReplacementStringToArray,
   formatScrRef,
+  getProjectDisplayName,
   isPlatformError,
 };

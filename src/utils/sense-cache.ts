@@ -22,6 +22,14 @@ export type SenseCache = {
   peek: (ref: SenseRef) => ResolvedSense | undefined;
 
   /**
+   * Whether the lexicon has answered for `ref`, with a sense or with none.
+   *
+   * @returns `false` while the look-up is pending, when nothing has asked for `ref`, and after a
+   *   look-up that rejected.
+   */
+  hasAnswer: (ref: SenseRef) => boolean;
+
+  /**
    * Asks the lexicon for `ref` unless `ref` has been asked for already. A look-up that rejects
    * leaves nothing behind, so the next request for `ref` asks again. A look-up that answers
    * `undefined` is kept as a miss.
@@ -29,7 +37,7 @@ export type SenseCache = {
   request: (ref: SenseRef) => void;
 
   /**
-   * Calls `listener` each time a sense arrives.
+   * Calls `listener` each time the lexicon answers for a sense, whether it has the sense or not.
    *
    * @returns Stops the calls.
    */
@@ -54,6 +62,11 @@ export function createSenseCache(
       return sense === PENDING ? undefined : sense;
     },
 
+    hasAnswer: (ref) => {
+      const key = senseKey(ref);
+      return senses.has(key) && senses.get(key) !== PENDING;
+    },
+
     request: (ref) => {
       const key = senseKey(ref);
       if (senses.has(key)) return;
@@ -62,8 +75,7 @@ export function createSenseCache(
         try {
           const sense = await resolveSense(ref);
           senses.set(key, sense);
-          // A miss leaves every reader where it was, so only a found sense is announced.
-          if (sense) listeners.forEach((listener) => listener());
+          listeners.forEach((listener) => listener());
         } catch (e) {
           senses.delete(key);
           logger.debug('Interlinearizer: a lexicon sense could not be resolved', e);

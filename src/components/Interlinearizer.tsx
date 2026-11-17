@@ -1,9 +1,8 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseDispatch, usePhraseLinkByIdMap } from './AnalysisStore';
+import { usePhraseDispatch } from './AnalysisStore';
 import {
   NO_OP_SEGMENTATION_DISPATCH,
   SegmentationProvider,
@@ -12,14 +11,13 @@ import {
 } from './SegmentationStore';
 import ContinuousView from './ContinuousView';
 import EditPhraseControls from './controls/EditPhraseControls';
-import useBookIndexes from '../hooks/useBookIndexes';
+import usePageIndexes from '../hooks/usePageIndexes';
 import type { SegmentPages } from '../types/segment-pages';
 import { useAltHeldAttribute } from '../hooks/useAltHeldAttribute';
 import type { PhraseMode } from '../types/phrase-mode';
 import { TOOLTIP_DELAY_MS } from './tooltip-delay';
 import type { ViewOptions } from '../types/view-options';
 import { perfMeasure } from '../utils/perf-marks';
-import { straddledRefs } from '../utils/phrase-arc';
 import SegmentListView from './SegmentListView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
 import { FocusProvider } from './FocusStore';
@@ -34,16 +32,14 @@ const EMPTY_UNMERGEABLE_STARTS: ReadonlySet<string> = new Set();
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
-  /** The whole tokenized book, under the current boundaries. */
-  book: Book;
   /** The book's segments as the segment list renders them. */
   pages: SegmentPages;
   /** When true, the horizontal token strip is shown above the segment list. */
   continuousScroll: boolean;
   /**
    * Current scripture reference used to highlight the active verse. The loader resolves this to a
-   * verse contained in some segment of `book` (when the chapter has segments): normally verse >= 1,
-   * and verse 0 only when a matching verse-0 superscription segment exists.
+   * verse contained in some segment of the book (when the chapter has segments): normally verse >=
+   * 1, and verse 0 only when a matching verse-0 superscription segment exists.
    */
   scrRef: SerializedVerseRef;
   /** Current phrase-interaction mode; owned by the parent and passed down for rendering. */
@@ -73,7 +69,6 @@ type InterlinearizerProps = Readonly<{
  * remounted on a book change.
  */
 export default function Interlinearizer({
-  book,
   pages,
   continuousScroll,
   scrRef,
@@ -89,11 +84,11 @@ export default function Interlinearizer({
   // and `reportSettled` lifts the cross-book curtain once the new book is laid out.
   const { consumeInternalNav, recenterRequest, reportSettled } = useInterlinearNav();
 
-  useLayoutEffect(() => perfMeasure('book-render', 'book-change'), [book.bookRef]);
+  useLayoutEffect(() => perfMeasure('book-render', 'book-change'), [pages.bookRef]);
 
   useAltHeldAttribute();
 
-  // Book-wide lookup indexes.
+  const indexes = usePageIndexes(pages);
   const {
     segmentById,
     segmentOrder,
@@ -101,16 +96,8 @@ export default function Interlinearizer({
     gapTextByWordRef,
     tokenSegmentMap,
     wordTokenByRef,
-    wordRefByOrder,
-  } = useBookIndexes(book);
-
-  const phraseLinkById = usePhraseLinkByIdMap();
-
-  /** The not-mid-phrase guard: word-token refs before which a segment boundary would cut a phrase. */
-  const straddledBoundaryRefs = useMemo<ReadonlySet<string>>(
-    () => straddledRefs(phraseLinkById.values(), tokenDocOrder, (order) => wordRefByOrder[order]),
-    [phraseLinkById, tokenDocOrder, wordRefByOrder],
-  );
+    straddledBoundaryRefs,
+  } = indexes;
 
   /** Segmentation context value — the dispatch paired with the lookups it operates over. */
   const segmentationValue = useMemo<SegmentationContextValue>(
@@ -191,13 +178,7 @@ export default function Interlinearizer({
             className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
             style={{ opacity: isModeToggleFading ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
           >
-            <FocusProvider
-              book={book}
-              scrRef={scrRef}
-              segmentById={segmentById}
-              tokenSegmentMap={tokenSegmentMap}
-              wordTokenByRef={wordTokenByRef}
-            >
+            <FocusProvider pages={pages} scrRef={scrRef} indexes={indexes}>
               {displayContinuousScroll && (
                 <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
                   <ContinuousView
@@ -216,7 +197,6 @@ export default function Interlinearizer({
 
               <SegmentListView
                 pages={pages}
-                book={book}
                 scrRef={scrRef}
                 continuousScroll={continuousScroll}
                 displayContinuousScroll={displayContinuousScroll}

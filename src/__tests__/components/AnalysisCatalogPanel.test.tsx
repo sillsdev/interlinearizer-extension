@@ -7,8 +7,14 @@ import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AssignmentStatus, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
-import type { ResolvedSense } from 'interlinearizer/lexicon';
+import type {
+  AssignmentStatus,
+  Book,
+  MorphemeAnalysis,
+  TextAnalysis,
+  TokenAnalysisLink,
+} from 'interlinearizer';
+import type { ResolvedSense, SenseCandidate } from 'interlinearizer/lexicon';
 import {
   createRef,
   useEffect,
@@ -23,12 +29,10 @@ import AnalysisCatalogPanel, {
   type AnalysisCatalogPanelHandle,
 } from '../../components/AnalysisCatalogPanel';
 import { useGlossDispatch } from '../../components/AnalysisStore';
-import { SourceTextContext } from '../../components/SourceTextContext';
 import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
-import type { SourceText } from '../../hooks/useSourceTextReader';
+import { readText, type FakeText } from '../cache/fake-host';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { normalizeSurfaceForm } from '../../utils/analysis-identity';
-import type { HeadingPlacement } from '../../utils/analysis-query';
 import { defaultScrRef, FIXTURE_STAMPS, makeScrollGroupHook, makeVerseBook } from '../test-helpers';
 import {
   editsSaved,
@@ -38,16 +42,14 @@ import {
   type AnalysisProviderProps,
 } from './analysis-provider';
 import {
-  makeSourceText,
   mockKeyAsValueLocalizedStrings,
+  TEST_LEXICON_AUTHORITY,
   testSenseRef,
   withLexicon,
 } from './test-helpers';
 
 // What the reading status shows is its own concern; these cover only when the panel shows it.
 jest.mock('../../components/TextReadingStatus');
-
-const NO_HEADINGS: ReadonlyMap<string, HeadingPlacement> = new Map();
 
 /**
  * The intersection-observer Jest stub exposes a helper for firing intersections on the global
@@ -162,11 +164,15 @@ type PanelOptions = Partial<{
   liveSurfaceText: (tokenRef: string) => string | undefined;
   /** The word the view beside the panel has focused, or none. */
   focusedTokenRef: string;
-  /** The source text. Defaults to one not yet read. */
-  text: SourceText;
+  /** The source text as the host reads it whole. Defaults to one not yet read. */
+  text: FakeText;
+  /** The book the host pages and reads tokens from. Defaults to {@link GENESIS}. */
+  book: Book;
   /** Whether every book has been checked for stale places. Defaults to only the opened ones. */
   /** Senses of the connected lexicon, keyed by sense id. Omitted, no lexicon is connected. */
   senses: Record<string, ResolvedSense>;
+  /** Searches the connected lexicon for the senses of a form. Omitted, the lexicon cannot search. */
+  search: (form: string) => Promise<SenseCandidate[]>;
 }>;
 
 /** Reads every token as still carrying the form its analysis was recorded under. */
@@ -180,15 +186,29 @@ let AnalysisProvider: (props: AnalysisProviderProps) => ReactNode = () => {
   throw new Error('no analysis prepared');
 };
 
-/** Prepares the analysis provider over `analysis`, an empty analysis by default. */
-async function prepare(analysis: TextAnalysis = emptyAnalysis()): Promise<void> {
-  AnalysisProvider = await prepareAnalysis(analysis, GENESIS);
+/**
+ * Prepares the analysis provider over `analysis`, an empty analysis by default, on a source whose
+ * whole text the host reads as `text`.
+ */
+async function prepare(
+  analysis: TextAnalysis | undefined,
+  text?: FakeText,
+  book: Book = GENESIS,
+): Promise<void> {
+  AnalysisProvider = await prepareAnalysis(analysis ?? emptyAnalysis(), book, text);
 }
 
-/** Renders `ui` once the analysis provider over `analysis` is prepared. */
-async function renderOver(analysis: TextAnalysis | undefined, ui: ReactElement) {
-  await prepare(analysis);
-  return render(ui);
+/** Renders `ui` once the analysis provider over `analysis`, `text` and `book` is prepared. */
+async function renderOver(
+  analysis: TextAnalysis | undefined,
+  ui: ReactElement,
+  text?: FakeText,
+  book?: Book,
+) {
+  await prepare(analysis, text, book);
+  const rendered = render(ui);
+  await settle();
+  return rendered;
 }
 
 /**
@@ -216,9 +236,7 @@ function PanelProviders({
       >
         <FocusRequestProbe bookCode={overrides.mountedBook ?? 'GEN'} />
         <FocusPublishProbe tokenRef={overrides.focusedTokenRef} />
-        <SourceTextContext.Provider value={overrides.text ?? makeSourceText()}>
-          {children}
-        </SourceTextContext.Provider>
+        {children}
       </AnalysisProvider>
     </InterlinearNavProvider>
   );
@@ -232,7 +250,6 @@ function renderPanel(overrides: PanelOptions = {}) {
         ref={overrides.ref}
         announceUndoable={overrides.announceUndoable}
         currentBook={overrides.currentBook ?? 'GEN'}
-        headingPlacements={NO_HEADINGS}
         liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
         onClose={overrides.onClose ?? (() => {})}
         onShowConcordance={overrides.onShowConcordance ?? (() => {})}
@@ -245,7 +262,9 @@ function renderPanel(overrides: PanelOptions = {}) {
   // the same tree.
   return renderOver(
     overrides.analysis,
-    overrides.senses ? withLexicon(panel, overrides.senses).ui : panel,
+    overrides.senses ? withLexicon(panel, overrides.senses, overrides.search).ui : panel,
+    overrides.text,
+    overrides.book,
   );
 }
 
@@ -263,7 +282,6 @@ function ReopenableCatalog() {
       {isOpen && (
         <CatalogPanel
           currentBook="GEN"
-          headingPlacements={NO_HEADINGS}
           liveSurfaceText={undriftedText}
           onClose={() => setIsOpen(false)}
           onShowConcordance={() => {}}
@@ -305,7 +323,6 @@ function renderPanelWithGlossEditing(overrides: PanelOptions = {}) {
       <GlossEditProbe />
       <CatalogPanel
         currentBook={overrides.currentBook ?? 'GEN'}
-        headingPlacements={NO_HEADINGS}
         liveSurfaceText={overrides.liveSurfaceText ?? undriftedText}
         onClose={overrides.onClose ?? (() => {})}
         onShowConcordance={overrides.onShowConcordance ?? (() => {})}
@@ -1284,7 +1301,6 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: PER_BREAKDOWN }}>
           <CatalogPanel
             currentBook="GEN"
-            headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
             onShowConcordance={() => {}}
@@ -1372,11 +1388,21 @@ describe('AnalysisCatalogPanel', () => {
       return list;
     }
 
-    /** Reports the end of the list as having come into view. */
-    function reachListEnd(): void {
+    /** How many rows the panel last asked the host for. */
+    function lastCatalogRowsCount(): unknown {
+      const args = jest
+        .mocked(papi.commands.sendCommand)
+        .mock.calls.findLast(([command]) => command === 'interlinearizer.getCatalogRows')?.[1];
+      const request = typeof args === 'object' && args ? Reflect.get(args, 'request') : undefined;
+      return typeof request === 'object' && request ? Reflect.get(request, 'count') : undefined;
+    }
+
+    /** Reports the end of the list as having come into view, then waits for the rows it brings. */
+    async function reachListEnd(): Promise<void> {
       act(() => {
         global.triggerIntersection(screen.getByTestId('catalog-rows-sentinel'), true);
       });
+      await settle();
     }
 
     it('mounts only part of a long list', async () => {
@@ -1393,20 +1419,110 @@ describe('AnalysisCatalogPanel', () => {
       await renderPanel({ analysis: MANY });
       const before = screen.getAllByTestId('catalog-row').length;
 
-      reachListEnd();
+      await reachListEnd();
 
       expect(screen.getAllByTestId('catalog-row').length).toBeGreaterThan(before);
     });
 
+    it('grows the window no further than one page past the rows that have arrived', async () => {
+      await renderPanel({ analysis: MANY });
+
+      // Each report extends the window before the host has answered any request.
+      Array.from({ length: 3 }).forEach(() =>
+        act(() => {
+          global.triggerIntersection(screen.getByTestId('catalog-rows-sentinel'), true);
+        }),
+      );
+      const count = lastCatalogRowsCount();
+      await settle();
+
+      expect(count).toBe(80);
+    });
+
+    it('fetches a failed page again when the end of the list comes back into view', async () => {
+      await renderPanel({ analysis: MANY });
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      let failNext = true;
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.getCatalogRows' && failNext) {
+          failNext = false;
+          throw new Error('offline');
+        }
+        return serve?.(...call);
+      });
+      await reachListEnd();
+      expect(listedAnalysisIds()).toHaveLength(40);
+
+      await reachListEnd();
+
+      expect(listedAnalysisIds()).toHaveLength(80);
+    });
+
+    /** Renders the panel over {@link MANY} with the host failing its first catalog page. */
+    async function renderPanelFailingFirstPage() {
+      await prepare(MANY);
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      let failNext = true;
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.getCatalogRows' && failNext) {
+          failNext = false;
+          throw new Error('offline');
+        }
+        return serve?.(...call);
+      });
+      render(
+        <PanelProviders overrides={{}}>
+          <CatalogPanel
+            currentBook="GEN"
+            liveSurfaceText={undriftedText}
+            onClose={() => {}}
+            onShowConcordance={() => {}}
+            showMorphology
+            sourceLanguageTag="el"
+          />
+        </PanelProviders>,
+      );
+      await settle();
+    }
+
+    it('says the catalog could not be loaded when its first page fails', async () => {
+      await renderPanelFailingFirstPage();
+
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_loadFailed%',
+      );
+    });
+
+    it('lists the rows once a failed first page is tried again', async () => {
+      await renderPanelFailingFirstPage();
+
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_retry%'));
+      await settle();
+
+      expect(listedAnalysisIds()).toHaveLength(40);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('starts the window over when the query changes', async () => {
       await renderPanel({ analysis: MANY });
-      reachListEnd();
+      await reachListEnd();
       const grown = screen.getAllByTestId('catalog-row').length;
 
       // Matches every row, so the listing is the same length as before — only the window resets.
       await userEvent.type(searchBox(), 'word');
 
       expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
+    });
+
+    it('asks the host for no more than the reset window once the query changes', async () => {
+      await renderPanel({ analysis: MANY });
+      const firstCount = lastCatalogRowsCount();
+      await reachListEnd();
+
+      await userEvent.type(searchBox(), 'word');
+      await settle();
+
+      expect(lastCatalogRowsCount()).toBe(firstCount);
     });
 
     it('returns the list to its top when the query changes', async () => {
@@ -1436,14 +1552,13 @@ describe('AnalysisCatalogPanel', () => {
 
     it('starts the window over when the book changes', async () => {
       const { rerender } = await renderPanel({ analysis: MANY, currentBook: 'GEN' });
-      reachListEnd();
+      await reachListEnd();
       const grown = screen.getAllByTestId('catalog-row').length;
 
       rerender(
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
           <CatalogPanel
             currentBook="MAT"
-            headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
             onShowConcordance={() => {}}
@@ -1452,6 +1567,7 @@ describe('AnalysisCatalogPanel', () => {
           />
         </PanelProviders>,
       );
+      await settle();
 
       expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
     });
@@ -1467,7 +1583,6 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: MANY, currentBook: 'MAT' }}>
           <CatalogPanel
             currentBook="MAT"
-            headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
             onShowConcordance={() => {}}
@@ -1476,6 +1591,7 @@ describe('AnalysisCatalogPanel', () => {
           />
         </PanelProviders>,
       );
+      await settle();
 
       expect(list.scrollTop).toBe(0);
     });
@@ -1486,7 +1602,6 @@ describe('AnalysisCatalogPanel', () => {
         <PanelProviders overrides={{ analysis: MANY, analysisLanguage }}>
           <CatalogPanel
             currentBook="GEN"
-            headingPlacements={NO_HEADINGS}
             liveSurfaceText={undriftedText}
             onClose={() => {}}
             onShowConcordance={() => {}}
@@ -1503,6 +1618,7 @@ describe('AnalysisCatalogPanel', () => {
       list.scrollTop = 500;
 
       rerender(panelIn('fr'));
+      await settle();
 
       expect(list.scrollTop).toBe(500);
     });
@@ -1514,6 +1630,7 @@ describe('AnalysisCatalogPanel', () => {
       list.scrollTop = 500;
 
       rerender(panelIn('fr'));
+      await settle();
 
       expect(list.scrollTop).toBe(0);
     });
@@ -1530,6 +1647,7 @@ describe('AnalysisCatalogPanel', () => {
       list.scrollTop = 500;
 
       rerender(panelIn('fr'));
+      await settle();
 
       expect(list.scrollTop).toBe(0);
     });
@@ -1539,7 +1657,7 @@ describe('AnalysisCatalogPanel', () => {
       // anything, and collapsing a deeply scrolled list back to its first chunk on that would throw
       // the reader to the end of it.
       await renderPanelWithGlossEditing({ analysis: MANY });
-      reachListEnd();
+      await reachListEnd();
       const grown = screen.getAllByTestId('catalog-row').length;
 
       act(() => editGloss('GEN 1:1:0', 'word0', 'beginning'));
@@ -2072,6 +2190,7 @@ describe('AnalysisCatalogPanel', () => {
         await renderPanel({ ref, analysis: LIVE_AND_STALE });
 
         act(() => ref.current?.filterTo({ stale: true }));
+        await settle();
 
         expect(listedAnalysisIds()).toEqual(['stale']);
       });
@@ -2094,6 +2213,7 @@ describe('AnalysisCatalogPanel', () => {
         );
 
         act(() => ref.current?.filterTo({ stale: true }));
+        await settle();
 
         expect(listedAnalysisIds()).toEqual(['stale']);
       });
@@ -2104,21 +2224,24 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.type(searchBox(), 'λόγος');
 
         act(() => ref.current?.filterTo({ stale: true }));
+        await settle();
 
         expect(searchBox()).toHaveValue('');
       });
     });
 
     it('asks for the text to be read when filtering for them', async () => {
-      const request = jest.fn();
-      await renderPanel({ analysis: ONLY_STALE, text: makeSourceText({ request }) });
+      await renderPanel({ analysis: ONLY_STALE });
       await openFilters();
 
       await userEvent.click(
         screen.getByRole('checkbox', { name: '%interlinearizer_analysisCatalog_filter_stale%' }),
       );
 
-      expect(request).toHaveBeenCalled();
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.anything(),
+      );
     });
 
     it('names the stale filter plainly', async () => {
@@ -2281,82 +2404,98 @@ describe('AnalysisCatalogPanel', () => {
       });
     }
 
+    /** A text holding only the form of the analysis `kept`. */
+    const keptOnly = () => readText([normalizeSurfaceForm('λόγος')]);
+
     it('asks for the text to be read when filtering for them', async () => {
-      const request = jest.fn();
-      await renderPanel({ analysis, text: makeSourceText({ request }) });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
 
-      expect(request).toHaveBeenCalled();
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.anything(),
+      );
     });
 
     it('asks for the text to be read when narrowed to them from outside', async () => {
-      const request = jest.fn();
       const ref = createRef<AnalysisCatalogPanelHandle>();
-      await renderPanel({ ref, analysis, text: makeSourceText({ request }) });
+      await renderPanel({ ref, analysis });
 
       act(() => ref.current?.filterTo({ notInText: true }));
+      await settle();
 
-      expect(request).toHaveBeenCalled();
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.getTextReadStatus',
+        expect.anything(),
+      );
     });
 
     it('keeps only the analyses whose form the text lacks once it is read', async () => {
-      const text = makeSourceText({
-        status: 'ready',
-        textForms: new Set([normalizeSurfaceForm('λόγος')]),
-      });
-      await renderPanel({ analysis, text });
+      await renderPanel({ analysis, text: keptOnly() });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
+      await settle();
 
       expect(listedAnalysisIds()).toEqual(['gone']);
     });
 
     it('shows how far reading the text has got while filtering for them', async () => {
-      await renderPanel({ analysis, text: makeSourceText({ status: 'loading' }) });
+      await renderPanel({ analysis });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
+      await settle();
 
       expect(screen.getByTestId('text-reading-status')).toBeInTheDocument();
       expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument();
     });
 
-    it('says so when a book could not be read', async () => {
+    it('says so when the text could not be read at all', async () => {
       await renderPanel({
         analysis,
-        text: makeSourceText({ status: 'ready', failedBookIds: ['GEN'] }),
+        text: {
+          status: () => {
+            throw new Error('offline');
+          },
+          isFormInText: () => undefined,
+        },
       });
       await openFilters();
 
       await userEvent.click(notInTextFilter());
+      await settle();
+
+      expect(screen.getByTestId('text-reading-status')).toHaveAttribute('data-status', 'error');
+    });
+
+    it('says so when a book could not be read', async () => {
+      await renderPanel({
+        analysis,
+        text: {
+          status: () => ({ booksRead: 1, bookCount: 1, failedBookIds: ['GEN'] }),
+          isFormInText: () => undefined,
+        },
+      });
+      await openFilters();
+
+      await userEvent.click(notInTextFilter());
+      await settle();
 
       expect(screen.getByTestId('text-reading-status')).toHaveAttribute('data-partial', 'true');
       expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument();
     });
 
     it('marks an analysis whose form the text lacks once it is read', async () => {
-      await renderPanel({
-        analysis,
-        text: makeSourceText({
-          status: 'ready',
-          textForms: new Set([normalizeSurfaceForm('λόγος')]),
-        }),
-      });
+      await renderPanel({ analysis, text: keptOnly() });
 
       expect(within(rowFor('gone')).getByTestId('catalog-row-not-in-text')).toBeInTheDocument();
     });
 
     it('does not mark an analysis whose form the text holds', async () => {
-      await renderPanel({
-        analysis,
-        text: makeSourceText({
-          status: 'ready',
-          textForms: new Set([normalizeSurfaceForm('λόγος')]),
-        }),
-      });
+      await renderPanel({ analysis, text: keptOnly() });
 
       expect(
         within(rowFor('kept')).queryByTestId('catalog-row-not-in-text'),
@@ -2771,6 +2910,24 @@ describe('AnalysisCatalogPanel', () => {
         const onClose = jest.fn();
         await renderPanel({ analysis: SHARED, onClose });
         await typeUnsavedBreakdown();
+
+        await userEvent.click(screen.getByTestId('analysis-catalog-close'));
+
+        expect(screen.getByTestId('catalog-close-title')).toBeInTheDocument();
+        expect(onClose).not.toHaveBeenCalled();
+      });
+
+      it('asks before closing over a hidden draft whose row could not be fetched', async () => {
+        const onClose = jest.fn();
+        await renderPanel({ analysis: SHARED, onClose });
+        const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+        jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+          if (call[0] === 'interlinearizer.getCatalogRowsByIds') throw new Error('offline');
+          return serve?.(...call);
+        });
+        await typeUnsavedBreakdown();
+        await userEvent.type(searchBox(), 'zzz');
+        await settle();
 
         await userEvent.click(screen.getByTestId('analysis-catalog-close'));
 
@@ -3397,7 +3554,7 @@ describe('AnalysisCatalogPanel', () => {
         );
       });
 
-      it("leaves marking a morpheme's link to the list of senses", async () => {
+      it("marks a morpheme's link under its gloss, without opening anything", async () => {
         const row = await expandLinkedRow();
 
         await waitFor(() =>
@@ -3406,11 +3563,12 @@ describe('AnalysisCatalogPanel', () => {
           ),
         );
         expect(within(row).queryByTestId('morpheme-lexicon-mark')).not.toBeInTheDocument();
+        expect(within(row).queryByTestId('catalog-sense-control')).not.toBeInTheDocument();
+        // The word's mark in the header, and the morpheme's under its gloss.
+        expect(within(row).getAllByTestId('catalog-sense-link')).toHaveLength(2);
         expect(
-          within(row)
-            .getAllByTestId('catalog-sense-line')
-            .map((line) => line.textContent),
-        ).toContainEqual(expect.stringContaining('λογ'));
+          within(row).getByTestId('readonly-catalog-morpheme-gloss-sense-links-row-label'),
+        ).toHaveTextContent('%interlinearizer_analysisCatalog_morphemeSenseLinks%');
       });
     });
 
@@ -3427,82 +3585,334 @@ describe('AnalysisCatalogPanel', () => {
   });
 
   describe('lexicon links', () => {
-    const LINKED: TextAnalysis = {
-      ...emptyAnalysis(),
-      tokenAnalyses: [
-        {
-          ...FIXTURE_STAMPS,
-          id: 'ta-1',
-          surfaceText: 'λόγος',
-          gloss: { en: 'word' },
-          glossSenseRef: testSenseRef('s-word'),
-        },
-      ],
-      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
+    const SENSES = {
+      's-word': { gloss: { en: 'word' } },
+      's-stem': { gloss: { en: 'speak' } },
+      's-new': { gloss: { en: 'reason' } },
     };
 
-    it('marks a collapsed linked row without listing its sense', async () => {
+    /** A search hit for the sense `senseId`. */
+    function candidate(senseId: string): SenseCandidate {
+      return {
+        gloss: { en: senseId },
+        entryRef: { authority: TEST_LEXICON_AUTHORITY, entryId: `e-${senseId}` },
+        senseRef: testSenseRef(senseId),
+      };
+    }
+
+    const search = async () => [candidate('s-new')];
+
+    /** An analysis of one word, with whatever a case sets beyond its form. */
+    function wordAnalysis(
+      overrides: Partial<TextAnalysis['tokenAnalyses'][number]> = {},
+    ): TextAnalysis['tokenAnalyses'][number] {
+      return { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', ...overrides };
+    }
+
+    /** A one-word draft holding `analysis`. */
+    function draftOf(...analyses: TextAnalysis['tokenAnalyses']): TextAnalysis {
+      return {
+        ...emptyAnalysis(),
+        tokenAnalyses: analyses,
+        tokenAnalysisLinks: analyses.map((a, i) =>
+          link(a.id, `GEN 1:1:${i}`, 'approved', a.surfaceText),
+        ),
+      };
+    }
+
+    /** The stem of `λόγος`, as a morpheme carrying `overrides`. */
+    function stem(overrides: Partial<MorphemeAnalysis> = {}): MorphemeAnalysis {
+      return { ...FIXTURE_STAMPS, id: 'm-1', form: 'λογ', writingSystem: 'el', ...overrides };
+    }
+
+    /** Opens the control in `scope` and chooses the action named `key`. */
+    async function chooseAction(scope: HTMLElement, key: string): Promise<void> {
+      await userEvent.click(await within(scope).findByTestId('catalog-sense-control'));
+      await userEvent.click(screen.getByText(`%interlinearizer_analysisCatalog_${key}%`));
+    }
+
+    /** Opens the control in `scope`, searches, and picks the one sense found. */
+    async function linkFrom(scope: HTMLElement): Promise<void> {
+      await chooseAction(scope, 'senseLinkAction');
+      await userEvent.click(await screen.findByTestId('catalog-sense-candidate'));
+      await settle();
+    }
+
+    /** The detail of the expanded row `ta-1`. */
+    async function expandRow(): Promise<HTMLElement> {
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      return within(rowFor('ta-1')).getByTestId('catalog-row-detail');
+    }
+
+    it('offers the control beside the surface form of a linked row', async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ gloss: { en: 'word' }, glossSenseRef: testSenseRef('s-word') }),
+        ),
+        senses: SENSES,
+      });
+
+      const control = await within(rowFor('ta-1')).findByTestId('catalog-sense-control');
+
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-toggle')).not.toContainElement(
+        control,
+      );
+    });
+
+    it('shows the mark alone on a read-only row, which it opens nothing from', async () => {
       const { unmount } = await renderPanel({
-        analysis: LINKED,
-        senses: { 's-word': { gloss: { en: 'word' } } },
+        analysis: draftOf(
+          wordAnalysis({ gloss: { en: 'word' }, glossSenseRef: testSenseRef('s-word') }),
+        ),
+        readOnly: true,
+        senses: SENSES,
+        search,
       });
 
       expect(within(rowFor('ta-1')).getByTestId('catalog-sense-link')).toBeInTheDocument();
-      expect(within(rowFor('ta-1')).queryByTestId('catalog-sense-links')).not.toBeInTheDocument();
+      expect(within(rowFor('ta-1')).queryByTestId('catalog-sense-control')).not.toBeInTheDocument();
       // Nothing marks the lookup landing, because the sense resolves to the gloss already shown.
       // Closing the panel keeps the lookup from landing after the test.
       unmount();
     });
 
-    it("lists a linked row's sense once the row is expanded", async () => {
-      await renderPanel({ analysis: LINKED, senses: { 's-word': { gloss: { en: 'word' } } } });
+    it("offers the senses' glosses as placeholders for the gloss inputs, leaving them empty", async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({
+            glossSenseRef: testSenseRef('s-word'),
+            morphemes: [stem({ senseRef: testSenseRef('s-stem') })],
+          }),
+        ),
+        senses: SENSES,
+      });
 
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      const detail = await expandRow();
 
-      expect(await within(rowFor('ta-1')).findByTestId('catalog-sense-gloss')).toHaveTextContent(
-        'word',
+      const wordInput = within(detail).getByTestId('catalog-row-gloss-input');
+      const stemInput = within(detail).getByTestId('catalog-row-morpheme-gloss-input');
+      await waitFor(() => expect(wordInput).toHaveAttribute('placeholder', 'word'));
+      await waitFor(() => expect(stemInput).toHaveAttribute('placeholder', 'speak'));
+      expect(wordInput).toHaveValue('');
+      expect(stemInput).toHaveValue('');
+    });
+
+    it('shows the sense gloss in the header where nothing is typed', async () => {
+      await renderPanel({
+        analysis: draftOf(wordAnalysis({ glossSenseRef: testSenseRef('s-word') })),
+        senses: SENSES,
+      });
+
+      await waitFor(() =>
+        expect(within(rowFor('ta-1')).getByTestId('catalog-row-gloss')).toHaveTextContent('word'),
       );
     });
 
-    it('leaves the gloss inputs to what is typed where only the senses gloss', async () => {
+    it('links a word to a sense found by searching its form', async () => {
+      await renderPanel({ analysis: draftOf(wordAnalysis()), senses: SENSES, search });
+
+      await linkFrom(rowFor('ta-1'));
+
+      expect((await savedAnalysis()).tokenAnalyses[0].glossSenseRef).toEqual(testSenseRef('s-new'));
+    });
+
+    it('links a morpheme, with its entry, to a sense found by searching its form', async () => {
       await renderPanel({
-        analysis: {
-          ...emptyAnalysis(),
-          tokenAnalyses: [
-            {
-              ...FIXTURE_STAMPS,
-              id: 'ta-1',
-              surfaceText: 'λόγος',
-              glossSenseRef: testSenseRef('s-word'),
-              morphemes: [
-                {
-                  ...FIXTURE_STAMPS,
-                  id: 'm-1',
-                  form: 'λογ',
-                  writingSystem: 'el',
-                  senseRef: testSenseRef('s-stem'),
-                },
-              ],
-            },
-          ],
-          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0')],
-        },
-        senses: { 's-word': { gloss: { en: 'word' } }, 's-stem': { gloss: { en: 'speak' } } },
+        analysis: draftOf(wordAnalysis({ morphemes: [stem()] })),
+        senses: SENSES,
+        search,
+      });
+      const detail = await expandRow();
+
+      await linkFrom(detail);
+
+      const [morpheme] = (await savedAnalysis()).tokenAnalyses[0].morphemes ?? [];
+      expect(morpheme.senseRef).toEqual(testSenseRef('s-new'));
+      expect(morpheme.entryRef).toEqual(candidate('s-new').entryRef);
+    });
+
+    it('changes the sense a word links to', async () => {
+      await renderPanel({
+        analysis: draftOf(wordAnalysis({ glossSenseRef: testSenseRef('s-word') })),
+        senses: SENSES,
+        search,
       });
 
-      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+      await chooseAction(rowFor('ta-1'), 'senseChangeAction');
+      await userEvent.click(await screen.findByTestId('catalog-sense-candidate'));
+      await settle();
 
-      const row = rowFor('ta-1');
-      // Both senses resolved, so empty inputs below are not just a lookup still in flight.
-      await waitFor(() =>
-        expect(
-          within(row)
-            .getAllByTestId('catalog-sense-gloss')
-            .map((gloss) => gloss.textContent),
-        ).toEqual(expect.arrayContaining(['word', 'speak'])),
-      );
-      expect(within(row).getByTestId('catalog-row-gloss-input')).toHaveValue('');
-      expect(within(row).getByTestId('catalog-row-morpheme-gloss-input')).toHaveValue('');
+      expect((await savedAnalysis()).tokenAnalyses[0].glossSenseRef).toEqual(testSenseRef('s-new'));
+    });
+
+    it("adopts the sense's gloss as the gloss of a word with none typed, keeping the link", async () => {
+      await renderPanel({
+        analysis: draftOf(wordAnalysis({ glossSenseRef: testSenseRef('s-word') })),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseAdoptGloss');
+      await settle();
+
+      const [saved] = (await savedAnalysis()).tokenAnalyses;
+      expect(saved.gloss).toEqual({ en: 'word' });
+      expect(saved.glossSenseRef).toEqual(testSenseRef('s-word'));
+    });
+
+    it('adopts the sense gloss over a typed gloss that differs', async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ gloss: { en: 'utterance' }, glossSenseRef: testSenseRef('s-word') }),
+        ),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseAdoptGloss');
+      await settle();
+
+      expect((await savedAnalysis()).tokenAnalyses[0].gloss).toEqual({ en: 'word' });
+    });
+
+    it("adopts a morpheme's sense gloss as its gloss", async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ morphemes: [stem({ senseRef: testSenseRef('s-stem') })] }),
+        ),
+        senses: SENSES,
+      });
+      const detail = await expandRow();
+
+      await chooseAction(detail, 'senseAdoptGloss');
+      await settle();
+
+      const [morpheme] = (await savedAnalysis()).tokenAnalyses[0].morphemes ?? [];
+      expect(morpheme.gloss).toEqual({ en: 'speak' });
+      expect(morpheme.senseRef).toEqual(testSenseRef('s-stem'));
+    });
+
+    it("keeps the sense's gloss when the word is unlinked and the reader chooses to", async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({
+            gloss: { en: 'word' },
+            glossSenseRef: testSenseRef('s-word'),
+            morphemes: [stem()],
+          }),
+        ),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseUnlink');
+      await settle();
+
+      const [saved] = (await savedAnalysis()).tokenAnalyses;
+      expect(saved.glossSenseRef).toBeUndefined();
+      expect(saved.gloss).toEqual({ en: 'word' });
+    });
+
+    it('asks before unlinking a word glossed only by its sense, and keeps the gloss on request', async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ glossSenseRef: testSenseRef('s-word'), morphemes: [stem()] }),
+        ),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseUnlink');
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseKeepGloss%'));
+      await settle();
+
+      const [saved] = (await savedAnalysis()).tokenAnalyses;
+      expect(saved.glossSenseRef).toBeUndefined();
+      expect(saved.gloss).toEqual({ en: 'word' });
+    });
+
+    it('unlinks a word glossed only by its sense and drops the gloss on request', async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ glossSenseRef: testSenseRef('s-word'), morphemes: [stem()] }),
+        ),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseUnlink');
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseRemoveGloss%'));
+      await settle();
+
+      const [saved] = (await savedAnalysis()).tokenAnalyses;
+      expect(saved.glossSenseRef).toBeUndefined();
+      expect(saved.gloss).toBeUndefined();
+    });
+
+    it('removes a row that held nothing but its link when it is unlinked', async () => {
+      await renderPanel({
+        analysis: draftOf(wordAnalysis({ glossSenseRef: testSenseRef('s-word') })),
+        senses: SENSES,
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseUnlink');
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseRemoveGloss%'));
+      await settle();
+
+      expect((await savedAnalysis()).tokenAnalyses).toEqual([]);
+      expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument();
+    });
+
+    it("unlinks a morpheme, keeping its sense's gloss on request", async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ morphemes: [stem({ senseRef: testSenseRef('s-stem') })] }),
+        ),
+        senses: SENSES,
+      });
+      const detail = await expandRow();
+
+      await chooseAction(detail, 'senseUnlink');
+      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseKeepGloss%'));
+      await settle();
+
+      const [morpheme] = (await savedAnalysis()).tokenAnalyses[0].morphemes ?? [];
+      expect(morpheme.senseRef).toBeUndefined();
+      expect(morpheme.gloss).toEqual({ en: 'speak' });
+    });
+
+    describe('when the edit makes the row identical to another', () => {
+      /** Two words that differ only in whether each links to `s-word` as its stem sense. */
+      function twins(linked: string) {
+        const withLink = { gloss: { en: 'word' }, glossSenseRef: testSenseRef('s-word') };
+        const without = { gloss: { en: 'word' } };
+        return draftOf(
+          wordAnalysis(linked === 'first' ? withLink : without),
+          wordAnalysis({ id: 'ta-2', ...(linked === 'first' ? without : withLink) }),
+        );
+      }
+
+      it('folds a row into its twin on linking, and says so', async () => {
+        await renderPanel({
+          analysis: twins('second'),
+          senses: SENSES,
+          search: async () => [candidate('s-word')],
+        });
+
+        await linkFrom(rowFor('ta-1'));
+
+        expect(listedAnalysisIds()).toHaveLength(1);
+        expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_merged%',
+        );
+      });
+
+      it('folds a row into its twin on unlinking, and says so', async () => {
+        await renderPanel({ analysis: twins('first'), senses: SENSES });
+
+        await chooseAction(rowFor('ta-1'), 'senseUnlink');
+        await settle();
+
+        expect(listedAnalysisIds()).toHaveLength(1);
+        expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_merged%',
+        );
+      });
     });
   });
 
@@ -3698,6 +4108,7 @@ describe('AnalysisCatalogPanel', () => {
       await editIntoEquality();
 
       act(() => ref.current?.revealRow('ta-2'));
+      await settle();
 
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
     });
@@ -3729,6 +4140,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.clear(input);
       await userEvent.type(input, 'zzz');
       await userEvent.tab();
+      await settle();
 
       expect(screen.getByTestId('catalog-merge-notice')).toBeInTheDocument();
       expect(listedAnalysisIds()).toContain('ta-dst');
@@ -4381,8 +4793,39 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).not.toContain('filler-99');
 
       act(() => ref.current?.revealRow('filler-99'));
+      await settle();
 
       expect(listedAnalysisIds()).toContain('filler-99');
+    });
+
+    it('scrolls to a row asked for once the host sends it', async () => {
+      const scrollIntoView = jest.fn();
+      // jsdom implements no scrollIntoView.
+      Element.prototype.scrollIntoView = scrollIntoView;
+      try {
+        const ref = createRef<AnalysisCatalogPanelHandle>();
+        await renderPanel({
+          ref,
+          analysis: {
+            ...emptyAnalysis(),
+            tokenAnalyses: Array.from({ length: 100 }, (_unused, index) => ({
+              ...FIXTURE_STAMPS,
+              id: `filler-${index}`,
+              surfaceText: `word${index}`,
+              gloss: { en: `g${String(index).padStart(3, '0')}` },
+            })),
+            tokenAnalysisLinks: [],
+          },
+        });
+        await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
+
+        act(() => ref.current?.revealRow('filler-99'));
+        await settle();
+
+        expect(scrollIntoView.mock.contexts).toContain(rowFor('filler-99'));
+      } finally {
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+      }
     });
 
     it('stops holding a revealed row mounted once the listing changes', async () => {
@@ -4402,6 +4845,7 @@ describe('AnalysisCatalogPanel', () => {
       });
       await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
       act(() => ref.current?.revealRow('filler-99'));
+      await settle();
 
       // Matches every row, so filler-99 stays in the listing, past the end of its first chunk.
       await userEvent.type(searchBox(), 'word');
@@ -4412,14 +4856,24 @@ describe('AnalysisCatalogPanel', () => {
 
   describe('deleting a row', () => {
     const announceUndoable = jest.fn();
+    /** A text reading "ἀρχῇ" at GEN 1:1:0, GEN 1:3:4 and GEN 2:7:2, and "λόγος" at GEN 1:1:5. */
+    const DELETION_TEXT = makeVerseBook([
+      { sid: 'GEN 1:1', text: 'ἀρχῇ λόγος' },
+      { sid: 'GEN 1:3', text: 'καὶ ἀρχῇ' },
+      { sid: 'GEN 2:7', text: 'ἡ ἀρχῇ' },
+    ]);
     /** One analysis nothing else shares a form with, so deleting it leaves its token blank. */
     const LONE: TextAnalysis = {
       ...emptyAnalysis(),
       tokenAnalyses: [
         { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'λόγος', gloss: { en: 'word' } },
       ],
-      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0'), link('ta-1', 'GEN 1:3:4')],
+      tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:5')],
     };
+
+    /** Renders the panel over {@link DELETION_TEXT}, announcing through {@link announceUndoable}. */
+    const renderDeleting = (overrides: PanelOptions) =>
+      renderPanel({ announceUndoable, book: DELETION_TEXT, ...overrides });
 
     /** Expands the row and deletes it. */
     async function deleteRow(analysisId: string): Promise<void> {
@@ -4464,37 +4918,99 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['ta-1']);
     });
 
+    /** Serves `preview` in place of the host's answer to `previewDeletion`. */
+    function previewServedBy(preview: () => ReturnType<typeof papi.commands.sendCommand>): void {
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.previewDeletion') return preview();
+        return serve?.(...call);
+      });
+    }
+
+    /** Expands the row and asks to delete it, leaving the confirmation open. */
+    async function openDeleteConfirmation(analysisId: string): Promise<void> {
+      await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-toggle'));
+      await userEvent.click(within(rowFor(analysisId)).getByTestId('catalog-row-delete'));
+    }
+
+    it('withholds Delete until the host states what the deletion would do', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(() => new Promise(() => {}));
+
+      await openDeleteConfirmation('ta-1');
+
+      expect(screen.getByTestId('catalog-delete-confirm')).toBeDisabled();
+      expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteConfirmLoading%',
+      );
+    });
+
+    it('offers Delete and a retry when the host cannot state what the deletion would do', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(() => Promise.reject(new Error('offline')));
+
+      await openDeleteConfirmation('ta-1');
+
+      expect(await screen.findByTestId('catalog-delete-confirm-retry')).toBeInTheDocument();
+      expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_deleteConfirmFailed%',
+      );
+      expect(screen.getByTestId('catalog-delete-confirm')).toBeEnabled();
+    });
+
+    it('deletes without announcing when the host cannot state what the deletion did', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(() => Promise.reject(new Error('offline')));
+      await openDeleteConfirmation('ta-1');
+      await screen.findByTestId('catalog-delete-confirm-retry');
+
+      await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
+
+      await waitFor(() => expect(screen.queryByTestId('catalog-row')).not.toBeInTheDocument());
+      expect(announceUndoable).not.toHaveBeenCalled();
+    });
+
+    it('states what the deletion would do once a retry succeeds', async () => {
+      await renderDeleting({ analysis: LONE });
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      previewServedBy(() => Promise.reject(new Error('offline')));
+      await openDeleteConfirmation('ta-1');
+      const retry = await screen.findByTestId('catalog-delete-confirm-retry');
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mockImplementation(async (...call) => serve?.(...call));
+
+      await userEvent.click(retry);
+
+      await waitFor(() =>
+        expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_deleteConfirmBlank%',
+        ),
+      );
+      expect(screen.queryByTestId('catalog-delete-confirm-retry')).not.toBeInTheDocument();
+    });
+
+    it('withholds Delete for an analysis already deleted', async () => {
+      await renderDeleting({ analysis: LONE });
+      previewServedBy(async () => 'null');
+
+      await openDeleteConfirmation('ta-1');
+
+      await waitFor(() =>
+        expect(screen.getByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+          '%interlinearizer_analysisCatalog_deleteConfirmMissing%',
+        ),
+      );
+      expect(screen.getByTestId('catalog-delete-confirm')).toBeDisabled();
+    });
+
     it('states that the uses are left blank when no homograph survives', async () => {
-      await renderPanel({ announceUndoable, analysis: LONE });
+      await renderDeleting({ analysis: LONE });
 
       await deleteRow('ta-1');
 
       expect(announceUndoable).toHaveBeenCalledWith(
         expect.stringContaining('%interlinearizer_analysisCatalog_deleteBlank%'),
-      );
-    });
-
-    it('states the fallback the uses take when a homograph survives', async () => {
-      const analysis: TextAnalysis = {
-        ...emptyAnalysis(),
-        tokenAnalyses: [
-          { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'ἀρχῇ', gloss: { en: 'start' } },
-          { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'ἀρχῇ', gloss: { en: 'beginning' } },
-        ],
-        tokenAnalysisLinks: [
-          link('ta-1', 'GEN 1:1:0'),
-          link('ta-1', 'GEN 1:3:4'),
-          link('ta-2', 'GEN 2:7:2'),
-        ],
-      };
-      await renderPanel({ announceUndoable, analysis });
-
-      await deleteRow('ta-1');
-
-      // The two outcomes must be told apart: this copy is all the reader learns of what the delete
-      // did, and promising a fallback that does not exist is worse than saying nothing.
-      expect(announceUndoable).toHaveBeenCalledWith(
-        expect.stringContaining('%interlinearizer_analysisCatalog_deleteFallback%'),
       );
     });
 
@@ -4512,26 +5028,41 @@ describe('AnalysisCatalogPanel', () => {
       ],
     };
 
-    it('describes rather than names the fallback when a use has drifted off its analyzed form', async () => {
-      await renderPanel({
-        announceUndoable,
-        analysis: TWO_HOMOGRAPHS,
-        // Analyzed as "ἀρχῇ", but the baseline beneath it now reads otherwise.
-        liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? 'ἀρχή' : 'ἀρχῇ'),
-      });
+    it('states the fallback the uses take when a homograph survives', async () => {
+      await renderDeleting({ analysis: TWO_HOMOGRAPHS });
 
       await deleteRow('ta-1');
 
+      // The two outcomes must be told apart: this copy is all the reader learns of what the delete
+      // did, and promising a fallback that does not exist is worse than saying nothing.
       expect(announceUndoable).toHaveBeenCalledWith(
-        expect.stringContaining('%interlinearizer_analysisCatalog_deleteFallbackUncertain%'),
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteFallback%'),
       );
     });
 
-    it('describes rather than names the fallback when a use sits in an unloaded book', async () => {
-      await renderPanel({
-        announceUndoable,
+    it('states in the confirmation what the deletion would do', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_analysisCatalog_deleteConfirmFallback%': '{count} uses go to {gloss}.',
+      });
+      await renderDeleting({ analysis: TWO_HOMOGRAPHS });
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
+
+      await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
+
+      expect(await screen.findByTestId('catalog-delete-confirm-outcome')).toHaveTextContent(
+        '2 uses go to beginning.',
+      );
+    });
+
+    it('describes rather than names the fallback when a use has drifted off its analyzed form', async () => {
+      await renderDeleting({
         analysis: TWO_HOMOGRAPHS,
-        liveSurfaceText: (ref) => (ref === 'GEN 1:3:4' ? undefined : 'ἀρχῇ'),
+        // Analyzed as "ἀρχῇ", but the text at GEN 1:3:4 now reads otherwise.
+        book: makeVerseBook([
+          { sid: 'GEN 1:1', text: 'ἀρχῇ λόγος' },
+          { sid: 'GEN 1:3', text: 'καὶ ἀρχή' },
+          { sid: 'GEN 2:7', text: 'ἡ ἀρχῇ' },
+        ]),
       });
 
       await deleteRow('ta-1');
@@ -4542,8 +5073,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('states that nothing else changes when the analysis is used nowhere', async () => {
-      const analysis: TextAnalysis = { ...LONE, tokenAnalysisLinks: [] };
-      await renderPanel({ announceUndoable, analysis });
+      await renderDeleting({ analysis: { ...LONE, tokenAnalysisLinks: [] } });
 
       await deleteRow('ta-1');
 
@@ -4553,8 +5083,7 @@ describe('AnalysisCatalogPanel', () => {
     });
 
     it('says nothing about unapplied assignments when there are none', async () => {
-      const analysis: TextAnalysis = { ...LONE, tokenAnalysisLinks: [] };
-      await renderPanel({ announceUndoable, analysis });
+      await renderDeleting({ analysis: { ...LONE, tokenAnalysisLinks: [] } });
 
       await deleteRow('ta-1');
 
@@ -4563,20 +5092,29 @@ describe('AnalysisCatalogPanel', () => {
       );
     });
 
-    // An imported analysis no token approves still shows on screen nowhere, so the outcome sentence
-    // rightly says nothing changes — this further sentence is what tells the reader data goes with it.
-    it('warns that unapplied assignments are deleted too', async () => {
-      const analysis: TextAnalysis = {
-        ...LONE,
-        tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:0', 'candidate')],
-      };
-      await renderPanel({ announceUndoable, analysis });
+    // The token is offered the record, so deleting it can change what the token shows.
+    it('warns that unapplied assignments are deleted when no token uses the analysis', async () => {
+      await renderDeleting({
+        analysis: { ...LONE, tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:5', 'candidate')] },
+      });
 
       await deleteRow('ta-1');
 
       expect(announceUndoable).toHaveBeenCalledWith(
-        expect.stringContaining('%interlinearizer_analysisCatalog_deleteBlankNone%'),
+        expect.stringContaining('%interlinearizer_analysisCatalog_deleteBlankNoneUnapplied%'),
       );
+    });
+
+    it('warns that unapplied assignments are deleted along with the uses', async () => {
+      await renderDeleting({
+        analysis: {
+          ...LONE,
+          tokenAnalysisLinks: [link('ta-1', 'GEN 1:1:5'), link('ta-1', 'GEN 1:3:4', 'candidate')],
+        },
+      });
+
+      await deleteRow('ta-1');
+
       expect(announceUndoable).toHaveBeenCalledWith(
         expect.stringContaining('%interlinearizer_analysisCatalog_deleteUnapplied%'),
       );
@@ -4603,7 +5141,7 @@ describe('AnalysisCatalogPanel', () => {
     };
 
     it('describes a fallback that carries no gloss rather than naming it', async () => {
-      await renderPanel({ announceUndoable, analysis: UNGLOSSED_FALLBACK });
+      await renderDeleting({ analysis: UNGLOSSED_FALLBACK });
 
       await deleteRow('ta-1');
 
@@ -4701,7 +5239,7 @@ describe('AnalysisCatalogPanel', () => {
       ],
     };
 
-    /** Checks the row for each of `analysisIds`. */
+    /** Checks the row for each of `analysisIds`, then waits for the selection's summary. */
     async function select(...analysisIds: string[]): Promise<void> {
       // Chained: each click re-renders the list the next row is found in.
       await analysisIds.reduce(
@@ -4711,6 +5249,8 @@ describe('AnalysisCatalogPanel', () => {
           ),
         Promise.resolve(),
       );
+      // The summary decides which actions the selection bar offers.
+      await settle();
     }
 
     it('states how many rows are checked and how many uses they have', async () => {
@@ -5198,6 +5738,23 @@ describe('AnalysisCatalogPanel', () => {
       expect(announceUndoable).toHaveBeenCalledWith(
         '%interlinearizer_analysisCatalog_deletedChecked%',
       );
+    });
+
+    it('deletes the checked rows unannounced when their uses could not be counted', async () => {
+      const announceUndoable = jest.fn();
+      await renderPanel({ announceUndoable, analysis: THREE_FORMS });
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.countUsages') throw new Error('offline');
+        return serve?.(...call);
+      });
+
+      await select('ta-1', 'ta-3');
+      await userEvent.click(screen.getByTestId('catalog-selection-delete'));
+      await settle();
+
+      expect(listedAnalysisIds()).toEqual(['ta-2']);
+      expect(announceUndoable).not.toHaveBeenCalled();
     });
   });
 });

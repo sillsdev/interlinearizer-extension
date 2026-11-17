@@ -11,26 +11,11 @@ declare module 'papi-shared-types' {
      */
     'interlinearizer.onUndoFromNotification': { notificationId: string | number };
     /**
-     * Emitted when what a view shows of a source project's analysis or text changes, so that the
-     * view refetches what the change touched.
-     *
-     * Addressed by source project, the event names a Scripture edit in a book the extension
-     * watches, so that the view reads the book's text again. Those books are the source's open book
-     * (the one last outlined) and every book its whole-text read has read. Edits to other books
-     * emit nothing.
-     *
-     * Addressed by session, the event names what each change to the session's analysis touched,
-     * re-anchoring included. A Scripture edit is named as a book touched whole.
+     * Emitted when what a view shows of a session's analysis or text changes, so that the view
+     * refetches what the change touched. The event names what each change to the session's analysis
+     * touched, re-anchoring included. A Scripture edit is named as a book touched whole.
      */
-    'interlinearizer.onAnalysisChanged':
-      | {
-          sourceProjectId: string;
-          /** Unique to this change. */
-          changeId: string;
-          /** A Scripture edit, naming the book to read again. */
-          scriptureEdit: { bookId: string };
-        }
-      | import('interlinearizer').SessionAnalysisChange;
+    'interlinearizer.onAnalysisChanged': import('interlinearizer').SessionAnalysisChange;
   }
 
   /** Project-level settings contributed by the Interlinearizer extension. */
@@ -66,6 +51,8 @@ declare module 'papi-shared-types' {
      *
      * @returns A promise that resolves to the opened WebView ID, or `undefined` if the user
      *   dismissed the picker without selecting a project.
+     * @throws If reading the WebView's definition, showing the project picker, or opening the
+     *   WebView fails.
      */
     'interlinearizer.openForWebView': (webViewId?: string) => Promise<string | undefined>;
 
@@ -82,7 +69,7 @@ declare module 'papi-shared-types' {
      *   Omitted for analysis-only projects (LCM, PT9 single-sided).
      * @param name - User-facing name for the project.
      * @param description - User-facing description for the project.
-     * @returns The persisted `InterlinearProject` serialized as a JSON string.
+     * @returns The persisted project's `InterlinearProjectSummary` serialized as a JSON string.
      * @throws If storage fails. The error is logged and an error notification is sent before
      *   rethrowing so callers do not need to send a second notification.
      */
@@ -114,8 +101,12 @@ declare module 'papi-shared-types' {
     /**
      * Deletes an interlinearizer project by UUID. No-ops silently if the project does not exist.
      *
-     * @throws If the underlying storage write fails (the failure is also logged and surfaced as an
-     *   error notification before being re-thrown).
+     * @throws {SyntaxError} If the stored project summaries contain invalid JSON.
+     * @throws {Error} If the stored project summaries were written by a newer build, or are
+     *   corrupt.
+     * @throws If reading the summaries fails for a reason other than the file not existing, or
+     *   writing them fails. Every failure is logged and surfaced as an error notification before
+     *   being re-thrown.
      */
     'interlinearizer.deleteProject': (interlinearProjectId: string) => Promise<void>;
 
@@ -208,15 +199,6 @@ declare module 'papi-shared-types' {
     'interlinearizer.openLexiconChooser': () => Promise<void>;
 
     /**
-     * Loads the interlinearizer project with the given UUID, including its full `TextAnalysis`. The
-     * WebView calls this when the active project changes to load the stored analysis.
-     *
-     * @returns JSON-stringified `InterlinearProject`, or `undefined` if not found.
-     * @throws If storage fails (logged before rethrowing).
-     */
-    'interlinearizer.getProject': (interlinearProjectId: string) => Promise<string | undefined>;
-
-    /**
      * Returns the summary of the interlinearizer project with the given UUID, without reading its
      * analysis.
      *
@@ -230,20 +212,20 @@ declare module 'papi-shared-types' {
 
     /**
      * Copies the source project's stored draft, its analysis and custom segment boundaries, into an
-     * existing interlinearizer project. Called from the WebView on Save and on Save As onto an
-     * existing project. The copy reads the stored draft after the session's earlier edits, so no
-     * analysis crosses the bus.
+     * existing interlinearizer project. The copy reads the stored draft after the session's earlier
+     * edits, so no analysis crosses the bus.
      *
      * @param sessionId - The session editing the draft. The copy runs in the session's turn, and
      *   the session's history marks the draft saved.
      * @param sourceProjectId - Platform.Bible source project ID whose draft to copy.
      * @param interlinearProjectId - UUID of the interlinearizer project to save into.
-     * @param config - The configuration to set on the project in the same write, so Save As onto an
-     *   existing project makes its declared configuration match the glosses it now holds; omit to
-     *   leave the configuration unchanged, as Save does.
+     * @param config - The target to set on the project in the same write. The project also takes
+     *   the analysis languages of the draft being copied, so its declared configuration matches the
+     *   glosses it receives. An absent `targetProjectId` clears the project's target binding. Omit
+     *   `config` to leave the configuration unchanged. A draft that lists no analysis languages
+     *   leaves it unchanged too, target included.
      * @returns The saved project's `InterlinearProjectSummary` (with its refreshed `updatedAt`) as
-     *   a JSON string, or `undefined` if no project with the given ID exists. The WebView uses the
-     *   refreshed `updatedAt` to keep the cached Modified time current after a Save.
+     *   a JSON string, or `undefined` if no project with the given ID exists.
      * @throws If `sessionId` names no open session, if the project is a Paratext 9 import, which is
      *   read-only, or if the stored draft cannot be read whole, or if storage fails. Error is
      *   logged and an error notification is sent before rethrowing so callers do not need to send a
@@ -253,7 +235,7 @@ declare module 'papi-shared-types' {
       sessionId: string,
       sourceProjectId: string,
       interlinearProjectId: string,
-      config?: import('interlinearizer').ProjectConfig,
+      config?: Pick<import('interlinearizer').ProjectConfig, 'targetProjectId'>,
     ) => Promise<string | undefined>;
 
     /**
@@ -283,21 +265,10 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
-     * Returns a book of the source project tokenized under the project's language tag.
-     *
-     * @returns The tokenized `Book` as a JSON string, or `undefined` when the project has no text
-     *   for the book.
-     * @throws If the book cannot be read or tokenized (logged before rethrowing).
-     */
-    'interlinearizer.getTokenizedBook': (
-      sourceProjectId: string,
-      bookId: string,
-    ) => Promise<string | undefined>;
-
-    /**
-     * Outlines a book of the session's source as the session's draft segments it, counting each
-     * segment's orphaned free-translation cards. Before the session's first outline of a book, the
-     * session re-anchors its draft to the book's text.
+     * Outlines a book of the session's source as the session's draft segments it. The outline
+     * counts each segment's orphaned free-translation cards and flags the segments that show a
+     * stale gloss or free translation. Before the session's first outline of a book, the session
+     * re-anchors its draft to the book's text.
      *
      * @returns The `BookOutline` as a JSON string, or `undefined` when the project has no text for
      *   the book.
@@ -308,6 +279,19 @@ declare module 'papi-shared-types' {
       address: { sessionId: string },
       bookId: string,
     ) => Promise<string | undefined>;
+
+    /**
+     * Summarizes the stale analyses that a book holds, segmented by the session's draft.
+     *
+     * @returns The `StaleSummary` as a JSON string, or `undefined` when the project has no text for
+     *   the book.
+     * @throws If the book cannot be read or segmented, the session is not open, or its analysis
+     *   cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getStaleSummary': (args: {
+      sessionId: string;
+      bookId: string;
+    }) => Promise<string | undefined>;
 
     /**
      * Serves the segments at indexes `[start, end)` of the book's outline, with the analysis the
@@ -336,9 +320,20 @@ declare module 'papi-shared-types' {
     'interlinearizer.getTextReadStatus': (address: { sessionId: string }) => Promise<string>;
 
     /**
+     * Reads again each book of the session source's whole text whose latest read failed. Does
+     * nothing until every book has been read once. A change names `getTextReadStatus` as each book
+     * is filed.
+     *
+     * @throws If the session is not open.
+     */
+    'interlinearizer.retryTextRead': (address: { sessionId: string }) => Promise<void>;
+
+    /**
      * Starts the source project's draft over from `from`, closing the source's session first. A
      * session opened afterward has nothing to undo. Stored analysis that could not be read is
      * discarded.
+     *
+     * The host builds and writes the draft from `from`, so no draft crosses PAPI.
      *
      * @throws If `from` names a project that is not stored, or if reading that project, closing the
      *   session, or writing the draft fails. The error is logged and an error notification is sent
@@ -400,7 +395,8 @@ declare module 'papi-shared-types' {
     ) => Promise<void>;
 
     /**
-     * Sets the language a session's glosses are read and written in.
+     * Sets the language a session's glosses are read and written in. A new language is reported as
+     * a change that names the catalog and the concordance.
      *
      * @throws If the session is not open (logged before rethrowing).
      */
@@ -453,15 +449,14 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
-     * Reads a session's whole draft, its scope and analysis. A bridge until the WebView reads only
-     * pages. When the draft lists no analysis language, the reply lists the session's; the
-     * session's first edit stores it.
+     * Reads a session's draft envelope: the draft without its analysis or boundaries. When the
+     * draft lists no analysis language, the reply lists the session's; the session's first edit
+     * stores it.
      *
-     * @returns A JSON string of the `DraftProject`.
-     * @throws If the session is not open, or its analysis cannot be loaded (logged before
-     *   rethrowing).
+     * @returns A JSON string of the `DraftEnvelope`.
+     * @throws If the session is not open, or its draft cannot be loaded (logged before rethrowing).
      */
-    'interlinearizer.getFullAnalysis': (
+    'interlinearizer.getDraftEnvelope': (
       args: import('interlinearizer').SessionCommandArgs,
     ) => Promise<string>;
 
@@ -615,7 +610,8 @@ declare module 'papi-shared-types' {
      * to another payload is folded into that payload.
      *
      * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
-     *   they touched.
+     *   they touched, and `outcome`: the `AnalysisEditOutcome` saying where the edit left its
+     *   record.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -647,7 +643,8 @@ declare module 'papi-shared-types' {
      * breakdown.
      *
      * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
-     *   they touched.
+     *   they touched, and `outcome`: the `AnalysisEditOutcome` saying where the edit left its
+     *   record.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -680,11 +677,117 @@ declare module 'papi-shared-types' {
      * every token linked to it; a blank value clears it.
      *
      * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
-     *   they touched.
+     *   they touched, and `outcome`: the `AnalysisEditOutcome` saying where the edit left its
+     *   record.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
     'interlinearizer.writeAnalysisMorphemeGloss': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        morphemeId: string;
+        value: string;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Links a token analysis to a lexicon sense, for every token linked to it, replacing any sense
+     * it had. The typed gloss is untouched. An analysis made identical to another payload is folded
+     * into that payload.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.linkAnalysisSense': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        senseRef: import('interlinearizer').SenseRef;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Drops a token analysis's lexicon sense link, for every token linked to it. A non-blank
+     * `keepGloss` is first written as the gloss in the session's analysis language. An analysis
+     * left empty goes with its links. One made identical to another payload is folded into that
+     * payload. Nothing is applied when the analysis isn't stored or has no sense link.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.unlinkAnalysisSense': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        keepGloss?: string;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Links one morpheme of a token analysis to a lexicon sense, for every token linked to it. A
+     * link to a different entry also drops the morpheme's allomorph and grammar references.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.linkAnalysisMorphemeSense': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        morphemeId: string;
+        entryRef: import('interlinearizer').EntryRef;
+        senseRef: import('interlinearizer').SenseRef;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Drops every lexicon reference of one morpheme of a token analysis, for every token linked to
+     * it. A non-blank `keepGloss` is first written as the morpheme's gloss in the session's
+     * analysis language. Nothing is applied when the morpheme isn't stored or has no sense link.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If the session is read-only or not open, or the edit is refused or fails (logged
+     *   before rethrowing).
+     */
+    'interlinearizer.unlinkAnalysisMorphemeSense': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        morphemeId: string;
+        keepGloss?: string;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Writes a linked sense's gloss, as the caller resolved it, as the gloss of a token analysis in
+     * the session's analysis language, replacing any typed gloss. The sense link stays.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If `value` is blank, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
+     */
+    'interlinearizer.adoptAnalysisSenseGloss': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisId: string;
+        value: string;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Writes a linked sense's gloss, as the caller resolved it, as the gloss of one morpheme of a
+     * token analysis in the session's analysis language, replacing any typed gloss. The sense link
+     * stays.
+     *
+     * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
+     *   they touched.
+     * @throws If `value` is blank, the session is read-only or not open, or the edit is refused or
+     *   fails (logged before rethrowing).
+     */
+    'interlinearizer.adoptAnalysisMorphemeSenseGloss': (
       args: import('interlinearizer').SessionEditArgs & {
         analysisId: string;
         morphemeId: string;
@@ -711,7 +814,8 @@ declare module 'papi-shared-types' {
      * analysis language. The folded analyses' token links move to the survivor.
      *
      * @returns A JSON string of the `CommandReply`: the changes it applied, with the pool buckets
-     *   they touched.
+     *   they touched, and `outcome`: the `AnalysisEditOutcome` saying where the edit left its
+     *   record.
      * @throws If the session is read-only or not open, or the edit is refused or fails (logged
      *   before rethrowing).
      */
@@ -952,6 +1056,40 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Gives a session's draft new analysis languages, primary first, as one undoable step that
+     * leaves the draft unsaved. With `retag`, the step also moves the glosses and free translations
+     * under `retag.from` to `retag.to`; one that already has different text there stays where it
+     * is. With `deleteTextOf`, it deletes the glosses and free translations under that tag
+     * instead.
+     *
+     * @returns A JSON string of the `CommandReply`, with `glossRetag` (how many glosses and free
+     *   translations moved and how many were skipped) when `retag` was given, and `deletedText`
+     *   (how many glosses and free translations were deleted) when `deleteTextOf` was.
+     * @throws If the languages are empty, `retag` moves a tag to itself, both `retag` and
+     *   `deleteTextOf` are given, a move or deletion is asked while a book of the draft can't be
+     *   read, the session is read-only or not open, or the edit is refused or fails (logged before
+     *   rethrowing).
+     */
+    'interlinearizer.changeAnalysisLanguages': (
+      args: import('interlinearizer').SessionEditArgs & {
+        analysisLanguages: string[];
+        retag?: { from: string; to: string };
+        deleteTextOf?: string;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Counts the glosses and free translations of a session's draft under each language tag that
+     * has any. A book whose stored analysis can't be read counts as having none.
+     *
+     * @returns A JSON string of the counts, keyed by tag.
+     * @throws If the session is not open, or its draft can't be read (logged before rethrowing).
+     */
+    'interlinearizer.countLanguageText': (
+      args: import('interlinearizer').SessionCommandArgs,
+    ) => Promise<string>;
+
+    /**
      * Names the token analyses a command would remove from a session's draft, applying nothing.
      *
      * @returns A JSON string of the ids; `"[]"` when it would remove none.
@@ -962,6 +1100,108 @@ declare module 'papi-shared-types' {
       args: import('interlinearizer').SessionCommandArgs & {
         request: import('interlinearizer').RemovalPreviewRequest;
       },
+    ) => Promise<string>;
+
+    /**
+     * Reads what a breakdown edit at a token would do to the payload that the token approves,
+     * applying nothing.
+     *
+     * @returns A JSON string of the `BreakdownPreview`.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.previewBreakdownEdit': (
+      args: import('interlinearizer').SessionCommandArgs & { tokenRef: string },
+    ) => Promise<string>;
+
+    /**
+     * Serves one page of a session's concordance: of the forms of its source's whole text, the most
+     * frequent first, or of one form's occurrences, either joined to the draft's approved
+     * analyses.
+     *
+     * @returns A JSON string of the `ConcordancePage`, or of the `ConcordanceOccurrencePage` when
+     *   the request names a form; `"null"` until the whole text has been read.
+     * @throws If the session is not open, or its analysis or its source's language tag cannot be
+     *   read (logged before rethrowing).
+     */
+    'interlinearizer.getConcordance': (
+      args: import('interlinearizer').SessionCommandArgs & {
+        request: import('../services/sessionConcordanceHandlers').ConcordanceRequest;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Serves one page of a session's analysis catalog, its usages placed among the current book's
+     * headings, or among none when that book cannot be read.
+     *
+     * @returns A JSON string of the `CatalogPage`, each row's books listed.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getCatalogRows': (
+      args: import('interlinearizer').SessionCommandArgs & {
+        request: import('../services/sessionCatalogHandlers').CatalogRowsRequest;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Summarizes the selected analyses of a session's draft for a bulk action over them. A tie in
+     * use for the merge's survivor goes to the analysis named first.
+     *
+     * @returns A JSON string of the `SelectionSummary`.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getSelectionSummary': (
+      args: import('interlinearizer').SessionCommandArgs & { analysisIds: readonly string[] },
+    ) => Promise<string>;
+
+    /**
+     * Counts the distinct tokens in a session's draft that approve any of the analyses.
+     *
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.countUsages': (
+      args: import('interlinearizer').SessionCommandArgs & { analysisIds: readonly string[] },
+    ) => Promise<number>;
+
+    /**
+     * Serves the catalog rows of the analyses in a session's draft that `analysisIds` names, in
+     * that order, leaving out unstored ids.
+     *
+     * @returns A JSON string of the rows, each row's books listed.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getCatalogRowsByIds': (
+      args: import('interlinearizer').SessionCommandArgs & {
+        currentBook: string;
+        analysisIds: readonly string[];
+      },
+    ) => Promise<string>;
+
+    /**
+     * Serves the catalog rows in a session's draft sharing the analysis's normalized surface form,
+     * the analysis's own among them, most used first.
+     *
+     * @returns A JSON string of the rows, each row's books listed; `"[]"` when no analysis carries
+     *   the id.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getHomographRows': (
+      args: import('interlinearizer').SessionCommandArgs & {
+        currentBook: string;
+        analysisId: string;
+      },
+    ) => Promise<string>;
+
+    /**
+     * Reports what deleting a token analysis in a session's draft would do to the tokens that
+     * approve it, whichever book they sit in. An outcome that depends on a token whose book cannot
+     * be read is `uncertain`.
+     *
+     * @returns A JSON string of the `AnalysisDeletionOutcome`; `"null"` when no analysis carries
+     *   the id.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.previewDeletion': (
+      args: import('interlinearizer').SessionCommandArgs & { analysisId: string },
     ) => Promise<string>;
 
     /**
@@ -1009,12 +1249,10 @@ declare module 'papi-shared-types' {
      * @param interlinearProjectId - UUID of the interlinearizer project to update.
      * @param name - New user-facing name; omit or pass `undefined` to clear.
      * @param description - New user-facing description; omit or pass `undefined` to clear.
-     * @param analysisLanguages - New BCP 47 analysis language tags. Must be a non-empty array; pass
-     *   the current value to leave it unchanged (the field is required and cannot be cleared).
      * @param targetProjectId - New target-project ID; omit or pass `undefined` to clear (removes
      *   the target-side text binding).
-     * @returns The updated project as a JSON string, or `undefined` if no project with that ID
-     *   exists.
+     * @returns The updated project's `InterlinearProjectSummary` as a JSON string, or `undefined`
+     *   if no project with that ID exists.
      * @throws If storage fails. The error is logged and an error notification is sent before
      *   rethrowing so callers do not need to send a second notification.
      */
@@ -1022,7 +1260,6 @@ declare module 'papi-shared-types' {
       interlinearProjectId: string,
       name: string | undefined,
       description: string | undefined,
-      analysisLanguages: string[],
       targetProjectId?: string,
     ) => Promise<string | undefined>;
 
@@ -1059,7 +1296,7 @@ declare module 'papi-shared-types' {
      * @param interlinearProjectId - UUID of the Paratext 9 import to copy.
      * @param name - User-facing name for the copy, chosen in the copy dialog.
      * @param description - Optional user-facing description for the copy.
-     * @returns The created project as a JSON string.
+     * @returns The copy's `InterlinearProjectSummary` as a JSON string.
      * @throws If the project does not exist or is not a Paratext 9 import, or if storage fails. The
      *   error is logged and an error notification is sent before rethrowing so callers do not need
      *   to send a second notification.
@@ -1079,11 +1316,6 @@ declare module 'papi-shared-types' {
  * and BT Extension and support the new interlinearizer.
  *
  * Shape at a glance:
- *
- *     ActiveProject
- *       ├─ project : InterlinearProject
- *       ├─ source  : Book[]
- *       └─ target? : Book[]   — present only when targetProjectId is set
  *
  *     InterlinearProject
  *       ├─ sourceProjectId
@@ -1360,6 +1592,23 @@ declare module 'interlinearizer' {
      */
     frontMatter?: FrontMatterParagraph[];
   }
+
+  /**
+   * `T` with every field at every depth readonly, arrays and tuples included. For plain data only:
+   * functions lose their call signatures, and a `Map` or `Set` stays mutable through its methods.
+   */
+  export type DeepReadonly<T> = T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T;
+
+  /** A {@link Book} that is shared with its other holders, so nothing in it may be changed. */
+  export type ReadonlyBook = DeepReadonly<Book>;
+
+  /** A {@link Segment} of a {@link ReadonlyBook}. */
+  export type ReadonlySegment = DeepReadonly<Segment>;
+
+  /** A {@link Token} of a {@link ReadonlyBook}. */
+  export type ReadonlyToken = DeepReadonly<Token>;
 
   /** A paragraph ahead of a book's first chapter, tokenized but outside the text layer. */
   export interface FrontMatterParagraph {
@@ -2241,9 +2490,6 @@ declare module 'interlinearizer' {
      * (e.g. BT Extension imports) where `AlignmentLink.targetEndpoints` must resolve to tokens in a
      * second text. Omitted for analysis-only projects (LCM, PT9 single-sided glossing).
      *
-     * When present, the `ActiveProject.target` books are rebuilt from this project's USJ on load,
-     * exactly as `ActiveProject.source` is rebuilt from `sourceProjectId`.
-     *
      * BT Extension: corresponds to one `Translation` scoped to two sides (`Translation.sideNum`).
      * By BT convention `sideNum = 1` is the source and `sideNum = 2` is the target;
      * `sourceProjectId` maps to the side-1 project and `targetProjectId` maps to the side-2
@@ -2363,7 +2609,8 @@ declare module 'interlinearizer' {
   };
 
   /** A host query whose answer spans books, which a view keeps and refetches when a change names it. */
-  export type AnalysisQuery = 'getCatalogRows' | 'getConcordance' | 'getStaleSummary';
+  export type AnalysisQuery =
+    'getCatalogRows' | 'getConcordance' | 'getStaleSummary' | 'getTextReadStatus';
 
   /** Outline indexes `[start, end)` of a book's segments. */
   export type SegmentRange = { start: number; end: number };
@@ -2382,6 +2629,11 @@ declare module 'interlinearizer' {
      * can move orphaned cards anywhere in the book.
      */
     staleTranslations?: true;
+    /**
+     * Present when the change put or removed a stale token link in the book. Such a change can
+     * change the stale flags of the book's outline.
+     */
+    staleGlosses?: true;
   };
 
   /** What one change to a session's analysis touched. */
@@ -2401,10 +2653,10 @@ declare module 'interlinearizer' {
     /** The id the change was sent under, or a fresh one for a change no command made. */
     changeId: ChangeId;
     /**
-     * The change sets that the reported re-anchor passes applied, in order. They leave the draft's
-     * unsaved mark as it was. Absent from the report of an edit command, an undo or a redo.
+     * Present when the change leaves the draft's unsaved mark as it was, as re-anchor passes and
+     * the whole-text read do. Absent from the report of an edit command, an undo or a redo.
      */
-    passChanges?: import('./analysis-repository').ChangeSet[];
+    keepsUnsavedMark?: true;
   } & AnalysisChange;
 
   /** A command whose removals a preview reports, named by its intent, with its arguments. */
@@ -2479,41 +2731,6 @@ declare module 'interlinearizer' {
     segmentation?: SegmentationDelta;
   }
 
-  // ---------------------------------------------------------------------------
-  // §8 ActiveProject — runtime pairing of project envelope and text layers
-  // ---------------------------------------------------------------------------
-
-  /**
-   * The runtime object for an open interlinearizer project. Pairs the persisted
-   * {@link InterlinearProject} envelope with the reconstructed text hierarchies.
-   *
-   * `source` and `target` are rebuilt from Platform.Bible's USJ on each load and are never
-   * serialized. All annotation and alignment mutations target `project.analysis` and
-   * `project.links`; saving is done by writing those fields back to storage via `updateAnalysis`.
-   *
-   * `target` is present only when `project.targetProjectId` is set (bilateral alignment projects
-   * such as BT Extension imports). When present, `AlignmentLink.targetEndpoints` token IDs resolve
-   * against these books; when absent, only `sourceEndpoints` can be resolved.
-   *
-   * BT Extension: `source` corresponds to `Translation.sideNum = 1` and `target` to `sideNum = 2`,
-   * following BT's convention that side 1 is the input being analyzed and side 2 is the output.
-   */
-  export interface ActiveProject {
-    /** The persisted project envelope. Mutations target `project.analysis` and `project.links`. */
-    project: InterlinearProject;
-
-    /**
-     * The reconstructed source books, built from Platform.Bible USJ on load. Never serialized —
-     * rebuilt on every activation. Typically one book per scripture book code; multiple books may
-     * be present when the UI has prefetched adjacent books.
-     */
-    source: Book[];
-
-    /**
-     * The reconstructed target books, built from `project.targetProjectId`'s USJ on load. Present
-     * only when `project.targetProjectId` is set; absent for analysis-only projects (LCM, PT9).
-     * Never serialized — rebuilt on every activation alongside `source`.
-     */
-    target?: Book[];
-  }
+  /** A draft without its analysis or boundaries, which the view reads whole. */
+  export type DraftEnvelope = Omit<DraftProject, 'analysis' | 'segmentation'>;
 }

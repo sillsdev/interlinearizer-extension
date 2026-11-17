@@ -489,7 +489,7 @@ type SegmentViewProps = Readonly<{
   tokenSegmentMap: ReadonlyMap<string, string>;
   /** Word token ref → flat book-level index; used to sort phrase tokens in document order. */
   tokenDocOrder: ReadonlyMap<string, number>;
-  /** Word token ref → token lookup for the whole book; used to resolve focus context. */
+  /** Each word token held, or spanned by a phrase, by ref; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
    * Resolved {@link SEGMENT_STRING_KEYS}. Supplied rather than subscribed to here, so no segment

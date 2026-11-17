@@ -1,6 +1,6 @@
 import papi, { logger } from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
-import { formatReplacementString } from 'platform-bible-utils';
+import { formatReplacementString, getProjectDisplayName } from 'platform-bible-utils';
 import type { Book } from 'interlinearizer';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
@@ -257,11 +257,11 @@ export async function importPt9Project(
   return { outcome: 'imported', projectId: project.id, report, summary: summarizeProject(project) };
 }
 
-/** The source project's short name, or its id when the name cannot be read. */
+/** The source project's short name, or its id when the name cannot be read or is blank. */
 async function readShortName(sourceProjectId: string): Promise<string> {
   try {
     const pdp = await papi.projectDataProviders.get('platform.base', sourceProjectId);
-    return (await pdp.getSetting('platform.name')) || sourceProjectId;
+    return getProjectDisplayName(sourceProjectId, await pdp.getSetting('platform.name'));
   } catch (e) {
     logger.warn(
       `Interlinearizer: could not read the short name of project ${sourceProjectId}: ${e}`,

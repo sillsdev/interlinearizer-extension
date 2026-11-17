@@ -908,7 +908,7 @@ describe('applyCatalogQuery filters', () => {
     const rows = buildCatalogRows(analysis, scope);
     const query = makeQuery({
       filters: { notInText: true },
-      textForms: new Set(['abraham', 'sarah']),
+      isFormInText: (form) => form === 'abraham' || form === 'sarah',
     });
 
     expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);

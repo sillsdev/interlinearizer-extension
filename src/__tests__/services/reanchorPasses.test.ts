@@ -59,6 +59,30 @@ async function storedDraft(extra: Partial<DraftProject> = {}) {
   return { repository, history, stored };
 }
 
+const EARLIER = '2026-01-01T00:00:00.000Z';
+const LATER = '2026-02-01T00:00:00.000Z';
+
+/** A stale link glossing "beta" in "alpha beta" as `analysisId`, last written at `updatedAt`. */
+function staleOnBeta(id: string, analysisId: string, updatedAt: string) {
+  return {
+    ...makeTokenLink(analysisId, tokenRefOf(verseBook('GEN 1:1', 'alpha beta'), 'beta'), {
+      surfaceText: 'beta',
+      id,
+      status: 'stale',
+    }),
+    updatedAt,
+  };
+}
+
+const EARLIER_STALE = staleOnBeta('tl-earlier', 'ta-beta', EARLIER);
+const LATER_STALE = staleOnBeta('tl-later', 'ta-beta-2', LATER);
+
+/** The analyses the stale links on "beta" name. */
+const BETA_ANALYSES = [
+  { ...FIXTURE_STAMPS, id: 'ta-beta', surfaceText: 'beta' },
+  { ...FIXTURE_STAMPS, id: 'ta-beta-2', surfaceText: 'beta' },
+];
+
 function linkNamed(draft: DraftProject, id: string) {
   const link = draft.analysis.tokenAnalysisLinks.find((l) => l.id === id);
   if (!link) throw new Error(`no link ${id}`);
@@ -161,6 +185,82 @@ describe('reanchorStoredBook', () => {
     });
   });
 
+  it('re-anchors links that an undo restores into a book the draft held nothing in', async () => {
+    const { repository, history, stored } = await storedDraft();
+    const link = linkNamed(await stored(), 'tl-gen');
+    await history.apply({
+      intent: 'deleteLinks',
+      tokenAnalysisLinks: { puts: [], deletes: [link.id] },
+    });
+    const edited = verseBook('GEN 1:1', 'alpha and beta');
+
+    await reanchorStoredBook(repository, history, edited);
+    await history.undo();
+
+    expect(linkNamed(await stored(), 'tl-gen')).toMatchObject({
+      status: 'approved',
+      token: { tokenRef: tokenRefOf(edited, 'beta') },
+    });
+  });
+
+  it('re-anchors a split that an undo restores into a book the draft held nothing in', async () => {
+    const leviticus = verseBook('LEV 1:1', 'epsilon zeta');
+    const split = { tokenRef: tokenRefOf(leviticus, 'zeta'), surfaceText: 'zeta' };
+    const { repository, history, stored } = await storedDraft({
+      segmentation: { removedVerseStarts: [], addedStarts: [split] },
+    });
+    await history.apply({
+      intent: 'merge',
+      scope: { ...(await repository.getScope()), segmentation: undefined },
+    });
+    const edited = verseBook('LEV 1:1', 'epsilon and zeta');
+
+    await reanchorStoredBook(repository, history, edited);
+    await history.undo();
+
+    expect((await stored()).segmentation?.addedStarts).toEqual([
+      { tokenRef: tokenRefOf(edited, 'zeta'), surfaceText: 'zeta' },
+    ]);
+  });
+
+  it('re-anchors links that a redo restores into a book the draft held nothing in', async () => {
+    const { repository, history, stored } = await storedDraft();
+    const link = linkNamed(await stored(), 'tl-gen');
+    await history.apply({
+      intent: 'deleteLinks',
+      tokenAnalysisLinks: { puts: [], deletes: [link.id] },
+    });
+    await history.apply({
+      intent: 'restoreLinks',
+      tokenAnalysisLinks: { puts: [link], deletes: [] },
+    });
+    await history.undo();
+    const edited = verseBook('GEN 1:1', 'alpha and beta');
+
+    await reanchorStoredBook(repository, history, edited);
+    await history.redo();
+
+    expect(linkNamed(await stored(), 'tl-gen').token.tokenRef).toBe(tokenRefOf(edited, 'beta'));
+  });
+
+  it.each([
+    ['earlier', [EARLIER_STALE, LATER_STALE]],
+    ['later', [LATER_STALE, EARLIER_STALE]],
+  ])(
+    'revives the later-written of two stale links on one token, stored %s first',
+    async (_, tokenAnalysisLinks) => {
+      const { repository, history, stored } = await storedDraft({
+        analysis: { ...emptyAnalysis(), tokenAnalyses: BETA_ANALYSES, tokenAnalysisLinks },
+      });
+
+      await reanchorStoredBook(repository, history, verseBook('GEN 1:1', 'alpha beta'));
+
+      const draft = await stored();
+      expect(linkNamed(draft, 'tl-later').status).toBe('approved');
+      expect(linkNamed(draft, 'tl-earlier').status).toBe('stale');
+    },
+  );
+
   it('records the pass over a book the draft links into, though it changes nothing', async () => {
     const { repository, history } = await storedDraft();
     const genesis = verseBook('GEN 1:1', 'alpha beta');
@@ -169,17 +269,6 @@ describe('reanchorStoredBook', () => {
     await reanchorStoredBook(repository, history, genesis);
 
     expect(applyPass).toHaveBeenCalledWith(genesis, undefined);
-  });
-
-  it('records no pass over a book the draft neither links into nor splits', async () => {
-    const { repository, history } = await storedDraft();
-    const applyPass = jest.spyOn(history, 'applyPass');
-
-    await expect(
-      reanchorStoredBook(repository, history, verseBook('LEV 1:1', 'epsilon zeta')),
-    ).resolves.toBeUndefined();
-
-    expect(applyPass).not.toHaveBeenCalled();
   });
 
   it('records the pass over a book the draft only splits', async () => {
@@ -216,15 +305,41 @@ describe('reanchorRestored', () => {
 
     const changes = await reanchorRestored(repository)(restoring, [edited]);
 
-    expect(changes?.tokenAnalysisLinks?.puts).toEqual([
-      expect.objectContaining({ id: 'tl-gen' }),
-      expect.objectContaining({
-        id: 'tl-2',
-        token: { tokenRef: tokenRefOf(edited, 'beta'), surfaceText: 'beta' },
-      }),
-    ]);
+    const puts = changes?.tokenAnalysisLinks?.puts;
+    expect(puts).toHaveLength(2);
+    expect(puts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'tl-gen' }),
+        expect.objectContaining({
+          id: 'tl-2',
+          token: { tokenRef: tokenRefOf(edited, 'beta'), surfaceText: 'beta' },
+        }),
+      ]),
+    );
     expect(apply).not.toHaveBeenCalled();
     expect((await stored()).analysis.tokenAnalysisLinks).toHaveLength(2);
+  });
+
+  it('revives a restored stale link written later than a stored one on its token', async () => {
+    const { repository } = await storedDraft({
+      analysis: {
+        ...emptyAnalysis(),
+        tokenAnalyses: BETA_ANALYSES,
+        tokenAnalysisLinks: [EARLIER_STALE],
+      },
+    });
+    const restoring = {
+      intent: 'undo',
+      tokenAnalysisLinks: { puts: [LATER_STALE], deletes: [] },
+    };
+
+    const changes = await reanchorRestored(repository)(restoring, [
+      verseBook('GEN 1:1', 'alpha beta'),
+    ]);
+
+    expect(changes?.tokenAnalysisLinks?.puts.map(({ id, status }) => [id, status])).toEqual([
+      ['tl-later', 'approved'],
+    ]);
   });
 
   it('re-anchors to each book in turn', async () => {

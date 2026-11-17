@@ -6,6 +6,7 @@ import type {
   SlotFocusInfo,
   TokenGroup,
 } from '../types/token-layout';
+import { emptyFocusContext } from '../types/empty-factories';
 import { isWordToken } from '../types/type-guards';
 
 export type { FocusContext, LinkSlot, RenderUnit, SlotFocusInfo, TokenGroup };
@@ -23,15 +24,7 @@ export function resolveFocusContext(
   phraseLinkByRef: ReadonlyMap<string, PhraseAnalysisLink>,
   tokenSegmentMap: ReadonlyMap<string, string>,
 ): FocusContext {
-  if (focusedTokenRef === undefined) {
-    return {
-      focusedToken: undefined,
-      focusedPhraseLink: undefined,
-      focusedFreeToken: undefined,
-      focusedSegmentId: undefined,
-      focusedPhraseId: undefined,
-    };
-  }
+  if (focusedTokenRef === undefined) return emptyFocusContext();
   const raw = tokensByRef.get(focusedTokenRef);
   const focusedToken = raw && isWordToken(raw) ? raw : undefined;
   const focusedPhraseLink = phraseLinkByRef.get(focusedTokenRef);

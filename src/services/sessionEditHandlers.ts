@@ -1,7 +1,7 @@
 import type {
-  Book,
   ChangeId,
   InterlinearProject,
+  ReadonlyBook,
   RemovalPreviewRequest,
   TokenSnapshot,
 } from 'interlinearizer';
@@ -10,25 +10,25 @@ import type { AnalysisSessions, EditOutcome, Session } from './analysisSessions'
 import type * as bookService from './bookService';
 import * as boundaryCommands from './commands/boundaryCommands';
 import * as catalogCommands from './commands/catalogCommands';
-import type { ChangeBuffer } from './commands/changeBuffer';
+import { ChangeBuffer } from './commands/changeBuffer';
 import * as discardCommands from './commands/discardCommands';
 import * as freeTranslationCommands from './commands/freeTranslationCommands';
+import * as languageCommands from './commands/languageCommands';
 import * as morphemeCommands from './commands/morphemeCommands';
 import * as phraseCommands from './commands/phraseCommands';
 import * as staleCommands from './commands/staleCommands';
 import * as tokenCommands from './commands/tokenCommands';
 import type { EditOptions } from './editHistory';
 import { catalogStepOf, deletionStepOf, phraseStartOf } from './editSteps';
-import type { DraftExport } from '../types/analysis-repository';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { CommandReply } from '../types/command-reply';
-import type { DraftContent } from '../types/draft-content';
-import type { EditStep } from '../types/edit-step';
+import type { EditStep, StepSummary } from '../types/edit-step';
 import { bookOfRef } from '../utils/analysis-book';
+import { countTextOfEveryTag } from '../utils/text-counts';
 import { bookIndexesOf } from '../utils/book-indexes';
+import { readEditOutcome, type AnalysisEditOutcome } from '../utils/edit-outcome';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 import { missingBook } from '../utils/reanchor-analysis';
-import { bookSegmentationJson } from '../utils/segmentation';
 
 /** The one argument that the command `C` takes. */
 type ArgsOf<C extends keyof CommandHandlers> = Parameters<CommandHandlers[C]>[0];
@@ -106,12 +106,54 @@ export function sessionEditHandlers({
   }
 
   /**
-   * Writes a token's gloss in the session's analysis language; a blank value clears it.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
+   * Where the catalog edit staged in `buffer` left `analysisId`, given the analysis that the edit
+   * says holds its content afterward.
    */
+  async function catalogOutcomeOf(
+    buffer: ChangeBuffer,
+    analysisId: string,
+    survivingAnalysisId: string | undefined,
+    analysisLanguage: string,
+  ): Promise<AnalysisEditOutcome> {
+    const ids =
+      survivingAnalysisId === undefined ? [analysisId] : [analysisId, survivingAnalysisId];
+    const tokenAnalysisLinks =
+      survivingAnalysisId === undefined
+        ? []
+        : (await buffer.findLinksToAnalyses([survivingAnalysisId])).tokenAnalysisLinks;
+    return readEditOutcome(
+      { tokenAnalyses: await buffer.getTokenAnalyses(ids), tokenAnalysisLinks },
+      survivingAnalysisId,
+      analysisId,
+      analysisLanguage,
+    );
+  }
+
+  /**
+   * Runs a catalog edit aimed at `analysisId`. The edit stages its changes and resolves to the
+   * analysis that holds the edited content afterward. The undo step is placed at that analysis.
+   *
+   * @returns A JSON string of the {@link CommandReply}, with `outcome`: where the edit left its
+   *   record.
+   * @throws As {@link runSessionEdit} does.
+   */
+  function runCatalogEdit(
+    target: EditTarget,
+    intent: string,
+    kind: Parameters<typeof catalogStepOf>[1],
+    analysisId: string,
+    edit: (buffer: ChangeBuffer, session: Session) => Promise<string | undefined>,
+  ): Promise<string> {
+    return runSessionEdit(target, intent, async (buffer, session) => {
+      const stepOf = await catalogStepOf(buffer, kind, analysisId);
+      const survivor = await edit(buffer, session);
+      target.step = stepOf(survivor);
+      return {
+        outcome: await catalogOutcomeOf(buffer, analysisId, survivor, session.analysisLanguage),
+      };
+    });
+  }
+
   function writeGloss({
     sessionId,
     tokenRef,
@@ -133,13 +175,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Approves a stored token analysis for a token, in place of any approval the token held.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function approveAnalysisForToken({
     sessionId,
     tokenRef,
@@ -160,13 +195,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Writes a token's morpheme breakdown, each form in `writingSystem`.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function writeMorphemes({
     sessionId,
     tokenRef,
@@ -189,13 +217,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Removes a token's morpheme breakdown.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function deleteMorphemes({
     sessionId,
     tokenRef,
@@ -208,14 +229,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Glosses one morpheme of a token's breakdown in the session's analysis language; a blank value
-   * clears the morpheme's gloss.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function writeMorphemeGloss({
     sessionId,
     tokenRef,
@@ -237,13 +250,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Gives up the place an analysis went stale at, leaving its other places alone.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function discardStaleAnalysis({
     sessionId,
     analysisId,
@@ -257,14 +263,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Moves an analysis from a place it went stale at onto a token, approving it there in place of
-   * whatever that token held.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function reapplyStaleAnalysis({
     sessionId,
     analysisId,
@@ -280,14 +278,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Keeps a stale free translation as a claim about a segment's current text, approving it for that
-   * segment.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function keepStaleFreeTranslation({
     sessionId,
     analysisId,
@@ -305,13 +295,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Drops a stale free translation, even one whose verse the book no longer holds.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function discardStaleFreeTranslation({
     sessionId,
     analysisId,
@@ -322,40 +305,27 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Writes a token analysis's gloss in the session's analysis language, for every token linked to
-   * it; a blank value clears it.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws As {@link runSessionEdit} does.
-   */
   function writeAnalysisGloss({
     sessionId,
     analysisId,
     value,
     changeId,
   }: ArgsOf<'interlinearizer.writeAnalysisGloss'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'writeAnalysisGloss', async (buffer, session) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-      target.step = stepOf(
-        await catalogCommands.writeAnalysisGloss(buffer, {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'writeAnalysisGloss',
+      'catalogEdit',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.writeAnalysisGloss(buffer, {
           analysisId,
           value,
           analysisLanguage: session.analysisLanguage,
           now: editStamp().now,
         }),
-      );
-    });
+    );
   }
 
-  /**
-   * Clears the glosses of several token analyses in the session's analysis language.
-   *
-   * @returns A JSON string of the {@link CommandReply}, with `emptiedAnalysisIds`: the token
-   *   analyses that the clear left empty, and so removed.
-   * @throws As {@link runSessionEdit} does.
-   */
   function clearAnalysisGlosses({
     sessionId,
     analysisIds,
@@ -372,13 +342,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Re-splits a token analysis's breakdown into `forms`, for every token linked to it; no forms
-   * removes the breakdown.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws As {@link runSessionEdit} does.
-   */
   function writeAnalysisMorphemes({
     sessionId,
     analysisId,
@@ -386,27 +349,21 @@ export function sessionEditHandlers({
     writingSystem,
     changeId,
   }: ArgsOf<'interlinearizer.writeAnalysisMorphemes'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'writeAnalysisMorphemes', async (buffer) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-      target.step = stepOf(
-        await catalogCommands.writeAnalysisMorphemes(buffer, {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'writeAnalysisMorphemes',
+      'catalogEdit',
+      analysisId,
+      (buffer) =>
+        catalogCommands.writeAnalysisMorphemes(buffer, {
           analysisId,
           morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
           writingSystem,
           now: editStamp().now,
         }),
-      );
-    });
+    );
   }
 
-  /**
-   * Keeps a token analysis's stale breakdown as it stands, for every token linked to it. The undo
-   * step is placed at `tokenRef` when given, and otherwise names the analysis's catalog row.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws As {@link runSessionEdit} does.
-   */
   function confirmAnalysisMorphemes({
     sessionId,
     analysisId,
@@ -422,13 +379,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Writes the gloss of one morpheme of a token analysis in the session's analysis language, for
-   * every token linked to it; a blank value clears it.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws As {@link runSessionEdit} does.
-   */
   function writeAnalysisMorphemeGloss({
     sessionId,
     analysisId,
@@ -436,27 +386,154 @@ export function sessionEditHandlers({
     value,
     changeId,
   }: ArgsOf<'interlinearizer.writeAnalysisMorphemeGloss'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'writeAnalysisMorphemeGloss', async (buffer, session) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogEdit', analysisId);
-      target.step = stepOf(
-        await catalogCommands.writeAnalysisMorphemeGloss(buffer, {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'writeAnalysisMorphemeGloss',
+      'catalogEdit',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.writeAnalysisMorphemeGloss(buffer, {
           analysisId,
           morphemeId,
           value,
           analysisLanguage: session.analysisLanguage,
           now: editStamp().now,
         }),
-      );
-    });
+    );
   }
 
-  /**
-   * Removes token analyses with every token link to them.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws As {@link runSessionEdit} does.
-   */
+  function linkAnalysisSense({
+    sessionId,
+    analysisId,
+    senseRef,
+    changeId,
+  }: ArgsOf<'interlinearizer.linkAnalysisSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'linkAnalysisSense',
+      'catalogLinkSense',
+      analysisId,
+      (buffer) =>
+        catalogCommands.linkAnalysisSense(buffer, {
+          analysisId,
+          senseRef,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  function unlinkAnalysisSense({
+    sessionId,
+    analysisId,
+    keepGloss,
+    changeId,
+  }: ArgsOf<'interlinearizer.unlinkAnalysisSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'unlinkAnalysisSense',
+      'catalogUnlinkSense',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.unlinkAnalysisSense(buffer, {
+          analysisId,
+          keepGloss,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  function linkAnalysisMorphemeSense({
+    sessionId,
+    analysisId,
+    morphemeId,
+    entryRef,
+    senseRef,
+    changeId,
+  }: ArgsOf<'interlinearizer.linkAnalysisMorphemeSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'linkAnalysisMorphemeSense',
+      'catalogLinkSense',
+      analysisId,
+      (buffer) =>
+        catalogCommands.linkAnalysisMorphemeSense(buffer, {
+          analysisId,
+          morphemeId,
+          entryRef,
+          senseRef,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  function unlinkAnalysisMorphemeSense({
+    sessionId,
+    analysisId,
+    morphemeId,
+    keepGloss,
+    changeId,
+  }: ArgsOf<'interlinearizer.unlinkAnalysisMorphemeSense'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'unlinkAnalysisMorphemeSense',
+      'catalogUnlinkSense',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.unlinkAnalysisMorphemeSense(buffer, {
+          analysisId,
+          morphemeId,
+          keepGloss,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  function adoptAnalysisSenseGloss({
+    sessionId,
+    analysisId,
+    value,
+    changeId,
+  }: ArgsOf<'interlinearizer.adoptAnalysisSenseGloss'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'adoptAnalysisSenseGloss',
+      'catalogAdoptGloss',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.adoptAnalysisSenseGloss(buffer, {
+          analysisId,
+          value,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
+  function adoptAnalysisMorphemeSenseGloss({
+    sessionId,
+    analysisId,
+    morphemeId,
+    value,
+    changeId,
+  }: ArgsOf<'interlinearizer.adoptAnalysisMorphemeSenseGloss'>): Promise<string> {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'adoptAnalysisMorphemeSenseGloss',
+      'catalogAdoptGloss',
+      analysisId,
+      (buffer, session) =>
+        catalogCommands.adoptAnalysisMorphemeSenseGloss(buffer, {
+          analysisId,
+          morphemeId,
+          value,
+          analysisLanguage: session.analysisLanguage,
+          now: editStamp().now,
+        }),
+    );
+  }
+
   function deleteAnalyses({
     sessionId,
     analysisIds,
@@ -469,13 +546,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Folds token analyses into a survivor and writes the settled content onto it, in the session's
-   * analysis language.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws As {@link runSessionEdit} does.
-   */
   function mergeAnalysesInto({
     sessionId,
     survivorAnalysisId,
@@ -483,19 +553,20 @@ export function sessionEditHandlers({
     content,
     changeId,
   }: ArgsOf<'interlinearizer.mergeAnalysesInto'>): Promise<string> {
-    const target: EditTarget = { sessionId, changeId };
-    return runSessionEdit(target, 'mergeAnalysesInto', async (buffer, session) => {
-      const stepOf = await catalogStepOf(buffer, 'catalogMerge', survivorAnalysisId);
-      target.step = stepOf(
-        await catalogCommands.mergeAnalysesInto(buffer, {
+    return runCatalogEdit(
+      { sessionId, changeId },
+      'mergeAnalysesInto',
+      'catalogMerge',
+      survivorAnalysisId,
+      (buffer, session) =>
+        catalogCommands.mergeAnalysesInto(buffer, {
           survivorAnalysisId,
           mergedAnalysisIds,
           content,
           analysisLanguage: session.analysisLanguage,
           now: editStamp().now,
         }),
-      );
-    });
+    );
   }
 
   /**
@@ -540,17 +611,8 @@ export function sessionEditHandlers({
     tokens: readonly TokenSnapshot[],
   ): Promise<void> {
     const { segmentation } = await buffer.getScope();
-    const { segments } = await readBookOf(
-      session,
-      tokens[0].tokenRef,
-      (sourceProjectId, bookId) => {
-        // Keyed as page reads key it, so that the two share the book's segmentation.
-        return getSegmentedBook(
-          sourceProjectId,
-          bookId,
-          bookSegmentationJson(segmentation, bookId),
-        );
-      },
+    const { segments } = await readBookOf(session, tokens[0].tokenRef, (sourceProjectId, bookId) =>
+      getSegmentedBook(sourceProjectId, bookId, segmentation),
     );
     const { tokenSegmentMap } = bookIndexesOf(segments);
     const segmentIds = new Set(tokens.map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)));
@@ -559,15 +621,6 @@ export function sessionEditHandlers({
     }
   }
 
-  /**
-   * Adds an approved phrase occurrence over `tokens`, sharing a content-identical stored payload
-   * where one exists.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
-   *   the first token's book, the session is read-only or not open, or the edit is refused or
-   *   fails. The error is logged before rethrowing.
-   */
   function createPhrase({
     sessionId,
     tokens,
@@ -584,15 +637,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Gives a phrase occurrence a new token run, keeping its gloss. An empty run removes the
-   * occurrence.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If `tokens` is not within one segment of the text, the project has no text for the
-   *   first token's book, the session is read-only or not open, or the edit is refused or fails.
-   *   The error is logged before rethrowing.
-   */
   function updatePhrase({
     sessionId,
     phraseId,
@@ -610,13 +654,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Removes a phrase occurrence, with its payload unless another occurrence shares that payload.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function deletePhrase({
     sessionId,
     phraseId,
@@ -629,15 +666,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Merges a neighbor into a phrase occurrence as one edit. The target takes the merged token run.
-   * The absorbed occurrence, when named, is removed.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If `tokens` is empty or not within one segment of the text, the project has no text for
-   *   the first token's book, the session is read-only or not open, or the edit is refused or
-   *   fails. The error is logged before rethrowing.
-   */
   function mergePhrases({
     sessionId,
     targetPhraseId,
@@ -661,13 +689,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Writes a phrase occurrence's gloss in the session's analysis language; a blank value clears it.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function writePhraseGloss({
     sessionId,
     phraseId,
@@ -686,14 +707,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Approves a phrase occurrence, unless any of its tokens is in an approved phrase.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the occurrence would be approved over tokens not within one segment of the text, the
-   *   project has no text for their book, the session is read-only or not open, or the edit is
-   *   refused or fails. The error is logged before rethrowing.
-   */
   function approvePhrase({
     sessionId,
     phraseId,
@@ -714,18 +727,10 @@ export function sessionEditHandlers({
    *
    * @throws If the project has no text for that book, or the book cannot be read or tokenized.
    */
-  function verseBookOf(session: Session, tokenRef: string): Promise<Book> {
+  function verseBookOf(session: Session, tokenRef: string): Promise<ReadonlyBook> {
     return readBookOf(session, tokenRef, getVerseBook);
   }
 
-  /**
-   * Splits a phrase occurrence just after a token, in the document order of the token's book. A
-   * half left with a single token leaves that token in no phrase.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the project has no text for the token's book, the session is read-only or not open,
-   *   or the edit is refused or fails. The error is logged before rethrowing.
-   */
   function splitPhrase({
     sessionId,
     phraseId,
@@ -745,15 +750,6 @@ export function sessionEditHandlers({
     });
   }
 
-  /**
-   * Writes a segment's free translation in the session's analysis language. A blank value clears
-   * the translation. A non-blank write to a segment with no approved translation adopts the stale
-   * translation that `adoptStaleAnalysisId` names.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the session is read-only or not open, or the edit is refused or fails. The error is
-   *   logged before rethrowing.
-   */
   function writeSegmentFreeTranslation({
     sessionId,
     segmentId,
@@ -782,13 +778,6 @@ export function sessionEditHandlers({
     return { now: new Date().toISOString(), newId: () => crypto.randomUUID() };
   }
 
-  /**
-   * Merges the segment beginning at a token into the one before it.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the project has no text for the token's book, the session is read-only or not open,
-   *   or the edit fails. The error is logged before rethrowing.
-   */
   function mergeSegments({
     sessionId,
     secondSegmentStartRef,
@@ -805,14 +794,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Splits a segment so a new one begins at a token, first splitting every approved phrase the new
-   * boundary would cut.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the project has no text for the token's book, the session is read-only or not open,
-   *   or the edit is refused or fails. The error is logged before rethrowing.
-   */
   function splitSegment({
     sessionId,
     tokenRef,
@@ -833,15 +814,6 @@ export function sessionEditHandlers({
     );
   }
 
-  /**
-   * Moves a segment boundary from one token to another, first splitting every approved phrase the
-   * moved boundary would cut.
-   *
-   * @returns A JSON string of the {@link CommandReply}.
-   * @throws If the project has no text for the book of the token the boundary moves to, the session
-   *   is read-only or not open, or the edit is refused or fails. The error is logged before
-   *   rethrowing.
-   */
   function moveBoundary({
     sessionId,
     fromRef,
@@ -865,18 +837,92 @@ export function sessionEditHandlers({
   }
 
   /**
-   * The content of the project that the session's draft saves to, or `undefined` when it has none.
+   * The project that the session's draft saves to, as a discard restores it, or `undefined` when
+   * the draft has none.
    *
    * @throws If the project is not stored, or reading it fails.
    */
-  async function savedContentOf(session: Session): Promise<DraftContent | undefined> {
+  async function savedContentOf(
+    session: Session,
+  ): Promise<discardCommands.SavedProject | undefined> {
     const { interlinearProjectId } = session.scope;
     if (interlinearProjectId === undefined) return undefined;
     const project = await getProject(interlinearProjectId);
     if (!project) {
       throw new Error(`Interlinearizer: interlinear project ${interlinearProjectId} is not stored`);
     }
-    return { analysis: project.analysis, segmentation: project.segmentation };
+    const { analysis, segmentation, analysisLanguages } = project;
+    return { analysis, segmentation, analysisLanguages };
+  }
+
+  async function changeAnalysisLanguages({
+    sessionId,
+    analysisLanguages,
+    retag,
+    deleteTextOf,
+    changeId,
+  }: ArgsOf<'interlinearizer.changeAnalysisLanguages'>): Promise<string> {
+    const intent = 'changeAnalysisLanguages';
+    try {
+      if (analysisLanguages.length === 0)
+        throw new Error('Interlinearizer: a draft needs an analysis language');
+      if (retag && retag.from === retag.to)
+        throw new Error(`Interlinearizer: glosses cannot move from ${retag.to} to itself`);
+      if (retag && deleteTextOf !== undefined)
+        throw new Error('Interlinearizer: a language change either moves text or deletes it');
+      const target: EditTarget = { sessionId, changeId };
+      const reply = await sessions.edit(
+        sessionId,
+        intent,
+        async (buffer, session) => {
+          const draft = await session.repository.getWholeDraft();
+          const { unreadableBooks } = await session.repository.getDraftState();
+          // A book that can't be read would keep the text this change moves or deletes.
+          if ((retag || deleteTextOf !== undefined) && unreadableBooks.length > 0)
+            throw new Error(
+              `Interlinearizer: cannot move or delete language text while ${unreadableBooks.join(', ')} cannot be read`,
+            );
+          const outcome = await languageCommands.changeAnalysisLanguages(buffer, draft.analysis, {
+            analysisLanguages,
+            retag,
+            deleteTextOf,
+            now: editStamp().now,
+          });
+          const { glossRetag, deletedText } = outcome;
+          let summary: StepSummary = { kind: 'changeAnalysisLanguages' };
+          if (retag && glossRetag)
+            summary = {
+              kind: 'retagGlosses',
+              from: retag.from,
+              to: retag.to,
+              words: glossRetag.words,
+              morphemes: glossRetag.morphemes,
+              freeTranslations: glossRetag.freeTranslations,
+            };
+          else if (deleteTextOf !== undefined && deletedText)
+            summary = { kind: 'deleteLanguageText', tag: deleteTextOf, ...deletedText };
+          target.step = { summary };
+          return glossRetag || deletedText ? outcome : undefined;
+        },
+        { changeId, step: () => target.step },
+      );
+      return JSON.stringify(reply);
+    } catch (e) {
+      logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
+      throw e;
+    }
+  }
+
+  async function countLanguageText({
+    sessionId,
+  }: ArgsOf<'interlinearizer.countLanguageText'>): Promise<string> {
+    try {
+      const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
+      return JSON.stringify(countTextOfEveryTag(draft.analysis));
+    } catch (e) {
+      logger.error(`Interlinearizer: failed to count language text in session ${sessionId}`, e);
+      throw e;
+    }
   }
 
   /**
@@ -898,9 +944,9 @@ export function sessionEditHandlers({
     intent: string,
     stage: (
       buffer: ChangeBuffer,
-      stored: DraftExport,
-      saved: DraftContent | undefined,
-    ) => discardCommands.DiscardOutcome,
+      reader: discardCommands.DiscardReader,
+      saved: discardCommands.SavedProject | undefined,
+    ) => Promise<discardCommands.DiscardOutcome>,
     unsavedMark: (savesToProject: boolean) => EditOptions['unsavedMark'],
   ): Promise<string> {
     try {
@@ -909,7 +955,7 @@ export function sessionEditHandlers({
         intent,
         async (buffer, session) => {
           const saved = await savedContentOf(session);
-          const outcome = stage(buffer, await session.repository.exportAll(), saved);
+          const outcome = await stage(buffer, session.repository, saved);
           const { sourceProjectId } = session.scope;
           const reanchorTo = await Promise.all(
             outcome.changedBooks.map(
@@ -917,7 +963,7 @@ export function sessionEditHandlers({
                 (await getVerseBook(sourceProjectId, bookCode)) ?? missingBook(bookCode),
             ),
           );
-          return { reanchorTo, hasFreeTranslations: outcome.hasFreeTranslations };
+          return { reanchorTo, reportsFreeTranslations: true };
         },
         {
           unsavedMark: ({ scope }) => unsavedMark(scope.interlinearProjectId !== undefined),
@@ -935,15 +981,6 @@ export function sessionEditHandlers({
     }
   }
 
-  /**
-   * Discards the unsaved changes to one book of a session's draft, restoring the book as the
-   * draft's project holds it, or emptying the book when the draft has no project. A book whose
-   * stored analysis could not be read keeps it. A draft saving to a project stays as saved or
-   * unsaved as it was; one saving to none is marked unsaved when the discard changes anything.
-   *
-   * @returns As {@link runDiscard} does.
-   * @throws As {@link runDiscard} does.
-   */
   function discardBook({
     sessionId,
     bookCode,
@@ -952,19 +989,11 @@ export function sessionEditHandlers({
     return runDiscard(
       { sessionId, changeId, step: { summary: { kind: 'discardBook', book: bookCode } } },
       'discardBook',
-      (buffer, stored, saved) => discardCommands.discardBook(buffer, stored, bookCode, saved),
+      (buffer, reader, saved) => discardCommands.discardBook(buffer, reader, bookCode, saved),
       (savesToProject) => (savesToProject ? 'keep' : undefined),
     );
   }
 
-  /**
-   * Discards every unsaved change to a session's draft, restoring what the draft's project holds,
-   * or emptying the draft when it has no project. A book whose stored analysis could not be read
-   * keeps it. The draft is marked saved.
-   *
-   * @returns As {@link runDiscard} does.
-   * @throws As {@link runDiscard} does.
-   */
   function discardAll({
     sessionId,
     changeId,
@@ -1029,13 +1058,6 @@ export function sessionEditHandlers({
     }
   }
 
-  /**
-   * Names the token analyses a command would remove from a session's draft, applying nothing.
-   *
-   * @returns A JSON string of the ids; `"[]"` when it would remove none.
-   * @throws If the session is not open, the request names an intent it can't preview, or staging
-   *   the command fails. The error is logged before rethrowing.
-   */
   async function previewRemovals({
     sessionId,
     request,
@@ -1045,6 +1067,25 @@ export function sessionEditHandlers({
       return JSON.stringify(changes.tokenAnalyses?.deletes ?? []);
     } catch (e) {
       logger.error(`Interlinearizer: failed to preview removals in session ${sessionId}`, e);
+      throw e;
+    }
+  }
+
+  async function previewBreakdownEdit({
+    sessionId,
+    tokenRef,
+  }: ArgsOf<'interlinearizer.previewBreakdownEdit'>): Promise<string> {
+    try {
+      return JSON.stringify(
+        await sessions.run(sessionId, (session) =>
+          morphemeCommands.previewBreakdownEdit(new ChangeBuffer(session.repository), tokenRef),
+        ),
+      );
+    } catch (e) {
+      logger.error(
+        `Interlinearizer: failed to preview a breakdown edit in session ${sessionId}`,
+        e,
+      );
       throw e;
     }
   }
@@ -1064,6 +1105,12 @@ export function sessionEditHandlers({
     'interlinearizer.writeAnalysisMorphemes': writeAnalysisMorphemes,
     'interlinearizer.confirmAnalysisMorphemes': confirmAnalysisMorphemes,
     'interlinearizer.writeAnalysisMorphemeGloss': writeAnalysisMorphemeGloss,
+    'interlinearizer.linkAnalysisSense': linkAnalysisSense,
+    'interlinearizer.unlinkAnalysisSense': unlinkAnalysisSense,
+    'interlinearizer.linkAnalysisMorphemeSense': linkAnalysisMorphemeSense,
+    'interlinearizer.unlinkAnalysisMorphemeSense': unlinkAnalysisMorphemeSense,
+    'interlinearizer.adoptAnalysisSenseGloss': adoptAnalysisSenseGloss,
+    'interlinearizer.adoptAnalysisMorphemeSenseGloss': adoptAnalysisMorphemeSenseGloss,
     'interlinearizer.deleteAnalyses': deleteAnalyses,
     'interlinearizer.mergeAnalysesInto': mergeAnalysesInto,
     'interlinearizer.createPhrase': createPhrase,
@@ -1079,6 +1126,9 @@ export function sessionEditHandlers({
     'interlinearizer.moveBoundary': moveBoundary,
     'interlinearizer.discardBook': discardBook,
     'interlinearizer.discardAll': discardAll,
+    'interlinearizer.changeAnalysisLanguages': changeAnalysisLanguages,
+    'interlinearizer.countLanguageText': countLanguageText,
     'interlinearizer.previewRemovals': previewRemovals,
+    'interlinearizer.previewBreakdownEdit': previewBreakdownEdit,
   } satisfies Partial<CommandHandlers>;
 }

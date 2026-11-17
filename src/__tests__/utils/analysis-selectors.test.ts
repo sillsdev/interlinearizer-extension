@@ -17,9 +17,6 @@ import {
   selectApprovedGloss,
   selectApprovedGlossSenseRef,
   selectApprovedMorphemes,
-  selectCatalogRows,
-  selectMorphemePayloadIsSolelyOwned,
-  selectMorphemeResetLosesAnnotation,
   selectPhraseLinkById,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
@@ -31,7 +28,6 @@ import {
   selectSegmentFreeTranslation,
   selectSegmentsWithApprovedTranslation,
   selectStaleFreeTranslations,
-  selectStaleTokenLinks,
   selectFreeTranslationsBySegment,
   selectStaleMorphemesAnalysisId,
   selectUnapprovedTokenAnalysis,
@@ -357,7 +353,7 @@ describe('selectStaleFreeTranslations', () => {
     );
 
     expect(selectStaleFreeTranslations(store.getState().analysis)).toEqual([
-      { analysisId: 'sa-1', segmentId: 'seg-1', text: 'old' },
+      { linkId: 'seg-1:sa-1', analysisId: 'sa-1', segmentId: 'seg-1', text: 'old' },
     ]);
   });
 
@@ -387,30 +383,6 @@ describe('selectStaleFreeTranslations', () => {
     });
 
     expect(selectStaleFreeTranslations(store.getState().analysis)).toEqual([]);
-  });
-});
-
-describe('selectStaleTokenLinks', () => {
-  it('lists a stale link', () => {
-    const ta = logos('ta-1', 'word');
-    const stale = makeLink(ta, 'tok-1', 'stale');
-    const store = createAnalysisStore(tokenState([ta], [stale]));
-
-    expect(selectStaleTokenLinks(store.getState().analysis)).toEqual([stale]);
-  });
-
-  it('leaves out a link of any other status', () => {
-    const ta = logos('ta-1', 'word');
-    const store = createAnalysisStore(tokenState([ta], [makeLink(ta, 'tok-1', 'approved')]));
-
-    expect(selectStaleTokenLinks(store.getState().analysis)).toEqual([]);
-  });
-
-  it('leaves out a stale link whose payload is missing', () => {
-    const ta = logos('ta-1', 'word');
-    const store = createAnalysisStore(tokenState([], [makeLink(ta, 'tok-1', 'stale')]));
-
-    expect(selectStaleTokenLinks(store.getState().analysis)).toEqual([]);
   });
 });
 
@@ -729,26 +701,6 @@ describe('selectPoolIndex', () => {
     const a = selectPoolIndex(store.getState().analysis);
     const b = selectPoolIndex(store.getState().analysis);
     expect(a).toBe(b);
-  });
-});
-
-describe('selectCatalogRows', () => {
-  it('returns the same reference for repeated calls on unchanged state (memoized)', () => {
-    const store = createAnalysisStore();
-
-    const a = selectCatalogRows(store.getState().analysis, 'GEN');
-    const b = selectCatalogRows(store.getState().analysis, 'GEN');
-
-    expect(a).toBe(b);
-  });
-
-  it('keeps a book cached across a call for another one', () => {
-    const store = createAnalysisStore();
-
-    const first = selectCatalogRows(store.getState().analysis, 'GEN');
-    selectCatalogRows(store.getState().analysis, 'MAT');
-
-    expect(selectCatalogRows(store.getState().analysis, 'GEN')).toBe(first);
   });
 });
 
@@ -1129,69 +1081,6 @@ describe('selectStaleMorphemesAnalysisId', () => {
   });
 });
 
-describe('selectMorphemeResetLosesAnnotation', () => {
-  it('reports no loss when the token has no approved analysis', () => {
-    const store = createAnalysisStore();
-    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-1')).toBe(false);
-  });
-
-  it('reports a loss when an unglossed breakdown carries a lexicon reference', () => {
-    // An imported morpheme can hold an entry with no gloss beside it, and the reset discards it.
-    const ta: TokenAnalysis = {
-      ...FIXTURE_STAMPS,
-      id: 'ta-1',
-      surfaceText: 'cats',
-      morphemes: [
-        {
-          id: 'm-1',
-          form: 'cat',
-          writingSystem: 'en',
-          senseRef: { authority: 'lexicon', senseId: 's-1' },
-        },
-      ],
-    };
-    const store = createAnalysisStore({
-      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
-    });
-    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-1')).toBe(true);
-  });
-
-  it('reports no loss when another token links the glossed breakdown without approving it', () => {
-    const ta: TokenAnalysis = {
-      ...FIXTURE_STAMPS,
-      id: 'ta-1',
-      surfaceText: 'cats',
-      morphemes: [{ id: 'm-1', form: 'cat', writingSystem: 'en', gloss: { und: 'feline' } }],
-    };
-    const store = createAnalysisStore(
-      tokenState([ta], [makeLink(ta, 'tok-1', 'approved'), makeLink(ta, 'tok-2', 'suggested')]),
-    );
-
-    expect(selectMorphemeResetLosesAnnotation(store.getState().analysis, 'tok-1')).toBe(false);
-  });
-});
-
-describe('selectMorphemePayloadIsSolelyOwned', () => {
-  it('reports not solely owned when the token has no approved analysis', () => {
-    const store = createAnalysisStore();
-    expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-1')).toBe(false);
-  });
-
-  it('reports not solely owned when another token links the payload without approving it', () => {
-    const ta: TokenAnalysis = {
-      ...FIXTURE_STAMPS,
-      id: 'ta-1',
-      surfaceText: 'cats',
-      morphemes: [{ id: 'm-1', form: 'cat', writingSystem: 'en' }],
-    };
-    const store = createAnalysisStore(
-      tokenState([ta], [makeLink(ta, 'tok-1', 'approved'), makeLink(ta, 'tok-2', 'suggested')]),
-    );
-
-    expect(selectMorphemePayloadIsSolelyOwned(store.getState().analysis, 'tok-1')).toBe(false);
-  });
-});
-
 describe('morphemeFormsLostByResplit', () => {
   /** A morpheme carrying a gloss, so a re-split dropping it destroys something. */
   function glossed(id: string, form: string): MorphemeAnalysis {
@@ -1295,6 +1184,9 @@ describe('analysis-keyed reducers', () => {
     /** Reads every fixture token as still carrying the form its analysis was recorded under. */
     const undrifted = () => 'word';
 
+    /** Treats no token's text as read, so any ref without live text leaves the outcome uncertain. */
+    const unread = () => false;
+
     /** Reads `tokenRef` as belonging to a book this view has not loaded. */
     const unloaded = (tokenRef: string) => (ref: string) => (ref === tokenRef ? undefined : 'word');
 
@@ -1305,6 +1197,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-shared',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 2, unappliedCount: 0 });
@@ -1314,8 +1207,26 @@ describe('analysis-keyed reducers', () => {
       const store = makeSharedStore();
 
       expect(
-        selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', unloaded('tok-2')),
+        selectAnalysisDeletionOutcome(
+          store.getState().analysis,
+          'ta-shared',
+          unloaded('tok-2'),
+          unread,
+        ),
       ).toEqual({ kind: 'fallback', usageCount: 2, unappliedCount: 0, uncertain: true });
+    });
+
+    it('skips a use whose token its text no longer holds', () => {
+      const store = makeSharedStore();
+      const gone = (ref: string) => (ref === 'tok-2' ? undefined : 'word');
+
+      expect(
+        selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-shared', gone, () => true),
+      ).toEqual({
+        kind: 'blank',
+        usageCount: 2,
+        unappliedCount: 0,
+      });
     });
 
     it('does not fall back to an analysis the token rejected', () => {
@@ -1330,7 +1241,7 @@ describe('analysis-keyed reducers', () => {
         ],
       ).analysis;
 
-      expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => 'logos')).toEqual({
+      expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => 'logos', unread)).toEqual({
         kind: 'blank',
         usageCount: 1,
         unappliedCount: 0,
@@ -1358,7 +1269,7 @@ describe('analysis-keyed reducers', () => {
           ],
         ).analysis;
 
-        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing, unread)).toEqual({
           kind: 'fallback',
           usageCount: 1,
           unappliedCount: 0,
@@ -1372,12 +1283,14 @@ describe('analysis-keyed reducers', () => {
           [makeLink(finance, 'tok-1', 'approved'), makeLink(riverbank, 'tok-1', 'candidate')],
         ).analysis;
 
-        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => undefined)).toEqual({
-          kind: 'fallback',
-          usageCount: 1,
-          unappliedCount: 0,
-          fallbackGloss: 'riverbank',
-        });
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', () => undefined, unread)).toEqual(
+          {
+            kind: 'fallback',
+            usageCount: 1,
+            unappliedCount: 0,
+            fallbackGloss: 'riverbank',
+          },
+        );
       });
 
       it('names no gloss when another affected token would be left with none', () => {
@@ -1390,7 +1303,7 @@ describe('analysis-keyed reducers', () => {
           ],
         ).analysis;
 
-        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing, unread)).toEqual({
           kind: 'fallback',
           usageCount: 2,
           unappliedCount: 0,
@@ -1404,7 +1317,7 @@ describe('analysis-keyed reducers', () => {
           [makeLink(finance, 'tok-1', 'approved'), makeLink(finance, 'tok-1', 'candidate')],
         ).analysis;
 
-        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing)).toEqual({
+        expect(selectAnalysisDeletionOutcome(state, 'ta-finance', standing, unread)).toEqual({
           kind: 'blank',
           usageCount: 1,
           unappliedCount: 1,
@@ -1416,7 +1329,7 @@ describe('analysis-keyed reducers', () => {
       const store = makeSharedStore();
 
       expect(
-        selectAnalysisDeletionOutcome(store.getState().analysis, 'nope', undrifted),
+        selectAnalysisDeletionOutcome(store.getState().analysis, 'nope', undrifted, unread),
       ).toBeUndefined();
     });
 
@@ -1452,6 +1365,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-unused',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
@@ -1502,6 +1416,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-unused',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
@@ -1541,6 +1456,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-shared',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 2, unappliedCount: 0 });
@@ -1574,6 +1490,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-mixed',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 4 });
@@ -1601,7 +1518,12 @@ describe('analysis-keyed reducers', () => {
         },
       });
 
-      const outcome = selectAnalysisDeletionOutcome(store.getState().analysis, 'ta-dup', undrifted);
+      const outcome = selectAnalysisDeletionOutcome(
+        store.getState().analysis,
+        'ta-dup',
+        undrifted,
+        unread,
+      );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 0, unappliedCount: 1 });
     });
@@ -1641,6 +1563,7 @@ describe('analysis-keyed reducers', () => {
         store.getState().analysis,
         'ta-both',
         undrifted,
+        unread,
       );
 
       expect(outcome).toEqual({ kind: 'blank', usageCount: 1, unappliedCount: 1 });

@@ -10,6 +10,7 @@ import type {
   Token,
   TokenAnalysisLink,
 } from 'interlinearizer';
+import type { LexiconResolver } from 'interlinearizer/lexicon';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 import { useEffect, useState } from 'react';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
@@ -18,7 +19,7 @@ import {
   TOKEN_CHIP_LABEL_KEYS,
   type PhraseStripContextValue,
 } from '../components/PhraseStripContext';
-import type { PhraseDispatch } from '../components/AnalysisStore';
+import type { usePhraseDispatch } from '../cache/sessionEdits';
 import { summarizeProject } from '../services/projectSummaries';
 import type {
   AnalysisRepository,
@@ -210,11 +211,16 @@ export function segmentPagesOf(book: Book, segmentationVersion = 0): SegmentPage
   const key = `${book.bookRef}:${segmentationVersion}`;
   let pages = byKey.get(key);
   if (!pages) {
+    const held = [{ textVersion: book.textVersion, start: 0, segments: book.segments }];
     pages = {
       bookRef: book.bookRef,
       outline: outlineOf(book.segments),
       segmentationVersion,
+      boundaries: { formerBoundaries: {}, unmergeableStarts: [], lostBoundaries: [] },
+      duplicateVerseIds: [],
+      invalidVerseIds: [],
       segmentAt: (index) => book.segments[index],
+      heldRuns: () => held,
       load: jest.fn(),
       release: jest.fn(),
       subscribe: () => () => {},
@@ -665,6 +671,9 @@ export function silentLogger(): WarningLogger & { warn: jest.Mock } {
   return { warn: jest.fn() };
 }
 
+/** The phrase edits that {@link usePhraseDispatch} returns. */
+export type PhraseDispatch = ReturnType<typeof usePhraseDispatch>;
+
 /**
  * Completes `dispatch` into a {@link PhraseDispatch} with a fresh mock for each edit it lacks:
  * `splitPhrase`, which the session carries out, and `mergePhrases`.
@@ -678,3 +687,14 @@ export function withSplitPhrase(
 ): jest.MockedObject<PhraseDispatch> {
   return { mergePhrases: jest.fn(), splitPhrase: jest.fn(), ...dispatch };
 }
+
+/** A lexicon that holds nothing and offers no capability, as when none is connected. */
+export const nullLexiconResolver: LexiconResolver = {
+  authorities: [],
+  capabilities: { search: false, create: false, allomorphs: false, msas: false },
+  resolveSense: async () => undefined,
+  searchByForm: async () => [],
+  createEntry: async () => {
+    throw new Error('No lexicon is connected to create an entry in.');
+  },
+};

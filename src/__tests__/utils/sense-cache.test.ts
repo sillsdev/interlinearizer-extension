@@ -67,7 +67,7 @@ describe('createSenseCache', () => {
     expect(cache.peek(ref('s-1'))).toBeUndefined();
   });
 
-  it('keeps a miss without telling its watchers or asking again', async () => {
+  it('keeps a miss and tells its watchers, without asking again', async () => {
     const resolveSense = jest.fn(async () => undefined);
     const cache = createSenseCache(resolveSense);
     const listener = jest.fn();
@@ -77,8 +77,53 @@ describe('createSenseCache', () => {
     await flush();
     cache.request(ref('s-1'));
 
-    expect(listener).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledTimes(1);
     expect(resolveSense).toHaveBeenCalledTimes(1);
+  });
+
+  describe('hasAnswer', () => {
+    it('is false for a sense no one has asked for', () => {
+      const cache = createSenseCache(async () => WATER);
+
+      expect(cache.hasAnswer(ref('s-1'))).toBe(false);
+    });
+
+    it('is false while the look-up is pending', async () => {
+      const cache = createSenseCache(async () => WATER);
+
+      cache.request(ref('s-1'));
+      expect(cache.hasAnswer(ref('s-1'))).toBe(false);
+      await flush();
+    });
+
+    it('is true once the lexicon answers with a sense', async () => {
+      const cache = createSenseCache(async () => WATER);
+
+      cache.request(ref('s-1'));
+      await flush();
+
+      expect(cache.hasAnswer(ref('s-1'))).toBe(true);
+    });
+
+    it('is true once the lexicon answers with no sense', async () => {
+      const cache = createSenseCache(async () => undefined);
+
+      cache.request(ref('s-1'));
+      await flush();
+
+      expect(cache.hasAnswer(ref('s-1'))).toBe(true);
+    });
+
+    it('is false after a look-up that rejected', async () => {
+      const cache = createSenseCache(async () => {
+        throw new Error('unreachable');
+      });
+
+      cache.request(ref('s-1'));
+      await flush();
+
+      expect(cache.hasAnswer(ref('s-1'))).toBe(false);
+    });
   });
 
   it('asks again after a lookup that could not get an answer', async () => {

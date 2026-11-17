@@ -117,19 +117,15 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
 }
 
 /**
- * Reports that a morpheme reset never loses annotation in mock context, so the editor takes its
- * unconfirmed path by default. Tests covering the confirm step mock this module member directly.
+ * Reports, once the editor is open, a shared payload whose reset loses nothing, so a breakdown edit
+ * takes its unconfirmed path by default. Tests covering the confirm step mock this module member
+ * directly.
  */
-export function useMorphemeResetLosesAnnotation(): boolean {
-  return false;
-}
-
-/**
- * Reports the payload as shared in mock context, so a breakdown edit takes its unconfirmed path by
- * default. Tests covering the confirm step mock this module member directly.
- */
-export function useMorphemePayloadIsSolelyOwned(): boolean {
-  return false;
+export function useBreakdownPreview(
+  _tokenRef: string,
+  isOpen: boolean,
+): { solelyOwned: boolean; resetLosesAnnotation: boolean } | undefined {
+  return isOpen ? { solelyOwned: false, resetLosesAnnotation: false } : undefined;
 }
 
 /** Reports no stale breakdown in mock context; tests covering one mock this module member directly. */

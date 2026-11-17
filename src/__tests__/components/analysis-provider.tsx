@@ -2,10 +2,9 @@ import { act, render } from '@testing-library/react';
 import type { Book, TextAnalysis } from 'interlinearizer';
 import type { ReactElement, ReactNode } from 'react';
 import { PageClient } from '../../cache/pageClient';
-import { WholeAnalysis } from '../../cache/wholeAnalysis';
 import { SessionAnalysisProvider } from '../../components/AnalysisStore';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { fakeHost } from '../cache/fake-host';
+import { fakeHost, hostSettled, type FakeText } from '../cache/fake-host';
 
 /** What the last provider made saves its edits to. */
 type Saved = Readonly<{
@@ -50,42 +49,36 @@ export type AnalysisProviderProps = Readonly<{
 
 /**
  * Makes a {@link SessionAnalysisProvider} over a session on `analysis` that a fake host serves, with
- * every segment of `book` loaded. {@link settle}, {@link savedAnalysis} and {@link editsSaved} then
- * answer for it.
+ * every segment of `book` loaded, and `text` as the source text it reads whole, unread by default.
+ * {@link settle}, {@link savedAnalysis} and {@link editsSaved} then answer for it.
  */
 export async function prepareAnalysis(
   analysis: Partial<TextAnalysis>,
   book: Book,
+  text?: FakeText,
 ): Promise<(props: AnalysisProviderProps) => ReactElement> {
   const seeded = { ...emptyAnalysis(), ...analysis };
-  const host = await fakeHost(undefined, undefined, { analysis: seeded, book });
+  const host = await fakeHost(undefined, undefined, { analysis: seeded, book, text });
   const readDraft = () =>
     host.sessions.run(host.sessionId, (session) => session.repository.getWholeDraft());
   const client = new PageClient(
     { getOutline: () => host.fetchOutline(), getSegments: host.fetchPage },
     { retryDelaysMs: [0], wait: async () => {} },
   );
-  const whole = new WholeAnalysis(readDraft);
   let saves = 0;
   // Fed as the session hook feeds them in the app.
   host.onChange((change) => {
     saves += 1;
     client.hear(change);
   });
-  client.subscribeReplies((reply) => whole.take(reply.changes, reply.dirty));
-  client.subscribeHeard(({ passChanges }) => {
-    if (!passChanges) whole.refresh();
-    else passChanges.forEach((changes) => whole.take(changes, 'kept'));
-  });
   await client.open();
   client.load(0, host.outline.segments.length, 'list');
   await client.settled();
-  await whole.refresh();
   last = {
     settle: () =>
       act(async () => {
         await client.settled();
-        await whole.refresh();
+        await hostSettled();
       }),
     savedAnalysis: async () => (await readDraft()).analysis,
     editsSaved: () => saves,
@@ -98,7 +91,6 @@ export async function prepareAnalysis(
     return (
       <SessionAnalysisProvider
         client={client}
-        whole={whole}
         sessionId={host.sessionId}
         analysisLanguage={analysisLanguage}
         {...props}
@@ -109,17 +101,21 @@ export async function prepareAnalysis(
   };
 }
 
-/** Renders `ui` inside the provider that {@link prepareAnalysis} makes over `analysis` and `book`. */
+/**
+ * Renders `ui` inside the provider that {@link prepareAnalysis} makes over `analysis`, `book` and
+ * `text`.
+ */
 export async function renderWithAnalysis(
   ui: ReactElement,
   {
     analysis,
     book,
+    text,
     ...props
-  }: Readonly<{ analysis: Partial<TextAnalysis>; book: Book }> &
+  }: Readonly<{ analysis: Partial<TextAnalysis>; book: Book; text?: FakeText }> &
     Omit<AnalysisProviderProps, 'children'>,
 ): Promise<AnalysisRendered> {
-  const Provider = await prepareAnalysis(analysis, book);
+  const Provider = await prepareAnalysis(analysis, book, text);
   const rendered = render(ui, {
     wrapper: ({ children }) => <Provider {...props}>{children}</Provider>,
   });

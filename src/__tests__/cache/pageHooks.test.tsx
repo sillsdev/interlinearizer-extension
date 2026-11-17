@@ -4,7 +4,6 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { TextAnalysis } from 'interlinearizer';
 import { PageClient } from '../../cache/pageClient';
-import { WholeAnalysis } from '../../cache/wholeAnalysis';
 import { PageClientProvider, usePageSelector } from '../../cache/pageHooks';
 import { selectApprovedGlossSenseRef, selectPhraseSenseRef } from '../../utils/analysis-selectors';
 import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from '../test-helpers';
@@ -28,7 +27,7 @@ const GOD_WITH_SENSE: Partial<TextAnalysis> = {
 
 /**
  * A session with a client over its pages, one segment to a page and every page loaded. The returned
- * `wrapper` provides the client and the session's whole draft.
+ * `wrapper` provides the client.
  */
 async function loadedClientOver(analysis: Partial<TextAnalysis>) {
   const made = await sessionOver(analysis);
@@ -40,21 +39,12 @@ async function loadedClientOver(analysis: Partial<TextAnalysis>) {
   await client.open();
   client.load(0, 3, 'list');
   await client.settled();
-  const whole = new WholeAnalysis(() =>
-    made.sessions.run(made.sessionId, (session) => session.repository.getWholeDraft()),
-  );
-  await whole.refresh();
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <PageClientProvider
-      client={client}
-      whole={whole}
-      sessionId={made.sessionId}
-      analysisLanguage="en"
-    >
+    <PageClientProvider client={client} sessionId={made.sessionId} analysisLanguage="en">
       {children}
     </PageClientProvider>
   );
-  return { ...made, client, whole, wrapper };
+  return { ...made, client, wrapper };
 }
 
 describe('usePageSelector', () => {

@@ -3,7 +3,12 @@ import type { CommandReply } from '../types/command-reply';
 import { emptyAnalysis } from '../types/empty-factories';
 import { perfTime, perfTrack } from '../utils/perf-marks';
 import type { PoolEntry, PoolIndex } from '../utils/suggestion-engine';
-import type { BookOutline, SegmentPage } from '../types/segment-pages';
+import type {
+  BookOutline,
+  HeldRun,
+  PlacedFreeTranslations,
+  SegmentPage,
+} from '../types/segment-pages';
 import { RecordCache, type PageRequest, type Refetch } from './recordCache';
 
 /** A change as a session reports it, without the session's id. */
@@ -14,6 +19,12 @@ export const PAGE_SIZE = 32;
 
 /** The waits before each retry of a failed load; the load is given up after the last. */
 const PAGE_RETRY_DELAYS_MS: readonly number[] = [1000, 4000, 16000];
+
+const NO_PLACEMENT: PlacedFreeTranslations = {
+  bySegment: {},
+  orphanedAfter: {},
+  orphanedAhead: [],
+};
 
 /**
  * Indexes of the pages that hold any of the segments at `[start, end)` in a book of `count`
@@ -97,7 +108,10 @@ type PageState =
  */
 type PageEvent = 'want' | 'stale' | 'retry' | 'landed' | 'dropped' | 'errored' | 'waited';
 
-/** What an outline read takes: the whole outline, or only its orphaned-card counts when it can. */
+/**
+ * What an outline read takes: the whole outline, or only its orphaned-card counts and stale flags
+ * when it can.
+ */
 type OutlineRead = 'outline' | 'counts';
 
 /** The read that covers both `a` and `b`. */
@@ -160,6 +174,17 @@ export class PageClient {
   private readonly heardListeners = new Set<(change: HeardChange) => void>();
 
   private version = 0;
+
+  private runsSnapshot: {
+    cache: RecordCache | undefined;
+    layout: number;
+    runs: readonly HeldRun[];
+  } = { cache: undefined, layout: -1, runs: [] };
+
+  private placementSnapshot: { version: number; placement: PlacedFreeTranslations } = {
+    version: -1,
+    placement: NO_PLACEMENT,
+  };
 
   private heldSnapshot: { version: number; analysis: TextAnalysis } = {
     version: -1,
@@ -257,6 +282,33 @@ export class PageClient {
   }
 
   /**
+   * Each run of the segments held; none before the outline loads. The same list until a page lands,
+   * the outline changes, or a reply changes a phrase link.
+   */
+  heldRuns(): readonly HeldRun[] {
+    const cache = this.cacheHeld;
+    if (!cache) return this.runsSnapshot.runs;
+    const layout = cache.layoutRevision;
+    if (this.runsSnapshot.cache !== cache || this.runsSnapshot.layout !== layout) {
+      const runs: HeldRun[] = [];
+      const total = cache.outline.segments.length;
+      let index = 0;
+      while (index < total) {
+        if (!cache.holds(index)) index += 1;
+        else {
+          const start = index;
+          while (index < total && cache.holds(index)) index += 1;
+          /* v8 ignore next -- a run of held segments always pages */
+          const page = cache.pageAt(start, index);
+          if (page) runs.push(page);
+        }
+      }
+      this.runsSnapshot = { cache, layout, runs };
+    }
+    return this.runsSnapshot.runs;
+  }
+
+  /**
    * Every record held, as one analysis; empty before the outline loads. The same object until
    * {@link PageClient.loadedVersion} changes.
    */
@@ -268,6 +320,20 @@ export class PageClient {
       };
     }
     return this.heldSnapshot.analysis;
+  }
+
+  /**
+   * The stale free translations placed among the held pages, each named by its stale link's id;
+   * none before the outline loads. The same object until {@link PageClient.loadedVersion} changes.
+   */
+  heldPlacement(): PlacedFreeTranslations {
+    if (this.placementSnapshot.version !== this.version) {
+      this.placementSnapshot = {
+        version: this.version,
+        placement: this.cacheHeld?.heldPlacement() ?? NO_PLACEMENT,
+      };
+    }
+    return this.placementSnapshot.placement;
   }
 
   /**
@@ -333,7 +399,14 @@ export class PageClient {
     if (!reply) return reply;
     if (!heard) this.rememberApplied(changeId);
     perfTime('reply-apply', () => {
-      this.refetch(this.held.apply(reply));
+      const refetch = this.held.apply(reply);
+      this.refetch(refetch);
+      // A placement or outline refetch already reads the stale flags.
+      if (
+        (refetch === 'none' || refetch === 'pages') &&
+        reply.staleGlossBooks.includes(this.held.outline.bookRef)
+      )
+        this.readOutlineAgain('counts');
       this.changed();
       this.replyListeners.forEach((listener) => listener(reply));
     });
@@ -421,6 +494,9 @@ export class PageClient {
 
   private hearNow(change: HeardChange): void {
     this.heardListeners.forEach((listener) => listener(change));
+    const { books, analysisIds, forms } = change;
+    // A change naming only queries touches no page, so it leaves nothing to fetch.
+    if (books.length === 0 && analysisIds.length === 0 && forms.length === 0) return;
     const cache = this.cacheHeld;
     if (!cache) {
       if (this.outlineReading) this.readOutlineAgain('outline');
@@ -435,6 +511,7 @@ export class PageClient {
       this.refetch('placement');
       return;
     }
+    if (book?.staleGlosses) this.readOutlineAgain('counts');
     const indexes = [
       ...(book?.ranges ?? []).flatMap(({ start, end }) =>
         Array.from({ length: end - start }, (_unused, i) => start + i),
@@ -452,8 +529,8 @@ export class PageClient {
   }
 
   /**
-   * Reads the outline, after any read in flight. A `'counts'` read takes the orphaned-card counts,
-   * or the whole outline when it differs from the held one in more than those counts. An
+   * Reads the outline, after any read in flight. A `'counts'` read takes the orphaned-card counts
+   * and stale flags, or the whole outline when it differs from the held one in more than those. An
    * `'outline'` read takes the whole outline, letting go of every held page.
    *
    * @returns Settles once no read is wanted. Never rejects; a failed read is noted for

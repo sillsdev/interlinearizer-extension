@@ -13,6 +13,7 @@ import {
   discardAll,
   discardBook,
   type DiscardOutcome,
+  type SavedProject,
 } from '../../../services/commands/discardCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { draftAnalysisKey } from '../../../services/storageKeys';
@@ -236,15 +237,17 @@ export type DiscardCommandOutcome = CommandOutcome & {
   resultSegmentation: SegmentationDelta | undefined;
   /** What the command told its caller. */
   commandOutcome: DiscardOutcome;
+  /** Whether any segment of the draft that the discard leaves has a free translation. */
+  hasFreeTranslations: boolean;
   /** What the run leaves stored under each unreadable book's analysis key. */
   unreadableShards: (string | undefined)[];
 };
 
 /**
  * Runs one unsaved-change discard over a draft holding `seed`, restoring `saved`, the content of
- * the project the draft saves to. Stages the host's command over the stored draft, applies its
- * changes, asserts that the repository's indexes still match its records, then reloads the draft
- * from storage.
+ * the project the draft saves to. The project holds the draft's analysis languages. Stages the
+ * host's command over the stored draft, applies its changes, asserts that the repository's indexes
+ * still match its records, then reloads the draft from storage.
  */
 export async function runDiscardCommand(
   seed: DiscardSeed,
@@ -256,17 +259,18 @@ export async function runDiscardCommand(
   seed.unreadableBooks?.forEach((bookCode) =>
     host.records.set(draftAnalysisKey('src', bookCode), 'not json'),
   );
-  const savedCopy = (): DraftContent | undefined => saved && JSON.parse(JSON.stringify(saved));
+  const savedCopy = (): SavedProject | undefined =>
+    saved && { ...JSON.parse(JSON.stringify(saved)), analysisLanguages: ['en'] };
   const repository = new DraftRepository(host.storage, 'src', logger);
-  const stored = await repository.exportAll();
   const buffer = new ChangeBuffer(repository);
   const commandOutcome =
     edit.kind === 'book'
-      ? discardBook(buffer, stored, edit.bookCode, savedCopy())
-      : discardAll(buffer, stored, savedCopy());
+      ? await discardBook(buffer, repository, edit.bookCode, savedCopy())
+      : await discardAll(buffer, repository, savedCopy());
   const changes = buffer.toChangeSet('discard');
   if (!isEmptyChangeSet(changes)) await repository.apply(changes);
   expect(await repository.checkIndexes()).toStrictEqual([]);
+  const { hasFreeTranslations } = await repository.getDraftState();
   const { draft } = await new DraftRepository(host.storage, 'src', logger).exportAll();
 
   return {
@@ -274,6 +278,7 @@ export async function runDiscardCommand(
     changes,
     resultSegmentation: draft.segmentation,
     commandOutcome,
+    hasFreeTranslations,
     unreadableShards: (seed.unreadableBooks ?? []).map((bookCode) =>
       host.records.get(draftAnalysisKey('src', bookCode)),
     ),

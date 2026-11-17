@@ -1,11 +1,15 @@
 import papi, { logger } from '@papi/frontend';
-import { useEvent } from 'platform-bible-react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { NetworkEvents } from 'papi-shared-types';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PageClient } from '../cache/pageClient';
-import type { BookOutline, SegmentPages, SegmentPagesLoad } from '../types/segment-pages';
+import type {
+  BookOutline,
+  OutlineBoundaries,
+  SegmentPages,
+  SegmentPagesLoad,
+} from '../types/segment-pages';
 import useLatestRef from './useLatestRef';
+import useSessionChange from './useSessionChange';
 import { EXTEND_CHUNK, INITIAL_WINDOW_HALF, findAnchorIndex } from './useSegmentWindow';
 
 /** Arguments for {@link useSessionPages}. */
@@ -28,6 +32,18 @@ export type UseSessionPagesResult = SegmentPagesLoad & {
    * book's first pages load.
    */
   client: PageClient | undefined;
+  /**
+   * The session's latest published client: `client` once the book's pages load, and the previous
+   * book's client until then. `undefined` until the session's first pages load.
+   */
+  heldClient: PageClient | undefined;
+};
+
+/** The boundaries of an outline that a session did not ask for, which no view reads. */
+const NO_BOUNDARIES: OutlineBoundaries = {
+  formerBoundaries: {},
+  unmergeableStarts: [],
+  lostBoundaries: [],
 };
 
 /** The segment list that `client` serves for `outline`, the `version`th outline published from it. */
@@ -36,7 +52,12 @@ function segmentPagesOf(client: PageClient, outline: BookOutline, version: numbe
     bookRef: outline.bookRef,
     outline: outline.segments,
     segmentationVersion: version,
+    /* v8 ignore next -- a session's outline always names its boundaries */
+    boundaries: outline.boundaries ?? NO_BOUNDARIES,
+    duplicateVerseIds: outline.duplicateVerseIds,
+    invalidVerseIds: outline.invalidVerseIds,
     segmentAt: (index) => client.segmentAt(index),
+    heldRuns: () => client.heldRuns(),
     load: (start, end, caller) => client.load(start, end, caller),
     release: (caller) => client.release(caller),
     subscribe: (onChange) => client.subscribe(onChange),
@@ -63,6 +84,7 @@ export default function useSessionPages({
 }: Readonly<UseSessionPagesArgs>): UseSessionPagesResult {
   const [published, setPublished] = useState<{
     key: string;
+    sessionId: string;
     client: PageClient;
     pages: SegmentPages;
   }>();
@@ -100,7 +122,7 @@ export default function useSessionPages({
       if (!isCurrent || !outline || outline === shown) return;
       shown = outline;
       version += 1;
-      setPublished({ key, client, pages: segmentPagesOf(client, outline, version) });
+      setPublished({ key, sessionId, client, pages: segmentPagesOf(client, outline, version) });
     };
     const unsubscribe = client.subscribe(async () => {
       if (!ready || client.outline === shown) return;
@@ -141,20 +163,7 @@ export default function useSessionPages({
   }, [sessionId, bookId, key, scrRefRef]);
 
   const client = published?.key === key ? published?.client : undefined;
-  const analysisChangedEvent = useMemo(
-    () => papi.network.getNetworkEvent('interlinearizer.onAnalysisChanged'),
-    [],
-  );
-  useEvent(
-    analysisChangedEvent,
-    useCallback(
-      (change: NetworkEvents['interlinearizer.onAnalysisChanged']) => {
-        if ('sessionId' in change && change.sessionId === sessionId)
-          activeClientRef.current?.hear(change);
-      },
-      [sessionId],
-    ),
-  );
+  useSessionChange(sessionId, (change) => activeClientRef.current?.hear(change));
 
   const isFailed = !!key && failure?.key === key;
   return {
@@ -162,5 +171,6 @@ export default function useSessionPages({
     isLoading: !client && !isFailed,
     error: isFailed ? failure.message : undefined,
     client,
+    heldClient: published?.sessionId === sessionId ? published?.client : undefined,
   };
 }

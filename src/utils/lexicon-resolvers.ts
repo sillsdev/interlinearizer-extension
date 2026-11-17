@@ -6,17 +6,6 @@ import type {
   ResolvedSense,
 } from 'interlinearizer/lexicon';
 
-/** The lexicon that holds nothing: the shape of the Interlinearizer running with no lexicon. */
-export const nullLexiconResolver: LexiconResolver = {
-  authorities: [],
-  capabilities: { search: false, create: false, allomorphs: false, msas: false },
-  resolveSense: async () => undefined,
-  searchByForm: async () => [],
-  createEntry: async () => {
-    throw new Error('No lexicon is connected to create an entry in.');
-  },
-};
-
 /**
  * The lexicons connected for one project. Ordinarily there is one, and a project with none
  * connected is supported.

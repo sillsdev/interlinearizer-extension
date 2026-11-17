@@ -12,9 +12,14 @@ import { LexiconSensesProvider } from '../../components/LexiconSenses';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { STATUS_TEXT_COLOR_CLASS } from '../../types/status-colors';
-import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
+import { createLexiconRegistry } from '../../utils/lexicon-resolvers';
+import {
+  nullLexiconResolver,
+  FIXTURE_STAMPS,
+  makePunctToken,
+  makeWordToken,
+} from '../test-helpers';
 import { setMockAnalysisReadOnly } from '../analysis-store-read-only-mock';
-import { FIXTURE_STAMPS, makePunctToken, makeWordToken } from '../test-helpers';
 import {
   mockKeyAsValueLocalizedStrings,
   TEST_LEXICON_AUTHORITY,
@@ -766,8 +771,27 @@ describe('TokenChip', () => {
       expect(screen.queryByRole('button', { name: 'mock-reset' })).not.toBeInTheDocument();
     });
 
+    it('waits to open the editor until the session says what an edit would do', async () => {
+      jest.spyOn(AnalysisStore, 'useBreakdownPreview').mockReturnValue(undefined);
+
+      render(
+        <MockAnalysisProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </MockAnalysisProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: '%interlinearizer_tokenChip_defineMorphemes%' }),
+      );
+      expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
+      expect(AnalysisStore.useBreakdownPreview).toHaveBeenLastCalledWith(expect.any(String), true);
+    });
+
     it('tells the popover to confirm when a reset would lose glosses', async () => {
-      jest.spyOn(AnalysisStore, 'useMorphemeResetLosesAnnotation').mockReturnValue(true);
+      jest
+        .spyOn(AnalysisStore, 'useBreakdownPreview')
+        .mockImplementation((_tokenRef, isOpen) =>
+          isOpen ? { solelyOwned: false, resetLosesAnnotation: true } : undefined,
+        );
 
       render(
         <MockAnalysisProvider analysisLanguage="und">
@@ -784,7 +808,11 @@ describe('TokenChip', () => {
     });
 
     it('tells the popover not to confirm when a reset would lose nothing', async () => {
-      jest.spyOn(AnalysisStore, 'useMorphemeResetLosesAnnotation').mockReturnValue(false);
+      jest
+        .spyOn(AnalysisStore, 'useBreakdownPreview')
+        .mockImplementation((_tokenRef, isOpen) =>
+          isOpen ? { solelyOwned: false, resetLosesAnnotation: false } : undefined,
+        );
 
       render(
         <MockAnalysisProvider analysisLanguage="und">
@@ -801,7 +829,11 @@ describe('TokenChip', () => {
     });
 
     it('hands the popover the morphemes to weigh a re-split against when this token owns them', async () => {
-      jest.spyOn(AnalysisStore, 'useMorphemePayloadIsSolelyOwned').mockReturnValue(true);
+      jest
+        .spyOn(AnalysisStore, 'useBreakdownPreview')
+        .mockImplementation((_tokenRef, isOpen) =>
+          isOpen ? { solelyOwned: true, resetLosesAnnotation: false } : undefined,
+        );
       jest
         .spyOn(AnalysisStore, 'useMorphemes')
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
@@ -821,7 +853,11 @@ describe('TokenChip', () => {
     it('withholds the morphemes when the payload is shared, so a re-split loses nothing', async () => {
       // The write forks a shared payload rather than re-segmenting it, so the co-linked tokens keep
       // whatever this one drops and there is nothing for the popover to confirm.
-      jest.spyOn(AnalysisStore, 'useMorphemePayloadIsSolelyOwned').mockReturnValue(false);
+      jest
+        .spyOn(AnalysisStore, 'useBreakdownPreview')
+        .mockImplementation((_tokenRef, isOpen) =>
+          isOpen ? { solelyOwned: false, resetLosesAnnotation: false } : undefined,
+        );
       jest
         .spyOn(AnalysisStore, 'useMorphemes')
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);

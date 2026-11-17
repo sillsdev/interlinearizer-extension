@@ -154,7 +154,7 @@ async function editablePhraseAnalysis(
  * payload, so that an edit never leaves a duplicate. Every occurrence of `analysis` moves to the
  * survivor. The survivor and the moved links keep their timestamps.
  */
-async function mergeIntoIdenticalPhrase(
+export async function mergeIntoIdenticalPhrase(
   buffer: ChangeBuffer,
   analysis: PhraseAnalysis,
 ): Promise<void> {

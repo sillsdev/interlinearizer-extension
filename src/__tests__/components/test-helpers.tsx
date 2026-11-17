@@ -1,31 +1,14 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { TooltipProvider } from 'platform-bible-react';
 import type { SenseRef } from 'interlinearizer';
-import type { ResolvedSense } from 'interlinearizer/lexicon';
+import type { ResolvedSense, SenseCandidate } from 'interlinearizer/lexicon';
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { PageClient } from '../../cache/pageClient';
-import { WholeAnalysis } from '../../cache/wholeAnalysis';
 import { SessionAnalysisProvider } from '../../components/AnalysisStore';
 import { LexiconSensesProvider } from '../../components/LexiconSenses';
-import type { SourceText } from '../../hooks/useSourceTextReader';
-import { createLexiconRegistry, nullLexiconResolver } from '../../utils/lexicon-resolvers';
+import { createLexiconRegistry } from '../../utils/lexicon-resolvers';
+import { nullLexiconResolver } from '../test-helpers';
 import { ViewOptions } from '../../types/view-options';
-
-/** Builds the source text as its reading hook hands it over, unread by default. */
-export function makeSourceText(overrides: Partial<SourceText> = {}): SourceText {
-  return {
-    status: 'idle',
-    booksRead: 0,
-    bookCount: 0,
-    readings: undefined,
-    liveVersions: new Map(),
-    failedBookIds: [],
-    textForms: undefined,
-    refresh: jest.fn(),
-    request: jest.fn(),
-    ...overrides,
-  };
-}
 
 /**
  * Stubs {@link useLocalizedStrings} to echo each requested key back as its own value, so components
@@ -73,11 +56,9 @@ export function EmptyAnalysisProvider({
   const [client] = useState(
     () => new PageClient({ getOutline: unreachableHost, getSegments: unreachableHost }),
   );
-  const [whole] = useState(() => new WholeAnalysis(unreachableHost));
   return (
     <SessionAnalysisProvider
       client={client}
-      whole={whole}
       sessionId="empty"
       analysisLanguage={analysisLanguage}
       readOnly={readOnly}
@@ -120,14 +101,23 @@ export function testSenseRef(senseId: string): SenseRef {
 
 /**
  * One connected lexicon holding `senses`, keyed by sense id. A ref naming any other authority is
- * foreign to it.
+ * foreign to it. The lexicon can search when `searchByForm` is given, and cannot otherwise.
  *
  * @returns The registry, and the lexicon's sense look-up so a test can see what was asked.
  */
-export function stubLexiconRegistry(senses: Record<string, ResolvedSense> = {}) {
-  const resolveSense = jest.fn(async ({ senseId }: SenseRef) => senses[senseId]);
+export function stubLexiconRegistry(
+  senses?: Record<string, ResolvedSense>,
+  searchByForm?: (form: string) => Promise<SenseCandidate[]>,
+) {
+  const resolveSense = jest.fn(async ({ senseId }: SenseRef) => senses?.[senseId]);
   const registry = createLexiconRegistry([
-    { ...nullLexiconResolver, authorities: [TEST_LEXICON_AUTHORITY], resolveSense },
+    {
+      ...nullLexiconResolver,
+      authorities: [TEST_LEXICON_AUTHORITY],
+      capabilities: { ...nullLexiconResolver.capabilities, search: searchByForm !== undefined },
+      resolveSense,
+      ...(searchByForm && { searchByForm }),
+    },
   ]);
   return { registry, resolveSense };
 }
@@ -138,8 +128,12 @@ export function stubLexiconRegistry(senses: Record<string, ResolvedSense> = {}) 
  *
  * @returns The wrapped subject, and the lexicon's sense look-up so a test can see what was asked.
  */
-export function withLexicon(children: ReactNode, senses: Record<string, ResolvedSense> = {}) {
-  const { registry, resolveSense } = stubLexiconRegistry(senses);
+export function withLexicon(
+  children: ReactNode,
+  senses?: Record<string, ResolvedSense>,
+  searchByForm?: (form: string) => Promise<SenseCandidate[]>,
+) {
+  const { registry, resolveSense } = stubLexiconRegistry(senses, searchByForm);
   return {
     ui: <LexiconSensesProvider registry={registry}>{children}</LexiconSensesProvider>,
     resolveSense,

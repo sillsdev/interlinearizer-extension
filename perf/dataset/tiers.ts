@@ -13,8 +13,6 @@ export interface TierSpec {
   competingShare: number;
   /** Share of glossed word tokens that start an approved phrase. */
   phraseShare: number;
-  /** Share of phrases that run on into the next segment. */
-  crossSegmentPhraseShare: number;
   /** Share of segments carrying a free translation. */
   freeTranslationShare: number;
   /** Share of token payloads carrying a morpheme breakdown. */
@@ -27,7 +25,6 @@ const SHAPE = {
   staleShare: 0.03,
   competingShare: 0.1,
   phraseShare: 0.02,
-  crossSegmentPhraseShare: 0.1,
   freeTranslationShare: 0.3,
   morphemeShare: 0.2,
   savedProjects: 5,
@@ -37,7 +34,6 @@ const SHAPE = {
 export const TIERS: TierSpec[] = [
   { name: 'small', books: ['PHP'], viewBook: 'PHP', coverage: 1, ...SHAPE },
   { name: 'medium', books: ['PSA'], viewBook: 'PSA', coverage: 1, ...SHAPE },
-  // Larger than one websocket message can carry, so the app cannot load it.
   { name: 'large', books: 'all', viewBook: 'PSA', coverage: 0.5, ...SHAPE },
   // The whole Bible at the coverage whose draft, and the list of its saved projects, each fit one
   // message.

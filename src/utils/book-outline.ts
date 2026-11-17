@@ -1,4 +1,4 @@
-import type { Book, Segment } from 'interlinearizer';
+import type { ReadonlyBook, ReadonlySegment } from 'interlinearizer';
 import { isWordToken } from '../types/type-guards';
 import type { BookOutline, OutlineSegment } from '../types/segment-pages';
 
@@ -10,7 +10,7 @@ export function outlineSegment({
   heading,
   tokens,
   baselineText,
-}: Segment): OutlineSegment {
+}: ReadonlySegment): OutlineSegment {
   return {
     id,
     startRef,
@@ -23,10 +23,15 @@ export function outlineSegment({
 }
 
 /** Outlines `segments`, segmented from `book`. */
-export function buildBookOutline(book: Book, segments: readonly Segment[]): BookOutline {
+export function buildBookOutline(
+  book: ReadonlyBook,
+  segments: readonly ReadonlySegment[],
+): BookOutline {
   return {
     bookRef: book.bookRef,
     textVersion: book.textVersion,
     segments: segments.map(outlineSegment),
+    duplicateVerseIds: book.duplicateVerseIds,
+    invalidVerseIds: book.invalidVerseIds,
   };
 }

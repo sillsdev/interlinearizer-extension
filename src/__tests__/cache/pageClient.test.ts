@@ -56,6 +56,7 @@ const emptyReply = (changeId: string): CommandReply => ({
   poolAnalyses: [],
   resegmentedBooks: [],
   staleTranslationBooks: [],
+  staleGlossBooks: [],
   canUndo: false,
   canRedo: false,
 });
@@ -143,6 +144,97 @@ describe('PageClient', () => {
     await client.send((changeId) => edit('writeGloss', glossing('earth', 'land'), changeId));
     expect(client.heldAnalysis()).not.toBe(before);
     expect(client.heldAnalysis().tokenAnalyses.map(({ id }) => id)).toContain('ta-land');
+  });
+
+  it('serves each run of the segments it holds, with the phrase links over it', async () => {
+    const { client, fetchPage } = await clientOver();
+    client.load(0, 1, 'list');
+    client.load(2, 3, 'strip');
+    await client.settled();
+    const runOf = async (start: number, end: number) => {
+      const page = await fetchPage(start, end);
+      return {
+        start: page.start,
+        segments: page.segments,
+        phraseAnalysisLinks: page.analysis?.phraseAnalysisLinks,
+        phraseSpans: page.analysis?.phraseSpans,
+      };
+    };
+
+    expect(
+      client.heldRuns().map(({ start, segments, analysis }) => ({
+        start,
+        segments,
+        phraseAnalysisLinks: analysis?.phraseAnalysisLinks,
+        phraseSpans: analysis?.phraseSpans,
+      })),
+    ).toStrictEqual([await runOf(0, 1), await runOf(2, 3)]);
+  });
+
+  it('keeps the same held runs through a reply that changes no phrase link', async () => {
+    const { client, edit } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+    const before = client.heldRuns();
+
+    await client.send((changeId) => edit('writeGloss', glossing('earth', 'land'), changeId));
+
+    expect(client.heldRuns()).toBe(before);
+  });
+
+  it('gives new held runs once a reply changes a phrase link', async () => {
+    const { client, edit } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+    const before = client.heldRuns();
+
+    await client.send((changeId) =>
+      edit(
+        'createPhrase',
+        async (buffer) => {
+          buffer.create('phraseAnalyses', { id: 'pl', ...FIXTURE_STAMPS, surfaceText: 'In said' });
+          buffer.create('phraseAnalysisLinks', makePhraseLink('pl', [ref('In'), ref('said')]));
+        },
+        changeId,
+      ),
+    );
+
+    expect(client.heldRuns()).not.toBe(before);
+    expect(client.heldRuns()[0].analysis?.phraseAnalysisLinks.map(({ id }) => id)).toContain('pl');
+  });
+
+  it('gives new held runs once a page lands', async () => {
+    const { client } = await clientOver();
+    client.load(0, 1, 'list');
+    await client.settled();
+    const before = client.heldRuns();
+
+    client.load(2, 3, 'strip');
+    await client.settled();
+
+    expect(client.heldRuns()).not.toBe(before);
+  });
+
+  it('places no stale free translations before the outline loads', () => {
+    const client = new PageClient({
+      getOutline: async () => undefined,
+      getSegments: async () => undefined,
+    });
+
+    expect(client.heldPlacement()).toStrictEqual({
+      bySegment: {},
+      orphanedAfter: {},
+      orphanedAhead: [],
+    });
+  });
+
+  it('holds no pages before the outline loads', () => {
+    const client = new PageClient({
+      getOutline: async () => undefined,
+      getSegments: async () => undefined,
+    });
+
+    expect(client.heldRuns()).toStrictEqual([]);
   });
 
   it('holds an empty analysis before the outline loads', () => {
@@ -628,6 +720,106 @@ describe('PageClient', () => {
     expect(getSegments).toHaveBeenCalledTimes(1);
   });
 
+  it('takes fresh stale flags and fetches only the pages named for a change reaching stale glosses', async () => {
+    const { client, getSegments, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+    getSegments.mockClear();
+
+    client.hear({
+      changeId: 'a',
+      books: [{ bookId: BOOK.bookRef, ranges: [{ start: 1, end: 2 }], staleGlosses: true }],
+      analysisIds: [],
+      forms: [],
+      queries: ['getStaleSummary'],
+    });
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(2);
+    expect(getSegments).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes fresh stale flags, fetching no page, after a reply reaching stale glosses in the book', async () => {
+    const { client, getSegments, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+    getSegments.mockClear();
+
+    await client.send(async (changeId) => ({
+      ...emptyReply(changeId),
+      staleGlossBooks: [BOOK.bookRef],
+    }));
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(2);
+    expect(getSegments).not.toHaveBeenCalled();
+  });
+
+  it('reads the outline once for a change reaching both stale glosses and stale translations', async () => {
+    const { client, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+
+    client.hear({
+      changeId: 'a',
+      books: [
+        {
+          bookId: BOOK.bookRef,
+          ranges: [{ start: 1, end: 2 }],
+          staleGlosses: true,
+          staleTranslations: true,
+        },
+      ],
+      analysisIds: [],
+      forms: [],
+      queries: ['getStaleSummary'],
+    });
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads the outline once after a reply reaching both stale glosses and stale translations', async () => {
+    const { client, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+
+    await client.send(async (changeId) => ({
+      ...emptyReply(changeId),
+      staleGlossBooks: [BOOK.bookRef],
+      staleTranslationBooks: [BOOK.bookRef],
+    }));
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads the outline once after a reply moving boundaries and reaching stale glosses', async () => {
+    const { client, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+
+    await client.send(async (changeId) => ({
+      ...emptyReply(changeId),
+      staleGlossBooks: [BOOK.bookRef],
+      resegmentedBooks: [BOOK.bookRef],
+    }));
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads no outline after a reply reaching stale glosses only in another book', async () => {
+    const { client, getOutline } = await clientOver();
+    client.load(0, 3, 'list');
+    await client.settled();
+
+    await client.send(async (changeId) => ({ ...emptyReply(changeId), staleGlossBooks: ['EXO'] }));
+    await client.settled();
+
+    expect(getOutline).toHaveBeenCalledTimes(1);
+  });
+
   it('takes the whole outline when fresh counts come with the book cut otherwise', async () => {
     const { client, getOutline, outline } = await clientOver();
     client.load(0, 3, 'list');
@@ -709,6 +901,30 @@ describe('PageClient', () => {
 
     expect(getOutline).toHaveBeenCalledTimes(2);
     expect(client.outline).toStrictEqual(made.outline);
+  });
+
+  it('reads the outline once for a change naming only queries that arrives while it is read', async () => {
+    const outlines = gate();
+    const made = await sessionOver();
+    const getOutline = jest.fn(async () => {
+      await outlines.pass();
+      return made.fetchOutline();
+    });
+    const client = new PageClient({ getOutline, getSegments: made.fetchPage });
+    outlines.close();
+    const opening = client.open();
+
+    client.hear({
+      changeId: 'a',
+      books: [],
+      analysisIds: [],
+      forms: [],
+      queries: ['getCatalogRows'],
+    });
+    outlines.open();
+    await opening;
+
+    expect(getOutline).toHaveBeenCalledTimes(1);
   });
 
   it('reads the outline once more, not once per change, for changes arriving during a read', async () => {

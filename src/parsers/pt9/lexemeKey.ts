@@ -16,20 +16,6 @@ export interface LexemeKeyData {
 }
 
 /**
- * Lexeme type names PT9 defines. Ids in the wild are expected to use these, but parsing does not
- * require it — PT9 treats its type list as append-only, so unknown names must survive.
- */
-export const KNOWN_LEXEME_TYPES = [
-  'Phrase',
-  'Word',
-  'Lemma',
-  'Stem',
-  'Prefix',
-  'Suffix',
-  'Infix',
-] as const;
-
-/**
  * PT9's id grammar: `Type:Form` with an optional `:digits` homograph suffix. The lazy form group
  * lets forms contain colons, while a trailing `:digits` always reads as the homograph — matching
  * PT9's own parsing of ambiguous ids.
@@ -63,9 +49,4 @@ export function composeLexemeKeyId(key: LexemeKeyData): string {
   const homograph = key.Homograph ?? 1;
   const base = `${key.Type}:${key.Form}`;
   return homograph === 1 ? base : `${base}:${homograph}`;
-}
-
-/** Compares two keys by identity, treating an absent homograph as homograph 1. */
-export function lexemeKeysEqual(a: LexemeKeyData, b: LexemeKeyData): boolean {
-  return a.Type === b.Type && a.Form === b.Form && (a.Homograph ?? 1) === (b.Homograph ?? 1);
 }

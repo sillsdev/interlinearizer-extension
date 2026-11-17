@@ -40,13 +40,16 @@ export type ReportedChange = AnalysisChange & { changeId: ChangeId };
 
 /**
  * A session over a draft holding `analysis` and `segmentation`, on a source whose text is `book`,
- * with a way to read its outline and pages as the host serves them. Each listener passed to
+ * with a way to read its outline and pages as the host serves them. A session on a draft that lists
+ * no analysis language glosses in the first language that `getInterfaceLanguages` lists, or in
+ * `und` when it lists none. `getInterfaceLanguages` lists `en` by default. Each listener passed to
  * `onChange` hears every change that the session reports, at the moment it is reported.
  */
 export async function sessionOver(
   analysis: Partial<TextAnalysis> = GLOSSED,
   segmentation: SegmentationDelta | undefined = undefined,
   book: Book = BOOK,
+  getInterfaceLanguages: () => Promise<string[]> = async () => ['en'],
 ) {
   const { storage } = memoryStorage();
   const listeners = new Set<(change: ReportedChange) => void>();
@@ -66,18 +69,26 @@ export async function sessionOver(
     openPt9ImportRepository: () => {
       throw new Error('no imports here');
     },
-    getInterfaceLanguages: async () => ['en'],
+    getInterfaceLanguages,
     startTextRead: async () => {},
     stopTextRead: async () => {},
+    holdTextRead: () => {},
     heldBook: () => book,
     getOpenVerseBook: async () => book,
     reportChange: (change) => listeners.forEach((listener) => listener(change)),
   });
   const { sessionId } = await sessions.open('src');
-  const fetchPage = (start: number, end: number, read: Book = book): Promise<SegmentPage> =>
-    sessions.run(sessionId, (session) => readSegmentPage(session.repository, read, start, end));
+  // Sent through JSON, as the host sends a page, so that the cache holds segments of its own.
+  const fetchPage = async (start: number, end: number, read: Book = book): Promise<SegmentPage> =>
+    JSON.parse(
+      JSON.stringify(
+        await sessions.run(sessionId, (session) =>
+          readSegmentPage(session.repository, read, start, end),
+        ),
+      ),
+    );
   const fetchOutline = (read: Book = book) =>
-    sessions.run(sessionId, (session) => readBookOutline(session.repository, read));
+    sessions.run(sessionId, (session) => readBookOutline(session.repository, read, read));
   const outline = await fetchOutline();
   const edit = (
     intent: string,

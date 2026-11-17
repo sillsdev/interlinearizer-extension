@@ -384,6 +384,7 @@ describe('AnalysisIndex', () => {
           'segmentAnalysisLinks by bookStatus',
           'segmentAnalysisLinks by segmentId',
           'tokenAnalyses by approving token',
+          'tokenAnalyses by approved form',
         ]),
       );
       expect(differences).toContainEqual({
@@ -401,9 +402,17 @@ describe('AnalysisIndex', () => {
     });
 
     it('reports the approvals it keeps that an analysis lacks', () => {
-      expect(new AnalysisIndex(analysis()).differencesFrom(emptyAnalysis())).toContainEqual({
+      const differences = new AnalysisIndex(analysis()).differencesFrom(emptyAnalysis());
+
+      expect(differences).toContainEqual({
         index: 'tokenAnalyses by approving token',
         key: 'ta-and',
+        missing: [],
+        extra: ['GEN 1:1:0'],
+      });
+      expect(differences).toContainEqual({
+        index: 'tokenAnalyses by approved form',
+        key: 'and',
         missing: [],
         extra: ['GEN 1:1:0'],
       });

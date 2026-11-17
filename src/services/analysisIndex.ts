@@ -11,6 +11,7 @@ import type {
 import type {
   AnalysisLinks,
   AnalysisPayloads,
+  ApprovalsByForm,
   ChangeSet,
   IndexDifference,
   RecordChanges,
@@ -164,11 +165,20 @@ export class AnalysisIndex {
     'analysisId' | 'book' | 'bookStatus' | 'segmentId'
   >;
 
-  /** The analysis each token approves, for tokens approving one. */
-  private readonly approvedByTokenRef = new Map<string, string>();
+  /**
+   * The analysis each token approves, for tokens approving one, with the normalized surface form
+   * the approval is filed under.
+   */
+  private readonly approvalByTokenRef = new Map<
+    string,
+    Readonly<{ analysisId: string; form: string }>
+  >();
 
   /** The tokens that approve each analysis. An analysis that no token approves has no entry. */
   private readonly approvingTokens: IdsByKey = new Map();
+
+  /** The approving tokens filed under each normalized surface form. */
+  private readonly approvingTokensByForm: IdsByKey = new Map();
 
   constructor(analysis: TextAnalysis) {
     this.tokenAnalyses = new RecordTable('tokenAnalyses', formKeyers, analysis.tokenAnalyses);
@@ -229,6 +239,26 @@ export class AnalysisIndex {
       [...new Set(analysisIds)].flatMap((id) => {
         const size = this.approvingTokens.get(id)?.size;
         return size ? [[id, size]] : [];
+      }),
+    );
+  }
+
+  /**
+   * The approvals filed under each of `normalizedForms`, leaving out a form with none. A token's
+   * approval is filed under its approved link's token surface text, normalized.
+   */
+  findApprovalsByForm(normalizedForms: readonly string[]): ApprovalsByForm {
+    return Object.fromEntries(
+      [...new Set(normalizedForms)].flatMap((form) => {
+        const tokenRefs = this.approvingTokensByForm.get(form);
+        if (!tokenRefs) return [];
+        const approvals = [...tokenRefs].map((tokenRef) => {
+          const approval = this.approvalByTokenRef.get(tokenRef);
+          /* v8 ignore next -- a token is filed under a form only while it holds an approval */
+          if (!approval) throw new Error(`Token ${tokenRef} is filed with no approval`);
+          return [tokenRef, approval.analysisId];
+        });
+        return [[form, Object.fromEntries(approvals)]];
       }),
     );
   }
@@ -427,15 +457,13 @@ export class AnalysisIndex {
   /** Where this index differs from one built afresh from `analysis`. */
   differencesFrom(analysis: TextAnalysis): IndexDifference[] {
     const rebuilt = new AnalysisIndex(analysis);
-    const approved = new Set([...this.approvingTokens.keys(), ...rebuilt.approvingTokens.keys()]);
-    const approvalDifferences = [...approved].flatMap((analysisId): IndexDifference[] => {
-      const kept = this.approvingTokens.get(analysisId);
-      const fresh = rebuilt.approvingTokens.get(analysisId);
-      const missing = idsLacking(fresh, kept);
-      const extra = idsLacking(kept, fresh);
-      if (missing.length === 0 && extra.length === 0) return [];
-      return [{ index: 'tokenAnalyses by approving token', key: analysisId, missing, extra }];
-    });
+    const differencesOf = (index: string, kept: IdsByKey, fresh: IdsByKey) =>
+      [...new Set([...kept.keys(), ...fresh.keys()])].flatMap((key): IndexDifference[] => {
+        const missing = idsLacking(fresh.get(key), kept.get(key));
+        const extra = idsLacking(kept.get(key), fresh.get(key));
+        if (missing.length === 0 && extra.length === 0) return [];
+        return [{ index, key, missing, extra }];
+      });
     return [
       ...this.tokenAnalyses.differencesFrom(rebuilt.tokenAnalyses),
       ...this.phraseAnalyses.differencesFrom(rebuilt.phraseAnalyses),
@@ -443,7 +471,16 @@ export class AnalysisIndex {
       ...this.tokenLinks.differencesFrom(rebuilt.tokenLinks),
       ...this.phraseLinks.differencesFrom(rebuilt.phraseLinks),
       ...this.segmentLinks.differencesFrom(rebuilt.segmentLinks),
-      ...approvalDifferences,
+      ...differencesOf(
+        'tokenAnalyses by approving token',
+        this.approvingTokens,
+        rebuilt.approvingTokens,
+      ),
+      ...differencesOf(
+        'tokenAnalyses by approved form',
+        this.approvingTokensByForm,
+        rebuilt.approvingTokensByForm,
+      ),
     ];
   }
 
@@ -461,24 +498,34 @@ export class AnalysisIndex {
     );
   }
 
-  /** Files `tokenRef` under the analysis that the approval tie-break picks among its approved links. */
+  /**
+   * Files `tokenRef` under the analysis that the approval tie-break picks among its approved links,
+   * and under that link's normalized surface form.
+   */
   private settleApproval(tokenRef: string): void {
-    const settled = preferredLink(
+    const link = preferredLink(
       this.tokenLinks
         .find('tokenRef', [tokenRef])
         .filter(
           ({ status, analysisId }) =>
             status === 'approved' && this.tokenAnalyses.hasRecord(analysisId),
         ),
-    )?.analysisId;
-    const held = this.approvedByTokenRef.get(tokenRef);
-    if (held === settled) return;
-    if (held !== undefined) unfileId(this.approvingTokens, held, tokenRef);
-    if (settled === undefined) {
-      this.approvedByTokenRef.delete(tokenRef);
+    );
+    const held = this.approvalByTokenRef.get(tokenRef);
+    if (held) {
+      unfileId(this.approvingTokens, held.analysisId, tokenRef);
+      unfileId(this.approvingTokensByForm, held.form, tokenRef);
+    }
+    if (!link) {
+      this.approvalByTokenRef.delete(tokenRef);
       return;
     }
-    this.approvedByTokenRef.set(tokenRef, settled);
-    fileId(this.approvingTokens, settled, tokenRef);
+    const settled = {
+      analysisId: link.analysisId,
+      form: normalizeSurfaceForm(link.token.surfaceText),
+    };
+    this.approvalByTokenRef.set(tokenRef, settled);
+    fileId(this.approvingTokens, settled.analysisId, tokenRef);
+    fileId(this.approvingTokensByForm, settled.form, tokenRef);
   }
 }

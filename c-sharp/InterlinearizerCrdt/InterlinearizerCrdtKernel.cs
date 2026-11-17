@@ -129,6 +129,7 @@ public static class InterlinearizerCrdtKernel
                 builder.HasIndex(l => new { l.ProjectId, l.AnalysisId });
                 builder.HasIndex(l => new { l.ProjectId, l.TokenRef });
                 builder.HasIndex(l => new { l.ProjectId, l.BookCode, l.Status });
+                builder.HasIndex(l => new { l.ProjectId, l.NormalizedForm, l.Status });
             })
             .Add<PhraseAnalysis>(builder => builder.HasIndex(a => new { a.ProjectId, a.NormalizedForm }))
             .Add<PhraseAnalysisLink>(builder =>

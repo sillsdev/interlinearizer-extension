@@ -834,6 +834,34 @@ public class AnalysisRepositoryTests : CrdtTestBase
     }
 
     [Test]
+    public async Task FindsTheApprovalsFiledUnderEachFormLeavingOutThoseWithNone()
+    {
+        await ApplyNext(FullAnalysis());
+
+        var approvals = await Repository.FindApprovalsByForm(["and", "beginning", "missing"]);
+
+        await Assert.That(approvals.Keys).IsEquivalentTo(["and"]);
+        await Assert.That(approvals["and"]).IsEquivalentTo(new Dictionary<string, Guid> { ["GEN 1:1:0"] = TaAnd, ["EXO 1:1:0"] = TaAnd });
+    }
+
+    [Test]
+    public async Task FilesATokenOnceUnderTheApprovedLinkAnApprovalTiePicks()
+    {
+        await ApplyNext(FullAnalysis());
+        // A later commit, so the moved link's update wins the tie on GEN 1:1:0.
+        await ApplyNext(new ChangeSet
+        {
+            Intent = "approveTwice",
+            TokenAnalysisLinks = RecordChanges<TokenAnalysisLink>.Put(TokenLink(TlGenBeginning, TaBeginning, "GEN 1:1:0", "Beginning")),
+        });
+
+        var approvals = await Repository.FindApprovalsByForm(["and", "beginning"]);
+
+        await Assert.That(approvals["and"]).IsEquivalentTo(new Dictionary<string, Guid> { ["EXO 1:1:0"] = TaAnd });
+        await Assert.That(approvals["beginning"]).IsEquivalentTo(new Dictionary<string, Guid> { ["GEN 1:1:0"] = TaBeginning });
+    }
+
+    [Test]
     public async Task FilesAnEditedRecordUnderItsNewKeysOnly()
     {
         await ApplyNext(FullAnalysis());

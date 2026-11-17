@@ -18,7 +18,7 @@ const DESCRIPTIVE = new Set(['viewBook', 'dataset', 'skipped', 'error']);
 
 /** Printed ahead of every result measured on the generated datasets. */
 const DATASET_NOTE =
-  "The datasets gloss WEB's English, which has fewer word forms than a real project's language: about 2.8× the links per token payload of a real Paratext 9 import, so costs that scale with payload count, such as the pool index and catalog rows, read 2–3× low.";
+  'The datasets share token payloads about as much as a real Paratext 9 import, at about 24 links per payload. But only 20% of their payloads carry morphemes, against 87% in a real import, and they gloss in one analysis language where a real import may have several. So a real draft of the same size likely costs more.';
 
 /** Explains the rows under a call, printed ahead of any report that has them. */
 const HOST_NOTE =
@@ -38,8 +38,7 @@ const KIND_INTROS: Record<string, string> = {
 
 /** What each section's scenario does, keyed by result kind and section path. */
 const SECTION_DESCRIPTIONS: Record<string, string> = {
-  'app.wireBytes':
-    'The size of each payload the WebView receives as one websocket message. A tier whose draft is over the per-message cap cannot load in the app.',
+  'app.wireBytes': 'The size of each payload the WebView receives as one websocket message.',
   'app.memory':
     'Heap in use before the view opens, then how far it has grown at each later point. The host heap belongs to the whole platform, not just this extension.',
   'app.cold': "The packaged app restarts before each run, then the view opens on the tier's book.",
@@ -69,7 +68,7 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
   'app.scriptureSave':
     "With a view open and no whole-text read, the first chapter of the view's book is saved with a word added, then a gloss is committed at once. Host CPU is the extension host's, from the save until it has had 3 s to settle, the gloss commit and the platform's re-fetches included.",
   'app.editDuringRead':
-    "One gloss committed while the session's whole-text read runs, started as a feature needing the text would start it. Only edits that the read outlasts are counted.",
+    "One gloss committed while the session's whole-text read runs, started as a feature needing the text would start it. Only edits committed before the read finishes are counted.",
   'app.editAfterRead': "As the edit above, once the session's whole-text read has finished.",
   'app.scriptureSaveAfterRead':
     "As the Scripture save above, with the session's whole-text read finished, so the host watches every book.",

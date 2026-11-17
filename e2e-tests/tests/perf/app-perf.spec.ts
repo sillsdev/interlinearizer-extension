@@ -7,6 +7,7 @@ import { TIERS, type TierSpec } from '../../../perf/dataset/tiers';
 import { provenance, writeResults } from '../../../perf/results';
 import { readCaptureMeta } from '../../../perf/usj-cache';
 import { addSavedProject, readDraft, writeDraft } from '../../../perf/storage';
+import { splitAnalysisByBook } from '../../../src/utils/analysis-book';
 import type { TextReadStatus } from '../../../src/types/text-read-status';
 import { expect, test } from '../../fixtures/cdp.fixture';
 import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
@@ -28,7 +29,6 @@ import {
   hostPid,
   heapUsed,
   lastFocusWrite,
-  MAX_WEBSOCKET_PAYLOAD_BYTES,
   type Measure,
   openView,
   PERF_MARKS_KEY,
@@ -49,6 +49,31 @@ const RUNS = Number(process.env.PERF_RUNS ?? 10);
 
 /** Whether sessions open without reading the whole text, to isolate that read's cost. */
 const SKIP_SESSION_READS = process.env.PERF_SKIP_SESSION_READS === 'true';
+
+/** Source project of a real project's stored draft to measure instead of the generated tiers. */
+const REAL_SOURCE = process.env.PERF_REAL_SOURCE;
+
+/** The saved interlinear project of `REAL_SOURCE` that Save opens and writes to. */
+const REAL_PROJECT = process.env.PERF_REAL_PROJECT;
+
+/** Book the view opens on when measuring `REAL_SOURCE`. */
+const REAL_BOOK = process.env.PERF_REAL_BOOK;
+
+/** What a run measures: a generated tier, or a real project's draft already in storage. */
+interface Dataset {
+  name: string;
+  viewBook: string;
+  /**
+   * Id of the saved project that Save opens.
+   *
+   * @throws If the dataset is not yet seeded.
+   */
+  savedProjectId: () => string;
+  counts: Record<string, unknown>;
+  bytes: { draftJson: number; largestShard: number };
+  /** Stores the dataset in the app's storage; absent when storage already holds it. */
+  seed?: () => Promise<void>;
+}
 
 /** Edits made before reading the heap, enough to fill the undo history. */
 const UNDO_FILL_EDITS = 100;
@@ -356,7 +381,7 @@ async function measureEdits(
 async function measureAfterRead(
   page: Page,
   projectId: string,
-  tier: TierSpec,
+  tier: Dataset,
   cpuPid: number | undefined,
   result: Record<string, unknown>,
 ): Promise<void> {
@@ -368,18 +393,17 @@ async function measureAfterRead(
 
     await textReadStatus(page, projectId);
     if (!SKIP_SESSION_READS) {
-      // Only edits that the read outlasts are counted, so a quick read yields fewer samples.
+      // Only edits committed while the read runs are counted, so a quick read yields fewer samples.
       const editsDuringRead = new Samples();
       for (let run = 0; run < RUNS; run += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        if (await isTextRead(page, projectId)) break;
         // eslint-disable-next-line no-await-in-loop
         await clearMeasures(frame);
         // eslint-disable-next-line no-await-in-loop
         await editGloss(frame, run, `read-${run}`);
         // eslint-disable-next-line no-await-in-loop
-        const measures = await waitForMeasure(frame, 'gloss-render');
-        // eslint-disable-next-line no-await-in-loop
-        if (await isTextRead(page, projectId)) break;
-        editsDuringRead.add(measures, ['gloss-render']);
+        editsDuringRead.add(await waitForMeasure(frame, 'gloss-render'), ['gloss-render']);
       }
       result.editDuringRead = editsDuringRead.summary();
       await readWholeText(page, projectId);
@@ -466,6 +490,66 @@ async function seedTier(
   }
 }
 
+/** A generated tier as a run measures it, seeded into `projectId`'s draft. */
+function tierDataset(projectId: string, tier: TierSpec, created: string[]): Dataset {
+  const manifest = readManifest(tier.name, readCaptureMeta());
+  const draftJson = readDraftJson(tier.name);
+  return {
+    name: tier.name,
+    viewBook: tier.viewBook,
+    savedProjectId: () => {
+      if (!created[0]) throw new Error(`Tier ${tier.name} has no saved project yet`);
+      return created[0];
+    },
+    counts: manifest.counts,
+    bytes: manifest.bytes,
+    seed: () => seedTier(projectId, tier, draftJson, created),
+  };
+}
+
+/**
+ * The real project's stored `draft` as a run measures it, with the counts a tier's manifest
+ * records, less the text's segments and words.
+ *
+ * @throws If the source lists no saved project `projectId`.
+ */
+async function realDataset(
+  page: Page,
+  draft: DraftProject,
+  projectId: string,
+  viewBook: string,
+): Promise<Dataset> {
+  const { sourceProjectId: sourceId } = draft;
+  const draftJson = JSON.stringify(draft);
+  const { analysis } = draft;
+  const json = await sendCommand(page, 'interlinearizer.getProjectsForSource', sourceId);
+  const projects: { id: string }[] = typeof json === 'string' ? JSON.parse(json) : [];
+  if (!projects.some(({ id }) => id === projectId))
+    throw new Error(`${sourceId} lists no saved project ${projectId}`);
+  const tokenAnalysisLinks: Record<string, number> = {};
+  analysis.tokenAnalysisLinks.forEach(({ status }) => {
+    tokenAnalysisLinks[status] = (tokenAnalysisLinks[status] ?? 0) + 1;
+  });
+  const shardBytes = [...splitAnalysisByBook(analysis).values()].map(
+    (shard) => JSON.stringify(shard).length,
+  );
+  return {
+    name: 'real',
+    viewBook,
+    savedProjectId: () => projectId,
+    counts: {
+      analysisLanguages: draft.analysisLanguages.length,
+      tokenAnalyses: analysis.tokenAnalyses.length,
+      tokenAnalysisLinks,
+      phraseAnalyses: analysis.phraseAnalyses.length,
+      phraseAnalysisLinks: analysis.phraseAnalysisLinks.length,
+      segmentAnalyses: analysis.segmentAnalyses.length,
+      analyzedBooks: shardBytes.length,
+    },
+    bytes: { draftJson: Buffer.byteLength(draftJson), largestShard: Math.max(0, ...shardBytes) },
+  };
+}
+
 /** Deletes saved projects an interrupted run left behind, so the picker lists only this run's. */
 async function deleteLeftoverProjects(page: Page, projectId: string): Promise<void> {
   const json = await sendCommand(page, 'interlinearizer.getProjectsForSource', projectId);
@@ -520,28 +604,20 @@ function detailBytes(measures: Measure[], name: string): number | undefined {
 async function measureTier(
   app: App,
   projectId: string,
-  tier: TierSpec,
-  createdProjects: string[],
+  tier: Dataset,
   result: Record<string, unknown>,
 ): Promise<void> {
-  const manifest = readManifest(tier.name, readCaptureMeta());
-  const draftJson = readDraftJson(tier.name);
-  const draftWire = wireBytes(draftJson);
-  const wire: Record<string, number> = { draft: draftWire };
+  const wire: Record<string, number> = {};
   Object.assign(result, {
     viewBook: tier.viewBook,
-    dataset: { counts: manifest.counts, bytes: manifest.bytes },
+    dataset: { counts: tier.counts, bytes: tier.bytes },
     wireBytes: wire,
   });
-  if (draftWire > MAX_WEBSOCKET_PAYLOAD_BYTES) {
-    result.skipped = `The draft is ${(draftWire / 1e6).toFixed(1)} MB on the wire, over the websocket's per-message cap; the app cannot load it.`;
-    return;
-  }
 
-  const seed = () => seedTier(projectId, tier, draftJson, createdProjects);
+  const { seed } = tier;
   await closeView(app.page);
   // A packaged app restarts before its first open below, so it is seeded while stopped.
-  if (!PACKAGED_APP_PATH) await seed();
+  if (!PACKAGED_APP_PATH) await seed?.();
 
   // The first open after each app start.
   if (PACKAGED_APP_PATH) {
@@ -661,8 +737,7 @@ async function measureTier(
   await clearMeasures(frame);
   await openProjectMenuItem(frame, /Select interlinear/i);
   await dialog
-    .locator('li > button', { hasText: `Perf ${tier.name} 1` })
-    .first()
+    .locator(`li[data-project-id="${tier.savedProjectId()}"] > button:first-child`)
     .click();
   // Replacing an edited draft asks first; an unedited one opens straight away.
   await frame
@@ -767,25 +842,46 @@ async function measureTier(
 test('measure the app', async ({ mainPage }) => {
   const app: App = { page: mainPage };
   await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
-  const projectId = await sourceProjectId(mainPage);
+  if (REAL_SOURCE && !(REAL_PROJECT && REAL_BOOK))
+    throw new Error('PERF_REAL_SOURCE needs PERF_REAL_PROJECT and PERF_REAL_BOOK');
+  if (REAL_SOURCE && !PACKAGED_APP_PATH)
+    throw new Error('PERF_REAL_SOURCE needs PERF_APP_PATH: a dev-core run measures empty storage');
+  if (REAL_BOOK === AWAY_BOOK)
+    throw new Error(
+      `PERF_REAL_BOOK cannot be ${AWAY_BOOK}, the book that the book switch leaves for`,
+    );
+  const projectId = REAL_SOURCE ?? (await sourceProjectId(mainPage));
   await makeEditable(mainPage, projectId);
 
-  const requested = (process.env.PERF_TIERS ?? '').split(',').filter(Boolean);
-  const tiers = TIERS.filter((t) => requested.length === 0 || requested.includes(t.name));
-  await closeView(mainPage);
-  await deleteLeftoverProjects(mainPage, projectId);
   const originalDraft = await readDraft(STORAGE_DIR, projectId);
+  const createdProjects: string[] = [];
+  const requested = (process.env.PERF_TIERS ?? '').split(',').filter(Boolean);
+  // Each dataset is read only when its turn comes, so no two drafts are held at once.
+  const datasets: { name: string; read: () => Promise<Dataset> }[] =
+    REAL_SOURCE && REAL_PROJECT && REAL_BOOK
+      ? [
+          {
+            name: 'real',
+            read: () => realDataset(mainPage, originalDraft, REAL_PROJECT, REAL_BOOK),
+          },
+        ]
+      : TIERS.filter((t) => requested.length === 0 || requested.includes(t.name)).map((t) => ({
+          name: t.name,
+          read: async () => tierDataset(projectId, t, createdProjects),
+        }));
+  await closeView(mainPage);
+  // A real project's saved projects are its own, whatever their names.
+  if (!REAL_SOURCE) await deleteLeftoverProjects(mainPage, projectId);
   await enableMarks(mainPage);
 
-  const createdProjects: string[] = [];
   const results: Record<string, Record<string, unknown>> = {};
   try {
-    await tiers.reduce(async (previous, tier) => {
+    await datasets.reduce(async (previous, tier) => {
       await previous;
       const result: Record<string, unknown> = {};
       results[tier.name] = result;
       try {
-        await measureTier(app, projectId, tier, createdProjects, result);
+        await measureTier(app, projectId, await tier.read(), result);
       } catch (e) {
         result.error = e instanceof Error ? e.message : String(e);
       } finally {

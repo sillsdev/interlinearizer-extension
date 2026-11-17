@@ -5,13 +5,10 @@ import { expect } from '../../fixtures/cdp.fixture';
 import { CDP_PORT } from '../../global-setup-cdp';
 import { type HostHeap, readHostHeap } from './host-inspector';
 
-/** Paranext-core's cap on one websocket message, which every command argument and result crosses. */
-export const MAX_WEBSOCKET_PAYLOAD_BYTES = 100 * 1024 * 1024;
-
 /** Storage key that asks the WebView for timing entries. */
 export const PERF_MARKS_KEY = 'interlinearizer.perfMarks';
 
-export const VIEW_TAB = /^Interlinearizer: WEB/;
+export const VIEW_TAB = /^Interlinearizer: /;
 
 export type Measure = { name: string; duration: number; end: number; detail: unknown };
 
@@ -135,7 +132,7 @@ export async function setBook(page: Page, book: string): Promise<void> {
 
 /** The open WebView's frame, waiting for it to appear. */
 export async function viewFrame(page: Page): Promise<Frame> {
-  const iframe = page.locator('iframe[title^="Interlinearizer: WEB"]').first();
+  const iframe = page.locator('iframe[title^="Interlinearizer: "]').first();
   await expect(iframe).toBeAttached({ timeout: 60_000 });
   const frame = await (await iframe.elementHandle())?.contentFrame();
   if (!frame) throw new Error('The Interlinearizer WebView has no frame');

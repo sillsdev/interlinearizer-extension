@@ -84,6 +84,18 @@ describe('RecordTable', () => {
     expect(table.has('tag', 'y')).toBe(true);
   });
 
+  it('keeps filing records under a key after one of them is deleted', () => {
+    const b = { id: 'b', tags: ['x'] };
+    const c = { id: 'c', tags: ['x'] };
+    const table = tableOf({ id: 'a', tags: ['x'] }, b);
+
+    table.apply({ puts: [], deletes: ['a'] });
+    table.apply({ puts: [c], deletes: [] });
+
+    expect(table.find('tag', ['x'])).toStrictEqual([b, c]);
+    expect(table.count('tag', 'x')).toBe(2);
+  });
+
   it('drops a key once its last record is moved off it', () => {
     const table = tableOf({ id: 'a', tags: ['x'] });
 

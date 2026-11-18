@@ -19,7 +19,7 @@ import { bookOfRef, BOOKLESS_PARTITION } from '../utils/analysis-book';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { splitAnalysisByBook } from '../utils/analysis-book';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
-import { preferredLink } from '../utils/pick-rules';
+import { preferredLink, preferredLinkByKey } from '../utils/pick-rules';
 import { fileId, idsLacking, type IdsByKey, RecordTable, unfileId } from '../utils/record-table';
 
 /** The key a link is filed under for its book and status. */
@@ -198,9 +198,14 @@ export class AnalysisIndex {
       },
       analysis.segmentAnalysisLinks,
     );
-    new Set(analysis.tokenAnalysisLinks.map(({ token }) => token.tokenRef)).forEach((tokenRef) =>
-      this.settleApproval(tokenRef),
-    );
+    preferredLinkByKey(this.tokenLinks.all(), ({ status, analysisId, token }) =>
+      status === 'approved' && this.tokenAnalyses.hasRecord(analysisId)
+        ? token.tokenRef
+        : undefined,
+    ).forEach(({ analysisId }, tokenRef) => {
+      this.approvedByTokenRef.set(tokenRef, analysisId);
+      fileId(this.approvingTokens, analysisId, tokenRef);
+    });
   }
 
   /**

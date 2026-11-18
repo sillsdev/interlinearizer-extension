@@ -16,6 +16,7 @@ import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import type { AnalysisRepository } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import { selectAnalysisDeletionOutcome } from '../utils/analysis-selectors';
+import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 
 /** What a view asks of a session's catalog: a {@link CatalogPageRequest}, against one book. */
 export type CatalogRowsRequest = CatalogPageRequest & {
@@ -141,16 +142,24 @@ export function sessionCatalogHandlers({
     sessionId,
     request,
   }: ArgsOf<'interlinearizer.getCatalogRows'>): Promise<string> {
-    return readSession(sessionId, 'serve the catalog', async (session) => {
-      const { sourceProjectId } = session.scope;
-      const page = getCatalogPage(
-        (await session.repository.getWholeDraft()).analysis,
-        await scopeOf(session, request.currentBook),
-        { ...request, filters: restoreUntagged(request.filters) },
-        (form) => isFormInText(sourceProjectId, form),
-      );
-      return JSON.stringify({ ...page, rows: page.rows.map(wireRow) });
-    });
+    return perfTimeAsync('getCatalogRows', () =>
+      readSession(sessionId, 'serve the catalog', async (session) => {
+        const { sourceProjectId } = session.scope;
+        const { analysis } = await session.repository.getWholeDraft();
+        const scope = await scopeOf(session, request.currentBook);
+        const page = perfTime('getCatalogRows:query', () =>
+          getCatalogPage(
+            analysis,
+            scope,
+            { ...request, filters: restoreUntagged(request.filters) },
+            (form) => isFormInText(sourceProjectId, form),
+          ),
+        );
+        return perfTime('getCatalogRows:serialize', () =>
+          JSON.stringify({ ...page, rows: page.rows.map(wireRow) }),
+        );
+      }),
+    );
   }
 
   async function countUsages({

@@ -767,6 +767,27 @@ async function measureTier(
   result.save = saves.summary();
   await recordMemory('afterSave');
 
+  // Catalog: from opening the panel to its first rows, closing it between runs.
+  const catalog = scenarioSamples();
+  for (let run = 0; run < RUNS; run += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    await clearMeasures(frame);
+    // eslint-disable-next-line no-await-in-loop
+    await takeHostEntries(page);
+    // eslint-disable-next-line no-await-in-loop
+    await openProjectMenuItem(frame, /^Analysis catalog/);
+    // eslint-disable-next-line no-await-in-loop
+    const measures = await waitForMeasure(frame, 'catalog-rows');
+    catalog.webView.add(measures, ['catalog-rows', 'catalog-fetch']);
+    // eslint-disable-next-line no-await-in-loop
+    catalog.addHostCall(HOST_CALLS.getCatalogRows, await takeHostEntries(page), measures);
+    // eslint-disable-next-line no-await-in-loop
+    await frame.getByTestId('analysis-catalog-close').click();
+    // eslint-disable-next-line no-await-in-loop
+    await expect(frame.getByTestId('analysis-catalog-panel')).toHaveCount(0);
+  }
+  result.catalog = catalog.summary();
+
   // Concordance: from opening the panel to its first page, in a fresh view each run, because the
   // host keeps the whole-text read until the view closes.
   const concordance = new Samples();

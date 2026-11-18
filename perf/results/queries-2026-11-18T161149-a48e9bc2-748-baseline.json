@@ -1,0 +1,318 @@
+{
+  "kind": "queries",
+  "commit": "a48e9bc27a3188c204d1869fb39af88c4e85324a",
+  "dirty": true,
+  "coreCommit": "ebdb06881bce06853024834a8a204dec3f51b1cc",
+  "recordedAt": "2026-11-18T16:11:49.148Z",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12700KF",
+    "cores": 20,
+    "memoryGb": 34,
+    "os": "Windows_NT 10.0.26200",
+    "node": "v25.8.1",
+    "loadAverage": [0, 0, 0]
+  },
+  "runs": 10,
+  "tiers": {
+    "small": {
+      "viewBook": "PHP",
+      "timings": {
+        "index build": {
+          "runs": 10,
+          "medianMs": 3.985,
+          "p90Ms": 4.6,
+          "minMs": 3.681,
+          "maxMs": 4.768
+        },
+        "catalog first page": {
+          "runs": 10,
+          "medianMs": 6.684,
+          "p90Ms": 7.093,
+          "minMs": 6.407,
+          "maxMs": 7.573
+        },
+        "countUsages 5": {
+          "runs": 10,
+          "medianMs": 2.838,
+          "p90Ms": 3.179,
+          "minMs": 2.71,
+          "maxMs": 3.225
+        },
+        "countUsages 100": {
+          "runs": 10,
+          "medianMs": 2.96,
+          "p90Ms": 3.207,
+          "minMs": 2.641,
+          "maxMs": 5.602
+        },
+        "previewDeletion typical": {
+          "runs": 10,
+          "medianMs": 4.383,
+          "p90Ms": 4.553,
+          "minMs": 4.147,
+          "maxMs": 4.665
+        },
+        "previewRemovals 5": {
+          "runs": 10,
+          "medianMs": 0.526,
+          "p90Ms": 0.554,
+          "minMs": 0.472,
+          "maxMs": 0.609
+        },
+        "previewRemovals 100": {
+          "runs": 10,
+          "medianMs": 4.684,
+          "p90Ms": 4.968,
+          "minMs": 4.592,
+          "maxMs": 5.337
+        },
+        "concordance same form next page": {
+          "runs": 10,
+          "medianMs": 15.553,
+          "p90Ms": 15.741,
+          "minMs": 15.149,
+          "maxMs": 15.796
+        },
+        "concordance another form": {
+          "runs": 10,
+          "medianMs": 12.136,
+          "p90Ms": 15.703,
+          "minMs": 11.578,
+          "maxMs": 15.745
+        },
+        "stale summary": {
+          "runs": 10,
+          "medianMs": 0.717,
+          "p90Ms": 0.784,
+          "minMs": 0.524,
+          "maxMs": 0.812
+        },
+        "segment page": {
+          "runs": 10,
+          "medianMs": 3.131,
+          "p90Ms": 3.257,
+          "minMs": 2.909,
+          "maxMs": 3.264
+        }
+      },
+      "bytes": {
+        "catalog first page": 125233,
+        "outline": 26399,
+        "segment page": 430828,
+        "page textVersion": 10,
+        "page start": 2,
+        "page segments": 101275,
+        "page analysis": 329492,
+        "page analysis tokenAnalysisLinks": 204711,
+        "page analysis phraseAnalysisLinks": 5482,
+        "page analysis segmentAnalysisLinks": 2405,
+        "page analysis tokenAnalyses": 76320,
+        "page analysis phraseAnalyses": 3060,
+        "page analysis segmentAnalyses": 4690,
+        "page analysis poolBuckets": 24943,
+        "page analysis staleFreeTranslations": 54,
+        "page analysis phraseSpans": 7648
+      }
+    },
+    "medium": {
+      "viewBook": "PSA",
+      "timings": {
+        "index build": {
+          "runs": 10,
+          "medianMs": 87.574,
+          "p90Ms": 89.78,
+          "minMs": 84.556,
+          "maxMs": 96.933
+        },
+        "catalog first page": {
+          "runs": 10,
+          "medianMs": 93.384,
+          "p90Ms": 95.108,
+          "minMs": 91.961,
+          "maxMs": 95.895
+        },
+        "countUsages 5": {
+          "runs": 10,
+          "medianMs": 45.785,
+          "p90Ms": 46.369,
+          "minMs": 44.974,
+          "maxMs": 46.497
+        },
+        "countUsages 100": {
+          "runs": 10,
+          "medianMs": 46.726,
+          "p90Ms": 47.361,
+          "minMs": 45.857,
+          "maxMs": 47.867
+        },
+        "previewDeletion typical": {
+          "runs": 10,
+          "medianMs": 68.329,
+          "p90Ms": 69.978,
+          "minMs": 66.938,
+          "maxMs": 71.904
+        },
+        "previewRemovals 5": {
+          "runs": 10,
+          "medianMs": 4.071,
+          "p90Ms": 4.146,
+          "minMs": 4.029,
+          "maxMs": 4.161
+        },
+        "previewRemovals 100": {
+          "runs": 10,
+          "medianMs": 36.692,
+          "p90Ms": 37.28,
+          "minMs": 36.339,
+          "maxMs": 38.122
+        },
+        "concordance same form next page": {
+          "runs": 10,
+          "medianMs": 74.376,
+          "p90Ms": 75.991,
+          "minMs": 72.441,
+          "maxMs": 76.029
+        },
+        "concordance another form": {
+          "runs": 10,
+          "medianMs": 73.085,
+          "p90Ms": 76.602,
+          "minMs": 69.62,
+          "maxMs": 76.928
+        },
+        "stale summary": {
+          "runs": 10,
+          "medianMs": 8.635,
+          "p90Ms": 12.111,
+          "minMs": 8.442,
+          "maxMs": 12.224
+        },
+        "segment page": {
+          "runs": 10,
+          "medianMs": 9.476,
+          "p90Ms": 12.758,
+          "minMs": 9.161,
+          "maxMs": 12.935
+        }
+      },
+      "bytes": {
+        "catalog first page": 1661369,
+        "outline": 659664,
+        "segment page": 318015,
+        "page textVersion": 10,
+        "page start": 4,
+        "page segments": 71415,
+        "page analysis": 246537,
+        "page analysis tokenAnalysisLinks": 138269,
+        "page analysis phraseAnalysisLinks": 3009,
+        "page analysis segmentAnalysisLinks": 1981,
+        "page analysis tokenAnalyses": 71228,
+        "page analysis phraseAnalyses": 1684,
+        "page analysis segmentAnalyses": 3076,
+        "page analysis poolBuckets": 22727,
+        "page analysis staleFreeTranslations": 54,
+        "page analysis phraseSpans": 4330
+      }
+    },
+    "large-loadable": {
+      "viewBook": "PSA",
+      "timings": {
+        "index build": {
+          "runs": 10,
+          "medianMs": 794.899,
+          "p90Ms": 802.818,
+          "minMs": 769.662,
+          "maxMs": 805.086
+        },
+        "catalog first page": {
+          "runs": 10,
+          "medianMs": 622.604,
+          "p90Ms": 629.299,
+          "minMs": 618.4,
+          "maxMs": 629.489
+        },
+        "countUsages 5": {
+          "runs": 10,
+          "medianMs": 348.391,
+          "p90Ms": 355.714,
+          "minMs": 343.835,
+          "maxMs": 359.861
+        },
+        "countUsages 100": {
+          "runs": 10,
+          "medianMs": 355.86,
+          "p90Ms": 359.853,
+          "minMs": 350.915,
+          "maxMs": 367.148
+        },
+        "previewDeletion typical": {
+          "runs": 10,
+          "medianMs": 563.708,
+          "p90Ms": 569.04,
+          "minMs": 527.781,
+          "maxMs": 570.025
+        },
+        "previewRemovals 5": {
+          "runs": 10,
+          "medianMs": 57.566,
+          "p90Ms": 59.129,
+          "minMs": 57.021,
+          "maxMs": 59.779
+        },
+        "previewRemovals 100": {
+          "runs": 10,
+          "medianMs": 282.34,
+          "p90Ms": 283.155,
+          "minMs": 281.605,
+          "maxMs": 285.696
+        },
+        "concordance same form next page": {
+          "runs": 10,
+          "medianMs": 523.491,
+          "p90Ms": 530.39,
+          "minMs": 517.822,
+          "maxMs": 537.357
+        },
+        "concordance another form": {
+          "runs": 10,
+          "medianMs": 521.774,
+          "p90Ms": 523.012,
+          "minMs": 512.897,
+          "maxMs": 528.629
+        },
+        "stale summary": {
+          "runs": 10,
+          "medianMs": 6.948,
+          "p90Ms": 10.058,
+          "minMs": 6.357,
+          "maxMs": 10.166
+        },
+        "segment page": {
+          "runs": 10,
+          "medianMs": 8.486,
+          "p90Ms": 11.474,
+          "minMs": 8.046,
+          "maxMs": 11.675
+        }
+      },
+      "bytes": {
+        "catalog first page": 9695249,
+        "outline": 660309,
+        "segment page": 210361,
+        "page textVersion": 10,
+        "page start": 4,
+        "page segments": 71415,
+        "page analysis": 138883,
+        "page analysis tokenAnalysisLinks": 43831,
+        "page analysis phraseAnalysisLinks": 606,
+        "page analysis segmentAnalysisLinks": 1761,
+        "page analysis tokenAnalyses": 65321,
+        "page analysis phraseAnalyses": 345,
+        "page analysis segmentAnalyses": 2817,
+        "page analysis poolBuckets": 23203,
+        "page analysis staleFreeTranslations": 54,
+        "page analysis phraseSpans": 766
+      }
+    }
+  }
+}

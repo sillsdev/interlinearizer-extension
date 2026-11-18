@@ -583,7 +583,7 @@ async function saveDraftAsProject(
   }
 }
 
-/** The session that a page or text-read command reads. */
+/** The session that a text-read command reads. */
 type SessionAddress = Readonly<{ sessionId: string }>;
 
 /**

@@ -1974,17 +1974,22 @@ function InterlinearizerLoaderInner({
         useWebViewState={useWebViewState}
       />
 
-      {showPt9Checking && offerProbe === 'pending' && (
+      {/* Both prompts wait for the short name, or their titles would name the project by ID. */}
+      {showPt9Checking && offerProbe === 'pending' && !isSourceShortNameLoading && (
         <Pt9CheckingModal sourceShortName={sourceShortName} />
       )}
 
-      {offerPt9Import && offerProbe === 'available' && !isDraftLoading && modal === 'none' && (
-        <Pt9ConvertPromptModal
-          sourceShortName={sourceShortName}
-          onYes={handlePt9OfferYes}
-          onNo={handlePt9OfferNo}
-        />
-      )}
+      {offerPt9Import &&
+        offerProbe === 'available' &&
+        !isDraftLoading &&
+        !isSourceShortNameLoading &&
+        modal === 'none' && (
+          <Pt9ConvertPromptModal
+            sourceShortName={sourceShortName}
+            onYes={handlePt9OfferYes}
+            onNo={handlePt9OfferNo}
+          />
+        )}
 
       {modal === 'importPt9' && (
         <Pt9ImportModal

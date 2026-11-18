@@ -38,6 +38,11 @@ class StubRepository extends IndexedRepository {
   protected unreadableBooks(): string[] {
     return ['EXO'];
   }
+
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this -- the base class's method, answered with a constant
+  protected anchoredVersions(): Record<string, string> {
+    return { GEN: 'v1' };
+  }
 }
 
 function analysis(): TextAnalysis {
@@ -109,6 +114,7 @@ describe('IndexedRepository', () => {
       empty: false,
       hasFreeTranslations: true,
       unreadableBooks: ['EXO'],
+      anchoredVersions: { GEN: 'v1' },
     });
   });
 

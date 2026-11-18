@@ -622,6 +622,102 @@ describe('DraftRepository', () => {
     });
   });
 
+  describe('anchored versions', () => {
+    /** A repository over a seeded draft, with Genesis recorded as anchored to `v1`. */
+    async function anchoredGenesis() {
+      const { storage, records } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await seedRepository(repository, twoBookDraft());
+      await repository.apply(
+        { intent: 'reanchor' },
+        { keepDirty: true, anchoredTo: { bookCode: 'GEN', textVersion: 'v1' } },
+      );
+      return { storage, records, repository };
+    }
+
+    it('reports the version an apply recorded', async () => {
+      const { repository } = await anchoredGenesis();
+
+      await expect(repository.getDraftState()).resolves.toMatchObject({
+        anchoredVersions: { GEN: 'v1' },
+      });
+    });
+
+    it('loads the recorded versions with the draft', async () => {
+      const { storage } = await anchoredGenesis();
+
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).getDraftState(),
+      ).resolves.toMatchObject({ anchoredVersions: { GEN: 'v1' } });
+    });
+
+    it('keeps the recorded versions out of the loaded draft', async () => {
+      const { storage } = await anchoredGenesis();
+
+      const { draft } = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
+
+      expect(draft).not.toHaveProperty('anchoredVersions');
+    });
+
+    it('keeps the recorded versions through later applies', async () => {
+      const { storage, repository } = await anchoredGenesis();
+      await repository.apply(
+        { intent: 'reanchor' },
+        { anchoredTo: { bookCode: 'EXO', textVersion: 'v2' } },
+      );
+
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).getDraftState(),
+      ).resolves.toMatchObject({ anchoredVersions: { GEN: 'v1', EXO: 'v2' } });
+    });
+
+    it('keeps the recorded versions when the draft is marked clean', async () => {
+      const { storage, repository } = await anchoredGenesis();
+
+      await repository.markClean();
+
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).getDraftState(),
+      ).resolves.toMatchObject({ anchoredVersions: { GEN: 'v1' } });
+    });
+
+    it('records no version from a failed apply', async () => {
+      const { storage, repository } = await anchoredGenesis();
+      jest.spyOn(storage, 'write').mockRejectedValue(new Error('disk full'));
+
+      await expect(
+        repository.apply(
+          { intent: 'reanchor' },
+          { anchoredTo: { bookCode: 'EXO', textVersion: 'v2' } },
+        ),
+      ).rejects.toThrow('disk full');
+
+      await expect(repository.getDraftState()).resolves.toMatchObject({
+        anchoredVersions: { GEN: 'v1' },
+      });
+    });
+
+    it('drops the recorded versions when the draft starts over', async () => {
+      const { storage, repository } = await anchoredGenesis();
+
+      await repository.startOver(twoBookDraft());
+
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).getDraftState(),
+      ).resolves.toMatchObject({ anchoredVersions: {} });
+    });
+
+    it('loads unusable recorded versions as none', async () => {
+      const { storage, records } = await anchoredGenesis();
+      const envelope = JSON.parse(records.get(draftKey('src')) ?? '');
+      records.set(draftKey('src'), JSON.stringify({ ...envelope, anchoredVersions: ['v1'] }));
+
+      await expect(
+        new DraftRepository(storage, 'src', silentLogger()).getDraftState(),
+      ).resolves.toMatchObject({ anchoredVersions: {} });
+    });
+  });
+
   describe('lookups', () => {
     it('load the draft once, answering later lookups from what they kept', async () => {
       const { storage } = memoryStorage();

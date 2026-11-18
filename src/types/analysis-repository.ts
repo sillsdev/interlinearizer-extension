@@ -73,6 +73,12 @@ export type DraftState = {
   hasFreeTranslations: boolean;
   /** As {@link DraftExport.unreadableBooks}. */
   unreadableBooks: string[];
+  /**
+   * The `textVersion` that each book's analysis was last re-anchored to, by book code, as
+   * {@link ApplyOptions.anchoredTo} recorded it. A book not listed may hold analysis anchored to any
+   * text. A repository that records no such versions lists none.
+   */
+  anchoredVersions: Record<string, string>;
 };
 
 /** Payloads of every kind, one list per kind. */
@@ -109,6 +115,12 @@ export type ApplyOptions = {
    * than an edit. Absent, the draft is marked unsaved.
    */
   keepDirty?: boolean;
+  /**
+   * Records that once the changes apply, the analysis of the book `bookCode` is anchored to the
+   * text whose `textVersion` is given, as a re-anchor pass leaves it. A repository that records no
+   * such versions ignores it.
+   */
+  anchoredTo?: { bookCode: string; textVersion: string };
 };
 
 /** What applying a {@link ChangeSet} tells its caller. */

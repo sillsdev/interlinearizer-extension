@@ -11,6 +11,7 @@ import {
   isPt9ImportProvenance,
   isSavedAsProject,
   isStringArray,
+  isStringRecord,
   isTextAnalysis,
   validateTextAnalysis,
 } from '../../types/type-guards';
@@ -594,5 +595,23 @@ describe('isStringArray', () => {
 
   it('rejects a non-array', () => {
     expect(isStringArray('GEN')).toBe(false);
+  });
+});
+
+describe('isStringRecord', () => {
+  it('accepts an object mapping keys to strings', () => {
+    expect(isStringRecord({ GEN: 'v1' })).toBe(true);
+  });
+
+  it('rejects an object holding a non-string', () => {
+    expect(isStringRecord({ GEN: 1 })).toBe(false);
+  });
+
+  it('rejects an array', () => {
+    expect(isStringRecord(['v1'])).toBe(false);
+  });
+
+  it('rejects a non-object', () => {
+    expect(isStringRecord('v1')).toBe(false);
   });
 });

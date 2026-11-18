@@ -3,6 +3,7 @@ import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository
 import type { EditStep } from '../types/edit-step';
 import type { AppliedChange } from './analysisChanges';
 import { mergeChangeSets } from '../utils/change-set';
+import { REANCHOR_INTENT } from '../utils/reanchor-changes';
 
 /** How many of the most recent steps stay undoable; older ones are forgotten. */
 export const MAX_UNDO_STEPS = 100;
@@ -195,10 +196,11 @@ export class EditHistory {
   }
 
   /**
-   * Applies `changes`, a pass that re-anchors the stored draft to `book`'s current text. Records
-   * the pass, so that what an undo or redo restores is re-anchored to that text too. A pass that
-   * changes nothing is still recorded, because an undo or redo may restore analysis anchored to
-   * older text.
+   * Applies `changes`, a pass that re-anchors the stored draft to `book`'s current text, and
+   * records in the repository that the book is anchored to that text. Records the pass, so that
+   * what an undo or redo restores is re-anchored to that text too. A pass that changes nothing is
+   * still applied and recorded, because an undo or redo may restore analysis anchored to older
+   * text.
    *
    * The pass goes unrecorded when the history holds no steps to undo or redo. It also goes
    * unrecorded when the book's text is unchanged since its last recorded pass.
@@ -214,12 +216,20 @@ export class EditHistory {
     book: ReadonlyBook,
     changes: ChangeSet | undefined,
   ): Promise<AppliedChange | undefined> {
-    const applied = changes && {
-      changes,
-      inverse: (await this.repository.apply(changes, { keepDirty: true })).inverse,
-    };
+    const { inverse } = await this.repository.apply(changes ?? { intent: REANCHOR_INTENT }, {
+      keepDirty: true,
+      anchoredTo: { bookCode: book.bookRef, textVersion: book.textVersion },
+    });
     this.recordPass(book);
-    return applied;
+    return changes && { changes, inverse };
+  }
+
+  /**
+   * Records a pass to `book`'s current text, as {@link applyPass} does, without applying one. Meant
+   * for a book whose stored analysis the repository already records as anchored to that text.
+   */
+  notePass(book: ReadonlyBook): void {
+    this.recordPass(book);
   }
 
   /**

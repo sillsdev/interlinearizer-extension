@@ -115,6 +115,12 @@ export class Pt9ImportRepository extends IndexedRepository implements AnalysisRe
     return [];
   }
 
+  /** None, because an import is never re-anchored. */
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this -- the base class's method, with nothing to read
+  protected anchoredVersions(): Record<string, string> {
+    return {};
+  }
+
   /**
    * Reads the import as {@link exportAll} describes.
    *

@@ -2190,6 +2190,19 @@ describe('AnalysisSessions', () => {
         expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
       });
 
+      it('re-anchors a book stored as anchored once an edit has re-anchored it to other text', async () => {
+        const { sessions, sessionId, storage } = await reopenedAfterAnchoring();
+        await sessions.edit(sessionId, 'relink', async (buffer) => {
+          buffer.create('tokenAnalyses', { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'beta' });
+          buffer.put('tokenAnalysisLinks', betaLink(AFTER, 'ta-2'));
+          return { reanchorTo: [BEFORE] };
+        });
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
+      });
+
       it('re-anchors a book stored as anchored once the text has lacked it', async () => {
         const { sessions, sessionId, read } = await reopenedAfterAnchoring();
         await sessions.reanchorMissingBooks(SOURCE, []);

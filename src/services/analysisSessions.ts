@@ -913,6 +913,8 @@ export class AnalysisSessions {
    *
    * @throws Whatever reading the draft or applying the changes throws; the books before stay
    *   re-anchored.
+   * @throws Whatever describing the applied changes throws; the failing book's pass stays applied,
+   *   as do those before it.
    */
   reanchorMissingBooks(sourceProjectId: string, textBookIds: readonly string[]): Promise<void> {
     const entry = this.writableEntry(sourceProjectId);
@@ -926,9 +928,10 @@ export class AnalysisSessions {
       ).filter((bookCode) => deliveryCounts.get(bookCode) === countsBefore.get(bookCode));
       await missing.reduce<Promise<void>>(async (previous, bookCode) => {
         await previous;
-        await reanchorNow(this.host, session, missingBook(bookCode));
+        // The versions are dropped first, because describing the pass can fail after the pass applies.
         anchoredVersions.delete(bookCode);
         storedVersions.delete(bookCode);
+        await reanchorNow(this.host, session, missingBook(bookCode));
       }, Promise.resolve());
     });
   }

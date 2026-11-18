@@ -1891,6 +1891,24 @@ describe('AnalysisSessions', () => {
       expect((await storedLink(storage)).status).toBe('approved');
     });
 
+    it('revives the links into a missing book that returns with the text it had, after describing its pass failed', async () => {
+      const { sessions, sessionId, storage } = await sessionGlossingBeta();
+      await sessions.reanchorBook(SOURCE, AFTER);
+      await sessions.run(sessionId, async ({ repository }) => {
+        const getScope = repository.getScope.bind(repository);
+        // The pass reads the scope first; describing the applied pass reads it second.
+        jest
+          .spyOn(repository, 'getScope')
+          .mockImplementationOnce(getScope)
+          .mockRejectedValueOnce(new Error('unreadable'));
+      });
+      await expect(sessions.reanchorMissingBooks(SOURCE, [])).rejects.toThrow('unreadable');
+
+      await sessions.reanchorBook(SOURCE, AFTER);
+
+      expect((await storedLink(storage)).status).toBe('approved');
+    });
+
     it('skips the pass for an edit that leaves the same text', async () => {
       const { sessions, sessionId } = await sessionGlossingBeta();
       await sessions.reanchorBook(SOURCE, AFTER, true);

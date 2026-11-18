@@ -32,9 +32,9 @@ When it runs, for an editable project only:
   - for each book as the session's whole-text read reaches it, and for each linked book the text lacks once the read finishes;
   - for the books that a boundary edit, an undo, a redo, or a discard touches, in the same step.
 
-  An outline, a text change, or the read skips a book that the session last re-anchored to the same text.
+  An outline, a text change, or the read skips a book that the session last re-anchored to the same text. Until a session first re-anchors a book, it also skips one that the draft records as anchored to the same text.
 
-A book the project no longer has is treated as holding no text, so every approval in it goes stale. An imported, read-only project is a record of what was imported and is never healed. A pass that moves nothing leaves the analysis identical, so opening a book neither dirties the draft nor writes storage.
+A book the project no longer has is treated as holding no text, so every approval in it goes stale. An imported, read-only project is a record of what was imported and is never healed. A pass that moves nothing leaves the analysis identical, so opening a book never dirties the draft. It still writes storage, to record the text the book is anchored to, so that a later session can skip it.
 
 Token and phrase links carry a `TokenSnapshot` (`tokenRef` plus the `surfaceText` it was written against). Approved, candidate, and stale links are the evidence the alignment weighs; rejected and suggested links align afterward, among themselves, against the tokens those leave unclaimed, so a verdict never decides which occurrence an approval names. For each verse independently:
 

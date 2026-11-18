@@ -8,6 +8,7 @@ import {
 import type { CatalogRowsRequest } from '../services/sessionCatalogHandlers';
 import type { CatalogFacets, CatalogRow } from '../utils/analysis-query';
 import type { AnalysisDeletionOutcome } from '../utils/analysis-selectors';
+import { perfTrack } from '../utils/perf-marks';
 import { useNamedFetch } from './namedQueryHooks';
 import { usePageSession } from './pageHooks';
 
@@ -53,10 +54,13 @@ export function useCatalogView(
     key,
     async (): Promise<CatalogView> => {
       const page = JSON.parse(
-        await papi.commands.sendCommand('interlinearizer.getCatalogRows', {
-          sessionId,
-          request: { ...request, offset: 0, count },
-        }),
+        await perfTrack(
+          'catalog-fetch',
+          papi.commands.sendCommand('interlinearizer.getCatalogRows', {
+            sessionId,
+            request: { ...request, offset: 0, count },
+          }),
+        ),
       );
       return { ...page, rows: page.rows.map(fromWire), facets: restoreUntagged(page.facets) };
     },

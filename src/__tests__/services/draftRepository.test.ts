@@ -733,6 +733,42 @@ describe('DraftRepository', () => {
       ).toEqual({ EXO: 'v2' });
     });
 
+    it('drops, after a restart, the version of a book whose shard a retried apply found already rewritten', async () => {
+      const { storage, repository } = await anchoredGenesis();
+      await repository.apply(
+        { intent: 'reanchor' },
+        { keepDirty: true, anchoredTo: { bookCode: 'EXO', textVersion: 'v1' } },
+      );
+      const [segment] = twoBookAnalysis().segmentAnalyses;
+      const { write: writeThrough } = storage;
+      const write = jest
+        .spyOn(storage, 'write')
+        .mockImplementation((key, data) =>
+          key === draftKey('src')
+            ? Promise.reject(new Error('disk full'))
+            : writeThrough(key, data),
+        );
+      const reanchorExodus = () =>
+        repository.apply(
+          {
+            intent: 'reanchor',
+            segmentAnalyses: {
+              puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
+              deletes: [],
+            },
+          },
+          { keepDirty: true, anchoredTo: { bookCode: 'EXO', textVersion: 'v2' } },
+        );
+      await expect(reanchorExodus()).rejects.toThrow('disk full');
+      await expect(reanchorExodus()).rejects.toThrow('disk full');
+      write.mockRestore();
+
+      expect(
+        (await new DraftRepository(storage, 'src', silentLogger()).getDraftState())
+          .anchoredVersions,
+      ).toEqual({ GEN: 'v1' });
+    });
+
     it('drops every recorded version when the shard journal is unusable', async () => {
       const { storage, records } = await anchoredGenesis();
       records.set(draftJournalKey('src'), 'not json');

@@ -58,8 +58,9 @@ interface ShardJournal {
    */
   removing: string[];
   /**
-   * Books whose shard this save set out to rewrite. Until a save settles them, storage may hold
-   * changes there that the draft lacks, so each apply compares them as well. Absent means none.
+   * Books whose shard a save set out to rewrite since an envelope last landed. Until a save settles
+   * them, storage may hold changes there that the draft lacks, so each apply compares them as well.
+   * Absent means none.
    */
   unsettled?: string[];
 }
@@ -555,7 +556,14 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     // the stored manifest already names needs no `adding` entry: the manifest alone keeps it
     // reachable.
     const stranded = books.filter((bookCode) => !storedBooks.includes(bookCode));
-    const unsettled = shards.filter(({ changed }) => changed).map(({ bookCode }) => bookCode);
+    // A book stays unsettled until an envelope lands after its rewrite, even when this save finds
+    // its shard already rewritten by a failed one.
+    const unsettled = [
+      ...new Set([
+        ...shards.filter(({ changed }) => changed).map(({ bookCode }) => bookCode),
+        ...(journaled.unsettled ?? []).filter((bookCode) => carried.has(bookCode)),
+      ]),
+    ];
     await perfTimeAsync('saveDraft:write', () =>
       this.writeShardJournal({ adding: stranded, removing: wiped, unsettled }),
     );

@@ -723,6 +723,8 @@ describe('AnalysisCatalogPanel', () => {
         tokenAnalysisLinks: [link('used', 'GEN 1:1:0')],
       };
 
+      const USAGE_SORT_KEYS = ['usageCount', 'usageCountInBook', 'firstUsage'];
+
       async function keepOnlyUnused() {
         await openFilters();
         await userEvent.click(
@@ -732,31 +734,51 @@ describe('AnalysisCatalogPanel', () => {
         );
       }
 
-      it('offers the first-usage sort while the unused-only filter is off', async () => {
-        await renderPanel({ analysis: WITH_UNUSED });
+      it.each(USAGE_SORT_KEYS)(
+        'offers the %s sort while the unused-only filter is off',
+        async (sortKey) => {
+          await renderPanel({ analysis: WITH_UNUSED });
 
-        expect(screen.getByTestId('catalog-sort-firstUsage')).toBeEnabled();
-      });
+          expect(screen.getByTestId(`catalog-sort-${sortKey}`)).toBeEnabled();
+        },
+      );
 
-      it('disables the first-usage sort while the unused-only filter is on', async () => {
-        await renderPanel({ analysis: WITH_UNUSED });
+      it.each(USAGE_SORT_KEYS)(
+        'disables the %s sort while the unused-only filter is on',
+        async (sortKey) => {
+          await renderPanel({ analysis: WITH_UNUSED });
 
-        await keepOnlyUnused();
+          await keepOnlyUnused();
 
-        expect(screen.getByTestId('catalog-sort-firstUsage')).toBeDisabled();
-      });
+          expect(screen.getByTestId(`catalog-sort-${sortKey}`)).toBeDisabled();
+        },
+      );
 
-      it('falls back to most used when the filter turns on under the first-usage sort', async () => {
-        await renderPanel({ analysis: WITH_UNUSED });
-        await userEvent.click(screen.getByTestId('catalog-sort-firstUsage'));
+      it.each(['surfaceText', 'gloss'])(
+        'offers the %s sort while the unused-only filter is on',
+        async (sortKey) => {
+          await renderPanel({ analysis: WITH_UNUSED });
 
-        await keepOnlyUnused();
+          await keepOnlyUnused();
 
-        expect(screen.getByTestId('catalog-sort-usageCount')).toHaveAttribute(
-          'aria-selected',
-          'true',
-        );
-      });
+          expect(screen.getByTestId(`catalog-sort-${sortKey}`)).toBeEnabled();
+        },
+      );
+
+      it.each(USAGE_SORT_KEYS)(
+        'falls back to the form sort when the filter turns on under the %s sort',
+        async (sortKey) => {
+          await renderPanel({ analysis: WITH_UNUSED });
+          await userEvent.click(screen.getByTestId(`catalog-sort-${sortKey}`));
+
+          await keepOnlyUnused();
+
+          expect(screen.getByTestId('catalog-sort-surfaceText')).toHaveAttribute(
+            'aria-selected',
+            'true',
+          );
+        },
+      );
     });
   });
 

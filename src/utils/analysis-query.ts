@@ -80,6 +80,13 @@ export interface CatalogRow {
 export type CatalogSort =
   'usageCount' | 'usageCountInBook' | 'surfaceText' | 'gloss' | 'firstUsage';
 
+/** The sorts that order rows by their usages, so they tie every row that has none. */
+export const USAGE_SORTS: ReadonlySet<CatalogSort> = new Set([
+  'usageCount',
+  'usageCountInBook',
+  'firstUsage',
+]);
+
 /**
  * Which rows are kept. An absent filter is inactive, as is an empty selection. A selection of a
  * field an analysis holds one value of accepts `undefined` as the choice for rows carrying no value

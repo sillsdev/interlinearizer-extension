@@ -620,6 +620,7 @@ export class AnalysisSessions {
     options?: SessionEditOptions,
   ): Promise<EditReply> {
     const { changeId = crypto.randomUUID(), unsavedMark, step } = options ?? {};
+    const entry = this.sessions.get(sessionId);
     const reply = await this.once(sessionId, changeId, (markApplied) =>
       this.runEdit(sessionId, (session) =>
         noticingApplies(session, markApplied, async (): Promise<EditReply> => {
@@ -642,6 +643,7 @@ export class AnalysisSessions {
             const applied = await perfTimeAsync(`${intent}:apply`, () =>
               applyStaged(this.host, session, buffer, staged, reanchorTo, editOptions),
             );
+            reanchorTo?.forEach(({ bookRef }) => entry?.storedVersions.delete(bookRef));
             const answered = await perfTimeAsync(`${intent}:reply`, () =>
               replyTo(this.host, session, applied, changeId),
             );

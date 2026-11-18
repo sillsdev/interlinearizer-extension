@@ -44,6 +44,7 @@ import OrphanedFreeTranslationCard, {
 } from './OrphanedFreeTranslationCard';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 import { useSegmentation } from './SegmentationStore';
+import StaleScrollMarks from './StaleScrollMarks';
 import type { SegmentDisplayMode } from './SegmentView';
 import MemoizedSegmentView, { SEGMENT_STRING_KEYS } from './SegmentView';
 
@@ -653,146 +654,149 @@ export default function SegmentListView({
         </div>
       )}
 
-      <div
-        ref={setScrollContainer}
-        className="tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
-        // The window hook owns scroll-position corrections (extend anchoring, above-viewport
-        // compensation, recenter snaps); the browser's native scroll anchoring would apply its own
-        // heuristic adjustments on top of them and double-correct, so it is disabled here.
-        style={{ overflowAnchor: 'none' }}
-      >
-        {windowSegments.length === 0 && (
-          <p className="tw:text-sm tw:text-muted-foreground">
-            {formatReplacementString(
-              localizedStrings['%interlinearizer_segmentList_noVerseData%'],
-              { book: bookName, chapter: scrRef.chapterNum },
-            )}
-          </p>
-        )}
+      <div className="tw:relative tw:flex tw:min-h-0 tw:flex-1 tw:flex-col">
+        <div
+          ref={setScrollContainer}
+          className="tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
+          // The window hook owns scroll-position corrections (extend anchoring, above-viewport
+          // compensation, recenter snaps); the browser's native scroll anchoring would apply its own
+          // heuristic adjustments on top of them and double-correct, so it is disabled here.
+          style={{ overflowAnchor: 'none' }}
+        >
+          {windowSegments.length === 0 && (
+            <p className="tw:text-sm tw:text-muted-foreground">
+              {formatReplacementString(
+                localizedStrings['%interlinearizer_segmentList_noVerseData%'],
+                { book: bookName, chapter: scrRef.chapterNum },
+              )}
+            </p>
+          )}
 
-        {windowSegments.length > 0 && (
-          <div
-            ref={contentRef}
-            className="tw:flex tw:flex-col tw:gap-2 tw:transition-opacity"
-            style={{ opacity: isFaded ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
-          >
-            {/* Paired with the trailing spacer below, these stand in for the unmounted segments so
+          {windowSegments.length > 0 && (
+            <div
+              ref={contentRef}
+              className="tw:flex tw:flex-col tw:gap-2 tw:transition-opacity"
+              style={{ opacity: isFaded ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
+            >
+              {/* Paired with the trailing spacer below, these stand in for the unmounted segments so
                 the container scrolls the whole book rather than the mounted slice. The negative
                 margins cancel the column gap beside each spacer, which the height table does not
                 model. */}
-            <div
-              aria-hidden="true"
-              className="tw:-mb-2"
-              data-leading-spacer
-              style={{ height: `${leadingSpacerPx}px`, flex: 'none' }}
-            />
-            <div
-              ref={topSentinelRef}
-              aria-hidden="true"
-              data-sentinel="top"
-              className="tw:h-px tw:w-full"
-              style={{ marginBottom: `${leadingSentinelMarginPx}px` }}
-            />
-            {windowSegments.map((seg, windowIndex) => {
-              /** Index of this segment in the full book, which hydration and heights are keyed on. */
-              const bookIndex = range.start + windowIndex;
-              const segment = pages.segmentAt(bookIndex);
-              /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
+              <div
+                aria-hidden="true"
+                className="tw:-mb-2"
+                data-leading-spacer
+                style={{ height: `${leadingSpacerPx}px`, flex: 'none' }}
+              />
+              <div
+                ref={topSentinelRef}
+                aria-hidden="true"
+                data-sentinel="top"
+                className="tw:h-px tw:w-full"
+                style={{ marginBottom: `${leadingSentinelMarginPx}px` }}
+              />
+              {windowSegments.map((seg, windowIndex) => {
+                /** Index of this segment in the full book, which hydration and heights are keyed on. */
+                const bookIndex = range.start + windowIndex;
+                const segment = pages.segmentAt(bookIndex);
+                /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
                  windowed segment comes from the outline, so the lookup always resolves */
-              const verseStartLabels = verseStartLabelsBySegmentId.get(seg.id) ?? [];
-              // Merge control renders above every segment whose merge would take effect (see
-              // mergeableSegmentIds). Eligibility is computed over the FULL book, not the mounted
-              // window: merge dispatches against the delta, not the DOM, so the topmost windowed
-              // segment's boundary with a culled predecessor is still editable.
-              const canMerge = mergeableSegmentIds.has(seg.id);
-              // Omit the merge control while a phrase mode is active (a merge could re-segment the
-              // phrase the mode UI is operating on) and for a read-only analysis, which offers no
-              // boundary editing at all.
-              const showMergeControl = canMerge && showsMergeControls;
-              const isActive =
-                activeSegmentId !== undefined
-                  ? seg.id === activeSegmentId
-                  : segmentContainsVerse(seg, displayScrRef);
-              const displayMode = segmentDisplayMode(bookIndex);
-              // A stand-in holds the height its chips will occupy so hydrating shifts nothing below
-              // it; a segment rendering as baseline text in its own right takes its natural height.
-              const placeholderHeightPx =
-                displayMode === 'baseline-text' && !displayContinuousScroll
-                  ? heightTable.boxHeights[bookIndex]
-                  : undefined;
-              return (
-                <Fragment key={seg.id}>
-                  {/* Tagged so a recenter onto the first segment frames these with it. */}
-                  {showsOrphanedCards && bookIndex === 0 && orphanedAhead.length > 0 && (
-                    <div className="tw:flex tw:flex-col tw:gap-2" data-orphaned-ahead>
-                      {orphanedCards(orphanedAhead)}
-                    </div>
-                  )}
-                  {showMergeControl &&
-                    (segment ? (
-                      <MergeRowButton
-                        // A mergeable segment always holds a token.
-                        secondSegmentStartRef={segment.tokens[0].ref}
+                const verseStartLabels = verseStartLabelsBySegmentId.get(seg.id) ?? [];
+                // Merge control renders above every segment whose merge would take effect (see
+                // mergeableSegmentIds). Eligibility is computed over the FULL book, not the mounted
+                // window: merge dispatches against the delta, not the DOM, so the topmost windowed
+                // segment's boundary with a culled predecessor is still editable.
+                const canMerge = mergeableSegmentIds.has(seg.id);
+                // Omit the merge control while a phrase mode is active (a merge could re-segment the
+                // phrase the mode UI is operating on) and for a read-only analysis, which offers no
+                // boundary editing at all.
+                const showMergeControl = canMerge && showsMergeControls;
+                const isActive =
+                  activeSegmentId !== undefined
+                    ? seg.id === activeSegmentId
+                    : segmentContainsVerse(seg, displayScrRef);
+                const displayMode = segmentDisplayMode(bookIndex);
+                // A stand-in holds the height its chips will occupy so hydrating shifts nothing below
+                // it; a segment rendering as baseline text in its own right takes its natural height.
+                const placeholderHeightPx =
+                  displayMode === 'baseline-text' && !displayContinuousScroll
+                    ? heightTable.boxHeights[bookIndex]
+                    : undefined;
+                return (
+                  <Fragment key={seg.id}>
+                    {/* Tagged so a recenter onto the first segment frames these with it. */}
+                    {showsOrphanedCards && bookIndex === 0 && orphanedAhead.length > 0 && (
+                      <div className="tw:flex tw:flex-col tw:gap-2" data-orphaned-ahead>
+                        {orphanedCards(orphanedAhead)}
+                      </div>
+                    )}
+                    {showMergeControl &&
+                      (segment ? (
+                        <MergeRowButton
+                          // A mergeable segment always holds a token.
+                          secondSegmentStartRef={segment.tokens[0].ref}
+                          localizedStrings={localizedStrings}
+                        />
+                      ) : (
+                        <div aria-hidden="true" className="tw:h-4" />
+                      ))}
+                    {segment ? (
+                      <MemoizedSegmentView
+                        displayMode={displayMode}
+                        placeholderHeightPx={placeholderHeightPx}
+                        editPhraseSegmentId={editPhraseSegmentId}
+                        focusedTokenRef={
+                          displayMode === 'baseline-text' ? undefined : displayFocusedTokenRef
+                        }
+                        gapTextByWordRef={gapTextByWordRef}
                         localizedStrings={localizedStrings}
+                        gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
+                        hoveredPhraseId={hoveredPhraseId}
+                        isActive={isActive}
+                        onHoverPhrase={setHoveredPhraseId}
+                        onSelect={selectSegment}
+                        phraseMode={phraseMode}
+                        setPhraseMode={setPhraseMode}
+                        segment={segment}
+                        verseStartLabels={verseStartLabels}
+                        tokenSegmentMap={tokenSegmentMap}
+                        tokenDocOrder={tokenDocOrder}
+                        wordTokenByRef={wordTokenByRef}
+                        viewOptions={viewOptions}
+                        staleFreeTranslations={staleFreeTranslationsBySegment.get(seg.id)}
                       />
                     ) : (
-                      <div aria-hidden="true" className="tw:h-4" />
-                    ))}
-                  {segment ? (
-                    <MemoizedSegmentView
-                      displayMode={displayMode}
-                      placeholderHeightPx={placeholderHeightPx}
-                      editPhraseSegmentId={editPhraseSegmentId}
-                      focusedTokenRef={
-                        displayMode === 'baseline-text' ? undefined : displayFocusedTokenRef
-                      }
-                      gapTextByWordRef={gapTextByWordRef}
-                      localizedStrings={localizedStrings}
-                      gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
-                      hoveredPhraseId={hoveredPhraseId}
-                      isActive={isActive}
-                      onHoverPhrase={setHoveredPhraseId}
-                      onSelect={selectSegment}
-                      phraseMode={phraseMode}
-                      setPhraseMode={setPhraseMode}
-                      segment={segment}
-                      verseStartLabels={verseStartLabels}
-                      tokenSegmentMap={tokenSegmentMap}
-                      tokenDocOrder={tokenDocOrder}
-                      wordTokenByRef={wordTokenByRef}
-                      viewOptions={viewOptions}
-                      staleFreeTranslations={staleFreeTranslationsBySegment.get(seg.id)}
-                    />
-                  ) : (
-                    // Holds the segment's place, at the height it is predicted to take, until its
-                    // page loads.
-                    <div
-                      aria-busy="true"
-                      aria-current={isActive ? 'true' : undefined}
-                      data-segment-id={seg.id}
-                      data-testid="segment-placeholder"
-                      style={{ height: heightTable.boxHeights[bookIndex], flex: 'none' }}
-                    />
-                  )}
-                  {showsOrphanedCards && orphanedCards(orphanedAfter.get(seg.id))}
-                </Fragment>
-              );
-            })}
-            <div
-              ref={bottomSentinelRef}
-              aria-hidden="true"
-              data-sentinel="bottom"
-              className="tw:-mt-[calc(0.5rem+1px)] tw:h-px tw:w-full"
-            />
-            <div
-              aria-hidden="true"
-              className="tw:-mt-2"
-              data-trailing-spacer
-              style={{ height: `${trailingSpacerPx}px`, flex: 'none' }}
-            />
-          </div>
-        )}
-        <div data-snap-spacer aria-hidden="true" />
+                      // Holds the segment's place, at the height it is predicted to take, until its
+                      // page loads.
+                      <div
+                        aria-busy="true"
+                        aria-current={isActive ? 'true' : undefined}
+                        data-segment-id={seg.id}
+                        data-testid="segment-placeholder"
+                        style={{ height: heightTable.boxHeights[bookIndex], flex: 'none' }}
+                      />
+                    )}
+                    {showsOrphanedCards && orphanedCards(orphanedAfter.get(seg.id))}
+                  </Fragment>
+                );
+              })}
+              <div
+                ref={bottomSentinelRef}
+                aria-hidden="true"
+                data-sentinel="bottom"
+                className="tw:-mt-[calc(0.5rem+1px)] tw:h-px tw:w-full"
+              />
+              <div
+                aria-hidden="true"
+                className="tw:-mt-2"
+                data-trailing-spacer
+                style={{ height: `${trailingSpacerPx}px`, flex: 'none' }}
+              />
+            </div>
+          )}
+          <div data-snap-spacer aria-hidden="true" />
+        </div>
+        {windowSegments.length > 0 && <StaleScrollMarks segments={outline} heights={heightTable} />}
       </div>
     </div>
   );

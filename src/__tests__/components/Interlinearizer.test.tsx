@@ -2318,6 +2318,23 @@ describe('segment pages', () => {
     ).toEqual([undefined, 'true']);
   });
 
+  it('marks the scroll track at an unloaded segment that the outline flags stale', () => {
+    const pages = partlyLoaded(GEN_1_MULTI_BOOK, 1);
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      pages: {
+        ...pages,
+        outline: pages.outline.map((segment, index) =>
+          index === 1 ? { ...segment, hasStaleGloss: true } : segment,
+        ),
+      },
+    });
+
+    expect(
+      screen.getByTestId('stale-scroll-marks').querySelector('[data-stale-segment-id="GEN 1:2"]'),
+    ).toBeInTheDocument();
+  });
+
   it('keeps the merge gap above a segment whose page has not loaded, without its button', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK, pages: partlyLoaded(GEN_1_MULTI_BOOK, 1) });
 

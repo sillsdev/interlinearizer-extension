@@ -518,9 +518,9 @@ function InterlinearizerLoaderInner({
   const offerProbe = usePt9ImportProbe(projectId, offerPt9Import);
 
   /**
-   * Whether the transient checking dialog shows: only when the probe is still unanswered
-   * {@link PT9_CHECKING_DELAY_MS} after it started, so the fast answer every ordinary project gets
-   * never flashes a dialog.
+   * Whether the probe is still unanswered {@link PT9_CHECKING_DELAY_MS} after it started, so the
+   * fast answer every ordinary project gets never flashes a dialog. The checking dialog also waits
+   * for the source's short name.
    */
   const [showPt9Checking, setShowPt9Checking] = useState(false);
   useEffect(() => {
@@ -1974,7 +1974,6 @@ function InterlinearizerLoaderInner({
         useWebViewState={useWebViewState}
       />
 
-      {/* Both prompts wait for the short name, or their titles would name the project by ID. */}
       {showPt9Checking && offerProbe === 'pending' && !isSourceShortNameLoading && (
         <Pt9CheckingModal sourceShortName={sourceShortName} />
       )}

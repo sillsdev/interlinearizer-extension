@@ -28,8 +28,8 @@ export function idsLacking(a: ReadonlySet<string> | undefined, b: ReadonlySet<st
 }
 
 /**
- * Ids filed under keys. A key that files one id holds it bare, because a set for every such key
- * made building the larger indexes half again as slow.
+ * Ids filed under keys. A key with one id holds it bare; that builds the larger indexes about a
+ * third faster than giving every key a set.
  */
 type FiledIds = Map<string, string | Set<string>>;
 

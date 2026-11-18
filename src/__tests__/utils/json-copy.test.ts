@@ -29,4 +29,15 @@ describe('jsonCopy', () => {
     });
     expect(value).toStrictEqual(original());
   });
+
+  it('keeps a `__proto__` key as an own property, leaving the prototype alone', () => {
+    const value: unknown = JSON.parse('{"__proto__":{"gloss":"and"}}');
+
+    const copy: unknown = jsonCopy(value);
+
+    expect(Object.getPrototypeOf(copy)).toBe(Object.prototype);
+    expect(Object.getOwnPropertyDescriptor(copy, '__proto__')?.value).toStrictEqual({
+      gloss: 'and',
+    });
+  });
 });

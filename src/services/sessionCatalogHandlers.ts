@@ -51,10 +51,8 @@ async function analysesWithLinks(
   repository: AnalysisRepository,
   analysisIds: readonly string[],
 ): Promise<Pick<TextAnalysis, 'tokenAnalyses' | 'tokenAnalysisLinks'>> {
-  const [tokenAnalyses, { tokenAnalysisLinks }] = await Promise.all([
-    repository.getTokenAnalyses([...analysisIds]),
-    repository.findLinksToAnalyses([...analysisIds]),
-  ]);
+  const tokenAnalyses = await repository.getTokenAnalyses([...analysisIds]);
+  const { tokenAnalysisLinks } = await repository.findLinksToAnalyses([...analysisIds]);
   return { tokenAnalyses, tokenAnalysisLinks };
 }
 
@@ -78,13 +76,13 @@ async function deletionReach(
     const live = liveSurfaceText(tokenRef);
     if (live !== undefined) forms.add(normalizeSurfaceForm(live));
   });
-  const [{ tokenAnalysisLinks: tokenLinks }, candidates] = await Promise.all([
-    repository.findLinksByToken(affectedRefs),
-    repository.findTokenAnalysesByForm([...forms]),
-  ]);
-  const [{ tokenAnalysisLinks: candidateLinks }, tokenPayloads] = await Promise.all([
-    repository.findLinksToAnalyses(candidates.map(({ id }) => id)),
-    repository.getTokenAnalyses([...new Set(tokenLinks.map(({ analysisId }) => analysisId))]),
+  const { tokenAnalysisLinks: tokenLinks } = await repository.findLinksByToken(affectedRefs);
+  const candidates = await repository.findTokenAnalysesByForm([...forms]);
+  const { tokenAnalysisLinks: candidateLinks } = await repository.findLinksToAnalyses(
+    candidates.map(({ id }) => id),
+  );
+  const tokenPayloads = await repository.getTokenAnalyses([
+    ...new Set(tokenLinks.map(({ analysisId }) => analysisId)),
   ]);
   const links = new Map(
     [...targetLinks, ...tokenLinks, ...candidateLinks.filter((l) => l.status === 'approved')].map(

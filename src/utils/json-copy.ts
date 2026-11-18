@@ -4,7 +4,11 @@ function copyValue(value: unknown): any {
   if (typeof value !== 'object' || value === null) return value;
   if (Array.isArray(value)) {
     const copy = new Array(value.length);
-    for (let i = 0; i < value.length; i += 1) copy[i] = copyValue(value[i]);
+    for (let i = 0; i < value.length; i += 1) {
+      const item: unknown = value[i];
+      // eslint-disable-next-line no-null/no-null -- JSON writes undefined array entries and holes as null
+      copy[i] = item === undefined ? null : copyValue(item);
+    }
     return copy;
   }
   const copy: Record<string, unknown> = {};
@@ -28,7 +32,10 @@ function copyValue(value: unknown): any {
 
 /**
  * A deep copy of a JSON-plain value, sharing nothing with it. Like a JSON round trip, it leaves out
- * properties that hold `undefined`.
+ * properties that hold `undefined`, and it writes `undefined` array entries and holes as `null`.
+ *
+ * Unlike a JSON round trip, it ignores `toJSON`, so a `Date` copies as `{}`. It also keeps
+ * non-finite numbers and functions, which JSON would write as `null` or leave out.
  */
 export function jsonCopy<T>(value: T): T {
   return copyValue(value);

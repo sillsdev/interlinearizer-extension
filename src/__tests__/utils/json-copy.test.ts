@@ -40,4 +40,12 @@ describe('jsonCopy', () => {
       gloss: 'and',
     });
   });
+
+  it('writes `undefined` array entries and holes as `null`', () => {
+    // eslint-disable-next-line no-sparse-arrays -- a hole is the case under test
+    const value = [undefined, 1, , 2];
+
+    // eslint-disable-next-line no-null/no-null -- JSON writes undefined array entries as null
+    expect(jsonCopy(value)).toStrictEqual([null, 1, null, 2]);
+  });
 });

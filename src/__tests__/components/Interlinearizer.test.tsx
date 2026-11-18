@@ -69,7 +69,7 @@ let capturedContinuousViewProps: CapturedContinuousViewProps | undefined;
 
 /**
  * The segmentation context value seen by the stubbed ContinuousView. It carries the dispatch that
- * Interlinearizer wraps to force breaks, so tests can invoke its methods directly.
+ * Interlinearizer passes through, so tests can invoke its methods directly.
  */
 let capturedSegmentation: SegmentationContextValue | undefined;
 
@@ -101,13 +101,13 @@ let capturedSegmentViewPropsList: CapturedSegmentViewProps[] = [];
 /** Stable spy for `updatePhrase`. */
 const mockUpdatePhrase = jest.fn();
 
-/** Stable spies for `createPhrase` / `deletePhrase`, asserted on by the force-break tests. */
+/** Stable spies for `createPhrase` / `deletePhrase`, asserted on by the segmentation dispatch test. */
 const mockCreatePhrase = jest.fn();
 const mockDeletePhrase = jest.fn();
 
 /**
- * Phrase-link-by-id map served by the mocked `usePhraseLinkByIdMap`. Force-break tests seed it with
- * phrases that straddle a boundary, and the top-level `beforeEach` clears it.
+ * Phrase-link-by-id map served by the mocked `usePhraseLinkByIdMap`. The segmentation dispatch test
+ * seeds it with a phrase that straddles a boundary, and the top-level `beforeEach` clears it.
  */
 const mockPhraseLinkById = new Map<string, PhraseAnalysisLink>();
 
@@ -172,8 +172,8 @@ jest.mock('../../components/AnalysisStore', () => ({
 jest.mock('../../components/ContinuousView', () => ({
   __esModule: true,
   /**
-   * ContinuousView stub; captures its props and the segmentation context (the wrapped,
-   * force-breaking dispatch) so tests can invoke the dispatch directly.
+   * ContinuousView stub; captures its props and the segmentation context so tests can invoke the
+   * dispatch directly.
    */
   default: function ContinuousViewStub(
     props: Omit<CapturedContinuousViewProps, 'focusedTokenRef' | 'onFocusedTokenRefChange'>,
@@ -2229,7 +2229,7 @@ describe('Interlinearizer', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Segmentation dispatch force-break wrapper + between-rows merge control
+// Segmentation dispatch
 // ---------------------------------------------------------------------------
 
 describe('segmentation dispatch', () => {

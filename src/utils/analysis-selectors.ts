@@ -338,8 +338,9 @@ function offerForToken(
  *
  * Unlike reference-stable per-token reads such as {@link selectApprovedGloss}, this returns a fresh
  * object on every call. A suggested result also carries a fresh `candidates` array. A subscriber
- * must therefore not compare results with `Object.is`. It should memoize per token or compare with
- * a shallow or custom equality; otherwise every change to the held pages re-renders the token.
+ * must therefore not compare results with `Object.is`, nor with a shallow equality, which the fresh
+ * `candidates` array and nested `alternatives` defeat. It should compare with
+ * `resolvedTokenAnalysisEqual`; otherwise every change to the held pages re-renders the token.
  *
  * @param state - The analysis state that holds the token's decisions.
  * @param tokenRef - The token to resolve.

@@ -681,7 +681,10 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       'getDraft:read',
       'getDraft:parse',
       async () => {
-        const { adding } = await this.readShardJournal();
+        const { adding, unsettled, damaged } = await this.readShardJournal();
+        // An interrupted save may have rewritten these shards with analysis anchored to other text.
+        if (damaged) this.anchored.clear();
+        (unsettled ?? []).forEach((bookCode) => this.anchored.delete(bookCode));
         const orphanedBooks = adding.filter((bookCode) => !analysisBooks.includes(bookCode));
         const books = [...analysisBooks, ...orphanedBooks];
         return {

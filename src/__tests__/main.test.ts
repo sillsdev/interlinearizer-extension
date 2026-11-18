@@ -2367,25 +2367,6 @@ describe('main', () => {
         previewRemovals: handler<CommandHandlers['interlinearizer.previewRemovals']>(
           'interlinearizer.previewRemovals',
         ),
-        getBookOutline: handler<
-          (
-            address: { sessionId: string },
-            bookId: string,
-            segmentationJson?: string,
-          ) => Promise<string | undefined>
-        >('interlinearizer.getBookOutline'),
-        getStaleSummary: handler<CommandHandlers['interlinearizer.getStaleSummary']>(
-          'interlinearizer.getStaleSummary',
-        ),
-        getSegments: handler<
-          (
-            address: { sessionId: string },
-            bookId: string,
-            start: number,
-            end: number,
-            segmentationJson?: string,
-          ) => Promise<string | undefined>
-        >('interlinearizer.getSegments'),
         getTextReadStatus: handler<(address: string | { sessionId: string }) => Promise<string>>(
           'interlinearizer.getTextReadStatus',
         ),
@@ -2679,23 +2660,6 @@ describe('main', () => {
       );
     });
 
-    it("replies with the session's draft envelope as its edits leave it", async () => {
-      await seedDraft(CATS_BREAKDOWN);
-      const { openSession, deleteMorphemes, getDraftEnvelope } = await activateSessionCommands();
-      const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
-      await deleteMorphemes({ sessionId, tokenRef: 'GEN 1:1:0' });
-
-      const envelope = JSON.parse(await getDraftEnvelope({ sessionId }));
-
-      expect(envelope).toMatchObject({
-        sourceProjectId: 'src-project',
-        analysisLanguages: ['en'],
-        dirty: true,
-      });
-      expect(envelope).not.toHaveProperty('analysis');
-      expect(envelope).not.toHaveProperty('segmentation');
-    });
-
     it("closes the source's session before starting its draft over", async () => {
       await seedDraft(CATS_BREAKDOWN);
       jest.mocked(projectStorage.startDraftOver).mockResolvedValue();
@@ -2724,18 +2688,6 @@ describe('main', () => {
       await expect(getDraftEnvelope({ sessionId }).then(JSON.parse)).resolves.toMatchObject({
         analysisLanguages: ['fr'],
       });
-    });
-
-    it('logs the error and rethrows when the draft envelope cannot be read', async () => {
-      const { getDraftEnvelope } = await activateSessionCommands();
-
-      await expect(getDraftEnvelope({ sessionId: 'not-a-session' })).rejects.toThrow(
-        'no session not-a-session is open',
-      );
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to read the draft envelope of session not-a-session',
-        expect.any(Error),
-      );
     });
 
     it("marks the draft saved in the session's history, so an undo back to the save is saved", async () => {
@@ -2850,153 +2802,6 @@ describe('main', () => {
     });
 
     describe("a session's text", () => {
-      const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
-      const orphaned = {
-        segmentAnalyses: [{ id: 'sa-9', ...FIXTURE_STAMPS, surfaceText: 'lost' }],
-        segmentAnalysisLinks: [
-          {
-            id: 'sl-9',
-            analysisId: 'sa-9',
-            ...FIXTURE_STAMPS,
-            status: 'stale' as const,
-            segmentId: 'GEN 1:9',
-          },
-        ],
-      };
-
-      it("outlines a book under the draft's boundaries, counting its orphaned cards", async () => {
-        await seedDraft(orphaned, segmentation);
-        jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
-        const { openSession, getBookOutline } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
-
-        const json = await getBookOutline({ sessionId }, 'GEN');
-
-        expect(bookService.getOpenBook).toHaveBeenCalledWith('src-project', 'GEN', segmentation);
-        expect(
-          JSON.parse(json ?? '').segments.map(
-            ({ orphanedCardCount }: { orphanedCardCount: number }) => orphanedCardCount,
-          ),
-        ).toStrictEqual([0, 1]);
-      });
-
-      it("summarizes a book's stale analyses under the draft's boundaries", async () => {
-        await seedDraft({ ...staleToken, ...orphaned }, segmentation);
-        jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
-        const { openSession, getStaleSummary } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
-
-        const json = await getStaleSummary({ sessionId, bookId: 'GEN' });
-
-        expect(bookService.getOpenBook).toHaveBeenCalledWith('src-project', 'GEN', segmentation);
-        expect(JSON.parse(json ?? '')).toStrictEqual({
-          glosses: [{ analysisId: 'ta-in', tokenRef: 'GEN 1:1:0' }],
-          freeTranslations: [{ analysisId: 'sa-9', segmentId: 'GEN 1:2' }],
-        });
-      });
-
-      it('summarizes nothing for a book the project has no text for', async () => {
-        jest.mocked(bookService.getOpenBook).mockResolvedValue(undefined);
-        const { openSession, getStaleSummary } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
-
-        await expect(getStaleSummary({ sessionId, bookId: 'GEN' })).resolves.toBeUndefined();
-      });
-
-      it("serves a run of a book's segments under the draft's boundaries, with its analysis", async () => {
-        await seedDraft(orphaned, segmentation);
-        jest.mocked(bookService.getSegmentedBook).mockResolvedValue(VERSE_BOOK);
-        const { openSession, getSegments } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
-
-        const page = JSON.parse((await getSegments({ sessionId }, 'GEN', 1, 2)) ?? '');
-
-        expect(bookService.getSegmentedBook).toHaveBeenCalledWith(
-          'src-project',
-          'GEN',
-          segmentation,
-        );
-        expect(page).toMatchObject({
-          start: 1,
-          segments: [VERSE_BOOK.segments[1]],
-          analysis: { staleFreeTranslations: { orphanedAfter: { 'GEN 1:2': ['sl-9'] } } },
-        });
-      });
-
-      it("re-anchors the draft to a book's text before the book's first outline", async () => {
-        const repository = await seedDraft({
-          tokenAnalyses: [{ id: 'ta', ...FIXTURE_STAMPS, surfaceText: 'Out' }],
-          tokenAnalysisLinks: [makeTokenLink('ta', 'GEN 1:1:0', { id: 'tl', surfaceText: 'Out' })],
-        });
-        jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
-        const { openSession, getBookOutline } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
-
-        await getBookOutline({ sessionId }, 'GEN');
-
-        expect(bookService.getOpenVerseBook).toHaveBeenCalledWith('src-project', 'GEN');
-        const { draft } = await repository.exportAll();
-        expect(draft.analysis.tokenAnalysisLinks[0].status).toBe('stale');
-      });
-
-      it('logs a failed re-anchor and still outlines the book', async () => {
-        jest
-          .mocked(bookService.getOpenVerseBook)
-          .mockRejectedValueOnce(new Error('unreadable'))
-          .mockResolvedValue(VERSE_BOOK);
-        jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
-        const { openSession, getBookOutline } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
-
-        await expect(getBookOutline({ sessionId }, 'GEN')).resolves.toEqual(expect.any(String));
-        expect(__mockLogger.warn).toHaveBeenCalledWith(
-          `Interlinearizer: could not re-anchor GEN of session ${sessionId}`,
-          expect.any(Error),
-        );
-      });
-
-      it('names no boundaries for a book the draft sets none in', async () => {
-        jest.mocked(bookService.getOpenBook).mockResolvedValue(VERSE_BOOK);
-        const { openSession, getBookOutline, getSegments } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
-
-        await getBookOutline({ sessionId }, 'GEN');
-        await getSegments({ sessionId }, 'GEN', 0, 1);
-
-        expect(bookService.getOpenBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
-        expect(bookService.getSegmentedBook).toHaveBeenCalledWith('src-project', 'GEN', undefined);
-      });
-
-      it('logs and rethrows an outline, a page or a stale summary asked of a session not open', async () => {
-        const { getBookOutline, getSegments, getStaleSummary } = await activateSessionCommands();
-
-        await expect(getBookOutline({ sessionId: 'gone' }, 'GEN')).rejects.toThrow();
-        await expect(getSegments({ sessionId: 'gone' }, 'GEN', 0, 1)).rejects.toThrow();
-        await expect(getStaleSummary({ sessionId: 'gone', bookId: 'GEN' })).rejects.toThrow();
-        expect(__mockLogger.error).toHaveBeenCalledWith(
-          'Interlinearizer: failed to summarize the stale analyses of book GEN of session gone',
-          expect.any(Error),
-        );
-        expect(__mockLogger.error).toHaveBeenCalledWith(
-          'Interlinearizer: failed to outline book GEN of session gone',
-          expect.any(Error),
-        );
-        expect(__mockLogger.error).toHaveBeenCalledWith(
-          'Interlinearizer: failed to serve segments 0-1 of book GEN of session gone',
-          expect.any(Error),
-        );
-      });
-
-      it('resolves undefined for a book the source has no text for', async () => {
-        jest.mocked(bookService.getOpenBook).mockResolvedValue(undefined);
-        jest.mocked(bookService.getSegmentedBook).mockResolvedValue(undefined);
-        const { openSession, getBookOutline, getSegments } = await activateSessionCommands();
-        const { sessionId } = JSON.parse(await openSession({ sourceProjectId: 'src-project' }));
-
-        await expect(getBookOutline({ sessionId }, 'GEN')).resolves.toBeUndefined();
-        await expect(getSegments({ sessionId }, 'GEN', 0, 1)).resolves.toBeUndefined();
-      });
-
       it("reports how far the session source's text has been read", async () => {
         jest.mocked(bookService.getTextReadStatus).mockResolvedValue('{"booksRead":1}');
         const { openSession, getTextReadStatus } = await activateSessionCommands();

@@ -1,2 +1,1 @@
-Interlinear glossing tools for Platform.Bible: gloss Scripture token by token, break words into
-morphemes, link source and target phrases, and adjust segment boundaries.
+Interlinear tools for Paratext 10: gloss Scripture word by word, join words into phrases, parse words into morphemes, adjust segment boundaries, add free translations, and link to lexicon entries.

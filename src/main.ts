@@ -7,13 +7,7 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
-import type {
-  DraftProject,
-  DraftStart,
-  InterlinearProject,
-  ProjectConfig,
-  SegmentationDelta,
-} from 'interlinearizer';
+import type { DraftProject, DraftStart, InterlinearProject, ProjectConfig } from 'interlinearizer';
 import type { CommandHandlers, NetworkEvents } from 'papi-shared-types';
 import {
   formatReplacementString,
@@ -22,7 +16,7 @@ import {
 } from 'platform-bible-utils';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-import { AnalysisSessions, type OpenedSession, type Session } from './services/analysisSessions';
+import { AnalysisSessions, type OpenedSession } from './services/analysisSessions';
 import * as bookService from './services/bookService';
 import { startCSharpHost } from './services/csharpHost';
 import {
@@ -37,12 +31,7 @@ import type { Pt9ImportResult } from './services/pt9ImportService';
 import { sessionCatalogHandlers } from './services/sessionCatalogHandlers';
 import { sessionConcordanceHandlers } from './services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from './services/sessionEditHandlers';
-import {
-  readBookOutline,
-  readDraftEnvelope,
-  readSegmentPage,
-  readStaleSummary,
-} from './services/sessionPages';
+import { sessionPageHandlers } from './services/sessionPageHandlers';
 import { UnreadableBooksError } from './types/analysis-repository';
 import { emptyAnalysis } from './types/empty-factories';
 import {
@@ -594,97 +583,8 @@ async function saveDraftAsProject(
   }
 }
 
-/** The session that a page or text-read command reads. */
+/** The session that a text-read command reads. */
 type SessionAddress = Readonly<{ sessionId: string }>;
-
-/** The boundaries that the session's draft sets. */
-async function sessionBoundaries(session: Session): Promise<SegmentationDelta | undefined> {
-  return (await session.repository.getScope()).segmentation;
-}
-
-/**
- * Outlines a book of the session's source. The draft is first re-anchored to the book's text,
- * unless the session last re-anchored that book to the same text. A failed re-anchor is only
- * logged.
- */
-async function getBookOutline(
-  { sessionId }: SessionAddress,
-  bookId: string,
-): Promise<string | undefined> {
-  try {
-    return await perfTimeAsync('getBookOutline', () => {
-      sessions
-        .reanchorOpenedBook(sessionId, bookId)
-        .catch((e) =>
-          logger.warn(`Interlinearizer: could not re-anchor ${bookId} of session ${sessionId}`, e),
-        );
-      return sessions.run(sessionId, async (session) => {
-        const book = await bookService.getOpenBook(
-          session.scope.sourceProjectId,
-          bookId,
-          await sessionBoundaries(session),
-        );
-        const verseBook = await bookService.getOpenVerseBook(session.scope.sourceProjectId, bookId);
-        if (!book || !verseBook) return undefined;
-        const outline = await readBookOutline(session.repository, book, verseBook);
-        return perfTime('getBookOutline:serialize', () => JSON.stringify(outline));
-      });
-    });
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to outline book ${bookId} of session ${sessionId}`, e);
-    throw e;
-  }
-}
-
-async function getStaleSummary({
-  sessionId,
-  bookId,
-}: ArgsOf<'interlinearizer.getStaleSummary'>): Promise<string | undefined> {
-  try {
-    return await sessions.run(sessionId, async (session) => {
-      const book = await bookService.getOpenBook(
-        session.scope.sourceProjectId,
-        bookId,
-        await sessionBoundaries(session),
-      );
-      return book && JSON.stringify(await readStaleSummary(session.repository, book));
-    });
-  } catch (e) {
-    logger.error(
-      `Interlinearizer: failed to summarize the stale analyses of book ${bookId} of session ${sessionId}`,
-      e,
-    );
-    throw e;
-  }
-}
-
-async function getSegments(
-  { sessionId }: SessionAddress,
-  bookId: string,
-  start: number,
-  end: number,
-): Promise<string | undefined> {
-  try {
-    return await perfTimeAsync('getSegments', () =>
-      sessions.run(sessionId, async (session) => {
-        const book = await bookService.getSegmentedBook(
-          session.scope.sourceProjectId,
-          bookId,
-          await sessionBoundaries(session),
-        );
-        if (!book) return undefined;
-        const page = await readSegmentPage(session.repository, book, start, end);
-        return perfTime('getSegments:serialize', () => JSON.stringify(page));
-      }),
-    );
-  } catch (e) {
-    logger.error(
-      `Interlinearizer: failed to serve segments ${start}-${end} of book ${bookId} of session ${sessionId}`,
-      e,
-    );
-    throw e;
-  }
-}
 
 /**
  * Reports how far the session's read of its whole source text has got. While session reads are
@@ -898,21 +798,6 @@ async function checkIndexes({
   }
 }
 
-async function getDraftEnvelope({
-  sessionId,
-}: ArgsOf<'interlinearizer.getDraftEnvelope'>): Promise<string> {
-  try {
-    return JSON.stringify(
-      await sessions.run(sessionId, ({ repository, analysisLanguage }) =>
-        readDraftEnvelope(repository, analysisLanguage),
-      ),
-    );
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to read the draft envelope of session ${sessionId}`, e);
-    throw e;
-  }
-}
-
 async function getProjectsForSource(sourceProjectId: string): Promise<string> {
   try {
     return await perfTimeAsync('getProjectsForSource', async () => {
@@ -1031,6 +916,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getConcordanceBooks: bookService.getConcordanceBooks,
     getWritingSystem: bookService.getWritingSystem,
   });
+  const pages = sessionPageHandlers({
+    sessions: activeSessions,
+    logger,
+    getOpenBook: bookService.getOpenBook,
+    getOpenVerseBook: bookService.getOpenVerseBook,
+    getSegmentedBook: bookService.getSegmentedBook,
+  });
   const bookReadUnsubscriber = bookService.onBookRead((sourceProjectId, book, edited) =>
     activeSessions
       .reanchorBook(sourceProjectId, book, edited)
@@ -1135,18 +1027,16 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     ...edits,
     ...catalog,
     ...concordance,
+    ...pages,
     'interlinearizer.openForWebView': openInterlinearizerForWebView,
     'interlinearizer.createProject': createInterlinearProject,
     'interlinearizer.getProjectSummary': getProjectSummary,
     'interlinearizer.saveDraftToProject': saveDraftToProject,
     'interlinearizer.saveDraftAsProject': saveDraftAsProject,
     'interlinearizer.getProjectsForSource': getProjectsForSource,
-    'interlinearizer.getBookOutline': getBookOutline,
-    'interlinearizer.getSegments': getSegments,
     'interlinearizer.getTextReadStatus': getTextReadStatus,
     'interlinearizer.retryTextRead': retryTextRead,
     'interlinearizer.startDraftOver': startDraftOver,
-    'interlinearizer.getStaleSummary': getStaleSummary,
     'interlinearizer.openSession': openSession,
     'interlinearizer.closeSession': closeSession,
     'interlinearizer.setAnalysisLanguage': setAnalysisLanguage,
@@ -1155,7 +1045,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     'interlinearizer.undoEdit': undoEdit,
     'interlinearizer.redoEdit': redoEdit,
     'interlinearizer.checkIndexes': checkIndexes,
-    'interlinearizer.getDraftEnvelope': getDraftEnvelope,
     'interlinearizer.setPerfMarks': async (enabled: boolean) => setHostPerfMarks(enabled),
     'interlinearizer.setSkipSessionReads': async (skip: boolean) => setSessionReadsSkipped(skip),
     'interlinearizer.sessionIdFor': async (sourceProjectId: string) =>

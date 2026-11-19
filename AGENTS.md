@@ -124,7 +124,7 @@ Host commands live in [src/services/commands/](src/services/commands/), one modu
 - [sessionEditHandlers](src/services/sessionEditHandlers.ts): edits and their previews.
 - [sessionCatalogHandlers](src/services/sessionCatalogHandlers.ts): the analysis catalog, read through [catalogHooks](src/cache/catalogHooks.ts).
 - [sessionConcordanceHandlers](src/services/sessionConcordanceHandlers.ts): the concordance, read through [concordanceHooks](src/cache/concordanceHooks.ts).
-- [sessionPages](src/services/sessionPages.ts): outlines, segment pages, and stale summaries. `main.ts` serves all three directly, and stale summaries are read through [staleHooks](src/cache/staleHooks.ts).
+- [sessionPageHandlers](src/services/sessionPageHandlers.ts): the draft envelope, outlines, segment pages, and stale summaries, which [sessionPages](src/services/sessionPages.ts) reads. Stale summaries are read through [staleHooks](src/cache/staleHooks.ts).
 
 ### Components
 

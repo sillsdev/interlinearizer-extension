@@ -1,6 +1,6 @@
 import papi from '@papi/frontend';
 import { act } from '@testing-library/react';
-import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
+import type { Book, DraftProject, SegmentationDelta, TextAnalysis } from 'interlinearizer';
 import { useEvent } from 'platform-bible-react';
 import * as React from 'react';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
@@ -10,12 +10,7 @@ import { DraftRepository } from '../../services/draftRepository';
 import { sessionCatalogHandlers } from '../../services/sessionCatalogHandlers';
 import { sessionConcordanceHandlers } from '../../services/sessionConcordanceHandlers';
 import { sessionEditHandlers } from '../../services/sessionEditHandlers';
-import {
-  readBookOutline,
-  readDraftEnvelope,
-  readSegmentPage,
-  readStaleSummary,
-} from '../../services/sessionPages';
+import { sessionPageHandlers } from '../../services/sessionPageHandlers';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import type { TextReadStatus } from '../../types/text-read-status';
@@ -150,7 +145,7 @@ export function relayChange(change: unknown): void {
  * Any command that `intercept` answers gets that answer instead. A command that the host does not
  * serve resolves to what `others` returns, `undefined` by default. An edit that `others` leaves
  * unanswered runs through the host's own handlers, except `writeGloss`, whose record ids come from
- * the gloss value it writes. The catalog and concordance queries run through the host's own
+ * the gloss value it writes. The page, catalog and concordance queries run through the host's own
  * handlers. `getTextReadStatus` answers from `others` first, then from `text`, which stands for the
  * whole-text read and is unread by default. A session on a draft that lists no analysis language
  * glosses in the first language that `getInterfaceLanguages` lists, or in `und` when it lists none.
@@ -174,27 +169,31 @@ export async function fakeHost(
     getInterfaceLanguages?: () => Promise<string[]>;
   }> = {},
 ) {
-  const made = await sessionOver(analysis, undefined, book, getInterfaceLanguages);
+  const made = await sessionOver(analysis, undefined, textOf, getInterfaceLanguages);
   const { sessions, storage } = made;
   made.onChange(relayChange);
+  const segmentedText = async (
+    _sourceProjectId: string,
+    bookId: string,
+    segmentation?: SegmentationDelta,
+  ) =>
+    bookId === textOf().bookRef
+      ? resegmentBook(textOf(), segmentationForBook(segmentation, bookId))
+      : undefined;
+  const verseText = async (_sourceProjectId: string, bookId: string) =>
+    bookId === textOf().bookRef ? textOf() : undefined;
   const edits = sessionEditHandlers({
     sessions,
     logger: { error: () => {} },
-    getSegmentedBook: async (_sourceProjectId, bookId, segmentation) =>
-      bookId === textOf().bookRef
-        ? resegmentBook(textOf(), segmentationForBook(segmentation, bookId))
-        : undefined,
-    getVerseBook: async (_sourceProjectId, bookId) =>
-      bookId === textOf().bookRef ? textOf() : undefined,
+    getSegmentedBook: segmentedText,
+    getVerseBook: verseText,
     getProject: async () => undefined,
   });
   const catalog = sessionCatalogHandlers({
     sessions,
     logger: { error: () => {} },
-    getOpenVerseBook: async (_sourceProjectId, bookId) =>
-      bookId === textOf().bookRef ? textOf() : undefined,
-    getVerseBook: async (_sourceProjectId, bookId) =>
-      bookId === textOf().bookRef ? textOf() : undefined,
+    getOpenVerseBook: verseText,
+    getVerseBook: verseText,
     isFormInText: (_sourceProjectId, form) => text.isFormInText(form),
   });
   const concordance = sessionConcordanceHandlers({
@@ -203,12 +202,13 @@ export async function fakeHost(
     getConcordanceBooks: () => text.concordanceBooks?.(),
     getWritingSystem: async () => 'en',
   });
-  const segmented = async (sessionId: string) => {
-    const { segmentation } = await sessions.run(sessionId, (session) =>
-      session.repository.getScope(),
-    );
-    return resegmentBook(textOf(), segmentation);
-  };
+  const pages = sessionPageHandlers({
+    sessions,
+    logger: { error: () => {}, warn: () => {} },
+    getOpenBook: segmentedText,
+    getOpenVerseBook: verseText,
+    getSegmentedBook: segmentedText,
+  });
   jest
     .mocked(papi.network.getNetworkEvent)
     .mockImplementation((name: string) =>
@@ -225,40 +225,14 @@ export async function fakeHost(
       case 'interlinearizer.closeSession':
         return sessions.close(field(first, 'sessionId'));
       case 'interlinearizer.getDraftEnvelope':
-        return JSON.stringify(
-          await sessions.run(field(first, 'sessionId'), ({ repository, analysisLanguage }) =>
-            readDraftEnvelope(repository, analysisLanguage),
-          ),
-        );
-      case 'interlinearizer.getBookOutline': {
-        if (rest[0] !== textOf().bookRef) return undefined;
-        const sessionId = field(first, 'sessionId');
-        const segmentedBook = await segmented(sessionId);
-        return JSON.stringify(
-          await sessions.run(sessionId, (session) =>
-            readBookOutline(session.repository, segmentedBook, textOf()),
-          ),
-        );
-      }
-      case 'interlinearizer.getStaleSummary': {
-        const sessionId = field(first, 'sessionId');
-        const segmentedBook = await segmented(sessionId);
-        return JSON.stringify(
-          await sessions.run(sessionId, (session) =>
-            readStaleSummary(session.repository, segmentedBook),
-          ),
-        );
-      }
+      case 'interlinearizer.getBookOutline':
+      case 'interlinearizer.getStaleSummary':
       case 'interlinearizer.getSegments': {
-        if (rest[0] !== textOf().bookRef) return undefined;
-        const sessionId = field(first, 'sessionId');
-        const [, start, end] = rest;
-        const segmentedBook = await segmented(sessionId);
-        return JSON.stringify(
-          await sessions.run(sessionId, (session) =>
-            readSegmentPage(session.repository, segmentedBook, Number(start), Number(end)),
-          ),
+        const handler: (...args: unknown[]) => Promise<string | undefined> = Reflect.get(
+          pages,
+          String(command),
         );
+        return handler(first, ...rest);
       }
       case 'interlinearizer.getTextReadStatus':
         return (await others(String(command), [first, ...rest])) ?? JSON.stringify(text.status());

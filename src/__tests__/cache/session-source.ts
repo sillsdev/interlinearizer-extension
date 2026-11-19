@@ -40,17 +40,19 @@ export type ReportedChange = AnalysisChange & { changeId: ChangeId };
 
 /**
  * A session over a draft holding `analysis` and `segmentation`, on a source whose text is `book`,
- * with a way to read its outline and pages as the host serves them. A session on a draft that lists
- * no analysis language glosses in the first language that `getInterfaceLanguages` lists, or in
- * `und` when it lists none. `getInterfaceLanguages` lists `en` by default. Each listener passed to
- * `onChange` hears every change that the session reports, at the moment it is reported.
+ * or what `book` returns at each read, with a way to read its outline and pages as the host serves
+ * them. A session on a draft that lists no analysis language glosses in the first language that
+ * `getInterfaceLanguages` lists, or in `und` when it lists none. `getInterfaceLanguages` lists `en`
+ * by default. Each listener passed to `onChange` hears every change that the session reports, at
+ * the moment it is reported.
  */
 export async function sessionOver(
   analysis: Partial<TextAnalysis> = GLOSSED,
   segmentation: SegmentationDelta | undefined = undefined,
-  book: Book = BOOK,
+  book: Book | (() => Book) = BOOK,
   getInterfaceLanguages: () => Promise<string[]> = async () => ['en'],
 ) {
+  const textOf = typeof book === 'function' ? book : () => book;
   const { storage } = memoryStorage();
   const listeners = new Set<(change: ReportedChange) => void>();
   const onChange = (listener: (change: ReportedChange) => void) => {
@@ -73,13 +75,17 @@ export async function sessionOver(
     startTextRead: async () => {},
     stopTextRead: async () => {},
     holdTextRead: () => {},
-    heldBook: () => book,
-    getOpenVerseBook: async () => book,
+    heldBook: () => textOf(),
+    getOpenVerseBook: async () => textOf(),
     reportChange: (change) => listeners.forEach((listener) => listener(change)),
   });
   const { sessionId } = await sessions.open('src');
   // Sent through JSON, as the host sends a page, so that the cache holds segments of its own.
-  const fetchPage = async (start: number, end: number, read: Book = book): Promise<SegmentPage> =>
+  const fetchPage = async (
+    start: number,
+    end: number,
+    read: Book = textOf(),
+  ): Promise<SegmentPage> =>
     JSON.parse(
       JSON.stringify(
         await sessions.run(sessionId, (session) =>
@@ -87,7 +93,7 @@ export async function sessionOver(
         ),
       ),
     );
-  const fetchOutline = (read: Book = book) =>
+  const fetchOutline = (read: Book = textOf()) =>
     sessions.run(sessionId, (session) => readBookOutline(session.repository, read, read));
   const outline = await fetchOutline();
   const edit = (
@@ -95,7 +101,17 @@ export async function sessionOver(
     command: (buffer: ChangeBuffer, session: Session) => Promise<void | EditOutcome>,
     changeId?: ChangeId,
   ) => sessions.edit(sessionId, intent, command, { changeId });
-  return { sessions, sessionId, fetchPage, fetchOutline, outline, edit, onChange, storage, book };
+  return {
+    sessions,
+    sessionId,
+    fetchPage,
+    fetchOutline,
+    outline,
+    edit,
+    onChange,
+    storage,
+    book: textOf(),
+  };
 }
 
 /** A page's analysis with each list in id order, so two pages compare without regard to order. */

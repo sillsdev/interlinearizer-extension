@@ -2044,6 +2044,11 @@ describe('projectStorage', () => {
         (r: AnalysisRepository) => r.countApprovals(['analysis-GEN']).then(Object.keys),
         1,
       ],
+      [
+        'findApprovalsByForm',
+        (r: AnalysisRepository) => r.findApprovalsByForm(['word-gen']).then(Object.keys),
+        1,
+      ],
       ['checkIndexes', (r: AnalysisRepository) => r.checkIndexes(), 0],
       [
         'getWholeDraft',

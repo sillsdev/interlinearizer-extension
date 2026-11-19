@@ -71,6 +71,11 @@ describe('CSharpRepository', () => {
         sent: { keys: ['in the'] },
       },
       { command: 'countApprovals', call: (r) => r.countApprovals(['a']), sent: { ids: ['a'] } },
+      {
+        command: 'findApprovalsByForm',
+        call: (r) => r.findApprovalsByForm(['and']),
+        sent: { keys: ['and'] },
+      },
     ];
 
     it.each(cases)('$command sends its command and answers with the reply', async (c) => {

@@ -72,6 +72,7 @@ internal sealed class RepositoryService(PapiClient papi, OpenSources sources)
             ("findTokenAnalysesByForm", (Func<KeysArgs, Task<List<TokenAnalysis>>>)FindTokenAnalysesByForm),
             ("findPhraseAnalysesByForm", (Func<KeysArgs, Task<List<PhraseAnalysis>>>)FindPhraseAnalysesByForm),
             ("countApprovals", (Func<IdsArgs, Task<Dictionary<Guid, int>>>)CountApprovals),
+            ("findApprovalsByForm", (Func<KeysArgs, Task<Dictionary<string, Dictionary<string, Guid>>>>)FindApprovalsByForm),
         };
         foreach (var (name, handler) in registrations)
         {
@@ -125,6 +126,9 @@ internal sealed class RepositoryService(PapiClient papi, OpenSources sources)
     private Task<List<PhraseAnalysis>> FindPhraseAnalysesByForm(KeysArgs args) => OnRepository(args, r => r.FindPhraseAnalysesByForm(args.Keys));
 
     private Task<Dictionary<Guid, int>> CountApprovals(IdsArgs args) => OnRepository(args, r => r.CountApprovals(args.Ids));
+
+    private Task<Dictionary<string, Dictionary<string, Guid>>> FindApprovalsByForm(KeysArgs args) =>
+        OnRepository(args, r => r.FindApprovalsByForm(args.Keys));
 
     private static Guid ParseProjectId(string projectId) =>
         Guid.TryParse(projectId, out var id) ? id : throw new ArgumentException($"Project ids are GUIDs, not {projectId}", nameof(projectId));

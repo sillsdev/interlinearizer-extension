@@ -2,7 +2,6 @@ import type { CommandHandlers } from 'papi-shared-types';
 import type { AnalysisSessions } from './analysisSessions';
 import type * as bookService from './bookService';
 import {
-  approvedAnalysisByToken,
   buildConcordanceEntries,
   approvedAnalysisOf,
   deriveConcordanceRows,
@@ -126,18 +125,14 @@ export function sessionConcordanceHandlers({
         const writingSystem = await getWritingSystem(sourceProjectId);
         const entries = entriesOf(writingSystem, books);
         const { repository } = session;
-        const { tokenAnalysisLinks } = await repository.findLinksInBooks(
-          books.map(({ book }) => book),
-          ['approved'],
-        );
-        const analyses = await repository.getTokenAnalyses([
-          ...new Set(tokenAnalysisLinks.map(({ analysisId }) => analysisId)),
-        ]);
-        const analysesById = new Map(analyses.map((ta) => [ta.id, ta]));
-        const approved = approvedAnalysisByToken(tokenAnalysisLinks, analysesById);
         if ('form' in request) {
           const entry = entries.find(({ form }) => form === request.form);
           const occurrences = entry?.occurrences ?? [];
+          const approved = entry ? await repository.findApprovalsByForm([entry.form]) : {};
+          const analyses = await repository.getTokenAnalyses([
+            ...new Set(Object.values(approved).flatMap(Object.values)),
+          ]);
+          const analysesById = new Map(analyses.map((ta) => [ta.id, ta]));
           const page: ConcordanceOccurrencePage = {
             total: occurrences.length,
             tallies: entry
@@ -153,6 +148,7 @@ export function sessionConcordanceHandlers({
           return JSON.stringify(page);
         }
         const pageEntries = entries.slice(request.offset, request.offset + request.count);
+        const approved = await repository.findApprovalsByForm(pageEntries.map(({ form }) => form));
         const rows = deriveConcordanceRows(pageEntries, approved, request.currentBook).map(
           ({ entry, occurrenceCountInBook, analyzedCount, status }): ConcordanceRowSummary => ({
             form: entry.form,

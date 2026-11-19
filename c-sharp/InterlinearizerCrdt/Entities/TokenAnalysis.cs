@@ -63,12 +63,20 @@ public class TokenAnalysisLink : AnalysisLink, IObjectBase<TokenAnalysisLink>
             _token = value;
             TokenRef = value.TokenRef;
             BookCode = Refs.BookOf(value.TokenRef);
+            NormalizedForm = Refs.NormalizeSurfaceForm(value.SurfaceText);
         }
     }
 
     /// <summary>The linked token's ref, kept as a column so that a token's links can be looked up.</summary>
     [JsonIgnore]
     public string TokenRef { get; private set; } = "";
+
+    /// <summary>
+    /// The linked token's surface text as <see cref="Refs.NormalizeSurfaceForm"/> maps it, kept as
+    /// a column so that the links of one spelling can be looked up.
+    /// </summary>
+    [JsonIgnore]
+    public string NormalizedForm { get; private set; } = "";
 
     public IObjectBase Copy() => new TokenAnalysisLink
     {

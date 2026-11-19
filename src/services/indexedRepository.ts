@@ -11,6 +11,7 @@ import type {
   AnalysisLinks,
   AnalysisPayloads,
   AnalysisRepository,
+  ApprovalsByForm,
   DraftState,
   IndexDifference,
   ScopeRecord,
@@ -42,6 +43,7 @@ export abstract class IndexedRepository implements Pick<
   | 'findLinksToAnalyses'
   | 'findLinksInBooks'
   | 'findLinkedBooks'
+  | 'findApprovalsByForm'
   | 'findUnlinkedPayloads'
   | 'findTokenAnalysesByForm'
   | 'findPhraseAnalysesByForm'
@@ -118,6 +120,10 @@ export abstract class IndexedRepository implements Pick<
 
   countApprovals(analysisIds: string[]): Promise<Record<string, number>> {
     return this.query((index) => index.countApprovals(analysisIds));
+  }
+
+  findApprovalsByForm(normalizedForms: string[]): Promise<ApprovalsByForm> {
+    return this.query((index) => index.findApprovalsByForm(normalizedForms));
   }
 
   /**

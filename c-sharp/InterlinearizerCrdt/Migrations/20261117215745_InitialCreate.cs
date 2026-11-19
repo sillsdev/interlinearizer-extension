@@ -150,9 +150,9 @@ namespace Interlinearizer.Crdt.Migrations
                     SnapshotId = table.Column<Guid>(type: "TEXT", nullable: true),
                     ProjectId = table.Column<Guid>(type: "TEXT", nullable: false),
                     DeletedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
-                    AnalysisId = table.Column<Guid>(type: "TEXT", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    AnalysisId = table.Column<Guid>(type: "TEXT", nullable: false),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),
                     Confidence = table.Column<int>(type: "INTEGER", nullable: true),
                     BookCode = table.Column<string>(type: "TEXT", nullable: false)
@@ -206,9 +206,9 @@ namespace Interlinearizer.Crdt.Migrations
                     SnapshotId = table.Column<Guid>(type: "TEXT", nullable: true),
                     ProjectId = table.Column<Guid>(type: "TEXT", nullable: false),
                     DeletedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
-                    AnalysisId = table.Column<Guid>(type: "TEXT", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    AnalysisId = table.Column<Guid>(type: "TEXT", nullable: false),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),
                     Confidence = table.Column<int>(type: "INTEGER", nullable: true),
                     BookCode = table.Column<string>(type: "TEXT", nullable: false)
@@ -264,12 +264,13 @@ namespace Interlinearizer.Crdt.Migrations
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
                     Token = table.Column<string>(type: "jsonb", nullable: false),
                     TokenRef = table.Column<string>(type: "TEXT", nullable: false),
+                    NormalizedForm = table.Column<string>(type: "TEXT", nullable: false),
                     SnapshotId = table.Column<Guid>(type: "TEXT", nullable: true),
                     ProjectId = table.Column<Guid>(type: "TEXT", nullable: false),
                     DeletedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: true),
-                    AnalysisId = table.Column<Guid>(type: "TEXT", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    AnalysisId = table.Column<Guid>(type: "TEXT", nullable: false),
                     Status = table.Column<int>(type: "INTEGER", nullable: false),
                     Confidence = table.Column<int>(type: "INTEGER", nullable: true),
                     BookCode = table.Column<string>(type: "TEXT", nullable: false)
@@ -376,6 +377,11 @@ namespace Interlinearizer.Crdt.Migrations
                 name: "IX_TokenAnalysisLink_ProjectId_BookCode_Status",
                 table: "TokenAnalysisLink",
                 columns: new[] { "ProjectId", "BookCode", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TokenAnalysisLink_ProjectId_NormalizedForm_Status",
+                table: "TokenAnalysisLink",
+                columns: new[] { "ProjectId", "NormalizedForm", "Status" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_TokenAnalysisLink_ProjectId_TokenRef",

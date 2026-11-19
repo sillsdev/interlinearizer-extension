@@ -1,3 +1,1 @@
-Interlinearizer extension for Platform.Bible. Powered by webpack.
-
-This Platform.Bible extension provides interlinear tools.
+Interlinear tools for Paratext 10: gloss Scripture word by word, join words into phrases, parse words into morphemes, adjust segment boundaries, add free translations, and link to lexicon entries.

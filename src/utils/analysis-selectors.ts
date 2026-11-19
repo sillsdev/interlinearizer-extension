@@ -8,8 +8,8 @@ import type {
   TokenAnalysisLink,
 } from 'interlinearizer';
 import { morphemeCarriesAnnotation } from './analysis-identity';
-import type { StaleFreeTranslation } from './stale-free-translations';
 import { preferredLinkByKey } from './pick-rules';
+import type { StaleFreeTranslation } from './stale-free-translations';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,
@@ -17,6 +17,8 @@ import {
   withPendingAnalyses,
   type PoolIndex,
   type ResolvedTokenAnalysis,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
+  type resolvedTokenAnalysisEqual,
   type TokenSuggestion,
 } from './suggestion-engine';
 
@@ -336,12 +338,12 @@ function offerForToken(
  * it never combines stored decisions and the derived view itself. An approved token carries the
  * offer only as promotable alternatives, so a confirmed token never shows a suggestion.
  *
- * Unlike the reference-stable per-token reads ({@link selectApprovedGloss} returns a primitive,
- * {@link selectApprovedMorphemes} a stable array), this freshly allocates its result object — and
- * the suggested branch a fresh `candidates` array — on every call. A `useSelector` consumer must
- * therefore NOT rely on the default `Object.is` equality: subscribe through a per-token memoized
- * selector or pass a shallow/custom `equalityFn` (or `useMemo` the result), or every change to the
- * held pages will re-render the token.
+ * Unlike reference-stable per-token reads such as {@link selectApprovedGloss}, this returns a fresh
+ * object on every call. A suggested result also carries a fresh `candidates` array. A subscriber
+ * must therefore not compare results with `Object.is`, nor with a shallow equality, which the fresh
+ * `candidates` array and nested `alternatives` defeat. A subscriber should compare with
+ * {@link resolvedTokenAnalysisEqual}; otherwise every change to the held pages re-renders the
+ * token.
  *
  * @param state - The analysis state that holds the token's decisions.
  * @param tokenRef - The token to resolve.

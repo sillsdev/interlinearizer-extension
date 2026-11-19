@@ -40,6 +40,7 @@ npm run perf:summary     # Render the newest results as markdown tables
 npm run perf:shape       # Compare analysis shape across tiers and stored projects
 npm run perf:indexes     # Check derived indexes and lookups against the records, after random edits
 npm run perf:pages       # Check session pages, outlines and change events against what the selectors derive from the whole analysis
+npm run perf:reports     # Measure the change reports of re-anchor passes
 ```
 
 A template merge refreshes the dependency baseline in the same commit with `npm run template:baseline`; [README.md](README.md#to-update-this-extension-from-the-template) has the procedure.
@@ -213,7 +214,7 @@ This is purely about which branches may be explicitly ignored from coverage. It 
 Mock files:
 
 - **`__mocks__/fileMock.ts`** — Stub static asset imports.
-- **`__mocks__/lucide-react.tsx`** — Stubs icon components used in modals.
+- **`__mocks__/lucide-react.tsx`** — Stubs icon components.
 - **`__mocks__/papi-backend.ts`** — Mocks with jest fns. Re-exports internal jest fns on the default export as `__mock*` properties (e.g., `papi.__mockRegisterCommand`) so tests can assert on them without re-importing. See file for full list.
 - **`__mocks__/papi-core.ts`** — Empty module; exists only for module resolution since `@papi/core` is types-only at runtime.
 - **`__mocks__/papi-frontend.ts`** — Stubs `logger` and the `papi` services WebView code calls. See file for full list.

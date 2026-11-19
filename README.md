@@ -114,11 +114,13 @@ The general file structure for an extension is as follows:
   - `*.web-view.tsx` files will be treated as React WebViews
   - `*.web-view.scss` files provide styles for WebViews
   - `src/components/` and `src/hooks/` contain the WebView's React components and hooks
-  - `src/services/` contains the extension host's services, among them project storage and Paratext 9 import
+  - `src/services/` contains the extension host's services, among them sessions, undo history, project storage, and Paratext 9 import
+  - `src/cache/` holds the WebView's page cache over the host's sessions, and the hooks that read through it
   - `src/parsers/papi/` turns Platform.Bible's USJ into tokenized books, and `src/parsers/pt9/` parses Paratext 9 lexeme ids and documents its interlinear XML
   - `src/converters/pt9/` converts Paratext 9 interlinear data into this extension's analysis model
-  - `src/utils/` contains logic shared across the extension, such as re-anchoring, segmentation and undo history
+  - `src/utils/` contains logic shared across the extension, such as re-anchoring and segmentation
   - `src/__tests__/` contains the Jest unit tests, laid out like `src/`
+- `c-sharp/` contains the C# host the extension starts, and the Harmony model it stores analysis with; see [AGENTS.md](AGENTS.md#c-host)
 - `__mocks__/` contains Jest mocks for the PAPI, file modules, and test fixtures used by tests in `src/__tests__/`. The `@papi/backend` and `@papi/frontend` mocks are used mutually exclusively (backend for main.ts tests, frontend for WebView tests); each mock file ends with `export {}` so TypeScript treats it as a module.
 - `assets/` contains asset files the extension and its WebViews can retrieve using the `papi-extension:` protocol, as well as textual descriptions in various languages. It is copied into the build folder
   - `assets/displayData.json` contains (optionally) a path to the extension's icon file as well as text for the extension's display name, short summary, and path to the full description file
@@ -134,7 +136,7 @@ The general file structure for an extension is as follows:
 - `AGENTS.md` (loaded through `CLAUDE.md`) guides AI agents editing this repo, and `REVIEW.md` lists conventions reviewers commonly mistake for defects
 - `user-questions.md` collects UX questions for review with people outside the development team
 - `.github/` contains files to facilitate integration with GitHub
-  - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo (e.g. **Test** and **Lint** on push/PR to main, release-prep, hotfix-\*; **Publish** and **Bump Versions** manual dispatch; **CodeQL** for security)
+  - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo (e.g. **Test** and **Lint** on push/PR to main, release-prep, hotfix-\*; **Publish** and **Bump Versions** manual dispatch; **Verify Release** on publishing or editing a release; **CodeQL** for security)
   - `.github/assets/release-body.md` is the template for the body of [releases published using GitHub Actions](#publishing). The Publish workflow substitutes its version placeholders into a copy outside the repo, and that copy plus a generated changelog becomes the release body
 - `dist/` is a generated folder containing the built extension files
 - `release/` is a generated folder containing zips of the built extension files

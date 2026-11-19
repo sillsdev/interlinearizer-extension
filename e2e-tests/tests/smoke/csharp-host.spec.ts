@@ -43,7 +43,7 @@ test.describe('C# host', () => {
     }>(PING_REQUEST_TYPE, [message]);
 
     expect(result.message).toBe(message);
-    // The host's bundled runtime, not the .NET 8 that Platform.Bible ships.
+    // Harmony needs .NET 10, which the host bundles.
     expect(result.runtimeVersion).toMatch(/^10\./);
     expect(result.processId).toBeGreaterThan(0);
   });

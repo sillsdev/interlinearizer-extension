@@ -17,7 +17,7 @@ To reproduce the Linux CI run locally before pushing, run `npm run test:e2e:head
 
 **Contents:**
 
-- `*.json` — lint configs identical to those in `paranext-core/e2e-tests/`
+- `.eslintrc.json`, `tsconfig.json` — identical to those in `paranext-core/e2e-tests/`
 - `global-*.ts` — start/stop the paranext-core renderer dev server around the test run
 - `fixtures/` — test fixtures and helpers
 - `playwright*.config.ts` — fixture configs

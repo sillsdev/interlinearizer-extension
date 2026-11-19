@@ -5,7 +5,7 @@
   "localizedDisplayInfo": {
     "en": {
       "displayName": "Interlinearizer",
-      "shortSummary": "Interlinearizer extension for Platform.Bible",
+      "shortSummary": "Interlinear tools for Paratext 10",
       "description": "assets/descriptions/description-en.md"
     }
   }

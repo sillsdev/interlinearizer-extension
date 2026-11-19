@@ -43,7 +43,7 @@ function rect(left: number, top: number, width: number, height: number): DOMRect
 /**
  * Recovers a phrase arc's nesting level from its computed path. A run line sits at `rowTop -
  * (ARC_BASE_STEM + level * ARC_LEVEL_STEP)`, so inverting `midY` against the row top yields the
- * level the leveling assigned — the public stand-in for the removed `levelByPhraseId`.
+ * level the leveling assigned.
  *
  * @returns The recovered nesting level, or `undefined` when the phrase has no path.
  */

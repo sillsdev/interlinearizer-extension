@@ -21,18 +21,14 @@ Do not grow this into a general diff, fuzzy matching, or cross-verse tracking. F
 
 ## Algorithm
 
-When it runs, for an editable project only:
+The pass runs on the host, for an editable project only:
 
-- On the WebView path:
-  - for the loaded book, whenever its text, its boundaries, or the draft changes;
-  - for every other book the draft has records in, each time the whole source text is read (for the concordance, or a catalog filter that needs the text).
-- On the host path:
-  - for a book each time a session outlines it, before the outline answers;
-  - for the open book, whenever its text changes;
-  - for each book as the session's whole-text read reaches it, and for each linked book the text lacks once the read finishes;
-  - for the books that a boundary edit, an undo, a redo, or a discard touches, in the same step.
+- for a book each time a session outlines it, before the outline answers;
+- for the open book, whenever its text changes;
+- for each book as the session's whole-text read reaches it, and for each linked book the text lacks once the read finishes;
+- for the books that a boundary edit, an undo, a redo, or a discard touches, in the same step.
 
-  An outline, a text change, or the read skips a book that the session last re-anchored to the same text.
+An outline, a text change, or the read reaching a book skips it when the session last re-anchored it to the same text. The pass for a linked book that the text lacks runs unless text for that book arrives after the read finishes.
 
 A book the project no longer has is treated as holding no text, so every approval in it goes stale. An imported, read-only project is a record of what was imported and is never healed. A pass that moves nothing leaves the analysis identical, so opening a book neither dirties the draft nor writes storage.
 
@@ -55,9 +51,9 @@ Only approvals are staled and only stale links revived. `'rejected'` and `'candi
 
 The pass is idempotent: run again over its own result, it changes nothing, so a later open never places what an earlier one declined. That is why stale links weigh in beside live ones, since staling an approval then leaves the evidence the next pass counts unchanged. Where staling one approval frees what it held ambiguous, the pass repeats until nothing changes.
 
-Custom split boundaries (`SegmentationDelta.addedStarts`) are snapshots too, carrying the word each split was set before, and re-anchor through the same alignment in `InterlinearizerLoader` before the book is re-segmented, so a split follows its word and the segments it bounds keep their text. A split that cannot be placed keeps its ref, stops applying while that ref names a different word, and is reported by the lost-boundaries notice; it applies again once its word reads that way there. Merged verses (`removedVerseStarts`) name a verse's first token, which leading whitespace can shift, so they re-anchor to the verse's current first token.
+Custom split boundaries (`SegmentationDelta.addedStarts`) are snapshots too, carrying the word each split was set before, and re-anchor through the same alignment before the book is re-segmented, so a split follows its word and the segments it bounds keep their text. A split that cannot be placed keeps its ref, stops applying while that ref names a different word, and is reported by the lost-boundaries notice; it applies again once its word reads that way there. Merged verses (`removedVerseStarts`) name a verse's first token, which leading whitespace can shift, so they re-anchor to the verse's current first token.
 
-Segment analyses (free translations) have no offsets to heal, so they are checked instead: a segment whose `baselineText` differs at all from the stored analysis's `surfaceText` stales its approval, as does a segment of the loaded book that no longer exists, and it revives once the segment reads exactly that way again. A split piece's id is its first token's ref, so an edit earlier in its verse re-keys it; its translation follows the piece's own split boundary through the same alignment — never onto an identical sibling piece — and goes stale when that boundary cannot be placed. Where the boundary moves but the piece no longer reads exactly as before, the translation still moves with it, stale, so it revives once the piece's text is restored.
+Segment analyses (free translations) have no offsets to heal, so they are checked instead: a segment whose `baselineText` differs at all from the stored analysis's `surfaceText` stales its approval, as does a segment the book no longer has, and it revives once the segment reads exactly that way again. A split piece's id is its first token's ref, so an edit earlier in its verse re-keys it; its translation follows the piece's own split boundary through the same alignment — never onto an identical sibling piece — and goes stale when that boundary cannot be placed. Where the boundary moves but the piece no longer reads exactly as before, the translation still moves with it, stale, so it revives once the piece's text is restored. Neither revival happens while another approved or candidate translation holds the segment.
 
 ## Known limits
 

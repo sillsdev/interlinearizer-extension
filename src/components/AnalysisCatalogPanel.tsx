@@ -2,7 +2,13 @@ import { logger } from '@papi/frontend';
 import { useSetting } from '@papi/frontend/react';
 import type { SenseCandidate } from 'interlinearizer/lexicon';
 import { X } from 'lucide-react';
-import { Button, EmptyState, RetryableErrorView, TooltipProvider } from 'platform-bible-react';
+import {
+  Button,
+  EmptyState,
+  RetryableErrorView,
+  Spinner,
+  TooltipProvider,
+} from 'platform-bible-react';
 import {
   formatReplacementString,
   isPlatformError,
@@ -141,6 +147,7 @@ export const ANALYSIS_CATALOG_PANEL_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_deletedChecked%',
   '%interlinearizer_analysisCatalog_empty%',
   '%interlinearizer_analysisCatalog_loadFailed%',
+  '%interlinearizer_analysisCatalog_loading%',
   '%interlinearizer_analysisCatalog_mergedEmpty%',
   '%interlinearizer_analysisCatalog_usageCountInBook%',
   '%interlinearizer_analysisCatalog_noMatches%',
@@ -1223,6 +1230,17 @@ export default function AnalysisCatalogPanel({
             localizedStrings={localizedStrings}
             status={readStatus}
           />
+        )}
+
+        {!view && !retry && !isAwaitingText && (
+          <p
+            className="tw:flex tw:items-center tw:gap-2 tw:px-3 tw:py-2 tw:text-sm tw:text-muted-foreground"
+            data-testid="analysis-catalog-loading"
+            role="status"
+          >
+            <Spinner className="tw:size-4" />
+            {localizedStrings['%interlinearizer_analysisCatalog_loading%']}
+          </p>
         )}
 
         {!view && retry && !isAwaitingText && (

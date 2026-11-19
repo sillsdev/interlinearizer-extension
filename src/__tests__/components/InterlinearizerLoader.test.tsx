@@ -801,6 +801,18 @@ function mockSettings(
   });
 }
 
+/** Configures `useProjectSetting` to report the source project's `platform.name` as still loading. */
+function mockSourceShortNameLoading(): void {
+  jest
+    .mocked(useProjectSetting)
+    .mockImplementation((_source, key, defaultState) => [
+      defaultState,
+      jest.fn(),
+      jest.fn(),
+      key === 'platform.name',
+    ]);
+}
+
 /** Configures `useProjectSetting` to report `shortName` as the source project's `platform.name`. */
 function mockSourceShortName(shortName: string): void {
   jest
@@ -1997,6 +2009,17 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('pt9-convert-prompt-message')).not.toBeInTheDocument();
     });
 
+    it('holds the offer while the short name is still loading', async () => {
+      mockOfferProbe();
+      mockImportCommands();
+      mockSourceShortNameLoading();
+      await flushHost(async () => {
+        renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
+      });
+
+      expect(screen.queryByTestId('pt9-convert-prompt-message')).not.toBeInTheDocument();
+    });
+
     it('never offers when the probe finds no convertible data', async () => {
       mockOfferProbe({});
       mockImportCommands();
@@ -2025,6 +2048,28 @@ describe('InterlinearizerLoader', () => {
         });
 
         expect(screen.getByTestId('pt9-checking')).toBeInTheDocument();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('holds the checking status while the short name is still loading', async () => {
+      jest.useFakeTimers();
+      try {
+        mockPdpGet.mockResolvedValue({
+          getPt9InterlinearManifest: jest.fn(() => new Promise(() => {})),
+        });
+        mockImportCommands();
+        mockSourceShortNameLoading();
+        await flushHost(async () => {
+          renderLoader({ useWebViewState: makeWebViewState({ offerPt9Import: true }) });
+        });
+
+        await flushHost(async () => {
+          jest.advanceTimersByTime(400);
+        });
+
+        expect(screen.queryByTestId('pt9-checking')).not.toBeInTheDocument();
       } finally {
         jest.useRealTimers();
       }

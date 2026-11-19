@@ -15,8 +15,9 @@ const PT9_CONVERT_PROMPT_STRING_KEYS: `%${string}%`[] = [
 
 /**
  * Transient status shown when the first-open data probe stays unanswered long enough to need an
- * indication. Not dismissable: the probe always settles, and this dialog leaves with it. The title
- * names the source project by `sourceShortName`.
+ * indication. It waits for the source's short name to load. Not dismissable: the probe always
+ * settles, and this dialog leaves with it. The title names the source project by
+ * `sourceShortName`.
  */
 export function Pt9CheckingModal({ sourceShortName }: Readonly<{ sourceShortName: string }>) {
   const [localizedStrings] = useLocalizedStrings(PT9_CONVERT_PROMPT_STRING_KEYS);

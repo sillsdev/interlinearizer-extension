@@ -98,6 +98,24 @@ public class PatchChangeTests : CrdtTestBase
     }
 
     [Test]
+    public async Task APatchedSurfaceTextRefilesTheApprovalUnderItsNewForm()
+    {
+        await WriteNextChange(Fixtures.CreateTokenAnalysis(_analysisId));
+        await WriteNextChange(new CreateTokenAnalysisLinkChange(_linkId)
+        {
+            ProjectId = Fixtures.ProjectId,
+            AnalysisId = _analysisId,
+            Token = Fixtures.Token1,
+            Status = AssignmentStatus.Approved,
+            Confidence = Confidence.High,
+        });
+        await WriteNextChange(new PatchTokenAnalysisLinkChange(_linkId) { Token = Fixtures.Token1 with { SurfaceText = "Start" } });
+
+        await Assert.That(await Repository.FindApprovalsByForm(["in"])).IsEmpty();
+        await Assert.That((await Repository.FindApprovalsByForm(["start"]))["start"]).IsEquivalentTo(new Dictionary<string, Guid> { [Fixtures.Token1.TokenRef] = _analysisId });
+    }
+
+    [Test]
     public async Task ALinkPatchedOntoADeletedAnalysisIsDeleted()
     {
         var deletedAnalysisId = Guid.NewGuid();

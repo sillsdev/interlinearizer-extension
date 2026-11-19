@@ -8,8 +8,8 @@ import type {
   TokenAnalysisLink,
 } from 'interlinearizer';
 import { morphemeCarriesAnnotation } from './analysis-identity';
-import type { StaleFreeTranslation } from './stale-free-translations';
 import { preferredLinkByKey } from './pick-rules';
+import type { StaleFreeTranslation } from './stale-free-translations';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,
@@ -17,6 +17,8 @@ import {
   withPendingAnalyses,
   type PoolIndex,
   type ResolvedTokenAnalysis,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
+  type resolvedTokenAnalysisEqual,
   type TokenSuggestion,
 } from './suggestion-engine';
 
@@ -339,8 +341,9 @@ function offerForToken(
  * Unlike reference-stable per-token reads such as {@link selectApprovedGloss}, this returns a fresh
  * object on every call. A suggested result also carries a fresh `candidates` array. A subscriber
  * must therefore not compare results with `Object.is`, nor with a shallow equality, which the fresh
- * `candidates` array and nested `alternatives` defeat. It should compare with
- * `resolvedTokenAnalysisEqual`; otherwise every change to the held pages re-renders the token.
+ * `candidates` array and nested `alternatives` defeat. A subscriber should compare with
+ * {@link resolvedTokenAnalysisEqual}; otherwise every change to the held pages re-renders the
+ * token.
  *
  * @param state - The analysis state that holds the token's decisions.
  * @param tokenRef - The token to resolve.

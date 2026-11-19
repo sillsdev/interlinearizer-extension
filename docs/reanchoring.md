@@ -28,7 +28,7 @@ The pass runs on the host, for an editable project only:
 - for each book as the session's whole-text read reaches it, and for each linked book the text lacks once the read finishes;
 - for the books that a boundary edit, an undo, a redo, or a discard touches, in the same step.
 
-An outline, a text change, or the read reaching a book skips it when the session last re-anchored it to the same text. The pass for a linked book the text lacks always runs.
+An outline, a text change, or the read reaching a book skips it when the session last re-anchored it to the same text. The pass for a linked book that the text lacks runs unless text for that book arrives after the read finishes.
 
 A book the project no longer has is treated as holding no text, so every approval in it goes stale. An imported, read-only project is a record of what was imported and is never healed. A pass that moves nothing leaves the analysis identical, so opening a book neither dirties the draft nor writes storage.
 

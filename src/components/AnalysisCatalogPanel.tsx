@@ -359,9 +359,9 @@ export default function AnalysisCatalogPanel({
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
 
   /**
-   * What the analysis language is called, for the filter that asks after a missing gloss to name it
-   * in prose: the question is about a language rather than about a code, and a reader who never
-   * chose the tag has no reason to recognize it.
+   * What the analysis language is called, for the gloss filter to name it in prose. The filter asks
+   * about a language rather than a code; a reader who never chose the tag has no reason to
+   * recognize it.
    *
    * Named in the interface's own languages rather than the host's, which the platform's interface
    * language does not follow — a name resolved against the host would read in one language beside a
@@ -378,8 +378,7 @@ export default function AnalysisCatalogPanel({
    * elsewhere. Elsewhere its collation can reorder only homographs that tie on the sort key. Those
    * stay adjacent, so the scroll position holds even when they trade places.
    */
-  const listingGlossLanguage =
-    sort === 'gloss' || filters.missingGloss ? analysisLanguage : undefined;
+  const listingGlossLanguage = sort === 'gloss' || filters.gloss ? analysisLanguage : undefined;
 
   /**
    * Everything that decides which listing is on screen. The book counts alongside the query because

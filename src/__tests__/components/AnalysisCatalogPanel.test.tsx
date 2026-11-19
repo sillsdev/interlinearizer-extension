@@ -1033,10 +1033,10 @@ describe('AnalysisCatalogPanel', () => {
       expect(listedAnalysisIds()).toEqual(['three-spaces']);
     });
 
-    it('names the language the missing-gloss filter asks about, in the interface language', async () => {
+    it('names the language the gloss filter asks about, in the interface language', async () => {
       mockInterfaceLanguage(['es']);
       mockKeyAsValueLocalizedStrings({
-        '%interlinearizer_analysisCatalog_filter_missingGloss%': 'Missing gloss in {language}',
+        '%interlinearizer_analysisCatalog_filter_gloss_lacks%': 'Missing gloss in {language}',
       });
       await renderPanel({ analysis: PER_BOOK, analysisLanguage: 'fr' });
 
@@ -1045,9 +1045,9 @@ describe('AnalysisCatalogPanel', () => {
       // A reader who never chose the tag has no reason to recognize it, and a name taken from the
       // host's own locale would read in one language beside a label resolved in another — the
       // platform's interface language being a setting the host locale does not follow.
-      expect(
-        screen.getByRole('checkbox', { name: 'Missing gloss in francés' }),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId('catalog-filter-gloss-lacks')).toHaveTextContent(
+        'Missing gloss in francés',
+      );
     });
 
     it('narrows the list to the analyses carrying a chosen part of speech', async () => {
@@ -1285,26 +1285,43 @@ describe('AnalysisCatalogPanel', () => {
       expect(panel.queryAllByTestId(/^catalog-filter-feature-/)).toHaveLength(0);
     });
 
+    /** One analysis glossed in English and one only in French, so the gloss filter separates them. */
+    const PER_GLOSS: TextAnalysis = {
+      ...emptyAnalysis(),
+      tokenAnalyses: [
+        { ...FIXTURE_STAMPS, id: 'glossed', surfaceText: 'λόγος', gloss: { en: 'word' } },
+        // A gloss in another language is no gloss here: the filter reads the active one.
+        { ...FIXTURE_STAMPS, id: 'elsewhere', surfaceText: 'ἦν', gloss: { fr: 'était' } },
+      ],
+      tokenAnalysisLinks: [link('glossed', 'GEN 1:1:0'), link('elsewhere', 'GEN 1:2:0')],
+    };
+
     it('narrows the list to the analyses with no gloss in the active language', async () => {
-      const analysis: TextAnalysis = {
-        ...emptyAnalysis(),
-        tokenAnalyses: [
-          { ...FIXTURE_STAMPS, id: 'glossed', surfaceText: 'λόγος', gloss: { en: 'word' } },
-          // A gloss in another language is no gloss here: the filter reads the active one.
-          { ...FIXTURE_STAMPS, id: 'elsewhere', surfaceText: 'ἦν', gloss: { fr: 'était' } },
-        ],
-        tokenAnalysisLinks: [link('glossed', 'GEN 1:1:0'), link('elsewhere', 'GEN 1:2:0')],
-      };
-      await renderPanel({ analysis, analysisLanguage: 'en' });
+      await renderPanel({ analysis: PER_GLOSS, analysisLanguage: 'en' });
       await openFilters();
 
-      await userEvent.click(
-        screen.getByRole('checkbox', {
-          name: '%interlinearizer_analysisCatalog_filter_missingGloss%',
-        }),
-      );
+      await userEvent.click(screen.getByTestId('catalog-filter-gloss-lacks'));
 
       expect(listedAnalysisIds()).toEqual(['elsewhere']);
+    });
+
+    it('narrows the list to the analyses with a gloss in the active language', async () => {
+      await renderPanel({ analysis: PER_GLOSS, analysisLanguage: 'en' });
+      await openFilters();
+
+      await userEvent.click(screen.getByTestId('catalog-filter-gloss-has'));
+
+      expect(listedAnalysisIds()).toEqual(['glossed']);
+    });
+
+    it('lifts the gloss filter when its either choice is picked', async () => {
+      await renderPanel({ analysis: PER_GLOSS, analysisLanguage: 'en' });
+      await openFilters();
+      await userEvent.click(screen.getByTestId('catalog-filter-gloss-has'));
+
+      await userEvent.click(screen.getByTestId('catalog-filter-gloss-any'));
+
+      expect(listedAnalysisIds()).toEqual(['elsewhere', 'glossed']);
     });
 
     /** One analysis broken into morphemes and one not, so the breakdown filter separates them. */
@@ -1416,11 +1433,7 @@ describe('AnalysisCatalogPanel', () => {
       await openFilters();
 
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
-      await userEvent.click(
-        screen.getByRole('checkbox', {
-          name: '%interlinearizer_analysisCatalog_filter_missingGloss%',
-        }),
-      );
+      await userEvent.click(screen.getByTestId('catalog-filter-gloss-lacks'));
 
       expect(screen.getByTestId('catalog-filters-button')).toHaveTextContent('Filters (2)');
     });
@@ -1759,14 +1772,10 @@ describe('AnalysisCatalogPanel', () => {
       expect(list.scrollTop).toBe(0);
     });
 
-    it('returns the list to its top when the analysis language changes under the missing-gloss filter', async () => {
+    it('returns the list to its top when the analysis language changes under the gloss filter', async () => {
       const { rerender } = await renderOver(MANY, panelIn('en'));
       await openFilters();
-      await userEvent.click(
-        screen.getByRole('checkbox', {
-          name: '%interlinearizer_analysisCatalog_filter_missingGloss%',
-        }),
-      );
+      await userEvent.click(screen.getByTestId('catalog-filter-gloss-lacks'));
       const list = rowList();
       list.scrollTop = 500;
 
@@ -2330,11 +2339,7 @@ describe('AnalysisCatalogPanel', () => {
         };
         await renderPanel({ ref, analysis, analysisLanguage: 'en' });
         await openFilters();
-        await userEvent.click(
-          screen.getByRole('checkbox', {
-            name: '%interlinearizer_analysisCatalog_filter_missingGloss%',
-          }),
-        );
+        await userEvent.click(screen.getByTestId('catalog-filter-gloss-lacks'));
 
         act(() => ref.current?.filterTo({ stale: true }));
         await settle();

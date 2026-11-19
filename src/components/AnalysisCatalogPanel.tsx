@@ -65,6 +65,7 @@ import {
 } from '../utils/deletion-announcement';
 import {
   reconcileFilters,
+  USAGE_SORTS,
   type CatalogFilters,
   type CatalogFacets,
   type CatalogRow,
@@ -299,6 +300,9 @@ export default function AnalysisCatalogPanel({
   // narrow the listing by a filter the reader watched release. Settles after one withdrawal, the
   // reconciled filters being the chosen set itself once every choice survives.
   if (filters !== chosenFilters) setFilters(filters);
+
+  // A usage sort would tie every row that the unused-only filter keeps, because none is used.
+  if (filters.zeroUsages && USAGE_SORTS.has(sort)) setSort('surfaceText');
 
   const request = useMemo(
     () => ({ currentBook, search, sort, filters, sourceLanguageTag }),

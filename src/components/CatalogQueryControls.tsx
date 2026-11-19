@@ -9,7 +9,12 @@ import {
 } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
 import CatalogFilterPopover, { FILTER_STRING_KEYS } from './CatalogFilterPopover';
-import type { CatalogFacets, CatalogFilters, CatalogSort } from '../utils/analysis-query';
+import {
+  USAGE_SORTS,
+  type CatalogFacets,
+  type CatalogFilters,
+  type CatalogSort,
+} from '../utils/analysis-query';
 
 /** The label each sort key is offered under, in this object's declaration order. */
 const SORT_LABEL_KEYS = {
@@ -109,7 +114,12 @@ export default function CatalogQueryControls({
           </SelectTrigger>
           <SelectContent>
             {sortKeys.map((sortKey) => (
-              <SelectItem data-testid={`catalog-sort-${sortKey}`} key={sortKey} value={sortKey}>
+              <SelectItem
+                data-testid={`catalog-sort-${sortKey}`}
+                disabled={filters.zeroUsages && USAGE_SORTS.has(sortKey)}
+                key={sortKey}
+                value={sortKey}
+              >
                 {formatReplacementString(localizedStrings[SORT_LABEL_KEYS[sortKey]], {
                   book: currentBookName,
                 })}

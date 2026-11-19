@@ -1554,6 +1554,61 @@ describe('AnalysisCatalogPanel', () => {
       await settle();
     }
 
+    /**
+     * Renders the panel over {@link MANY} with the host holding back its catalog pages until the
+     * returned call releases them.
+     */
+    async function renderPanelHoldingFirstPage(): Promise<() => void> {
+      await prepare(MANY);
+      const serve = jest.mocked(papi.commands.sendCommand).getMockImplementation();
+      let release = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      jest.mocked(papi.commands.sendCommand).mockImplementation(async (...call) => {
+        if (call[0] === 'interlinearizer.getCatalogRows') await held;
+        return serve?.(...call);
+      });
+      render(
+        <PanelProviders overrides={{}}>
+          <CatalogPanel
+            currentBook="GEN"
+            liveSurfaceText={undriftedText}
+            onClose={() => {}}
+            onShowConcordance={() => {}}
+            showMorphology
+            sourceLanguageTag="el"
+          />
+        </PanelProviders>,
+      );
+      await settle();
+      return release;
+    }
+
+    it('says the catalog is loading while its first page is fetched', async () => {
+      await renderPanelHoldingFirstPage();
+
+      expect(screen.getByTestId('analysis-catalog-loading')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_loading%',
+      );
+    });
+
+    it('drops the loading notice once the first page arrives', async () => {
+      const release = await renderPanelHoldingFirstPage();
+
+      release();
+      await settle();
+
+      expect(listedAnalysisIds()).toHaveLength(40);
+      expect(screen.queryByTestId('analysis-catalog-loading')).not.toBeInTheDocument();
+    });
+
+    it('drops the loading notice when the first page fails', async () => {
+      await renderPanelFailingFirstPage();
+
+      expect(screen.queryByTestId('analysis-catalog-loading')).not.toBeInTheDocument();
+    });
+
     it('says the catalog could not be loaded when its first page fails', async () => {
       await renderPanelFailingFirstPage();
 

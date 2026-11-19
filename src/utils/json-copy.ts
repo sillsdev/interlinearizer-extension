@@ -16,15 +16,17 @@ function copyValue(value: unknown): any {
   for (const key in value) {
     if (Object.hasOwn(value, key)) {
       const property: unknown = Reflect.get(value, key);
-      // Assigning `__proto__` would set the copy's prototype rather than an own property.
-      if (property !== undefined && key === '__proto__') {
-        Object.defineProperty(copy, key, {
-          value: copyValue(property),
-          enumerable: true,
-          writable: true,
-          configurable: true,
-        });
-      } else if (property !== undefined) copy[key] = copyValue(property);
+      if (property !== undefined) {
+        // Assigning `__proto__` would set the copy's prototype rather than an own property.
+        if (key === '__proto__') {
+          Object.defineProperty(copy, key, {
+            value: copyValue(property),
+            enumerable: true,
+            writable: true,
+            configurable: true,
+          });
+        } else copy[key] = copyValue(property);
+      }
     }
   }
   return copy;

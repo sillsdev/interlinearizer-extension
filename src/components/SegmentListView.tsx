@@ -28,7 +28,7 @@ import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights'
 import { buildSegmentLabels } from '../utils/segment-labels';
 import type { StaleFreeTranslation } from '../utils/stale-free-translations';
 import { adoptedStaleTranslation, orphanedCardCountAt } from '../utils/stale-free-translations';
-import { failedRunsIn, runVerses } from '../utils/page-failures';
+import { failedRunsIn, groupRunsByFailure, runVerses } from '../utils/page-failures';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { altHeldSwap } from './alt-key-hint';
@@ -549,13 +549,14 @@ export default function SegmentListView({
     recenterOnActive();
   }, [continuousScroll, recenterOnActive]);
 
-  const failedRuns = failedRunsIn(
-    pages.failureAt,
-    pages.outline.length,
-    range.start,
-    range.start + windowSegments.length,
+  const failureGroups = groupRunsByFailure(
+    failedRunsIn(
+      pages.failureAt,
+      pages.outline.length,
+      range.start,
+      range.start + windowSegments.length,
+    ),
   );
-  const firstFailure = failedRuns.length > 0 ? pages.failureAt(failedRuns[0].start) : undefined;
 
   // Segment that wears the active highlight. Follows the focused token's segment so the highlight
   // lands on the segment whose token is focused — including a verse-0 superscription — and falls
@@ -664,13 +665,14 @@ export default function SegmentListView({
         </div>
       )}
 
-      {firstFailure && (
+      {failureGroups.map((runs) => (
         <PageLoadFailedBanner
-          failure={firstFailure}
+          key={runs[0].start}
+          failure={runs[0].failure}
           onRetry={pages.retryFailed}
-          places={`${bookName} ${failedRuns.map((run) => runVerses(pages.outline, run)).join(', ')}`}
+          places={`${bookName} ${runs.map((run) => runVerses(pages.outline, run)).join(', ')}`}
         />
-      )}
+      ))}
 
       <div className="tw:relative tw:flex tw:min-h-0 tw:flex-1 tw:flex-col">
         <div

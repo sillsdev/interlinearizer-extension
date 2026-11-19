@@ -2413,16 +2413,21 @@ describe('ContinuousView segment pages', () => {
     }
   });
 
-  it('fades back in when the page holding the focus of a jump fails to load', () => {
+  it('fades back in when the page holding the focus of a jump is let go and fails to load again', () => {
     jest.useFakeTimers();
     try {
       const book = makeLargeBook(300);
-      const { pages, failRest } = pagesLoading(book, 0, 100);
+      const { pages, loadMore, failRest } = pagesLoading(book, 0, 300);
       const strip = renderStrip(book, { focus: 'large-tok-10', props: { pages } });
       act(() => {
         jest.advanceTimersByTime(RECENTER_FADE_MS);
       });
       strip.setFocus('large-tok-250', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS / 2);
+      });
+      // The pages go, as they do when a boundary edit brings a fresh outline mid-fade.
+      loadMore(0, 100);
       act(() => {
         jest.advanceTimersByTime(RECENTER_FADE_MS);
       });

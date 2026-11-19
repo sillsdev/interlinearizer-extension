@@ -50,6 +50,8 @@ const SECTION_DESCRIPTIONS: Record<string, string> = {
     "One gloss typed and committed with Tab, with the session reading no text. `edit-command` is the command's round trip, and its `:outbound` and `:inbound` rows split the transport at the host's start and end. `reply-apply` takes the reply into the view's pages. `gloss-settle` ends once the view shows the gloss and, when the Tab moves the focus, that move.",
   'app.picker': 'The Select interlinear dialog opens, listing every saved project for the source.',
   'app.save': 'Save from the Project menu writes the analysis to the project it came from.',
+  'app.catalog':
+    'The analysis catalog panel opens beside the view and is timed until its first rows render, then closes before the next run.',
   'app.concordance':
     'The concordance panel opens in a fresh view and is timed until the first concordance page arrives. That page waits for the host to read every book of the source.',
   'bench.timings.load': 'Tokenizing the view book and parsing the draft.',
@@ -113,6 +115,7 @@ const SECTION_LABELS: Record<string, string> = {
   edit: 'Edit one gloss',
   picker: 'List saved projects in the picker',
   save: 'Save the analysis to its project',
+  catalog: 'Open the analysis catalog',
   concordance: 'Open the concordance',
   textRead: 'Read the whole text in the host',
   scriptureSave: 'Save a Scripture chapter',
@@ -156,6 +159,8 @@ const METRIC_LABELS: Record<string, string> = {
   'projects-fetch': 'Fetch saved projects',
   save: 'Save',
   'save-bytes': 'Request sent',
+  'catalog-fetch': 'Fetch catalog rows',
+  'catalog-rows': 'Open to first rows',
   'concordance-entries': 'Open to first page',
   'text-read': 'Read every book',
   'text-read-tokenize': 'Tokenize every book, summed',
@@ -180,6 +185,7 @@ const PHASE_LABELS: Record<string, string> = {
   tokenize: 'extract and tokenize',
   resegment: 'segment by boundaries',
   parse: 'parse and validate',
+  query: 'derive the page',
   compare: 'split and compare shards',
   serialize: 'serialize reply',
   write: 'write storage',

@@ -293,31 +293,24 @@ async function measureScriptureSaves(
   const samples = new Samples();
   const original = await chapterUsj(page, projectId, book);
   try {
+    /* eslint-disable no-await-in-loop */
     for (let run = 0; run < RUNS; run += 1) {
-      // eslint-disable-next-line no-await-in-loop
       await clearMeasures(frame);
-      // eslint-disable-next-line no-await-in-loop
       const cpuBefore = cpuPid === undefined ? 0 : await readHostCpuMs(cpuPid);
       const startedAt = Date.now();
       samples.addValue(
         'scripture-save',
-        // eslint-disable-next-line no-await-in-loop
         await saveChapter(page, projectId, book, withWord(original, `perfsave${run}`)),
       );
-      // eslint-disable-next-line no-await-in-loop
       await editGloss(frame, run % 10, `${glossPrefix}-${run}`);
-      // eslint-disable-next-line no-await-in-loop
       samples.add(await waitForMeasure(frame, 'gloss-render'), ['gloss-render']);
-      // eslint-disable-next-line no-await-in-loop
       await sleep(SAVE_SETTLE_MS - (Date.now() - startedAt));
       if (cpuPid !== undefined)
-        // eslint-disable-next-line no-await-in-loop
         samples.addValue('save-host-cpu', (await readHostCpuMs(cpuPid)) - cpuBefore);
-      // eslint-disable-next-line no-await-in-loop
       await saveChapter(page, projectId, book, original);
-      // eslint-disable-next-line no-await-in-loop
       await sleep(SAVE_SETTLE_MS);
     }
+    /* eslint-enable no-await-in-loop */
   } finally {
     await saveChapter(page, projectId, book, original);
   }
@@ -341,19 +334,14 @@ async function measureEdits(
   edits: ScenarioSamples,
 ): Promise<void> {
   const origin = await frame.evaluate(() => performance.timeOrigin);
+  /* eslint-disable no-await-in-loop */
   for (let run = 0; run < RUNS; run += 1) {
-    // eslint-disable-next-line no-await-in-loop
     await clearMeasures(frame);
-    // eslint-disable-next-line no-await-in-loop
     await takeHostEntries(page);
-    // eslint-disable-next-line no-await-in-loop
     await editGloss(frame, run, `${glossPrefix}-${run}`);
-    // eslint-disable-next-line no-await-in-loop
     const measures = await waitForMeasure(frame, 'gloss-render');
     edits.webView.add(measures, ['gloss-render', 'edit-command', 'reply-apply']);
-    // eslint-disable-next-line no-await-in-loop
     edits.webView.addValue('gloss-settle', await glossSettle(frame, measures));
-    // eslint-disable-next-line no-await-in-loop
     const hostEntries = await takeHostEntries(page);
     edits.addHostCall(HOST_CALLS.writeGloss, hostEntries, measures);
     const command = measures.find(({ name }) => name === 'edit-command');
@@ -368,6 +356,7 @@ async function measureEdits(
       );
     }
   }
+  /* eslint-enable no-await-in-loop */
 }
 
 /**
@@ -395,16 +384,14 @@ async function measureAfterRead(
     if (!SKIP_SESSION_READS) {
       // Only edits committed while the read runs are counted, so a quick read yields fewer samples.
       const editsDuringRead = new Samples();
+      /* eslint-disable no-await-in-loop */
       for (let run = 0; run < RUNS; run += 1) {
-        // eslint-disable-next-line no-await-in-loop
         if (await isTextRead(page, projectId)) break;
-        // eslint-disable-next-line no-await-in-loop
         await clearMeasures(frame);
-        // eslint-disable-next-line no-await-in-loop
         await editGloss(frame, run, `read-${run}`);
-        // eslint-disable-next-line no-await-in-loop
         editsDuringRead.add(await waitForMeasure(frame, 'gloss-render'), ['gloss-render']);
       }
+      /* eslint-enable no-await-in-loop */
       result.editDuringRead = editsDuringRead.summary();
       await readWholeText(page, projectId);
     }
@@ -622,12 +609,12 @@ async function measureTier(
   // The first open after each app start.
   if (PACKAGED_APP_PATH) {
     const cold = scenarioSamples();
+    /* eslint-disable no-await-in-loop */
     for (let run = 0; run < RUNS; run += 1) {
-      // eslint-disable-next-line no-await-in-loop
       cold.webView.addValue('app-startup', await restart(app, run === 0 ? seed : undefined));
-      // eslint-disable-next-line no-await-in-loop
       await measureOpen(app.page, projectId, tier.viewBook, cold);
     }
+    /* eslint-enable no-await-in-loop */
     result.cold = cold.summary();
     // The warm scenarios start from a fresh app too, so none inherits the cold runs' heap.
     await restart(app);
@@ -670,23 +657,16 @@ async function measureTier(
   await waitForMeasure(frame, 'book-render', tier.viewBook);
   await recordMemory('viewLoaded');
   const switchBook = new Samples();
+  /* eslint-disable no-await-in-loop */
   for (let run = 0; run < RUNS; run += 1) {
-    // eslint-disable-next-line no-await-in-loop
     await clearMeasures(frame);
-    // eslint-disable-next-line no-await-in-loop
     await setBook(page, AWAY_BOOK);
-    // eslint-disable-next-line no-await-in-loop
     await waitForMeasure(frame, 'book-render', AWAY_BOOK);
-    // eslint-disable-next-line no-await-in-loop
     await clearMeasures(frame);
-    // eslint-disable-next-line no-await-in-loop
     await setBook(page, tier.viewBook);
-    switchBook.add(
-      // eslint-disable-next-line no-await-in-loop
-      await waitForMeasure(frame, 'book-render', tier.viewBook),
-      ['book-render'],
-    );
+    switchBook.add(await waitForMeasure(frame, 'book-render', tier.viewBook), ['book-render']);
   }
+  /* eslint-enable no-await-in-loop */
   result.switchBook = switchBook.summary();
 
   // Edits: one gloss committed, with the session reading no text.
@@ -694,38 +674,32 @@ async function measureTier(
   await measureEdits(page, frame, 'perf', edits);
   result.edit = edits.summary();
 
+  /* eslint-disable no-await-in-loop */
   for (let i = 0; i < UNDO_FILL_EDITS; i += 1) {
-    // eslint-disable-next-line no-await-in-loop
     await clearMeasures(frame);
-    // eslint-disable-next-line no-await-in-loop
     await editGloss(frame, i % 20, `undo-${i}`);
     // Each reply renders before the next edit, so the heaps hold no edit in flight.
-    // eslint-disable-next-line no-await-in-loop
     await waitForMeasure(frame, 'gloss-render');
   }
+  /* eslint-enable no-await-in-loop */
   await clearMeasures(frame);
   await recordMemory('withFullUndoHistory');
 
   // Picker: listing the source's saved projects.
   const dialog = frame.locator('[data-slot="dialog-content"]');
   const picker = scenarioSamples();
+  /* eslint-disable no-await-in-loop */
   for (let run = 0; run < RUNS; run += 1) {
-    // eslint-disable-next-line no-await-in-loop
     await clearMeasures(frame);
-    // eslint-disable-next-line no-await-in-loop
     await takeHostEntries(page);
-    // eslint-disable-next-line no-await-in-loop
     await openProjectMenuItem(frame, /Select interlinear/i);
-    // eslint-disable-next-line no-await-in-loop
     const measures = await waitForMeasure(frame, 'projects-fetch');
     picker.webView.add(measures, ['projects-fetch']);
-    // eslint-disable-next-line no-await-in-loop
     picker.addHostCall(HOST_CALLS.getProjectsForSource, await takeHostEntries(page), measures);
-    // eslint-disable-next-line no-await-in-loop
     await frame.getByRole('button', { name: 'Cancel' }).first().click();
-    // eslint-disable-next-line no-await-in-loop
     await expect(dialog).toHaveCount(0);
   }
+  /* eslint-enable no-await-in-loop */
   result.picker = picker.summary();
   const projectsJson = await sendCommand(page, 'interlinearizer.getProjectsForSource', projectId);
   if (typeof projectsJson !== 'string')
@@ -749,64 +723,64 @@ async function measureTier(
   // dismissed by it.
   await editableAt(frame);
   const saves = scenarioSamples();
+  /* eslint-disable no-await-in-loop */
   for (let run = 0; run < RUNS; run += 1) {
-    // eslint-disable-next-line no-await-in-loop
     await clearMeasures(frame);
-    // eslint-disable-next-line no-await-in-loop
     await takeHostEntries(page);
-    // eslint-disable-next-line no-await-in-loop
     await openProjectMenuItem(frame, /^Save(?! As)/);
-    // eslint-disable-next-line no-await-in-loop
     const measures = await waitForMeasure(frame, 'save');
     saves.webView.add(measures, ['save']);
     const bytes = detailBytes(measures, 'save');
     if (bytes !== undefined) saves.webView.addValue('save-bytes', bytes);
-    // eslint-disable-next-line no-await-in-loop
     saves.addHostCall(HOST_CALLS.saveDraftToProject, await takeHostEntries(page), measures);
   }
+  /* eslint-enable no-await-in-loop */
   result.save = saves.summary();
   await recordMemory('afterSave');
+
+  // Catalog: from opening the panel to its first rows, closing it between runs.
+  const catalog = scenarioSamples();
+  /* eslint-disable no-await-in-loop */
+  for (let run = 0; run < RUNS; run += 1) {
+    await clearMeasures(frame);
+    await takeHostEntries(page);
+    await openProjectMenuItem(frame, /^Analysis catalog/);
+    const measures = await waitForMeasure(frame, 'catalog-rows');
+    catalog.webView.add(measures, ['catalog-rows', 'catalog-fetch']);
+    catalog.addHostCall(HOST_CALLS.getCatalogRows, await takeHostEntries(page), measures);
+    await frame.getByTestId('analysis-catalog-close').click();
+    await expect(frame.getByTestId('analysis-catalog-panel')).toHaveCount(0);
+  }
+  /* eslint-enable no-await-in-loop */
+  result.catalog = catalog.summary();
 
   // Concordance: from opening the panel to its first page, in a fresh view each run, because the
   // host keeps the whole-text read until the view closes.
   const concordance = new Samples();
+  /* eslint-disable no-await-in-loop */
   for (let run = 0; run < RUNS; run += 1) {
-    // eslint-disable-next-line no-await-in-loop
     await closeView(page);
-    // eslint-disable-next-line no-await-in-loop
     const { frame: view } = await openView(page, projectId, tier.viewBook);
-    // eslint-disable-next-line no-await-in-loop
     await waitForMeasure(view, 'book-render', tier.viewBook);
-    // eslint-disable-next-line no-await-in-loop
     await clearMeasures(view);
-    // eslint-disable-next-line no-await-in-loop
     await openProjectMenuItem(view, /^Concordance/);
-    concordance.add(
-      // eslint-disable-next-line no-await-in-loop
-      await waitForMeasure(view, 'concordance-entries'),
-      ['concordance-entries'],
-    );
+    concordance.add(await waitForMeasure(view, 'concordance-entries'), ['concordance-entries']);
   }
+  /* eslint-enable no-await-in-loop */
   result.concordance = concordance.summary();
 
   // Whole-text read in the host, in a fresh view each run, since the host keeps the read until
   // the view closes.
   const textRead = new Samples();
+  /* eslint-disable no-await-in-loop */
   for (let run = 0; run < RUNS; run += 1) {
     const isLast = run === RUNS - 1;
-    // eslint-disable-next-line no-await-in-loop
     await closeView(page);
-    // eslint-disable-next-line no-await-in-loop
     const { frame: view } = await openView(page, projectId, tier.viewBook);
-    // eslint-disable-next-line no-await-in-loop
     await waitForMeasure(view, 'book-render', tier.viewBook);
-    // eslint-disable-next-line no-await-in-loop
     if (isLast) await recordMemory('beforeTextRead');
-    // eslint-disable-next-line no-await-in-loop
     await takeHostEntries(page);
-    // eslint-disable-next-line no-await-in-loop
     await readWholeText(page, projectId);
-    // eslint-disable-next-line no-await-in-loop
     const entries = await takeHostEntries(page);
     entries
       .filter(({ name }) => name === 'readText')
@@ -817,9 +791,9 @@ async function measureTier(
         .filter(({ name }) => name === 'readText:tokenize')
         .reduce((total, { duration }) => total + duration, 0),
     );
-    // eslint-disable-next-line no-await-in-loop
     if (isLast) await recordMemory('afterTextRead');
   }
+  /* eslint-enable no-await-in-loop */
   result.textRead = textRead.summary();
 
   // Scripture saves with no whole-text read running; closing the last view ended it.

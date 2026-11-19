@@ -43,6 +43,11 @@ export const HOST_CALLS = {
     command: 'saveDraftToProject',
     phasePrefixes: ['saveDraftToProject', 'getDraft', 'updateAnalysis'],
   },
+  getCatalogRows: {
+    measure: 'catalog-fetch',
+    command: 'getCatalogRows',
+    phasePrefixes: ['getCatalogRows'],
+  },
 } satisfies Record<string, HostCall>;
 
 /** Collected durations per measure name, summarized once a scenario's runs are done. */

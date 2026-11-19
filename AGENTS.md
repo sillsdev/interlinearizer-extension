@@ -39,6 +39,7 @@ npm run perf:app         # Production-build the extension and time it, WebView a
 npm run perf:summary     # Render the newest results as markdown tables
 npm run perf:shape       # Compare analysis shape across tiers and stored projects
 npm run perf:indexes     # Check derived indexes and lookups against the records, after random edits
+npm run perf:queries     # Time the queries a view sends a session, in Node
 npm run perf:pages       # Check session pages, outlines and change events against what the selectors derive from the whole analysis
 npm run perf:reports     # Measure the change reports of re-anchor passes
 ```

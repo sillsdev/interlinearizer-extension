@@ -1,9 +1,8 @@
-import type { TextAnalysis } from 'interlinearizer';
+import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { CommandHandlers } from 'papi-shared-types';
 import type { AnalysisSessions, Session } from './analysisSessions';
 import type * as bookService from './bookService';
 import {
-  countUsages as countAnalysisUsages,
   getCatalogPage,
   getHomographRows as homographRowsOf,
   getRowsByIds,
@@ -13,7 +12,11 @@ import {
 } from './catalogPages';
 import { placeHeadings, type CatalogRow, type CatalogScope } from '../utils/analysis-query';
 import { bookOfRef } from '../utils/analysis-book';
+import { normalizeSurfaceForm } from '../utils/analysis-identity';
+import type { AnalysisRepository } from '../types/analysis-repository';
+import { emptyAnalysis } from '../types/empty-factories';
 import { selectAnalysisDeletionOutcome } from '../utils/analysis-selectors';
+import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 
 /** What a view asks of a session's catalog: a {@link CatalogPageRequest}, against one book. */
 export type CatalogRowsRequest = CatalogPageRequest & {
@@ -41,6 +44,58 @@ function wireRow<T extends CatalogRow>(row: T) {
   return { ...row, books: [...row.books] };
 }
 
+/**
+ * The token analyses that `analysisIds` names, with every token link to them and none of the
+ * draft's other records.
+ */
+async function analysesWithLinks(
+  repository: AnalysisRepository,
+  analysisIds: readonly string[],
+): Promise<Pick<TextAnalysis, 'tokenAnalyses' | 'tokenAnalysisLinks'>> {
+  const tokenAnalyses = await repository.getTokenAnalyses([...analysisIds]);
+  const { tokenAnalysisLinks } = await repository.findLinksToAnalyses([...analysisIds]);
+  return { tokenAnalyses, tokenAnalysisLinks };
+}
+
+/**
+ * The records that deleting `target` reaches, from which the deletion outcome matches the one the
+ * whole draft gives.
+ *
+ * They are `targetLinks`, every link on the tokens that approve `target`, and the payloads those
+ * links name. They also include the pool candidates for those tokens' live text, with every
+ * approval of the candidates.
+ */
+async function deletionReach(
+  repository: AnalysisRepository,
+  target: TokenAnalysis,
+  targetLinks: readonly TokenAnalysisLink[],
+  affectedRefs: string[],
+  liveSurfaceText: (tokenRef: string) => string | undefined,
+): Promise<Pick<TextAnalysis, 'tokenAnalyses' | 'tokenAnalysisLinks'>> {
+  const forms = new Set<string>();
+  affectedRefs.forEach((tokenRef) => {
+    const live = liveSurfaceText(tokenRef);
+    if (live !== undefined) forms.add(normalizeSurfaceForm(live));
+  });
+  const { tokenAnalysisLinks: tokenLinks } = await repository.findLinksByToken(affectedRefs);
+  const candidates = await repository.findTokenAnalysesByForm([...forms]);
+  const { tokenAnalysisLinks: candidateLinks } = await repository.findLinksToAnalyses(
+    candidates.map(({ id }) => id),
+  );
+  const tokenPayloads = await repository.getTokenAnalyses([
+    ...new Set(tokenLinks.map(({ analysisId }) => analysisId)),
+  ]);
+  const links = new Map(
+    [...targetLinks, ...tokenLinks, ...candidateLinks.filter((l) => l.status === 'approved')].map(
+      (link) => [link.id, link],
+    ),
+  );
+  const payloads = new Map(
+    [target, ...tokenPayloads, ...candidates].map((payload) => [payload.id, payload]),
+  );
+  return { tokenAnalyses: [...payloads.values()], tokenAnalysisLinks: [...links.values()] };
+}
+
 /** The handlers of the commands that read a session's analysis catalog, keyed by command name. */
 export function sessionCatalogHandlers({
   sessions,
@@ -66,20 +121,17 @@ export function sessionCatalogHandlers({
   }
 
   /**
-   * Runs `read` on the session over its draft's analysis. An error is logged as a failure to `what`
-   * before it is rethrown.
+   * Runs `read` on the session. An error is logged as a failure to `what` before it is rethrown.
    *
-   * @throws If the session is not open, its analysis cannot be read, or `read` throws.
+   * @throws If the session is not open, or `read` throws.
    */
   async function readSession<T>(
     sessionId: string,
     what: string,
-    read: (session: Session, analysis: TextAnalysis) => Promise<T> | T,
+    read: (session: Session) => Promise<T>,
   ): Promise<T> {
     try {
-      return await sessions.run(sessionId, async (session) =>
-        read(session, (await session.repository.getWholeDraft()).analysis),
-      );
+      return await sessions.run(sessionId, read);
     } catch (e) {
       logger.error(`Interlinearizer: failed to ${what} in session ${sessionId}`, e);
       throw e;
@@ -90,24 +142,33 @@ export function sessionCatalogHandlers({
     sessionId,
     request,
   }: ArgsOf<'interlinearizer.getCatalogRows'>): Promise<string> {
-    return readSession(sessionId, 'serve the catalog', async (session, analysis) => {
-      const { sourceProjectId } = session.scope;
-      const page = getCatalogPage(
-        analysis,
-        await scopeOf(session, request.currentBook),
-        { ...request, filters: restoreUntagged(request.filters) },
-        (form) => isFormInText(sourceProjectId, form),
-      );
-      return JSON.stringify({ ...page, rows: page.rows.map(wireRow) });
-    });
+    return perfTimeAsync('getCatalogRows', () =>
+      readSession(sessionId, 'serve the catalog', async (session) => {
+        const { sourceProjectId } = session.scope;
+        const { analysis } = await session.repository.getWholeDraft();
+        const scope = await scopeOf(session, request.currentBook);
+        const page = perfTime('getCatalogRows:query', () =>
+          getCatalogPage(
+            analysis,
+            scope,
+            { ...request, filters: restoreUntagged(request.filters) },
+            (form) => isFormInText(sourceProjectId, form),
+          ),
+        );
+        return perfTime('getCatalogRows:serialize', () =>
+          JSON.stringify({ ...page, rows: page.rows.map(wireRow) }),
+        );
+      }),
+    );
   }
 
   async function countUsages({
     sessionId,
     analysisIds,
   }: ArgsOf<'interlinearizer.countUsages'>): Promise<number> {
-    return readSession(sessionId, 'count usages', (_session, analysis) =>
-      countAnalysisUsages(analysis, analysisIds),
+    // A token approves one analysis at most, so summing the analyses' counts counts no token twice.
+    return readSession(sessionId, 'count usages', async ({ repository }) =>
+      Object.values(await repository.countApprovals([...analysisIds])).reduce((a, b) => a + b, 0),
     );
   }
 
@@ -116,8 +177,12 @@ export function sessionCatalogHandlers({
     currentBook,
     analysisIds,
   }: ArgsOf<'interlinearizer.getCatalogRowsByIds'>): Promise<string> {
-    return readSession(sessionId, 'serve catalog rows', async (session, analysis) => {
-      const rows = getRowsByIds(analysis, await scopeOf(session, currentBook), analysisIds);
+    return readSession(sessionId, 'serve catalog rows', async (session) => {
+      const rows = getRowsByIds(
+        await analysesWithLinks(session.repository, analysisIds),
+        await scopeOf(session, currentBook),
+        analysisIds,
+      );
       return JSON.stringify(rows.map(wireRow));
     });
   }
@@ -127,8 +192,17 @@ export function sessionCatalogHandlers({
     currentBook,
     analysisId,
   }: ArgsOf<'interlinearizer.getHomographRows'>): Promise<string> {
-    return readSession(sessionId, 'serve homographs', async (session, analysis) => {
-      const rows = homographRowsOf(analysis, await scopeOf(session, currentBook), analysisId);
+    return readSession(sessionId, 'serve homographs', async (session) => {
+      const { repository } = session;
+      const forms = (await repository.getTokenAnalyses([analysisId])).map(({ surfaceText }) =>
+        normalizeSurfaceForm(surfaceText),
+      );
+      const homographIds = (await repository.findTokenAnalysesByForm(forms)).map(({ id }) => id);
+      const rows = homographRowsOf(
+        await analysesWithLinks(repository, homographIds),
+        await scopeOf(session, currentBook),
+        analysisId,
+      );
       return JSON.stringify(rows.map(wireRow));
     });
   }
@@ -137,8 +211,9 @@ export function sessionCatalogHandlers({
     sessionId,
     analysisIds,
   }: ArgsOf<'interlinearizer.getSelectionSummary'>): Promise<string> {
-    return readSession(sessionId, 'summarize a selection', (session, analysis) => {
+    return readSession(sessionId, 'summarize a selection', async (session) => {
       const scope = { analysisLanguage: session.analysisLanguage, currentBook: '' };
+      const analysis = await analysesWithLinks(session.repository, analysisIds);
       return JSON.stringify(summarizeSelection(analysis, scope, analysisIds));
     });
   }
@@ -149,12 +224,20 @@ export function sessionCatalogHandlers({
   }: ArgsOf<'interlinearizer.previewDeletion'>): Promise<string> {
     try {
       return await sessions.run(sessionId, async (session) => {
-        const { analysis } = await session.repository.getWholeDraft();
-        const bookIds = new Set(
-          analysis.tokenAnalysisLinks
-            .filter((link) => link.analysisId === analysisId && link.status === 'approved')
-            .map((link) => bookOfRef(link.token.tokenRef)),
-        );
+        const { repository } = session;
+        const [target] = await repository.getTokenAnalyses([analysisId]);
+        if (!target) return 'null';
+        const { tokenAnalysisLinks: targetLinks } = await repository.findLinksToAnalyses([
+          analysisId,
+        ]);
+        const affectedRefs = [
+          ...new Set(
+            targetLinks
+              .filter((link) => link.status === 'approved')
+              .map((link) => link.token.tokenRef),
+          ),
+        ];
+        const bookIds = new Set(affectedRefs.map(bookOfRef));
         const liveText = new Map<string, string>();
         const readBooks = new Set<string>();
         await Promise.all(
@@ -170,12 +253,23 @@ export function sessionCatalogHandlers({
             );
           }),
         );
+        const analysis = await deletionReach(
+          repository,
+          target,
+          targetLinks,
+          affectedRefs,
+          (tokenRef) => liveText.get(tokenRef),
+        );
         const outcome = selectAnalysisDeletionOutcome(
-          { analysis, analysisLanguage: session.analysisLanguage },
+          {
+            analysis: { ...emptyAnalysis(), ...analysis },
+            analysisLanguage: session.analysisLanguage,
+          },
           analysisId,
           (tokenRef) => liveText.get(tokenRef),
           (tokenRef) => readBooks.has(bookOfRef(tokenRef)),
         );
+        /* v8 ignore next -- the payload was read above, so the outcome is always derived */
         return outcome ? JSON.stringify(outcome) : 'null';
       });
     } catch (e) {

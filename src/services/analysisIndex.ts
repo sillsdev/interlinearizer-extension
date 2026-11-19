@@ -19,7 +19,7 @@ import { bookOfRef, BOOKLESS_PARTITION } from '../utils/analysis-book';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
 import type { splitAnalysisByBook } from '../utils/analysis-book';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
-import { preferredLink } from '../utils/pick-rules';
+import { preferredLink, preferredLinkByKey } from '../utils/pick-rules';
 import { fileId, idsLacking, type IdsByKey, RecordTable, unfileId } from '../utils/record-table';
 
 /** The key a link is filed under for its book and status. */
@@ -198,9 +198,7 @@ export class AnalysisIndex {
       },
       analysis.segmentAnalysisLinks,
     );
-    new Set(analysis.tokenAnalysisLinks.map(({ token }) => token.tokenRef)).forEach((tokenRef) =>
-      this.settleApproval(tokenRef),
-    );
+    this.settleAllApprovals();
   }
 
   /**
@@ -461,15 +459,28 @@ export class AnalysisIndex {
     );
   }
 
+  /**
+   * Whether `link` counts toward its token's approval: approved, naming an analysis the index
+   * holds.
+   */
+  private countsAsApproval({ status, analysisId }: TokenAnalysisLink): boolean {
+    return status === 'approved' && this.tokenAnalyses.hasRecord(analysisId);
+  }
+
+  /**
+   * Files every token under the analysis that the approval tie-break picks among its approved
+   * links.
+   */
+  private settleAllApprovals(): void {
+    preferredLinkByKey(this.tokenLinks.all(), (link) =>
+      this.countsAsApproval(link) ? link.token.tokenRef : undefined,
+    ).forEach(({ analysisId }, tokenRef) => this.fileApproval(tokenRef, analysisId));
+  }
+
   /** Files `tokenRef` under the analysis that the approval tie-break picks among its approved links. */
   private settleApproval(tokenRef: string): void {
     const settled = preferredLink(
-      this.tokenLinks
-        .find('tokenRef', [tokenRef])
-        .filter(
-          ({ status, analysisId }) =>
-            status === 'approved' && this.tokenAnalyses.hasRecord(analysisId),
-        ),
+      this.tokenLinks.find('tokenRef', [tokenRef]).filter((link) => this.countsAsApproval(link)),
     )?.analysisId;
     const held = this.approvedByTokenRef.get(tokenRef);
     if (held === settled) return;
@@ -478,7 +489,11 @@ export class AnalysisIndex {
       this.approvedByTokenRef.delete(tokenRef);
       return;
     }
-    this.approvedByTokenRef.set(tokenRef, settled);
-    fileId(this.approvingTokens, settled, tokenRef);
+    this.fileApproval(tokenRef, settled);
+  }
+
+  private fileApproval(tokenRef: string, analysisId: string): void {
+    this.approvedByTokenRef.set(tokenRef, analysisId);
+    fileId(this.approvingTokens, analysisId, tokenRef);
   }
 }

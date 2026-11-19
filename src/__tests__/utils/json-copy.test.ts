@@ -29,4 +29,23 @@ describe('jsonCopy', () => {
     });
     expect(value).toStrictEqual(original());
   });
+
+  it('keeps a `__proto__` key as an own property, leaving the prototype alone', () => {
+    const value: unknown = JSON.parse('{"__proto__":{"gloss":"and"}}');
+
+    const copy: unknown = jsonCopy(value);
+
+    expect(Object.getPrototypeOf(copy)).toBe(Object.prototype);
+    expect(Object.getOwnPropertyDescriptor(copy, '__proto__')?.value).toStrictEqual({
+      gloss: 'and',
+    });
+  });
+
+  it('writes `undefined` array entries and holes as `null`', () => {
+    // eslint-disable-next-line no-sparse-arrays -- a hole is the case under test
+    const value = [undefined, 1, , 2];
+
+    // eslint-disable-next-line no-null/no-null -- JSON writes undefined array entries as null
+    expect(jsonCopy(value)).toStrictEqual([null, 1, null, 2]);
+  });
 });

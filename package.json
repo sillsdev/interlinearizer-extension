@@ -50,6 +50,7 @@
     "perf:summary": "node -r ts-node/register perf/summary/cli.ts",
     "perf:shape": "node --max-old-space-size=8192 -r ts-node/register perf/shape/cli.ts",
     "perf:indexes": "node --max-old-space-size=12288 -r ts-node/register perf/indexes/cli.ts",
+    "perf:queries": "cross-env NODE_ENV=production node --expose-gc --max-old-space-size=12288 -r ts-node/register perf/queries/cli.ts",
     "perf:pages": "node --max-old-space-size=12288 -r ts-node/register perf/pages/cli.ts",
     "perf:reports": "cross-env NODE_ENV=production node --expose-gc --max-old-space-size=12288 -r ts-node/register perf/reports/cli.ts",
     "core:start": "npm --prefix ../paranext-core start",

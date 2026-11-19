@@ -18,6 +18,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -79,6 +80,7 @@ import {
   type CatalogUsage,
 } from '../utils/analysis-query';
 import { languageNameForTag } from '../utils/language-tags';
+import { perfMark, perfMeasure } from '../utils/perf-marks';
 
 /** How many rows the panel first asks the host for, enough to fill the window it first mounts. */
 const INITIAL_FETCH_COUNT = 40;
@@ -249,6 +251,7 @@ export default function AnalysisCatalogPanel({
   localizedStrings,
   currentBookName,
 }: AnalysisCatalogPanelProps) {
+  useLayoutEffect(() => perfMark('catalog-start'), []);
   const analysisLanguage = useAnalysisLanguage();
 
   /**
@@ -317,6 +320,11 @@ export default function AnalysisCatalogPanel({
   );
 
   const { view, retry } = useCatalogView(request, fetchCount);
+  const hasRows = Boolean(view);
+  // Times the wait from opening the panel to its first rows.
+  useLayoutEffect(() => {
+    if (hasRows) perfMeasure('catalog-rows', 'catalog-start');
+  }, [hasRows]);
   if (view && view.facets !== facets) setFacets(view.facets);
   const keptIds = useMemo(() => view?.keptIds ?? [], [view]);
   const rowCount = view?.rowCount ?? 0;

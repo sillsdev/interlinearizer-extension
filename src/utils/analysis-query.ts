@@ -116,8 +116,8 @@ export interface CatalogFilters {
    * the text is unread.
    */
   notInText?: boolean;
-  /** Keeps only rows with no gloss in the scope's analysis language. */
-  missingGloss?: boolean;
+  /** Keeps rows according to whether they carry a gloss in the scope's analysis language. */
+  gloss?: 'has' | 'lacks';
   /** Keeps rows according to whether they carry a morpheme breakdown. */
   morphemes?: 'has' | 'lacks';
 }
@@ -127,7 +127,7 @@ export const TOGGLE_FILTER_KEYS = [
   'zeroUsages',
   'stale',
   'notInText',
-  'missingGloss',
+  'gloss',
   'morphemes',
 ] as const satisfies readonly (keyof CatalogFilters)[];
 
@@ -633,7 +633,7 @@ function passesFilters(
   )
     return false;
   if (filters.notInText && isFormInText?.(row.form) !== false) return false;
-  if (filters.missingGloss && row.gloss !== '') return false;
+  if (filters.gloss && (row.gloss !== '') !== (filters.gloss === 'has')) return false;
   if (filters.morphemes) {
     const hasMorphemes = row.morphemes.length > 0;
     if (hasMorphemes !== (filters.morphemes === 'has')) return false;

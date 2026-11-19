@@ -44,7 +44,9 @@ export const FILTER_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_filter_books%',
   '%interlinearizer_analysisCatalog_filter_pos%',
   '%interlinearizer_analysisCatalog_filter_confidence%',
-  '%interlinearizer_analysisCatalog_filter_missingGloss%',
+  '%interlinearizer_analysisCatalog_filter_gloss%',
+  '%interlinearizer_analysisCatalog_filter_gloss_has%',
+  '%interlinearizer_analysisCatalog_filter_gloss_lacks%',
   '%interlinearizer_analysisCatalog_filter_morphemes%',
   '%interlinearizer_analysisCatalog_filter_morphemes_has%',
   '%interlinearizer_analysisCatalog_filter_morphemes_lacks%',
@@ -75,17 +77,61 @@ function valueOf(choice: string | undefined): string {
   return choice === '' ? EMPTY_VALUE : choice;
 }
 
+/** Whether a row carries or lacks what a filter asks about. */
+type Presence = 'has' | 'lacks';
+
 /**
- * The breakdown filter's inactive choice, spelled out because {@link CatalogFilters} spells it
+ * A presence filter's inactive choice, spelled out because {@link CatalogFilters} spells it
  * `undefined` while the platform select needs a value for every choice it offers.
  */
-const MORPHEMES_EITHER = 'either';
+const PRESENCE_EITHER = 'either';
 
-/** Reads the breakdown filter the select reported back, its inactive choice reading as no filter. */
-function morphemeChoice(value: string): CatalogFilters['morphemes'] {
+/** Reads back the value that the select reports, with its inactive choice read as no filter. */
+function presenceChoice(value: string): Presence | undefined {
   if (value === 'has') return 'has';
   if (value === 'lacks') return 'lacks';
   return undefined;
+}
+
+/**
+ * A filter on whether a row carries something, offered as three states rather than a switch.
+ * Neither question is the other's off position, because a reader asks which analyses carry it as
+ * readily as which lack it.
+ */
+function PresenceFilter({
+  value,
+  onChange,
+  labels,
+  testId,
+}: Readonly<{
+  value: Presence | undefined;
+  onChange: (value: Presence | undefined) => void;
+  /** What each choice is called. The inactive choice's label also names the filter. */
+  labels: Readonly<Record<Presence | typeof PRESENCE_EITHER, string>>;
+  /** Prefixes the trigger's and each choice's test id. */
+  testId: string;
+}>) {
+  return (
+    <Select
+      onValueChange={(choice) => onChange(presenceChoice(choice))}
+      value={value ?? PRESENCE_EITHER}
+    >
+      <SelectTrigger aria-label={labels[PRESENCE_EITHER]} data-testid={testId} size="sm">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem data-testid={`${testId}-any`} value={PRESENCE_EITHER}>
+          {labels[PRESENCE_EITHER]}
+        </SelectItem>
+        <SelectItem data-testid={`${testId}-has`} value="has">
+          {labels.has}
+        </SelectItem>
+        <SelectItem data-testid={`${testId}-lacks`} value="lacks">
+          {labels.lacks}
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  );
 }
 
 /** Props for {@link FacetFilter}. */
@@ -249,7 +295,7 @@ type CatalogFilterPopoverProps = Readonly<{
   onFiltersChange: (filters: CatalogFilters) => void;
   /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
   showMorphology: boolean;
-  /** What the language the missing-gloss filter asks about is called, as its label names it. */
+  /** What the language the gloss filter asks about is called, as its choices name it. */
   analysisLanguageName: string;
   /** Resolved localizations covering at least {@link FILTER_STRING_KEYS}. */
   localizedStrings: LanguageStrings;
@@ -382,45 +428,35 @@ export default function CatalogFilterPopover({
             />
           ))}
 
-          {/*
-            Three states rather than a switch: a reader asks which analyses are broken down and which
-            are still whole as readily as either, and neither question is the other's off position.
-          */}
           {(showMorphology || filters.morphemes !== undefined) && (
-            <Select
-              onValueChange={(value) =>
-                onFiltersChange({ ...filters, morphemes: morphemeChoice(value) })
-              }
-              value={filters.morphemes ?? MORPHEMES_EITHER}
-            >
-              <SelectTrigger
-                aria-label={localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes%']}
-                data-testid="catalog-filter-morphemes"
-                size="sm"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem data-testid="catalog-filter-morphemes-any" value={MORPHEMES_EITHER}>
-                  {localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes%']}
-                </SelectItem>
-                <SelectItem data-testid="catalog-filter-morphemes-has" value="has">
-                  {localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes_has%']}
-                </SelectItem>
-                <SelectItem data-testid="catalog-filter-morphemes-lacks" value="lacks">
-                  {localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes_lacks%']}
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            <PresenceFilter
+              labels={{
+                [PRESENCE_EITHER]:
+                  localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes%'],
+                has: localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes_has%'],
+                lacks: localizedStrings['%interlinearizer_analysisCatalog_filter_morphemes_lacks%'],
+              }}
+              onChange={(morphemes) => onFiltersChange({ ...filters, morphemes })}
+              testId="catalog-filter-morphemes"
+              value={filters.morphemes}
+            />
           )}
 
-          <FilterToggle
-            isOn={filters.missingGloss ?? false}
-            label={formatReplacementString(
-              localizedStrings['%interlinearizer_analysisCatalog_filter_missingGloss%'],
-              { language: analysisLanguageName },
-            )}
-            onChange={(missingGloss) => onFiltersChange({ ...filters, missingGloss })}
+          <PresenceFilter
+            labels={{
+              [PRESENCE_EITHER]: localizedStrings['%interlinearizer_analysisCatalog_filter_gloss%'],
+              has: formatReplacementString(
+                localizedStrings['%interlinearizer_analysisCatalog_filter_gloss_has%'],
+                { language: analysisLanguageName },
+              ),
+              lacks: formatReplacementString(
+                localizedStrings['%interlinearizer_analysisCatalog_filter_gloss_lacks%'],
+                { language: analysisLanguageName },
+              ),
+            }}
+            onChange={(gloss) => onFiltersChange({ ...filters, gloss })}
+            testId="catalog-filter-gloss"
+            value={filters.gloss}
           />
 
           {/* Matches nothing until a write path can leave an analysis unused, which none does yet. */}

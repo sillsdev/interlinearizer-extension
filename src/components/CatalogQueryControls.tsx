@@ -55,7 +55,7 @@ type CatalogQueryControlsProps = Readonly<{
   onFiltersChange: (filters: CatalogFilters) => void;
   /** Whether this project breaks words into morphemes, which the breakdown filter is offered for. */
   showMorphology: boolean;
-  /** What the language the missing-gloss filter asks about is called. */
+  /** What the language the gloss filter asks about is called. */
   analysisLanguageName: string;
   /** What the current book is called, as prose, for the per-book sort to be named after. */
   currentBookName: string;

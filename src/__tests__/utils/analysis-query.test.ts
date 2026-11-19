@@ -925,17 +925,19 @@ describe('applyCatalogQuery filters', () => {
     expect(applyCatalogQuery(rows, query)).toEqual([]);
   });
 
+  /** One analysis glossed in the scope's language (`ta-1`), one only in another (`ta-2`). */
+  const glossedInEnglishAndFrench: TextAnalysis = {
+    ...emptyAnalysis(),
+    tokenAnalyses: [
+      { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', gloss: { en: 'word' } },
+      { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b', gloss: { fr: 'parole' } },
+    ],
+  };
+
   // ta-2 is glossed, just not in the scope's language, so an any-language check would drop it.
   it('keeps a row glossed only in another language when filtering for a missing gloss', () => {
-    const analysis: TextAnalysis = {
-      ...emptyAnalysis(),
-      tokenAnalyses: [
-        { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'a', gloss: { en: 'word' } },
-        { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'b', gloss: { fr: 'parole' } },
-      ],
-    };
-    const rows = buildCatalogRows(analysis, scope);
-    const query = makeQuery({ filters: { missingGloss: true } });
+    const rows = buildCatalogRows(glossedInEnglishAndFrench, scope);
+    const query = makeQuery({ filters: { gloss: 'lacks' } });
 
     expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);
   });
@@ -950,9 +952,16 @@ describe('applyCatalogQuery filters', () => {
       ],
     };
     const rows = buildCatalogRows(analysis, scope);
-    const query = makeQuery({ filters: { missingGloss: true } });
+    const query = makeQuery({ filters: { gloss: 'lacks' } });
 
     expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-2']);
+  });
+
+  it('keeps only rows glossed in the scope language when filtering for a gloss', () => {
+    const rows = buildCatalogRows(glossedInEnglishAndFrench, scope);
+    const query = makeQuery({ filters: { gloss: 'has' } });
+
+    expect(applyCatalogQuery(rows, query).map((r) => r.analysisId)).toEqual(['ta-1']);
   });
 
   it('keeps only rows with a morpheme breakdown when filtering for one', () => {
@@ -1206,18 +1215,18 @@ describe('reconcileFilters', () => {
   });
 
   it('returns the same object when every selection survives', () => {
-    const chosen: CatalogFilters = { books: ['GEN'], missingGloss: true };
+    const chosen: CatalogFilters = { books: ['GEN'], gloss: 'lacks' };
 
     expect(reconcileFilters(chosen, { books: ['GEN', 'JHN'] })).toBe(chosen);
   });
 
   it('leaves the filters no facet governs untouched', () => {
     const filters = reconcileFilters(
-      { books: ['EXO'], missingGloss: true, zeroUsages: true, stale: true, morphemes: 'has' },
+      { books: ['EXO'], gloss: 'lacks', zeroUsages: true, stale: true, morphemes: 'has' },
       { books: undefined },
     );
 
-    expect(filters.missingGloss).toBe(true);
+    expect(filters.gloss).toBe('lacks');
     expect(filters.zeroUsages).toBe(true);
     expect(filters.stale).toBe(true);
     expect(filters.morphemes).toBe('has');

@@ -198,14 +198,7 @@ export class AnalysisIndex {
       },
       analysis.segmentAnalysisLinks,
     );
-    preferredLinkByKey(this.tokenLinks.all(), ({ status, analysisId, token }) =>
-      status === 'approved' && this.tokenAnalyses.hasRecord(analysisId)
-        ? token.tokenRef
-        : undefined,
-    ).forEach(({ analysisId }, tokenRef) => {
-      this.approvedByTokenRef.set(tokenRef, analysisId);
-      fileId(this.approvingTokens, analysisId, tokenRef);
-    });
+    this.settleAllApprovals();
   }
 
   /**
@@ -466,15 +459,28 @@ export class AnalysisIndex {
     );
   }
 
+  /**
+   * Whether `link` counts toward its token's approval: approved, naming an analysis the index
+   * holds.
+   */
+  private countsAsApproval({ status, analysisId }: TokenAnalysisLink): boolean {
+    return status === 'approved' && this.tokenAnalyses.hasRecord(analysisId);
+  }
+
+  /**
+   * Files every token under the analysis that the approval tie-break picks among its approved
+   * links.
+   */
+  private settleAllApprovals(): void {
+    preferredLinkByKey(this.tokenLinks.all(), (link) =>
+      this.countsAsApproval(link) ? link.token.tokenRef : undefined,
+    ).forEach(({ analysisId }, tokenRef) => this.fileApproval(tokenRef, analysisId));
+  }
+
   /** Files `tokenRef` under the analysis that the approval tie-break picks among its approved links. */
   private settleApproval(tokenRef: string): void {
     const settled = preferredLink(
-      this.tokenLinks
-        .find('tokenRef', [tokenRef])
-        .filter(
-          ({ status, analysisId }) =>
-            status === 'approved' && this.tokenAnalyses.hasRecord(analysisId),
-        ),
+      this.tokenLinks.find('tokenRef', [tokenRef]).filter((link) => this.countsAsApproval(link)),
     )?.analysisId;
     const held = this.approvedByTokenRef.get(tokenRef);
     if (held === settled) return;
@@ -483,7 +489,11 @@ export class AnalysisIndex {
       this.approvedByTokenRef.delete(tokenRef);
       return;
     }
-    this.approvedByTokenRef.set(tokenRef, settled);
-    fileId(this.approvingTokens, settled, tokenRef);
+    this.fileApproval(tokenRef, settled);
+  }
+
+  private fileApproval(tokenRef: string, analysisId: string): void {
+    this.approvedByTokenRef.set(tokenRef, analysisId);
+    fileId(this.approvingTokens, analysisId, tokenRef);
   }
 }

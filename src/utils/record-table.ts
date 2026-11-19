@@ -190,8 +190,8 @@ export class RecordTable<T extends { id: string }, Index extends string> {
     if (!record) return;
     this.records.delete(id);
     this.allHeld = undefined;
-    this.indexNames().forEach((index) =>
-      this.keysOf(index, record).forEach((key) => unfileOne(this.filed(index), key, id)),
+    this.filings.forEach(([keysOf, filed]) =>
+      new Set(keysOf(record)).forEach((key) => unfileOne(filed, key, id)),
     );
   }
 
@@ -216,10 +216,5 @@ export class RecordTable<T extends { id: string }, Index extends string> {
     /* v8 ignore next -- the constructor gives every index its map */
     if (!filed) throw new Error(`Interlinearizer: ${this.kind} has no index by ${index}`);
     return filed;
-  }
-
-  /** The keys `index` files `record` under, each once. */
-  private keysOf(index: Index, record: T): Set<string> {
-    return new Set(this.keyers[index](record));
   }
 }

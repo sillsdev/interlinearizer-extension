@@ -105,6 +105,16 @@ describe('isTextAnalysis', () => {
     expect(isTextAnalysis({ ...emptyAnalysis(), tokenAnalysisLinks: [link] })).toBe(false);
   });
 
+  it('accepts a token link whose snapshot counts its form', () => {
+    const link = makeTokenLink('ta-1', 'GEN 1:1:0', { formCount: 2 });
+    expect(isTextAnalysis({ ...emptyAnalysis(), tokenAnalysisLinks: [link] })).toBe(true);
+  });
+
+  it('rejects a token link whose snapshot counts its form with a non-number', () => {
+    const link = { ...makeTokenLink('ta-1', 'GEN 1:1:0'), token: { ...TOKEN, formCount: '2' } };
+    expect(isTextAnalysis({ ...emptyAnalysis(), tokenAnalysisLinks: [link] })).toBe(false);
+  });
+
   it('rejects a segment link that carries no id', () => {
     expect(
       isTextAnalysis({

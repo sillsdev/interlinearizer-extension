@@ -99,7 +99,8 @@ function isTokenSnapshot(v: unknown): boolean {
     'tokenRef' in v &&
     typeof v.tokenRef === 'string' &&
     'surfaceText' in v &&
-    typeof v.surfaceText === 'string'
+    typeof v.surfaceText === 'string' &&
+    (!('formCount' in v) || typeof v.formCount === 'number')
   );
 }
 

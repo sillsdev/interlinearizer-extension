@@ -175,6 +175,7 @@ const tokenSnapshotsSchema = {
     properties: {
       tokenRef: { type: 'string' as const },
       surfaceText: { type: 'string' as const },
+      formCount: { type: 'integer' as const },
     },
     required: ['tokenRef', 'surfaceText'],
   },

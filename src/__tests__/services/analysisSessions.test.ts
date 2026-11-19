@@ -705,6 +705,27 @@ describe('AnalysisSessions', () => {
       await expect(stored(storage)).resolves.toMatchObject({ analysis: { tokenAnalyses: [] } });
     });
 
+    it('records how often the form of a token it links occurs in the verse the host holds', async () => {
+      const { host, sessions, storage } = makeSessions();
+      host.heldBook.mockReturnValue(makeVerseBook([{ sid: 'GEN 1:1', text: 'wug blicket wug' }]));
+      const { sessionId } = await sessions.open(SOURCE);
+
+      await sessions.edit(sessionId, 'link', async (buffer) => {
+        buffer.create('tokenAnalyses', payload('a'));
+        buffer.create(
+          'tokenAnalysisLinks',
+          makeTokenLink('a', 'GEN 1:1:0', { surfaceText: 'wug' }),
+        );
+      });
+
+      const { analysis } = await stored(storage);
+      expect(analysis.tokenAnalysisLinks[0].token).toStrictEqual({
+        tokenRef: 'GEN 1:1:0',
+        surfaceText: 'wug',
+        formCount: 2,
+      });
+    });
+
     it("lists the session's analysis language on a draft listing none, undoing it with the edit", async () => {
       const { host, sessions, storage } = makeSessions();
       host.getInterfaceLanguages.mockResolvedValue(['de']);
@@ -990,7 +1011,8 @@ describe('AnalysisSessions', () => {
     it("keeps the error of an edit that applied before its reply failed, so it isn't applied again", async () => {
       const { sessions, host } = makeSessions();
       const { sessionId } = await sessions.open(SOURCE);
-      host.heldBook.mockImplementation(() => {
+      // The first call counts the edit's forms before it applies; the reply's call fails.
+      host.heldBook.mockReturnValueOnce(undefined).mockImplementation(() => {
         throw new Error('read failed');
       });
       const command = jest.fn(async (buffer: ChangeBuffer) => linking(buffer, 'GEN 1:1:0'));

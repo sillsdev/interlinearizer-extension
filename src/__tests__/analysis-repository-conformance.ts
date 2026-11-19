@@ -223,7 +223,7 @@ function fullAnalysis(): TextAnalysis {
       { id: ID.taUnlinked, ...FIXTURE_STAMPS, surfaceText: 'spare', gloss: { en: 'spare' } },
     ],
     tokenAnalysisLinks: [
-      makeTokenLink(ID.taAnd, 'GEN 1:1:0', { id: ID.tlGenAnd, surfaceText: 'and' }),
+      makeTokenLink(ID.taAnd, 'GEN 1:1:0', { id: ID.tlGenAnd, surfaceText: 'and', formCount: 2 }),
       makeTokenLink(ID.taAnd, 'EXO 1:1:0', { id: ID.tlExoAnd, surfaceText: 'and' }),
       {
         ...makeTokenLink(ID.taBeginning, 'GEN 1:1:9', {
@@ -249,6 +249,10 @@ function fullAnalysis(): TextAnalysis {
     phraseAnalysisLinks: [
       {
         ...makePhraseLink(ID.paInThe, ['GEN 1:1:4', 'GEN 1:1:2'], ['the', 'in']),
+        tokens: [
+          { tokenRef: 'GEN 1:1:4', surfaceText: 'the', formCount: 1 },
+          { tokenRef: 'GEN 1:1:2', surfaceText: 'in' },
+        ],
         id: ID.plInThe,
         confidence: 'guess',
       },

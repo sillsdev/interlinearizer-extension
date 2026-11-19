@@ -90,7 +90,7 @@ export async function writeMorphemes(
       : analysis;
     target.surfaceText = surfaceText;
     target.updatedAt = now;
-    link.token.surfaceText = surfaceText;
+    link.token = { tokenRef: link.token.tokenRef, surfaceText };
     link.updatedAt = now;
     target.morphemes = reconcileMorphemes(target.morphemes, morphemes, writingSystem);
     delete target.morphemesStale;

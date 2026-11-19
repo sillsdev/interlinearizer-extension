@@ -14,7 +14,7 @@ import type { EditStep } from '../types/edit-step';
 import { booksMissingFrom } from '../utils/analysis-book';
 import { isEmptyChangeSet, mergeChangeSets } from '../utils/change-set';
 import { perfTimeAsync } from '../utils/perf-marks';
-import { missingBook } from '../utils/reanchor-analysis';
+import { missingBook, withFormCounts } from '../utils/reanchor-analysis';
 import {
   booksResegmented,
   describeChange,
@@ -263,11 +263,13 @@ async function reanchorNow(
 }
 
 /**
- * Applies an edit's staged changes as one undo step, re-anchored to `reanchorTo`.
+ * Applies an edit's staged changes as one undo step, re-anchored to `reanchorTo`. The snapshots
+ * that the changes write record their form's count, in each verse that the host holds text for.
  *
  * @throws As {@link AnalysisSessions.edit} does.
  */
 async function applyStaged(
+  host: SessionHost,
   session: Session,
   buffer: ChangeBuffer,
   staged: ChangeSet,
@@ -280,11 +282,15 @@ async function applyStaged(
   if (scope.analysisLanguages.length === 0) {
     staged.scope = { ...scope, analysisLanguages: [session.analysisLanguage] };
   }
+  const { sourceProjectId } = session.scope;
+  const counted = withFormCounts(staged, (bookId) =>
+    host.heldBook(sourceProjectId, bookId, undefined),
+  );
   const reanchored =
     reanchorTo && reanchorTo.length > 0
-      ? await reanchorRestored(session.repository)(staged, reanchorTo)
+      ? await reanchorRestored(session.repository)(counted, reanchorTo)
       : undefined;
-  const changes = reanchored ? mergeChangeSets(staged, reanchored) : staged;
+  const changes = reanchored ? mergeChangeSets(counted, reanchored) : counted;
   const { unsavedMark } = options;
   const step = typeof options.step === 'function' ? options.step(changes) : options.step;
   const inverse = await session.history.apply(changes, { unsavedMark, step });
@@ -604,7 +610,7 @@ export class AnalysisSessions {
           const staged = buffer.toChangeSet(intent);
           if (!isEmptyChangeSet(staged)) {
             const applied = await perfTimeAsync(`${intent}:apply`, () =>
-              applyStaged(session, buffer, staged, reanchorTo, editOptions),
+              applyStaged(this.host, session, buffer, staged, reanchorTo, editOptions),
             );
             const answered = await perfTimeAsync(`${intent}:reply`, () =>
               replyTo(this.host, session, applied, changeId),

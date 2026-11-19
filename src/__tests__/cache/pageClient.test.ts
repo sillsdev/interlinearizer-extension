@@ -13,6 +13,7 @@ import type { ChangeBuffer } from '../../services/commands/changeBuffer';
 import type { CommandReply } from '../../types/command-reply';
 import type { BookOutline, SegmentPage } from '../../types/segment-pages';
 import { emptyAnalysis } from '../../types/empty-factories';
+import { readNamingCause } from '../../utils/page-failure-cause';
 import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
 import { BOOK, comparable, glossing, ref, sessionOver } from './session-source';
 
@@ -345,6 +346,115 @@ describe('PageClient', () => {
 
     expect(client.failedPages.size).toBe(0);
     expect(client.holds(0)).toBe(true);
+  });
+
+  it('reports why a segment is not held when its page fails every retry', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+
+    expect(client.failureAt(0)).toStrictEqual({
+      cause: 'app',
+      isRetrying: false,
+      failedAgain: false,
+    });
+  });
+
+  it('reports the cause that the failed request names', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> =>
+      readNamingCause('text', async () => {
+        throw new Error('unreadable');
+      }),
+    );
+    const { client } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+
+    expect(client.failureAt(0)?.cause).toBe('text');
+  });
+
+  it('reports no failure for a segment that was never asked for', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+
+    expect(client.failureAt(1)).toBeUndefined();
+  });
+
+  it('reports no failure for a held segment whose page fails a refetch', async () => {
+    const { client, getSegments } = await clientOver();
+    client.load(0, 1, 'list');
+    await client.settled();
+    getSegments.mockRejectedValue(new Error('offline'));
+
+    client.hear(firstSegmentChange('elsewhere'));
+    await client.settled();
+
+    expect([...client.failedPages]).toStrictEqual([0]);
+    expect(client.failureAt(0)).toBeUndefined();
+  });
+
+  it('reports a failed segment as retrying while its page is asked for again', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+    failing.mockImplementation(() => new Promise(() => {}));
+
+    client.retryFailed();
+
+    expect(client.failureAt(0)).toStrictEqual({
+      cause: 'app',
+      isRetrying: true,
+      failedAgain: false,
+    });
+  });
+
+  it('reports a segment whose page fails every retry again as failed again', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+    failing.mockImplementation(() =>
+      readNamingCause('analysis', async () => {
+        throw new Error('unreadable');
+      }),
+    );
+
+    client.retryFailed();
+    await client.settled();
+
+    expect(client.failureAt(0)).toStrictEqual({
+      cause: 'analysis',
+      isRetrying: false,
+      failedAgain: true,
+    });
+  });
+
+  it('tells subscribers when a view asks again for a page that failed every retry', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+    failing.mockImplementation(() => new Promise(() => {}));
+    const onChange = jest.fn();
+    client.subscribe(onChange);
+
+    client.load(0, 1, 'strip');
+
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 
   it('asks again for a page that failed every retry when a view asks for it again', async () => {

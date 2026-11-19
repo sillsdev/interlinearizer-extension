@@ -2,6 +2,7 @@
 
 import type { SegmentationDelta, TextAnalysis } from 'interlinearizer';
 import { sessionPageHandlers } from '../../services/sessionPageHandlers';
+import { pageFailureCauseOf } from '../../utils/page-failure-cause';
 import { sessionOver } from '../cache/session-source';
 import { FIXTURE_STAMPS, makeTokenLink, makeVerseBook } from '../test-helpers';
 
@@ -211,6 +212,42 @@ describe('getSegments', () => {
     await expect(
       handlers['interlinearizer.getSegments']({ sessionId }, 'GEN', 0, 1),
     ).resolves.toBeUndefined();
+  });
+
+  it("names the text as the cause when the book's text cannot be read", async () => {
+    const { handlers, host, sessionId } = await handlersOver();
+    host.getSegmentedBook.mockRejectedValue(new Error('unreadable'));
+
+    const error = await handlers['interlinearizer.getSegments']({ sessionId }, 'GEN', 0, 1).catch(
+      (e: unknown) => e,
+    );
+
+    expect(pageFailureCauseOf(error)).toBe('text');
+  });
+
+  it('names the analysis as the cause when the draft cannot be read', async () => {
+    const { handlers, sessions, sessionId } = await handlersOver();
+    const repository = await sessions.run(sessionId, async (session) => session.repository);
+    jest.spyOn(repository, 'getScope').mockRejectedValue(new Error('unreadable'));
+
+    const error = await handlers['interlinearizer.getSegments']({ sessionId }, 'GEN', 0, 1).catch(
+      (e: unknown) => e,
+    );
+
+    expect(pageFailureCauseOf(error)).toBe('analysis');
+  });
+
+  it('names no cause for a page asked of a session not open', async () => {
+    const { handlers } = await handlersOver();
+
+    const error = await handlers['interlinearizer.getSegments'](
+      { sessionId: 'gone' },
+      'GEN',
+      0,
+      1,
+    ).catch((e: unknown) => e);
+
+    expect(pageFailureCauseOf(error)).toBe('app');
   });
 
   it('logs and rethrows a page asked of a session not open', async () => {

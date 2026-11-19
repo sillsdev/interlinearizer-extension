@@ -2322,15 +2322,23 @@ describe('ContinuousView phrase grouping', () => {
 });
 
 describe('ContinuousView segment pages', () => {
-  /** Pages of `book` loaded across `[start, end)`, which `loadMore` widens. */
+  /**
+   * Pages of `book` loaded across `[start, end)`, which `loadMore` widens. Every segment outside
+   * them fails once `failRest` is called.
+   */
   function pagesLoading(book: Book, start: number, end: number) {
     let loaded = { start, end };
+    let isRestFailed = false;
     let version = 0;
     const listeners = new Set<() => void>();
     const pages: SegmentPages = {
       ...segmentPagesOf(book),
       segmentAt: (index) =>
         index >= loaded.start && index < loaded.end ? book.segments[index] : undefined,
+      failureAt: (index) =>
+        isRestFailed && (index < loaded.start || index >= loaded.end)
+          ? { cause: 'app', isRetrying: false, failedAgain: false }
+          : undefined,
       subscribe: (onChange) => {
         listeners.add(onChange);
         return () => listeners.delete(onChange);
@@ -2343,7 +2351,13 @@ describe('ContinuousView segment pages', () => {
         version += 1;
         listeners.forEach((listener) => listener());
       });
-    return { pages, loadMore };
+    const failRest = () =>
+      act(() => {
+        isRestFailed = true;
+        version += 1;
+        listeners.forEach((listener) => listener());
+      });
+    return { pages, loadMore, failRest };
   }
 
   it('reads no segment of the book beyond those around what it shows', () => {
@@ -2394,6 +2408,28 @@ describe('ContinuousView segment pages', () => {
 
       expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-0');
       expect(screen.queryByText('word250')).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('fades back in when the page holding the focus of a jump fails to load', () => {
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(300);
+      const { pages, failRest } = pagesLoading(book, 0, 100);
+      const strip = renderStrip(book, { focus: 'large-tok-10', props: { pages } });
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+      strip.setFocus('large-tok-250', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      failRest();
+
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100');
     } finally {
       jest.useRealTimers();
     }

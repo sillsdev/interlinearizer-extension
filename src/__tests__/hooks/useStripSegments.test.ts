@@ -32,9 +32,13 @@ const TOKEN_SEGMENTS: ReadonlyMap<string, string> = new Map(
   BOOK.segments.map((segment) => [segment.tokens[0].ref, segment.id]),
 );
 
-/** Pages of `book` loaded across `[start, end)`, which `loadMore` widens. */
+/**
+ * Pages of `book` loaded across `[start, end)`, which `loadMore` widens. `fail` marks the segments
+ * in the range it is given as failed.
+ */
 function makePages(book: Book, start = 0, end = book.segments.length) {
   let loaded = { start, end };
+  let failed = { start: 0, end: 0 };
   let version = 0;
   const listeners = new Set<() => void>();
   const pages: SegmentPages = {
@@ -55,6 +59,11 @@ function makePages(book: Book, start = 0, end = book.segments.length) {
     ],
     load: jest.fn(),
     release: jest.fn(),
+    failureAt: (index) =>
+      index >= failed.start && index < failed.end
+        ? { cause: 'app', isRetrying: false, failedAgain: false }
+        : undefined,
+    retryFailed: jest.fn(),
     subscribe: (onChange) => {
       listeners.add(onChange);
       return () => listeners.delete(onChange);
@@ -67,7 +76,13 @@ function makePages(book: Book, start = 0, end = book.segments.length) {
       version += 1;
       listeners.forEach((listener) => listener());
     });
-  return { pages, loadMore };
+  const fail = (failStart: number, failEnd: number) =>
+    act(() => {
+      failed = { start: failStart, end: failEnd };
+      version += 1;
+      listeners.forEach((listener) => listener());
+    });
+  return { pages, loadMore, fail };
 }
 
 /** Pages of {@link BOOK}, every one loaded. */
@@ -262,6 +277,33 @@ describe('useStripSegments', () => {
     unmount();
 
     expect(pages.release).toHaveBeenCalledWith('strip');
+  });
+
+  it('reports a failure when a segment it would hold has failed to load', () => {
+    const { pages, fail } = makePages(BOOK);
+    const { result } = renderStrip({ pages });
+
+    fail(100 + STRIP_MARGIN_WORDS, 101 + STRIP_MARGIN_WORDS);
+
+    expect(result.current.isFailed).toBe(true);
+  });
+
+  it('reports a failure when the segment of a focus it is moving to has failed to load', () => {
+    const { pages, fail } = makePages(BOOK);
+    const { result } = renderStrip({ pages, nextFocusTokenRef: tokenAt(180) });
+
+    fail(180, 181);
+
+    expect(result.current.isFailed).toBe(true);
+  });
+
+  it('reports no failure for a segment that failed beyond what it would hold', () => {
+    const { pages, fail } = makePages(BOOK);
+    const { result } = renderStrip({ pages });
+
+    fail(0, 1);
+
+    expect(result.current.isFailed).toBe(false);
   });
 
   it('tells a token whose page has loaded', () => {

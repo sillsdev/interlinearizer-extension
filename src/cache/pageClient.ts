@@ -2,10 +2,13 @@ import type { ChangeId, Segment, SessionAnalysisChange, TextAnalysis } from 'int
 import type { CommandReply } from '../types/command-reply';
 import { emptyAnalysis } from '../types/empty-factories';
 import { perfTime, perfTrack } from '../utils/perf-marks';
+import { pageFailureCauseOf } from '../utils/page-failure-cause';
 import type { PoolEntry, PoolIndex } from '../utils/suggestion-engine';
 import type {
   BookOutline,
   HeldRun,
+  PageFailure,
+  PageFailureCause,
   PlacedFreeTranslations,
   SegmentPage,
 } from '../types/segment-pages';
@@ -89,11 +92,16 @@ export const KEPT_APPLIED = 64;
  * - `backoff`: a fetch failed and the next attempt waits for its delay.
  * - `failed`: every attempt failed, until a view asks for the page again or
  *   {@link PageClient.retryFailed}.
+ *
+ * An `inFlight` or `backoff` page asked for again after failing keeps that failure in `after`.
  */
 type PageState =
-  | { kind: 'inFlight'; attempt: number; dirty: boolean }
-  | { kind: 'backoff'; attempt: number }
-  | { kind: 'failed' };
+  | { kind: 'inFlight'; attempt: number; dirty: boolean; after?: GivenUp }
+  | { kind: 'backoff'; attempt: number; after?: GivenUp }
+  | { kind: 'failed'; failure: GivenUp };
+
+/** Why a page was given up, and whether it had been given up before. */
+type GivenUp = Readonly<{ cause: PageFailureCause; isRepeat: boolean }>;
 
 /**
  * What can happen to a page's fetch.
@@ -235,6 +243,21 @@ export class PageClient {
     /* v8 ignore next -- defensive: the client's own paths read records only after the outline loads */
     if (!this.cacheHeld) throw new Error('Interlinearizer: no outline has loaded');
     return this.cacheHeld;
+  }
+
+  /**
+   * Why the segment at outline index `index` is not held, when its page failed every retry.
+   *
+   * @returns `undefined` when the segment is held, is loading for the first time, or was never
+   *   asked for.
+   */
+  failureAt(index: number): PageFailure | undefined {
+    if (this.holds(index)) return undefined;
+    const state = this.pages.get(Math.floor(index / this.pageSize));
+    if (state?.kind === 'failed')
+      return { cause: state.failure.cause, isRetrying: false, failedAgain: state.failure.isRepeat };
+    if (!state?.after) return undefined;
+    return { cause: state.after.cause, isRetrying: true, failedAgain: state.after.isRepeat };
   }
 
   /**
@@ -614,18 +637,22 @@ export class PageClient {
    * Moves the page at `pageIndex` to the state that `event` leads to, starting any fetch that the
    * new state needs.
    */
-  private step(pageIndex: number, event: PageEvent): void {
+  private step(pageIndex: number, event: PageEvent, error?: unknown): void {
     const state = this.pages.get(pageIndex);
     switch (event) {
       case 'want':
-        if (!state || state.kind === 'failed') this.fetchPage(pageIndex, 0);
+        if (!state) this.fetchPage(pageIndex, 0);
+        else if (state.kind === 'failed') {
+          this.fetchPage(pageIndex, 0, state.failure);
+          this.changed();
+        }
         break;
       case 'stale':
         if (state?.kind === 'inFlight') this.pages.set(pageIndex, { ...state, dirty: true });
         else if (!state && this.held.holds(pageIndex * this.pageSize)) this.fetchPage(pageIndex, 0);
         break;
       case 'retry':
-        if (state?.kind === 'failed') this.fetchPage(pageIndex, 0);
+        if (state?.kind === 'failed') this.fetchPage(pageIndex, 0, state.failure);
         break;
       case 'landed':
         if (state?.kind === 'inFlight' && state.dirty) this.fetchPage(pageIndex, 0);
@@ -639,16 +666,23 @@ export class PageClient {
         if (state?.kind !== 'inFlight') break;
         const delay = this.retryDelaysMs[state.attempt];
         if (delay === undefined) {
-          this.pages.set(pageIndex, { kind: 'failed' });
+          this.pages.set(pageIndex, {
+            kind: 'failed',
+            failure: { cause: pageFailureCauseOf(error), isRepeat: state.after !== undefined },
+          });
           this.changed();
           break;
         }
-        this.pages.set(pageIndex, { kind: 'backoff', attempt: state.attempt + 1 });
+        this.pages.set(pageIndex, {
+          kind: 'backoff',
+          attempt: state.attempt + 1,
+          after: state.after,
+        });
         this.track(this.waitToRetry(pageIndex, delay));
         break;
       }
       case 'waited':
-        if (state?.kind === 'backoff') this.fetchPage(pageIndex, state.attempt);
+        if (state?.kind === 'backoff') this.fetchPage(pageIndex, state.attempt, state.after);
         break;
       /* v8 ignore next 2 -- exhaustive */
       default:
@@ -662,8 +696,8 @@ export class PageClient {
     if (outlineAt === this.outlineCount) this.step(pageIndex, 'waited');
   }
 
-  private fetchPage(pageIndex: number, attempt: number): void {
-    this.pages.set(pageIndex, { kind: 'inFlight', attempt, dirty: false });
+  private fetchPage(pageIndex: number, attempt: number, after?: GivenUp): void {
+    this.pages.set(pageIndex, { kind: 'inFlight', attempt, dirty: false, after });
     this.track(this.fetchPageNow(pageIndex, this.beginFetch()));
   }
 
@@ -672,8 +706,8 @@ export class PageClient {
     let page: SegmentPage | undefined;
     try {
       page = await this.source.getSegments(start, start + this.pageSize);
-    } catch {
-      if (fetch.outlineAt === this.outlineCount) this.step(pageIndex, 'errored');
+    } catch (error) {
+      if (fetch.outlineAt === this.outlineCount) this.step(pageIndex, 'errored', error);
       return;
     }
     if (fetch.outlineAt !== this.outlineCount) return;

@@ -28,6 +28,7 @@ import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights'
 import { buildSegmentLabels } from '../utils/segment-labels';
 import type { StaleFreeTranslation } from '../utils/stale-free-translations';
 import { adoptedStaleTranslation, orphanedCardCountAt } from '../utils/stale-free-translations';
+import { failedRunsIn, runVerses } from '../utils/page-failures';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { altHeldSwap } from './alt-key-hint';
@@ -47,6 +48,7 @@ import { useSegmentation } from './SegmentationStore';
 import StaleScrollMarks from './StaleScrollMarks';
 import type { SegmentDisplayMode } from './SegmentView';
 import MemoizedSegmentView, { SEGMENT_STRING_KEYS } from './SegmentView';
+import PageLoadFailedBanner from './PageLoadFailedBanner';
 
 /** The list's own row spacing between one rendered segment and the next, in pixels. */
 const SEGMENT_ROW_GAP_PX = 8;
@@ -547,6 +549,14 @@ export default function SegmentListView({
     recenterOnActive();
   }, [continuousScroll, recenterOnActive]);
 
+  const failedRuns = failedRunsIn(
+    pages.failureAt,
+    pages.outline.length,
+    range.start,
+    range.start + windowSegments.length,
+  );
+  const firstFailure = failedRuns.length > 0 ? pages.failureAt(failedRuns[0].start) : undefined;
+
   // Segment that wears the active highlight. Follows the focused token's segment so the highlight
   // lands on the segment whose token is focused — including a verse-0 superscription — and falls
   // back to the active verse when nothing is focused (e.g. the active verse has no word token).
@@ -652,6 +662,14 @@ export default function SegmentListView({
             {recenterTooltip !== undefined && <TooltipContent>{recenterTooltip}</TooltipContent>}
           </Tooltip>
         </div>
+      )}
+
+      {firstFailure && (
+        <PageLoadFailedBanner
+          failure={firstFailure}
+          onRetry={pages.retryFailed}
+          places={`${bookName} ${failedRuns.map((run) => runVerses(pages.outline, run)).join(', ')}`}
+        />
       )}
 
       <div className="tw:relative tw:flex tw:min-h-0 tw:flex-1 tw:flex-col">
@@ -769,7 +787,7 @@ export default function SegmentListView({
                       // Holds the segment's place, at the height it is predicted to take, until its
                       // page loads.
                       <div
-                        aria-busy="true"
+                        aria-busy={pages.failureAt(bookIndex)?.isRetrying ?? true}
                         aria-current={isActive ? 'true' : undefined}
                         data-segment-id={seg.id}
                         data-testid="segment-placeholder"

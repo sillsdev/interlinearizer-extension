@@ -66,6 +66,22 @@ export type BookOutline = Readonly<{
   boundaries?: OutlineBoundaries;
 }>;
 
+/**
+ * What made a page fail to load: reading the project's text, reading the saved analysis, or
+ * anything else, such as the host not answering.
+ */
+export type PageFailureCause = 'text' | 'analysis' | 'app';
+
+/** Why a segment's page has not loaded, after every retry of it failed. */
+export type PageFailure = Readonly<{
+  /** What made the latest request fail. */
+  cause: PageFailureCause;
+  /** Whether the page is being asked for again. */
+  isRetrying: boolean;
+  /** Whether the page had already failed every retry once before its latest failure. */
+  failedAgain: boolean;
+}>;
+
 /** A place in a book where a token's analysis went stale. */
 export type StaleGlossPlace = Readonly<{ analysisId: string; tokenRef: string }>;
 
@@ -207,9 +223,16 @@ export interface SegmentPages {
   load: (start: number, end: number, caller: PageCaller) => void;
   /** Drops the range that `caller` last asked for, so that later outlines do not reload it. */
   release: (caller: PageCaller) => void;
-  /** Calls `onChange` whenever pages load, until the returned function is called. */
+  /**
+   * Why the segment at `index` has not loaded, when its page failed every retry; `undefined` when
+   * it is held, was never asked for, or is loading for the first time.
+   */
+  failureAt: (index: number) => PageFailure | undefined;
+  /** Asks again for every page that failed every retry. */
+  retryFailed: () => void;
+  /** Calls `onChange` whenever pages load or fail, until the returned function is called. */
   subscribe: (onChange: () => void) => () => void;
-  /** A number that changes whenever pages load. */
+  /** A number that changes whenever pages load or fail. */
   loadedVersion: () => number;
 }
 

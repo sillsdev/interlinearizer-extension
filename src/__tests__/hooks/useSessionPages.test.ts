@@ -5,6 +5,7 @@ import { useEvent } from 'platform-bible-react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import useSessionPages from '../../hooks/useSessionPages';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
+import type { PageFailure } from '../../types/segment-pages';
 import { BOOK, glossing, ref, sessionOver } from '../cache/session-source';
 
 /** Stands in for the network event that the session reports changes on. */
@@ -209,6 +210,27 @@ describe('useSessionPages', () => {
 
     expect(pages?.segmentAt(2)?.id).toBe(BOOK.segments[2].id);
     expect(pages?.loadedVersion()).toBe(result.current.client?.loadedVersion());
+  });
+
+  it("answers why segments failed, and retries them, through the book's client", async () => {
+    const made = await sessionOver();
+    serve(made);
+    const { result } = renderHook(() =>
+      useSessionPages({ sessionId: made.sessionId, bookId: 'GEN', scrRef: SCR_REF }),
+    );
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    const { client, pages } = result.current;
+    if (!client) throw new Error('no client');
+    const failure: PageFailure = { cause: 'app', isRetrying: false, failedAgain: false };
+    const failureAt = jest.spyOn(client, 'failureAt').mockReturnValue(failure);
+    const retryFailed = jest.spyOn(client, 'retryFailed').mockImplementation(() => {});
+
+    const reported = pages?.failureAt(2);
+    pages?.retryFailed();
+
+    expect(reported).toBe(failure);
+    expect(failureAt).toHaveBeenCalledWith(2);
+    expect(retryFailed).toHaveBeenCalledTimes(1);
   });
 
   it('reports an outline that fails with something other than an error', async () => {

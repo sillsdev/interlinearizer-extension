@@ -203,7 +203,8 @@ const pagesBySegments = new WeakMap<readonly Segment[], Map<string, SegmentPages
 
 /**
  * Serves `book`'s segments as pages that have all loaded, the same pages for the same segments,
- * book and version, so a rerender with them changes nothing. `load` and `release` are mocks.
+ * book and version, so a rerender with them changes nothing. `load`, `release` and `retryFailed`
+ * are mocks.
  */
 export function segmentPagesOf(book: Book, segmentationVersion = 0): SegmentPages {
   const byKey = pagesBySegments.get(book.segments) ?? new Map<string, SegmentPages>();
@@ -223,6 +224,8 @@ export function segmentPagesOf(book: Book, segmentationVersion = 0): SegmentPage
       heldRuns: () => held,
       load: jest.fn(),
       release: jest.fn(),
+      failureAt: () => undefined,
+      retryFailed: jest.fn(),
       subscribe: () => () => {},
       loadedVersion: () => 0,
     };

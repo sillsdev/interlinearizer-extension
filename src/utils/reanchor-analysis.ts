@@ -62,19 +62,14 @@ function countByValue(values: string[]): Map<string, number> {
  * of the form as were stored. A spare occurrence means the pairing was chosen rather than forced —
  * glosses on two of three identical words could as easily be the first two as the last two.
  *
- * A form in `vanished` is never placeable, because the copy that the verse lost may have been a
- * stored one.
- *
  * @param stored - The stored forms, in document order.
  * @param current - The verse's current forms, in document order.
  * @param paired - For each stored position, the token index it aligned to, or `undefined`.
- * @param vanished - The forms whose verse held unstored copies and now holds fewer than it did.
  */
 function unambiguousForms(
   stored: string[],
   current: string[],
   paired: (number | undefined)[],
-  vanished: ReadonlySet<string>,
 ): Set<string> {
   const storedCounts = countByValue(stored);
   const currentCounts = countByValue(current);
@@ -84,8 +79,7 @@ function unambiguousForms(
   });
   return new Set(
     [...storedCounts].flatMap(([form, count]) => {
-      const placeable =
-        !unpaired.has(form) && count === currentCounts.get(form) && !vanished.has(form);
+      const placeable = !unpaired.has(form) && count === currentCounts.get(form);
       return placeable ? [form] : [];
     }),
   );
@@ -93,13 +87,34 @@ function unambiguousForms(
 
 /**
  * Pairs each stored form with the index of the current form it aligns to in order, or `undefined`
- * where it has no counterpart or is too ambiguous to place. A form in `vanished` is too ambiguous.
+ * where it has no counterpart or is too ambiguous to place.
+ *
+ * A form in `vanished` yields `undefined`, because the copy that the verse lost may have been a
+ * stored one. It also stays out of the alignment, so that a pairing it cannot keep never costs
+ * another form its own.
  */
 function pairUnambiguously(
-  a: string[],
+  stored: string[],
   b: string[],
   vanished: ReadonlySet<string>,
 ): (number | undefined)[] {
+  const kept = stored.flatMap((form, index) => (vanished.has(form) ? [] : [index]));
+  const keptPaired = pairInOrder(
+    kept.map((index) => stored[index]),
+    b,
+  );
+  const paired = new Array<number | undefined>(stored.length).fill(undefined);
+  kept.forEach((index, keptIndex) => {
+    paired[index] = keptPaired[keptIndex];
+  });
+  return paired;
+}
+
+/**
+ * Pairs each stored form with the index of the current form it aligns to in order, or `undefined`
+ * where it has no counterpart or is too ambiguous to place.
+ */
+function pairInOrder(a: string[], b: string[]): (number | undefined)[] {
   // lengths[i][j] — the LCS length of a.slice(i) against b.slice(j), filled back-to-front so the
   // forward walk below can pick the branch that keeps the most pairings.
   const lengths: number[][] = Array.from({ length: a.length + 1 }, () =>
@@ -127,7 +142,7 @@ function pairUnambiguously(
     }
   }
 
-  const unambiguous = unambiguousForms(a, b, paired, vanished);
+  const unambiguous = unambiguousForms(a, b, paired);
   return paired.map((tokenIndex, index) =>
     tokenIndex !== undefined && unambiguous.has(a[index]) ? tokenIndex : undefined,
   );
@@ -363,16 +378,16 @@ function buildAnchorMap(
 ): Map<string, Anchor> {
   const byVerse = tokensByVerse(book);
   const anchorMap = new Map<string, Anchor>();
-  anchorByVerse(snapshots, byVerse, book.bookRef, anchorMap, isLive, kinOf);
+  anchorByVerse(snapshots, byVerse, new Set(), book.bookRef, anchorMap, isLive, kinOf);
   if (deferred.length === 0) return anchorMap;
 
-  const claimed = new Set([...anchorMap.values()].map((anchor) => anchor?.tokenRef));
-  const unclaimedByVerse = new Map(
-    [...byVerse].map(([verse, tokens]) => [verse, tokens.filter((t) => !claimed.has(t.ref))]),
+  const claimed = new Set(
+    [...anchorMap.values()].flatMap((anchor) => (anchor ? [anchor.tokenRef] : [])),
   );
   anchorByVerse(
     deferred.filter((snapshot) => !anchorMap.has(snapshotKey(snapshot))),
-    unclaimedByVerse,
+    byVerse,
+    claimed,
     book.bookRef,
     anchorMap,
     () => true,
@@ -381,10 +396,15 @@ function buildAnchorMap(
   return anchorMap;
 }
 
-/** Records in `anchorMap` where each snapshot now belongs among the verse token lists given. */
+/**
+ * Records in `anchorMap` where each snapshot now belongs among its verse's tokens that `claimed`
+ * leaves out. A form's count still covers the claimed tokens. That whole-verse count judges whether
+ * a copy vanished. Each anchor records it too.
+ */
 function anchorByVerse(
   snapshots: TokenSnapshot[],
   byVerse: Map<string, ReadonlyToken[]>,
+  claimed: ReadonlySet<string>,
   bookRef: string,
   anchorMap: Map<string, Anchor>,
   isLive: (key: string) => boolean,
@@ -410,15 +430,15 @@ function anchorByVerse(
     else grouped.set(tokens, [snapshot]);
   });
 
-  grouped.forEach((group, tokens) => {
+  grouped.forEach((group, verseTokens) => {
     const ordered = [...group].sort(
       (x, y) => offsetOfTokenRef(x.tokenRef) - offsetOfTokenRef(y.tokenRef),
     );
-    const currentCounts = countByValue(tokens.map((t) => normalizeSurfaceForm(t.surfaceText)));
+    const currentCounts = countByValue(verseTokens.map((t) => normalizeSurfaceForm(t.surfaceText)));
     const refs = alignForms(
       ordered.map((s) => s.surfaceText),
       ordered.map((s) => s.tokenRef),
-      tokens,
+      verseTokens.filter((t) => !claimed.has(t.ref)),
       ordered.map((s) => isLive(snapshotKey(s))),
       ordered.map((s) => kinOf(snapshotKey(s))),
       vanishedForms(ordered, currentCounts),

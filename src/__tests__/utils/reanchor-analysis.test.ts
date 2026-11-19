@@ -1723,6 +1723,61 @@ describe('reanchorAnalysisToBook with recorded form counts', () => {
 
     expect(result.phraseAnalysisLinks[0].tokens.map((t) => t.formCount)).toEqual([2, 1]);
   });
+
+  // Written against "wug x wug", with "x" and the last "wug" glossed, at 4 and 6.
+  const shiftedPastVanishedTwin = analysisWithTokenLinks([
+    makeTokenLink('ta-x', 'GEN 1:1:4', { surfaceText: 'x', formCount: 1 }),
+    makeTokenLink('ta-dig', 'GEN 1:1:6', { surfaceText: 'wug', formCount: 2 }),
+  ]);
+  const vanishedTwinBook = makeVerseBook([{ sid: 'GEN 1:1', text: 'a wug x wig' }]);
+
+  it('places a shifted word that a vanished twin would otherwise outbid in the alignment', () => {
+    const result = reanchor(shiftedPastVanishedTwin, vanishedTwinBook);
+
+    expect(
+      result.tokenAnalysisLinks.map((l) => [l.analysisId, l.status, l.token.tokenRef]),
+    ).toEqual([
+      ['ta-x', 'approved', 'GEN 1:1:6'],
+      ['ta-dig', 'stale', 'GEN 1:1:6'],
+    ]);
+  });
+
+  it('leaves a word placed past a vanished twin unchanged when the pass runs again', () => {
+    const once = reanchor(shiftedPastVanishedTwin, vanishedTwinBook);
+
+    expect(reanchor(once, vanishedTwinBook)).toBe(once);
+  });
+
+  // Written against "wug x wug", at 0 and 6.
+  const approvedAndRejectedTwins = analysisWithTokenLinks([
+    makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug', formCount: 2 }),
+    makeTokenLink('ta-other', 'GEN 1:1:6', {
+      surfaceText: 'wug',
+      formCount: 2,
+      status: 'rejected',
+    }),
+  ]);
+
+  it('moves a rejected link past an insertion while its approved twin stays put', () => {
+    const result = reanchor(
+      approvedAndRejectedTwins,
+      makeVerseBook([{ sid: 'GEN 1:1', text: 'wug a x wug' }]),
+    );
+
+    expect(result.tokenAnalysisLinks[1]).toMatchObject({
+      status: 'rejected',
+      token: { tokenRef: 'GEN 1:1:8', formCount: 2 },
+    });
+  });
+
+  it('keeps the whole verse count on a rejected link whose approved twin stays put', () => {
+    const result = reanchor(
+      approvedAndRejectedTwins,
+      makeVerseBook([{ sid: 'GEN 1:1', text: 'wug x wug' }]),
+    );
+
+    expect(result).toBe(approvedAndRejectedTwins);
+  });
 });
 
 describe('withFormCounts', () => {

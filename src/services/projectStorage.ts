@@ -156,7 +156,8 @@ async function detachSummary(token: ExecutionToken, id: string): Promise<void> {
 function changesConfig(project: Omit<InterlinearProject, 'analysis'>, config: ProjectConfig) {
   return (
     project.targetProjectId !== config.targetProjectId ||
-    project.analysisLanguages.join('\n') !== config.analysisLanguages.join('\n')
+    project.analysisLanguages.length !== config.analysisLanguages.length ||
+    project.analysisLanguages.some((tag, i) => tag !== config.analysisLanguages[i])
   );
 }
 
@@ -944,8 +945,9 @@ export async function updateAnalysis(
  * record need not be read and parsed. The summary stands in for the record only when it notes what
  * the record holds under `links` and the record holds none.
  *
- * A record written by a newer build is never rebuilt here. That build also rewrote the summaries,
- * and summaries written by a newer build are not read.
+ * Summaries written by a newer build are not read. A record written by a newer build is rebuilt
+ * here only when that build did not first restamp the summaries. A newer build must therefore
+ * restamp them before writing a record that this build cannot rebuild.
  *
  * @returns `'unlisted'` when no summary lists the project, or `undefined` when its summary cannot
  *   stand in for the record or the summaries cannot be read.

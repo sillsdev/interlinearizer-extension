@@ -175,16 +175,15 @@ function mergeEntries(books: Iterable<BookConcordance>): ConcordanceEntry[] {
   );
 }
 
-/** Orders entries of equal frequency by `collator` on their display spelling, then by form. */
+/** Orders two entries by `collator` on their display spelling, then by form. */
 function compareCollated(collator: Collator, a: ConcordanceEntry, b: ConcordanceEntry): number {
   return collator.compare(a.displayText, b.displayText) || (a.form < b.form ? -1 : 1);
 }
 
 /**
  * A concordance's entries, most-occurring first, ties ordered by `collator` on their display
- * spelling and then by form, so the order is total and stable. A run of equally frequent entries is
- * put in collated order only once a slice reaches it, so a page near the top skips collating the
- * long runs of rare forms below it.
+ * spelling and then by form, so the order is total and stable. A slice near the top skips ordering
+ * the long tail of rare forms.
  */
 export class ConcordanceEntryList {
   private readonly entries: ConcordanceEntry[];
@@ -219,18 +218,19 @@ export class ConcordanceEntryList {
   }
 
   /**
-   * The entries from `start` up to, not including, `end`. Both bounds must be non-negative. An
-   * `end` beyond the length stops after the last entry.
+   * The entries from `start` up to, not including, `end`.
+   *
+   * @param start - Non-negative.
+   * @param end - Non-negative. Past the length, the slice stops after the last entry.
    */
   slice(start: number, end: number): readonly ConcordanceEntry[] {
-    const from = Math.max(0, start);
     const to = Math.min(this.entries.length, end);
-    for (let run = this.runAt(from); run < this.runStarts.length; run += 1) {
+    for (let run = this.runAt(start); run < this.runStarts.length; run += 1) {
       const runStart = this.runStarts[run];
       if (runStart >= to) break;
       this.collateRun(run);
     }
-    return this.entries.slice(from, to);
+    return this.entries.slice(start, to);
   }
 
   /** The index in {@link runStarts} of the run holding entry `index`. */
@@ -286,7 +286,7 @@ export function approvedAnalysisOf(
   return approved[entry.form]?.[occurrence.tokenRef];
 }
 
-/** Each entry's token refs, gathered the first time its approvals are counted. */
+/** Each entry's token refs, gathered once per entry. */
 const tokenRefsByEntry = new WeakMap<ConcordanceEntry, ReadonlySet<string>>();
 
 function tokenRefsOf(entry: ConcordanceEntry): ReadonlySet<string> {

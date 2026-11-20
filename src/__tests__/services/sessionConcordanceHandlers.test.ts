@@ -2,8 +2,8 @@
 
 import type { TextAnalysis } from 'interlinearizer';
 import { sessionConcordanceHandlers } from '../../services/sessionConcordanceHandlers';
-import * as concordance from '../../utils/concordance';
 import { indexBook, type BookConcordance } from '../../utils/concordance';
+import * as languageTags from '../../utils/language-tags';
 import { BOOK, GLOSSED, sessionOver } from '../cache/session-source';
 import { makeVerseBook } from '../test-helpers';
 
@@ -141,6 +141,23 @@ describe('getConcordance', () => {
     );
   });
 
+  it.each([
+    ['a negative offset', { currentBook: 'GEN', offset: -1, count: 2 }],
+    ['a negative count', { currentBook: 'GEN', offset: 0, count: -5 }],
+    ['a fractional count', { currentBook: 'GEN', offset: 0, count: 1.5 }],
+    ["a negative offset into a form's occurrences", { form: 'and', offset: -1, count: 2 }],
+  ])('logs and rethrows on %s', async (_, request) => {
+    const { handlers, sessionId, logger } = await handlersOver();
+
+    await expect(
+      handlers['interlinearizer.getConcordance']({ sessionId, request }),
+    ).rejects.toThrow('Concordance offset and count must be non-negative integers');
+    expect(logger.error).toHaveBeenCalledWith(
+      `Interlinearizer: failed to serve the concordance of session ${sessionId}`,
+      expect.any(Error),
+    );
+  });
+
   it('serves a book as it was last read', async () => {
     let books = [indexBook(BOOK)];
     const { handlers, sessionId } = await handlersOver({ books: () => books });
@@ -154,7 +171,7 @@ describe('getConcordance', () => {
   });
 
   it('merges the same books once across pages', async () => {
-    const build = jest.spyOn(concordance, 'buildConcordanceEntries');
+    const build = jest.spyOn(languageTags, 'collatorForTag');
     const { handlers, sessionId } = await handlersOver();
     const request = { currentBook: 'GEN', offset: 0, count: 1 };
     await handlers['interlinearizer.getConcordance']({ sessionId, request });
@@ -165,7 +182,7 @@ describe('getConcordance', () => {
   });
 
   it('merges the same books again under a new language tag', async () => {
-    const build = jest.spyOn(concordance, 'buildConcordanceEntries');
+    const build = jest.spyOn(languageTags, 'collatorForTag');
     let tag = 'en';
     const { handlers, sessionId } = await handlersOver({ writingSystem: () => tag });
     const request = { currentBook: 'GEN', offset: 0, count: 1 };

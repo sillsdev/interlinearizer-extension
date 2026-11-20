@@ -2,13 +2,12 @@ import type { CommandHandlers } from 'papi-shared-types';
 import type { AnalysisSessions } from './analysisSessions';
 import type * as bookService from './bookService';
 import {
-  buildConcordanceEntries,
+  ConcordanceEntryList,
   approvedAnalysisOf,
   deriveConcordanceRows,
   tallyAnalyses,
   type BookConcordance,
   type ConcordanceAnalysisTally,
-  type ConcordanceEntry,
   type ConcordanceOccurrence,
   type ConcordanceStatus,
 } from '../utils/concordance';
@@ -98,17 +97,17 @@ export function sessionConcordanceHandlers({
    */
   const built = new WeakMap<
     readonly BookConcordance[],
-    Readonly<{ writingSystem: string; entries: readonly ConcordanceEntry[] }>
+    Readonly<{ writingSystem: string; entries: ConcordanceEntryList }>
   >();
 
   /** The entries of `books`, built afresh unless {@link built} holds them under `writingSystem`. */
   function entriesOf(
     writingSystem: string,
     books: readonly BookConcordance[],
-  ): readonly ConcordanceEntry[] {
+  ): ConcordanceEntryList {
     const kept = built.get(books);
     if (kept?.writingSystem === writingSystem) return kept.entries;
-    const entries = buildConcordanceEntries(books, collatorForTag(writingSystem));
+    const entries = new ConcordanceEntryList(books, collatorForTag(writingSystem));
     built.set(books, { writingSystem, entries });
     return entries;
   }
@@ -118,6 +117,10 @@ export function sessionConcordanceHandlers({
     request,
   }: ArgsOf<'interlinearizer.getConcordance'>): Promise<string> {
     try {
+      if (![request.offset, request.count].every((n) => Number.isInteger(n) && n >= 0))
+        throw new Error(
+          `Concordance offset and count must be non-negative integers, not ${request.offset} and ${request.count}`,
+        );
       return await sessions.run(sessionId, async (session) => {
         const { sourceProjectId } = session.scope;
         const books = getConcordanceBooks(sourceProjectId);
@@ -126,7 +129,7 @@ export function sessionConcordanceHandlers({
         const entries = entriesOf(writingSystem, books);
         const { repository } = session;
         if ('form' in request) {
-          const entry = entries.find(({ form }) => form === request.form);
+          const entry = entries.find(request.form);
           const occurrences = entry?.occurrences ?? [];
           const approved = entry ? await repository.findApprovalsByForm([entry.form]) : {};
           const analyses = await repository.getTokenAnalyses([

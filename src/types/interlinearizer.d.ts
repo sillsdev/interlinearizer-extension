@@ -1120,6 +1120,8 @@ declare module 'papi-shared-types' {
      *
      * @returns A JSON string of the `ConcordancePage`, or of the `ConcordanceOccurrencePage` when
      *   the request names a form; `"null"` until the whole text has been read.
+     * @throws If the request's offset or count is not a non-negative integer (logged before
+     *   rethrowing).
      * @throws If the session is not open, or its analysis or its source's language tag cannot be
      *   read (logged before rethrowing).
      */

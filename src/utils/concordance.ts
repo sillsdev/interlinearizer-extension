@@ -131,17 +131,8 @@ function mostFrequentSpelling(counts: ReadonlyMap<string, number>): string {
   return best;
 }
 
-/**
- * Merges book indexes into one entry per form across all of them, whatever order the books arrive
- * in.
- *
- * @returns Entries ordered most-occurring first, ties ordered by `collator` on their display
- *   spelling and then by form, so the order is total and stable.
- */
-export function buildConcordanceEntries(
-  books: Iterable<BookConcordance>,
-  collator: Collator,
-): readonly ConcordanceEntry[] {
+/** Merges book indexes into one entry per form across all of them, in no particular order. */
+function mergeEntries(books: Iterable<BookConcordance>): ConcordanceEntry[] {
   const inCanonOrder = [...books].sort(
     (a, b) => Canon.bookIdToNumber(a.book) - Canon.bookIdToNumber(b.book),
   );
@@ -174,7 +165,7 @@ export function buildConcordanceEntries(
     });
   });
 
-  const entries = [...merged].map(
+  return [...merged].map(
     ([form, { occurrences, countByBook, spellingCounts }]): ConcordanceEntry => ({
       form,
       displayText: mostFrequentSpelling(spellingCounts),
@@ -182,12 +173,104 @@ export function buildConcordanceEntries(
       countByBook,
     }),
   );
-  return entries.sort(
-    (a, b) =>
-      b.occurrences.length - a.occurrences.length ||
-      collator.compare(a.displayText, b.displayText) ||
-      (a.form < b.form ? -1 : 1),
-  );
+}
+
+/** Orders two entries by `collator` on their display spelling, then by form. */
+function compareCollated(collator: Collator, a: ConcordanceEntry, b: ConcordanceEntry): number {
+  return collator.compare(a.displayText, b.displayText) || (a.form < b.form ? -1 : 1);
+}
+
+/**
+ * A concordance's entries, most-occurring first, ties ordered by `collator` on their display
+ * spelling and then by form, so the order is total and stable. A slice near the top skips ordering
+ * the long tail of rare forms.
+ */
+export class ConcordanceEntryList {
+  private readonly entries: ConcordanceEntry[];
+
+  private readonly collator: Collator;
+
+  /** Where each run of equally frequent entries starts, ascending. */
+  private readonly runStarts: number[] = [];
+
+  /** The starts of the runs already in collated order. */
+  private readonly collatedRuns = new Set<number>();
+
+  private readonly byForm: ReadonlyMap<string, ConcordanceEntry>;
+
+  constructor(books: Iterable<BookConcordance>, collator: Collator) {
+    this.collator = collator;
+    this.entries = mergeEntries(books).sort((a, b) => b.occurrences.length - a.occurrences.length);
+    this.byForm = new Map(this.entries.map((entry) => [entry.form, entry]));
+    this.entries.forEach((entry, index) => {
+      if (index === 0 || this.entries[index - 1].occurrences.length !== entry.occurrences.length)
+        this.runStarts.push(index);
+    });
+  }
+
+  get length(): number {
+    return this.entries.length;
+  }
+
+  /** The entry of the normalized `form`, if the text holds it. */
+  find(form: string): ConcordanceEntry | undefined {
+    return this.byForm.get(form);
+  }
+
+  /**
+   * The entries from `start` up to, not including, `end`.
+   *
+   * @param start - Non-negative.
+   * @param end - Non-negative. Past the length, the slice stops after the last entry.
+   */
+  slice(start: number, end: number): readonly ConcordanceEntry[] {
+    const to = Math.min(this.entries.length, end);
+    for (let run = this.runAt(start); run < this.runStarts.length; run += 1) {
+      const runStart = this.runStarts[run];
+      if (runStart >= to) break;
+      this.collateRun(run);
+    }
+    return this.entries.slice(start, to);
+  }
+
+  /** The index in {@link runStarts} of the run holding entry `index`. */
+  private runAt(index: number): number {
+    let low = 0;
+    let high = this.runStarts.length - 1;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (this.runStarts[mid] <= index) low = mid;
+      else high = mid - 1;
+    }
+    return low;
+  }
+
+  private collateRun(run: number): void {
+    const runStart = this.runStarts[run];
+    if (this.collatedRuns.has(runStart)) return;
+    this.collatedRuns.add(runStart);
+    const runEnd = this.runStarts[run + 1] ?? this.entries.length;
+    this.entries
+      .slice(runStart, runEnd)
+      .sort((a, b) => compareCollated(this.collator, a, b))
+      .forEach((entry, offset) => {
+        this.entries[runStart + offset] = entry;
+      });
+  }
+}
+
+/**
+ * Merges book indexes into one entry per form across all of them, whatever order the books arrive
+ * in.
+ *
+ * @returns Entries in {@link ConcordanceEntryList}'s order.
+ */
+export function buildConcordanceEntries(
+  books: Iterable<BookConcordance>,
+  collator: Collator,
+): readonly ConcordanceEntry[] {
+  const list = new ConcordanceEntryList(books, collator);
+  return list.slice(0, list.length);
 }
 
 /**
@@ -203,6 +286,30 @@ export function approvedAnalysisOf(
   return approved[entry.form]?.[occurrence.tokenRef];
 }
 
+/** Each entry's token refs, gathered once per entry. */
+const tokenRefsByEntry = new WeakMap<ConcordanceEntry, ReadonlySet<string>>();
+
+function tokenRefsOf(entry: ConcordanceEntry): ReadonlySet<string> {
+  let tokenRefs = tokenRefsByEntry.get(entry);
+  if (!tokenRefs) {
+    tokenRefs = new Set(entry.occurrences.map(({ tokenRef }) => tokenRef));
+    tokenRefsByEntry.set(entry, tokenRefs);
+  }
+  return tokenRefs;
+}
+
+/** How many of an entry's occurrences carry an approval, as {@link approvedAnalysisOf} finds them. */
+function countApproved(approved: ApprovalsByForm, entry: ConcordanceEntry): number {
+  const approvals = approved[entry.form];
+  if (!approvals) return 0;
+  // Walks the form's approvals rather than its occurrences: a frequent form has far fewer.
+  const tokenRefs = tokenRefsOf(entry);
+  return Object.keys(approvals).reduce(
+    (count, tokenRef) => (tokenRefs.has(tokenRef) ? count + 1 : count),
+    0,
+  );
+}
+
 /** Joins each entry to the approved analyses, keeping the entries' order. */
 export function deriveConcordanceRows(
   entries: readonly ConcordanceEntry[],
@@ -210,10 +317,7 @@ export function deriveConcordanceRows(
   currentBook: string,
 ): readonly ConcordanceRow[] {
   return entries.map((entry) => {
-    const analyzedCount = entry.occurrences.reduce(
-      (count, o) => (approvedAnalysisOf(approved, entry, o) === undefined ? count : count + 1),
-      0,
-    );
+    const analyzedCount = countApproved(approved, entry);
     let status: ConcordanceStatus = 'partlyAnalyzed';
     if (analyzedCount === 0) status = 'unanalyzed';
     else if (analyzedCount === entry.occurrences.length) status = 'analyzed';

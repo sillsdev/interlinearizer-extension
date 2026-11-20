@@ -192,6 +192,15 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   /** Whether this instance has loaded the stored draft, so it knows which shards it cannot read. */
   private loaded = false;
 
+  /** Whether the last load found the stored draft readable, rather than loading it as empty. */
+  private lastLoadReadable = false;
+
+  /**
+   * Whether {@link current} holds what storage holds. False when it was loaded from an unreadable
+   * draft, or once an apply to it fails, until the next load.
+   */
+  private keptInStep = false;
+
   /**
    * The draft this instance last applied changes to or answered a lookup from, with the index over
    * its records. A whole save drops it, since its caller may hold another draft, and so does
@@ -254,6 +263,24 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    */
   async exportForCopy(): Promise<DraftExport> {
     return this.read(true);
+  }
+
+  /**
+   * The draft this instance keeps, for copying into a project without reading storage again, with
+   * the books whose shard could not be read. It is what {@link exportForCopy} would load, in content
+   * if not in record order.
+   *
+   * The draft is shared, not copied, so the caller must not change it. A later apply leaves it
+   * unchanged.
+   *
+   * @returns `undefined` when this instance keeps no draft, or cannot vouch that it holds what
+   *   storage holds: it was loaded from an unreadable draft, or an apply to it failed since it was
+   *   loaded.
+   */
+  keptForCopy(): DraftExport | undefined {
+    const kept = this.current;
+    if (!kept || !this.keptInStep) return undefined;
+    return { draft: kept.draft, unreadableBooks: this.unreadableBooks() };
   }
 
   /**
@@ -363,6 +390,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     } catch (e) {
       // The index already holds the changes, so it is built afresh over the draft as it was.
       this.current = { draft: base, index: new AnalysisIndex(base.analysis) };
+      // Storage may hold part of the failed changes.
+      this.keptInStep = false;
       throw e;
     }
     this.current = { draft, index };
@@ -398,6 +427,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       const draft = this.exported ?? (await this.read(false)).draft;
       this.exported = undefined;
       this.current = { draft, index: new AnalysisIndex(draft.analysis) };
+      // No load runs between the one that read the draft and this.
+      this.keptInStep = this.lastLoadReadable;
     }
     return this.current;
   }
@@ -443,8 +474,10 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws Whatever {@link readDraft} throws.
    */
   private async read(strictEnvelope: boolean): Promise<DraftExport> {
-    const exported = await this.readDraft(strictEnvelope);
+    this.lastLoadReadable = false;
+    const { readable = true, ...exported } = await this.readDraft(strictEnvelope);
     this.loaded = true;
+    this.lastLoadReadable = readable;
     return exported;
   }
 
@@ -603,16 +636,16 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws {Error} If `strictEnvelope` and the draft itself is unreadable.
    * @throws If storage rejects a read.
    */
-  private async readDraft(strictEnvelope: boolean): Promise<DraftExport> {
+  private async readDraft(strictEnvelope: boolean): Promise<DraftExport & { readable?: false }> {
     const { sourceProjectId, storage } = this;
     /**
      * Rejects an unreadable draft when `strictEnvelope`; otherwise logs it, and the draft loads as
      * empty.
      */
-    const unreadable = (message: string): DraftExport => {
+    const unreadable = (message: string): DraftExport & { readable: false } => {
       if (strictEnvelope) throw new Error(message);
       this.logger.warn(message);
-      return { draft: emptyDraft(sourceProjectId), unreadableBooks: [] };
+      return { draft: emptyDraft(sourceProjectId), unreadableBooks: [], readable: false };
     };
     const raw = await perfTimeAsync('getDraft:read', () => storage.read(draftKey(sourceProjectId)));
     if (raw === undefined) return { draft: emptyDraft(sourceProjectId), unreadableBooks: [] };

@@ -14,6 +14,7 @@ import type {
 } from '../types/analysis-repository';
 import { UnreadableBooksError } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
+import { toProjectSummary } from '../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import { assertSupportedModelVersion, CURRENT_MODEL_VERSION } from '../types/model-version';
 import { hasLinkWithoutId, isStringArray } from '../types/type-guards';
@@ -22,7 +23,8 @@ import { reportAnalysisViolations } from '../utils/analysis-violations';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 import { DraftRepository } from './draftRepository';
 import { Pt9ImportRepository } from './pt9ImportRepository';
-import { ProjectSummaries, summarizeProject } from './projectSummaries';
+import { ProjectSummaries, storedSummaryOf } from './projectSummaries';
+import type { StoredProjectSummary } from './projectSummaries';
 import { activeProjectKey, draftKey, projectKey } from './storageKeys';
 
 /**
@@ -120,7 +122,7 @@ function projectSummaries(token: ExecutionToken): ProjectSummaries {
  */
 async function refreshSummary(
   token: ExecutionToken,
-  summary: InterlinearProjectSummary,
+  summary: StoredProjectSummary,
 ): Promise<boolean> {
   try {
     return await enqueueIndexOp(() => projectSummaries(token).replace(summary));
@@ -131,6 +133,32 @@ async function refreshSummary(
     );
     return true;
   }
+}
+
+/**
+ * Stops project `id`'s listed summary from standing in for its record until the record's next write
+ * refreshes the summary. This holds across a restart, so a refresh that fails or never runs cannot
+ * leave a summary that rebuilds the older record. Summaries that are damaged or written by a newer
+ * build are left alone, because no record is rebuilt from them.
+ *
+ * @throws If storage rejects the read or the write of the summaries.
+ */
+async function detachSummary(token: ExecutionToken, id: string): Promise<void> {
+  await enqueueIndexOp(async () => {
+    const summaries = projectSummaries(token);
+    const summary = (await summaries.listUnlessDamaged())?.find((listed) => listed.id === id);
+    if (summary?.alignmentLinks === undefined) return;
+    await summaries.replace({ ...summary, alignmentLinks: undefined });
+  });
+}
+
+/** Whether `config` differs from the analysis languages or target of `project`. */
+function changesConfig(project: Omit<InterlinearProject, 'analysis'>, config: ProjectConfig) {
+  return (
+    project.targetProjectId !== config.targetProjectId ||
+    project.analysisLanguages.length !== config.analysisLanguages.length ||
+    project.analysisLanguages.some((tag, i) => tag !== config.analysisLanguages[i])
+  );
 }
 
 /** The source project's draft repository, created over `token`'s user data on first use. */
@@ -549,7 +577,7 @@ async function persistNewProject(
   project: InterlinearProject,
 ): Promise<void> {
   const { id } = project;
-  const summary = summarizeProject(project);
+  const summary = storedSummaryOf(project);
   await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(project));
   try {
     await enqueueIndexOp(() => projectSummaries(token).add(summary));
@@ -651,7 +679,7 @@ export async function savePt9Import(
       };
       await papi.storage.writeUserData(token, projectKey(current.id), JSON.stringify(updated));
       importRevisions.set(current.id, (importRevisions.get(current.id) ?? 0) + 1);
-      return (await refreshSummary(token, summarizeProject(updated))) ? updated : undefined;
+      return (await refreshSummary(token, storedSummaryOf(updated))) ? updated : undefined;
     });
     if (replaced) return replaced;
     // The import is deleted, or was listed without a record.
@@ -778,11 +806,11 @@ function parseProject(raw: string, id: string): InterlinearProject {
  * @throws {Error} If the stored project summaries were written by a newer build, or are corrupt.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
-export function getProjectSummariesForSource(
+export async function getProjectSummariesForSource(
   token: ExecutionToken,
   sourceProjectId: string,
 ): Promise<InterlinearProjectSummary[]> {
-  return projectSummaries(token).listForSource(sourceProjectId);
+  return (await projectSummaries(token).listForSource(sourceProjectId)).map(toProjectSummary);
 }
 
 /**
@@ -797,7 +825,8 @@ export async function getProjectSummary(
   token: ExecutionToken,
   id: string,
 ): Promise<InterlinearProjectSummary | undefined> {
-  return (await projectSummaries(token).list()).find((summary) => summary.id === id);
+  const summary = (await projectSummaries(token).list()).find((listed) => listed.id === id);
+  return summary && toProjectSummary(summary);
 }
 
 /**
@@ -844,8 +873,9 @@ export function rememberActiveProject(
 
 /**
  * Replaces the analysis of an existing interlinearizer project, and optionally its custom segment
- * boundaries and its configuration, in one atomic write. Refreshes `updatedAt` to the current
- * time.
+ * boundaries and its configuration, in one atomic write. Refreshes `updatedAt` to the current time.
+ * When given boundaries, the rest of the record comes from the project's listed summary wherever
+ * the summary can stand in for the record, so the old record is not read.
  *
  * @param token - The execution token for storage access.
  * @param id - The interlinearizer project UUID to update.
@@ -857,7 +887,8 @@ export function rememberActiveProject(
  * @returns The updated project record, or `undefined` if no project with the given ID exists or it
  *   is unlisted.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
- * @throws {Error} If the stored record was written by a newer build; nothing is written.
+ * @throws {Error} If the stored record was written by a newer build that restamped the summaries
+ *   first, as every newer build must; nothing is written.
  * @throws {Error} If the project is a Paratext 9 import (`pt9Import` present); imports are
  *   read-only and only {@link savePt9Import} replaces their content.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
@@ -871,10 +902,23 @@ export async function updateAnalysis(
   config?: ProjectConfig,
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
-    const raw = await perfTimeAsync('updateAnalysis:read', () => readRecord(token, projectKey(id)));
-    if (raw === undefined) return undefined;
-    const project = perfTime('updateAnalysis:parse', () => parseProject(raw, id));
-    if (project.pt9Import) throw pt9ImportReadOnlyError(id);
+    // Without new boundaries, the record's own are kept, and only the record holds them.
+    const listed =
+      segmentation === undefined
+        ? undefined
+        : await perfTimeAsync('updateAnalysis:summary', () => recordFromSummary(token, id));
+    if (listed === 'unlisted') return undefined;
+    let project: Omit<InterlinearProject, 'analysis'>;
+    if (listed) project = listed;
+    else {
+      const raw = await perfTimeAsync('updateAnalysis:read', () =>
+        readRecord(token, projectKey(id)),
+      );
+      if (raw === undefined) return undefined;
+      project = perfTime('updateAnalysis:parse', () => parseProject(raw, id));
+      if (project.pt9Import) throw pt9ImportReadOnlyError(id);
+    }
+    if (config && changesConfig(project, config)) await detachSummary(token, id);
     const updated: InterlinearProject = {
       ...project,
       modelVersion: CURRENT_MODEL_VERSION,
@@ -892,9 +936,72 @@ export async function updateAnalysis(
     await perfTimeAsync('updateAnalysis:write', () =>
       papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated)),
     );
-    const summary = perfTime('updateAnalysis:summary', () => summarizeProject(updated));
+    const summary = perfTime('updateAnalysis:summary', () => storedSummaryOf(updated));
     return (await refreshSummary(token, summary)) ? updated : undefined;
   });
+}
+
+/**
+ * Project `id`'s record less its analysis and boundaries, rebuilt from its listed summary so the
+ * record need not be read and parsed. The summary stands in for the record only when it notes what
+ * the record holds under `links` and the record holds none.
+ *
+ * Summaries written by a newer build are not read. A record written by a newer build is rebuilt
+ * here only when that build did not first restamp the summaries. A newer build must therefore
+ * restamp them before writing a record that this build cannot rebuild.
+ *
+ * @returns `'unlisted'` when no summary lists the project, or `undefined` when its summary cannot
+ *   stand in for the record or the summaries cannot be read.
+ * @throws {Error} If the project is a Paratext 9 import, as in {@link updateAnalysis}.
+ */
+async function recordFromSummary(
+  token: ExecutionToken,
+  id: string,
+): Promise<Omit<InterlinearProject, 'analysis' | 'segmentation'> | 'unlisted' | undefined> {
+  let summary: StoredProjectSummary | undefined;
+  try {
+    summary = (await projectSummaries(token).list()).find((listed) => listed.id === id);
+  } catch {
+    // Reading the record instead keeps a save working while the summaries are damaged.
+    return undefined;
+  }
+  if (!summary) return 'unlisted';
+  if (summary.pt9Import) throw pt9ImportReadOnlyError(id);
+  const { alignmentLinks } = summary;
+  if (alignmentLinks === undefined || alignmentLinks === 'present') return undefined;
+  const rebuilt: RebuiltRecord = {
+    id,
+    modelVersion: CURRENT_MODEL_VERSION,
+    createdAt: summary.createdAt,
+    updatedAt: summary.updatedAt,
+    name: summary.name,
+    description: summary.description,
+    sourceProjectId: summary.sourceProjectId,
+    targetProjectId: summary.targetProjectId,
+    analysisLanguages: summary.analysisLanguages,
+    links: alignmentLinks === 'empty' ? [] : undefined,
+    // An import was refused above.
+    pt9Import: undefined,
+  };
+  return withoutUnsetFields(rebuilt);
+}
+
+/**
+ * Every field of a project record but its analysis and boundaries, each one required and an unset
+ * one `undefined`. A field added to {@link InterlinearProject} must then be set wherever a record is
+ * rebuilt, rather than being dropped from the record on every save.
+ */
+type RebuiltRecord = {
+  [K in Exclude<keyof InterlinearProject, 'analysis' | 'segmentation'>]: InterlinearProject[K];
+};
+
+/** A copy of `record` without its `undefined` fields, so it holds only the fields it sets. */
+function withoutUnsetFields<T extends object>(record: T): T {
+  const copy = { ...record };
+  Object.entries(copy).forEach(([key, value]) => {
+    if (value === undefined) Reflect.deleteProperty(copy, key);
+  });
+  return copy;
 }
 
 /**
@@ -922,7 +1029,8 @@ export async function updateAnalysis(
  * @throws {UnreadableBooksError} If any book's stored draft analysis cannot be read; nothing is
  *   written.
  * @throws {SyntaxError} If the draft's or the project's storage value contains invalid JSON.
- * @throws {Error} If the stored draft or project was written by a newer build; nothing is written.
+ * @throws {Error} If the stored draft was written by a newer build, or the project's record is
+ *   refused as in {@link updateAnalysis}; nothing is written.
  * @throws {Error} If the stored draft itself is unreadable; nothing is written.
  * @throws {Error} If the project is a Paratext 9 import, as in {@link updateAnalysis}.
  * @throws If a storage read or write rejects as in {@link updateAnalysis}.
@@ -1003,8 +1111,9 @@ export async function updateProjectMetadata(
     } else {
       updated.targetProjectId = targetProjectId;
     }
+    await detachSummary(token, id);
     await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
-    return (await refreshSummary(token, summarizeProject(updated))) ? updated : undefined;
+    return (await refreshSummary(token, storedSummaryOf(updated))) ? updated : undefined;
   });
 }
 
@@ -1064,7 +1173,9 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
 }
 
 /**
- * Reads the stored draft for copying into a project, in turn with the source's draft writes.
+ * Reads the stored draft for copying into a project, in turn with the source's draft writes. When
+ * the source's draft repository keeps a draft it vouches for as stored, that draft is taken instead
+ * of reading storage again. It is shared with the repository, so the caller must not change it.
  *
  * @returns The export, with the number of draft writes sent for the source before this read was
  *   queued.
@@ -1076,10 +1187,11 @@ function readDraftForCopy(
 ): Promise<DraftExport & { writesBefore: number }> {
   // Counted when the read is queued: every write sent before it is queued ahead of it.
   const writesBefore = draftWriteCounts.get(sourceProjectId) ?? 0;
-  return enqueueSerialized(draftQueues, sourceProjectId, async () => ({
-    ...(await draftRepositoryFor(token, sourceProjectId).exportForCopy()),
-    writesBefore,
-  }));
+  return enqueueSerialized(draftQueues, sourceProjectId, async () => {
+    const repository = draftRepositoryFor(token, sourceProjectId);
+    const exported = repository.keptForCopy() ?? (await repository.exportForCopy());
+    return { ...exported, writesBefore };
+  });
 }
 
 /**

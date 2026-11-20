@@ -218,6 +218,117 @@ describe('DraftRepository', () => {
     });
   });
 
+  describe('keptForCopy', () => {
+    /** A repository over a stored {@link twoBookDraft}, with the storage under it. */
+    async function overTwoBooks() {
+      const store = memoryStorage();
+      await seedRepository(
+        new DraftRepository(store.storage, 'src', silentLogger()),
+        twoBookDraft(),
+      );
+      return { ...store, repository: new DraftRepository(store.storage, 'src', silentLogger()) };
+    }
+
+    /** What a repository opened afresh over `storage` exports for copying. */
+    function freshExport(storage: KeyValueStorage) {
+      return new DraftRepository(storage, 'src', silentLogger()).exportForCopy();
+    }
+
+    it('answers undefined before the repository keeps a draft', async () => {
+      const { repository } = await overTwoBooks();
+
+      expect(repository.keptForCopy()).toBeUndefined();
+    });
+
+    it('answers undefined after a whole read, until a lookup keeps the draft', async () => {
+      const { repository } = await overTwoBooks();
+      await repository.exportAll();
+
+      expect(repository.keptForCopy()).toBeUndefined();
+    });
+
+    it('answers what the store holds once a lookup keeps the draft', async () => {
+      const { storage, repository } = await overTwoBooks();
+      await repository.getScope();
+
+      expect(repository.keptForCopy()).toEqual(await freshExport(storage));
+    });
+
+    it('answers what the store holds after an apply', async () => {
+      const { storage, repository } = await overTwoBooks();
+      const [payload] = twoBookAnalysis().tokenAnalyses;
+
+      await repository.apply({
+        intent: 'writeGloss',
+        tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+      });
+
+      expect(repository.keptForCopy()).toEqual(await freshExport(storage));
+    });
+
+    it('names the books whose shard could not be read', async () => {
+      const { records, repository } = await overTwoBooks();
+      records.set(draftAnalysisKey('src', 'GEN'), 'not json');
+      await repository.getScope();
+
+      expect(repository.keptForCopy()?.unreadableBooks).toEqual(['GEN']);
+    });
+
+    it('answers undefined once an apply fails, since the store may hold part of it', async () => {
+      const { storage, repository } = await overTwoBooks();
+      await repository.getScope();
+
+      await failGlossEdit(repository, storage, 'GEN');
+
+      expect(repository.keptForCopy()).toBeUndefined();
+    });
+
+    it('answers again once the draft is loaded afresh after a failed apply', async () => {
+      const { storage, repository } = await overTwoBooks();
+      await failGlossEdit(repository, storage, 'GEN');
+      await repository.exportAll();
+      await repository.getScope();
+
+      expect(repository.keptForCopy()).toEqual(await freshExport(storage));
+    });
+
+    it.each([
+      ['a lookup', async (repository: DraftRepository) => repository.getScope()],
+      [
+        'a whole read and then a lookup',
+        async (repository: DraftRepository) => {
+          await repository.exportAll();
+          await repository.getScope();
+        },
+      ],
+    ])(
+      'answers undefined over a draft that loaded empty because it was unreadable, after %s',
+      async (_case, load) => {
+        const { storage } = memoryStorage({ [draftKey('src')]: JSON.stringify({ nope: true }) });
+        const repository = new DraftRepository(storage, 'src', silentLogger());
+
+        await load(repository);
+
+        expect(repository.keptForCopy()).toBeUndefined();
+      },
+    );
+
+    it('leaves a draft it answered as it was when a later apply changes the kept one', async () => {
+      const { repository } = await overTwoBooks();
+      await repository.getScope();
+      const answered = repository.keptForCopy();
+      const before = JSON.stringify(answered);
+      const [payload] = twoBookAnalysis().tokenAnalyses;
+
+      await repository.apply({
+        intent: 'writeGloss',
+        tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+      });
+
+      expect(JSON.stringify(answered)).toBe(before);
+    });
+  });
+
   describe('markClean', () => {
     it('records the stored draft as clean, rewriting only its envelope', async () => {
       const { storage, records, writes } = memoryStorage();

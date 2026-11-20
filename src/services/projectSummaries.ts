@@ -8,11 +8,34 @@ import { summarizeAnalysis } from '../utils/project-analysis-summary';
 
 const PROJECT_SUMMARIES_KEY = 'projectSummaries';
 
+/**
+ * What a project's record holds under `links`, which a listed summary otherwise leaves out: none,
+ * an empty list, or links.
+ */
+export type StoredLinks = 'absent' | 'empty' | 'present';
+
+/**
+ * A summary as stored. It also notes what the project's record holds under `links`, so that with
+ * the summary's configuration it accounts for every part of the record but the analysis and the
+ * boundaries. The note is missing from a summary stored before the note existed, and from one that
+ * must not stand in for its record.
+ */
+export type StoredProjectSummary = InterlinearProjectSummary & { alignmentLinks?: StoredLinks };
+
 /** The summaries record as stored. */
 interface StoredSummaries {
   modelVersion: number;
   /** In creation order. */
-  summaries: InterlinearProjectSummary[];
+  summaries: StoredProjectSummary[];
+}
+
+const STORED_LINKS: readonly unknown[] = ['absent', 'empty', 'present'] satisfies StoredLinks[];
+
+function isStoredProjectSummary(value: unknown): value is StoredProjectSummary {
+  return (
+    isInterlinearProjectSummary(value) &&
+    (!('alignmentLinks' in value) || STORED_LINKS.includes(value.alignmentLinks))
+  );
 }
 
 function isStoredSummaries(value: unknown): value is StoredSummaries {
@@ -23,13 +46,41 @@ function isStoredSummaries(value: unknown): value is StoredSummaries {
     typeof value.modelVersion === 'number' &&
     'summaries' in value &&
     Array.isArray(value.summaries) &&
-    value.summaries.every(isInterlinearProjectSummary)
+    value.summaries.every(isStoredProjectSummary)
   );
+}
+
+/**
+ * Every summary that the stored record `raw` holds; a record never written holds none.
+ *
+ * @throws {SyntaxError} If `raw` is invalid JSON.
+ * @throws {Error} If `raw` was written by a newer build, or is not a list of summaries.
+ */
+function parseSummaries(raw: string | undefined): StoredProjectSummary[] {
+  if (raw === undefined) return [];
+  const parsed: unknown = JSON.parse(raw);
+  assertSupportedModelVersion(parsed, 'the project summaries');
+  if (!isStoredSummaries(parsed))
+    throw new Error(
+      `Interlinearizer: '${PROJECT_SUMMARIES_KEY}' is corrupt (expected a list of project summaries)`,
+    );
+  return parsed.summaries;
 }
 
 /** What a project list shows about `project`, its analysis described rather than carried. */
 export function summarizeProject(project: InterlinearProject): InterlinearProjectSummary {
   return { ...toProjectSummary(project), ...summarizeAnalysis(project.analysis) };
+}
+
+/**
+ * The summary to store for `project`: {@link summarizeProject}'s, with what its record holds under
+ * `links`.
+ */
+export function storedSummaryOf(project: InterlinearProject): StoredProjectSummary {
+  const { links } = project;
+  let alignmentLinks: StoredLinks = 'absent';
+  if (links) alignmentLinks = links.length > 0 ? 'present' : 'empty';
+  return { ...summarizeProject(project), alignmentLinks };
 }
 
 /**
@@ -53,16 +104,23 @@ export class ProjectSummaries {
    *   summaries.
    * @throws If storage rejects the read.
    */
-  async list(): Promise<InterlinearProjectSummary[]> {
+  async list(): Promise<StoredProjectSummary[]> {
+    return parseSummaries(await this.storage.read(PROJECT_SUMMARIES_KEY));
+  }
+
+  /**
+   * Every listed project's summary, in creation order, or `undefined` when the stored record is
+   * damaged or was written by a newer build.
+   *
+   * @throws If storage rejects the read.
+   */
+  async listUnlessDamaged(): Promise<StoredProjectSummary[] | undefined> {
     const raw = await this.storage.read(PROJECT_SUMMARIES_KEY);
-    if (raw === undefined) return [];
-    const parsed: unknown = JSON.parse(raw);
-    assertSupportedModelVersion(parsed, 'the project summaries');
-    if (!isStoredSummaries(parsed))
-      throw new Error(
-        `Interlinearizer: '${PROJECT_SUMMARIES_KEY}' is corrupt (expected a list of project summaries)`,
-      );
-    return parsed.summaries;
+    try {
+      return parseSummaries(raw);
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -70,7 +128,7 @@ export class ProjectSummaries {
    *
    * @throws As {@link list} does.
    */
-  async listForSource(sourceProjectId: string): Promise<InterlinearProjectSummary[]> {
+  async listForSource(sourceProjectId: string): Promise<StoredProjectSummary[]> {
     return (await this.list()).filter((summary) => summary.sourceProjectId === sourceProjectId);
   }
 
@@ -80,7 +138,7 @@ export class ProjectSummaries {
    * @throws As {@link list} does, writing nothing.
    * @throws If storage rejects the write.
    */
-  async add(summary: InterlinearProjectSummary): Promise<void> {
+  async add(summary: StoredProjectSummary): Promise<void> {
     await this.write([...(await this.list()), summary]);
   }
 
@@ -91,7 +149,7 @@ export class ProjectSummaries {
    * @throws As {@link list} does, writing nothing.
    * @throws If storage rejects the write.
    */
-  async replace(summary: InterlinearProjectSummary): Promise<boolean> {
+  async replace(summary: StoredProjectSummary): Promise<boolean> {
     const summaries = await this.list();
     if (!summaries.some(({ id }) => id === summary.id)) return false;
     await this.write(summaries.map((listed) => (listed.id === summary.id ? summary : listed)));

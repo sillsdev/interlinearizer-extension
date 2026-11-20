@@ -188,9 +188,8 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     public async Task<Dictionary<Guid, int>> CountApprovals(IReadOnlyCollection<Guid> analysisIds)
     {
         var wanted = analysisIds.ToHashSet();
-        var ids = wanted.ToList();
         var tokenRefs = await Query<TokenAnalysisLink, string>(q => q
-            .Where(l => l.Status == AssignmentStatus.Approved && ids.Contains(l.AnalysisId))
+            .Where(l => l.Status == AssignmentStatus.Approved && wanted.Contains(l.AnalysisId))
             .Select(l => l.TokenRef)
             .Distinct());
         if (tokenRefs.Count == 0) return [];
@@ -219,9 +218,8 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     public async Task<Dictionary<string, Dictionary<string, Guid>>> FindApprovalsByForm(IReadOnlyCollection<string> normalizedForms)
     {
         var wanted = normalizedForms.ToHashSet();
-        var forms = wanted.ToList();
         var tokenRefs = await Query<TokenAnalysisLink, string>(q => q
-            .Where(l => l.Status == AssignmentStatus.Approved && forms.Contains(l.NormalizedForm))
+            .Where(l => l.Status == AssignmentStatus.Approved && wanted.Contains(l.NormalizedForm))
             .Select(l => l.TokenRef)
             .Distinct());
         if (tokenRefs.Count == 0) return [];

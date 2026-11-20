@@ -12,6 +12,7 @@ import {
   type ConcordanceStatus,
 } from '../utils/concordance';
 import { collatorForTag } from '../utils/language-tags';
+import { logAndRethrow } from '../utils/log-and-rethrow';
 
 /** A page of a session's concordance rows, counted against one book. */
 export type ConcordanceRowsRequest = Readonly<{
@@ -116,12 +117,12 @@ export function sessionConcordanceHandlers({
     sessionId,
     request,
   }: ArgsOf<'interlinearizer.getConcordance'>): Promise<string> {
-    try {
+    return logAndRethrow(logger, `serve the concordance of session ${sessionId}`, async () => {
       if (![request.offset, request.count].every((n) => Number.isInteger(n) && n >= 0))
         throw new Error(
           `Concordance offset and count must be non-negative integers, not ${request.offset} and ${request.count}`,
         );
-      return await sessions.run(sessionId, async (session) => {
+      return sessions.run(sessionId, async (session) => {
         const { sourceProjectId } = session.scope;
         const books = getConcordanceBooks(sourceProjectId);
         if (!books) return 'null';
@@ -165,10 +166,7 @@ export function sessionConcordanceHandlers({
         const page: ConcordancePage = { total: entries.length, bookCount: books.length, rows };
         return JSON.stringify(page);
       });
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to serve the concordance of session ${sessionId}`, e);
-      throw e;
-    }
+    });
   }
 
   return {

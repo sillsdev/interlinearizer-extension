@@ -17,6 +17,7 @@ import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import type { AnalysisRepository } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
 import { selectAnalysisDeletionOutcome } from '../utils/analysis-selectors';
+import { logAndRethrow } from '../utils/log-and-rethrow';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 
 /** What a view asks of a session's catalog: a {@link CatalogPageRequest}, against one book. */
@@ -131,12 +132,9 @@ export function sessionCatalogHandlers({
     what: string,
     read: (session: Session) => Promise<T>,
   ): Promise<T> {
-    try {
-      return await sessions.run(sessionId, read);
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to ${what} in session ${sessionId}`, e);
-      throw e;
-    }
+    return logAndRethrow(logger, `${what} in session ${sessionId}`, () =>
+      sessions.run(sessionId, read),
+    );
   }
 
   async function getCatalogRows({
@@ -238,8 +236,8 @@ export function sessionCatalogHandlers({
     sessionId,
     analysisId,
   }: ArgsOf<'interlinearizer.previewDeletion'>): Promise<string> {
-    try {
-      return await sessions.run(sessionId, async (session) => {
+    return logAndRethrow(logger, `preview a deletion in session ${sessionId}`, () =>
+      sessions.run(sessionId, async (session) => {
         const { repository } = session;
         const [target] = await repository.getTokenAnalyses([analysisId]);
         if (!target) return 'null';
@@ -287,11 +285,8 @@ export function sessionCatalogHandlers({
         );
         /* v8 ignore next -- the payload was read above, so the outcome is always derived */
         return outcome ? JSON.stringify(outcome) : 'null';
-      });
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to preview a deletion in session ${sessionId}`, e);
-      throw e;
-    }
+      }),
+    );
   }
 
   return {

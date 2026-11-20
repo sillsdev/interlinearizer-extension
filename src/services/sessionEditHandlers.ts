@@ -27,6 +27,7 @@ import { bookOfRef } from '../utils/analysis-book';
 import { countTextOfEveryTag } from '../utils/text-counts';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { readEditOutcome, type AnalysisEditOutcome } from '../utils/edit-outcome';
+import { logAndRethrow } from '../utils/log-and-rethrow';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 import { missingBook } from '../utils/reanchor-analysis';
 
@@ -77,8 +78,8 @@ export function sessionEditHandlers({
     command: (buffer: ChangeBuffer, session: Session) => Promise<void | EditOutcome>,
   ): Promise<string> {
     const { sessionId, changeId } = target;
-    try {
-      return await perfTimeAsync(
+    return logAndRethrow(logger, `${intent} in session ${sessionId}`, () =>
+      perfTimeAsync(
         intent,
         async () => {
           const reply = await sessions.edit(sessionId, intent, command, {
@@ -88,11 +89,8 @@ export function sessionEditHandlers({
           return perfTime(`${intent}:serialize`, () => JSON.stringify(reply));
         },
         { startedAt: performance.timeOrigin + performance.now() },
-      );
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
-      throw e;
-    }
+      ),
+    );
   }
 
   /** Fresh ids for the records an edit may make, and the time the edit lands. */
@@ -863,7 +861,7 @@ export function sessionEditHandlers({
     changeId,
   }: ArgsOf<'interlinearizer.changeAnalysisLanguages'>): Promise<string> {
     const intent = 'changeAnalysisLanguages';
-    try {
+    return logAndRethrow(logger, `${intent} in session ${sessionId}`, async () => {
       if (analysisLanguages.length === 0)
         throw new Error('Interlinearizer: a draft needs an analysis language');
       if (retag && retag.from === retag.to)
@@ -907,22 +905,16 @@ export function sessionEditHandlers({
         { changeId, step: () => target.step },
       );
       return JSON.stringify(reply);
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
-      throw e;
-    }
+    });
   }
 
   async function countLanguageText({
     sessionId,
   }: ArgsOf<'interlinearizer.countLanguageText'>): Promise<string> {
-    try {
+    return logAndRethrow(logger, `count language text in session ${sessionId}`, async () => {
       const draft = await sessions.run(sessionId, (session) => session.repository.getWholeDraft());
       return JSON.stringify(countTextOfEveryTag(draft.analysis));
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to count language text in session ${sessionId}`, e);
-      throw e;
-    }
+    });
   }
 
   /**
@@ -949,7 +941,7 @@ export function sessionEditHandlers({
     ) => Promise<discardCommands.DiscardOutcome>,
     unsavedMark: (savesToProject: boolean) => EditOptions['unsavedMark'],
   ): Promise<string> {
-    try {
+    return logAndRethrow(logger, `${intent} in session ${sessionId}`, async () => {
       const reply = await sessions.edit(
         sessionId,
         intent,
@@ -975,10 +967,7 @@ export function sessionEditHandlers({
       if (reply.hasFreeTranslations === undefined)
         throw new Error(`Interlinearizer: change ${changeId} was not a discard`);
       return JSON.stringify(reply);
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to ${intent} in session ${sessionId}`, e);
-      throw e;
-    }
+    });
   }
 
   function discardBook({
@@ -1062,32 +1051,23 @@ export function sessionEditHandlers({
     sessionId,
     request,
   }: ArgsOf<'interlinearizer.previewRemovals'>): Promise<string> {
-    try {
+    return logAndRethrow(logger, `preview removals in session ${sessionId}`, async () => {
       const changes = await sessions.preview(sessionId, request.intent, stageRemovals(request));
       return JSON.stringify(changes.tokenAnalyses?.deletes ?? []);
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to preview removals in session ${sessionId}`, e);
-      throw e;
-    }
+    });
   }
 
   async function previewBreakdownEdit({
     sessionId,
     tokenRef,
   }: ArgsOf<'interlinearizer.previewBreakdownEdit'>): Promise<string> {
-    try {
-      return JSON.stringify(
+    return logAndRethrow(logger, `preview a breakdown edit in session ${sessionId}`, async () =>
+      JSON.stringify(
         await sessions.run(sessionId, (session) =>
           morphemeCommands.previewBreakdownEdit(new ChangeBuffer(session.repository), tokenRef),
         ),
-      );
-    } catch (e) {
-      logger.error(
-        `Interlinearizer: failed to preview a breakdown edit in session ${sessionId}`,
-        e,
-      );
-      throw e;
-    }
+      ),
+    );
   }
 
   return {

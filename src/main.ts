@@ -46,6 +46,7 @@ import { commandDocs, extensionCommands, type ExtensionCommand } from './command
 import { BOOKLESS_PARTITION } from './utils/analysis-book';
 import { isEmptyDraft } from './utils/empty-draft';
 import type { InterlinearizerWebViewState } from './types/webview-state';
+import { logAndRethrow } from './utils/log-and-rethrow';
 import { perfTime, perfTimeAsync } from './utils/perf-marks';
 
 // #region WebView provider
@@ -591,7 +592,7 @@ type SessionAddress = Readonly<{ sessionId: string }>;
  * skipped, the read never finishes.
  */
 async function getTextReadStatus({ sessionId }: SessionAddress): Promise<string> {
-  try {
+  return logAndRethrow(logger, `read the text of session ${sessionId}`, async () => {
     await sessions.startTextRead(sessionId);
     const sourceProjectId = await sessions.run(
       sessionId,
@@ -602,24 +603,18 @@ async function getTextReadStatus({ sessionId }: SessionAddress): Promise<string>
       const unread: TextReadStatus = { booksRead: 0, bookCount: 1, failedBookIds: [] };
       return JSON.stringify(unread);
     }
-    return await bookService.getTextReadStatus(sourceProjectId);
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to read the text of session ${sessionId}`, e);
-    throw e;
-  }
+    return bookService.getTextReadStatus(sourceProjectId);
+  });
 }
 
 async function retryTextRead({ sessionId }: SessionAddress): Promise<void> {
-  try {
+  return logAndRethrow(logger, `read the text of session ${sessionId} again`, async () => {
     const sourceProjectId = await sessions.run(
       sessionId,
       async ({ scope }) => scope.sourceProjectId,
     );
     await bookService.retryFailedBooks(sourceProjectId);
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to read the text of session ${sessionId} again`, e);
-    throw e;
-  }
+  });
 }
 
 /**
@@ -680,13 +675,10 @@ async function startDraftOver({
 }
 
 async function getProjectSummary(interlinearProjectId: string): Promise<string | undefined> {
-  try {
+  return logAndRethrow(logger, 'get the project summary', async () => {
     const summary = await projectStorage.getProjectSummary(executionToken, interlinearProjectId);
     return summary ? JSON.stringify(summary) : undefined;
-  } catch (e) {
-    logger.error('Interlinearizer: failed to get the project summary', e);
-    throw e;
-  }
+  });
 }
 
 /** The one argument that the command `C` takes. */
@@ -697,7 +689,7 @@ async function openSession({
   interlinearProjectId,
   importProjectId,
 }: ArgsOf<'interlinearizer.openSession'>): Promise<string> {
-  try {
+  return logAndRethrow(logger, `open a session on project ${sourceProjectId}`, async () => {
     const opened: OpenedSession = await sessions.open(
       sourceProjectId,
       interlinearProjectId,
@@ -709,108 +701,81 @@ async function openSession({
       'warning',
     );
     return JSON.stringify(opened);
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to open a session on project ${sourceProjectId}`, e);
-    throw e;
-  }
+  });
 }
 
 async function closeSession({ sessionId }: ArgsOf<'interlinearizer.closeSession'>): Promise<void> {
-  try {
+  return logAndRethrow(logger, `close session ${sessionId}`, async () => {
     await sessions.close(sessionId);
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to close session ${sessionId}`, e);
-    throw e;
-  }
+  });
 }
 
 async function setAnalysisLanguage({
   sessionId,
   analysisLanguage,
 }: ArgsOf<'interlinearizer.setAnalysisLanguage'>): Promise<void> {
-  try {
+  return logAndRethrow(logger, `set the analysis language of session ${sessionId}`, async () => {
     await sessions.setAnalysisLanguage(sessionId, analysisLanguage);
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to set the analysis language of session ${sessionId}`, e);
-    throw e;
-  }
+  });
 }
 
 async function setSaveTarget({
   sessionId,
   interlinearProjectId,
 }: ArgsOf<'interlinearizer.setSaveTarget'>): Promise<void> {
-  try {
+  return logAndRethrow(logger, `set the save target of session ${sessionId}`, async () => {
     await sessions.setSaveTarget(sessionId, interlinearProjectId);
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to set the save target of session ${sessionId}`, e);
-    throw e;
-  }
+  });
 }
 
 async function detachFromProject({
   sessionId,
 }: ArgsOf<'interlinearizer.detachFromProject'>): Promise<void> {
-  try {
+  return logAndRethrow(logger, `detach session ${sessionId} from its project`, async () => {
     await sessions.detachFromProject(sessionId);
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to detach session ${sessionId} from its project`, e);
-    throw e;
-  }
+  });
 }
 
 async function undoEdit({
   sessionId,
   changeId,
 }: ArgsOf<'interlinearizer.undoEdit'>): Promise<string | undefined> {
-  try {
+  return logAndRethrow(logger, `undo an edit in session ${sessionId}`, async () => {
     const reply = await sessions.undo(sessionId, changeId);
     return reply && JSON.stringify(reply);
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to undo an edit in session ${sessionId}`, e);
-    throw e;
-  }
+  });
 }
 
 async function redoEdit({
   sessionId,
   changeId,
 }: ArgsOf<'interlinearizer.redoEdit'>): Promise<string | undefined> {
-  try {
+  return logAndRethrow(logger, `redo an edit in session ${sessionId}`, async () => {
     const reply = await sessions.redo(sessionId, changeId);
     return reply && JSON.stringify(reply);
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to redo an edit in session ${sessionId}`, e);
-    throw e;
-  }
+  });
 }
 
 async function checkIndexes({
   sessionId,
 }: ArgsOf<'interlinearizer.checkIndexes'>): Promise<string> {
-  try {
+  return logAndRethrow(logger, `check the indexes of session ${sessionId}`, async () => {
     return JSON.stringify(
       await sessions.run(sessionId, (session) => session.repository.checkIndexes()),
     );
-  } catch (e) {
-    logger.error(`Interlinearizer: failed to check the indexes of session ${sessionId}`, e);
-    throw e;
-  }
+  });
 }
 
 async function getProjectsForSource(sourceProjectId: string): Promise<string> {
-  try {
-    return await perfTimeAsync('getProjectsForSource', async () => {
+  return logAndRethrow(logger, 'list projects for source', async () => {
+    return perfTimeAsync('getProjectsForSource', async () => {
       const summaries = await projectStorage.getProjectSummariesForSource(
         executionToken,
         sourceProjectId,
       );
       return perfTime('getProjectsForSource:serialize', () => JSON.stringify(summaries));
     });
-  } catch (e) {
-    logger.error('Interlinearizer: failed to list projects for source', e);
-    throw e;
-  }
+  });
 }
 
 // #endregion

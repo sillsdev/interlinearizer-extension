@@ -212,7 +212,7 @@ describe('useSessionPages', () => {
     expect(pages?.loadedVersion()).toBe(result.current.client?.loadedVersion());
   });
 
-  it("answers why segments failed, and retries them, through the book's client", async () => {
+  it("reports segment failures, and retries them, through the book's client", async () => {
     const made = await sessionOver();
     serve(made);
     const { result } = renderHook(() =>

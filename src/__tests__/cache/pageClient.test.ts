@@ -347,7 +347,7 @@ describe('PageClient', () => {
     expect(client.holds(0)).toBe(true);
   });
 
-  it('reports why a segment is not held when its page fails every retry', async () => {
+  it('reports a failure for a segment whose page fails every retry', async () => {
     const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
       throw new Error('offline');
     });

@@ -218,7 +218,10 @@ export class ConcordanceEntryList {
     return this.byForm.get(form);
   }
 
-  /** The entries from `start` up to, not including, `end`, as {@link Array.slice} takes them. */
+  /**
+   * The entries from `start` up to, not including, `end`. Both bounds must be non-negative. An
+   * `end` beyond the length stops after the last entry.
+   */
   slice(start: number, end: number): readonly ConcordanceEntry[] {
     const from = Math.max(0, start);
     const to = Math.min(this.entries.length, end);

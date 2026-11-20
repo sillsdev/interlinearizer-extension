@@ -1,11 +1,10 @@
 /// <reference types="jest" />
 
 import type { PageFailure } from '../../types/segment-pages';
-import { failedRunsIn, groupRunsByFailure, runVerses } from '../../utils/page-failures';
+import { failedRunsIn, runVerses } from '../../utils/page-failures';
 import { makeSegment, outlineOf } from '../test-helpers';
 
-const FAILED: PageFailure = { cause: 'app', isRetrying: false, failedAgain: false };
-const UNREADABLE: PageFailure = { ...FAILED, cause: 'analysis' };
+const FAILED: PageFailure = { isRetrying: false };
 
 /** Reports the segments at `failed` as failed, and every other segment as not. */
 const failingAt =
@@ -43,47 +42,14 @@ describe('failedRunsIn', () => {
     ]);
   });
 
-  it('ends a run where the next segment failed for another cause', () => {
-    const failureAt = (index: number) => [FAILED, FAILED, UNREADABLE][index];
-
-    expect(failedRunsIn(failureAt, 3, 0, 3)).toStrictEqual([
-      { start: 0, end: 2, failure: FAILED },
-      { start: 2, end: 3, failure: UNREADABLE },
-    ]);
-  });
-
-  it('ends a run where the next segment is at another stage of retrying', () => {
-    const retrying = { ...FAILED, isRetrying: true };
+  it('ends a run where the next segment is retrying and its own are not', () => {
+    const retrying = { isRetrying: true };
     const failureAt = (index: number) => [FAILED, retrying][index];
 
     expect(failedRunsIn(failureAt, 2, 0, 2)).toStrictEqual([
       { start: 0, end: 1, failure: FAILED },
       { start: 1, end: 2, failure: retrying },
     ]);
-  });
-
-  it('ends a run where the next segment failed again after a retry', () => {
-    const again = { ...FAILED, failedAgain: true };
-    const failureAt = (index: number) => [FAILED, again][index];
-
-    expect(failedRunsIn(failureAt, 2, 0, 2)).toStrictEqual([
-      { start: 0, end: 1, failure: FAILED },
-      { start: 1, end: 2, failure: again },
-    ]);
-  });
-});
-
-describe('groupRunsByFailure', () => {
-  it('gathers runs that failed alike, in the order their first runs come', () => {
-    const first = { start: 0, end: 1, failure: UNREADABLE };
-    const second = { start: 2, end: 3, failure: FAILED };
-    const third = { start: 4, end: 5, failure: { ...UNREADABLE } };
-
-    expect(groupRunsByFailure([first, second, third])).toStrictEqual([[first, third], [second]]);
-  });
-
-  it('finds no group among no runs', () => {
-    expect(groupRunsByFailure([])).toStrictEqual([]);
   });
 });
 

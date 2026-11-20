@@ -1,22 +1,17 @@
 import type { OutlineSegment, PageFailure } from '../types/segment-pages';
 
-/** Consecutive outline indexes `[start, end)` whose segments failed to load in the same way. */
+/** Consecutive outline indexes `[start, end)` whose segments failed to load, all retrying or none. */
 export type FailedRun = Readonly<{ start: number; end: number; failure: PageFailure }>;
 
-/** Whether two failures read alike: the same cause, at the same stage of retrying. */
+/** Whether `a` failed and is retrying exactly when `b` is. */
 function isSameFailure(a: PageFailure | undefined, b: PageFailure): boolean {
-  return (
-    a !== undefined &&
-    a.cause === b.cause &&
-    a.isRetrying === b.isRetrying &&
-    a.failedAgain === b.failedAgain
-  );
+  return a?.isRetrying === b.isRetrying;
 }
 
 /**
  * The runs of failed segments that reach into outline indexes `[start, end)` of a book of `count`
- * segments, each at its full length in the book rather than cut at the edges of the range. Each run
- * holds segments that failed alike, and ends where the next segment failed in another way.
+ * segments, each at its full length in the book rather than cut at the edges of the range. A run
+ * ends where the next segment is retrying and its own are not, or the other way round.
  */
 export function failedRunsIn(
   failureAt: (index: number) => PageFailure | undefined,
@@ -38,20 +33,6 @@ export function failedRunsIn(
     } else index += 1;
   }
   return runs;
-}
-
-/**
- * Gathers `runs` into groups that failed alike, ordered by each group's first run. Each group keeps
- * its runs in order.
- */
-export function groupRunsByFailure(runs: readonly FailedRun[]): FailedRun[][] {
-  const groups: FailedRun[][] = [];
-  runs.forEach((run) => {
-    const group = groups.find((candidate) => isSameFailure(candidate[0].failure, run.failure));
-    if (group) group.push(run);
-    else groups.push([run]);
-  });
-  return groups;
 }
 
 /**

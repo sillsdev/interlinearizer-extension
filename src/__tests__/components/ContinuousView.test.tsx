@@ -2337,7 +2337,7 @@ describe('ContinuousView segment pages', () => {
         index >= loaded.start && index < loaded.end ? book.segments[index] : undefined,
       failureAt: (index) =>
         index >= failed.start && index < failed.end && (index < loaded.start || index >= loaded.end)
-          ? { cause: 'app', isRetrying: false, failedAgain: false }
+          ? { isRetrying: false }
           : undefined,
       subscribe: (onChange) => {
         listeners.add(onChange);

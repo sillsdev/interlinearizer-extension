@@ -61,7 +61,7 @@ function makePages(book: Book, start = 0, end = book.segments.length) {
     release: jest.fn(),
     failureAt: (index) =>
       index >= failed.start && index < failed.end && (index < loaded.start || index >= loaded.end)
-        ? { cause: 'app', isRetrying: false, failedAgain: false }
+        ? { isRetrying: false }
         : undefined,
     retryFailed: jest.fn(),
     subscribe: (onChange) => {

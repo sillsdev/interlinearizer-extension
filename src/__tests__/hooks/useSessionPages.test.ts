@@ -221,7 +221,7 @@ describe('useSessionPages', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     const { client, pages } = result.current;
     if (!client) throw new Error('no client');
-    const failure: PageFailure = { cause: 'app', isRetrying: false, failedAgain: false };
+    const failure: PageFailure = { isRetrying: false };
     const failureAt = jest.spyOn(client, 'failureAt').mockReturnValue(failure);
     const retryFailed = jest.spyOn(client, 'retryFailed').mockImplementation(() => {});
 

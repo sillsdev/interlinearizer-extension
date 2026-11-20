@@ -8,7 +8,6 @@ import {
   readSegmentPage,
   readStaleSummary,
 } from './sessionPages';
-import { readNamingCause } from '../utils/page-failure-cause';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 
 /** What the page handlers reach beyond the sessions' analysis. */
@@ -127,14 +126,13 @@ export function sessionPageHandlers({
     try {
       return await perfTimeAsync('getSegments', () =>
         sessions.run(sessionId, async (session) => {
-          const boundaries = await readNamingCause('analysis', () => sessionBoundaries(session));
-          const book = await readNamingCause('text', () =>
-            getSegmentedBook(session.scope.sourceProjectId, bookId, boundaries),
+          const book = await getSegmentedBook(
+            session.scope.sourceProjectId,
+            bookId,
+            await sessionBoundaries(session),
           );
           if (!book) return undefined;
-          const page = await readNamingCause('analysis', () =>
-            readSegmentPage(session.repository, book, start, end),
-          );
+          const page = await readSegmentPage(session.repository, book, start, end);
           return perfTime('getSegments:serialize', () => JSON.stringify(page));
         }),
       );

@@ -7,12 +7,11 @@ import PageLoadFailedBanner from '../../components/PageLoadFailedBanner';
 import type { PageFailure } from '../../types/segment-pages';
 import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
-const FAILED: PageFailure = { cause: 'app', isRetrying: false, failedAgain: false };
+const FAILED: PageFailure = { isRetrying: false };
 
 beforeEach(() =>
   mockKeyAsValueLocalizedStrings({
     '%interlinearizer_pageLoad_failed%': '%interlinearizer_pageLoad_failed% {places}',
-    '%interlinearizer_pageLoad_failedAgain%': '%interlinearizer_pageLoad_failedAgain% {places}',
     '%interlinearizer_pageLoad_retrying%': '%interlinearizer_pageLoad_retrying% {places}',
   }),
 );
@@ -26,37 +25,7 @@ describe('PageLoadFailedBanner', () => {
     );
   });
 
-  it.each([
-    ['text', '%interlinearizer_pageLoad_cause_text%'],
-    ['analysis', '%interlinearizer_pageLoad_cause_analysis%'],
-    ['app', '%interlinearizer_pageLoad_cause_app%'],
-  ] as const)('says broadly why the verses could not be loaded, for a %s failure', (cause, key) => {
-    render(
-      <PageLoadFailedBanner
-        failure={{ ...FAILED, cause }}
-        onRetry={jest.fn()}
-        places="Joshua 13:18"
-      />,
-    );
-
-    expect(screen.getByRole('alert')).toHaveTextContent(key);
-  });
-
-  it('says that the verses still could not be loaded after trying again', () => {
-    render(
-      <PageLoadFailedBanner
-        failure={{ ...FAILED, failedAgain: true }}
-        onRetry={jest.fn()}
-        places="Joshua 13:18"
-      />,
-    );
-
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      '%interlinearizer_pageLoad_failedAgain% Joshua 13:18',
-    );
-  });
-
-  it('says that it is trying again, without the cause of the failure before', () => {
+  it('says that it is trying again', () => {
     render(
       <PageLoadFailedBanner
         failure={{ ...FAILED, isRetrying: true }}
@@ -65,9 +34,9 @@ describe('PageLoadFailedBanner', () => {
       />,
     );
 
-    const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('%interlinearizer_pageLoad_retrying% Joshua 13:18');
-    expect(alert).not.toHaveTextContent('%interlinearizer_pageLoad_cause_app%');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '%interlinearizer_pageLoad_retrying% Joshua 13:18',
+    );
   });
 
   it('disables trying again while it is trying again', () => {

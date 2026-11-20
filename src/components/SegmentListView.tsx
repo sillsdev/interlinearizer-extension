@@ -28,7 +28,7 @@ import { offsetOfSegment, segmentIndexAtOffset } from '../utils/segment-heights'
 import { buildSegmentLabels } from '../utils/segment-labels';
 import type { StaleFreeTranslation } from '../utils/stale-free-translations';
 import { adoptedStaleTranslation, orphanedCardCountAt } from '../utils/stale-free-translations';
-import { failedRunsIn, groupRunsByFailure, runVerses } from '../utils/page-failures';
+import { failedRunsIn, runVerses } from '../utils/page-failures';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { altHeldSwap } from './alt-key-hint';
@@ -549,14 +549,16 @@ export default function SegmentListView({
     recenterOnActive();
   }, [continuousScroll, recenterOnActive]);
 
-  const failureGroups = groupRunsByFailure(
-    failedRunsIn(
-      pages.failureAt,
-      pages.outline.length,
-      range.start,
-      range.start + windowSegments.length,
-    ),
+  const failedRuns = failedRunsIn(
+    pages.failureAt,
+    pages.outline.length,
+    range.start,
+    range.start + windowSegments.length,
   );
+  // One banner for the runs given up, and one for those being asked for again.
+  const failureGroups = [false, true]
+    .map((isRetrying) => failedRuns.filter((run) => run.failure.isRetrying === isRetrying))
+    .filter((runs) => runs.length > 0);
 
   // Segment that wears the active highlight. Follows the focused token's segment so the highlight
   // lands on the segment whose token is focused — including a verse-0 superscription — and falls

@@ -13,7 +13,6 @@ import type { ChangeBuffer } from '../../services/commands/changeBuffer';
 import type { CommandReply } from '../../types/command-reply';
 import type { BookOutline, SegmentPage } from '../../types/segment-pages';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { readNamingCause } from '../../utils/page-failure-cause';
 import { FIXTURE_STAMPS, makePhraseLink } from '../test-helpers';
 import { BOOK, comparable, glossing, ref, sessionOver } from './session-source';
 
@@ -356,24 +355,7 @@ describe('PageClient', () => {
     client.load(0, 1, 'list');
     await client.settled();
 
-    expect(client.failureAt(0)).toStrictEqual({
-      cause: 'app',
-      isRetrying: false,
-      failedAgain: false,
-    });
-  });
-
-  it('reports the cause that the failed request names', async () => {
-    const failing = jest.fn(async (): Promise<SegmentPage | undefined> =>
-      readNamingCause('text', async () => {
-        throw new Error('unreadable');
-      }),
-    );
-    const { client } = await clientOver({ getSegments: failing });
-    client.load(0, 1, 'list');
-    await client.settled();
-
-    expect(client.failureAt(0)?.cause).toBe('text');
+    expect(client.failureAt(0)).toStrictEqual({ isRetrying: false });
   });
 
   it('reports no failure for a segment that was never asked for', async () => {
@@ -411,34 +393,21 @@ describe('PageClient', () => {
 
     client.retryFailed();
 
-    expect(client.failureAt(0)).toStrictEqual({
-      cause: 'app',
-      isRetrying: true,
-      failedAgain: false,
-    });
+    expect(client.failureAt(0)).toStrictEqual({ isRetrying: true });
   });
 
-  it('reports a segment whose page fails every retry again as failed again', async () => {
+  it('reports a segment as no longer retrying once its page fails every retry again', async () => {
     const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
       throw new Error('offline');
     });
     const { client } = await clientOver({ getSegments: failing });
     client.load(0, 1, 'list');
     await client.settled();
-    failing.mockImplementation(() =>
-      readNamingCause('analysis', async () => {
-        throw new Error('unreadable');
-      }),
-    );
 
     client.retryFailed();
     await client.settled();
 
-    expect(client.failureAt(0)).toStrictEqual({
-      cause: 'analysis',
-      isRetrying: false,
-      failedAgain: true,
-    });
+    expect(client.failureAt(0)).toStrictEqual({ isRetrying: false });
   });
 
   it('tells subscribers when a view asks again for a page that failed every retry', async () => {

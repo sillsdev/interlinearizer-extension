@@ -298,7 +298,7 @@ function makeLargeBook(count: number): Book {
 }
 
 /** How a page failed, for segments that a test's pages report as failed. */
-const FAILED: PageFailure = { cause: 'app', isRetrying: false, failedAgain: false };
+const FAILED: PageFailure = { isRetrying: false };
 
 /** Book with two segments in GEN 1. */
 const GEN_1_MULTI_BOOK: Book = {
@@ -2308,26 +2308,41 @@ describe('segment pages', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Failed: Genesis 1:3–6');
   });
 
-  it('explains the verses that failed for each cause apart', () => {
-    mockKeyAsValueLocalizedStrings({ '%interlinearizer_pageLoad_failed%': 'Failed: {places}' });
+  it('names the verses being asked for again apart from those given up', () => {
+    mockKeyAsValueLocalizedStrings({
+      '%interlinearizer_pageLoad_failed%': 'Failed: {places}',
+      '%interlinearizer_pageLoad_retrying%': 'Retrying: {places}',
+    });
     const book = makeLargeBook(6);
-    const unreadable: PageFailure = { ...FAILED, cause: 'analysis' };
+    const retrying: PageFailure = { isRetrying: true };
     renderInterlinearizer({
       book,
       pages: {
         ...partlyLoaded(book, 2),
         failureAt: (index) => {
           if (index < 2) return undefined;
-          return index < 4 ? unreadable : FAILED;
+          return index < 4 ? retrying : FAILED;
         },
       },
     });
 
     const [first, second] = screen.getAllByRole('alert');
-    expect(first).toHaveTextContent('Failed: Genesis 1:3–4');
-    expect(first).toHaveTextContent('%interlinearizer_pageLoad_cause_analysis%');
-    expect(second).toHaveTextContent('Failed: Genesis 1:5–6');
-    expect(second).toHaveTextContent('%interlinearizer_pageLoad_cause_app%');
+    expect(first).toHaveTextContent('Failed: Genesis 1:5–6');
+    expect(second).toHaveTextContent('Retrying: Genesis 1:3–4');
+  });
+
+  it('names in one banner the verses given up that do not adjoin', () => {
+    mockKeyAsValueLocalizedStrings({ '%interlinearizer_pageLoad_failed%': 'Failed: {places}' });
+    const book = makeLargeBook(6);
+    renderInterlinearizer({
+      book,
+      pages: {
+        ...partlyLoaded(book, 2),
+        failureAt: (index) => (index === 2 || index >= 4 ? FAILED : undefined),
+      },
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Failed: Genesis 1:3, 1:5–6');
   });
 
   it('says nothing of a failed segment beyond those it mounts', () => {

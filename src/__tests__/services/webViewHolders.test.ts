@@ -64,12 +64,28 @@ describe('release', () => {
     expect(holders.holderOf(projectId)).toBeUndefined();
   });
 
-  it('keeps the project on its holder when a duplicate closes, forgetting the duplicate', () => {
+  it('keeps a named successor a duplicate until it claims the project', () => {
+    holders.claim(projectId, 'tab-a');
+    holders.claim(projectId, 'tab-b');
+    holders.release(projectId, 'tab-a');
+    holders.claim(projectId, 'tab-c');
+
+    expect(holders.release(projectId, 'tab-c')).toStrictEqual({ successor: 'tab-b' });
+  });
+
+  it('keeps the project on its holder when a duplicate closes', () => {
     holders.claim(projectId, 'tab-a');
     holders.claim(projectId, 'tab-b');
 
     expect(holders.release(projectId, 'tab-b')).toBeUndefined();
     expect(holders.holderOf(projectId)).toBe('tab-a');
+  });
+
+  it('forgets a duplicate that closes', () => {
+    holders.claim(projectId, 'tab-a');
+    holders.claim(projectId, 'tab-b');
+    holders.release(projectId, 'tab-b');
+
     expect(holders.release(projectId, 'tab-a')).toStrictEqual({ successor: undefined });
   });
 });

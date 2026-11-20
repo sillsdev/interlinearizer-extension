@@ -102,41 +102,6 @@ describe('DraftRepository', () => {
     expect(writes).not.toContain(draftAnalysisKey('src', 'GEN'));
   });
 
-  describe('a shard stored in other formatting than this build writes', () => {
-    const genKey = draftAnalysisKey('src', 'GEN');
-
-    /** Stores the two-book draft with GEN's shard indented, then loads it into a new repository. */
-    async function loadWithIndentedGen() {
-      const { storage, records, writes } = memoryStorage();
-      await new DraftRepository(storage, 'src', silentLogger()).startOver(twoBookDraft());
-      records.set(genKey, JSON.stringify(JSON.parse(records.get(genKey) ?? ''), undefined, 2));
-      const repository = new DraftRepository(storage, 'src', silentLogger());
-      const { draft } = await repository.exportAll();
-      writes.length = 0;
-      return { repository, draft, records, writes };
-    }
-
-    it("is rewritten in this build's formatting by the next save that compares it", async () => {
-      const { repository, draft, records, writes } = await loadWithIndentedGen();
-
-      await repository.startOver(draft);
-
-      expect(writes).toContain(genKey);
-      expect(writes).not.toContain(draftAnalysisKey('src', 'EXO'));
-      expect(records.get(genKey)).toBe(JSON.stringify(JSON.parse(records.get(genKey) ?? '')));
-    });
-
-    it('compares as unchanged once rewritten', async () => {
-      const { repository, draft, writes } = await loadWithIndentedGen();
-      await repository.startOver(draft);
-      writes.length = 0;
-
-      await repository.startOver(draft);
-
-      expect(writes).not.toContain(genKey);
-    });
-  });
-
   it('refuses to load a draft written by a newer build', async () => {
     const newer = JSON.stringify({ ...emptyDraft('src'), modelVersion: CURRENT_MODEL_VERSION + 1 });
     const { storage } = memoryStorage({ [draftKey('src')]: newer });

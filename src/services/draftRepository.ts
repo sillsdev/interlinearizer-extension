@@ -179,8 +179,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
 
   /**
    * Each book's shard as last loaded or saved, serialized. A book missing here counts as changed,
-   * so a lost entry costs a write, not correctness. A loaded shard keeps its stored string, so one
-   * that another build formatted differently counts as changed until it is next written.
+   * so a lost entry costs a write, not correctness. A loaded shard keeps its stored string.
    */
   private shardContents = new Map<string, string>();
 

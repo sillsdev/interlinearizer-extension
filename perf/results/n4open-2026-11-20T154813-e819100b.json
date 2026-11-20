@@ -1,0 +1,298 @@
+{
+  "kind": "n4open",
+  "commit": "e819100b735a5cde0a02ff2cf54f4596e9a11059",
+  "dirty": false,
+  "coreCommit": "ebdb06881bce06853024834a8a204dec3f51b1cc",
+  "recordedAt": "2026-11-20T15:48:13.450Z",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12700KF",
+    "cores": 20,
+    "memoryGb": 34,
+    "os": "Windows_NT 10.0.26200",
+    "node": "v25.8.1",
+    "loadAverage": [0, 0, 0]
+  },
+  "runs": 10,
+  "variant": "main",
+  "datasets": {
+    "large-loadable": {
+      "total": {
+        "runs": 10,
+        "medianMs": 1159.366,
+        "p90Ms": 1175.021,
+        "minMs": 1132.558,
+        "maxMs": 1176.473
+      },
+      "index:read": {
+        "runs": 10,
+        "medianMs": 690.301,
+        "p90Ms": 704.969,
+        "minMs": 674.256,
+        "maxMs": 709.785
+      },
+      "getDraft:read": {
+        "runs": 10,
+        "medianMs": 95.383,
+        "p90Ms": 106.682,
+        "minMs": 75.678,
+        "maxMs": 108.296
+      },
+      "getDraft:parse": {
+        "runs": 10,
+        "medianMs": 450.038,
+        "p90Ms": 461.492,
+        "minMs": 434.877,
+        "maxMs": 465.337
+      },
+      "getDraft:parse:json": {
+        "runs": 10,
+        "medianMs": 237.387,
+        "p90Ms": 252.114,
+        "minMs": 225.638,
+        "maxMs": 253.217
+      },
+      "getDraft:parse:hasLinkWithoutId": {
+        "runs": 10,
+        "medianMs": 2.609,
+        "p90Ms": 2.762,
+        "minMs": 2.322,
+        "maxMs": 3.353
+      },
+      "getDraft:parse:isTextAnalysis": {
+        "runs": 10,
+        "medianMs": 6.685,
+        "p90Ms": 7.679,
+        "minMs": 6.099,
+        "maxMs": 8.7
+      },
+      "getDraft:compare": {
+        "runs": 10,
+        "medianMs": 141.22,
+        "p90Ms": 157.05,
+        "minMs": 117.458,
+        "maxMs": 166.505
+      },
+      "getDraft:parse:merge": {
+        "runs": 10,
+        "medianMs": 13.244,
+        "p90Ms": 14.2,
+        "minMs": 12.535,
+        "maxMs": 29.678
+      },
+      "getDraft:parse:violations": {
+        "runs": 10,
+        "medianMs": 186.716,
+        "p90Ms": 188.414,
+        "minMs": 182.716,
+        "maxMs": 189.543
+      },
+      "violations:isTextAnalysis": {
+        "runs": 10,
+        "medianMs": 7.559,
+        "p90Ms": 7.872,
+        "minMs": 7.493,
+        "maxMs": 9.082
+      },
+      "violations:validate": {
+        "runs": 10,
+        "medianMs": 178.984,
+        "p90Ms": 180.864,
+        "minMs": 175.162,
+        "maxMs": 182.011
+      },
+      "index:build": {
+        "runs": 10,
+        "medianMs": 465.9,
+        "p90Ms": 476.035,
+        "minMs": 456.632,
+        "maxMs": 492.687
+      }
+    },
+    "large": {
+      "total": {
+        "runs": 10,
+        "medianMs": 1917.419,
+        "p90Ms": 1977.293,
+        "minMs": 1908.098,
+        "maxMs": 2016.731
+      },
+      "index:read": {
+        "runs": 10,
+        "medianMs": 1072.889,
+        "p90Ms": 1108.95,
+        "minMs": 1066.388,
+        "maxMs": 1129.09
+      },
+      "getDraft:read": {
+        "runs": 10,
+        "medianMs": 125.402,
+        "p90Ms": 130.436,
+        "minMs": 123.902,
+        "maxMs": 132.901
+      },
+      "getDraft:parse": {
+        "runs": 10,
+        "medianMs": 744.452,
+        "p90Ms": 760.793,
+        "minMs": 739.874,
+        "maxMs": 781.207
+      },
+      "getDraft:parse:json": {
+        "runs": 10,
+        "medianMs": 382.866,
+        "p90Ms": 383.91,
+        "minMs": 377.636,
+        "maxMs": 384.961
+      },
+      "getDraft:parse:hasLinkWithoutId": {
+        "runs": 10,
+        "medianMs": 4.57,
+        "p90Ms": 4.782,
+        "minMs": 4.257,
+        "maxMs": 4.971
+      },
+      "getDraft:parse:isTextAnalysis": {
+        "runs": 10,
+        "medianMs": 11.195,
+        "p90Ms": 11.627,
+        "minMs": 10.753,
+        "maxMs": 11.769
+      },
+      "getDraft:compare": {
+        "runs": 10,
+        "medianMs": 201.12,
+        "p90Ms": 207.388,
+        "minMs": 185.367,
+        "maxMs": 256.822
+      },
+      "getDraft:parse:merge": {
+        "runs": 10,
+        "medianMs": 20.707,
+        "p90Ms": 22.014,
+        "minMs": 19.64,
+        "maxMs": 45.142
+      },
+      "getDraft:parse:violations": {
+        "runs": 10,
+        "medianMs": 324.146,
+        "p90Ms": 326.713,
+        "minMs": 318.407,
+        "maxMs": 357.616
+      },
+      "violations:isTextAnalysis": {
+        "runs": 10,
+        "medianMs": 12.422,
+        "p90Ms": 13.652,
+        "minMs": 11.412,
+        "maxMs": 13.919
+      },
+      "violations:validate": {
+        "runs": 10,
+        "medianMs": 311.825,
+        "p90Ms": 314.839,
+        "minMs": 304.804,
+        "maxMs": 344.168
+      },
+      "index:build": {
+        "runs": 10,
+        "medianMs": 840.706,
+        "p90Ms": 901.759,
+        "minMs": 837.05,
+        "maxMs": 939.658
+      }
+    },
+    "real": {
+      "total": {
+        "runs": 10,
+        "medianMs": 2547.775,
+        "p90Ms": 2561.983,
+        "minMs": 2519.439,
+        "maxMs": 2672.149
+      },
+      "index:read": {
+        "runs": 10,
+        "medianMs": 1432.23,
+        "p90Ms": 1445.135,
+        "minMs": 1407.533,
+        "maxMs": 1465.851
+      },
+      "getDraft:read": {
+        "runs": 10,
+        "medianMs": 144.417,
+        "p90Ms": 147.743,
+        "minMs": 140.867,
+        "maxMs": 155.798
+      },
+      "getDraft:parse": {
+        "runs": 10,
+        "medianMs": 1065.445,
+        "p90Ms": 1074.907,
+        "minMs": 1056.559,
+        "maxMs": 1096.359
+      },
+      "getDraft:parse:json": {
+        "runs": 10,
+        "medianMs": 511.919,
+        "p90Ms": 514.064,
+        "minMs": 507.305,
+        "maxMs": 514.31
+      },
+      "getDraft:parse:hasLinkWithoutId": {
+        "runs": 10,
+        "medianMs": 7.01,
+        "p90Ms": 7.326,
+        "minMs": 6.782,
+        "maxMs": 7.441
+      },
+      "getDraft:parse:isTextAnalysis": {
+        "runs": 10,
+        "medianMs": 33.46,
+        "p90Ms": 33.941,
+        "minMs": 33.115,
+        "maxMs": 34.184
+      },
+      "getDraft:compare": {
+        "runs": 10,
+        "medianMs": 218.886,
+        "p90Ms": 224.685,
+        "minMs": 206.967,
+        "maxMs": 226.609
+      },
+      "getDraft:parse:merge": {
+        "runs": 10,
+        "medianMs": 56.347,
+        "p90Ms": 60.568,
+        "minMs": 36.906,
+        "maxMs": 63.189
+      },
+      "getDraft:parse:violations": {
+        "runs": 10,
+        "medianMs": 453.958,
+        "p90Ms": 488.687,
+        "minMs": 449.305,
+        "maxMs": 493.368
+      },
+      "violations:isTextAnalysis": {
+        "runs": 10,
+        "medianMs": 36.771,
+        "p90Ms": 37.979,
+        "minMs": 35.55,
+        "maxMs": 38.079
+      },
+      "violations:validate": {
+        "runs": 10,
+        "medianMs": 418.005,
+        "p90Ms": 450.575,
+        "minMs": 412.639,
+        "maxMs": 456.568
+      },
+      "index:build": {
+        "runs": 10,
+        "medianMs": 1114.141,
+        "p90Ms": 1120.378,
+        "minMs": 1108.923,
+        "maxMs": 1206.2
+      }
+    }
+  }
+}

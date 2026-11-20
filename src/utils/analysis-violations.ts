@@ -1,3 +1,4 @@
+import type { TextAnalysis } from 'interlinearizer';
 import type { WarningLogger } from '../types/analysis-repository';
 import { isTextAnalysis, validateTextAnalysis } from '../types/type-guards';
 
@@ -21,6 +22,18 @@ export function reportAnalysisViolations(
     logger.warn(`Interlinearizer: ${description} has a structurally invalid analysis`);
     return;
   }
+  reportInvariantViolations(logger, analysis, description);
+}
+
+/**
+ * Logs, tagged with `description`, the invariants that `analysis` breaks. For an analysis already
+ * known to be of readable shape; the load or save proceeds regardless.
+ */
+export function reportInvariantViolations(
+  logger: WarningLogger,
+  analysis: TextAnalysis,
+  description: string,
+): void {
   validateTextAnalysis(analysis).forEach(({ kind, layer, count, sample }) => {
     logger.warn(
       `Interlinearizer: ${description} has ${count} ${layer}-layer ${kind} violation(s): ${sample.join(', ')}`,

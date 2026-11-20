@@ -26,8 +26,8 @@ export function reportAnalysisViolations(
 }
 
 /**
- * Logs, as {@link reportAnalysisViolations} does, the invariants that `analysis` breaks, for an
- * analysis already known to be of readable shape.
+ * Logs, tagged with `description`, the invariants that `analysis` breaks. For an analysis already
+ * known to be of readable shape; the load or save proceeds regardless.
  */
 export function reportInvariantViolations(
   logger: WarningLogger,

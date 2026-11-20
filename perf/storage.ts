@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import type { DraftProject, InterlinearProject } from 'interlinearizer';
 import path from 'path';
 import { DraftRepository } from '../src/services/draftRepository';
-import { ProjectSummaries, summarizeProject } from '../src/services/projectSummaries';
+import { ProjectSummaries, storedSummaryOf } from '../src/services/projectSummaries';
 import { projectKey } from '../src/services/storageKeys';
 import type { KeyValueStorage } from '../src/types/analysis-repository';
 import { CURRENT_MODEL_VERSION } from '../src/types/model-version';
@@ -58,7 +58,8 @@ export async function writeDraft(dir: string, draft: DraftProject): Promise<void
 
 /**
  * Adds a saved project holding `draft`'s analysis and analysis languages to the extension storage
- * in `dir`.
+ * in `dir`. It is listed with the summary this build stores, so that the first Save to it rebuilds
+ * the record from the summary, as every later one does.
  *
  * @returns The new project's id.
  * @throws If the stored project summaries are corrupt or from a newer build, or a record cannot be
@@ -82,6 +83,6 @@ export async function addSavedProject(
     analysis: draft.analysis,
   };
   await storage.write(projectKey(project.id), JSON.stringify(project));
-  await new ProjectSummaries(storage).add(summarizeProject(project));
+  await new ProjectSummaries(storage).add(storedSummaryOf(project));
   return project.id;
 }

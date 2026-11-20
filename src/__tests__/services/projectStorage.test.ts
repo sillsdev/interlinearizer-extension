@@ -2,7 +2,12 @@
 
 import papiBackendMock from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
-import type { DraftProject, InterlinearProject, TextAnalysis } from 'interlinearizer';
+import type {
+  AlignmentLink,
+  DraftProject,
+  InterlinearProject,
+  TextAnalysis,
+} from 'interlinearizer';
 import {
   createEditableCopy,
   createProject,
@@ -26,7 +31,7 @@ import {
   updateAnalysis,
   updateProjectMetadata,
 } from '../../services/projectStorage';
-import { summarizeProject } from '../../services/projectSummaries';
+import { storedSummaryOf, summarizeProject } from '../../services/projectSummaries';
 import type { AnalysisRepository, ChangeSet } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { UnreadableBooksError } from '../../types/analysis-repository';
@@ -1216,6 +1221,211 @@ describe('projectStorage', () => {
 
       expect(result).toMatchObject({ segmentation: projectWithBoundaries.segmentation });
     });
+
+    describe('with boundaries given, from a summary noting what the record holds under links', () => {
+      const SEGMENTATION = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+      const configured: InterlinearProject = {
+        ...storedProject,
+        name: 'Kept',
+        description: 'Kept too',
+        targetProjectId: 'tgt-1',
+        analysisLanguages: ['fr'],
+        links: [],
+      };
+
+      /** Lists `project` with the noted summary, and stores its record, keeping later writes. */
+      function storeNoted(project: InterlinearProject): void {
+        writeThroughStore({
+          [`project:${project.id}`]: JSON.stringify(project),
+          projectSummaries: JSON.stringify({
+            modelVersion: CURRENT_MODEL_VERSION,
+            summaries: [storedSummaryOf(project)],
+          }),
+        });
+      }
+
+      /** Fails the next write of the project summaries, as a full disk would, keeping the rest. */
+      function failNextSummariesWrite(): void {
+        const writeThrough = __mockWriteUserData.getMockImplementation();
+        let failed = false;
+        __mockWriteUserData.mockImplementation(async (t: unknown, key: unknown, json: unknown) => {
+          if (key === 'projectSummaries' && !failed) {
+            failed = true;
+            throw new Error('disk full');
+          }
+          await writeThrough?.(t, key, json);
+        });
+      }
+
+      /** The keys read during the test. */
+      function readKeys(): unknown[] {
+        return __mockReadUserData.mock.calls.map(([, key]) => key);
+      }
+
+      it("writes the record from the summary, keeping the project's metadata, without reading it", async () => {
+        storeNoted(configured);
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        const expected = {
+          ...configured,
+          analysis: newAnalysis,
+          segmentation: SEGMENTATION,
+          updatedAt: UPDATE_TIME,
+        };
+        expect(result).toEqual(expected);
+        const written = __mockWriteUserData.mock.calls.find(([, key]) => key === 'project:proj-id');
+        expect(JSON.parse(written?.[2])).toEqual(expected);
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('rebuilds the stored record of a project setting every field an import lacks', async () => {
+        // Typed so that a field added to the project record must be set here too.
+        const everyField: Required<Omit<InterlinearProject, 'pt9Import'>> = {
+          id: 'proj-id',
+          modelVersion: CURRENT_MODEL_VERSION,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-02T00:00:00.000Z',
+          name: 'Kept',
+          description: 'Kept too',
+          sourceProjectId: 'src-project',
+          targetProjectId: 'tgt-1',
+          analysisLanguages: ['fr', 'de'],
+          analysis: newAnalysis,
+          links: [],
+          segmentation: SEGMENTATION,
+        };
+        storeNoted(everyField);
+
+        // The analysis and boundaries given back are the stored ones, so only the time changes.
+        await updateAnalysis(token, 'proj-id', everyField.analysis, everyField.segmentation);
+
+        expect(readKeys()).not.toContain('project:proj-id');
+        const written = __mockWriteUserData.mock.calls.find(([, key]) => key === 'project:proj-id');
+        expect(JSON.parse(written?.[2])).toStrictEqual({ ...everyField, updatedAt: UPDATE_TIME });
+      });
+
+      it('reads the record when its summary was stored before the links note, as after an upgrade', async () => {
+        mockListedProject(configured);
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).toMatchObject({ name: 'Kept', links: [] });
+        expect(readKeys()).toContain('project:proj-id');
+      });
+
+      it('rebuilds from the summary on the save after an upgrade, the first having noted the links', async () => {
+        writeThroughStore({
+          'project:proj-id': JSON.stringify(configured),
+          projectSummaries: storedSummaries(configured),
+        });
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+        __mockReadUserData.mockClear();
+
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('keeps a record without links without them', async () => {
+        storeNoted(storedProject);
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).not.toHaveProperty('links');
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('drops the stored boundaries when cleared, without reading the record', async () => {
+        storeNoted({ ...configured, segmentation: SEGMENTATION });
+
+        // eslint-disable-next-line no-null/no-null -- explicit "clear boundaries" sentinel under test
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, null);
+
+        expect(result).not.toHaveProperty('segmentation');
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('reads the record when it holds links, keeping them', async () => {
+        const links: AlignmentLink[] = [
+          { id: 'al-1', sourceEndpoints: [], targetEndpoints: [], status: 'approved' },
+        ];
+        storeNoted({ ...configured, links });
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result?.links).toEqual(links);
+        expect(readKeys()).toContain('project:proj-id');
+      });
+
+      it('reads the record when boundaries are not given, keeping its own', async () => {
+        storeNoted({ ...configured, segmentation: SEGMENTATION });
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis);
+
+        expect(result?.segmentation).toEqual(SEGMENTATION);
+        expect(readKeys()).toContain('project:proj-id');
+      });
+
+      it('reads the record when the summaries cannot be read', async () => {
+        writeThroughStore({
+          'project:proj-id': JSON.stringify(configured),
+          projectSummaries: '{not json',
+        });
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).toMatchObject({ name: 'Kept', analysis: newAnalysis });
+        expect(readKeys()).toContain('project:proj-id');
+      });
+
+      it('reads the record once its summary failed to refresh after a write in this process', async () => {
+        storeNoted(configured);
+        failNextSummariesWrite();
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+        __mockReadUserData.mockClear();
+
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(readKeys()).toContain('project:proj-id');
+      });
+
+      it('rebuilds from the summary again once the summary refreshes', async () => {
+        storeNoted(configured);
+        failNextSummariesWrite();
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+        __mockReadUserData.mockClear();
+
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('returns undefined for an unlisted project, writing nothing', async () => {
+        writeThroughStore({
+          'project:proj-id': JSON.stringify(configured),
+          projectSummaries: storedSummaries(),
+        });
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).toBeUndefined();
+        expect(__mockWriteUserData).not.toHaveBeenCalled();
+      });
+
+      it('refuses a Paratext 9 import, writing nothing', async () => {
+        storeNoted({
+          ...configured,
+          pt9Import: { fileHashes: {}, importedAt: '2026-01-01T00:00:00.000Z' },
+        });
+
+        await expect(updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION)).rejects.toThrow(
+          'is a Paratext 9 import and is read-only',
+        );
+        expect(__mockWriteUserData).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('getProjectSummariesForSource', () => {
@@ -1255,6 +1465,20 @@ describe('projectStorage', () => {
       await expect(getProjectSummariesForSource(token, 'src-a')).resolves.toEqual([]);
     });
 
+    it('leaves out the note on what each record holds under links', async () => {
+      const project = inSource('id-1', 'src-a');
+      mockStore({
+        projectSummaries: JSON.stringify({
+          modelVersion: CURRENT_MODEL_VERSION,
+          summaries: [storedSummaryOf(project)],
+        }),
+      });
+
+      await expect(getProjectSummariesForSource(token, 'src-a')).resolves.toStrictEqual([
+        summarizeProject(project),
+      ]);
+    });
+
     it('propagates corrupt summaries rather than listing nothing', async () => {
       mockStore({ projectSummaries: JSON.stringify([]) });
 
@@ -1272,6 +1496,20 @@ describe('projectStorage', () => {
 
       await expect(getProjectSummary(token, 'id-2')).resolves.toMatchObject({ id: 'id-2' });
       expect(__mockReadUserData.mock.calls.map(([, key]) => key)).toEqual(['projectSummaries']);
+    });
+
+    it('leaves out the note on what the record holds under links', async () => {
+      const project = makeStubProject('id-1');
+      mockStore({
+        projectSummaries: JSON.stringify({
+          modelVersion: CURRENT_MODEL_VERSION,
+          summaries: [storedSummaryOf(project)],
+        }),
+      });
+
+      await expect(getProjectSummary(token, 'id-1')).resolves.toStrictEqual(
+        summarizeProject(project),
+      );
     });
 
     it('returns undefined for a project that is not listed', async () => {
@@ -1881,7 +2119,7 @@ describe('projectStorage', () => {
         expect(result).toEqual({ project: expected, omittedBooks: [] });
         expect(storedProject(stored, expected.id)).toEqual(expected);
         expect(JSON.parse(stored.get('projectSummaries') ?? '{}').summaries).toEqual([
-          summarizeProject(expected),
+          storedSummaryOf(expected),
         ]);
       });
 

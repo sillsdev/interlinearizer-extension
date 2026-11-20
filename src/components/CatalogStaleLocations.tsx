@@ -38,7 +38,7 @@ type CatalogStaleLocationsProps = Readonly<{
   hiddenCount: number;
   /** Asks for every place to be listed. */
   onShowAll: () => void;
-  /** Shown below the list, as word of the places still being fetched. */
+  /** A notice about the places still being fetched, shown below the list. */
   children?: ReactNode;
   /** Writes a place the way the row's usages are written. */
   labelFor: (location: CatalogUsage) => string;

@@ -137,8 +137,8 @@ export type CatalogPlacesState =
   | Readonly<{ status: 'ready'; places: CatalogPlaces }>;
 
 /**
- * Every place of the analysis `analysisId` names, fetched again whenever a change to the session
- * names the catalog. Returns `undefined` while `analysisId` is `undefined`.
+ * Every place of the analysis that `analysisId` names, fetched again whenever a change to the
+ * session names the catalog. Returns `undefined` while `analysisId` is `undefined`.
  */
 export function useCatalogPlaces(
   analysisId: string | undefined,

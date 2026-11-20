@@ -35,7 +35,7 @@ export const ROW_STRING_KEYS = [
 type CatalogRowViewProps = Readonly<{
   /** The analysis this row lists. */
   row: CatalogPageRow;
-  /** Book code the row's places are placed among the headings of. */
+  /** Book code of the open book, whose headings order the row's places in it. */
   currentBook: string;
   /** Finished label for `row.usageCountInBook`, naming the book that count was taken against. */
   usageCountInBookLabel: string;
@@ -126,8 +126,8 @@ type CatalogRowViewProps = Readonly<{
 }>;
 
 /**
- * Says that the rest of a row's places are on their way, or offers to ask for them again. Renders
- * nothing once they have arrived.
+ * Says that the rest of a row's places are on their way, or offers to ask for them again after a
+ * failed fetch. Renders nothing otherwise.
  */
 function PlacesNotice({
   places,

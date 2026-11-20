@@ -11,6 +11,7 @@ import type {
 import type {
   AnalysisLinks,
   AnalysisPayloads,
+  ApprovalsByForm,
   AnalysisRepository,
   ApplyResult,
   ChangeSet,
@@ -144,6 +145,10 @@ export class CSharpRepository implements AnalysisRepository {
 
   countApprovals(analysisIds: string[]): Promise<Record<string, number>> {
     return this.command('countApprovals', { ids: analysisIds });
+  }
+
+  findApprovalsByForm(normalizedForms: string[]): Promise<ApprovalsByForm> {
+    return this.command('findApprovalsByForm', { keys: normalizedForms });
   }
 
   /** Nothing, since the host answers every lookup from its tables rather than a kept index. */

@@ -2,6 +2,7 @@
 import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
 import path from 'path';
 import { tokenizeBook } from '../../src/parsers/papi/bookTokenizer';
+import { AnalysisIndex } from '../../src/services/analysisIndex';
 import { DraftRepository } from '../../src/services/draftRepository';
 import { extractBookFromUsj } from '../../src/parsers/papi/usjBookExtractor';
 import type { ChangeSet, KeyValueStorage } from '../../src/types/analysis-repository';
@@ -13,7 +14,6 @@ import {
   splitAnalysisByBook,
 } from '../../src/utils/analysis-book';
 import {
-  approvedAnalysisByToken,
   buildConcordanceEntries,
   deriveConcordanceRows,
   indexBook,
@@ -153,16 +153,14 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
 
   const books = allBooks();
   const collator = collatorForTag(meta.languageTag || 'und');
+  const analysisIndex = new AnalysisIndex(analysis);
   time(
     'concordance.build',
     measure(opts, noSetup, () => {
       const entries = buildConcordanceEntries(books.map(indexBook), collator);
       deriveConcordanceRows(
         entries,
-        approvedAnalysisByToken(
-          analysis.tokenAnalysisLinks,
-          new Map(analysis.tokenAnalyses.map((ta) => [ta.id, ta])),
-        ),
+        analysisIndex.findApprovalsByForm(entries.map(({ form }) => form)),
         viewBookCode,
       );
     }),

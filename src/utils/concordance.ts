@@ -1,10 +1,10 @@
 import { Canon } from '@sillsdev/scripture';
-import type { Book, SenseRef, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type { Book, SenseRef, TokenAnalysis } from 'interlinearizer';
 import type { Collator } from 'platform-bible-utils';
+import type { ApprovalsByForm } from '../types/analysis-repository';
 import { isWordToken } from '../types/type-guards';
 import { normalizeSurfaceForm } from './analysis-identity';
 import { multiStringText } from './multi-string';
-import { preferredLinkByKey } from './pick-rules';
 
 /** One place in the source text where a word form appears, carried with the verse it sits in. */
 export interface ConcordanceOccurrence {
@@ -190,53 +190,28 @@ export function buildConcordanceEntries(
   );
 }
 
-/** A project's approved analyses, looked up with {@link approvedAnalysisOf}. */
-export type ApprovedAnalyses = ReadonlyMap<string, string>;
-
-function approvalKey(tokenRef: string, form: string): string {
-  return `${tokenRef}\u0000${form}`;
-}
-
-/**
- * Gathers the approved links for lookup, leaving out any naming a payload missing from
- * `analysesById`. A token approved to more than one analysis as the same form — a state no write
- * path builds — keeps the one an approval tie resolves to.
- */
-export function approvedAnalysisByToken(
-  links: readonly TokenAnalysisLink[],
-  analysesById: ReadonlyMap<string, TokenAnalysis>,
-): ApprovedAnalyses {
-  const winners = preferredLinkByKey(links, (link) =>
-    link.status === 'approved' && analysesById.has(link.analysisId)
-      ? approvalKey(link.token.tokenRef, normalizeSurfaceForm(link.token.surfaceText))
-      : undefined,
-  );
-  return new Map([...winners].map(([key, link]) => [key, link.analysisId]));
-}
-
 /**
  * The analysis an occurrence of `entry` is approved to, `undefined` where it has none or its
  * approval names a different word, as one in a book the editor has not loaded can after its text
  * changes.
  */
 export function approvedAnalysisOf(
-  approved: ApprovedAnalyses,
+  approved: ApprovalsByForm,
   entry: ConcordanceEntry,
   occurrence: ConcordanceOccurrence,
 ): string | undefined {
-  return approved.get(approvalKey(occurrence.tokenRef, entry.form));
+  return approved[entry.form]?.[occurrence.tokenRef];
 }
 
 /** Joins each entry to the approved analyses, keeping the entries' order. */
 export function deriveConcordanceRows(
   entries: readonly ConcordanceEntry[],
-  approvedByToken: ApprovedAnalyses,
+  approved: ApprovalsByForm,
   currentBook: string,
 ): readonly ConcordanceRow[] {
   return entries.map((entry) => {
     const analyzedCount = entry.occurrences.reduce(
-      (count, o) =>
-        approvedAnalysisOf(approvedByToken, entry, o) === undefined ? count : count + 1,
+      (count, o) => (approvedAnalysisOf(approved, entry, o) === undefined ? count : count + 1),
       0,
     );
     let status: ConcordanceStatus = 'partlyAnalyzed';
@@ -259,13 +234,13 @@ export function deriveConcordanceRows(
  */
 export function tallyAnalyses(
   entry: ConcordanceEntry,
-  approvedByToken: ApprovedAnalyses,
+  approved: ApprovalsByForm,
   analysesById: ReadonlyMap<string, TokenAnalysis>,
   analysisLanguage: string,
 ): readonly ConcordanceAnalysisTally[] {
   const counts = new Map<string, number>();
   entry.occurrences.forEach((o) => {
-    const analysisId = approvedAnalysisOf(approvedByToken, entry, o);
+    const analysisId = approvedAnalysisOf(approved, entry, o);
     if (analysisId !== undefined) counts.set(analysisId, (counts.get(analysisId) ?? 0) + 1);
   });
   return [...counts]

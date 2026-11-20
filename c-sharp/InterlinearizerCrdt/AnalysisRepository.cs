@@ -188,9 +188,8 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
     public async Task<Dictionary<Guid, int>> CountApprovals(IReadOnlyCollection<Guid> analysisIds)
     {
         var wanted = analysisIds.ToHashSet();
-        var ids = wanted.ToList();
         var tokenRefs = await Query<TokenAnalysisLink, string>(q => q
-            .Where(l => l.Status == AssignmentStatus.Approved && ids.Contains(l.AnalysisId))
+            .Where(l => l.Status == AssignmentStatus.Approved && wanted.Contains(l.AnalysisId))
             .Select(l => l.TokenRef)
             .Distinct());
         if (tokenRefs.Count == 0) return [];
@@ -207,6 +206,38 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
             if (wanted.Contains(picked.AnalysisId)) counts[picked.AnalysisId] = counts.GetValueOrDefault(picked.AnalysisId) + 1;
         }
         return counts;
+    }
+
+    /// <summary>
+    /// The approvals filed under each of <paramref name="normalizedForms"/>, by approving token
+    /// ref, leaving out a form with none. A token approves the analysis that its approved link
+    /// names. Where a token has several approved links naming stored payloads,
+    /// <see cref="PrefersLink"/> picks one. The approval is filed under that link's
+    /// <see cref="TokenAnalysisLink.NormalizedForm"/>.
+    /// </summary>
+    public async Task<Dictionary<string, Dictionary<string, Guid>>> FindApprovalsByForm(IReadOnlyCollection<string> normalizedForms)
+    {
+        var wanted = normalizedForms.ToHashSet();
+        var tokenRefs = await Query<TokenAnalysisLink, string>(q => q
+            .Where(l => l.Status == AssignmentStatus.Approved && wanted.Contains(l.NormalizedForm))
+            .Select(l => l.TokenRef)
+            .Distinct());
+        if (tokenRefs.Count == 0) return [];
+        // Every approved link on those tokens takes part in the tie-break, whichever form it reads.
+        var approved = await Query<TokenAnalysisLink>(q => q
+            .Where(l => l.Status == AssignmentStatus.Approved && tokenRefs.Contains(l.TokenRef)));
+        var named = approved.Select(l => l.AnalysisId).Distinct().ToList();
+        var stored = (await Query<TokenAnalysis, Guid>(q => q.Where(a => named.Contains(a.Id)).Select(a => a.Id))).ToHashSet();
+
+        var byForm = new Dictionary<string, Dictionary<string, Guid>>();
+        foreach (var token in approved.Where(l => stored.Contains(l.AnalysisId)).GroupBy(l => l.TokenRef))
+        {
+            var picked = token.Aggregate((best, link) => PrefersLink(link, best) ? link : best);
+            if (!wanted.Contains(picked.NormalizedForm)) continue;
+            if (!byForm.TryGetValue(picked.NormalizedForm, out var byToken)) byForm[picked.NormalizedForm] = byToken = [];
+            byToken[token.Key] = picked.AnalysisId;
+        }
+        return byForm;
     }
 
     /// <summary>

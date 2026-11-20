@@ -356,6 +356,10 @@ namespace Interlinearizer.Crdt.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("NormalizedForm")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("TEXT");
 
@@ -386,6 +390,8 @@ namespace Interlinearizer.Crdt.Migrations
                     b.HasIndex("ProjectId", "TokenRef");
 
                     b.HasIndex("ProjectId", "BookCode", "Status");
+
+                    b.HasIndex("ProjectId", "NormalizedForm", "Status");
 
                     b.ToTable("TokenAnalysisLink");
                 });

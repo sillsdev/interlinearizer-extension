@@ -11,7 +11,6 @@ import ConcordanceRowView, {
 } from '../../components/ConcordanceRowView';
 import { emptyAnalysis } from '../../types/empty-factories';
 import {
-  approvedAnalysisByToken,
   buildConcordanceEntries,
   deriveConcordanceRows,
   indexBook,
@@ -61,12 +60,17 @@ async function renderRow(options: RowOptions = {}) {
   const entries = buildConcordanceEntries([indexBook(book)], new Collator('en'));
   const analyses = options.analyses ?? [];
   const links = options.links ?? [];
-  const approvedByToken = approvedAnalysisByToken(links, new Map(analyses.map((a) => [a.id, a])));
-  const derived = deriveConcordanceRows(
-    entries,
-    approvedByToken,
-    options.currentBook ?? 'GEN',
-  ).find((r) => r.entry.form === 'light');
+  const stored = new Set(analyses.map(({ id }) => id));
+  const approved = {
+    light: Object.fromEntries(
+      links
+        .filter(({ analysisId }) => stored.has(analysisId))
+        .map(({ token, analysisId }) => [token.tokenRef, analysisId]),
+    ),
+  };
+  const derived = deriveConcordanceRows(entries, approved, options.currentBook ?? 'GEN').find(
+    (r) => r.entry.form === 'light',
+  );
   if (!derived) throw new Error('the text has no "light" to list');
   const { entry, occurrenceCountInBook, analyzedCount, status } = derived;
   const row = {

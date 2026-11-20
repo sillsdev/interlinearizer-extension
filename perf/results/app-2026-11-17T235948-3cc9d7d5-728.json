@@ -1,0 +1,2468 @@
+{
+  "kind": "app",
+  "commit": "3cc9d7d5afe37ebd23a2cd8800fcafb3429204b7",
+  "dirty": false,
+  "coreCommit": "33250c6784cf27ea9bd6e0f0a8a729c7644f9f67",
+  "recordedAt": "2026-11-17T23:59:48.110Z",
+  "machine": {
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12700KF",
+    "cores": 20,
+    "memoryGb": 34,
+    "os": "Windows_NT 10.0.26200",
+    "node": "v25.8.1",
+    "loadAverage": [0, 0, 0]
+  },
+  "appBuild": "packaged",
+  "extensionBuild": "production",
+  "runs": 10,
+  "tiers": {
+    "small": {
+      "viewBook": "PHP",
+      "dataset": {
+        "counts": {
+          "segments": 104,
+          "wordTokens": 2219,
+          "tokenAnalyses": 754,
+          "tokenAnalysisLinks": {
+            "approved": 2156,
+            "suggested": 118,
+            "stale": 63,
+            "rejected": 106
+          },
+          "phraseAnalyses": 47,
+          "phraseAnalysisLinks": 47,
+          "segmentAnalyses": 33
+        },
+        "bytes": { "draftJson": 816848, "largestShard": 816658 }
+      },
+      "wireBytes": { "projectsForSource": 1503 },
+      "cold": {
+        "webView": {
+          "app-startup": {
+            "runs": 10,
+            "medianMs": 3077,
+            "p90Ms": 3117,
+            "minMs": 2298,
+            "maxMs": 3127
+          },
+          "book-render": {
+            "runs": 10,
+            "medianMs": 569.8,
+            "p90Ms": 578.3,
+            "minMs": 565.8,
+            "maxMs": 579.3
+          },
+          "open-to-editable": {
+            "runs": 10,
+            "medianMs": 1043.2,
+            "p90Ms": 2032.1,
+            "minMs": 1024.6,
+            "maxMs": 2038
+          },
+          "open-to-interactive": {
+            "runs": 10,
+            "medianMs": 951.5,
+            "p90Ms": 1944.7,
+            "minMs": 931.3,
+            "maxMs": 1946.2
+          }
+        },
+        "host": {
+          "outline-fetch": {
+            "runs": 10,
+            "medianMs": 398.021,
+            "p90Ms": 404.564,
+            "minMs": 390.123,
+            "maxMs": 407.576
+          },
+          "outline-fetch:usj": {
+            "runs": 10,
+            "medianMs": 344.06,
+            "p90Ms": 347.992,
+            "minMs": 339.925,
+            "maxMs": 349.707
+          },
+          "outline-fetch:tokenize": {
+            "runs": 10,
+            "medianMs": 8.168,
+            "p90Ms": 8.38,
+            "minMs": 7.895,
+            "maxMs": 8.511
+          },
+          "outline-fetch:resegment": {
+            "runs": 10,
+            "medianMs": 0.014,
+            "p90Ms": 0.016,
+            "minMs": 0.013,
+            "maxMs": 0.016
+          },
+          "outline-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.03,
+            "p90Ms": 0.036,
+            "minMs": 0.029,
+            "maxMs": 0.039
+          },
+          "page-fetch": {
+            "runs": 20,
+            "medianMs": 4.268,
+            "p90Ms": 4.53,
+            "minMs": 3.556,
+            "maxMs": 10.463
+          }
+        }
+      },
+      "memory": {
+        "webView": {
+          "heapBeforeOpenBytes": 19247840,
+          "viewLoadedBytes": 72958300,
+          "withFullUndoHistoryBytes": 87351940,
+          "afterPickerBytes": 85869100,
+          "afterSaveBytes": 73762776,
+          "beforeTextReadBytes": 193206820,
+          "afterTextReadBytes": 193467744
+        },
+        "host": {
+          "heapBeforeOpenBytes": 106270128,
+          "viewLoadedBytes": 5368672,
+          "viewLoadedExternalBytes": 31841,
+          "viewLoadedRssBytes": 7512064,
+          "withFullUndoHistoryBytes": 5985132,
+          "withFullUndoHistoryExternalBytes": 47513,
+          "withFullUndoHistoryRssBytes": 8437760,
+          "afterPickerBytes": 7152036,
+          "afterPickerExternalBytes": 1257137,
+          "afterPickerRssBytes": 12132352,
+          "afterSaveBytes": 7124268,
+          "afterSaveExternalBytes": 1257137,
+          "afterSaveRssBytes": 12406784,
+          "beforeTextReadBytes": 8113456,
+          "beforeTextReadExternalBytes": 1257137,
+          "beforeTextReadRssBytes": 24473600,
+          "afterTextReadBytes": 139614128,
+          "afterTextReadExternalBytes": 1257137,
+          "afterTextReadRssBytes": 165715968
+        }
+      },
+      "open": {
+        "webView": {
+          "book-render": {
+            "runs": 10,
+            "medianMs": 238.6,
+            "p90Ms": 263.6,
+            "minMs": 231.3,
+            "maxMs": 572.8
+          },
+          "open-to-editable": {
+            "runs": 10,
+            "medianMs": 766.7,
+            "p90Ms": 780.7,
+            "minMs": 754.5,
+            "maxMs": 1059.6
+          },
+          "open-to-interactive": {
+            "runs": 10,
+            "medianMs": 571.9,
+            "p90Ms": 588.4,
+            "minMs": 560.4,
+            "maxMs": 961.9
+          }
+        },
+        "host": {
+          "outline-fetch": {
+            "runs": 10,
+            "medianMs": 51.927,
+            "p90Ms": 74.044,
+            "minMs": 43.104,
+            "maxMs": 403.345
+          },
+          "outline-fetch:usj": {
+            "runs": 10,
+            "medianMs": 9.193,
+            "p90Ms": 15.278,
+            "minMs": 6.798,
+            "maxMs": 346.196
+          },
+          "outline-fetch:tokenize": {
+            "runs": 10,
+            "medianMs": 2.503,
+            "p90Ms": 7.288,
+            "minMs": 1.621,
+            "maxMs": 8.29
+          },
+          "outline-fetch:resegment": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.008,
+            "minMs": 0.004,
+            "maxMs": 0.019
+          },
+          "outline-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.031,
+            "p90Ms": 0.034,
+            "minMs": 0.027,
+            "maxMs": 0.04
+          },
+          "page-fetch": {
+            "runs": 20,
+            "medianMs": 3.457,
+            "p90Ms": 4.013,
+            "minMs": 3.191,
+            "maxMs": 8.78
+          }
+        }
+      },
+      "switchBook": {
+        "book-render": {
+          "runs": 10,
+          "medianMs": 85.3,
+          "p90Ms": 88.3,
+          "minMs": 77.9,
+          "maxMs": 90.1
+        }
+      },
+      "edit": {
+        "webView": {
+          "gloss-render": {
+            "runs": 10,
+            "medianMs": 15.8,
+            "p90Ms": 19.8,
+            "minMs": 11.5,
+            "maxMs": 28.3
+          },
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 13.7,
+            "p90Ms": 17.6,
+            "minMs": 9.4,
+            "maxMs": 24.6
+          },
+          "reply-apply": {
+            "runs": 10,
+            "medianMs": 0.7,
+            "p90Ms": 0.8,
+            "minMs": 0.6,
+            "maxMs": 1.3
+          },
+          "gloss-settle": {
+            "runs": 10,
+            "medianMs": 15.8,
+            "p90Ms": 19.8,
+            "minMs": 11.5,
+            "maxMs": 28.3
+          },
+          "edit-command:transport": {
+            "runs": 10,
+            "medianMs": 6.771,
+            "p90Ms": 9.451,
+            "minMs": 1.038,
+            "maxMs": 17.692
+          },
+          "edit-command:outbound": {
+            "runs": 10,
+            "medianMs": 0.409,
+            "p90Ms": 0.503,
+            "minMs": 0.35,
+            "maxMs": 0.564
+          },
+          "edit-command:inbound": {
+            "runs": 10,
+            "medianMs": 6.352,
+            "p90Ms": 9.101,
+            "minMs": 0.474,
+            "maxMs": 17.27
+          }
+        },
+        "host": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 6.908,
+            "p90Ms": 9.372,
+            "minMs": 6.03,
+            "maxMs": 13.192
+          },
+          "edit-command:stage": {
+            "runs": 10,
+            "medianMs": 0.16,
+            "p90Ms": 0.925,
+            "minMs": 0.121,
+            "maxMs": 1.181
+          },
+          "edit-command:apply": {
+            "runs": 10,
+            "medianMs": 6.469,
+            "p90Ms": 7.73,
+            "minMs": 5.437,
+            "maxMs": 10.941
+          },
+          "edit-command:read": {
+            "runs": 10,
+            "medianMs": 0.59,
+            "p90Ms": 0.952,
+            "minMs": 0.494,
+            "maxMs": 1.186
+          },
+          "edit-command:compare": {
+            "runs": 10,
+            "medianMs": 1.468,
+            "p90Ms": 1.855,
+            "minMs": 1.193,
+            "maxMs": 1.972
+          },
+          "edit-command:write": {
+            "runs": 10,
+            "medianMs": 4.024,
+            "p90Ms": 5.141,
+            "minMs": 3.363,
+            "maxMs": 6.46
+          },
+          "edit-command:reply": {
+            "runs": 10,
+            "medianMs": 0.261,
+            "p90Ms": 0.378,
+            "minMs": 0.216,
+            "maxMs": 0.774
+          },
+          "edit-command:serialize": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.011,
+            "minMs": 0.005,
+            "maxMs": 0.024
+          }
+        }
+      },
+      "picker": {
+        "webView": {
+          "projects-fetch": {
+            "runs": 10,
+            "medianMs": 58.9,
+            "p90Ms": 60.5,
+            "minMs": 57.4,
+            "maxMs": 62
+          },
+          "projects-fetch:transport": {
+            "runs": 10,
+            "medianMs": 57.488,
+            "p90Ms": 60.024,
+            "minMs": 52.374,
+            "maxMs": 61.124
+          }
+        },
+        "host": {
+          "projects-fetch": {
+            "runs": 10,
+            "medianMs": 0.668,
+            "p90Ms": 0.894,
+            "minMs": 0.476,
+            "maxMs": 7.726
+          },
+          "projects-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.006,
+            "p90Ms": 0.009,
+            "minMs": 0.005,
+            "maxMs": 0.01
+          }
+        }
+      },
+      "save": {
+        "webView": {
+          "save": {
+            "runs": 10,
+            "medianMs": 62.8,
+            "p90Ms": 64.6,
+            "minMs": 61.3,
+            "maxMs": 74.7
+          },
+          "save-bytes": {
+            "runs": 10,
+            "medianMs": 125,
+            "p90Ms": 125,
+            "minMs": 125,
+            "maxMs": 125
+          },
+          "save:transport": {
+            "runs": 10,
+            "medianMs": 47.373,
+            "p90Ms": 49.006,
+            "minMs": 44.167,
+            "maxMs": 57.67
+          }
+        },
+        "host": {
+          "save": {
+            "runs": 10,
+            "medianMs": 15.488,
+            "p90Ms": 17.03,
+            "minMs": 14.926,
+            "maxMs": 17.333
+          },
+          "save:read": {
+            "runs": 10,
+            "medianMs": 2.621,
+            "p90Ms": 3.222,
+            "minMs": 2.36,
+            "maxMs": 3.607
+          },
+          "save:parse": {
+            "runs": 10,
+            "medianMs": 6.42,
+            "p90Ms": 7.496,
+            "minMs": 5.495,
+            "maxMs": 8.793
+          },
+          "save:compare": {
+            "runs": 10,
+            "medianMs": 1.062,
+            "p90Ms": 1.293,
+            "minMs": 0.961,
+            "maxMs": 2.273
+          },
+          "save:write": {
+            "runs": 10,
+            "medianMs": 3.161,
+            "p90Ms": 3.452,
+            "minMs": 2.891,
+            "maxMs": 3.707
+          },
+          "save:summary": {
+            "runs": 10,
+            "medianMs": 0.156,
+            "p90Ms": 0.237,
+            "minMs": 0.141,
+            "maxMs": 0.336
+          }
+        }
+      },
+      "concordance": {
+        "concordance-entries": {
+          "runs": 10,
+          "medianMs": 1861.7,
+          "p90Ms": 1872,
+          "minMs": 1832.9,
+          "maxMs": 1972.4
+        }
+      },
+      "textRead": {
+        "text-read": {
+          "runs": 10,
+          "medianMs": 1592.3,
+          "p90Ms": 1623.345,
+          "minMs": 1570.004,
+          "maxMs": 1629.624
+        },
+        "text-read-tokenize": {
+          "runs": 10,
+          "medianMs": 600.023,
+          "p90Ms": 606.818,
+          "minMs": 577.139,
+          "maxMs": 618.692
+        }
+      },
+      "scriptureSave": {
+        "scripture-save": {
+          "runs": 10,
+          "medianMs": 5.8,
+          "p90Ms": 11.7,
+          "minMs": 4.4,
+          "maxMs": 27.8
+        },
+        "gloss-render": {
+          "runs": 10,
+          "medianMs": 29.9,
+          "p90Ms": 36.8,
+          "minMs": 16.5,
+          "maxMs": 56
+        },
+        "save-host-cpu": {
+          "runs": 10,
+          "medianMs": 94,
+          "p90Ms": 125,
+          "minMs": 78,
+          "maxMs": 188
+        }
+      },
+      "editDuringRead": {
+        "gloss-render": {
+          "runs": 5,
+          "medianMs": 157.4,
+          "p90Ms": 217.7,
+          "minMs": 30.8,
+          "maxMs": 217.7
+        }
+      },
+      "editAfterRead": {
+        "webView": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 16.6,
+            "p90Ms": 19.7,
+            "minMs": 14.5,
+            "maxMs": 23.3
+          },
+          "gloss-render": {
+            "runs": 10,
+            "medianMs": 18.6,
+            "p90Ms": 21.7,
+            "minMs": 16.6,
+            "maxMs": 25.2
+          },
+          "reply-apply": {
+            "runs": 10,
+            "medianMs": 0.7,
+            "p90Ms": 0.8,
+            "minMs": 0.5,
+            "maxMs": 0.8
+          },
+          "gloss-settle": {
+            "runs": 10,
+            "medianMs": 18.6,
+            "p90Ms": 21.7,
+            "minMs": 16.6,
+            "maxMs": 25.2
+          },
+          "edit-command:transport": {
+            "runs": 10,
+            "medianMs": 9.017,
+            "p90Ms": 11.51,
+            "minMs": 7.051,
+            "maxMs": 15.162
+          },
+          "edit-command:outbound": {
+            "runs": 10,
+            "medianMs": 0.541,
+            "p90Ms": 0.595,
+            "minMs": 0.444,
+            "maxMs": 0.601
+          },
+          "edit-command:inbound": {
+            "runs": 10,
+            "medianMs": 8.437,
+            "p90Ms": 11.036,
+            "minMs": 6.607,
+            "maxMs": 14.567
+          }
+        },
+        "host": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 6.822,
+            "p90Ms": 8.138,
+            "minMs": 5.59,
+            "maxMs": 10.683
+          },
+          "edit-command:stage": {
+            "runs": 10,
+            "medianMs": 0.093,
+            "p90Ms": 0.125,
+            "minMs": 0.074,
+            "maxMs": 0.172
+          },
+          "edit-command:apply": {
+            "runs": 10,
+            "medianMs": 6.39,
+            "p90Ms": 7.71,
+            "minMs": 5.249,
+            "maxMs": 10.25
+          },
+          "edit-command:read": {
+            "runs": 10,
+            "medianMs": 0.587,
+            "p90Ms": 1.016,
+            "minMs": 0.468,
+            "maxMs": 2.375
+          },
+          "edit-command:compare": {
+            "runs": 10,
+            "medianMs": 1.318,
+            "p90Ms": 1.5,
+            "minMs": 1.233,
+            "maxMs": 1.692
+          },
+          "edit-command:write": {
+            "runs": 10,
+            "medianMs": 4.144,
+            "p90Ms": 5.042,
+            "minMs": 3.308,
+            "maxMs": 5.897
+          },
+          "edit-command:reply": {
+            "runs": 10,
+            "medianMs": 0.196,
+            "p90Ms": 0.275,
+            "minMs": 0.168,
+            "maxMs": 0.294
+          },
+          "edit-command:serialize": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.006,
+            "minMs": 0.003,
+            "maxMs": 0.006
+          }
+        }
+      },
+      "scriptureSaveAfterRead": {
+        "scripture-save": {
+          "runs": 10,
+          "medianMs": 5.7,
+          "p90Ms": 6.7,
+          "minMs": 4.5,
+          "maxMs": 9.7
+        },
+        "gloss-render": {
+          "runs": 10,
+          "medianMs": 449.8,
+          "p90Ms": 471.4,
+          "minMs": 17.4,
+          "maxMs": 484.3
+        },
+        "save-host-cpu": {
+          "runs": 10,
+          "medianMs": 813,
+          "p90Ms": 859,
+          "minMs": 735,
+          "maxMs": 876
+        }
+      }
+    },
+    "medium": {
+      "viewBook": "PSA",
+      "dataset": {
+        "counts": {
+          "segments": 2583,
+          "wordTokens": 41324,
+          "tokenAnalyses": 4804,
+          "tokenAnalysisLinks": {
+            "approved": 40092,
+            "suggested": 2044,
+            "rejected": 1960,
+            "stale": 1232
+          },
+          "phraseAnalyses": 739,
+          "phraseAnalysisLinks": 766,
+          "segmentAnalyses": 742
+        },
+        "bytes": { "draftJson": 13299549, "largestShard": 13297235 }
+      },
+      "wireBytes": { "projectsForSource": 1513 },
+      "cold": {
+        "webView": {
+          "app-startup": {
+            "runs": 10,
+            "medianMs": 3083,
+            "p90Ms": 3093,
+            "minMs": 2279,
+            "maxMs": 3097
+          },
+          "book-render": {
+            "runs": 10,
+            "medianMs": 1135.7,
+            "p90Ms": 1146.4,
+            "minMs": 1108.4,
+            "maxMs": 1152.6
+          },
+          "open-to-editable": {
+            "runs": 10,
+            "medianMs": 1633.3,
+            "p90Ms": 2586.2,
+            "minMs": 1577.8,
+            "maxMs": 2612.6
+          },
+          "open-to-interactive": {
+            "runs": 10,
+            "medianMs": 1512.8,
+            "p90Ms": 2465.9,
+            "minMs": 1485.5,
+            "maxMs": 2493.8
+          }
+        },
+        "host": {
+          "outline-fetch": {
+            "runs": 10,
+            "medianMs": 799.972,
+            "p90Ms": 808.807,
+            "minMs": 788.923,
+            "maxMs": 810.243
+          },
+          "outline-fetch:usj": {
+            "runs": 10,
+            "medianMs": 457.754,
+            "p90Ms": 466.021,
+            "minMs": 450.802,
+            "maxMs": 478.726
+          },
+          "outline-fetch:tokenize": {
+            "runs": 10,
+            "medianMs": 46.297,
+            "p90Ms": 49.155,
+            "minMs": 44.993,
+            "maxMs": 49.707
+          },
+          "outline-fetch:resegment": {
+            "runs": 10,
+            "medianMs": 0.013,
+            "p90Ms": 0.015,
+            "minMs": 0.013,
+            "maxMs": 0.033
+          },
+          "outline-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.839,
+            "p90Ms": 0.904,
+            "minMs": 0.803,
+            "maxMs": 0.933
+          },
+          "page-fetch": {
+            "runs": 20,
+            "medianMs": 9.885,
+            "p90Ms": 10.316,
+            "minMs": 9.286,
+            "maxMs": 10.682
+          }
+        }
+      },
+      "memory": {
+        "webView": {
+          "heapBeforeOpenBytes": 19217964,
+          "viewLoadedBytes": 74137144,
+          "withFullUndoHistoryBytes": 92347572,
+          "afterPickerBytes": 92502820,
+          "afterSaveBytes": 77287148,
+          "beforeTextReadBytes": 199288152,
+          "afterTextReadBytes": 199375532
+        },
+        "host": {
+          "heapBeforeOpenBytes": 105140276,
+          "viewLoadedBytes": 70639096,
+          "viewLoadedExternalBytes": 31972,
+          "viewLoadedRssBytes": 79155200,
+          "withFullUndoHistoryBytes": 71574604,
+          "withFullUndoHistoryExternalBytes": 1265329,
+          "withFullUndoHistoryRssBytes": 83296256,
+          "afterPickerBytes": 71690824,
+          "afterPickerExternalBytes": 1257137,
+          "afterPickerRssBytes": 82718720,
+          "afterSaveBytes": 71241228,
+          "afterSaveExternalBytes": 1257137,
+          "afterSaveRssBytes": 83144704,
+          "beforeTextReadBytes": 74256644,
+          "beforeTextReadExternalBytes": 1257137,
+          "beforeTextReadRssBytes": 92250112,
+          "afterTextReadBytes": 206229868,
+          "afterTextReadExternalBytes": 1257137,
+          "afterTextReadRssBytes": 236077056
+        }
+      },
+      "open": {
+        "webView": {
+          "book-render": {
+            "runs": 10,
+            "medianMs": 700.1,
+            "p90Ms": 794.7,
+            "minMs": 661.2,
+            "maxMs": 1179.1
+          },
+          "open-to-editable": {
+            "runs": 10,
+            "medianMs": 1139.3,
+            "p90Ms": 1223.9,
+            "minMs": 1070.7,
+            "maxMs": 1684.8
+          },
+          "open-to-interactive": {
+            "runs": 10,
+            "medianMs": 1034.4,
+            "p90Ms": 1120.8,
+            "minMs": 991,
+            "maxMs": 1553.3
+          }
+        },
+        "host": {
+          "outline-fetch": {
+            "runs": 10,
+            "medianMs": 387.312,
+            "p90Ms": 463.476,
+            "minMs": 361.907,
+            "maxMs": 830.371
+          },
+          "outline-fetch:usj": {
+            "runs": 10,
+            "medianMs": 68.444,
+            "p90Ms": 119.771,
+            "minMs": 62.995,
+            "maxMs": 454.474
+          },
+          "outline-fetch:tokenize": {
+            "runs": 10,
+            "medianMs": 32.156,
+            "p90Ms": 43.918,
+            "minMs": 28.658,
+            "maxMs": 44.577
+          },
+          "outline-fetch:resegment": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.007,
+            "minMs": 0.004,
+            "maxMs": 0.015
+          },
+          "outline-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.831,
+            "p90Ms": 0.97,
+            "minMs": 0.77,
+            "maxMs": 0.984
+          },
+          "page-fetch": {
+            "runs": 20,
+            "medianMs": 8.879,
+            "p90Ms": 14.12,
+            "minMs": 7.923,
+            "maxMs": 21.373
+          }
+        }
+      },
+      "switchBook": {
+        "book-render": {
+          "runs": 10,
+          "medianMs": 222.4,
+          "p90Ms": 250.9,
+          "minMs": 207.1,
+          "maxMs": 257.9
+        }
+      },
+      "edit": {
+        "webView": {
+          "gloss-render": {
+            "runs": 10,
+            "medianMs": 51.9,
+            "p90Ms": 54.8,
+            "minMs": 48.6,
+            "maxMs": 62.8
+          },
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 49,
+            "p90Ms": 51.6,
+            "minMs": 46.2,
+            "maxMs": 60.4
+          },
+          "reply-apply": {
+            "runs": 10,
+            "medianMs": 0.9,
+            "p90Ms": 1.2,
+            "minMs": 0.8,
+            "maxMs": 1.3
+          },
+          "gloss-settle": {
+            "runs": 10,
+            "medianMs": 51.9,
+            "p90Ms": 54.8,
+            "minMs": 48.6,
+            "maxMs": 62.8
+          },
+          "edit-command:transport": {
+            "runs": 10,
+            "medianMs": 0.988,
+            "p90Ms": 1.749,
+            "minMs": 0.877,
+            "maxMs": 4.345
+          },
+          "edit-command:outbound": {
+            "runs": 10,
+            "medianMs": 0.559,
+            "p90Ms": 0.814,
+            "minMs": 0.433,
+            "maxMs": 3.971
+          },
+          "edit-command:inbound": {
+            "runs": 10,
+            "medianMs": 0.427,
+            "p90Ms": 1.038,
+            "minMs": 0.373,
+            "maxMs": 1.181
+          }
+        },
+        "host": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 47.512,
+            "p90Ms": 48.94,
+            "minMs": 44.869,
+            "maxMs": 59.523
+          },
+          "edit-command:stage": {
+            "runs": 10,
+            "medianMs": 0.668,
+            "p90Ms": 1.728,
+            "minMs": 0.151,
+            "maxMs": 1.914
+          },
+          "edit-command:apply": {
+            "runs": 10,
+            "medianMs": 46.094,
+            "p90Ms": 47.067,
+            "minMs": 44.369,
+            "maxMs": 58.192
+          },
+          "edit-command:read": {
+            "runs": 10,
+            "medianMs": 0.504,
+            "p90Ms": 0.732,
+            "minMs": 0.458,
+            "maxMs": 0.978
+          },
+          "edit-command:compare": {
+            "runs": 10,
+            "medianMs": 22.84,
+            "p90Ms": 23.579,
+            "minMs": 21.711,
+            "maxMs": 24.143
+          },
+          "edit-command:write": {
+            "runs": 10,
+            "medianMs": 20.494,
+            "p90Ms": 21.903,
+            "minMs": 19.642,
+            "maxMs": 33.344
+          },
+          "edit-command:reply": {
+            "runs": 10,
+            "medianMs": 0.273,
+            "p90Ms": 0.338,
+            "minMs": 0.22,
+            "maxMs": 0.656
+          },
+          "edit-command:serialize": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.012,
+            "minMs": 0.005,
+            "maxMs": 0.034
+          }
+        }
+      },
+      "picker": {
+        "webView": {
+          "projects-fetch": {
+            "runs": 10,
+            "medianMs": 63.8,
+            "p90Ms": 66.2,
+            "minMs": 61.4,
+            "maxMs": 66.6
+          },
+          "projects-fetch:transport": {
+            "runs": 10,
+            "medianMs": 62.746,
+            "p90Ms": 64.536,
+            "minMs": 58.374,
+            "maxMs": 66.042
+          }
+        },
+        "host": {
+          "projects-fetch": {
+            "runs": 10,
+            "medianMs": 0.548,
+            "p90Ms": 0.578,
+            "minMs": 0.528,
+            "maxMs": 7.826
+          },
+          "projects-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.006,
+            "p90Ms": 0.006,
+            "minMs": 0.005,
+            "maxMs": 0.011
+          }
+        }
+      },
+      "save": {
+        "webView": {
+          "save": {
+            "runs": 10,
+            "medianMs": 229.5,
+            "p90Ms": 233.2,
+            "minMs": 210.9,
+            "maxMs": 243.1
+          },
+          "save-bytes": {
+            "runs": 10,
+            "medianMs": 125,
+            "p90Ms": 125,
+            "minMs": 125,
+            "maxMs": 125
+          },
+          "save:transport": {
+            "runs": 10,
+            "medianMs": 16.775,
+            "p90Ms": 17.874,
+            "minMs": 16.388,
+            "maxMs": 19.12
+          }
+        },
+        "host": {
+          "save": {
+            "runs": 10,
+            "medianMs": 212.725,
+            "p90Ms": 216.812,
+            "minMs": 191.78,
+            "maxMs": 225.226
+          },
+          "save:read": {
+            "runs": 10,
+            "medianMs": 28.455,
+            "p90Ms": 39.393,
+            "minMs": 23.731,
+            "maxMs": 40.993
+          },
+          "save:parse": {
+            "runs": 10,
+            "medianMs": 112.113,
+            "p90Ms": 127.527,
+            "minMs": 101.586,
+            "maxMs": 135.817
+          },
+          "save:compare": {
+            "runs": 10,
+            "medianMs": 19.41,
+            "p90Ms": 20.984,
+            "minMs": 17.746,
+            "maxMs": 21.291
+          },
+          "save:write": {
+            "runs": 10,
+            "medianMs": 40.55,
+            "p90Ms": 41.475,
+            "minMs": 37.452,
+            "maxMs": 42.5
+          },
+          "save:summary": {
+            "runs": 10,
+            "medianMs": 2.789,
+            "p90Ms": 3.365,
+            "minMs": 2.347,
+            "maxMs": 3.406
+          }
+        }
+      },
+      "concordance": {
+        "concordance-entries": {
+          "runs": 10,
+          "medianMs": 1716.4,
+          "p90Ms": 1774.2,
+          "minMs": 1637.9,
+          "maxMs": 1790.2
+        }
+      },
+      "textRead": {
+        "text-read": {
+          "runs": 10,
+          "medianMs": 1510.858,
+          "p90Ms": 1563.648,
+          "minMs": 1498.943,
+          "maxMs": 1639.592
+        },
+        "text-read-tokenize": {
+          "runs": 10,
+          "medianMs": 568.377,
+          "p90Ms": 576.731,
+          "minMs": 565.222,
+          "maxMs": 626.833
+        }
+      },
+      "scriptureSave": {
+        "scripture-save": {
+          "runs": 10,
+          "medianMs": 8.7,
+          "p90Ms": 20.2,
+          "minMs": 7.9,
+          "maxMs": 34.6
+        },
+        "gloss-render": {
+          "runs": 10,
+          "medianMs": 110.3,
+          "p90Ms": 143.5,
+          "minMs": 94.7,
+          "maxMs": 242.5
+        },
+        "save-host-cpu": {
+          "runs": 10,
+          "medianMs": 860,
+          "p90Ms": 937,
+          "minMs": 719,
+          "maxMs": 938
+        }
+      },
+      "editDuringRead": {
+        "gloss-render": {
+          "runs": 6,
+          "medianMs": 175.6,
+          "p90Ms": 231.3,
+          "minMs": 67.8,
+          "maxMs": 231.3
+        }
+      },
+      "editAfterRead": {
+        "webView": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 49.8,
+            "p90Ms": 50.5,
+            "minMs": 48.1,
+            "maxMs": 53.7
+          },
+          "gloss-render": {
+            "runs": 10,
+            "medianMs": 52.5,
+            "p90Ms": 53.3,
+            "minMs": 50.5,
+            "maxMs": 56.3
+          },
+          "reply-apply": {
+            "runs": 10,
+            "medianMs": 0.9,
+            "p90Ms": 1,
+            "minMs": 0.8,
+            "maxMs": 1
+          },
+          "gloss-settle": {
+            "runs": 10,
+            "medianMs": 52.5,
+            "p90Ms": 53.3,
+            "minMs": 50.5,
+            "maxMs": 56.3
+          },
+          "edit-command:transport": {
+            "runs": 10,
+            "medianMs": 0.971,
+            "p90Ms": 1.242,
+            "minMs": 0.809,
+            "maxMs": 1.254
+          },
+          "edit-command:outbound": {
+            "runs": 10,
+            "medianMs": 0.552,
+            "p90Ms": 0.714,
+            "minMs": 0.482,
+            "maxMs": 0.727
+          },
+          "edit-command:inbound": {
+            "runs": 10,
+            "medianMs": 0.419,
+            "p90Ms": 0.523,
+            "minMs": 0.327,
+            "maxMs": 0.54
+          }
+        },
+        "host": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 48.848,
+            "p90Ms": 49.246,
+            "minMs": 47.095,
+            "maxMs": 52.788
+          },
+          "edit-command:stage": {
+            "runs": 10,
+            "medianMs": 0.097,
+            "p90Ms": 0.225,
+            "minMs": 0.087,
+            "maxMs": 0.237
+          },
+          "edit-command:apply": {
+            "runs": 10,
+            "medianMs": 48.49,
+            "p90Ms": 48.839,
+            "minMs": 46.578,
+            "maxMs": 52.382
+          },
+          "edit-command:read": {
+            "runs": 10,
+            "medianMs": 0.499,
+            "p90Ms": 0.62,
+            "minMs": 0.417,
+            "maxMs": 0.683
+          },
+          "edit-command:compare": {
+            "runs": 10,
+            "medianMs": 25.5,
+            "p90Ms": 25.795,
+            "minMs": 23.651,
+            "maxMs": 25.96
+          },
+          "edit-command:write": {
+            "runs": 10,
+            "medianMs": 20.064,
+            "p90Ms": 20.503,
+            "minMs": 19.945,
+            "maxMs": 24.637
+          },
+          "edit-command:reply": {
+            "runs": 10,
+            "medianMs": 0.206,
+            "p90Ms": 0.248,
+            "minMs": 0.189,
+            "maxMs": 0.255
+          },
+          "edit-command:serialize": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.006,
+            "minMs": 0.003,
+            "maxMs": 0.008
+          }
+        }
+      },
+      "scriptureSaveAfterRead": {
+        "scripture-save": {
+          "runs": 10,
+          "medianMs": 8.1,
+          "p90Ms": 14.3,
+          "minMs": 7.3,
+          "maxMs": 14.5
+        },
+        "gloss-render": {
+          "runs": 10,
+          "medianMs": 655.9,
+          "p90Ms": 731.1,
+          "minMs": 615.7,
+          "maxMs": 732.4
+        },
+        "save-host-cpu": {
+          "runs": 10,
+          "medianMs": 1781,
+          "p90Ms": 2078,
+          "minMs": 1265,
+          "maxMs": 2140
+        }
+      }
+    },
+    "large": {
+      "viewBook": "PSA",
+      "dataset": {
+        "counts": {
+          "segments": 37691,
+          "wordTokens": 905971,
+          "tokenAnalyses": 20348,
+          "tokenAnalysisLinks": {
+            "approved": 438894,
+            "suggested": 21664,
+            "rejected": 22017,
+            "stale": 13540
+          },
+          "phraseAnalyses": 7537,
+          "phraseAnalysisLinks": 8729,
+          "segmentAnalyses": 11291
+        },
+        "bytes": { "draftJson": 141273049, "largestShard": 7056994 }
+      },
+      "wireBytes": { "projectsForSource": 4673 },
+      "cold": {
+        "webView": {
+          "app-startup": {
+            "runs": 10,
+            "medianMs": 3078,
+            "p90Ms": 3090,
+            "minMs": 2288,
+            "maxMs": 3100
+          },
+          "book-render": {
+            "runs": 10,
+            "medianMs": 3088.7,
+            "p90Ms": 3118.6,
+            "minMs": 3048.6,
+            "maxMs": 3311.6
+          },
+          "open-to-editable": {
+            "runs": 10,
+            "medianMs": 3642.8,
+            "p90Ms": 3869.9,
+            "minMs": 3600.6,
+            "maxMs": 4600.5
+          },
+          "open-to-interactive": {
+            "runs": 10,
+            "medianMs": 3465.3,
+            "p90Ms": 3689.5,
+            "minMs": 3421.4,
+            "maxMs": 4422.4
+          }
+        },
+        "host": {
+          "outline-fetch": {
+            "runs": 10,
+            "medianMs": 720.857,
+            "p90Ms": 736.305,
+            "minMs": 712.437,
+            "maxMs": 752.413
+          },
+          "outline-fetch:usj": {
+            "runs": 10,
+            "medianMs": 461.195,
+            "p90Ms": 476.41,
+            "minMs": 453.917,
+            "maxMs": 491.964
+          },
+          "outline-fetch:tokenize": {
+            "runs": 10,
+            "medianMs": 44.61,
+            "p90Ms": 45.011,
+            "minMs": 43.894,
+            "maxMs": 45.159
+          },
+          "outline-fetch:resegment": {
+            "runs": 10,
+            "medianMs": 0.009,
+            "p90Ms": 0.009,
+            "minMs": 0.008,
+            "maxMs": 0.009
+          },
+          "outline-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.868,
+            "p90Ms": 0.911,
+            "minMs": 0.831,
+            "maxMs": 0.926
+          },
+          "page-fetch": {
+            "runs": 20,
+            "medianMs": 10.206,
+            "p90Ms": 15.298,
+            "minMs": 9.015,
+            "maxMs": 16.201
+          }
+        }
+      },
+      "memory": {
+        "webView": {
+          "heapBeforeOpenBytes": 19268508,
+          "viewLoadedBytes": 74459860,
+          "withFullUndoHistoryBytes": 91605700,
+          "afterPickerBytes": 91755680,
+          "afterSaveBytes": 76904220,
+          "beforeTextReadBytes": 198314748,
+          "afterTextReadBytes": 198376340
+        },
+        "host": {
+          "heapBeforeOpenBytes": 106272484,
+          "viewLoadedBytes": 616055900,
+          "viewLoadedExternalBytes": 1241465,
+          "viewLoadedRssBytes": 670281728,
+          "withFullUndoHistoryBytes": 615974752,
+          "withFullUndoHistoryExternalBytes": 1257137,
+          "withFullUndoHistoryRssBytes": 671350784,
+          "afterPickerBytes": 616002024,
+          "afterPickerExternalBytes": 1257137,
+          "afterPickerRssBytes": 671387648,
+          "afterSaveBytes": 631016028,
+          "afterSaveExternalBytes": 1257137,
+          "afterSaveRssBytes": 745566208,
+          "beforeTextReadBytes": 616881964,
+          "beforeTextReadExternalBytes": 1257137,
+          "beforeTextReadRssBytes": 699691008,
+          "afterTextReadBytes": 739351744,
+          "afterTextReadExternalBytes": 1257137,
+          "afterTextReadRssBytes": 835624960
+        }
+      },
+      "open": {
+        "webView": {
+          "book-render": {
+            "runs": 10,
+            "medianMs": 2664.6,
+            "p90Ms": 2718.5,
+            "minMs": 2640.3,
+            "maxMs": 3065.2
+          },
+          "open-to-editable": {
+            "runs": 10,
+            "medianMs": 3106.3,
+            "p90Ms": 3157.3,
+            "minMs": 3078.1,
+            "maxMs": 3629.1
+          },
+          "open-to-interactive": {
+            "runs": 10,
+            "medianMs": 2999.1,
+            "p90Ms": 3048.2,
+            "minMs": 2972.9,
+            "maxMs": 3447.2
+          }
+        },
+        "host": {
+          "outline-fetch": {
+            "runs": 10,
+            "medianMs": 325.092,
+            "p90Ms": 375.324,
+            "minMs": 314.83,
+            "maxMs": 711.936
+          },
+          "outline-fetch:usj": {
+            "runs": 10,
+            "medianMs": 75.219,
+            "p90Ms": 116.968,
+            "minMs": 65.02,
+            "maxMs": 451.287
+          },
+          "outline-fetch:tokenize": {
+            "runs": 10,
+            "medianMs": 37.669,
+            "p90Ms": 44.333,
+            "minMs": 36.486,
+            "maxMs": 45.66
+          },
+          "outline-fetch:resegment": {
+            "runs": 10,
+            "medianMs": 0.004,
+            "p90Ms": 0.005,
+            "minMs": 0.003,
+            "maxMs": 0.009
+          },
+          "outline-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.802,
+            "p90Ms": 0.864,
+            "minMs": 0.768,
+            "maxMs": 0.896
+          },
+          "page-fetch": {
+            "runs": 20,
+            "medianMs": 8.52,
+            "p90Ms": 18.642,
+            "minMs": 8.008,
+            "maxMs": 18.867
+          }
+        }
+      },
+      "switchBook": {
+        "book-render": {
+          "runs": 10,
+          "medianMs": 227.2,
+          "p90Ms": 263.1,
+          "minMs": 216.4,
+          "maxMs": 323.2
+        }
+      },
+      "edit": {
+        "webView": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 48.9,
+            "p90Ms": 72.4,
+            "minMs": 46.4,
+            "maxMs": 101.3
+          },
+          "gloss-render": {
+            "runs": 10,
+            "medianMs": 51.4,
+            "p90Ms": 75.3,
+            "minMs": 48.6,
+            "maxMs": 104.2
+          },
+          "reply-apply": {
+            "runs": 10,
+            "medianMs": 0.7,
+            "p90Ms": 0.8,
+            "minMs": 0.6,
+            "maxMs": 1.1
+          },
+          "gloss-settle": {
+            "runs": 10,
+            "medianMs": 51.4,
+            "p90Ms": 75.3,
+            "minMs": 48.6,
+            "maxMs": 104.2
+          },
+          "edit-command:transport": {
+            "runs": 10,
+            "medianMs": 0.997,
+            "p90Ms": 5.229,
+            "minMs": 0.921,
+            "maxMs": 29.938
+          },
+          "edit-command:outbound": {
+            "runs": 10,
+            "medianMs": -0.496,
+            "p90Ms": -0.405,
+            "minMs": -0.576,
+            "maxMs": 28.486
+          },
+          "edit-command:inbound": {
+            "runs": 10,
+            "medianMs": 1.473,
+            "p90Ms": 1.611,
+            "minMs": 1.447,
+            "maxMs": 5.634
+          }
+        },
+        "host": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 47.876,
+            "p90Ms": 71.362,
+            "minMs": 45.479,
+            "maxMs": 71.381
+          },
+          "edit-command:stage": {
+            "runs": 10,
+            "medianMs": 0.197,
+            "p90Ms": 24.531,
+            "minMs": 0.092,
+            "maxMs": 25.262
+          },
+          "edit-command:apply": {
+            "runs": 10,
+            "medianMs": 46.126,
+            "p90Ms": 47.465,
+            "minMs": 45.041,
+            "maxMs": 52.109
+          },
+          "edit-command:read": {
+            "runs": 10,
+            "medianMs": 0.53,
+            "p90Ms": 0.602,
+            "minMs": 0.445,
+            "maxMs": 0.657
+          },
+          "edit-command:compare": {
+            "runs": 10,
+            "medianMs": 18.384,
+            "p90Ms": 19.155,
+            "minMs": 16.587,
+            "maxMs": 19.225
+          },
+          "edit-command:write": {
+            "runs": 10,
+            "medianMs": 12.385,
+            "p90Ms": 13.284,
+            "minMs": 11.644,
+            "maxMs": 17.035
+          },
+          "edit-command:reply": {
+            "runs": 10,
+            "medianMs": 0.264,
+            "p90Ms": 0.359,
+            "minMs": 0.238,
+            "maxMs": 0.734
+          },
+          "edit-command:serialize": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.012,
+            "minMs": 0.004,
+            "maxMs": 0.012
+          }
+        }
+      },
+      "picker": {
+        "webView": {
+          "projects-fetch": {
+            "runs": 10,
+            "medianMs": 65.8,
+            "p90Ms": 66.5,
+            "minMs": 65,
+            "maxMs": 67.5
+          },
+          "projects-fetch:transport": {
+            "runs": 10,
+            "medianMs": 64.837,
+            "p90Ms": 65.886,
+            "minMs": 61.403,
+            "maxMs": 65.964
+          }
+        },
+        "host": {
+          "projects-fetch": {
+            "runs": 10,
+            "medianMs": 0.536,
+            "p90Ms": 0.732,
+            "minMs": 0.503,
+            "maxMs": 6.097
+          },
+          "projects-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.008,
+            "p90Ms": 0.012,
+            "minMs": 0.007,
+            "maxMs": 0.016
+          }
+        }
+      },
+      "save": {
+        "webView": {
+          "save": {
+            "runs": 10,
+            "medianMs": 2672.8,
+            "p90Ms": 2857.8,
+            "minMs": 2594.1,
+            "maxMs": 2953.1
+          },
+          "save-bytes": {
+            "runs": 10,
+            "medianMs": 125,
+            "p90Ms": 125,
+            "minMs": 125,
+            "maxMs": 125
+          },
+          "save:transport": {
+            "runs": 10,
+            "medianMs": 17.275,
+            "p90Ms": 18.597,
+            "minMs": 16.483,
+            "maxMs": 18.964
+          }
+        },
+        "host": {
+          "save": {
+            "runs": 10,
+            "medianMs": 2655,
+            "p90Ms": 2839.203,
+            "minMs": 2577.216,
+            "maxMs": 2935.21
+          },
+          "save:read": {
+            "runs": 10,
+            "medianMs": 321.249,
+            "p90Ms": 345.376,
+            "minMs": 253.328,
+            "maxMs": 348.999
+          },
+          "save:parse": {
+            "runs": 10,
+            "medianMs": 1518.517,
+            "p90Ms": 1633.789,
+            "minMs": 1447.803,
+            "maxMs": 1914.039
+          },
+          "save:compare": {
+            "runs": 10,
+            "medianMs": 225.923,
+            "p90Ms": 229.844,
+            "minMs": 214.255,
+            "maxMs": 238.702
+          },
+          "save:write": {
+            "runs": 10,
+            "medianMs": 561.581,
+            "p90Ms": 568.592,
+            "minMs": 491.606,
+            "maxMs": 579.144
+          },
+          "save:summary": {
+            "runs": 10,
+            "medianMs": 36.489,
+            "p90Ms": 41.122,
+            "minMs": 31.83,
+            "maxMs": 48.175
+          }
+        }
+      },
+      "concordance": {
+        "concordance-entries": {
+          "runs": 10,
+          "medianMs": 4622.9,
+          "p90Ms": 4668.1,
+          "minMs": 4597.7,
+          "maxMs": 4707.8
+        }
+      },
+      "textRead": {
+        "text-read": {
+          "runs": 10,
+          "medianMs": 4120.082,
+          "p90Ms": 4231.258,
+          "minMs": 4092.445,
+          "maxMs": 4299.333
+        },
+        "text-read-tokenize": {
+          "runs": 10,
+          "medianMs": 573.549,
+          "p90Ms": 588.438,
+          "minMs": 566.261,
+          "maxMs": 647.228
+        }
+      },
+      "scriptureSave": {
+        "scripture-save": {
+          "runs": 10,
+          "medianMs": 8.3,
+          "p90Ms": 14.7,
+          "minMs": 7.4,
+          "maxMs": 39.2
+        },
+        "gloss-render": {
+          "runs": 10,
+          "medianMs": 105.7,
+          "p90Ms": 126.6,
+          "minMs": 93.2,
+          "maxMs": 129.2
+        },
+        "save-host-cpu": {
+          "runs": 10,
+          "medianMs": 1078,
+          "p90Ms": 1172,
+          "minMs": 593,
+          "maxMs": 1234
+        }
+      },
+      "editDuringRead": {
+        "gloss-render": {
+          "runs": 7,
+          "medianMs": 336.6,
+          "p90Ms": 532.1,
+          "minMs": 50.3,
+          "maxMs": 532.1
+        }
+      },
+      "editAfterRead": {
+        "webView": {
+          "gloss-render": {
+            "runs": 10,
+            "medianMs": 49.9,
+            "p90Ms": 55.5,
+            "minMs": 49.3,
+            "maxMs": 231.5
+          },
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 47.2,
+            "p90Ms": 52.2,
+            "minMs": 46.3,
+            "maxMs": 229.1
+          },
+          "reply-apply": {
+            "runs": 10,
+            "medianMs": 0.8,
+            "p90Ms": 0.9,
+            "minMs": 0.7,
+            "maxMs": 1.1
+          },
+          "gloss-settle": {
+            "runs": 10,
+            "medianMs": 49.9,
+            "p90Ms": 55.5,
+            "minMs": 49.3,
+            "maxMs": 231.5
+          },
+          "edit-command:transport": {
+            "runs": 10,
+            "medianMs": 0.993,
+            "p90Ms": 1.226,
+            "minMs": 0.872,
+            "maxMs": 1.459
+          },
+          "edit-command:outbound": {
+            "runs": 10,
+            "medianMs": -0.351,
+            "p90Ms": -0.274,
+            "minMs": -0.493,
+            "maxMs": -0.043
+          },
+          "edit-command:inbound": {
+            "runs": 10,
+            "medianMs": 1.411,
+            "p90Ms": 1.503,
+            "minMs": 1.335,
+            "maxMs": 1.524
+          }
+        },
+        "host": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 46.137,
+            "p90Ms": 51.207,
+            "minMs": 45.339,
+            "maxMs": 228.137
+          },
+          "edit-command:stage": {
+            "runs": 10,
+            "medianMs": 0.11,
+            "p90Ms": 0.146,
+            "minMs": 0.099,
+            "maxMs": 0.23
+          },
+          "edit-command:apply": {
+            "runs": 10,
+            "medianMs": 45.762,
+            "p90Ms": 50.759,
+            "minMs": 44.923,
+            "maxMs": 227.735
+          },
+          "edit-command:read": {
+            "runs": 10,
+            "medianMs": 0.596,
+            "p90Ms": 0.914,
+            "minMs": 0.464,
+            "maxMs": 0.958
+          },
+          "edit-command:compare": {
+            "runs": 10,
+            "medianMs": 18.032,
+            "p90Ms": 19.299,
+            "minMs": 17.583,
+            "maxMs": 21.781
+          },
+          "edit-command:write": {
+            "runs": 10,
+            "medianMs": 11.969,
+            "p90Ms": 12.536,
+            "minMs": 11.785,
+            "maxMs": 12.586
+          },
+          "edit-command:reply": {
+            "runs": 10,
+            "medianMs": 0.216,
+            "p90Ms": 0.251,
+            "minMs": 0.206,
+            "maxMs": 0.314
+          },
+          "edit-command:serialize": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.007,
+            "minMs": 0.004,
+            "maxMs": 0.007
+          }
+        }
+      },
+      "scriptureSaveAfterRead": {
+        "scripture-save": {
+          "runs": 10,
+          "medianMs": 9,
+          "p90Ms": 11.2,
+          "minMs": 8,
+          "maxMs": 11.8
+        },
+        "gloss-render": {
+          "runs": 10,
+          "medianMs": 703.6,
+          "p90Ms": 740.4,
+          "minMs": 605.1,
+          "maxMs": 800
+        },
+        "save-host-cpu": {
+          "runs": 10,
+          "medianMs": 1750,
+          "p90Ms": 1891,
+          "minMs": 1172,
+          "maxMs": 1921
+        }
+      }
+    },
+    "large-loadable": {
+      "viewBook": "PSA",
+      "dataset": {
+        "counts": {
+          "segments": 37691,
+          "wordTokens": 905971,
+          "tokenAnalyses": 16243,
+          "tokenAnalysisLinks": {
+            "approved": 262647,
+            "stale": 8229,
+            "suggested": 12993,
+            "rejected": 13250
+          },
+          "phraseAnalyses": 4549,
+          "phraseAnalysisLinks": 5149,
+          "segmentAnalyses": 11266
+        },
+        "bytes": { "draftJson": 88376787, "largestShard": 4560522 }
+      },
+      "wireBytes": { "projectsForSource": 946 },
+      "cold": {
+        "webView": {
+          "app-startup": {
+            "runs": 10,
+            "medianMs": 3060,
+            "p90Ms": 3096,
+            "minMs": 2277,
+            "maxMs": 3104
+          },
+          "book-render": {
+            "runs": 10,
+            "medianMs": 2144.3,
+            "p90Ms": 2230.2,
+            "minMs": 2132.9,
+            "maxMs": 2266.9
+          },
+          "open-to-editable": {
+            "runs": 10,
+            "medianMs": 2649.7,
+            "p90Ms": 3638.5,
+            "minMs": 2617.8,
+            "maxMs": 3741.1
+          },
+          "open-to-interactive": {
+            "runs": 10,
+            "medianMs": 2531.3,
+            "p90Ms": 3526.4,
+            "minMs": 2504.1,
+            "maxMs": 3629.2
+          }
+        },
+        "host": {
+          "outline-fetch": {
+            "runs": 10,
+            "medianMs": 680.992,
+            "p90Ms": 691.362,
+            "minMs": 670.494,
+            "maxMs": 711.652
+          },
+          "outline-fetch:usj": {
+            "runs": 10,
+            "medianMs": 455.687,
+            "p90Ms": 471.452,
+            "minMs": 450.787,
+            "maxMs": 487.202
+          },
+          "outline-fetch:tokenize": {
+            "runs": 10,
+            "medianMs": 45.42,
+            "p90Ms": 46.714,
+            "minMs": 41.797,
+            "maxMs": 48.629
+          },
+          "outline-fetch:resegment": {
+            "runs": 10,
+            "medianMs": 0.009,
+            "p90Ms": 0.009,
+            "minMs": 0.008,
+            "maxMs": 0.009
+          },
+          "outline-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.771,
+            "p90Ms": 0.8,
+            "minMs": 0.752,
+            "maxMs": 0.89
+          },
+          "page-fetch": {
+            "runs": 20,
+            "medianMs": 8.821,
+            "p90Ms": 17.359,
+            "minMs": 7.233,
+            "maxMs": 17.98
+          }
+        }
+      },
+      "memory": {
+        "webView": {
+          "heapBeforeOpenBytes": 18819344,
+          "viewLoadedBytes": 75387428,
+          "withFullUndoHistoryBytes": 89724808,
+          "afterPickerBytes": 89810236,
+          "afterSaveBytes": 76713600,
+          "beforeTextReadBytes": 197635468,
+          "afterTextReadBytes": 197393852
+        },
+        "host": {
+          "heapBeforeOpenBytes": 105098280,
+          "viewLoadedBytes": 403172520,
+          "viewLoadedExternalBytes": 31841,
+          "viewLoadedRssBytes": 446640128,
+          "withFullUndoHistoryBytes": 405123296,
+          "withFullUndoHistoryExternalBytes": 1257137,
+          "withFullUndoHistoryRssBytes": 451366912,
+          "afterPickerBytes": 405152292,
+          "afterPickerExternalBytes": 1257137,
+          "afterPickerRssBytes": 451112960,
+          "afterSaveBytes": 405318648,
+          "afterSaveExternalBytes": 1257137,
+          "afterSaveRssBytes": 452435968,
+          "beforeTextReadBytes": 405322476,
+          "beforeTextReadExternalBytes": 1257137,
+          "beforeTextReadRssBytes": 466059264,
+          "afterTextReadBytes": 530919580,
+          "afterTextReadExternalBytes": 1257137,
+          "afterTextReadRssBytes": 605986816
+        }
+      },
+      "open": {
+        "webView": {
+          "book-render": {
+            "runs": 10,
+            "medianMs": 1721.3,
+            "p90Ms": 1790,
+            "minMs": 1653.7,
+            "maxMs": 2124.7
+          },
+          "open-to-editable": {
+            "runs": 10,
+            "medianMs": 2158.4,
+            "p90Ms": 2231.1,
+            "minMs": 2089.5,
+            "maxMs": 3621.6
+          },
+          "open-to-interactive": {
+            "runs": 10,
+            "medianMs": 2052.5,
+            "p90Ms": 2128.3,
+            "minMs": 1986.6,
+            "maxMs": 3502.8
+          }
+        },
+        "host": {
+          "outline-fetch": {
+            "runs": 10,
+            "medianMs": 271.693,
+            "p90Ms": 335.68,
+            "minMs": 247.079,
+            "maxMs": 683.303
+          },
+          "outline-fetch:usj": {
+            "runs": 10,
+            "medianMs": 68.163,
+            "p90Ms": 117.942,
+            "minMs": 62.66,
+            "maxMs": 459.528
+          },
+          "outline-fetch:tokenize": {
+            "runs": 10,
+            "medianMs": 35.247,
+            "p90Ms": 45.075,
+            "minMs": 29.49,
+            "maxMs": 46.927
+          },
+          "outline-fetch:resegment": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.006,
+            "minMs": 0.003,
+            "maxMs": 0.009
+          },
+          "outline-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.782,
+            "p90Ms": 0.868,
+            "minMs": 0.75,
+            "maxMs": 0.936
+          },
+          "page-fetch": {
+            "runs": 20,
+            "medianMs": 7.332,
+            "p90Ms": 10.104,
+            "minMs": 6.728,
+            "maxMs": 14.865
+          }
+        }
+      },
+      "switchBook": {
+        "book-render": {
+          "runs": 10,
+          "medianMs": 219.5,
+          "p90Ms": 243,
+          "minMs": 207.8,
+          "maxMs": 249.9
+        }
+      },
+      "edit": {
+        "webView": {
+          "gloss-render": {
+            "runs": 10,
+            "medianMs": 36.6,
+            "p90Ms": 56.7,
+            "minMs": 33.5,
+            "maxMs": 59
+          },
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 34.2,
+            "p90Ms": 53.5,
+            "minMs": 31.4,
+            "maxMs": 56.9
+          },
+          "reply-apply": {
+            "runs": 10,
+            "medianMs": 0.7,
+            "p90Ms": 0.8,
+            "minMs": 0.6,
+            "maxMs": 1.2
+          },
+          "gloss-settle": {
+            "runs": 10,
+            "medianMs": 36.6,
+            "p90Ms": 56.7,
+            "minMs": 33.5,
+            "maxMs": 59
+          },
+          "edit-command:transport": {
+            "runs": 10,
+            "medianMs": 1.058,
+            "p90Ms": 1.395,
+            "minMs": 0.871,
+            "maxMs": 25.445
+          },
+          "edit-command:outbound": {
+            "runs": 10,
+            "medianMs": -0.043,
+            "p90Ms": 0.483,
+            "minMs": -0.114,
+            "maxMs": 24.408
+          },
+          "edit-command:inbound": {
+            "runs": 10,
+            "medianMs": 1.1,
+            "p90Ms": 1.171,
+            "minMs": 0.912,
+            "maxMs": 1.18
+          }
+        },
+        "host": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 32.87,
+            "p90Ms": 38.734,
+            "minMs": 30.356,
+            "maxMs": 52.105
+          },
+          "edit-command:stage": {
+            "runs": 10,
+            "medianMs": 0.16,
+            "p90Ms": 6.536,
+            "minMs": 0.085,
+            "maxMs": 14.666
+          },
+          "edit-command:apply": {
+            "runs": 10,
+            "medianMs": 31.058,
+            "p90Ms": 32.945,
+            "minMs": 29.399,
+            "maxMs": 36.442
+          },
+          "edit-command:read": {
+            "runs": 10,
+            "medianMs": 0.537,
+            "p90Ms": 0.678,
+            "minMs": 0.502,
+            "maxMs": 0.707
+          },
+          "edit-command:compare": {
+            "runs": 10,
+            "medianMs": 11.706,
+            "p90Ms": 13.065,
+            "minMs": 10.601,
+            "maxMs": 14.459
+          },
+          "edit-command:write": {
+            "runs": 10,
+            "medianMs": 8.666,
+            "p90Ms": 10.141,
+            "minMs": 8.441,
+            "maxMs": 13.905
+          },
+          "edit-command:reply": {
+            "runs": 10,
+            "medianMs": 0.251,
+            "p90Ms": 0.618,
+            "minMs": 0.225,
+            "maxMs": 0.815
+          },
+          "edit-command:serialize": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.011,
+            "minMs": 0.004,
+            "maxMs": 0.017
+          }
+        }
+      },
+      "picker": {
+        "webView": {
+          "projects-fetch": {
+            "runs": 10,
+            "medianMs": 65.8,
+            "p90Ms": 66.2,
+            "minMs": 62.7,
+            "maxMs": 67.9
+          },
+          "projects-fetch:transport": {
+            "runs": 10,
+            "medianMs": 64.169,
+            "p90Ms": 65.538,
+            "minMs": 60.328,
+            "maxMs": 65.672
+          }
+        },
+        "host": {
+          "projects-fetch": {
+            "runs": 10,
+            "medianMs": 0.581,
+            "p90Ms": 1.284,
+            "minMs": 0.484,
+            "maxMs": 7.572
+          },
+          "projects-fetch:serialize": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.006,
+            "minMs": 0.005,
+            "maxMs": 0.011
+          }
+        }
+      },
+      "save": {
+        "webView": {
+          "save": {
+            "runs": 10,
+            "medianMs": 1657.3,
+            "p90Ms": 1709.2,
+            "minMs": 1575.7,
+            "maxMs": 1718.9
+          },
+          "save-bytes": {
+            "runs": 10,
+            "medianMs": 125,
+            "p90Ms": 125,
+            "minMs": 125,
+            "maxMs": 125
+          },
+          "save:transport": {
+            "runs": 10,
+            "medianMs": 17.819,
+            "p90Ms": 18.738,
+            "minMs": 16.993,
+            "maxMs": 21.99
+          }
+        },
+        "host": {
+          "save": {
+            "runs": 10,
+            "medianMs": 1635.31,
+            "p90Ms": 1690.462,
+            "minMs": 1558.707,
+            "maxMs": 1701.592
+          },
+          "save:read": {
+            "runs": 10,
+            "medianMs": 172.306,
+            "p90Ms": 177.762,
+            "minMs": 154.063,
+            "maxMs": 183.725
+          },
+          "save:parse": {
+            "runs": 10,
+            "medianMs": 957.441,
+            "p90Ms": 987.831,
+            "minMs": 848.504,
+            "maxMs": 989.927
+          },
+          "save:compare": {
+            "runs": 10,
+            "medianMs": 141.711,
+            "p90Ms": 149.49,
+            "minMs": 134.838,
+            "maxMs": 196.963
+          },
+          "save:write": {
+            "runs": 10,
+            "medianMs": 340.281,
+            "p90Ms": 384.416,
+            "minMs": 309.226,
+            "maxMs": 487.369
+          },
+          "save:summary": {
+            "runs": 10,
+            "medianMs": 19.739,
+            "p90Ms": 26.426,
+            "minMs": 17.599,
+            "maxMs": 30.388
+          }
+        }
+      },
+      "concordance": {
+        "concordance-entries": {
+          "runs": 10,
+          "medianMs": 3631.1,
+          "p90Ms": 3711.4,
+          "minMs": 3462.4,
+          "maxMs": 3733.1
+        }
+      },
+      "textRead": {
+        "text-read": {
+          "runs": 10,
+          "medianMs": 3160.548,
+          "p90Ms": 3305.244,
+          "minMs": 3143.562,
+          "maxMs": 3305.328
+        },
+        "text-read-tokenize": {
+          "runs": 10,
+          "medianMs": 553.28,
+          "p90Ms": 580.974,
+          "minMs": 547.787,
+          "maxMs": 603.139
+        }
+      },
+      "scriptureSave": {
+        "scripture-save": {
+          "runs": 10,
+          "medianMs": 8.6,
+          "p90Ms": 15.4,
+          "minMs": 7.5,
+          "maxMs": 33.5
+        },
+        "gloss-render": {
+          "runs": 10,
+          "medianMs": 87.3,
+          "p90Ms": 114.2,
+          "minMs": 70.8,
+          "maxMs": 124.4
+        },
+        "save-host-cpu": {
+          "runs": 10,
+          "medianMs": 751,
+          "p90Ms": 828,
+          "minMs": 546,
+          "maxMs": 984
+        }
+      },
+      "editDuringRead": {
+        "gloss-render": {
+          "runs": 7,
+          "medianMs": 234.7,
+          "p90Ms": 476.4,
+          "minMs": 36.8,
+          "maxMs": 476.4
+        }
+      },
+      "editAfterRead": {
+        "webView": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 33.4,
+            "p90Ms": 46.7,
+            "minMs": 32.4,
+            "maxMs": 98.6
+          },
+          "gloss-render": {
+            "runs": 10,
+            "medianMs": 36.2,
+            "p90Ms": 49.1,
+            "minMs": 34.5,
+            "maxMs": 101.4
+          },
+          "reply-apply": {
+            "runs": 10,
+            "medianMs": 0.8,
+            "p90Ms": 0.9,
+            "minMs": 0.7,
+            "maxMs": 0.9
+          },
+          "gloss-settle": {
+            "runs": 10,
+            "medianMs": 36.2,
+            "p90Ms": 49.1,
+            "minMs": 34.5,
+            "maxMs": 101.4
+          },
+          "edit-command:transport": {
+            "runs": 10,
+            "medianMs": 1.03,
+            "p90Ms": 1.154,
+            "minMs": 0.89,
+            "maxMs": 1.628
+          },
+          "edit-command:outbound": {
+            "runs": 10,
+            "medianMs": 0.015,
+            "p90Ms": 0.164,
+            "minMs": -0.162,
+            "maxMs": 0.209
+          },
+          "edit-command:inbound": {
+            "runs": 10,
+            "medianMs": 1.017,
+            "p90Ms": 1.133,
+            "minMs": 0.866,
+            "maxMs": 1.519
+          }
+        },
+        "host": {
+          "edit-command": {
+            "runs": 10,
+            "medianMs": 32.454,
+            "p90Ms": 45.751,
+            "minMs": 31.253,
+            "maxMs": 97.57
+          },
+          "edit-command:stage": {
+            "runs": 10,
+            "medianMs": 0.095,
+            "p90Ms": 0.114,
+            "minMs": 0.088,
+            "maxMs": 0.124
+          },
+          "edit-command:apply": {
+            "runs": 10,
+            "medianMs": 32.061,
+            "p90Ms": 45.34,
+            "minMs": 30.895,
+            "maxMs": 96.871
+          },
+          "edit-command:read": {
+            "runs": 10,
+            "medianMs": 0.571,
+            "p90Ms": 0.861,
+            "minMs": 0.478,
+            "maxMs": 60.557
+          },
+          "edit-command:compare": {
+            "runs": 10,
+            "medianMs": 11.866,
+            "p90Ms": 13.563,
+            "minMs": 11.135,
+            "maxMs": 14.427
+          },
+          "edit-command:write": {
+            "runs": 10,
+            "medianMs": 8.602,
+            "p90Ms": 9.832,
+            "minMs": 8.414,
+            "maxMs": 11.111
+          },
+          "edit-command:reply": {
+            "runs": 10,
+            "medianMs": 0.204,
+            "p90Ms": 0.258,
+            "minMs": 0.19,
+            "maxMs": 0.478
+          },
+          "edit-command:serialize": {
+            "runs": 10,
+            "medianMs": 0.005,
+            "p90Ms": 0.006,
+            "minMs": 0.004,
+            "maxMs": 0.018
+          }
+        }
+      },
+      "scriptureSaveAfterRead": {
+        "scripture-save": {
+          "runs": 10,
+          "medianMs": 8.2,
+          "p90Ms": 16.4,
+          "minMs": 7.3,
+          "maxMs": 30.9
+        },
+        "gloss-render": {
+          "runs": 10,
+          "medianMs": 664.1,
+          "p90Ms": 683.1,
+          "minMs": 589.7,
+          "maxMs": 684.4
+        },
+        "save-host-cpu": {
+          "runs": 10,
+          "medianMs": 1578,
+          "p90Ms": 1687,
+          "minMs": 1109,
+          "maxMs": 1703
+        }
+      }
+    }
+  }
+}

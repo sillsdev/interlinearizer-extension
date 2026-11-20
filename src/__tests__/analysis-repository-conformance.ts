@@ -1088,6 +1088,84 @@ export function describeAnalysisRepositoryConformance(
           ).resolves.toStrictEqual({ [ID.taAnd]: 1, [ID.taBeginning]: 1 });
         });
 
+        it('finds the approvals filed under each form, leaving out a form with none', async () => {
+          const repository = await overFullDraft();
+
+          await expect(
+            repository.findApprovalsByForm(['and', 'beginning', 'spare', 'missing']),
+          ).resolves.toStrictEqual({ and: { 'GEN 1:1:0': ID.taAnd, 'EXO 1:1:0': ID.taAnd } });
+        });
+
+        it("files an approval under its link's surface text, normalized", async () => {
+          const repository = await overFullDraft();
+          const [, , beginning] = fullAnalysis().tokenAnalysisLinks;
+
+          await repository.apply({
+            intent: 'approveCapitalized',
+            tokenAnalysisLinks: {
+              puts: [
+                {
+                  ...beginning,
+                  token: { ...beginning.token, surfaceText: 'Beginning' },
+                  status: 'approved',
+                },
+              ],
+              deletes: [],
+            },
+          });
+
+          await expect(
+            repository.findApprovalsByForm([normalizeSurfaceForm('BEGINNING')]),
+          ).resolves.toStrictEqual({ beginning: { 'GEN 1:1:9': ID.taBeginning } });
+        });
+
+        it('files a token once, under the approved link an approval tie picks', async () => {
+          const repository = await overFullDraft();
+          const [genAnd, , beginning] = fullAnalysis().tokenAnalysisLinks;
+
+          await repository.apply({
+            intent: 'approveTwice',
+            tokenAnalysisLinks: {
+              puts: [
+                {
+                  ...beginning,
+                  token: { tokenRef: genAnd.token.tokenRef, surfaceText: 'beginning' },
+                  status: 'approved',
+                  updatedAt: '2026-02-01T00:00:00.000Z',
+                },
+              ],
+              deletes: [],
+            },
+          });
+
+          await expect(repository.findApprovalsByForm(['and', 'beginning'])).resolves.toStrictEqual(
+            {
+              and: { 'EXO 1:1:0': ID.taAnd },
+              beginning: { 'GEN 1:1:0': ID.taBeginning },
+            },
+          );
+        });
+
+        it('finds approvals from the records the applied changes leave', async () => {
+          const repository = await overFullDraft();
+          await repository.findApprovalsByForm(['and']);
+          const [genAnd] = fullAnalysis().tokenAnalysisLinks;
+
+          await repository.apply({
+            intent: 'relabelAndDelete',
+            tokenAnalysisLinks: {
+              puts: [{ ...genAnd, token: { ...genAnd.token, surfaceText: 'beginning' } }],
+              deletes: [ID.tlExoAnd],
+            },
+          });
+
+          await expect(repository.findApprovalsByForm(['and', 'beginning'])).resolves.toStrictEqual(
+            {
+              beginning: { 'GEN 1:1:0': ID.taAnd },
+            },
+          );
+        });
+
         it('finds nothing in a draft never saved', async () => {
           const repository = await store.open(SOURCE);
 

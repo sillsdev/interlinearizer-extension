@@ -125,6 +125,9 @@ export type AnalysisLinks = Pick<
   'tokenAnalysisLinks' | 'phraseAnalysisLinks' | 'segmentAnalysisLinks'
 >;
 
+/** The analysis id each token approves, keyed by the approval's normalized form, then by token ref. */
+export type ApprovalsByForm = Record<string, Record<string, string>>;
+
 /**
  * A difference between a repository's kept indexes and ones built afresh from its records. It can
  * also be a difference between a stored shard and the records that shard should hold.
@@ -338,6 +341,16 @@ export interface AnalysisRepository {
    * @throws Whatever {@link AnalysisRepository.exportAll} throws.
    */
   countApprovals(analysisIds: string[]): Promise<Record<string, number>>;
+
+  /**
+   * The approvals filed under each of `normalizedForms`, leaving out a form with none. A token
+   * approves the analysis that its approved link names. Where a token has several approved links
+   * naming stored payloads, the approval tie-break picks one. The approval is filed under that
+   * link's token surface text as {@link normalizeSurfaceForm} maps it.
+   *
+   * @throws Whatever {@link AnalysisRepository.exportAll} throws.
+   */
+  findApprovalsByForm(normalizedForms: string[]): Promise<ApprovalsByForm>;
 
   /**
    * Reports where the derived indexes the repository keeps differ from ones built afresh from its

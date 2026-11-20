@@ -104,7 +104,7 @@ describe('rankAnalysisLanguages', () => {
   });
 
   it('does not count a gloss on a token link that is not approved', () => {
-    // fr's candidate link would tie en's one approved token, and the tie keeps fr first.
+    // Counting fr's candidate link would tie en's one approved token; a tie keeps fr first.
     const languages = rankAnalysisLanguages({
       languageTags: ['fr', 'en'],
       analysis: {
@@ -123,7 +123,7 @@ describe('rankAnalysisLanguages', () => {
   });
 
   it('does not count a gloss on a phrase link that is not approved', () => {
-    // fr's rejected link covers two tokens, which would beat en's one approved token.
+    // fr's rejected link covers two tokens. Counting them would beat en's one approved token.
     const languages = rankAnalysisLanguages({
       languageTags: ['fr', 'en'],
       analysis: {
@@ -296,7 +296,7 @@ describe('rankAnalysisLanguages', () => {
       ],
     },
   ])('does not count $name', ({ records, phrases }) => {
-    // en glosses one token; fr's record counting would tie it (keeping fr first) or beat it.
+    // en glosses one token. Counting fr's record would tie or beat en; either way, fr would lead.
     const languages = rankAnalysisLanguages({
       languageTags: ['fr', 'en'],
       analysis: NO_ANALYSIS,

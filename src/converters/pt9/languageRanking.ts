@@ -1,7 +1,7 @@
 import type { TextAnalysis } from 'interlinearizer';
 import type { LangPhraseRecord, LangTokenRecord } from './languageAnalysisBuilder';
 
-/** The refs of the tokens each analysis-language tag glosses, keyed by tag. */
+/** The refs of the tokens that each analysis-language tag glosses, keyed by tag. */
 type TokenTally = Map<string, Set<string>>;
 
 type LinkedAnalysisLayer = Pick<
@@ -64,9 +64,9 @@ function tallyGlossedTokens(records: LangTokenRecord[], phrases: LangPhraseRecor
 }
 
 /**
- * Orders the distinct `languageTags` by how many tokens each glosses, most first. Glosses shown on
- * an approved link in `analysis` rank first, because read-only views show approved glosses only.
- * Glosses on unrejected `records` and `phrases` break ties among those, and tags still tied keep
+ * Orders the distinct `languageTags` by how many tokens each glosses, most first. Tokens shown
+ * glossed on an approved link in `analysis` count first, because read-only views show only approved
+ * glosses. Tokens glossed on unrejected `records` and `phrases` break ties. Tags still tied keep
  * their order in `languageTags`.
  */
 export function rankAnalysisLanguages(args: {

@@ -1,0 +1,34 @@
+{
+  "kind": "first-open",
+  "commit": "60e31112ee772f8ed61f62188596074a64deb5bf",
+  "dirty": true,
+  "coreCommit": "fcaa6d03b2faa63f4e84322584da7673fed22e99",
+  "recordedAt": "2026-11-18T18:00:18.085Z",
+  "machine": {
+    "cpu": "Intel(R) Core(TM) i5-8350U CPU @ 1.70GHz",
+    "cores": 8,
+    "memoryGb": 42,
+    "os": "Linux 7.3.4-1-cachyos",
+    "node": "v22.22.0",
+    "loadAverage": [2.22, 2.36, 2.82]
+  },
+  "runs": 5,
+  "tiers": {
+    "large-loadable": {
+      "unrecorded": {
+        "runs": 5,
+        "medianMs": 410.519,
+        "p90Ms": 494.923,
+        "minMs": 386.506,
+        "maxMs": 494.923
+      },
+      "recorded": {
+        "runs": 5,
+        "medianMs": 0.05,
+        "p90Ms": 0.141,
+        "minMs": 0.036,
+        "maxMs": 0.141
+      }
+    }
+  }
+}

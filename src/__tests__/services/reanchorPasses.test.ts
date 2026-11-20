@@ -126,15 +126,15 @@ describe('reanchorStoredBook', () => {
     },
   );
 
-  it('applies nothing when the draft already reads as the book does', async () => {
+  it('only records the text when the draft already reads as the book does', async () => {
     const { repository, history } = await storedDraft();
-    const apply = jest.spyOn(repository, 'apply');
+    const book = verseBook('GEN 1:1', 'alpha beta');
 
-    await expect(
-      reanchorStoredBook(repository, history, verseBook('GEN 1:1', 'alpha beta')),
-    ).resolves.toBeUndefined();
+    await expect(reanchorStoredBook(repository, history, book)).resolves.toBeUndefined();
 
-    expect(apply).not.toHaveBeenCalled();
+    await expect(repository.getDraftState()).resolves.toMatchObject({
+      anchoredVersions: { GEN: book.textVersion },
+    });
   });
 
   it("moves the draft's splits in the book, keeping its record", async () => {

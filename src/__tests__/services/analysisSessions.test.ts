@@ -2141,6 +2141,69 @@ describe('AnalysisSessions', () => {
         expect(host.getOpenVerseBook).not.toHaveBeenCalled();
       });
     });
+
+    describe('in a later session', () => {
+      /**
+       * A session glossing "beta", with a spy on its reads of a book's links. An earlier session on
+       * its draft opened Genesis as `AFTER` reads it.
+       */
+      async function reopenedAfterAnchoring() {
+        const made = await sessionGlossingBeta();
+        made.host.getOpenVerseBook.mockResolvedValue(AFTER);
+        await made.sessions.reanchorOpenedBook(made.sessionId, 'GEN');
+        await made.sessions.close(made.sessionId);
+        const { sessionId } = await made.sessions.open(SOURCE);
+        const read = await made.sessions.run(sessionId, async (session) =>
+          jest.spyOn(session.repository, 'findLinksInBooks'),
+        );
+        return { ...made, sessionId, read };
+      }
+
+      it('skips the first pass of a book stored as anchored to its text', async () => {
+        const { sessions, sessionId, read } = await reopenedAfterAnchoring();
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect(read).not.toHaveBeenCalled();
+      });
+
+      it("skips the whole-text read's first pass of a book stored as anchored to its text", async () => {
+        const { sessions, read } = await reopenedAfterAnchoring();
+
+        await sessions.reanchorBook(SOURCE, AFTER);
+
+        expect(read).not.toHaveBeenCalled();
+      });
+
+      it('re-anchors a book whose text changed since it was stored as anchored', async () => {
+        const { host, sessions, sessionId, storage } = await reopenedAfterAnchoring();
+        host.getOpenVerseBook.mockResolvedValue(BEFORE);
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(BEFORE, 'beta'));
+      });
+
+      it('re-anchors a book whose text returns to its stored version after other text', async () => {
+        const { host, sessions, sessionId, storage } = await reopenedAfterAnchoring();
+        host.getOpenVerseBook.mockResolvedValueOnce(BEFORE).mockResolvedValue(AFTER);
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
+      });
+
+      it('re-anchors a book stored as anchored once the text has lacked it', async () => {
+        const { sessions, sessionId, read } = await reopenedAfterAnchoring();
+        await sessions.reanchorMissingBooks(SOURCE, []);
+        read.mockClear();
+
+        await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect(read).toHaveBeenCalled();
+      });
+    });
   });
 
   describe('settled', () => {

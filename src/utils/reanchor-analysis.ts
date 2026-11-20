@@ -411,9 +411,18 @@ function anchorByVerse(
   kinOf: (key: string) => string | undefined,
 ): void {
   // Deduplicated: a token named by several links contributes a snapshot from each, and aligning the
-  // same word twice would consume two current tokens and orphan one copy.
+  // same word twice would consume two current tokens and orphan one copy. Duplicates keep the
+  // largest count any of them recorded, so a link written without one hides no vanished copy.
   const uniqueSnapshots = new Map<string, TokenSnapshot>();
-  snapshots.forEach((snapshot) => uniqueSnapshots.set(snapshotKey(snapshot), snapshot));
+  snapshots.forEach((snapshot) => {
+    const key = snapshotKey(snapshot);
+    const kept = uniqueSnapshots.get(key)?.formCount;
+    const formCount =
+      kept === undefined || snapshot.formCount === undefined
+        ? (kept ?? snapshot.formCount)
+        : Math.max(kept, snapshot.formCount);
+    uniqueSnapshots.set(key, formCount === undefined ? snapshot : { ...snapshot, formCount });
+  });
 
   // Keyed by the verse's token list rather than its ref so the alignment below needs no second
   // lookup, which would have to answer for a verse this grouping already dropped.

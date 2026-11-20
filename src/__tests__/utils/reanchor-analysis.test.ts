@@ -1608,6 +1608,24 @@ describe('reanchorAnalysisToBook with recorded form counts', () => {
     });
   });
 
+  it.each([
+    { later: 'records no count', formCount: undefined },
+    { later: 'records a smaller count', formCount: 1 },
+  ])('stales a respelled word when a later link on its token $later', ({ formCount }) => {
+    // Written against "Wug blicket wug", with the first "Wug" counted by its earlier link.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug', formCount: 2 }),
+      makeTokenLink('ta-pit', 'GEN 1:1:0', { surfaceText: 'Wug', status: 'candidate', formCount }),
+    ]);
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'Wig blicket wug' }]));
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'stale',
+      token: { tokenRef: 'GEN 1:1:0', formCount: 2 },
+    });
+  });
+
   it('moves an approval onto the twin when the snapshot records no count', () => {
     const analysis = analysisWithTokenLinks([
       makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug' }),

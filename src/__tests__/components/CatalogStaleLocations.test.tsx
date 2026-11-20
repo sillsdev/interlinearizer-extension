@@ -13,12 +13,13 @@ import { defaultScrRef, makeScrollGroupHook } from '../test-helpers';
 import { EmptyAnalysisProvider } from './test-helpers';
 
 /**
- * Each key resolving to itself, but for the apply label, whose template has to resolve for the
- * focused word to reach the screen.
+ * Each key resolving to itself, but for the templates whose filled-in value a case checks: the
+ * focused word, and the count of places left unlisted.
  */
 const STRINGS = {
   ...Object.fromEntries(STALE_LOCATION_STRING_KEYS.map((k) => [k, k])),
   '%interlinearizer_analysisCatalog_staleApply%': 'Apply to “{word}”',
+  '%interlinearizer_analysisCatalog_showAllStale%': 'Show {count} more',
 };
 
 function place(tokenRef: string, verse: number): CatalogUsage {
@@ -35,7 +36,8 @@ function FocusPublishProbe({ tokenRef }: Readonly<{ tokenRef: string | undefined
 /** Options every `renderPlaces` call may override. */
 type PlacesOptions = Partial<{
   locations: readonly CatalogUsage[];
-  inlineLimit: number;
+  hiddenCount: number;
+  notice: string;
   focusedTokenRef: string;
   liveSurfaceText: (tokenRef: string) => string | undefined;
   readOnly: boolean;
@@ -46,12 +48,13 @@ function renderPlaces(overrides: PlacesOptions = {}) {
   const onSelect = jest.fn();
   const onDiscard = jest.fn();
   const onReapply = jest.fn();
+  const onShowAll = jest.fn();
   render(
     <InterlinearNavProvider useWebViewScrollGroupScrRef={makeScrollGroupHook(defaultScrRef)}>
       <EmptyAnalysisProvider analysisLanguage="en" readOnly={overrides.readOnly}>
         <FocusPublishProbe tokenRef={overrides.focusedTokenRef} />
         <CatalogStaleLocations
-          inlineLimit={overrides.inlineLimit ?? 12}
+          hiddenCount={overrides.hiddenCount ?? 0}
           labelFor={(location) => `verse ${location.verse}`}
           liveSurfaceText={overrides.liveSurfaceText ?? (() => 'λόγου')}
           localizedStrings={STRINGS}
@@ -59,11 +62,14 @@ function renderPlaces(overrides: PlacesOptions = {}) {
           onDiscard={onDiscard}
           onReapply={onReapply}
           onSelect={onSelect}
-        />
+          onShowAll={onShowAll}
+        >
+          {overrides.notice}
+        </CatalogStaleLocations>
       </EmptyAnalysisProvider>
     </InterlinearNavProvider>,
   );
-  return { onSelect, onDiscard, onReapply };
+  return { onSelect, onDiscard, onReapply, onShowAll };
 }
 
 function onlyPlace(): HTMLElement {
@@ -169,31 +175,33 @@ describe('CatalogStaleLocations', () => {
     expect(within(onlyPlace()).getByTestId('catalog-stale-location-jump')).toBeInTheDocument();
   });
 
-  describe('with more places than fit inline', () => {
-    /** More places than the inline limit these cases render with. */
-    const MANY = Array.from({ length: 5 }, (_unused, index) =>
-      place(`GEN 1:${index + 1}:0`, index + 1),
-    );
+  describe('with places left unlisted', () => {
+    it('counts them on the expander', () => {
+      renderPlaces({ hiddenCount: 4 });
 
-    it('caps the inline list', () => {
-      renderPlaces({ locations: MANY, inlineLimit: 3 });
-
-      expect(screen.getAllByTestId('catalog-stale-location')).toHaveLength(3);
+      expect(screen.getByTestId('catalog-stale-locations-show-all')).toHaveTextContent(
+        'Show 4 more',
+      );
     });
 
-    it('reveals the rest from the expander', async () => {
-      renderPlaces({ locations: MANY, inlineLimit: 3 });
+    it('asks for every place from the expander', async () => {
+      const { onShowAll } = renderPlaces({ hiddenCount: 4 });
 
       await userEvent.click(screen.getByTestId('catalog-stale-locations-show-all'));
 
-      expect(screen.getAllByTestId('catalog-stale-location')).toHaveLength(5);
-      expect(screen.queryByTestId('catalog-stale-locations-show-all')).not.toBeInTheDocument();
+      expect(onShowAll).toHaveBeenCalledTimes(1);
     });
   });
 
-  it('offers no expander when every place fits inline', () => {
-    renderPlaces({ locations: [place('GEN 1:2:7', 2)], inlineLimit: 3 });
+  it('offers no expander when every place is listed', () => {
+    renderPlaces();
 
     expect(screen.queryByTestId('catalog-stale-locations-show-all')).not.toBeInTheDocument();
+  });
+
+  it('shows the notice it is given below the list', () => {
+    renderPlaces({ notice: 'still fetching' });
+
+    expect(screen.getByTestId('catalog-stale-locations')).toHaveTextContent('still fetching');
   });
 });

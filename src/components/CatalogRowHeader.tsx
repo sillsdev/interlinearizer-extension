@@ -9,7 +9,7 @@ import {
   useTruncationTooltip,
 } from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import type { CatalogRow } from '../utils/analysis-query';
+import type { CatalogPageRow } from '../services/catalogPages';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import { useAnalysisReadOnly } from './AnalysisStore';
 import CatalogSenseControl, { SENSE_CONTROL_STRING_KEYS } from './CatalogSenseControl';
@@ -29,7 +29,16 @@ export const ROW_HEADER_STRING_KEYS = [
 /** Props for {@link CatalogRowHeader}. */
 type CatalogRowHeaderProps = Readonly<{
   /** The analysis the row lists. */
-  row: CatalogRow;
+  row: Pick<
+    CatalogPageRow,
+    | 'analysisId'
+    | 'surfaceText'
+    | 'gloss'
+    | 'glossSenseRef'
+    | 'usageCount'
+    | 'usageCountInBook'
+    | 'staleCount'
+  >;
   /** BCP 47 tag that `row.gloss` and a linked sense's gloss are read in. */
   analysisLanguage: string;
   /** Finished label for `row.usageCountInBook`, naming the book that count was taken against. */
@@ -204,14 +213,14 @@ export default function CatalogRowHeader({
             <span className="tw:sr-only">{` ${usageCountInBookLabel}`}</span>
           </span>
         </LocalizedTooltip>
-        {row.staleLocations.length > 0 && (
+        {row.staleCount > 0 && (
           <LocalizedTooltip label={staleCountLabel}>
             <span
               className="tw:ms-2 tw:flex tw:items-center tw:justify-end tw:gap-0.5 tw:text-xs tw:tabular-nums tw:gloss-stale"
               data-testid="catalog-row-stale-count"
             >
               <TriangleAlert className="tw:size-3" />
-              {row.staleLocations.length}
+              {row.staleCount}
               <span className="tw:sr-only">{` ${staleCountLabel}`}</span>
             </span>
           </LocalizedTooltip>

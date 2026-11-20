@@ -674,6 +674,20 @@ describe('projectStorage', () => {
       expect(writtenKeys()).toEqual(['project:proj-id']);
     });
 
+    it('writes nothing when storage rejects the read of the summaries', async () => {
+      mockListedProject(storedProject);
+      const serve = __mockReadUserData.getMockImplementation();
+      __mockReadUserData.mockImplementation(async (t: unknown, key: unknown) => {
+        if (key === 'projectSummaries') throw new Error('I/O error');
+        return serve?.(t, key);
+      });
+
+      await expect(updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc')).rejects.toThrow(
+        'I/O error',
+      );
+      expect(writtenKeys()).toEqual([]);
+    });
+
     it('returns undefined for an unlisted project whose record remains', async () => {
       mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
@@ -1437,6 +1451,23 @@ describe('projectStorage', () => {
         const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
 
         expect(result).toMatchObject({ analysisLanguages: ['de'], targetProjectId: 'tgt-2' });
+      });
+
+      it('writes nothing for a configuration change when storage rejects the read of the summaries', async () => {
+        storeNoted(configured);
+        const serve = __mockReadUserData.getMockImplementation();
+        __mockReadUserData.mockImplementation(async (t: unknown, key: unknown) => {
+          if (key === 'projectSummaries') throw new Error('I/O error');
+          return serve?.(t, key);
+        });
+
+        await expect(
+          updateAnalysis(token, 'proj-id', newAnalysis, undefined, {
+            analysisLanguages: ['de'],
+            targetProjectId: 'tgt-2',
+          }),
+        ).rejects.toThrow('I/O error');
+        expect(writtenKeys()).toEqual([]);
       });
 
       it('rebuilds from a summary that failed to refresh after a write changing no configuration', async () => {

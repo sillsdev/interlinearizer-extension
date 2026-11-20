@@ -49,6 +49,23 @@ function isStoredSummaries(value: unknown): value is StoredSummaries {
   );
 }
 
+/**
+ * Every summary that the stored record `raw` holds; a record never written holds none.
+ *
+ * @throws {SyntaxError} If `raw` is invalid JSON.
+ * @throws {Error} If `raw` was written by a newer build, or is not a list of summaries.
+ */
+function parseSummaries(raw: string | undefined): StoredProjectSummary[] {
+  if (raw === undefined) return [];
+  const parsed: unknown = JSON.parse(raw);
+  assertSupportedModelVersion(parsed, 'the project summaries');
+  if (!isStoredSummaries(parsed))
+    throw new Error(
+      `Interlinearizer: '${PROJECT_SUMMARIES_KEY}' is corrupt (expected a list of project summaries)`,
+    );
+  return parsed.summaries;
+}
+
 /** What a project list shows about `project`, its analysis described rather than carried. */
 export function summarizeProject(project: InterlinearProject): InterlinearProjectSummary {
   return { ...toProjectSummary(project), ...summarizeAnalysis(project.analysis) };
@@ -87,15 +104,22 @@ export class ProjectSummaries {
    * @throws If storage rejects the read.
    */
   async list(): Promise<StoredProjectSummary[]> {
+    return parseSummaries(await this.storage.read(PROJECT_SUMMARIES_KEY));
+  }
+
+  /**
+   * Every listed project's summary, in creation order, or `undefined` when the stored record is
+   * damaged or was written by a newer build.
+   *
+   * @throws If storage rejects the read.
+   */
+  async listUnlessDamaged(): Promise<StoredProjectSummary[] | undefined> {
     const raw = await this.storage.read(PROJECT_SUMMARIES_KEY);
-    if (raw === undefined) return [];
-    const parsed: unknown = JSON.parse(raw);
-    assertSupportedModelVersion(parsed, 'the project summaries');
-    if (!isStoredSummaries(parsed))
-      throw new Error(
-        `Interlinearizer: '${PROJECT_SUMMARIES_KEY}' is corrupt (expected a list of project summaries)`,
-      );
-    return parsed.summaries;
+    try {
+      return parseSummaries(raw);
+    } catch {
+      return undefined;
+    }
   }
 
   /**

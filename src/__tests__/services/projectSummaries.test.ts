@@ -208,6 +208,32 @@ describe('ProjectSummaries', () => {
     await expect(new ProjectSummaries(storage).list()).rejects.toThrow('is corrupt');
   });
 
+  it('lists the summaries unless damaged when they parse', async () => {
+    const { storage } = memoryStorage();
+    const summaries = new ProjectSummaries(storage);
+    const summary = summarizeProject(makeStubProject('p1'));
+    await summaries.add(summary);
+
+    await expect(summaries.listUnlessDamaged()).resolves.toEqual([summary]);
+  });
+
+  it('answers undefined for damaged summaries when listing unless damaged', async () => {
+    const { storage } = memoryStorage({ [KEY]: '{ not json' });
+
+    await expect(new ProjectSummaries(storage).listUnlessDamaged()).resolves.toBeUndefined();
+  });
+
+  it('throws when storage rejects the read while listing unless damaged', async () => {
+    const storage: KeyValueStorage = {
+      ...memoryStorage().storage,
+      read: async () => {
+        throw new Error('I/O error');
+      },
+    };
+
+    await expect(new ProjectSummaries(storage).listUnlessDamaged()).rejects.toThrow('I/O error');
+  });
+
   it('leaves corrupt summaries unwritten', async () => {
     const { storage, writes } = memoryStorage({ [KEY]: 'null' });
 

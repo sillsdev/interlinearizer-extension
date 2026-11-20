@@ -138,20 +138,15 @@ async function refreshSummary(
 /**
  * Stops project `id`'s listed summary from standing in for its record until the record's next write
  * refreshes the summary. This holds across a restart, so a refresh that fails or never runs cannot
- * leave a summary that rebuilds the older record. Summaries that cannot be read are left alone,
- * because no record is rebuilt from them.
+ * leave a summary that rebuilds the older record. Summaries that are damaged or written by a newer
+ * build are left alone, because no record is rebuilt from them.
  *
- * @throws If storage rejects the write of the summaries.
+ * @throws If storage rejects the read or the write of the summaries.
  */
 async function detachSummary(token: ExecutionToken, id: string): Promise<void> {
   await enqueueIndexOp(async () => {
     const summaries = projectSummaries(token);
-    let summary: StoredProjectSummary | undefined;
-    try {
-      summary = (await summaries.list()).find((listed) => listed.id === id);
-    } catch {
-      return;
-    }
+    const summary = (await summaries.listUnlessDamaged())?.find((listed) => listed.id === id);
     if (summary?.alignmentLinks === undefined) return;
     await summaries.replace({ ...summary, alignmentLinks: undefined });
   });

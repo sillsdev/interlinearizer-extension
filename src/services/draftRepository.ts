@@ -176,7 +176,7 @@ interface ShardWritePlan {
   shards: { bookCode: string; json: string; changed: boolean }[];
 }
 
-/** How a draft is named in what its load logs. */
+/** Names a draft in the messages logged while it loads. */
 function describeLoadedDraft(sourceProjectId: string): string {
   return `draft for source project ${sourceProjectId} on load`;
 }
@@ -186,7 +186,7 @@ function describeLoadedDraft(sourceProjectId: string): string {
  * loaded or saved.
  *
  * @param saved - Each book's shard as last loaded or saved, serialized.
- * @param unreadable - Books whose shard the last load could not use, which the save keeps.
+ * @param unreadable - Books whose shard the last load could not use. The save keeps their shards.
  * @param storedBooks - The books the stored draft's manifest names.
  * @param journaled - The shard journal as stored before the save.
  * @param books - The key of every partition the draft carries, less the books in `unreadable`.
@@ -608,9 +608,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     const undeleted = await this.deleteWipedShards(wiped);
 
     // With the envelope naming every shard this save added, only a failed deletion is still owed.
-    // The draft itself has landed, so neither a failed deletion nor a failed journal update is
-    // thrown: a caller that took either for a failed save would send the same draft again for
-    // nothing. Both are logged, and the next save retries the journal either way.
+    // The draft itself has landed, so a failed deletion or journal update is logged, not thrown.
+    // A caller that took either for a failed save would send the same draft again for nothing.
+    // The next save retries the journal either way.
     try {
       await perfTimeAsync('saveDraft:write', () =>
         this.writeShardJournal({ adding: [], removing: undeleted }),
@@ -674,8 +674,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     const { shards, orphaned } = await this.readShards(analysisBooks);
     const unreadableBooks = this.recordLoadedShards(shards, orphaned);
     return perfTime('getDraft:parse', () => {
-      // Checked once merged: a link and its payload can sit in different shards, so a violation
-      // is only real of the whole. Each shard's shape was checked as it loaded.
+      // Invariants are checked once merged, because a link and its payload can sit in different
+      // shards. Each shard's shape was checked as it loaded.
       const analysis = mergeAnalyses(shards.map((shard) => shard.analysis));
       reportInvariantViolations(this.logger, analysis, describeLoadedDraft(this.sourceProjectId));
       return { draft: { ...draft, analysis }, unreadableBooks };
@@ -736,10 +736,10 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
 
   /**
    * Reads the shards of the `analysisBooks` a manifest names. A save interrupted before its
-   * envelope landed leaves shards this manifest never came to name, and those are read too.
+   * envelope landed leaves shards this manifest never came to name. Those shards are read too.
    *
-   * @returns Every shard read, the manifest's books first, and `orphaned`, the books read that the
-   *   manifest does not name.
+   * @returns `shards`, every shard read with the manifest's books first, and `orphaned`, the books
+   *   read that the manifest does not name.
    * @throws If storage rejects a read.
    */
   private async readShards(
@@ -770,9 +770,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @returns The books whose shard could not be used.
    */
   private recordLoadedShards(shards: readonly BookShard[], orphaned: readonly string[]): string[] {
-    // An unusable shard's empty stand-in is not what storage holds, so it is recorded apart. A
-    // journaled book is dropped only once its shard is gone. Dropping one still in storage would
-    // strand it, with neither the manifest nor the journal naming it.
+    // An unusable shard is recorded apart, because its empty stand-in is not what storage holds.
+    // Dropping an orphaned book whose shard is still stored would strand that shard, with neither
+    // the manifest nor the journal naming it.
     const kept = shards.filter(
       ({ bookCode, state }) => state !== 'absent' || !orphaned.includes(bookCode),
     );

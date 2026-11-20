@@ -31,6 +31,9 @@ coverage
 # Temporary intermediate build files
 temp-build
 
+# Module lists and the build stamp, read by paranext-core's third-party notices generator
+.notices
+
 # #endregion
 
 # AI files

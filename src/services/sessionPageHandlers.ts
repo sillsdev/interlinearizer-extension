@@ -8,6 +8,7 @@ import {
   readSegmentPage,
   readStaleSummary,
 } from './sessionPages';
+import { logAndRethrow } from '../utils/log-and-rethrow';
 import { perfTime, perfTimeAsync } from '../utils/perf-marks';
 
 /** What the page handlers reach beyond the sessions' analysis. */
@@ -46,16 +47,13 @@ export function sessionPageHandlers({
   async function getDraftEnvelope({
     sessionId,
   }: ArgsOf<'interlinearizer.getDraftEnvelope'>): Promise<string> {
-    try {
-      return JSON.stringify(
+    return logAndRethrow(logger, `read the draft envelope of session ${sessionId}`, async () =>
+      JSON.stringify(
         await sessions.run(sessionId, ({ repository, analysisLanguage }) =>
           readDraftEnvelope(repository, analysisLanguage),
         ),
-      );
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to read the draft envelope of session ${sessionId}`, e);
-      throw e;
-    }
+      ),
+    );
   }
 
   /**
@@ -67,8 +65,8 @@ export function sessionPageHandlers({
     { sessionId }: SessionAddress,
     bookId: string,
   ): Promise<string | undefined> {
-    try {
-      return await perfTimeAsync('getBookOutline', () => {
+    return logAndRethrow(logger, `outline book ${bookId} of session ${sessionId}`, () =>
+      perfTimeAsync('getBookOutline', () => {
         sessions
           .reanchorOpenedBook(sessionId, bookId)
           .catch((e) =>
@@ -88,33 +86,27 @@ export function sessionPageHandlers({
           const outline = await readBookOutline(session.repository, book, verseBook);
           return perfTime('getBookOutline:serialize', () => JSON.stringify(outline));
         });
-      });
-    } catch (e) {
-      logger.error(`Interlinearizer: failed to outline book ${bookId} of session ${sessionId}`, e);
-      throw e;
-    }
+      }),
+    );
   }
 
   async function getStaleSummary({
     sessionId,
     bookId,
   }: ArgsOf<'interlinearizer.getStaleSummary'>): Promise<string | undefined> {
-    try {
-      return await sessions.run(sessionId, async (session) => {
-        const book = await getOpenBook(
-          session.scope.sourceProjectId,
-          bookId,
-          await sessionBoundaries(session),
-        );
-        return book && JSON.stringify(await readStaleSummary(session.repository, book));
-      });
-    } catch (e) {
-      logger.error(
-        `Interlinearizer: failed to summarize the stale analyses of book ${bookId} of session ${sessionId}`,
-        e,
-      );
-      throw e;
-    }
+    return logAndRethrow(
+      logger,
+      `summarize the stale analyses of book ${bookId} of session ${sessionId}`,
+      () =>
+        sessions.run(sessionId, async (session) => {
+          const book = await getOpenBook(
+            session.scope.sourceProjectId,
+            bookId,
+            await sessionBoundaries(session),
+          );
+          return book && JSON.stringify(await readStaleSummary(session.repository, book));
+        }),
+    );
   }
 
   async function getSegments(
@@ -123,26 +115,23 @@ export function sessionPageHandlers({
     start: number,
     end: number,
   ): Promise<string | undefined> {
-    try {
-      return await perfTimeAsync('getSegments', () =>
-        sessions.run(sessionId, async (session) => {
-          const book = await getSegmentedBook(
-            session.scope.sourceProjectId,
-            bookId,
-            await sessionBoundaries(session),
-          );
-          if (!book) return undefined;
-          const page = await readSegmentPage(session.repository, book, start, end);
-          return perfTime('getSegments:serialize', () => JSON.stringify(page));
-        }),
-      );
-    } catch (e) {
-      logger.error(
-        `Interlinearizer: failed to serve segments ${start}-${end} of book ${bookId} of session ${sessionId}`,
-        e,
-      );
-      throw e;
-    }
+    return logAndRethrow(
+      logger,
+      `serve segments ${start}-${end} of book ${bookId} of session ${sessionId}`,
+      () =>
+        perfTimeAsync('getSegments', () =>
+          sessions.run(sessionId, async (session) => {
+            const book = await getSegmentedBook(
+              session.scope.sourceProjectId,
+              bookId,
+              await sessionBoundaries(session),
+            );
+            if (!book) return undefined;
+            const page = await readSegmentPage(session.repository, book, start, end);
+            return perfTime('getSegments:serialize', () => JSON.stringify(page));
+          }),
+        ),
+    );
   }
 
   return {

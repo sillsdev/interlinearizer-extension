@@ -26,15 +26,18 @@ export type OutlineSegment = Readonly<{
   textLength: number;
   /**
    * How many orphaned free-translation cards the view shows beside the segment. An orphaned card
-   * holds a free translation of a verse that the book no longer holds. Present only when a session
-   * asked for the outline.
+   * holds a free translation of a verse that the book no longer holds. Absent when the segment
+   * shows none, or when no session asked for the outline.
    */
   orphanedCardCount?: number;
-  /** Whether a token of the segment holds a stale analysis. Present only when a session asked. */
+  /**
+   * `true` when a token of the segment holds a stale analysis. Absent otherwise, or when no session
+   * asked.
+   */
   hasStaleGloss?: boolean;
   /**
-   * Whether the view shows a stale free translation at the segment, on an orphaned card or not.
-   * Present only when a session asked.
+   * `true` when the view shows a stale free translation at the segment, on an orphaned card or not.
+   * Absent otherwise, or when no session asked.
    */
   hasStaleFreeTranslation?: boolean;
 }>;

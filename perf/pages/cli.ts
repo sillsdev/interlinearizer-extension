@@ -318,7 +318,7 @@ async function checkPages(
     const expectedFor = expectedPages(analysis, book);
     // eslint-disable-next-line no-await-in-loop -- one book's reads at a time
     const outline = await readBookOutline(repository, book, book);
-    const counts = outline.segments.map((s) => s.orphanedCardCount);
+    const counts = outline.segments.map((s) => s.orphanedCardCount ?? 0);
     if (
       JSON.stringify(counts) !==
       JSON.stringify(counts.map((_c, i) => expectedFor(0, 0).orphanedCardCount(i)))
@@ -326,8 +326,9 @@ async function checkPages(
       mismatches.push(`${book.bookRef} outline orphaned cards`);
     const stale = expectedStale(analysis, book);
     if (
-      JSON.stringify(outline.segments.map((s) => [s.hasStaleGloss, s.hasStaleFreeTranslation])) !==
-      JSON.stringify(stale.flags)
+      JSON.stringify(
+        outline.segments.map((s) => [s.hasStaleGloss === true, s.hasStaleFreeTranslation === true]),
+      ) !== JSON.stringify(stale.flags)
     )
       mismatches.push(`${book.bookRef} outline stale flags`);
     // eslint-disable-next-line no-await-in-loop -- one book's reads at a time

@@ -201,12 +201,15 @@ export async function readBookOutline(
   return {
     ...outline,
     boundaries: outlineBoundaries(verseBook, (await repository.getScope()).segmentation),
-    segments: outline.segments.map((segment, index) => ({
-      ...segment,
-      orphanedCardCount: orphanedCardCountAt(placed, segment.id, index),
-      hasStaleGloss: glossSegments.has(segment.id),
-      hasStaleFreeTranslation: translationSegments.has(segment.id),
-    })),
+    segments: outline.segments.map((segment, index) => {
+      const orphanedCardCount = orphanedCardCountAt(placed, segment.id, index);
+      return {
+        ...segment,
+        ...(orphanedCardCount > 0 && { orphanedCardCount }),
+        ...(glossSegments.has(segment.id) && { hasStaleGloss: true }),
+        ...(translationSegments.has(segment.id) && { hasStaleFreeTranslation: true }),
+      };
+    }),
   };
 }
 

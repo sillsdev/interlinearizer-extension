@@ -171,7 +171,11 @@ describe('readBookOutline', () => {
       'GEN 1:2',
       'GEN 1:3',
     ]);
-    expect(outline.segments.map((segment) => segment.orphanedCardCount)).toStrictEqual([1, 0, 2]);
+    expect(outline.segments.map((segment) => segment.orphanedCardCount)).toStrictEqual([
+      1,
+      undefined,
+      2,
+    ]);
   });
 });
 
@@ -236,9 +240,9 @@ describe('readBookOutline stale flags', () => {
     const outline = await readBookOutline(repository, book, book);
 
     expect(outline.segments.map((segment) => segment.hasStaleGloss)).toStrictEqual([
-      false,
+      undefined,
       true,
-      false,
+      undefined,
     ]);
   });
 
@@ -253,7 +257,7 @@ describe('readBookOutline stale flags', () => {
 
     expect(outline.segments.map((segment) => segment.hasStaleFreeTranslation)).toStrictEqual([
       true,
-      false,
+      undefined,
       true,
     ]);
   });

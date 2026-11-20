@@ -377,9 +377,13 @@ function phraseTargetKey(tokens: readonly { tokenRef: string }[]): string {
 
 /** Each key occurring more than once, listed once however often it repeats. */
 function repeated(keys: readonly string[]): string[] {
-  const counts = new Map<string, number>();
-  keys.forEach((key) => counts.set(key, (counts.get(key) ?? 0) + 1));
-  return [...counts].filter(([, count]) => count > 1).map(([key]) => key);
+  const seen = new Set<string>();
+  const again = new Set<string>();
+  keys.forEach((key) => {
+    if (seen.has(key)) again.add(key);
+    else seen.add(key);
+  });
+  return again.size === 0 ? [] : [...seen].filter((key) => again.has(key));
 }
 
 function violation(
@@ -397,14 +401,16 @@ function violation(
  */
 function multipleApprovedTargets<L extends AnalysisLink>(
   links: readonly L[],
-  approvalKeys: (link: L) => readonly string[],
+  { targetKey, approvalKeys }: Pick<LayerRules<L>, 'targetKey' | 'approvalKeys'>,
 ): string[] {
-  // A phrase naming one token twice still approves it once.
-  return repeated(
-    links
-      .filter((link) => link.status === 'approved')
-      .flatMap((link) => [...new Set(approvalKeys(link))]),
-  );
+  const keys: string[] = [];
+  links.forEach((link) => {
+    if (link.status !== 'approved') return;
+    if (!approvalKeys) keys.push(targetKey(link));
+    // A phrase naming one token twice still approves it once.
+    else new Set(approvalKeys(link)).forEach((key) => keys.push(key));
+  });
+  return repeated(keys);
 }
 
 /** How one analysis layer's links and payloads are checked against each other. */
@@ -430,22 +436,28 @@ function validateLayer<L extends AnalysisLink>(
   layer: AnalysisViolation['layer'],
   analyses: readonly { id: string }[],
   links: readonly L[],
-  { targetKey, approvalKeys = (link) => [targetKey(link)], requireReferenced }: LayerRules<L>,
+  { targetKey, approvalKeys, requireReferenced }: LayerRules<L>,
 ): AnalysisViolation[] {
-  const analysisIds = new Set(analyses.map((a) => a.id));
-  const linkedIds = new Set(links.map((link) => link.analysisId));
+  const ids = analyses.map((a) => a.id);
+  const analysisIds = new Set(ids);
+  const linkedIds = new Set<string>();
+  links.forEach((link) => linkedIds.add(link.analysisId));
   const unreferenced = requireReferenced
     ? analyses.filter((a) => !linkedIds.has(a.id)).map((a) => a.id)
     : [];
   return [
-    violation('multipleApproved', layer, multipleApprovedTargets(links, approvalKeys)),
+    violation(
+      'multipleApproved',
+      layer,
+      multipleApprovedTargets(links, { targetKey, approvalKeys }),
+    ),
     violation(
       'danglingLink',
       layer,
       links.filter((link) => !analysisIds.has(link.analysisId)).map(targetKey),
     ),
     violation('unreferencedAnalysis', layer, unreferenced),
-    violation('duplicateAnalysisId', layer, repeated(analyses.map((a) => a.id))),
+    violation('duplicateAnalysisId', layer, repeated(ids)),
     violation('duplicateLinkId', layer, repeated(links.map((link) => link.id))),
   ].filter((v) => v !== undefined);
 }

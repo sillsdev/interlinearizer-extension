@@ -19,7 +19,7 @@ import {
   isTextAnalysis,
 } from '../types/type-guards';
 import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
-import { reportAnalysisViolations } from '../utils/analysis-violations';
+import { reportAnalysisViolations, reportInvariantViolations } from '../utils/analysis-violations';
 import { applyChangeSet } from '../utils/change-set';
 import { jsonCopy } from '../utils/json-copy';
 import { perfTime, perfTimeAsync, perfTimeAsyncExcluding } from '../utils/perf-marks';
@@ -688,9 +688,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     this.unreadableShards = new Set(unreadableBooks);
     return perfTime('getDraft:parse', () => {
       // Checked once merged: a link and its payload can sit in different shards, so a violation
-      // is only real of the whole.
+      // is only real of the whole. Each shard's shape was checked as it loaded.
       const analysis = mergeAnalyses(shards.map((shard) => shard.analysis));
-      reportAnalysisViolations(this.logger, analysis, describeDraft);
+      reportInvariantViolations(this.logger, analysis, describeDraft);
       return { draft: { ...draft, analysis }, unreadableBooks };
     });
   }

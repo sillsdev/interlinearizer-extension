@@ -8,6 +8,7 @@ import {
   LangPhraseRecord,
   LangTokenRecord,
 } from './languageAnalysisBuilder';
+import { rankAnalysisLanguages } from './languageRanking';
 import { Pt9LexiconResolver, unresolvedPt9LexiconResolver } from './lexiconResolver';
 import { dedupePhraseAnalyses } from './phraseAnalysisDedupe';
 import { createPt9GlossSource } from './pt9GlossSource';
@@ -166,56 +167,12 @@ export function convertPt9Project(input: Pt9ConversionInput): Pt9ConversionResul
     ),
   };
 
-  // Read-only views show approved glosses only, so those rank first.
-  const shownTokensByTag = new Map<string, Set<string>>();
-  const glossedTokensByTag = new Map<string, Set<string>>();
-  const credit = (tally: Map<string, Set<string>>, tags: string[], tokenRefs: string[]) =>
-    tags.forEach((tag) => {
-      const glossed = tally.get(tag) ?? new Set<string>();
-      tokenRefs.forEach((ref) => glossed.add(ref));
-      tally.set(tag, glossed);
-    });
-  const tokenAnalysisById = new Map(analysis.tokenAnalyses.map((ta) => [ta.id, ta]));
-  analysis.tokenAnalysisLinks.forEach((link) => {
-    if (link.status !== 'approved') return;
-    const payload = tokenAnalysisById.get(link.analysisId);
-    const tags = [
-      ...Object.keys(payload?.gloss ?? {}),
-      ...(payload?.morphemes ?? []).flatMap((morpheme) => Object.keys(morpheme.gloss ?? {})),
-    ];
-    credit(shownTokensByTag, tags, [link.token.tokenRef]);
+  const analysisLanguages = rankAnalysisLanguages({
+    languageTags: languageGroups.map((group) => group.tag),
+    analysis,
+    records,
+    phrases,
   });
-  const phraseAnalysisById = new Map(analysis.phraseAnalyses.map((pa) => [pa.id, pa]));
-  analysis.phraseAnalysisLinks.forEach((link) => {
-    if (link.status !== 'approved') return;
-    credit(
-      shownTokensByTag,
-      Object.keys(phraseAnalysisById.get(link.analysisId)?.gloss ?? {}),
-      link.tokens.map((token) => token.tokenRef),
-    );
-  });
-  // The fallback tally counts every unrejected gloss, read from the records.
-  records.forEach((record) => {
-    if (record.status === 'rejected') return;
-    const glossed =
-      record.word?.glossText !== undefined ||
-      (record.parse?.lexemes ?? []).some((lexeme) => lexeme.glossText !== undefined);
-    if (glossed) credit(glossedTokensByTag, [record.tag], [record.tokenRef]);
-  });
-  phrases.forEach((record) => {
-    if (record.status === 'rejected' || record.phrase.glossText === undefined) return;
-    credit(
-      glossedTokensByTag,
-      [record.tag],
-      record.tokens.map((token) => token.ref),
-    );
-  });
-  const countOf = (tally: Map<string, Set<string>>, tag: string) => tally.get(tag)?.size ?? 0;
-  const analysisLanguages = [...new Set(languageGroups.map((group) => group.tag))].sort(
-    (a, b) =>
-      countOf(shownTokensByTag, b) - countOf(shownTokensByTag, a) ||
-      countOf(glossedTokensByTag, b) - countOf(glossedTokensByTag, a),
-  );
 
   return { analysis, analysisLanguages, report };
 }

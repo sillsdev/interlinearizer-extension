@@ -9,7 +9,9 @@ import CatalogRowEditor, {
 } from './CatalogRowEditor';
 import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from './CatalogRowHeader';
 import CatalogStaleLocations, { STALE_LOCATION_STRING_KEYS } from './CatalogStaleLocations';
-import type { CatalogRow, CatalogUsage } from '../utils/analysis-query';
+import { useCatalogPlaces, type CatalogPlacesState } from '../cache/catalogHooks';
+import { CATALOG_INLINE_PLACES, type CatalogPageRow } from '../services/catalogPages';
+import type { CatalogUsage } from '../utils/analysis-query';
 import type { Settles } from '../utils/settles';
 
 /**
@@ -19,6 +21,9 @@ import type { Settles } from '../utils/settles';
  */
 export const ROW_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_noUsages%',
+  '%interlinearizer_analysisCatalog_placesLoading%',
+  '%interlinearizer_analysisCatalog_placesLoadFailed%',
+  '%interlinearizer_analysisCatalog_retry%',
   '%interlinearizer_analysisCatalog_showAllUsages%',
   '%interlinearizer_analysisCatalog_showFewerUsages%',
   ...ROW_HEADER_STRING_KEYS,
@@ -26,16 +31,12 @@ export const ROW_STRING_KEYS = [
   ...STALE_LOCATION_STRING_KEYS,
 ] as const satisfies `%${string}%`[];
 
-/**
- * How many usages an expanded row lists before the rest go behind an expander. An analysis applied
- * across a whole book has hundreds; listing them all would bury every row beneath it.
- */
-const INLINE_USAGE_LIMIT = 12;
-
 /** Props for {@link CatalogRowView}. */
 type CatalogRowViewProps = Readonly<{
   /** The analysis this row lists. */
-  row: CatalogRow;
+  row: CatalogPageRow;
+  /** Book code the row's places are placed among the headings of. */
+  currentBook: string;
   /** Finished label for `row.usageCountInBook`, naming the book that count was taken against. */
   usageCountInBookLabel: string;
   /** Whether this is the row the view was last jumped from. */
@@ -124,6 +125,40 @@ type CatalogRowViewProps = Readonly<{
   glossRetry: GlossRetry;
 }>;
 
+/**
+ * Says that the rest of a row's places are on their way, or offers to ask for them again. Renders
+ * nothing once they have arrived.
+ */
+function PlacesNotice({
+  places,
+  localizedStrings,
+}: Readonly<{ places: CatalogPlacesState | undefined; localizedStrings: LanguageStrings }>) {
+  if (places?.status === 'loading')
+    return (
+      <p className="tw:text-xs tw:text-muted-foreground" data-testid="catalog-places-loading">
+        {localizedStrings['%interlinearizer_analysisCatalog_placesLoading%']}
+      </p>
+    );
+  if (places?.status !== 'failed') return undefined;
+  return (
+    <p
+      className="tw:flex tw:items-center tw:gap-1 tw:text-xs tw:text-muted-foreground"
+      data-testid="catalog-places-failed"
+    >
+      {localizedStrings['%interlinearizer_analysisCatalog_placesLoadFailed%']}
+      <Button
+        data-testid="catalog-places-retry"
+        onClick={places.retry}
+        size="sm"
+        type="button"
+        variant="link"
+      >
+        {localizedStrings['%interlinearizer_analysisCatalog_retry%']}
+      </Button>
+    </p>
+  );
+}
+
 /** Renders a place's verse the way scripture references are written, e.g. `GEN 1:1`. */
 function usageLabel(usage: CatalogUsage): string {
   return formatScrRef({
@@ -142,6 +177,7 @@ function usageLabel(usage: CatalogUsage): string {
  */
 function CatalogRowView({
   row,
+  currentBook,
   usageCountInBookLabel,
   isSelected,
   isChecked,
@@ -174,8 +210,19 @@ function CatalogRowView({
 }: CatalogRowViewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  /** Whether the usage list is showing every usage rather than the first {@link INLINE_USAGE_LIMIT}. */
+  /** Whether the usage list is showing every usage rather than the first the page carries. */
   const [showsAllUsages, setShowsAllUsages] = useState(false);
+
+  /** Whether the stale list is showing every stale place rather than the first the page carries. */
+  const [showsAllStale, setShowsAllStale] = useState(false);
+
+  const hiddenUsageCount = row.usageCount - row.firstUsages.length;
+  const hiddenStaleCount = row.staleCount - row.firstStaleLocations.length;
+  const wantsPlaces =
+    isExpanded &&
+    ((showsAllUsages && hiddenUsageCount > 0) || (showsAllStale && hiddenStaleCount > 0));
+  const places = useCatalogPlaces(wantsPlaces ? row.analysisId : undefined, currentBook);
+  const allPlaces = places?.status === 'ready' ? places.places : undefined;
 
   /**
    * Whether the Show N more link takes focus when it next mounts.
@@ -199,7 +246,9 @@ function CatalogRowView({
   const handleToggle = useCallback(() => {
     setIsExpanded((expanded) => !expanded);
     setShowsAllUsages(false);
+    setShowsAllStale(false);
   }, []);
+  const handleShowAllStale = useCallback(() => setShowsAllStale(true), []);
 
   // The editor is handed callbacks already carrying this row's id, so it never needs the id itself
   // to report an edit.
@@ -274,8 +323,8 @@ function CatalogRowView({
     [analysisId, onBreakdownDraftChange, surfaceText],
   );
 
-  const visibleUsages = showsAllUsages ? row.usages : row.usages.slice(0, INLINE_USAGE_LIMIT);
-  const hiddenUsageCount = row.usages.length - visibleUsages.length;
+  const visibleUsages = (showsAllUsages && allPlaces?.usages) || row.firstUsages;
+  const visibleStale = (showsAllStale && allPlaces?.staleLocations) || row.firstStaleLocations;
 
   /**
    * Scrolls the row into view each time `revealRequest` takes a new value, so a re-render that
@@ -342,12 +391,12 @@ function CatalogRowView({
             usageCount={row.usageCount}
           />
 
-          {row.usages.length === 0 && row.staleLocations.length === 0 && (
+          {row.usageCount === 0 && row.staleCount === 0 && (
             <p className="tw:text-xs tw:text-muted-foreground">
               {localizedStrings['%interlinearizer_analysisCatalog_noUsages%']}
             </p>
           )}
-          {row.usages.length > 0 && (
+          {row.usageCount > 0 && (
             <div className="tw:flex tw:flex-wrap tw:gap-1">
               {visibleUsages.map((usage) => (
                 <Button
@@ -362,7 +411,7 @@ function CatalogRowView({
                   {usageLabel(usage)}
                 </Button>
               ))}
-              {hiddenUsageCount > 0 && (
+              {!showsAllUsages && hiddenUsageCount > 0 && (
                 <Button
                   data-testid="catalog-usages-show-all"
                   onClick={() => setShowsAllUsages(true)}
@@ -376,7 +425,7 @@ function CatalogRowView({
                   )}
                 </Button>
               )}
-              {showsAllUsages && row.usages.length > INLINE_USAGE_LIMIT && (
+              {showsAllUsages && row.usageCount > CATALOG_INLINE_PLACES && (
                 <Button
                   data-testid="catalog-usages-show-fewer"
                   onClick={handleShowFewer}
@@ -389,17 +438,24 @@ function CatalogRowView({
             </div>
           )}
 
-          {row.staleLocations.length > 0 && (
+          {showsAllUsages && <PlacesNotice localizedStrings={localizedStrings} places={places} />}
+
+          {row.staleCount > 0 && (
             <CatalogStaleLocations
-              inlineLimit={INLINE_USAGE_LIMIT}
+              hiddenCount={showsAllStale ? 0 : hiddenStaleCount}
               labelFor={usageLabel}
               liveSurfaceText={liveSurfaceText}
               localizedStrings={localizedStrings}
-              locations={row.staleLocations}
+              locations={visibleStale}
               onDiscard={handleStaleDiscard}
               onReapply={handleStaleReapply}
               onSelect={handleStaleSelect}
-            />
+              onShowAll={handleShowAllStale}
+            >
+              {!showsAllUsages && showsAllStale && (
+                <PlacesNotice localizedStrings={localizedStrings} places={places} />
+              )}
+            </CatalogStaleLocations>
           )}
 
           {/* Below the usages, so what a merge or delete is about to take is in view above the

@@ -123,6 +123,8 @@
       "%interlinearizer_analysisCatalog_noUsages%": "Not used anywhere",
       "%interlinearizer_analysisCatalog_showAllUsages%": "Show {count} more",
       "%interlinearizer_analysisCatalog_showFewerUsages%": "Show fewer",
+      "%interlinearizer_analysisCatalog_placesLoading%": "Loading the rest…",
+      "%interlinearizer_analysisCatalog_placesLoadFailed%": "The rest couldn't be loaded.",
       "%interlinearizer_analysisCatalog_staleCount%": "Outdated places",
       "%interlinearizer_analysisCatalog_notInText%": "Not in the text",
       "%interlinearizer_analysisCatalog_morphemeSenseLinks%": "Lexicon",

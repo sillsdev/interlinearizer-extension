@@ -8,6 +8,7 @@ import {
   type CatalogRow,
   type CatalogScope,
   type CatalogSort,
+  type CatalogUsage,
 } from '../utils/analysis-query';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { collatorForTag } from '../utils/language-tags';
@@ -25,8 +26,29 @@ export interface CatalogPageRequest {
   count: number;
 }
 
+/**
+ * How many of a row's usages, and how many of its stale places, a catalog page carries. The rest
+ * are read on demand, because a much-used analysis has thousands of places.
+ */
+export const CATALOG_INLINE_PLACES = 12;
+
 /** A catalog row as a page carries it. */
-export interface CatalogPageRow extends CatalogRow {
+export interface CatalogPageRow extends Omit<
+  CatalogRow,
+  'usages' | 'staleLocations' | 'searchText'
+> {
+  /**
+   * The row's first usages in document order, at most {@link CATALOG_INLINE_PLACES}. `usageCount`
+   * counts every usage.
+   */
+  firstUsages: readonly CatalogUsage[];
+  /**
+   * The row's first stale places in document order, at most {@link CATALOG_INLINE_PLACES}.
+   * `staleCount` counts every stale place.
+   */
+  firstStaleLocations: readonly CatalogUsage[];
+  /** How many places the analysis went stale at. */
+  staleCount: number;
   /**
    * Whether another row shares the row's surface form, normalized as the suggestion pool buckets
    * forms, so the two can be merged.
@@ -72,13 +94,21 @@ export function getCatalogPage(
     isFormInText,
   });
   const rowsByForm = Map.groupBy(rows, (row) => normalizeSurfaceForm(row.surfaceText));
-  return {
-    rows: kept.slice(request.offset, request.offset + request.count).map((row) => ({
+  const pageRow = (full: CatalogRow): CatalogPageRow => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to leave it out
+    const { usages, staleLocations, searchText, ...row } = full;
+    return {
       ...row,
+      firstUsages: usages.slice(0, CATALOG_INLINE_PLACES),
+      firstStaleLocations: staleLocations.slice(0, CATALOG_INLINE_PLACES),
+      staleCount: staleLocations.length,
       /* v8 ignore next -- every row is filed under its own form */
       hasHomograph: (rowsByForm.get(normalizeSurfaceForm(row.surfaceText))?.length ?? 0) > 1,
       isNotInText: isFormInText(row.form) === false,
-    })),
+    };
+  };
+  return {
+    rows: kept.slice(request.offset, request.offset + request.count).map(pageRow),
     keptIds: kept.map((row) => row.analysisId),
     rowCount: rows.length,
     facets: deriveFacets(rows),
@@ -111,6 +141,25 @@ export function getRowsByIds(
   );
   const rowById = new Map(rows.map((row) => [row.analysisId, row]));
   return analysisIds.flatMap((id) => rowById.get(id) ?? []);
+}
+
+/** Every place an analysis is applied, and every place it went stale at, in document order. */
+export type CatalogPlaces = Readonly<{
+  usages: readonly CatalogUsage[];
+  staleLocations: readonly CatalogUsage[];
+}>;
+
+/**
+ * Lists the places of the analysis that `analysisId` names, as its catalog row would. Returns
+ * `undefined` when no analysis carries the id.
+ */
+export function getCatalogPlaces(
+  analysis: Pick<TextAnalysis, 'tokenAnalyses' | 'tokenAnalysisLinks'>,
+  scope: CatalogScope,
+  analysisId: string,
+): CatalogPlaces | undefined {
+  const [row] = getRowsByIds(analysis, scope, [analysisId]);
+  return row && { usages: row.usages, staleLocations: row.staleLocations };
 }
 
 /**

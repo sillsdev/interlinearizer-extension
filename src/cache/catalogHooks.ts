@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import {
   restoreUntagged,
   type CatalogPageRow,
+  type CatalogPlaces,
   type SelectionSummary,
 } from '../services/catalogPages';
 import type { CatalogRowsRequest } from '../services/sessionCatalogHandlers';
@@ -13,10 +14,10 @@ import { useNamedFetch } from './namedQueryHooks';
 import { usePageSession } from './pageHooks';
 
 /** A row as the host sends it, its books listed. */
-type WireRow<T extends CatalogRow> = Omit<T, 'books'> & { books: string[] };
+type WireRow<T extends Pick<CatalogRow, 'books'>> = Omit<T, 'books'> & { books: string[] };
 
 /** A row as the host sent it, its books gathered back into a set. */
-function fromWire<T extends CatalogRow>(
+function fromWire<T extends Pick<CatalogRow, 'books'>>(
   row: WireRow<T>,
 ): Omit<T, 'books'> & { books: ReadonlySet<string> } {
   return { ...row, books: new Set(row.books) };
@@ -124,6 +125,49 @@ export function useHomographRows(
     const rows: WireRow<CatalogRow>[] = JSON.parse(json);
     return rows.map(fromWire);
   })?.value;
+}
+
+/** What the host has said so far about the places of one catalog row. */
+export type CatalogPlacesState =
+  | Readonly<{ status: 'loading' }>
+  /** The host could not say; `retry` asks again. */
+  | Readonly<{ status: 'failed'; retry: () => void }>
+  /** No analysis carries the id. */
+  | Readonly<{ status: 'missing' }>
+  | Readonly<{ status: 'ready'; places: CatalogPlaces }>;
+
+/**
+ * Every place of the analysis `analysisId` names, fetched again whenever a change to the session
+ * names the catalog. Returns `undefined` while `analysisId` is `undefined`.
+ */
+export function useCatalogPlaces(
+  analysisId: string | undefined,
+  currentBook: string,
+): CatalogPlacesState | undefined {
+  const { sessionId } = usePageSession();
+  const key = analysisId === undefined ? undefined : JSON.stringify([currentBook, analysisId]);
+  const fetched = useNamedFetch<CatalogPlaces | 'missing'>(
+    'getCatalogRows',
+    'catalog places',
+    key,
+    async () => {
+      const places: CatalogPlaces | null = JSON.parse(
+        await papi.commands.sendCommand('interlinearizer.getCatalogPlaces', {
+          sessionId,
+          currentBook,
+          /* v8 ignore next -- fetched only under a key, which an id gives */
+          analysisId: analysisId ?? '',
+        }),
+      );
+      return places ?? 'missing';
+    },
+  );
+  if (!fetched) return undefined;
+  if (fetched.value === 'missing') return { status: 'missing' };
+  if (fetched.value) return { status: 'ready', places: fetched.value };
+  return fetched.failed && !fetched.retrying
+    ? { status: 'failed', retry: fetched.retry }
+    : { status: 'loading' };
 }
 
 /**

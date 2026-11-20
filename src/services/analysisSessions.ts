@@ -287,12 +287,14 @@ async function reanchorUnlessAnchored(
 }
 
 /**
- * Applies an edit's staged changes as one undo step, re-anchored to `reanchorTo`.
+ * Applies an edit's staged changes as one undo step, re-anchored to `reanchorTo`. Once they apply,
+ * drops from `storedVersions` each book that `reanchorTo` names.
  *
  * @throws As {@link AnalysisSessions.edit} does.
  */
 async function applyStaged(
   session: Session,
+  storedVersions: Map<string, string> | undefined,
   buffer: ChangeBuffer,
   staged: ChangeSet,
   reanchorTo: void | readonly ReadonlyBook[],
@@ -312,6 +314,7 @@ async function applyStaged(
   const { unsavedMark } = options;
   const step = typeof options.step === 'function' ? options.step(changes) : options.step;
   const inverse = await session.history.apply(changes, { unsavedMark, step });
+  reanchorTo?.forEach(({ bookRef }) => storedVersions?.delete(bookRef));
   if (unsavedMark) await noteIfEmpty(session);
   return { changes, inverse, ...(step && { step }) };
 }
@@ -635,9 +638,8 @@ export class AnalysisSessions {
           const staged = buffer.toChangeSet(intent);
           if (!isEmptyChangeSet(staged)) {
             const applied = await perfTimeAsync(`${intent}:apply`, () =>
-              applyStaged(session, buffer, staged, reanchorTo, editOptions),
+              applyStaged(session, entry?.storedVersions, buffer, staged, reanchorTo, editOptions),
             );
-            reanchorTo?.forEach(({ bookRef }) => entry?.storedVersions.delete(bookRef));
             const answered = await perfTimeAsync(`${intent}:reply`, () =>
               replyTo(this.host, session, applied, changeId),
             );

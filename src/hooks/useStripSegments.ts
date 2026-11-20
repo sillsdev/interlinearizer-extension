@@ -41,11 +41,8 @@ export interface UseStripSegmentsResult {
   isFocusLeftBehind: boolean;
   /** Holds the segments around the focus again, wherever the strip has been scrolled. */
   holdFocus: () => void;
-  /**
-   * Whether a page that the strip needs failed every retry: one under its target, or the one
-   * holding the focus it is moving to.
-   */
-  isFailed: boolean;
+  /** Whether the page holding the focus that the strip is moving to failed every retry. */
+  isNextFocusFailed: boolean;
 }
 
 /** The mounted edge tokens, and the focus they were mounted around. */
@@ -160,10 +157,7 @@ export default function useStripSegments({
     );
   }, [pages, nextIndex, isNextHeld]);
 
-  const failedAt = (index: number) => pages.failureAt(index) !== undefined;
-  let isFailed = nextIndex !== undefined && failedAt(nextIndex);
-  for (let index = target.start; !isFailed && index < target.end; index += 1)
-    isFailed = failedAt(index);
+  const isNextFocusFailed = nextIndex !== undefined && pages.failureAt(nextIndex) !== undefined;
 
   const hasPage = useCallback(
     (tokenRef: string) => {
@@ -193,6 +187,6 @@ export default function useStripSegments({
     setMounted,
     isFocusLeftBehind,
     holdFocus,
-    isFailed,
+    isNextFocusFailed,
   };
 }

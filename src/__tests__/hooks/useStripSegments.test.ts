@@ -34,7 +34,7 @@ const TOKEN_SEGMENTS: ReadonlyMap<string, string> = new Map(
 
 /**
  * Pages of `book` loaded across `[start, end)`, which `loadMore` widens. `fail` marks the segments
- * in the range it is given as failed.
+ * in the range it is given as failed, where their pages are not loaded.
  */
 function makePages(book: Book, start = 0, end = book.segments.length) {
   let loaded = { start, end };
@@ -60,7 +60,7 @@ function makePages(book: Book, start = 0, end = book.segments.length) {
     load: jest.fn(),
     release: jest.fn(),
     failureAt: (index) =>
-      index >= failed.start && index < failed.end
+      index >= failed.start && index < failed.end && (index < loaded.start || index >= loaded.end)
         ? { cause: 'app', isRetrying: false, failedAgain: false }
         : undefined,
     retryFailed: jest.fn(),
@@ -279,31 +279,22 @@ describe('useStripSegments', () => {
     expect(pages.release).toHaveBeenCalledWith('strip');
   });
 
-  it('reports a failure when a segment it would hold has failed to load', () => {
-    const { pages, fail } = makePages(BOOK);
-    const { result } = renderStrip({ pages });
-
-    fail(100 + STRIP_MARGIN_WORDS, 101 + STRIP_MARGIN_WORDS);
-
-    expect(result.current.isFailed).toBe(true);
-  });
-
-  it('reports a failure when the segment of a focus it is moving to has failed to load', () => {
-    const { pages, fail } = makePages(BOOK);
+  it('reports a failure when the page holding the focus it is moving to has failed', () => {
+    const { pages, fail } = makePages(BOOK, 0, 150);
     const { result } = renderStrip({ pages, nextFocusTokenRef: tokenAt(180) });
 
     fail(180, 181);
 
-    expect(result.current.isFailed).toBe(true);
+    expect(result.current.isNextFocusFailed).toBe(true);
   });
 
-  it('reports no failure for a segment that failed beyond what it would hold', () => {
-    const { pages, fail } = makePages(BOOK);
+  it('reports no failure for a failed page that does not hold the focus it is moving to', () => {
+    const { pages, fail } = makePages(BOOK, 90, 110);
     const { result } = renderStrip({ pages });
 
-    fail(0, 1);
+    fail(100 + STRIP_MARGIN_WORDS, 101 + STRIP_MARGIN_WORDS);
 
-    expect(result.current.isFailed).toBe(false);
+    expect(result.current.isNextFocusFailed).toBe(false);
   });
 
   it('tells a token whose page has loaded', () => {

@@ -118,6 +118,15 @@ describe('runVerses', () => {
     expect(runVerses(withMerge, { start: 0, end: 1, failure: FAILED })).toBe('13:18–19');
   });
 
+  it('ends a run at the last verse of a bridged verse marker', () => {
+    const bridged = makeSegment('JOS 13:18', 'one', []);
+    const withBridge = outlineOf([
+      { ...bridged, verseStarts: [{ charStart: 0, number: '18-20', chapter: 13 }] },
+    ]);
+
+    expect(runVerses(withBridge, { start: 0, end: 1, failure: FAILED })).toBe('13:18–20');
+  });
+
   it('ends a run on a heading at the verse that the heading is filed under', () => {
     const withHeading = outlineOf([
       makeSegment('JOS 13:18', 'one', []),

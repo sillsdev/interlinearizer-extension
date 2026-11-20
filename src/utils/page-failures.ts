@@ -63,7 +63,8 @@ export function runVerses(outline: readonly OutlineSegment[], run: FailedRun): s
   const lastSegment = outline[run.end - 1];
   const lastStart = lastSegment.verseStarts[lastSegment.verseStarts.length - 1];
   const lastChapter = lastStart?.chapter ?? lastSegment.startRef.chapter;
-  const lastVerse = lastStart?.number ?? String(lastSegment.startRef.verse);
+  // A bridged marker such as `18-20` ends the run at its last verse.
+  const lastVerse = lastStart?.number.split(/[-–]/).at(-1) ?? String(lastSegment.startRef.verse);
   const from = `${first.chapter}:${first.verse}`;
   if (lastChapter !== first.chapter) return `${from}–${lastChapter}:${lastVerse}`;
   if (lastVerse !== String(first.verse)) return `${from}–${lastVerse}`;

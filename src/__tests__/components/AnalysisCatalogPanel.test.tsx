@@ -1336,7 +1336,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByTestId('catalog-filter-gloss-lacks'));
 
-      expect(listedAnalysisIds()).toEqual(['elsewhere']);
+      await waitFor(() => expect(listedAnalysisIds()).toEqual(['elsewhere']));
     });
 
     it('narrows the list to the analyses with a gloss in the active language', async () => {

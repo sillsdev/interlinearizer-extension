@@ -9,14 +9,15 @@ import type {
   TextAnalysis,
   TokenSnapshot,
 } from 'interlinearizer';
+import type { ChangeSet } from '../types/analysis-repository';
 import { bookOfRef } from './analysis-book';
 import { normalizeSurfaceForm } from './analysis-identity';
 
 /**
- * Where a link's stored token snapshot now points: either the token ref it re-anchors to, or
- * nothing when the token it was written against is gone from its segment.
+ * Where a link's stored token snapshot now points: either the token ref it re-anchors to, with how
+ * many tokens of its form the verse now holds, or nothing when its token is gone from its segment.
  */
-type Anchor = string | undefined;
+type Anchor = { tokenRef: string; formCount: number } | undefined;
 
 /** A book the project no longer has, as a book with no text. */
 export function missingBook(bookCode: string): Book {
@@ -61,10 +62,6 @@ function countByValue(values: string[]): Map<string, number> {
  * of the form as were stored. A spare occurrence means the pairing was chosen rather than forced —
  * glosses on two of three identical words could as easily be the first two as the last two.
  *
- * One ambiguity survives, being unresolvable from a {@link TokenSnapshot}. A form whose glossed
- * occurrences were deleted, leaving an unglossed twin, presents exactly as those glosses shifted
- * along by an edit. That holds for a form stored once or as interchangeable copies.
- *
  * @param stored - The stored forms, in document order.
  * @param current - The verse's current forms, in document order.
  * @param paired - For each stored position, the token index it aligned to, or `undefined`.
@@ -91,8 +88,33 @@ function unambiguousForms(
 /**
  * Pairs each stored form with the index of the current form it aligns to in order, or `undefined`
  * where it has no counterpart or is too ambiguous to place.
+ *
+ * A form in `vanished` yields `undefined`, because the copy that the verse lost may have been a
+ * stored one. It also stays out of the alignment, so that a pairing it cannot keep never costs
+ * another form its own.
  */
-function pairUnambiguously(a: string[], b: string[]): (number | undefined)[] {
+function pairUnambiguously(
+  stored: string[],
+  b: string[],
+  vanished: ReadonlySet<string>,
+): (number | undefined)[] {
+  const kept = stored.flatMap((form, index) => (vanished.has(form) ? [] : [index]));
+  const keptPaired = pairInOrder(
+    kept.map((index) => stored[index]),
+    b,
+  );
+  const paired = new Array<number | undefined>(stored.length).fill(undefined);
+  kept.forEach((index, keptIndex) => {
+    paired[index] = keptPaired[keptIndex];
+  });
+  return paired;
+}
+
+/**
+ * Pairs each stored form with the index of the current form it aligns to in order, or `undefined`
+ * where it has no counterpart or is too ambiguous to place.
+ */
+function pairInOrder(a: string[], b: string[]): (number | undefined)[] {
   // lengths[i][j] — the LCS length of a.slice(i) against b.slice(j), filled back-to-front so the
   // forward walk below can pick the branch that keeps the most pairings.
   const lengths: number[][] = Array.from({ length: a.length + 1 }, () =>
@@ -145,6 +167,9 @@ function pairUnambiguously(a: string[], b: string[]): (number | undefined)[] {
  * A form whose positions all share one defined `kin` has interchangeable copies. When the verse
  * holds fewer of that form than were stored, its remaining tokens still place. Only the extra
  * positions yield `undefined`, because it makes no difference which copy an edit removed.
+ *
+ * A form in `vanished` places only where a position's own ref still names it. The verse lost a copy
+ * of that form, and the text cannot say whether a stored copy was the one lost.
  */
 function alignForms(
   stored: string[],
@@ -152,7 +177,8 @@ function alignForms(
   tokens: ReadonlyToken[],
   live: boolean[],
   kin: (string | undefined)[],
-): Anchor[] {
+  vanished: ReadonlySet<string>,
+): (string | undefined)[] {
   const forms = stored.map(normalizeSurfaceForm);
   const kinByForm = new Map<string, Set<string | undefined>>();
   forms.forEach((form, index) => {
@@ -178,8 +204,9 @@ function alignForms(
     kept.map((index) => storedRefs[index]),
     tokens,
     kept.map((index) => live[index]),
+    vanished,
   );
-  const anchors = new Array<Anchor>(stored.length).fill(undefined);
+  const anchors = new Array<string | undefined>(stored.length).fill(undefined);
   kept.forEach((index, keptIndex) => {
     anchors[index] = keptAnchors[keptIndex];
   });
@@ -188,14 +215,15 @@ function alignForms(
 
 /**
  * Gives each stored form the token ref it should carry, given that no interchangeable form has more
- * stored copies than the verse has tokens of it.
+ * stored copies than the verse has tokens of it. A form in `vanished` places only on its own ref.
  */
 function alignKept(
   stored: string[],
   storedRefs: string[],
   tokens: ReadonlyToken[],
   live: boolean[],
-): Anchor[] {
+  vanished: ReadonlySet<string>,
+): (string | undefined)[] {
   const a = stored.map(normalizeSurfaceForm);
   const b = tokens.map((t) => normalizeSurfaceForm(t.surfaceText));
 
@@ -222,7 +250,7 @@ function alignKept(
   // Pairing keeps order, so a word moved past others pairs only once they are withheld as placed.
   // Ends: each round places more or unsettles another form.
   for (;;) {
-    paired = pairAroundSettled(a, b, storedRefs, indexByRef, unsettled, placed);
+    paired = pairAroundSettled(a, b, storedRefs, indexByRef, unsettled, placed, vanished);
     const crossed = formsOutOfOrder(a, paired, live);
     if (crossed.size > 0) {
       crossed.forEach((form) => unsettledForms.add(form));
@@ -245,7 +273,8 @@ function alignKept(
 /**
  * Pairs each stored form with a token index: the one `placed` already gives it, else the token its
  * own ref names where that is still of its form and `unsettled` allows, otherwise by aligning what
- * is left in order, or `undefined` where none places it.
+ * is left in order, or `undefined` where none places it. The alignment places no form in
+ * `vanished`.
  */
 function pairAroundSettled(
   a: string[],
@@ -254,6 +283,7 @@ function pairAroundSettled(
   indexByRef: Map<string, number>,
   unsettled: (index: number) => boolean,
   placed: Map<number, number>,
+  vanished: ReadonlySet<string>,
 ): (number | undefined)[] {
   const settled = a.map((form, index) => {
     const placedIndex = placed.get(index);
@@ -271,6 +301,7 @@ function pairAroundSettled(
   const openPaired = pairUnambiguously(
     openStored.map((index) => a[index]),
     openTokens.map((index) => b[index]),
+    vanished,
   );
 
   const paired = [...settled];
@@ -347,16 +378,16 @@ function buildAnchorMap(
 ): Map<string, Anchor> {
   const byVerse = tokensByVerse(book);
   const anchorMap = new Map<string, Anchor>();
-  anchorByVerse(snapshots, byVerse, book.bookRef, anchorMap, isLive, kinOf);
+  anchorByVerse(snapshots, byVerse, new Set(), book.bookRef, anchorMap, isLive, kinOf);
   if (deferred.length === 0) return anchorMap;
 
-  const claimed = new Set(anchorMap.values());
-  const unclaimedByVerse = new Map(
-    [...byVerse].map(([verse, tokens]) => [verse, tokens.filter((t) => !claimed.has(t.ref))]),
+  const claimed = new Set(
+    [...anchorMap.values()].flatMap((anchor) => (anchor ? [anchor.tokenRef] : [])),
   );
   anchorByVerse(
     deferred.filter((snapshot) => !anchorMap.has(snapshotKey(snapshot))),
-    unclaimedByVerse,
+    byVerse,
+    claimed,
     book.bookRef,
     anchorMap,
     () => true,
@@ -365,19 +396,33 @@ function buildAnchorMap(
   return anchorMap;
 }
 
-/** Records in `anchorMap` where each snapshot now belongs among the verse token lists given. */
+/**
+ * Records in `anchorMap` where each snapshot now belongs among its verse's tokens that `claimed`
+ * leaves out. A form's count still covers the claimed tokens. That whole-verse count judges whether
+ * a copy vanished. Each anchor records it too.
+ */
 function anchorByVerse(
   snapshots: TokenSnapshot[],
   byVerse: Map<string, ReadonlyToken[]>,
+  claimed: ReadonlySet<string>,
   bookRef: string,
   anchorMap: Map<string, Anchor>,
   isLive: (key: string) => boolean,
   kinOf: (key: string) => string | undefined,
 ): void {
   // Deduplicated: a token named by several links contributes a snapshot from each, and aligning the
-  // same word twice would consume two current tokens and orphan one copy.
+  // same word twice would consume two current tokens and orphan one copy. Duplicates keep the
+  // largest count any of them recorded, so a link written without one hides no vanished copy.
   const uniqueSnapshots = new Map<string, TokenSnapshot>();
-  snapshots.forEach((snapshot) => uniqueSnapshots.set(snapshotKey(snapshot), snapshot));
+  snapshots.forEach((snapshot) => {
+    const key = snapshotKey(snapshot);
+    const kept = uniqueSnapshots.get(key)?.formCount;
+    const formCount =
+      kept === undefined || snapshot.formCount === undefined
+        ? (kept ?? snapshot.formCount)
+        : Math.max(kept, snapshot.formCount);
+    uniqueSnapshots.set(key, formCount === undefined ? snapshot : { ...snapshot, formCount });
+  });
 
   // Keyed by the verse's token list rather than its ref so the alignment below needs no second
   // lookup, which would have to answer for a verse this grouping already dropped.
@@ -394,19 +439,57 @@ function anchorByVerse(
     else grouped.set(tokens, [snapshot]);
   });
 
-  grouped.forEach((group, tokens) => {
+  grouped.forEach((group, verseTokens) => {
     const ordered = [...group].sort(
       (x, y) => offsetOfTokenRef(x.tokenRef) - offsetOfTokenRef(y.tokenRef),
     );
-    const anchors = alignForms(
+    const currentCounts = countByValue(verseTokens.map((t) => normalizeSurfaceForm(t.surfaceText)));
+    const refs = alignForms(
       ordered.map((s) => s.surfaceText),
       ordered.map((s) => s.tokenRef),
-      tokens,
+      verseTokens.filter((t) => !claimed.has(t.ref)),
       ordered.map((s) => isLive(snapshotKey(s))),
       ordered.map((s) => kinOf(snapshotKey(s))),
+      vanishedForms(ordered, currentCounts),
     );
-    ordered.forEach((snapshot, index) => anchorMap.set(snapshotKey(snapshot), anchors[index]));
+    ordered.forEach((snapshot, index) => {
+      const tokenRef = refs[index];
+      const formCount = currentCounts.get(normalizeSurfaceForm(snapshot.surfaceText)) ?? 0;
+      anchorMap.set(
+        snapshotKey(snapshot),
+        tokenRef === undefined ? undefined : { tokenRef, formCount },
+      );
+    });
   });
+}
+
+/**
+ * The normalized forms whose verse held copies that `snapshots` do not store, and now holds fewer
+ * copies than it did. What the verse held is the largest {@link TokenSnapshot.formCount} among the
+ * form's snapshots.
+ */
+function vanishedForms(
+  snapshots: TokenSnapshot[],
+  currentCounts: Map<string, number>,
+): Set<string> {
+  const storedCounts = countByValue(snapshots.map((s) => normalizeSurfaceForm(s.surfaceText)));
+  const recordedCounts = new Map<string, number>();
+  snapshots.forEach(({ surfaceText, formCount }) => {
+    if (formCount === undefined) return;
+    const form = normalizeSurfaceForm(surfaceText);
+    recordedCounts.set(form, Math.max(formCount, recordedCounts.get(form) ?? 0));
+  });
+  return new Set(
+    [...storedCounts].flatMap(([form, stored]) => {
+      const recorded = recordedCounts.get(form);
+      return recorded !== undefined &&
+        recorded > stored &&
+        /* v8 ignore next -- a form with no tokens left has nothing to place on either way */
+        recorded > (currentCounts.get(form) ?? 0)
+        ? [form]
+        : [];
+    }),
+  );
 }
 
 /** Returns the character offset within the verse that a token ref names. */
@@ -415,16 +498,18 @@ function offsetOfTokenRef(tokenRef: string): number {
 }
 
 /**
- * Applies the re-anchor map to one snapshot.
+ * Applies the re-anchor map to one snapshot. A placed snapshot that carries a
+ * {@link TokenSnapshot.formCount} takes the verse's current count when `recounts` is set.
  *
- * @returns The snapshot to keep, `changed` when it took a new ref, `orphaned` when the map could
- *   not place it — its token is gone, or its form is too ambiguous to place — and `placed` when the
- *   map did find it a token, whether or not that moved it. A snapshot outside the book being
- *   re-anchored comes back untouched, neither changed nor orphaned nor placed.
+ * @returns The snapshot to keep, `changed` when it took a new ref or count, `orphaned` when the map
+ *   could not place it — its token is gone, or its form is too ambiguous to place — and `placed`
+ *   when the map did find it a token, whether or not that moved it. A snapshot outside the book
+ *   being re-anchored comes back untouched, neither changed nor orphaned nor placed.
  */
 function reanchorSnapshot(
   snapshot: TokenSnapshot,
   anchorMap: Map<string, Anchor>,
+  recounts = false,
 ): { snapshot: TokenSnapshot; changed: boolean; orphaned: boolean; placed: boolean } {
   const key = snapshotKey(snapshot);
   if (!anchorMap.has(key)) {
@@ -432,10 +517,16 @@ function reanchorSnapshot(
   }
   const anchor = anchorMap.get(key);
   if (anchor === undefined) return { snapshot, changed: false, orphaned: true, placed: false };
-  if (anchor === snapshot.tokenRef)
+  const formCount =
+    recounts && snapshot.formCount !== undefined ? anchor.formCount : snapshot.formCount;
+  if (anchor.tokenRef === snapshot.tokenRef && formCount === snapshot.formCount)
     return { snapshot, changed: false, orphaned: false, placed: true };
   return {
-    snapshot: { ...snapshot, tokenRef: anchor },
+    snapshot: {
+      ...snapshot,
+      tokenRef: anchor.tokenRef,
+      ...(formCount !== undefined && { formCount }),
+    },
     changed: true,
     orphaned: false,
     placed: true,
@@ -449,6 +540,55 @@ function reanchorSnapshot(
 export function reanchorSnapshots(snapshots: TokenSnapshot[], book: ReadonlyBook): TokenSnapshot[] {
   const anchorMap = buildAnchorMap(snapshots, book);
   return snapshots.map((snapshot) => reanchorSnapshot(snapshot, anchorMap).snapshot);
+}
+
+/**
+ * Records a {@link TokenSnapshot.formCount} on each snapshot lacking one, in the token and phrase
+ * links that `changes` put. A snapshot stays uncounted when `bookOf` holds no text for its verse,
+ * or when its ref names a different word there.
+ *
+ * @returns `changes` itself when no snapshot took a count.
+ */
+export function withFormCounts(
+  changes: ChangeSet,
+  bookOf: (bookId: string) => ReadonlyBook | undefined,
+): ChangeSet {
+  const versesByBook = new Map<string, Map<string, ReadonlyToken[]> | undefined>();
+  const versesOf = (bookId: string) => {
+    if (!versesByBook.has(bookId)) {
+      const book = bookOf(bookId);
+      versesByBook.set(bookId, book && tokensByVerse(book));
+    }
+    return versesByBook.get(bookId);
+  };
+  let counted = false;
+  const count = (snapshot: TokenSnapshot): TokenSnapshot => {
+    if (snapshot.formCount !== undefined) return snapshot;
+    const tokens = versesOf(bookOfRef(snapshot.tokenRef))?.get(verseOfTokenRef(snapshot.tokenRef));
+    const form = normalizeSurfaceForm(snapshot.surfaceText);
+    const token = tokens?.find(({ ref }) => ref === snapshot.tokenRef);
+    if (!tokens || !token || normalizeSurfaceForm(token.surfaceText) !== form) return snapshot;
+    counted = true;
+    const formCount = tokens.filter((t) => normalizeSurfaceForm(t.surfaceText) === form).length;
+    return { ...snapshot, formCount };
+  };
+  const { tokenAnalysisLinks, phraseAnalysisLinks } = changes;
+  const counts: ChangeSet = {
+    ...changes,
+    ...(tokenAnalysisLinks && {
+      tokenAnalysisLinks: {
+        ...tokenAnalysisLinks,
+        puts: tokenAnalysisLinks.puts.map((link) => ({ ...link, token: count(link.token) })),
+      },
+    }),
+    ...(phraseAnalysisLinks && {
+      phraseAnalysisLinks: {
+        ...phraseAnalysisLinks,
+        puts: phraseAnalysisLinks.puts.map((link) => ({ ...link, tokens: link.tokens.map(count) })),
+      },
+    }),
+  };
+  return counted ? counts : changes;
 }
 
 /**
@@ -561,6 +701,11 @@ const MAX_REANCHOR_PASSES = 8;
  * interchangeable. An edit that removes some of them strands only as many copies as it removed. The
  * other copies keep their status.
  *
+ * A verse may hold fewer copies of a word than its snapshots' {@link TokenSnapshot.formCount}
+ * records, where some of the recorded copies were unlinked. The edit may then have removed a linked
+ * copy or an unlinked one. A linked copy keeps its place only while its own ref still names the
+ * word. A snapshot that the pass places takes the verse's current count, if it carries a count.
+ *
  * Only approvals are staled and only stale links revived, so the pass gives back exactly what it
  * takes: a stale link whose snapshot places again returns to `'approved'`, restoring an analysis an
  * upstream edit stranded, while a verdict someone recorded — a rejection, a candidate — keeps its
@@ -655,13 +800,13 @@ function reanchorOnce(
   const occupiedElsewhere = new Set(
     analysis.tokenAnalysisLinks
       .filter(occupies)
-      .map((l) => reanchorSnapshot(l.token, anchorMap))
+      .map((l) => reanchorSnapshot(l.token, anchorMap, true))
       .filter((r) => !r.orphaned)
       .map((r) => r.snapshot.tokenRef),
   );
 
   const tokenAnalysisLinks = analysis.tokenAnalysisLinks.map((link) => {
-    const result = reanchorSnapshot(link.token, anchorMap);
+    const result = reanchorSnapshot(link.token, anchorMap, true);
     if (result.orphaned) {
       const stale = markStale(link, now);
       changed ||= stale !== link;
@@ -692,13 +837,13 @@ function reanchorOnce(
   const phraseOccupiedElsewhere = new Set(
     analysis.phraseAnalysisLinks
       .filter(occupies)
-      .map((l) => l.tokens.map((token) => reanchorSnapshot(token, anchorMap)))
+      .map((l) => l.tokens.map((token) => reanchorSnapshot(token, anchorMap, true)))
       .filter((results) => !isStranded(results))
       .flatMap((results) => results.map((r) => r.snapshot.tokenRef)),
   );
 
   const phraseAnalysisLinks = analysis.phraseAnalysisLinks.map((link) => {
-    const results = link.tokens.map((token) => reanchorSnapshot(token, anchorMap));
+    const results = link.tokens.map((token) => reanchorSnapshot(token, anchorMap, true));
     let updated: PhraseAnalysisLink;
     if (isStranded(results)) {
       // Still moves the tokens that did place, so one it shares with another link stays one word.

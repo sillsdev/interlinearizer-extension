@@ -32,18 +32,19 @@ An outline, a text change, or the read reaching a book skips it when the session
 
 A book the project no longer has is treated as holding no text, so every approval in it goes stale. An imported, read-only project is a record of what was imported and is never healed. A pass that moves nothing leaves the analysis identical, so opening a book neither dirties the draft nor writes storage.
 
-Token and phrase links carry a `TokenSnapshot` (`tokenRef` plus the `surfaceText` it was written against). Approved, candidate, and stale links are the evidence the alignment weighs; rejected and suggested links align afterward, among themselves, against the tokens those leave unclaimed, so a verdict never decides which occurrence an approval names. For each verse independently:
+Token and phrase links carry a `TokenSnapshot` (`tokenRef` plus the `surfaceText` it was written against). A snapshot also records `formCount`, how many tokens of its form the verse held. An edit records the count from the text the host holds for the book. Snapshots written without that text, such as those imported from Paratext 9, carry none. Approved, candidate, and stale links are the evidence the alignment weighs; rejected and suggested links align afterward, among themselves, against the tokens those leave unclaimed, so a verdict never decides which occurrence an approval names. For each verse independently:
 
 1. Collect the snapshots that point into the verse, deduplicated by ref and normalized form, in offset order. Where interchangeable copies of a form outnumber the verse's tokens of that form, leave the later surplus unplaced and drop it from the steps below. Every copy carries the same links and no phrase names any of them, so it makes no difference which one the edit removed.
 2. A snapshot whose own ref still names a token of the same normalized form has not moved; keep it, and withhold both from the alignment below. A form the verse now holds fewer of than were stored is the exception, since a surviving twin may have shifted onto that ref. A stale link's ref may predate an earlier edit, so it never unsettles an approved or candidate link here: only those count and order against each other.
 3. Align the remaining stored forms against the verse's remaining tokens by longest common subsequence, comparing forms through `normalizeSurfaceForm`, so case and Unicode normalization alone never orphan a link. Matching is positional, so the second `"the"` lands on the second surviving `"the"`. The alignment repeats with each round's placements withheld until a round places nothing new, so a word moved past its neighbors still places.
 4. Place a form only when the pairing is forced: every stored occurrence found a counterpart, and the verse holds exactly as many of that form as were stored. Otherwise leave it unplaced.
+5. Never align a form whose snapshots record more copies than they store, when the verse now holds fewer than they record. The verse lost a copy that no link names, or one that a link does name, and the text cannot say which. Its snapshots still keep their own refs under step 2.
 
 Verses are independent because a token never migrates between verses, and a verse whose own text is untouched must not shift because a neighbor changed.
 
 Outcomes per link:
 
-- **Placed:** the snapshot takes the new ref. A phrase is placed only when every member token is.
+- **Placed:** the snapshot takes the new ref, and a snapshot recording `formCount` takes the verse's current count. A phrase is placed only when every member token is.
 - **Unplaced:** the link keeps its old ref, and an `'approved'` link becomes `'stale'`. The record survives for review rather than being dropped or misattached. A phrase still moves those of its tokens that place, so a token it shares with another link stays on one word.
 - **Revived:** a `'stale'` link that places again returns to `'approved'`, unless another approved or candidate link already holds that token (or, for a phrase, any of its tokens). This way an edit that is later undone restores its analyses.
 
@@ -57,7 +58,8 @@ Segment analyses (free translations) have no offsets to heal, so they are checke
 
 ## Known limits
 
-- **A deleted word with an unglossed twin.** When the glossed occurrences of a form stored once, or as interchangeable copies, are deleted and an identical unglossed word stays in the verse, the result looks exactly like the glosses shifting onto that twin. A snapshot cannot tell the two apart. In "wug wug wug" with the first two glossed alike, deleting those two keeps one approval on the remaining `wug`, which was never glossed.
+- **A deleted word whose unglossed twin shifts onto its ref.** Step 2 keeps a gloss whose own ref still names its form, even when the verse lost a copy. Deleting the first of "wug wug" with only the first glossed leaves the second on ref 0, so the gloss stays, on the twin. The two words read alike in the same place, so this is the case where a wrong guess matters least.
+- **A snapshot that records no count** re-anchors as if every copy of its form in the verse were stored. Deleting or respelling a glossed word then moves its gloss onto an identical unglossed word, if one remains.
 - **An insertion that shifts an unglossed twin onto a glossed word's ref.** In "bank x bank" with the second `bank` glossed at 7, inserting seven characters at the front moves the first `bank` onto 7, so rule 2 keeps the gloss there, on the wrong word, silently. From a snapshot this is indistinguishable from the gloss staying put.
 - **Words that moved between verses** go stale rather than following.
 - **Alignment endpoints** (`AlignmentLink`) are not re-anchored. No feature writes them yet, so they need handling when one does.

@@ -8,7 +8,8 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import type { DraftContent } from '../../types/draft-content';
-import { reanchorAnalysisToBook } from '../../utils/reanchor-analysis';
+import type { ChangeSet } from '../../types/analysis-repository';
+import { reanchorAnalysisToBook, withFormCounts } from '../../utils/reanchor-analysis';
 import type { BookPass } from '../../types/book-pass';
 import { resegmentBook } from '../../parsers/papi/resegmentBook';
 import { mergeSegments, reanchorSegmentation } from '../../utils/segmentation';
@@ -1589,5 +1590,288 @@ describe('reanchorAnalysisToBook', () => {
     const result = reanchor(analysis, book);
 
     expect(result).toBe(analysis);
+  });
+});
+
+describe('reanchorAnalysisToBook with recorded form counts', () => {
+  it('stales a respelled word rather than moving its approval onto an unglossed twin', () => {
+    // Written against "Wug blicket wug", with only the first "Wug" glossed.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug', formCount: 2 }),
+    ]);
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'Wig blicket wug' }]));
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'stale',
+      token: { tokenRef: 'GEN 1:1:0', formCount: 2 },
+    });
+  });
+
+  it.each([
+    { later: 'records no count', formCount: undefined },
+    { later: 'records a smaller count', formCount: 1 },
+  ])('stales a respelled word when a later link on its token $later', ({ formCount }) => {
+    // Written against "Wug blicket wug", with the first "Wug" counted by its earlier link.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug', formCount: 2 }),
+      makeTokenLink('ta-pit', 'GEN 1:1:0', { surfaceText: 'Wug', status: 'candidate', formCount }),
+    ]);
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'Wig blicket wug' }]));
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'stale',
+      token: { tokenRef: 'GEN 1:1:0', formCount: 2 },
+    });
+  });
+
+  it('moves an approval onto the twin when the snapshot records no count', () => {
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug' }),
+    ]);
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'Wig blicket wug' }]));
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'approved',
+      token: { tokenRef: 'GEN 1:1:12' },
+    });
+  });
+
+  it('approves the respelled word again once its spelling is restored', () => {
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'Wug', formCount: 2 }),
+    ]);
+    const respelled = reanchor(
+      analysis,
+      makeVerseBook([{ sid: 'GEN 1:1', text: 'Wig blicket wug' }]),
+    );
+
+    const restored = reanchor(
+      respelled,
+      makeVerseBook([{ sid: 'GEN 1:1', text: 'Wug blicket wug' }]),
+    );
+
+    expect(restored.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'approved',
+      token: { tokenRef: 'GEN 1:1:0', formCount: 2 },
+    });
+  });
+
+  it('keeps an approval on its own ref when the verse loses an unglossed twin after it', () => {
+    // Written against "the dog and the cat", with only the first "the" glossed.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'the', formCount: 2 }),
+    ]);
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'the dog' }]));
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'approved',
+      token: { tokenRef: 'GEN 1:1:0', formCount: 1 },
+    });
+  });
+
+  it('stales shifted same-analysis copies when the verse also lost an unglossed copy', () => {
+    // Written against "wug x wug y wug", with the first two "wug"s glossed alike.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug', formCount: 3 }),
+      makeTokenLink('ta-dig', 'GEN 1:1:6', { surfaceText: 'wug', formCount: 3 }),
+    ]);
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'y wug' }]));
+
+    expect(result.tokenAnalysisLinks.map((l) => l.status)).toEqual(['stale', 'stale']);
+  });
+
+  it('records a twin added to the verse, so that a later deletion stales a shifted approval', () => {
+    // Written against "the cat", its one "the" glossed.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-1', 'GEN 1:1:0', { surfaceText: 'the', formCount: 1 }),
+    ]);
+    const added = reanchor(
+      analysis,
+      makeVerseBook([{ sid: 'GEN 1:1', text: 'the cat and the dog' }]),
+    );
+
+    const deleted = reanchor(added, makeVerseBook([{ sid: 'GEN 1:1', text: 'cat and the dog' }]));
+
+    expect(added.tokenAnalysisLinks[0].token.formCount).toBe(2);
+    expect(deleted.tokenAnalysisLinks[0].status).toBe('stale');
+  });
+
+  it('moves a counted approval with its word when an insertion keeps every twin', () => {
+    // Written against "wug blicket", its one "wug" glossed.
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug', formCount: 1 }),
+    ]);
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'a wug blicket' }]));
+
+    expect(result.tokenAnalysisLinks[0]).toMatchObject({
+      status: 'approved',
+      token: { tokenRef: 'GEN 1:1:2', formCount: 1 },
+    });
+  });
+
+  it('gives no count to a snapshot it places that recorded none', () => {
+    const analysis = analysisWithTokenLinks([
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug' }),
+    ]);
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'a wug blicket' }]));
+
+    expect(result.tokenAnalysisLinks[0].token).toStrictEqual({
+      tokenRef: 'GEN 1:1:2',
+      surfaceText: 'wug',
+    });
+  });
+
+  it('recounts the tokens of a phrase that stays in place', () => {
+    const phrase = makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:4'], ['wug', 'blicket']);
+    const analysis: TextAnalysis = {
+      ...emptyAnalysis(),
+      phraseAnalysisLinks: [
+        { ...phrase, tokens: phrase.tokens.map((token) => ({ ...token, formCount: 1 })) },
+      ],
+    };
+
+    const result = reanchor(analysis, makeVerseBook([{ sid: 'GEN 1:1', text: 'wug blicket wug' }]));
+
+    expect(result.phraseAnalysisLinks[0].tokens.map((t) => t.formCount)).toEqual([2, 1]);
+  });
+
+  // Written against "wug x wug", with "x" and the last "wug" glossed, at 4 and 6.
+  const shiftedPastVanishedTwin = analysisWithTokenLinks([
+    makeTokenLink('ta-x', 'GEN 1:1:4', { surfaceText: 'x', formCount: 1 }),
+    makeTokenLink('ta-dig', 'GEN 1:1:6', { surfaceText: 'wug', formCount: 2 }),
+  ]);
+  const vanishedTwinBook = makeVerseBook([{ sid: 'GEN 1:1', text: 'a wug x wig' }]);
+
+  it('places a shifted word that a vanished twin would otherwise outbid in the alignment', () => {
+    const result = reanchor(shiftedPastVanishedTwin, vanishedTwinBook);
+
+    expect(
+      result.tokenAnalysisLinks.map((l) => [l.analysisId, l.status, l.token.tokenRef]),
+    ).toEqual([
+      ['ta-x', 'approved', 'GEN 1:1:6'],
+      ['ta-dig', 'stale', 'GEN 1:1:6'],
+    ]);
+  });
+
+  it('leaves a word placed past a vanished twin unchanged when the pass runs again', () => {
+    const once = reanchor(shiftedPastVanishedTwin, vanishedTwinBook);
+
+    expect(reanchor(once, vanishedTwinBook)).toBe(once);
+  });
+
+  // Written against "wug x wug", at 0 and 6.
+  const approvedAndRejectedTwins = analysisWithTokenLinks([
+    makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug', formCount: 2 }),
+    makeTokenLink('ta-other', 'GEN 1:1:6', {
+      surfaceText: 'wug',
+      formCount: 2,
+      status: 'rejected',
+    }),
+  ]);
+
+  it('moves a rejected link past an insertion while its approved twin stays put', () => {
+    const result = reanchor(
+      approvedAndRejectedTwins,
+      makeVerseBook([{ sid: 'GEN 1:1', text: 'wug a x wug' }]),
+    );
+
+    expect(result.tokenAnalysisLinks[1]).toMatchObject({
+      status: 'rejected',
+      token: { tokenRef: 'GEN 1:1:8', formCount: 2 },
+    });
+  });
+
+  it('keeps the whole verse count on a rejected link whose approved twin stays put', () => {
+    const result = reanchor(
+      approvedAndRejectedTwins,
+      makeVerseBook([{ sid: 'GEN 1:1', text: 'wug x wug' }]),
+    );
+
+    expect(result).toBe(approvedAndRejectedTwins);
+  });
+});
+
+describe('withFormCounts', () => {
+  const book = makeVerseBook([{ sid: 'GEN 1:1', text: 'wug blicket wug' }]);
+  const linking = (link: TokenAnalysisLink): ChangeSet => ({
+    intent: 'link',
+    tokenAnalysisLinks: { puts: [link], deletes: [] },
+  });
+
+  it('counts the form of a token link it puts among its verse’s tokens', () => {
+    const changes = linking(makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'Wug' }));
+
+    const counted = withFormCounts(changes, () => book);
+
+    expect(counted.tokenAnalysisLinks?.puts[0].token).toStrictEqual({
+      tokenRef: 'GEN 1:1:12',
+      surfaceText: 'Wug',
+      formCount: 2,
+    });
+  });
+
+  it('counts the form of each token of a phrase link it puts', () => {
+    const changes: ChangeSet = {
+      intent: 'link',
+      phraseAnalysisLinks: {
+        puts: [makePhraseLink('pa-1', ['GEN 1:1:0', 'GEN 1:1:4'], ['wug', 'blicket'])],
+        deletes: [],
+      },
+    };
+
+    const counted = withFormCounts(changes, () => book);
+
+    expect(counted.phraseAnalysisLinks?.puts[0].tokens.map((t) => t.formCount)).toEqual([2, 1]);
+  });
+
+  it('keeps a count the snapshot already records', () => {
+    const changes = linking(
+      makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug', formCount: 3 }),
+    );
+
+    expect(withFormCounts(changes, () => book)).toBe(changes);
+  });
+
+  it('gives no count when no text is held for the book', () => {
+    const changes = linking(makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug' }));
+
+    expect(withFormCounts(changes, () => undefined)).toBe(changes);
+  });
+
+  it('gives no count when the verse is not in the held book', () => {
+    const changes = linking(makeTokenLink('ta-dig', 'GEN 1:2:0', { surfaceText: 'wug' }));
+
+    expect(withFormCounts(changes, () => book)).toBe(changes);
+  });
+
+  it('gives no count when the ref names a different word in the held text', () => {
+    const changes = linking(makeTokenLink('ta-dig', 'GEN 1:1:4', { surfaceText: 'wug' }));
+
+    expect(withFormCounts(changes, () => book)).toBe(changes);
+  });
+
+  it('reads each book once however many snapshots name it', () => {
+    const bookOf = jest.fn(() => book);
+    const changes: ChangeSet = {
+      intent: 'link',
+      tokenAnalysisLinks: {
+        puts: [
+          makeTokenLink('ta-dig', 'GEN 1:1:0', { surfaceText: 'wug' }),
+          makeTokenLink('ta-dig', 'GEN 1:1:12', { surfaceText: 'wug' }),
+        ],
+        deletes: [],
+      },
+    };
+
+    withFormCounts(changes, bookOf);
+
+    expect(bookOf).toHaveBeenCalledTimes(1);
   });
 });

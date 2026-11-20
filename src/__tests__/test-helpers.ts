@@ -512,6 +512,8 @@ type TokenLinkFixtureFields = {
   status?: AssignmentStatus;
   /** Defaults to an id that differs whenever the token ref, analysis id, or status does. */
   id?: string;
+  /** How often the link's form occurred in its verse. Absent unless given. */
+  formCount?: number;
 };
 
 /** Builds a token link fixture joining `tokenRef` to the payload `analysisId`. */
@@ -522,9 +524,11 @@ export function makeTokenLink(
     surfaceText = tokenRef,
     status = 'approved',
     id = JSON.stringify([tokenRef, analysisId, status]),
+    formCount,
   }: TokenLinkFixtureFields = {},
 ): TokenAnalysisLink {
-  return { ...FIXTURE_STAMPS, id, analysisId, status, token: { tokenRef, surfaceText } };
+  const token = { tokenRef, surfaceText, ...(formCount !== undefined && { formCount }) };
+  return { ...FIXTURE_STAMPS, id, analysisId, status, token };
 }
 
 /**

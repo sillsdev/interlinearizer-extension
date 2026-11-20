@@ -2381,6 +2381,14 @@ declare module 'interlinearizer' {
      * the link's `status` to `'stale'` to prompt re-review.
      */
     surfaceText: string;
+
+    /**
+     * How many tokens of the snapshot's normalized form its verse held when the link was written,
+     * or when re-anchoring last placed the link. A verse that later holds fewer tells re-anchoring
+     * that the copy removed may have been this one. Absent on snapshots written without the text at
+     * hand, which re-anchor as though every identical word in the verse were stored.
+     */
+    formCount?: number;
   }
 
   /**

@@ -104,7 +104,7 @@ async function approveHeldLink(
   );
   if (!held) return undefined;
   held.status = 'approved';
-  held.token.surfaceText = surfaceText;
+  held.token = { tokenRef: held.token.tokenRef, surfaceText };
   held.updatedAt = now;
   buffer.put('tokenAnalysisLinks', held);
   return held;
@@ -264,7 +264,7 @@ export async function writeGloss(buffer: ChangeBuffer, request: WriteGlossReques
       : analysis;
     target.surfaceText = surfaceText;
     target.updatedAt = now;
-    link.token.surfaceText = surfaceText;
+    link.token = { tokenRef: link.token.tokenRef, surfaceText };
     link.updatedAt = now;
     if (isBlank) {
       clearAnalysisGloss(target, lang);
@@ -317,7 +317,7 @@ export async function approveAnalysisForToken(
   } else if (resolved) {
     const { link } = resolved;
     link.analysisId = analysisId;
-    link.token.surfaceText = surfaceText;
+    link.token = { tokenRef: link.token.tokenRef, surfaceText };
     link.updatedAt = now;
     buffer.put('tokenAnalysisLinks', link);
   } else {

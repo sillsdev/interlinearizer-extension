@@ -1,0 +1,31 @@
+{
+  "modelVersion": 1,
+  "latest": [
+    {
+      "$type": "PatchSegmentAnalysisChange",
+      "Confidence": "low",
+      "SourceUser": null,
+      "FreeTranslation": {
+        "en": "At first",
+        "fr": null
+      },
+      "LiteralTranslation": null,
+      "EntityId": "11111111-1111-1111-1111-111111111111"
+    },
+    {
+      "$type": "PatchSegmentAnalysisChange",
+      "SurfaceText": "In the beginning",
+      "Confidence": "high",
+      "Producer": "human",
+      "SourceUser": "kevin",
+      "FreeTranslation": {
+        "en": "In the beginning"
+      },
+      "LiteralTranslation": {
+        "fr": "En commencement"
+      },
+      "EntityId": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "legacy": []
+}

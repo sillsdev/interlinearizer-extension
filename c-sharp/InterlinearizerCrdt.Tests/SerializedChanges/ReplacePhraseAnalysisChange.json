@@ -1,0 +1,20 @@
+{
+  "modelVersion": 1,
+  "latest": [
+    {
+      "$type": "ReplacePhraseAnalysisChange",
+      "SurfaceText": "In the beginning",
+      "Confidence": null,
+      "Producer": null,
+      "SourceUser": null,
+      "Gloss": null,
+      "SenseRef": {
+        "SenseId": "sense-2",
+        "Authority": "lexicon",
+        "ProjectId": null
+      },
+      "EntityId": "11111111-1111-1111-1111-111111111111"
+    }
+  ],
+  "legacy": []
+}

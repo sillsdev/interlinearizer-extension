@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Interlinearizer.Crdt.Tests;
 
 /// <summary>Builders for fully populated changes, so that a test asserts on every field.</summary>
@@ -27,11 +30,21 @@ public static class Fixtures
         AnalysisLanguages = new List<string> { "en", "de" },
     };
 
+    public static PatchInterlinearProjectChange PatchInterlinearProjectAllFields(Guid id) => new(id)
+    {
+        Name = "Genesis and Exodus",
+        Description = "A draft of both.",
+        TargetProjectId = "other-target",
+        Segmentation = new SegmentationDelta(["GEN 1:3"], [Token2]),
+        AnalysisLanguages = new List<string> { "en", "de" },
+    };
+
     public static MultiString Multi(string en, string fr) => new() { ["en"] = en, ["fr"] = fr };
 
     public static MorphemeAnalysis Morpheme(string form) => new()
     {
-        Id = Guid.NewGuid(),
+        // Derived from the form so that serialized fixtures are the same on every run.
+        Id = new Guid(MD5.HashData(Encoding.UTF8.GetBytes(form))),
         Form = form,
         WritingSystem = "grc",
         EntryRef = Entry,
@@ -99,6 +112,64 @@ public static class Fixtures
     public static PatchPhraseAnalysisLinkChange PatchPhraseAnalysisLink(Guid id) => new(id)
     {
         Tokens = new List<TokenSnapshot> { Token2, Token1 },
+        Confidence = Confidence.High,
+    };
+
+    public static PatchSegmentAnalysisChange PatchSegmentAnalysisAllFields(Guid id) => new(id)
+    {
+        SurfaceText = "In the beginning",
+        Confidence = Confidence.High,
+        Producer = "human",
+        SourceUser = "kevin",
+        FreeTranslation = new MultiStringPatch { ["en"] = "In the beginning" },
+        LiteralTranslation = new MultiStringPatch { ["fr"] = "En commencement" },
+    };
+
+    public static PatchSegmentAnalysisLinkChange PatchSegmentAnalysisLinkAllFields(Guid id, Guid analysisId) => new(id)
+    {
+        AnalysisId = analysisId,
+        SegmentId = "GEN 1:2",
+        Status = AssignmentStatus.Approved,
+        Confidence = Confidence.Medium,
+    };
+
+    public static PatchTokenAnalysisChange PatchTokenAnalysisAllFields(Guid id) => new(id)
+    {
+        SurfaceText = "ἀρχῇ",
+        Confidence = Confidence.Guess,
+        Producer = "parser",
+        SourceUser = "kevin",
+        Morphemes = new List<MorphemeAnalysis> { Morpheme("ἀρχ"), Morpheme("ῇ") },
+        MorphemesStale = true,
+        Pos = "noun",
+        Features = new MultiStringPatch { ["Case"] = "Dat" },
+        Gloss = new MultiStringPatch { ["en"] = "beginning" },
+        GlossSenseRef = Sense,
+    };
+
+    public static PatchTokenAnalysisLinkChange PatchTokenAnalysisLinkAllFields(Guid id, Guid analysisId) => new(id)
+    {
+        AnalysisId = analysisId,
+        Token = Token1,
+        Status = AssignmentStatus.Suggested,
+        Confidence = Confidence.Low,
+    };
+
+    public static PatchPhraseAnalysisChange PatchPhraseAnalysisAllFields(Guid id) => new(id)
+    {
+        SurfaceText = "In the",
+        Confidence = Confidence.Medium,
+        Producer = "phrase-finder",
+        SourceUser = "kevin",
+        Gloss = new MultiStringPatch { ["en"] = "in the" },
+        SenseRef = Sense,
+    };
+
+    public static PatchPhraseAnalysisLinkChange PatchPhraseAnalysisLinkAllFields(Guid id, Guid analysisId) => new(id)
+    {
+        AnalysisId = analysisId,
+        Tokens = new List<TokenSnapshot> { Token1, Token2 },
+        Status = AssignmentStatus.Candidate,
         Confidence = Confidence.High,
     };
 

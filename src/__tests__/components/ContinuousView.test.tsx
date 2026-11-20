@@ -2417,14 +2417,19 @@ describe('ContinuousView segment pages', () => {
     jest.useFakeTimers();
     try {
       const book = makeLargeBook(300);
-      const { pages, fail } = pagesLoading(book, 5, 100);
+      const { pages, loadMore, fail } = pagesLoading(book, 0, 300);
       const strip = renderStrip(book, { focus: 'large-tok-10', props: { pages } });
       act(() => {
         jest.advanceTimersByTime(RECENTER_FADE_MS);
       });
       strip.setFocus('large-tok-250', 'list');
       act(() => {
-        jest.advanceTimersByTime(RECENTER_FADE_MS * 2);
+        jest.advanceTimersByTime(RECENTER_FADE_MS / 2);
+      });
+      // The pages go, as they do when a boundary edit brings a fresh outline mid-fade.
+      loadMore(5, 100);
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
       });
 
       fail(0, 5);

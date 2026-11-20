@@ -274,8 +274,8 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
 }
 
 /**
- * Logs a failed command under `description` and sends `message` as its error notification, so the
- * frontend `catch` block can suppress the error without a second notification.
+ * Logs a failed command under `description` and sends `message` as its error notification. The
+ * frontend can then suppress the error without a second notification.
  */
 async function reportFailure(e: unknown, description: string, message: LocalizeKey): Promise<void> {
   logger.error(`Interlinearizer: failed to ${description}`, e);
@@ -835,7 +835,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     rememberActiveProject(projectId, webView.state);
     bookService.closeProject(projectId);
     // A duplicate takes the project over, served afresh now that no tab holds it. A failed reload
-    // leaves it for the next holder's close.
+    // leaves the duplicate waiting for the next holder to close.
     if (released.successor === undefined) return;
     papi.webViews
       .reloadWebView(mainWebViewType, released.successor, { bringToFront: false })

@@ -2,8 +2,8 @@
  * The tab that holds each project, and the duplicate tabs of each project.
  *
  * The holder is the first tab served while no other tab holds the project. Opening the project
- * again brings the holder to front. A second tab that a layout restores is a duplicate: it shows
- * only a notice that points at the holder, until the holder closes and a duplicate takes the
+ * again brings the holder to front. A second tab that a layout restores is a duplicate. A duplicate
+ * shows only a notice that points at the holder. When the holder closes, a duplicate takes the
  * project over.
  */
 export class WebViewHolders {
@@ -34,8 +34,8 @@ export class WebViewHolders {
   }
 
   /**
-   * Gives `projectId` to the tab `webViewId` that reported itself open, unless another tab holds
-   * it. Unlike {@link WebViewHolders.claim}, a tab turned away is not kept as a duplicate.
+   * Gives `projectId` to the open tab `webViewId`, unless another tab holds the project. Unlike
+   * {@link WebViewHolders.claim}, a tab turned away is not kept as a duplicate.
    *
    * @returns Whether `webViewId` holds the project.
    */
@@ -48,10 +48,10 @@ export class WebViewHolders {
 
   /**
    * Forgets the closed tab `webViewId`, as the holder of `projectId` or as one of its duplicates.
+   * The returned successor stays a duplicate until it is served and claims the project.
    *
    * @returns `undefined` when the tab did not hold the project. Otherwise, the duplicate that
-   *   should take the project over, if any. That duplicate stays a duplicate until it is served and
-   *   claims the project.
+   *   should take the project over, if any.
    */
   release(projectId: string, webViewId: string): { successor: string | undefined } | undefined {
     const duplicates = this.duplicates.get(projectId);

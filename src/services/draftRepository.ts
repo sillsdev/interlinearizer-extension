@@ -141,15 +141,22 @@ function withoutShardManifest(draft: DraftProject): DraftProject & { analysisBoo
 }
 
 /** One book's shard as loaded. */
-type LoadedShard = {
-  /** Empty when the shard could not be read, standing in for content this build cannot recover. */
-  analysis: TextAnalysis;
-  /**
-   * Whether the shard was read. If not, whether it still occupies storage, which decides whether
-   * anything is left to keep reachable.
-   */
-  state: 'loaded' | 'unusable' | 'absent';
-};
+type LoadedShard =
+  | {
+      analysis: TextAnalysis;
+      state: 'loaded';
+      /** The shard as stored. */
+      raw: string;
+    }
+  | {
+      /** Empty, standing in for content this build cannot recover. */
+      analysis: TextAnalysis;
+      /**
+       * Whether the shard still occupies storage, which decides whether anything is left to keep
+       * reachable.
+       */
+      state: 'unusable' | 'absent';
+    };
 
 /**
  * A source project's draft, stored as an envelope plus one analysis shard per book. A save rewrites
@@ -172,7 +179,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
 
   /**
    * Each book's shard as last loaded or saved, serialized. A book missing here counts as changed,
-   * so a lost entry costs a write, not correctness.
+   * so a lost entry costs a write, not correctness. A loaded shard keeps its stored string, so one
+   * that another build formatted differently counts as changed until it is next written.
    */
   private shardContents = new Map<string, string>();
 
@@ -672,9 +680,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       .map(({ bookCode }) => bookCode);
     perfTime('getDraft:compare', () => {
       this.shardContents = new Map(
-        loadedByBook
-          .filter(({ state }) => state === 'loaded')
-          .map(({ bookCode, analysis }) => [bookCode, JSON.stringify(analysis)]),
+        loadedByBook.flatMap((shard): [string, string][] =>
+          shard.state === 'loaded' ? [[shard.bookCode, shard.raw]] : [],
+        ),
       );
     });
     this.unreadableShards = new Set(unreadableBooks);
@@ -733,7 +741,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
         );
         return { analysis: emptyAnalysis(), state: 'unusable' };
       }
-      return { analysis: parsed, state: 'loaded' };
+      return { analysis: parsed, state: 'loaded', raw };
     } catch {
       this.logger.warn(
         `Interlinearizer: analysis shard ${key} is not valid JSON; treating as empty`,

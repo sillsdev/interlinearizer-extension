@@ -102,6 +102,37 @@ describe('DraftRepository', () => {
     expect(writes).not.toContain(draftAnalysisKey('src', 'GEN'));
   });
 
+  it('rewrites a shard stored in other formatting once a save carries its book', async () => {
+    const { storage, records, writes } = memoryStorage();
+    await new DraftRepository(storage, 'src', silentLogger()).startOver(twoBookDraft());
+    const genKey = draftAnalysisKey('src', 'GEN');
+    records.set(genKey, JSON.stringify(JSON.parse(records.get(genKey) ?? ''), undefined, 2));
+    const repository = new DraftRepository(storage, 'src', silentLogger());
+    const { draft } = await repository.exportAll();
+    writes.length = 0;
+
+    await repository.startOver(draft);
+
+    expect(writes).toContain(genKey);
+    expect(writes).not.toContain(draftAnalysisKey('src', 'EXO'));
+    expect(records.get(genKey)).toBe(JSON.stringify(JSON.parse(records.get(genKey) ?? '')));
+  });
+
+  it('compares a shard it rewrote in its own formatting as unchanged', async () => {
+    const { storage, records, writes } = memoryStorage();
+    await new DraftRepository(storage, 'src', silentLogger()).startOver(twoBookDraft());
+    const genKey = draftAnalysisKey('src', 'GEN');
+    records.set(genKey, JSON.stringify(JSON.parse(records.get(genKey) ?? ''), undefined, 2));
+    const repository = new DraftRepository(storage, 'src', silentLogger());
+    const { draft } = await repository.exportAll();
+    await repository.startOver(draft);
+    writes.length = 0;
+
+    await repository.startOver(draft);
+
+    expect(writes).not.toContain(genKey);
+  });
+
   it('refuses to load a draft written by a newer build', async () => {
     const newer = JSON.stringify({ ...emptyDraft('src'), modelVersion: CURRENT_MODEL_VERSION + 1 });
     const { storage } = memoryStorage({ [draftKey('src')]: newer });

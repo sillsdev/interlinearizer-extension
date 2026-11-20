@@ -463,10 +463,8 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.type(searchBox(), 'ζζζ');
 
-      await waitFor(() =>
-        expect(screen.getByTestId('analysis-catalog-panel')).toHaveTextContent(
-          '%interlinearizer_analysisCatalog_noMatches%',
-        ),
+      expect(screen.getByTestId('analysis-catalog-panel')).toHaveTextContent(
+        '%interlinearizer_analysisCatalog_noMatches%',
       );
       expect(screen.getByTestId('catalog-sort')).toBeInTheDocument();
       expect(screen.getByTestId('catalog-filters-button')).toBeInTheDocument();
@@ -643,7 +641,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.type(searchBox(), 'begin');
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['arche']));
+      expect(listedAnalysisIds()).toEqual(['arche']);
     });
 
     it('forgets the query when the panel is closed and reopened', async () => {
@@ -655,8 +653,8 @@ describe('AnalysisCatalogPanel', () => {
 
       // A query that outlived the panel would reopen it onto a part of the list with nothing on
       // screen saying which part, so the state is deliberately tied to the mount.
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['arche', 'logos']));
       expect(searchBox()).toHaveValue('');
+      expect(listedAnalysisIds()).toEqual(['arche', 'logos']);
     });
 
     it('says the query matched nothing rather than that the draft holds nothing', async () => {
@@ -665,9 +663,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.type(searchBox(), 'ζζζ');
 
       const panel = screen.getByTestId('analysis-catalog-panel');
-      await waitFor(() =>
-        expect(panel).toHaveTextContent('%interlinearizer_analysisCatalog_noMatches%'),
-      );
+      expect(panel).toHaveTextContent('%interlinearizer_analysisCatalog_noMatches%');
       expect(panel).not.toHaveTextContent('%interlinearizer_analysisCatalog_empty%');
     });
   });
@@ -700,7 +696,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['once', 'twice', 'thrice']));
+      expect(listedAnalysisIds()).toEqual(['once', 'twice', 'thrice']);
     });
 
     it('names the book the per-book sort is taken against rather than showing its code', async () => {
@@ -803,20 +799,19 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['in-exo']));
+      expect(listedAnalysisIds()).toEqual(['in-exo']);
     });
 
     it('restores the full list when the last book choice is cleared', async () => {
       await renderPanel({ analysis: PER_BOOK });
       await openFilters();
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['in-exo']));
 
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
 
       // An empty selection reads as no filter at all rather than as one nothing satisfies, so
       // deselecting the last choice is how a reader gets the whole draft back.
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['in-gen', 'in-exo']));
+      expect(listedAnalysisIds()).toEqual(['in-gen', 'in-exo']);
     });
 
     it('releases a chosen book the draft has since stopped using', async () => {
@@ -860,7 +855,7 @@ describe('AnalysisCatalogPanel', () => {
 
       // Releasing the filter has to widen the list on its own, or the reader is left with an empty
       // list and no way back to the draft.
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['in-gen']));
+      expect(listedAnalysisIds()).toEqual(['in-gen']);
     });
 
     it('tells a recorded value apart from the choice named for carrying none', async () => {
@@ -884,7 +879,7 @@ describe('AnalysisCatalogPanel', () => {
 
       // Two choices sharing a label leave one of them unselectable, so a value that reads as the
       // untagged label has to be told apart from it.
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['untagged']));
+      expect(listedAnalysisIds()).toEqual(['untagged']);
       expect(screen.getByRole('option', { name: '(none) (recorded value)' })).toBeInTheDocument();
     });
 
@@ -915,7 +910,7 @@ describe('AnalysisCatalogPanel', () => {
       // would have collided with.
       await userEvent.click(screen.getByRole('option', { name: '(none) (recorded value)' }));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['marked']));
+      expect(listedAnalysisIds()).toEqual(['marked']);
     });
 
     it('offers a value recorded with surrounding whitespace under a name that can be chosen', async () => {
@@ -935,7 +930,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByRole('option', { name: 'noun' }));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['padded']));
+      expect(listedAnalysisIds()).toEqual(['padded']);
     });
 
     it('offers a marking that pads what it wraps under a name that can be chosen', async () => {
@@ -958,7 +953,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByRole('option', { name: 'noun (recorded value)' }));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['plain']));
+      expect(listedAnalysisIds()).toEqual(['plain']);
     });
 
     it('tells a value recorded as whitespace apart from one recorded as empty', async () => {
@@ -980,7 +975,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByRole('option', { name: '(empty) (recorded value)' }));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['spaces']));
+      expect(listedAnalysisIds()).toEqual(['spaces']);
     });
 
     it('numbers a value rather than spinning when the marking cannot tell it apart', async () => {
@@ -1005,7 +1000,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByRole('option', { name: '(none) (2)' }));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['named']));
+      expect(listedAnalysisIds()).toEqual(['named']);
     });
 
     it('counts past a numbered name another value already holds', async () => {
@@ -1035,7 +1030,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByRole('option', { name: '(empty) (3)' }));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['three-spaces']));
+      expect(listedAnalysisIds()).toEqual(['three-spaces']);
     });
 
     it('names the language the gloss filter asks about, in the interface language', async () => {
@@ -1069,7 +1064,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByRole('option', { name: 'verb' }));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['verb']));
+      expect(listedAnalysisIds()).toEqual(['verb']);
     });
 
     it('narrows the list to the analyses carrying no part of speech at all', async () => {
@@ -1092,7 +1087,7 @@ describe('AnalysisCatalogPanel', () => {
         }),
       );
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['untagged']));
+      expect(listedAnalysisIds()).toEqual(['untagged']);
     });
 
     it('narrows the list to the analyses carrying a chosen confidence', async () => {
@@ -1115,7 +1110,7 @@ describe('AnalysisCatalogPanel', () => {
         }),
       );
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['unsure']));
+      expect(listedAnalysisIds()).toEqual(['unsure']);
     });
 
     it('narrows the list to the analyses carrying a chosen value of a named feature', async () => {
@@ -1139,7 +1134,7 @@ describe('AnalysisCatalogPanel', () => {
       // raises its own control, under its own name.
       await userEvent.click(screen.getByRole('option', { name: 'genitive' }));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['gen']));
+      expect(listedAnalysisIds()).toEqual(['gen']);
     });
 
     it('narrows the list to the analyses carrying a feature value that is the empty string', async () => {
@@ -1163,7 +1158,7 @@ describe('AnalysisCatalogPanel', () => {
         }),
       );
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['blank']));
+      expect(listedAnalysisIds()).toEqual(['blank']);
     });
 
     // The platform combo box resolves a click by matching the label back to its entry, so a real
@@ -1186,13 +1181,13 @@ describe('AnalysisCatalogPanel', () => {
       await openFilters();
       const books = within(screen.getByTestId('catalog-filter-books'));
       await userEvent.click(books.getByRole('option', { name: 'EXO' }));
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['in-exo']));
+      expect(listedAnalysisIds()).toEqual(['in-exo']);
 
       // Clearing its only gloss empties the payload, which drops the analysis and its link.
       act(() => editGloss('EXO 1:1:0', 'ἦν', ''));
       await settle();
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['in-gen']));
+      expect(listedAnalysisIds()).toEqual(['in-gen']);
     });
 
     // A withdrawn choice is spent, not merely unused: held, it would come back with its facet and
@@ -1204,14 +1199,14 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(books.getByRole('option', { name: 'EXO' }));
       act(() => editGloss('EXO 1:1:0', 'ἦν', ''));
       await settle();
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['in-gen']));
+      expect(listedAnalysisIds()).toEqual(['in-gen']);
 
       // Glossing it again analyzes the token afresh — a new payload under a new id, so the restored
       // row is matched on count rather than named — and raises the books facet that offers EXO.
       act(() => editGloss('EXO 1:1:0', 'ἦν', 'was'));
       await settle();
 
-      await waitFor(() => expect(listedAnalysisIds()).toHaveLength(2));
+      expect(listedAnalysisIds()).toHaveLength(2);
       expect(listedAnalysisIds()).toContain('in-gen');
     });
 
@@ -1254,7 +1249,7 @@ describe('AnalysisCatalogPanel', () => {
         pos.getByRole('option', { name: '%interlinearizer_analysisCatalog_filter_untagged%' }),
       );
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['untagged']));
+      expect(listedAnalysisIds()).toEqual(['untagged']);
     });
 
     it('offers no book choice for a draft confined to one book', async () => {
@@ -1316,18 +1311,17 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByTestId('catalog-filter-gloss-has'));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['glossed']));
+      expect(listedAnalysisIds()).toEqual(['glossed']);
     });
 
     it('lifts the gloss filter when its either choice is picked', async () => {
       await renderPanel({ analysis: PER_GLOSS, analysisLanguage: 'en' });
       await openFilters();
       await userEvent.click(screen.getByTestId('catalog-filter-gloss-has'));
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['glossed']));
 
       await userEvent.click(screen.getByTestId('catalog-filter-gloss-any'));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['elsewhere', 'glossed']));
+      expect(listedAnalysisIds()).toEqual(['elsewhere', 'glossed']);
     });
 
     /** One analysis broken into morphemes and one not, so the breakdown filter separates them. */
@@ -1351,7 +1345,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByTestId('catalog-filter-morphemes-has'));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['analyzed']));
+      expect(listedAnalysisIds()).toEqual(['analyzed']);
     });
 
     it('narrows the list to the analyses carrying no morpheme breakdown', async () => {
@@ -1360,19 +1354,18 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByTestId('catalog-filter-morphemes-lacks'));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['whole']));
+      expect(listedAnalysisIds()).toEqual(['whole']);
     });
 
     it('restores the full list when the breakdown filter is set back to either', async () => {
       await renderPanel({ analysis: PER_BREAKDOWN });
       await openFilters();
       await userEvent.click(screen.getByTestId('catalog-filter-morphemes-has'));
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['analyzed']));
 
       await userEvent.click(screen.getByTestId('catalog-filter-morphemes-any'));
 
       // Ordered by form under the source language's collation, eta before lambda.
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['whole', 'analyzed']));
+      expect(listedAnalysisIds()).toEqual(['whole', 'analyzed']);
     });
 
     it('offers no breakdown filter to a project that does not break words into morphemes', async () => {
@@ -1404,7 +1397,7 @@ describe('AnalysisCatalogPanel', () => {
       );
 
       expect(screen.getByTestId('catalog-filter-morphemes')).toBeInTheDocument();
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['analyzed']));
+      expect(listedAnalysisIds()).toEqual(['analyzed']);
     });
 
     it('keeps only the analyses nothing uses', async () => {
@@ -1427,7 +1420,7 @@ describe('AnalysisCatalogPanel', () => {
         }),
       );
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['unused']));
+      expect(listedAnalysisIds()).toEqual(['unused']);
     });
 
     it('says how many filters are narrowing the list', async () => {
@@ -1653,7 +1646,7 @@ describe('AnalysisCatalogPanel', () => {
       const grown = screen.getAllByTestId('catalog-row').length;
 
       // Matches every row, so the listing is the same length as before — only the window resets.
-      await userEvent.type(searchBox(), 'w');
+      await userEvent.type(searchBox(), 'word');
 
       expect(screen.getAllByTestId('catalog-row').length).toBeLessThan(grown);
     });
@@ -1663,7 +1656,7 @@ describe('AnalysisCatalogPanel', () => {
       const firstCount = lastCatalogRowsCount();
       await reachListEnd();
 
-      await userEvent.type(searchBox(), 'w');
+      await userEvent.type(searchBox(), 'word');
       await settle();
 
       expect(lastCatalogRowsCount()).toBe(firstCount);
@@ -1675,7 +1668,7 @@ describe('AnalysisCatalogPanel', () => {
       list.scrollTop = 500;
 
       // Matches every row, so the listing is the same length as before — only the window resets.
-      await userEvent.type(searchBox(), 'w');
+      await userEvent.type(searchBox(), 'word');
 
       // The list is the same element throughout, so it holds the offset it was left at until it is
       // put back, landing a reader who narrowed a deeply scrolled list part way down a new one.
@@ -2311,7 +2304,7 @@ describe('AnalysisCatalogPanel', () => {
         screen.getByRole('checkbox', { name: '%interlinearizer_analysisCatalog_filter_stale%' }),
       );
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['stale']));
+      expect(listedAnalysisIds()).toEqual(['stale']);
     });
 
     describe('narrowed by its owner', () => {
@@ -2503,8 +2496,8 @@ describe('AnalysisCatalogPanel', () => {
 
         await userEvent.click(within(stalePlace()).getByTestId('catalog-stale-location-discard'));
 
-        expect(await screen.findByTestId('analysis-catalog-empty')).toBeInTheDocument();
         expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+        expect(screen.getByTestId('analysis-catalog-empty')).toBeInTheDocument();
         expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
       });
     });
@@ -3013,9 +3006,8 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.type(input, 'λογ ος');
 
       await userEvent.type(searchBox(), 'zzz');
-      await waitFor(() => expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0));
+      expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
       await userEvent.clear(searchBox());
-      await waitFor(() => expect(listedAnalysisIds()).toContain('ta-1'));
 
       await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-toggle'));
       expect(within(rowFor('ta-1')).getByTestId('morpheme-breakdown-input')).toHaveValue('λογ ος');
@@ -4082,7 +4074,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await editIntoEquality();
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-2']));
+      expect(listedAnalysisIds()).toEqual(['ta-2']);
       expect(within(rowFor('ta-2')).getByTestId('catalog-row-usage-count')).toHaveTextContent('3');
     });
 
@@ -4144,8 +4136,8 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.clear(within(rowFor('ta-1')).getByTestId('catalog-row-gloss-input'));
       await userEvent.tab();
 
-      await waitFor(() => expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0));
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
+      expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
     });
 
     it('leaves no notice when the emptied record’s token keeps an unrelated candidate', async () => {
@@ -4184,7 +4176,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await editIntoEquality();
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-2']));
+      expect(listedAnalysisIds()).toEqual(['ta-2']);
       expect(screen.getByTestId('catalog-merge-notice')).toHaveTextContent(
         '%interlinearizer_analysisCatalog_merged%',
       );
@@ -4226,7 +4218,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(mergeCheckFor('ta-2'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-3']));
+      expect(listedAnalysisIds()).toEqual(['ta-3']);
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
     });
 
@@ -4270,7 +4262,7 @@ describe('AnalysisCatalogPanel', () => {
       await renderPanel({ analysis });
 
       await userEvent.click(screen.getByTestId('catalog-sort-gloss'));
-      await waitFor(() => expect(listedAnalysisIds()).not.toContain('ta-dst'));
+      expect(listedAnalysisIds()).not.toContain('ta-dst');
 
       await userEvent.click(within(rowFor('ta-src')).getByTestId('catalog-row-toggle'));
       const input = within(rowFor('ta-src')).getByTestId('catalog-row-gloss-input');
@@ -4291,7 +4283,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.type(searchBox(), 'zzz');
 
-      await waitFor(() => expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0));
+      expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
       expect(screen.getByTestId('catalog-merge-notice')).toBeInTheDocument();
     });
   });
@@ -4335,7 +4327,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(mergeCheckFor('ta-2'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-1']));
+      expect(listedAnalysisIds()).toEqual(['ta-1']);
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-usage-count')).toHaveTextContent('2');
     });
 
@@ -4466,7 +4458,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(mergeCheckFor('ta-2'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-3']));
+      expect(listedAnalysisIds()).toEqual(['ta-3']);
       expect(within(rowFor('ta-3')).getByTestId('catalog-row-usage-count')).toHaveTextContent('3');
     });
 
@@ -4643,7 +4635,7 @@ describe('AnalysisCatalogPanel', () => {
       expect(screen.getByTestId('catalog-merge-collapse-warning')).toBeInTheDocument();
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-3']));
+      expect(listedAnalysisIds()).toEqual(['ta-3']);
       expect(within(rowFor('ta-3')).getByTestId('catalog-row-usage-count')).toHaveTextContent('3');
       expect(announceUndoable).toHaveBeenCalledWith('origin, 3 uses');
     });
@@ -4698,7 +4690,7 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.clear(screen.getByTestId('catalog-merge-content-gloss'));
       await userEvent.click(screen.getByTestId('catalog-merge-confirm'));
 
-      expect(await screen.findByTestId('analysis-catalog-empty')).toBeInTheDocument();
+      expect(screen.getByTestId('analysis-catalog-empty')).toBeInTheDocument();
       expect(announceUndoable).toHaveBeenCalledWith('ἀρχῇ emptied, 2 uses');
       expect(screen.queryByTestId('catalog-merge-notice')).not.toBeInTheDocument();
     });
@@ -4786,7 +4778,7 @@ describe('AnalysisCatalogPanel', () => {
 
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
 
-        await waitFor(() => expect(listedAnalysisIds()).not.toContain('ta-1'));
+        expect(listedAnalysisIds()).not.toContain('ta-1');
         expect(within(rowFor('ta-2')).getByTestId('catalog-row-usage-count')).toHaveTextContent(
           '2',
         );
@@ -4832,7 +4824,7 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
 
-        await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-3']));
+        expect(listedAnalysisIds()).toEqual(['ta-3']);
       });
 
       it('returns to the panel with the same analyses selected when the ask is declined', async () => {
@@ -4906,7 +4898,7 @@ describe('AnalysisCatalogPanel', () => {
       await settle();
 
       expect(screen.queryByTestId('catalog-merge-title')).not.toBeInTheDocument();
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-1']));
+      expect(listedAnalysisIds()).toEqual(['ta-1']);
     });
   });
 
@@ -5316,8 +5308,8 @@ describe('AnalysisCatalogPanel', () => {
 
         await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
-        await waitFor(() => expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0));
         expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
+        expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
       });
 
       it('keeps the draft and the analysis when the deletion is canceled', async () => {
@@ -5342,7 +5334,7 @@ describe('AnalysisCatalogPanel', () => {
         await userEvent.click(within(rowFor('ta-1')).getByTestId('catalog-row-delete'));
         await userEvent.click(screen.getByTestId('catalog-delete-confirm'));
 
-        await waitFor(() => expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0));
+        expect(screen.queryAllByTestId('catalog-row')).toHaveLength(0);
         expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
       });
 
@@ -5471,10 +5463,8 @@ describe('AnalysisCatalogPanel', () => {
       await select('ta-1', 'ta-3');
       await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
 
-      await waitFor(() =>
-        expect(within(rowFor('ta-1')).getByTestId('catalog-row-gloss')).not.toHaveTextContent(
-          'beginning',
-        ),
+      expect(within(rowFor('ta-1')).getByTestId('catalog-row-gloss')).not.toHaveTextContent(
+        'beginning',
       );
       expect(within(rowFor('ta-2')).getByTestId('catalog-row-gloss')).toHaveTextContent('word');
       expect(within(rowFor('ta-3')).getByTestId('catalog-row-gloss')).not.toHaveTextContent('God');
@@ -5623,7 +5613,7 @@ describe('AnalysisCatalogPanel', () => {
 
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
 
-        await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-2']));
+        expect(listedAnalysisIds()).toEqual(['ta-2']);
       });
 
       it('reports no draft stranded by deleting the row it re-stated the breakdown of', async () => {
@@ -5634,7 +5624,7 @@ describe('AnalysisCatalogPanel', () => {
 
         await userEvent.click(screen.getByTestId('catalog-selection-delete'));
 
-        await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-2']));
+        expect(listedAnalysisIds()).toEqual(['ta-2']);
         expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
         expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
       });
@@ -5662,7 +5652,7 @@ describe('AnalysisCatalogPanel', () => {
 
         await userEvent.click(screen.getByTestId('catalog-close-discard'));
 
-        await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-2']));
+        expect(listedAnalysisIds()).toEqual(['ta-2']);
         expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
       });
 
@@ -5730,7 +5720,7 @@ describe('AnalysisCatalogPanel', () => {
 
         await userEvent.click(screen.getByTestId('catalog-selection-clear-gloss'));
 
-        await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-2']));
+        expect(listedAnalysisIds()).toEqual(['ta-2']);
         expect(screen.queryByTestId('catalog-close-title')).not.toBeInTheDocument();
         expect(screen.queryByTestId('catalog-stranded-draft-notice')).not.toBeInTheDocument();
       });
@@ -5839,9 +5829,7 @@ describe('AnalysisCatalogPanel', () => {
       await select('ta-1', 'ta-3');
 
       await userEvent.type(searchBox(), 'θεός');
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-3']));
       await userEvent.clear(searchBox());
-      await waitFor(() => expect(listedAnalysisIds()).toHaveLength(3));
 
       expect(within(rowFor('ta-1')).getByTestId('catalog-row-check')).not.toBeChecked();
       expect(within(rowFor('ta-3')).getByTestId('catalog-row-check')).toBeChecked();
@@ -5853,7 +5841,7 @@ describe('AnalysisCatalogPanel', () => {
       await select('ta-1', 'ta-3');
       await userEvent.click(screen.getByTestId('catalog-selection-delete'));
 
-      await waitFor(() => expect(listedAnalysisIds()).toEqual(['ta-2']));
+      expect(listedAnalysisIds()).toEqual(['ta-2']);
     });
 
     it('deletes the checked rows in one edit', async () => {

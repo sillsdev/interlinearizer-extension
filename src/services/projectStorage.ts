@@ -87,12 +87,6 @@ const draftWriteCounts = new Map<string, number>();
  */
 const importRevisions = new Map<string, number>();
 
-/**
- * Projects whose listed summary failed to refresh after their record was written in this process,
- * so the summary may describe an older record. Such a summary cannot stand in for the record.
- */
-const summariesBehind = new Set<string>();
-
 /** A project created from a copy of the stored draft, and the books the copy left out. */
 export type NewProjectFromDraft = {
   project: InterlinearProject;
@@ -131,17 +125,44 @@ async function refreshSummary(
   summary: StoredProjectSummary,
 ): Promise<boolean> {
   try {
-    const listed = await enqueueIndexOp(() => projectSummaries(token).replace(summary));
-    summariesBehind.delete(summary.id);
-    return listed;
+    return await enqueueIndexOp(() => projectSummaries(token).replace(summary));
   } catch (e) {
-    summariesBehind.add(summary.id);
     logger.error(
       `Interlinearizer: failed to refresh the listed summary of project ${summary.id}:`,
       e,
     );
     return true;
   }
+}
+
+/**
+ * Stops project `id`'s listed summary from standing in for its record until the record's next write
+ * refreshes the summary. This holds across a restart, so a refresh that fails or never runs cannot
+ * leave a summary that rebuilds the older record. Summaries that cannot be read are left alone,
+ * because no record is rebuilt from them.
+ *
+ * @throws If storage rejects the write of the summaries.
+ */
+async function detachSummary(token: ExecutionToken, id: string): Promise<void> {
+  await enqueueIndexOp(async () => {
+    const summaries = projectSummaries(token);
+    let summary: StoredProjectSummary | undefined;
+    try {
+      summary = (await summaries.list()).find((listed) => listed.id === id);
+    } catch {
+      return;
+    }
+    if (summary?.alignmentLinks === undefined) return;
+    await summaries.replace({ ...summary, alignmentLinks: undefined });
+  });
+}
+
+/** Whether `config` differs from the analysis languages or target of `project`. */
+function changesConfig(project: Omit<InterlinearProject, 'analysis'>, config: ProjectConfig) {
+  return (
+    project.targetProjectId !== config.targetProjectId ||
+    project.analysisLanguages.join('\n') !== config.analysisLanguages.join('\n')
+  );
 }
 
 /** The source project's draft repository, created over `token`'s user data on first use. */
@@ -900,6 +921,7 @@ export async function updateAnalysis(
       project = perfTime('updateAnalysis:parse', () => parseProject(raw, id));
       if (project.pt9Import) throw pt9ImportReadOnlyError(id);
     }
+    if (config && changesConfig(project, config)) await detachSummary(token, id);
     const updated: InterlinearProject = {
       ...project,
       modelVersion: CURRENT_MODEL_VERSION,
@@ -925,8 +947,7 @@ export async function updateAnalysis(
 /**
  * Project `id`'s record less its analysis and boundaries, rebuilt from its listed summary so the
  * record need not be read and parsed. The summary stands in for the record only when it notes what
- * the record holds under `links`, the record holds none, and the summary did not fail to refresh
- * after a write in this process.
+ * the record holds under `links` and the record holds none.
  *
  * A summary written by a newer build is refused with the rest of the summaries, and every project
  * write rewrites them, so a record written by a newer build is never rebuilt here.
@@ -939,7 +960,6 @@ async function recordFromSummary(
   token: ExecutionToken,
   id: string,
 ): Promise<Omit<InterlinearProject, 'analysis' | 'segmentation'> | 'unlisted' | undefined> {
-  if (summariesBehind.has(id)) return undefined;
   let summary: StoredProjectSummary | undefined;
   try {
     summary = (await projectSummaries(token).list()).find((listed) => listed.id === id);
@@ -1093,6 +1113,7 @@ export async function updateProjectMetadata(
     } else {
       updated.targetProjectId = targetProjectId;
     }
+    await detachSummary(token, id);
     await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
     return (await refreshSummary(token, storedSummaryOf(updated))) ? updated : undefined;
   });
@@ -1322,5 +1343,4 @@ export function resetQueuesForTesting(): void {
   draftRepositories.clear();
   draftWriteCounts.clear();
   importRevisions.clear();
-  summariesBehind.clear();
 }

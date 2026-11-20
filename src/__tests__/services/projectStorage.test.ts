@@ -647,6 +647,33 @@ describe('projectStorage', () => {
       expect(result).toMatchObject({ id: 'proj-id', name: 'My Name' });
     });
 
+    it('writes no record when the summaries cannot be written before it', async () => {
+      mockStore({
+        'project:proj-id': JSON.stringify(storedProject),
+        projectSummaries: JSON.stringify({
+          modelVersion: CURRENT_MODEL_VERSION,
+          summaries: [storedSummaryOf(storedProject)],
+        }),
+      });
+      __mockWriteUserData.mockRejectedValue(new Error('disk full'));
+
+      await expect(updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc')).rejects.toThrow(
+        'disk full',
+      );
+      expect(writtenKeys()).toEqual(['projectSummaries']);
+    });
+
+    it('writes the record when the summaries cannot be read', async () => {
+      mockStore({
+        'project:proj-id': JSON.stringify(storedProject),
+        projectSummaries: '{not json',
+      });
+
+      await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
+
+      expect(writtenKeys()).toEqual(['project:proj-id']);
+    });
+
     it('returns undefined for an unlisted project whose record remains', async () => {
       mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
@@ -1232,6 +1259,7 @@ describe('projectStorage', () => {
         analysisLanguages: ['fr'],
         links: [],
       };
+      const UNCHANGED_CONFIG = { analysisLanguages: ['fr'], targetProjectId: 'tgt-1' };
 
       /** Lists `project` with the noted summary, and stores its record, keeping later writes. */
       function storeNoted(project: InterlinearProject): void {
@@ -1244,12 +1272,19 @@ describe('projectStorage', () => {
         });
       }
 
-      /** Fails the next write of the project summaries, as a full disk would, keeping the rest. */
-      function failNextSummariesWrite(): void {
+      /**
+       * Fails the next refresh of a listed summary, as a full disk would, and lets other writes
+       * through.
+       */
+      function failNextSummaryRefresh(): void {
         const writeThrough = __mockWriteUserData.getMockImplementation();
         let failed = false;
         __mockWriteUserData.mockImplementation(async (t: unknown, key: unknown, json: unknown) => {
-          if (key === 'projectSummaries' && !failed) {
+          const isRefresh =
+            key === 'projectSummaries' &&
+            typeof json === 'string' &&
+            json.includes('alignmentLinks');
+          if (isRefresh && !failed) {
             failed = true;
             throw new Error('disk full');
           }
@@ -1379,21 +1414,54 @@ describe('projectStorage', () => {
         expect(readKeys()).toContain('project:proj-id');
       });
 
-      it('reads the record once its summary failed to refresh after a write in this process', async () => {
+      it('keeps a rename whose summary failed to refresh, across a restart', async () => {
         storeNoted(configured);
-        failNextSummariesWrite();
-        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+        failNextSummaryRefresh();
+        await updateProjectMetadata(token, 'proj-id', 'Renamed', 'Described', 'tgt-1');
+        resetQueuesForTesting();
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).toMatchObject({ name: 'Renamed', description: 'Described' });
+      });
+
+      it('keeps a configuration change whose summary failed to refresh, across a restart', async () => {
+        storeNoted(configured);
+        failNextSummaryRefresh();
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION, {
+          analysisLanguages: ['de'],
+          targetProjectId: 'tgt-2',
+        });
+        resetQueuesForTesting();
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).toMatchObject({ analysisLanguages: ['de'], targetProjectId: 'tgt-2' });
+      });
+
+      it('rebuilds from a summary that failed to refresh after a write changing no configuration', async () => {
+        storeNoted(configured);
+        failNextSummaryRefresh();
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION, UNCHANGED_CONFIG);
         __mockReadUserData.mockClear();
 
         await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
 
-        expect(readKeys()).toContain('project:proj-id');
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('writes the summaries only after the record when the configuration is unchanged', async () => {
+        storeNoted(configured);
+
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION, UNCHANGED_CONFIG);
+
+        expect(writtenKeys()).toEqual(['project:proj-id', 'projectSummaries']);
       });
 
       it('rebuilds from the summary again once the summary refreshes', async () => {
         storeNoted(configured);
-        failNextSummariesWrite();
-        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+        failNextSummaryRefresh();
+        await updateProjectMetadata(token, 'proj-id', 'Renamed', 'Described', 'tgt-1');
         await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
         __mockReadUserData.mockClear();
 

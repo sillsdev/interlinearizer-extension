@@ -65,6 +65,7 @@ export abstract class IndexedRepository implements Pick<
       empty: isEmptyDraft(draft),
       hasFreeTranslations: analysisHasFreeTranslations(draft.analysis),
       unreadableBooks: this.unreadableBooks(),
+      anchoredVersions: this.anchoredVersions(),
     };
   }
 
@@ -152,4 +153,7 @@ export abstract class IndexedRepository implements Pick<
 
   /** The books whose stored analysis the last load could not read, which it loaded as empty. */
   protected abstract unreadableBooks(): string[];
+
+  /** As {@link DraftState.anchoredVersions}, for the draft as last loaded or applied to. */
+  protected abstract anchoredVersions(): Record<string, string>;
 }

@@ -5,6 +5,8 @@ import type {
   ApplyResult,
   ChangeSet,
   DraftExport,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
+  DraftState,
   IndexDifference,
   KeyValueStorage,
   RepositoryCapabilities,
@@ -16,6 +18,7 @@ import {
   hasLinkWithoutId,
   isDraftProject,
   isStringArray,
+  isStringRecord,
   isTextAnalysis,
 } from '../types/type-guards';
 import { mergeAnalyses, splitAnalysisByBook } from '../utils/analysis-book';
@@ -55,8 +58,9 @@ interface ShardJournal {
    */
   removing: string[];
   /**
-   * Books whose shard this save set out to rewrite. Until a save settles them, storage may hold
-   * changes there that the draft lacks, so each apply compares them as well. Absent means none.
+   * Books whose shard a save set out to rewrite since an envelope last landed. Until a save settles
+   * them, storage may hold changes there that the draft lacks, so each apply compares them as well.
+   * Absent means none.
    */
   unsettled?: string[];
 }
@@ -128,16 +132,30 @@ type StoredDraft = DraftProject & {
    * nothing else can say which shards a draft owns.
    */
   analysisBooks: string[];
+  /**
+   * As {@link DraftState.anchoredVersions}. Kept in the envelope because the envelope lands only
+   * after every shard that its save rewrites.
+   */
+  anchoredVersions?: Record<string, string>;
 };
 
 /**
- * Separates a validated draft from its shard manifest, which is absent when the analysis is stored
- * inline and dropped when it is unusable.
+ * Separates a validated draft from its shard manifest and its anchored versions. The manifest is
+ * absent when the analysis is stored inline. Either is dropped when unusable.
  */
-function withoutShardManifest(draft: DraftProject): DraftProject & { analysisBooks?: string[] } {
-  if (!('analysisBooks' in draft)) return draft;
-  const { analysisBooks, ...rest } = draft;
-  return isStringArray(analysisBooks) ? { ...rest, analysisBooks } : rest;
+function withoutShardManifest(
+  draft: DraftProject,
+): DraftProject & Partial<Pick<StoredDraft, 'analysisBooks' | 'anchoredVersions'>> {
+  const {
+    analysisBooks,
+    anchoredVersions,
+    ...rest
+  }: DraftProject & { analysisBooks?: unknown; anchoredVersions?: unknown } = draft;
+  return {
+    ...rest,
+    ...(isStringArray(analysisBooks) && { analysisBooks }),
+    ...(isStringRecord(anchoredVersions) && { anchoredVersions }),
+  };
 }
 
 /** One book's shard as loaded. */
@@ -188,6 +206,12 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * keeps its shard and manifest entry as they stand, whatever the draft carries for the book.
    */
   private unreadableShards = new Set<string>();
+
+  /**
+   * As {@link DraftState.anchoredVersions}, as last loaded or saved. A whole save starts it over
+   * empty, because nothing says what text the saved draft was anchored to.
+   */
+  private anchored = new Map<string, string>();
 
   /** Whether this instance has loaded the stored draft, so it knows which shards it cannot read. */
   private loaded = false;
@@ -385,8 +409,12 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       );
     }
     index.apply(copied);
+    const anchored = new Map(this.anchored);
+    if (options?.anchoredTo)
+      anchored.set(options.anchoredTo.bookCode, options.anchoredTo.textVersion);
+    options?.unanchored?.forEach((bookCode) => anchored.delete(bookCode));
     try {
-      await this.writeReachedBooks(draft, index, reached, storedBooks);
+      await this.writeReachedBooks(draft, index, reached, storedBooks, anchored);
     } catch (e) {
       // The index already holds the changes, so it is built afresh over the draft as it was.
       this.current = { draft: base, index: new AnalysisIndex(base.analysis) };
@@ -395,6 +423,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       throw e;
     }
     this.current = { draft, index };
+    this.anchored = anchored;
     return { inverse, wasDirty: base.dirty };
   }
 
@@ -441,6 +470,10 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     return [...this.unreadableShards].sort();
   }
 
+  protected anchoredVersions(): Record<string, string> {
+    return Object.fromEntries(this.anchored);
+  }
+
   /**
    * Saves `draft` as {@link startOver} describes.
    *
@@ -464,8 +497,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     );
     const byBook = perfTime('saveDraft:compare', () => splitAnalysisByBook(draft.analysis));
     this.unreadableShards.clear();
+    this.anchored = new Map();
     const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
-    await this.writeDraft(draft, storedBooks, journaled, [...byBook.keys()], byBook);
+    await this.writeDraft(draft, storedBooks, journaled, [...byBook.keys()], byBook, this.anchored);
   }
 
   /**
@@ -495,6 +529,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     index: AnalysisIndex,
     reached: ReadonlySet<string>,
     storedBooks: readonly string[],
+    anchored: ReadonlyMap<string, string>,
   ): Promise<void> {
     const { shardContents: saved, unreadableShards: unreadable } = this;
     const journaled = await perfTimeAsync('saveDraft:read', () => this.readShardJournal());
@@ -511,7 +546,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       });
       return { books: keys, partitions: compared };
     });
-    await this.writeDraft(draft, storedBooks, journaled, books, partitions);
+    await this.writeDraft(draft, storedBooks, journaled, books, partitions, anchored);
   }
 
   /**
@@ -524,6 +559,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @param books - The key of every partition the draft carries, less the books whose shard could
    *   not be read.
    * @param partitions - Keyed by book; every key is in `books`.
+   * @param anchored - As {@link DraftState.anchoredVersions}, by book code.
    * @throws If storage rejects a write before the envelope lands.
    */
   private async writeDraft(
@@ -532,6 +568,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     journaled: ShardJournal,
     books: readonly string[],
     partitions: ReadonlyMap<string, TextAnalysis>,
+    anchored: ReadonlyMap<string, string>,
   ): Promise<void> {
     const { sourceProjectId, storage, shardContents: saved, unreadableShards: unreadable } = this;
     const carried = new Set(books);
@@ -560,7 +597,14 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     // the stored manifest already names needs no `adding` entry: the manifest alone keeps it
     // reachable.
     const stranded = books.filter((bookCode) => !storedBooks.includes(bookCode));
-    const unsettled = shards.filter(({ changed }) => changed).map(({ bookCode }) => bookCode);
+    // A book stays unsettled until an envelope lands after its rewrite, even when this save finds
+    // its shard already rewritten by a failed one.
+    const unsettled = [
+      ...new Set([
+        ...shards.filter(({ changed }) => changed).map(({ bookCode }) => bookCode),
+        ...(journaled.unsettled ?? []).filter((bookCode) => carried.has(bookCode)),
+      ]),
+    ];
     await perfTimeAsync('saveDraft:write', () =>
       this.writeShardJournal({ adding: stranded, removing: wiped, unsettled }),
     );
@@ -578,6 +622,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       modelVersion: CURRENT_MODEL_VERSION,
       analysis: emptyAnalysis(),
       analysisBooks: [...books, ...unreadable],
+      ...(anchored.size > 0 && { anchoredVersions: Object.fromEntries(anchored) }),
     };
     await perfTimeAsync('saveDraft:write', () =>
       storage.write(draftKey(sourceProjectId), JSON.stringify(envelope)),
@@ -647,6 +692,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       this.logger.warn(message);
       return { draft: emptyDraft(sourceProjectId), unreadableBooks: [], readable: false };
     };
+    this.anchored = new Map();
     const raw = await perfTimeAsync('getDraft:read', () => storage.read(draftKey(sourceProjectId)));
     if (raw === undefined) return { draft: emptyDraft(sourceProjectId), unreadableBooks: [] };
     const parsed: unknown = perfTime('getDraft:parse', () => JSON.parse(raw));
@@ -667,7 +713,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       return unreadable(
         'Interlinearizer: stored draft failed validation; resetting to empty draft',
       );
-    const { analysisBooks, ...draft } = withoutShardManifest(parsed);
+    const { analysisBooks, anchoredVersions, ...draft } = withoutShardManifest(parsed);
+    this.anchored = new Map(Object.entries(anchoredVersions ?? {}));
     const describeDraft = `draft for source project ${sourceProjectId} on load`;
     // A draft with no manifest carries its analysis inline, with no shards to read.
     if (!analysisBooks) {
@@ -683,7 +730,10 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       'getDraft:read',
       'getDraft:parse',
       async () => {
-        const { adding } = await this.readShardJournal();
+        const { adding, unsettled, damaged } = await this.readShardJournal();
+        // An interrupted save may have rewritten these shards with analysis anchored to other text.
+        if (damaged) this.anchored.clear();
+        (unsettled ?? []).forEach((bookCode) => this.anchored.delete(bookCode));
         const orphanedBooks = adding.filter((bookCode) => !analysisBooks.includes(bookCode));
         const books = [...analysisBooks, ...orphanedBooks];
         return {

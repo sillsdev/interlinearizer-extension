@@ -263,8 +263,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * the books whose shard could not be read. It is what {@link exportForCopy} would load, in content
    * if not in record order.
    *
-   * The draft is shared, not copied, so the caller must not change it. A later apply leaves it as
-   * it was, since applying builds a new draft.
+   * The draft is shared, not copied, so the caller must not change it. A later apply leaves it
+   * unchanged.
    *
    * @returns `undefined` when this instance keeps no draft, or cannot vouch that it holds what
    *   storage holds: it was loaded from an unreadable draft, or an apply to it failed since it was

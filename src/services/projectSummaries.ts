@@ -17,7 +17,8 @@ export type StoredLinks = 'absent' | 'empty' | 'present';
 /**
  * A summary as stored. It also notes what the project's record holds under `links`, so that with
  * the summary's configuration it accounts for every part of the record but the analysis and the
- * boundaries. A summary stored before the note existed lacks it.
+ * boundaries. The note is missing from a summary stored before the note existed, and from one that
+ * must not stand in for its record.
  */
 export type StoredProjectSummary = InterlinearProjectSummary & { alignmentLinks?: StoredLinks };
 

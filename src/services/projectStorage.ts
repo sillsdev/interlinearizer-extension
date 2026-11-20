@@ -873,8 +873,8 @@ export function rememberActiveProject(
 /**
  * Replaces the analysis of an existing interlinearizer project, and optionally its custom segment
  * boundaries and its configuration, in one atomic write. Refreshes `updatedAt` to the current time.
- * When given boundaries, the rest of the record comes from the project's listed summary where that
- * can stand in for it, so the old record is not read.
+ * When given boundaries, the rest of the record comes from the project's listed summary wherever
+ * the summary can stand in for the record, so the old record is not read.
  *
  * @param token - The execution token for storage access.
  * @param id - The interlinearizer project UUID to update.
@@ -944,11 +944,11 @@ export async function updateAnalysis(
  * record need not be read and parsed. The summary stands in for the record only when it notes what
  * the record holds under `links` and the record holds none.
  *
- * A summary written by a newer build is refused with the rest of the summaries, and every project
- * write rewrites them, so a record written by a newer build is never rebuilt here.
+ * A record written by a newer build is never rebuilt here. That build also rewrote the summaries,
+ * and summaries written by a newer build are not read.
  *
  * @returns `'unlisted'` when no summary lists the project, or `undefined` when its summary cannot
- *   stand in for the record or the summaries cannot be read; the caller then reads the record.
+ *   stand in for the record or the summaries cannot be read.
  * @throws {Error} If the project is a Paratext 9 import, as in {@link updateAnalysis}.
  */
 async function recordFromSummary(
@@ -985,9 +985,8 @@ async function recordFromSummary(
 
 /**
  * Every field of a project record but its analysis and boundaries, each one required and an unset
- * one `undefined`. {@link recordFromSummary} builds one, so a field added to
- * {@link InterlinearProject} fails to compile there until it says how the summary rebuilds it,
- * rather than being dropped from the record on every save.
+ * one `undefined`. A field added to {@link InterlinearProject} must then be set wherever a record is
+ * rebuilt, rather than being dropped from the record on every save.
  */
 type RebuiltRecord = {
   [K in Exclude<keyof InterlinearProject, 'analysis' | 'segmentation'>]: InterlinearProject[K];
@@ -1186,7 +1185,6 @@ function readDraftForCopy(
   const writesBefore = draftWriteCounts.get(sourceProjectId) ?? 0;
   return enqueueSerialized(draftQueues, sourceProjectId, async () => {
     const repository = draftRepositoryFor(token, sourceProjectId);
-    // The draft a session keeps is what storage holds, so it need not be read again.
     const exported = repository.keptForCopy() ?? (await repository.exportForCopy());
     return { ...exported, writesBefore };
   });

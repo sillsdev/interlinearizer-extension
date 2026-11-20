@@ -1064,7 +1064,9 @@ export async function hasDraft(token: ExecutionToken, sourceProjectId: string): 
 }
 
 /**
- * Reads the stored draft for copying into a project, in turn with the source's draft writes.
+ * Reads the stored draft for copying into a project, in turn with the source's draft writes. When
+ * the source's draft repository keeps a draft it vouches for as stored, that draft is taken instead
+ * of reading storage again. It is shared with the repository, so the caller must not change it.
  *
  * @returns The export, with the number of draft writes sent for the source before this read was
  *   queued.
@@ -1076,10 +1078,12 @@ function readDraftForCopy(
 ): Promise<DraftExport & { writesBefore: number }> {
   // Counted when the read is queued: every write sent before it is queued ahead of it.
   const writesBefore = draftWriteCounts.get(sourceProjectId) ?? 0;
-  return enqueueSerialized(draftQueues, sourceProjectId, async () => ({
-    ...(await draftRepositoryFor(token, sourceProjectId).exportForCopy()),
-    writesBefore,
-  }));
+  return enqueueSerialized(draftQueues, sourceProjectId, async () => {
+    const repository = draftRepositoryFor(token, sourceProjectId);
+    // The draft a session keeps is what storage holds, so it need not be read again.
+    const exported = repository.keptForCopy() ?? (await repository.exportForCopy());
+    return { ...exported, writesBefore };
+  });
 }
 
 /**

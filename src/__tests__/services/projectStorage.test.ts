@@ -1765,6 +1765,88 @@ describe('projectStorage', () => {
         expect(result).toBeUndefined();
         expect(stored.has('project:missing')).toBe(false);
       });
+
+      describe('from the draft a session keeps', () => {
+        /**
+         * The draft analysis shards read since the read mock was last cleared. Marking the draft
+         * clean after the copy reads only its envelope.
+         */
+        function shardReads(): unknown[] {
+          return __mockReadUserData.mock.calls
+            .map(([, key]) => key)
+            .filter((key) => typeof key === 'string' && key.startsWith('draft:src-proj:analysis:'));
+        }
+
+        it('copies the kept draft without reading the stored analysis again', async () => {
+          const stored = backStorageWithMap();
+          storeListedProject(stored, makeStubProject('proj-id'));
+          await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+          await applyToDraft(bookPuts('EXO'));
+          __mockReadUserData.mockClear();
+
+          const result = await saveDraftToProject(token, 'src-proj', 'proj-id');
+
+          expect(shardReads()).toEqual([]);
+          expect(result?.analysis).toEqual(
+            makeDraftSpanningBooks('src-proj', 'GEN', 'EXO').analysis,
+          );
+        });
+
+        it('copies an edit queued before it', async () => {
+          const stored = backStorageWithMap();
+          storeListedProject(stored, makeStubProject('proj-id'));
+          await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+          await applyToDraft(bookPuts('EXO'));
+
+          // Neither call is awaited before the next starts, as when an edit and a Save cross the bus
+          // back to back.
+          const edit = applyToDraft(bookPuts('LEV'));
+          const result = await saveDraftToProject(token, 'src-proj', 'proj-id');
+          await edit;
+
+          expect(result?.analysis).toEqual(
+            makeDraftSpanningBooks('src-proj', 'GEN', 'EXO', 'LEV').analysis,
+          );
+        });
+
+        it('refuses the copy while a book of the kept draft could not be read', async () => {
+          const { stored, project } = await damagedJhn();
+          await openDraftRepository(token, 'src-proj').getScope();
+          __mockReadUserData.mockClear();
+
+          const refusal = saveDraftToProject(token, 'src-proj', 'proj-id');
+
+          await expect(refusal).rejects.toMatchObject({ books: ['JHN'] });
+          expect(shardReads()).toEqual([]);
+          expect(storedProject(stored, 'proj-id')).toEqual(project);
+        });
+
+        it('copies what is stored, not what is kept, after an edit fails partway', async () => {
+          const stored = backStorageWithMap();
+          storeListedProject(stored, makeStubProject('proj-id'));
+          await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+          await applyToDraft(bookPuts('GEN'));
+          const writeThrough = __mockWriteUserData.getMockImplementation();
+          __mockWriteUserData.mockImplementation(
+            async (t: unknown, key: unknown, json: unknown) => {
+              if (key === 'draft:src-proj:analysis:LEV') throw new Error('disk full');
+              await writeThrough?.(t, key, json);
+            },
+          );
+          const exoAndLev = bookPuts('EXO');
+          const lev = makeDraftSpanningBooks('src-proj', 'LEV').analysis;
+          exoAndLev.tokenAnalyses?.puts.push(...lev.tokenAnalyses);
+          exoAndLev.tokenAnalysisLinks?.puts.push(...lev.tokenAnalysisLinks);
+          await expect(applyToDraft(exoAndLev)).rejects.toThrow('disk full');
+          __mockWriteUserData.mockImplementation(writeThrough);
+          __mockReadUserData.mockClear();
+
+          const result = await saveDraftToProject(token, 'src-proj', 'proj-id');
+
+          expect(shardReads()).not.toEqual([]);
+          expect(result?.analysis.tokenAnalyses.map(({ id }) => id)).toContain('analysis-EXO');
+        });
+      });
     });
 
     describe('saveDraftAsNewProject', () => {

@@ -367,8 +367,8 @@ type OpenSession = {
   /** What each pass to a book's edited text changed, by book, until the edit is reported. */
   editPasses: Map<string, AnalysisChange[]>;
   /**
-   * The `textVersion` that each book was last re-anchored to as it opened or as its text was read.
-   * A book that opened with no text maps to `''`.
+   * The `textVersion` that the session last anchored each book to, as the book opened or its text
+   * arrived. A book that opened with no text maps to `''`.
    */
   anchoredVersions: Map<string, string>;
   /**

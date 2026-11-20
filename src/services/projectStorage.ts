@@ -887,7 +887,8 @@ export function rememberActiveProject(
  * @returns The updated project record, or `undefined` if no project with the given ID exists or it
  *   is unlisted.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
- * @throws {Error} If the stored record was written by a newer build; nothing is written.
+ * @throws {Error} If the stored record was written by a newer build that restamped the summaries
+ *   first, as every newer build must; nothing is written.
  * @throws {Error} If the project is a Paratext 9 import (`pt9Import` present); imports are
  *   read-only and only {@link savePt9Import} replaces their content.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
@@ -1028,7 +1029,8 @@ function withoutUnsetFields<T extends object>(record: T): T {
  * @throws {UnreadableBooksError} If any book's stored draft analysis cannot be read; nothing is
  *   written.
  * @throws {SyntaxError} If the draft's or the project's storage value contains invalid JSON.
- * @throws {Error} If the stored draft or project was written by a newer build; nothing is written.
+ * @throws {Error} If the stored draft was written by a newer build, or the project's record is
+ *   refused as in {@link updateAnalysis}; nothing is written.
  * @throws {Error} If the stored draft itself is unreadable; nothing is written.
  * @throws {Error} If the project is a Paratext 9 import, as in {@link updateAnalysis}.
  * @throws If a storage read or write rejects as in {@link updateAnalysis}.

@@ -1,6 +1,5 @@
 /**
- * Runs `run`. A failure is logged to `logger` as a failure to `what` before the same error is
- * rethrown.
+ * Runs `run`, logging any failure to `logger` as a failure to `what`.
  *
  * @throws Whatever `run` throws.
  */

@@ -152,14 +152,15 @@
         "columns": {},
         "groups": {
           "interlinearizer.editor": {
-            "column": "platformScriptureEditor.edit",
+            "column": "platformScriptureEditor.tools",
             "order": 12
           }
         },
         "items": [
           {
             "label": "%interlinearizer_openForProject%",
-            "localizeNotes": "Scripture Editor top menu > Open Interlinearizer for this project",
+            "localizeNotes": "Scripture Editor top menu > Tools > Open Interlinearizer for this project",
+            "iconNameBefore": "notebook-tabs",
             "group": "interlinearizer.editor",
             "order": 1,
             "command": "interlinearizer.openForWebView",

@@ -2467,6 +2467,36 @@ describe('ContinuousView segment pages', () => {
     }
   });
 
+  it('fades back in when the page holding the focus of a jump leaves the token map and fails', () => {
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(300);
+      const { pages, loadMore, fail } = pagesLoading(book, 0, 300);
+      const strip = renderStrip(book, { focus: 'large-tok-10', props: { pages } });
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+      strip.setFocus('large-tok-250', 'list');
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS / 2);
+      });
+      loadMore(0, 100);
+      strip.update({
+        tokenSegmentMap: buildLookups({ ...book, segments: book.segments.slice(0, 100) })
+          .tokenSegmentMap,
+      });
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+
+      fail(0, 300);
+
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('shows the focus of a jump once the page holding it loads', () => {
     jest.useFakeTimers();
     try {

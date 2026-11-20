@@ -288,6 +288,23 @@ describe('useStripSegments', () => {
     expect(result.current.isNextFocusFailed).toBe(true);
   });
 
+  it('reports a failure for the focus it is moving to after that page leaves the token map', () => {
+    const { pages, loadMore, fail } = makePages(BOOK);
+    const { result, rerender } = renderStrip({ pages, nextFocusTokenRef: tokenAt(180) });
+    loadMore(0, 150);
+    rerender(
+      stripArgs({
+        pages,
+        nextFocusTokenRef: tokenAt(180),
+        tokenSegmentMap: new Map([...TOKEN_SEGMENTS].slice(0, 150)),
+      }),
+    );
+
+    fail(180, 181);
+
+    expect(result.current.isNextFocusFailed).toBe(true);
+  });
+
   it('reports no failure for a failed page that does not hold the focus it is moving to', () => {
     const { pages, fail } = makePages(BOOK, 90, 110);
     const { result } = renderStrip({ pages });

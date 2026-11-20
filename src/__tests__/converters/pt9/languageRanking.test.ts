@@ -103,16 +103,32 @@ describe('rankAnalysisLanguages', () => {
     expect(languages).toStrictEqual(['fr', 'en']);
   });
 
-  it('does not count glosses on links that are not approved', () => {
-    // fr's links would tie or beat en's one approved token if either counted.
+  it('does not count a gloss on a token link that is not approved', () => {
+    // fr's candidate link would tie en's one approved token, and the tie keeps fr first.
     const languages = rankAnalysisLanguages({
       languageTags: ['fr', 'en'],
       analysis: {
+        ...NO_ANALYSIS,
         tokenAnalyses: [tokenPayload('en', { en: 'hello' }), tokenPayload('fr', { fr: 'salut' })],
         tokenAnalysisLinks: [
           makeTokenLink('en', 'GEN 1:1:0'),
           makeTokenLink('fr', 'GEN 1:1:0', { status: 'candidate' }),
         ],
+      },
+      records: [],
+      phrases: [],
+    });
+
+    expect(languages).toStrictEqual(['en', 'fr']);
+  });
+
+  it('does not count a gloss on a phrase link that is not approved', () => {
+    // fr's rejected link covers two tokens, which would beat en's one approved token.
+    const languages = rankAnalysisLanguages({
+      languageTags: ['fr', 'en'],
+      analysis: {
+        tokenAnalyses: [tokenPayload('en', { en: 'hello' })],
+        tokenAnalysisLinks: [makeTokenLink('en', 'GEN 1:1:0')],
         phraseAnalyses: [phrasePayload('fr-phrase', { fr: 'dans le' })],
         phraseAnalysisLinks: [
           { ...makePhraseLink('fr-phrase', ['GEN 1:1:6', 'GEN 1:1:9']), status: 'rejected' },
@@ -178,7 +194,7 @@ describe('rankAnalysisLanguages', () => {
     expect(languages).toStrictEqual(['fr', 'en']);
   });
 
-  it('ranks a tag shown on more tokens ahead of one glossing more on unapproved records', () => {
+  it('ranks a tag shown on more tokens ahead of one glossing more on unrejected records', () => {
     const languages = rankAnalysisLanguages({
       languageTags: ['fr', 'en'],
       analysis: {
@@ -193,12 +209,32 @@ describe('rankAnalysisLanguages', () => {
     expect(languages).toStrictEqual(['en', 'fr']);
   });
 
-  it('breaks a tie in shown tokens by the tokens unrejected records gloss', () => {
+  it('breaks a tie at no shown tokens by the tokens unrejected records gloss', () => {
     const languages = rankAnalysisLanguages({
       languageTags: ['fr', 'en'],
       analysis: NO_ANALYSIS,
-      records: [wordRecord('fr', 'GEN 1:1:0', { status: 'approved' })],
+      records: [wordRecord('fr', 'GEN 1:1:0')],
       phrases: [phraseRecord('en', ['GEN 1:1:6', 'GEN 1:1:9'])],
+    });
+
+    expect(languages).toStrictEqual(['en', 'fr']);
+  });
+
+  it('breaks a tie at one shown token each by the tokens unrejected records gloss', () => {
+    // The tie on shown tokens alone would keep fr first.
+    const languages = rankAnalysisLanguages({
+      languageTags: ['fr', 'en'],
+      analysis: {
+        ...NO_ANALYSIS,
+        tokenAnalyses: [tokenPayload('en', { en: 'hello' }), tokenPayload('fr', { fr: 'salut' })],
+        tokenAnalysisLinks: [makeTokenLink('en', 'GEN 1:1:0'), makeTokenLink('fr', 'GEN 1:1:0')],
+      },
+      records: [
+        wordRecord('fr', 'GEN 1:1:0'),
+        wordRecord('en', 'GEN 1:1:0'),
+        wordRecord('en', 'GEN 1:1:6'),
+      ],
+      phrases: [],
     });
 
     expect(languages).toStrictEqual(['en', 'fr']);
@@ -226,14 +262,15 @@ describe('rankAnalysisLanguages', () => {
     expect(languages).toStrictEqual(['fr', 'en']);
   });
 
-  it('does not count rejected records or records without gloss text', () => {
-    // en glosses one token; any of fr's records counting would tie it or put fr ahead.
-    const languages = rankAnalysisLanguages({
-      languageTags: ['fr', 'en'],
-      analysis: NO_ANALYSIS,
+  it.each<{ name: string; records: LangTokenRecord[]; phrases: LangPhraseRecord[] }>([
+    {
+      name: 'a rejected word record',
+      records: [wordRecord('fr', 'GEN 1:1:0', { status: 'rejected' })],
+      phrases: [],
+    },
+    {
+      name: 'a word record without gloss text',
       records: [
-        wordRecord('en', 'GEN 1:1:0'),
-        wordRecord('fr', 'GEN 1:1:0', { status: 'rejected' }),
         wordRecord('fr', 'GEN 1:1:6', {
           word: { key: { Type: 'Word', Form: 'in' }, keyId: 'Word:in' },
           parse: {
@@ -242,12 +279,29 @@ describe('rankAnalysisLanguages', () => {
           },
         }),
       ],
+      phrases: [],
+    },
+    {
+      name: 'a rejected phrase record',
+      records: [],
+      phrases: [phraseRecord('fr', ['GEN 1:1:9', 'GEN 1:1:13'], { status: 'rejected' })],
+    },
+    {
+      name: 'a phrase record without gloss text',
+      records: [],
       phrases: [
-        phraseRecord('fr', ['GEN 1:1:9', 'GEN 1:1:13'], { status: 'rejected' }),
-        phraseRecord('fr', ['GEN 1:1:17', 'GEN 1:1:21'], {
+        phraseRecord('fr', ['GEN 1:1:9', 'GEN 1:1:13'], {
           phrase: { key: { Type: 'Phrase', Form: 'in the' }, keyId: 'Phrase:in the' },
         }),
       ],
+    },
+  ])('does not count $name', ({ records, phrases }) => {
+    // en glosses one token; fr's record counting would tie it (keeping fr first) or beat it.
+    const languages = rankAnalysisLanguages({
+      languageTags: ['fr', 'en'],
+      analysis: NO_ANALYSIS,
+      records: [wordRecord('en', 'GEN 1:1:0'), ...records],
+      phrases,
     });
 
     expect(languages).toStrictEqual(['en', 'fr']);

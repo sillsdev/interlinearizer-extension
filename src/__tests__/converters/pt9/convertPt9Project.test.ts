@@ -70,16 +70,13 @@ function entryOf(
   };
 }
 
-/** Glosses the words and the `in the` phrase in both languages, the `hel`+`lo` parse in fr only. */
+/** Glosses the words and the `in the` phrase in both languages. */
 const LEXICON: Pt9Lexicon = {
   entries: [
     entryOf('Word', 'hello', 'S1', { en: 'hello', fr: 'salut' }),
     entryOf('Word', 'world', 'S2', { en: 'world', fr: 'monde' }),
     entryOf('Word', 'in', 'S3', { en: 'in', fr: 'dans' }),
-    entryOf('Word', 'the', 'S4', { en: 'the', fr: 'le' }),
     entryOf('Phrase', 'in the', 'S5', { en: 'within', fr: 'dans le' }),
-    entryOf('Stem', 'hel', 'S6', { fr: 'sal' }),
-    entryOf('Suffix', 'lo', 'S7', { fr: 'ut' }),
   ],
   legacyAnalyses: [],
 };
@@ -198,18 +195,6 @@ describe('convertPt9Project', () => {
     expect(languages).toStrictEqual(['fr', 'en']);
   });
 
-  it('does not count rejected analyses', () => {
-    const languages = languagesOf('hello in the world', [
-      verseOf('en', [
-        mkCluster(0, 5, [['Word:hello', 'S1']], true),
-        mkCluster(6, 6, [['Phrase:in the', 'S5']], true),
-      ]),
-      verseOf('fr', [mkCluster(13, 5, [['Word:world']])]),
-    ]);
-
-    expect(languages).toStrictEqual(['fr', 'en']);
-  });
-
   it("does not count a rejected gloss merged into another language's analysis", () => {
     const languages = languagesOf('hello', [
       verseOf('en', [mkCluster(0, 5, [['Word:hello', 'S1']], true)], false),
@@ -217,55 +202,6 @@ describe('convertPt9Project', () => {
     ]);
 
     expect(languages).toStrictEqual(['fr', 'en']);
-  });
-
-  it('counts a token whose parse has a glossed morpheme', () => {
-    const languages = languagesOf('hello', [
-      verseOf('en', [mkCluster(0, 5, [['Stem:hel'], ['Suffix:lo']])]),
-      verseOf('fr', [mkCluster(0, 5, [['Stem:hel'], ['Suffix:lo']])]),
-    ]);
-
-    expect(languages).toStrictEqual(['fr', 'en']);
-  });
-
-  it('counts the tokens under a glossed phrase', () => {
-    const languages = languagesOf('hello in the', [
-      verseOf('en', [mkCluster(0, 5, [['Word:hello']])]),
-      verseOf('fr', [mkCluster(6, 6, [['Phrase:in the']])]),
-    ]);
-
-    expect(languages).toStrictEqual(['fr', 'en']);
-  });
-
-  it('counts a token glossed by both a word and a phrase once', () => {
-    // en glosses two tokens; counting in twice would tie fr at three and keep en first.
-    const languages = languagesOf('hello in the', [
-      verseOf('en', [mkCluster(6, 2, [['Word:in']]), mkCluster(6, 6, [['Phrase:in the']])]),
-      verseOf('fr', [
-        mkCluster(0, 5, [['Word:hello']]),
-        mkCluster(6, 2, [['Word:in']]),
-        mkCluster(9, 3, [['Word:the']]),
-      ]),
-    ]);
-
-    expect(languages).toStrictEqual(['fr', 'en']);
-  });
-
-  it('leads with the tag approved on the most tokens over one glossing more unapproved', () => {
-    const languages = languagesOf('hello in the world', [
-      verseOf(
-        'fr',
-        [
-          mkCluster(0, 5, [['Word:hello']]),
-          mkCluster(6, 2, [['Word:in']]),
-          mkCluster(9, 3, [['Word:the']]),
-        ],
-        false,
-      ),
-      verseOf('en', [mkCluster(13, 5, [['Word:world']])]),
-    ]);
-
-    expect(languages).toStrictEqual(['en', 'fr']);
   });
 
   it('counts an approval that another language left unapproved', () => {

@@ -154,8 +154,8 @@ function makeReportingResolver(
 
 /**
  * The status a record takes, given the tokens that already hold an approved record. At most one
- * record per token may be approved, so an approval touching any of those tokens demotes to
- * candidate and is counted in the report. A kept approval claims its tokens in `approvedTokens`.
+ * record per token may be approved. An approval touching any of those tokens demotes to candidate
+ * and is counted in the report. A kept approval claims its tokens in `approvedTokens`.
  */
 function demoteRepeatedApproval(
   status: LangRecordStatus,
@@ -267,9 +267,10 @@ function mergeTokenRecords(records: LangTokenRecord[], report: Pt9ImportReport):
 
 /**
  * Fuses each parse-only record onto the same-status word record it completes: the one sharing its
- * parse, or the sole one still lacking a parse. An ambiguous target leaves it standalone.
+ * parse, or the sole one still lacking a parse. A parse-only record with no single such target
+ * stays standalone.
  *
- * @returns The records left standing, in their original order.
+ * @returns The records that remain after fusing, in their original order.
  */
 function fuseParseOnlyRecords(merged: MergedToken[]): MergedToken[] {
   const byTokenAndStatus = new Map<string, MergedToken[]>();
@@ -431,8 +432,8 @@ function mergePhraseRecords(phrases: LangPhraseRecord[]): MergedPhrase[] {
 }
 
 /**
- * Builds each merged phrase record's analysis and link, numbering their ids per first token. The
- * one-approved-phrase-per-token rule is honored in record order.
+ * Builds each merged phrase record's analysis and link, numbering their ids per first token. When
+ * approved phrases share a token, the first in record order keeps its approval.
  */
 function emitPhraseAnalyses(
   mergedPhrases: MergedPhrase[],
@@ -486,7 +487,7 @@ function emitPhraseAnalyses(
 /**
  * Merges per-language contributions into the final analysis layer.
  *
- * Contributions sharing a token, word lexeme and status become one record whose glosses are keyed
+ * Contributions sharing a token, word lexeme, and status become one record whose glosses are keyed
  * by language tag. A parse from any language of that status fills a record that lacks one. A
  * genuinely different parse on the same token becomes a separate competing record.
  *
@@ -496,7 +497,7 @@ function emitPhraseAnalyses(
  * names no language.
  *
  * A sense reference is kept only where every contributing language agrees on the sense. At most one
- * record per token may be approved, so later would-be-approved records are demoted to candidate.
+ * record per token may be approved. Later approvals on an approved token are demoted to candidate.
  */
 export function mergeLanguageAnalyses(args: {
   records: LangTokenRecord[];

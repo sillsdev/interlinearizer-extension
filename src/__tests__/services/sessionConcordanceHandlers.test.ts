@@ -2,8 +2,8 @@
 
 import type { TextAnalysis } from 'interlinearizer';
 import { sessionConcordanceHandlers } from '../../services/sessionConcordanceHandlers';
-import * as concordance from '../../utils/concordance';
 import { indexBook, type BookConcordance } from '../../utils/concordance';
+import * as languageTags from '../../utils/language-tags';
 import { BOOK, GLOSSED, sessionOver } from '../cache/session-source';
 import { makeVerseBook } from '../test-helpers';
 
@@ -154,7 +154,7 @@ describe('getConcordance', () => {
   });
 
   it('merges the same books once across pages', async () => {
-    const build = jest.spyOn(concordance, 'buildConcordanceEntries');
+    const build = jest.spyOn(languageTags, 'collatorForTag');
     const { handlers, sessionId } = await handlersOver();
     const request = { currentBook: 'GEN', offset: 0, count: 1 };
     await handlers['interlinearizer.getConcordance']({ sessionId, request });
@@ -165,7 +165,7 @@ describe('getConcordance', () => {
   });
 
   it('merges the same books again under a new language tag', async () => {
-    const build = jest.spyOn(concordance, 'buildConcordanceEntries');
+    const build = jest.spyOn(languageTags, 'collatorForTag');
     let tag = 'en';
     const { handlers, sessionId } = await handlersOver({ writingSystem: () => tag });
     const request = { currentBook: 'GEN', offset: 0, count: 1 };

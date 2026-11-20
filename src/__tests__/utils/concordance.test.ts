@@ -6,6 +6,7 @@ import type { ApprovalsByForm } from '../../types/analysis-repository';
 import { FIXTURE_STAMPS, makeVerseBook } from '../test-helpers';
 import {
   CONTEXT_RADIUS,
+  ConcordanceEntryList,
   approvedAnalysisOf,
   buildConcordanceEntries,
   contextLine,
@@ -158,6 +159,59 @@ describe('buildConcordanceEntries', () => {
   });
 });
 
+describe('ConcordanceEntryList', () => {
+  /** A collator over English, with a spy counting its comparisons. */
+  function countingCollator() {
+    const counting = new Collator('en');
+    return { collator: counting, compare: jest.spyOn(counting, 'compare') };
+  }
+
+  it('leaves a run of equally frequent forms uncollated until a slice reaches it', () => {
+    const { collator: counting, compare } = countingCollator();
+    const book = indexBook(makeVerseBook([{ sid: 'GEN 1:1', text: 'zeal light light apple' }]));
+    const list = new ConcordanceEntryList([book], counting);
+
+    expect(list.slice(0, 1).map((e) => e.form)).toEqual(['light']);
+    expect(compare).not.toHaveBeenCalled();
+  });
+
+  it('collates a run a slice starts inside', () => {
+    const book = indexBook(
+      makeVerseBook([{ sid: 'GEN 1:1', text: 'light light light dark dark zeal apple' }]),
+    );
+    const list = new ConcordanceEntryList([book], collator);
+
+    expect(list.slice(3, 4).map((e) => e.form)).toEqual(['zeal']);
+    expect(list.slice(2, 3).map((e) => e.form)).toEqual(['apple']);
+  });
+
+  it('collates each run once', () => {
+    const { collator: counting, compare } = countingCollator();
+    const book = indexBook(makeVerseBook([{ sid: 'GEN 1:1', text: 'zeal apple' }]));
+    const list = new ConcordanceEntryList([book], counting);
+    list.slice(0, 1);
+    const compared = compare.mock.calls.length;
+
+    list.slice(1, 2);
+
+    expect(compare).toHaveBeenCalledTimes(compared);
+  });
+
+  it('counts every entry, collated or not', () => {
+    const book = indexBook(makeVerseBook([{ sid: 'GEN 1:1', text: 'zeal light light apple' }]));
+
+    expect(new ConcordanceEntryList([book], collator).length).toBe(3);
+  });
+
+  it('finds an entry by its form', () => {
+    const book = indexBook(makeVerseBook([{ sid: 'GEN 1:1', text: 'zeal Light' }]));
+    const list = new ConcordanceEntryList([book], collator);
+
+    expect(list.find('light')?.displayText).toBe('Light');
+    expect(list.find('dark')).toBeUndefined();
+  });
+});
+
 describe('approvedAnalysisOf', () => {
   const book = indexBook(makeVerseBook([{ sid: 'GEN 1:1', text: 'dark dark' }]));
   const [entry] = buildConcordanceEntries([book], collator);
@@ -217,6 +271,18 @@ describe('deriveConcordanceRows', () => {
     expect(deriveConcordanceRows(entries, approved, 'GEN')[0]).toMatchObject({
       analyzedCount: 0,
       status: 'unanalyzed',
+    });
+  });
+
+  it('does not count an approval of the form at a place the form no longer occurs', () => {
+    const approved = approvals([
+      ['a1', 'GEN 1:1:0', 'light'],
+      ['a1', 'GEN 1:2:0', 'light'],
+    ]);
+
+    expect(deriveConcordanceRows(entries, approved, 'GEN')[0]).toMatchObject({
+      analyzedCount: 1,
+      status: 'partlyAnalyzed',
     });
   });
 

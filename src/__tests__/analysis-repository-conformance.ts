@@ -1410,6 +1410,7 @@ export function describeAnalysisRepositoryConformance(
               empty: false,
               hasFreeTranslations: true,
               unreadableBooks: [],
+              anchoredVersions: {},
             });
           });
 
@@ -1419,6 +1420,7 @@ export function describeAnalysisRepositoryConformance(
               empty: true,
               hasFreeTranslations: false,
               unreadableBooks: [],
+              anchoredVersions: {},
             });
           });
 

@@ -178,8 +178,7 @@ function spansOf(
 /**
  * Outlines a book, counting the orphaned free-translation cards that the view shows beside each
  * segment and flagging the segments where it shows a stale analysis. Each count takes in the cards
- * after its segment; the first also takes in those ahead of it. A count of none and an unset flag
- * are left out, because the outline lists every segment of the book. The outline also says what the
+ * after its segment; the first also takes in those ahead of it. The outline also says what the
  * book's boundary controls need to know of the draft's boundaries.
  *
  * @param repository - The draft whose stale analyses are counted and flagged.

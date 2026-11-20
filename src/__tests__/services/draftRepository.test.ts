@@ -671,6 +671,17 @@ describe('DraftRepository', () => {
       ).toEqual({ GEN: 'v1', EXO: 'v2' });
     });
 
+    it('drops the version of a book an apply names as unanchored', async () => {
+      const { storage, repository } = await anchoredGenesis();
+
+      await repository.apply({ intent: 'relink' }, { unanchored: ['GEN'] });
+
+      expect(
+        (await new DraftRepository(storage, 'src', silentLogger()).getDraftState())
+          .anchoredVersions,
+      ).toEqual({});
+    });
+
     it('keeps the recorded versions when the draft is marked clean', async () => {
       const { storage, repository } = await anchoredGenesis();
 

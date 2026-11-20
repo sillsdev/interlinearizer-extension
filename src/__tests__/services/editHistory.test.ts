@@ -74,6 +74,18 @@ describe('EditHistory', () => {
     await expect(storedDirty()).resolves.toBe(false);
   });
 
+  it('drops the anchor stamps of the books an edit names as unanchored', async () => {
+    const { history, repository } = makeHistory();
+    await history.applyPass(
+      { ...makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha' }]), textVersion: 'v1' },
+      undefined,
+    );
+
+    await history.apply(putting('a'), { unanchored: ['GEN'] });
+
+    expect((await repository.getDraftState()).anchoredVersions).toStrictEqual({});
+  });
+
   it('marks the draft saved when the edit clears the mark', async () => {
     const { history, repository, storedDirty } = makeHistory();
     await seedRepository(repository, { ...emptyDraft('src'), dirty: true });

@@ -378,6 +378,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     const anchored = new Map(this.anchored);
     if (options?.anchoredTo)
       anchored.set(options.anchoredTo.bookCode, options.anchoredTo.textVersion);
+    options?.unanchored?.forEach((bookCode) => anchored.delete(bookCode));
     try {
       await this.writeReachedBooks(draft, index, reached, storedBooks, anchored);
     } catch (e) {

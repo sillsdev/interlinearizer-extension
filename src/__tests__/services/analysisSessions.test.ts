@@ -2177,6 +2177,16 @@ describe('AnalysisSessions', () => {
         return { ...made, sessionId, read };
       }
 
+      /**
+       * Stages a second gloss of "beta", linked where `AFTER` has it, and has the edit re-anchor
+       * Genesis to `BEFORE`.
+       */
+      async function relinkingBeta(buffer: ChangeBuffer) {
+        buffer.create('tokenAnalyses', { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'beta' });
+        buffer.put('tokenAnalysisLinks', betaLink(AFTER, 'ta-2'));
+        return { reanchorTo: [BEFORE] };
+      }
+
       it('skips the first pass of a book stored as anchored to its text', async () => {
         const { sessions, sessionId, read } = await reopenedAfterAnchoring();
 
@@ -2214,13 +2224,20 @@ describe('AnalysisSessions', () => {
 
       it('re-anchors a book stored as anchored once an edit has re-anchored it to other text', async () => {
         const { sessions, sessionId, storage } = await reopenedAfterAnchoring();
-        await sessions.edit(sessionId, 'relink', async (buffer) => {
-          buffer.create('tokenAnalyses', { ...FIXTURE_STAMPS, id: 'ta-2', surfaceText: 'beta' });
-          buffer.put('tokenAnalysisLinks', betaLink(AFTER, 'ta-2'));
-          return { reanchorTo: [BEFORE] };
-        });
+        await sessions.edit(sessionId, 'relink', relinkingBeta);
 
         await sessions.reanchorOpenedBook(sessionId, 'GEN');
+
+        expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
+      });
+
+      it('re-anchors, in a later session, a book stored as anchored once an edit has re-anchored it to other text', async () => {
+        const { sessions, sessionId, storage } = await reopenedAfterAnchoring();
+        await sessions.edit(sessionId, 'relink', relinkingBeta);
+        await sessions.close(sessionId);
+        const reopened = await sessions.open(SOURCE);
+
+        await sessions.reanchorOpenedBook(reopened.sessionId, 'GEN');
 
         expect((await storedLink(storage)).token.tokenRef).toBe(tokenRefOf(AFTER, 'beta'));
       });
@@ -2233,20 +2250,7 @@ describe('AnalysisSessions', () => {
             .mockRejectedValueOnce(new Error('read failed')),
         );
         await expect(
-          sessions.edit(
-            sessionId,
-            'relink',
-            async (buffer) => {
-              buffer.create('tokenAnalyses', {
-                ...FIXTURE_STAMPS,
-                id: 'ta-2',
-                surfaceText: 'beta',
-              });
-              buffer.put('tokenAnalysisLinks', betaLink(AFTER, 'ta-2'));
-              return { reanchorTo: [BEFORE] };
-            },
-            { unsavedMark: 'keep' },
-          ),
+          sessions.edit(sessionId, 'relink', relinkingBeta, { unsavedMark: 'keep' }),
         ).rejects.toThrow('read failed');
 
         await sessions.reanchorOpenedBook(sessionId, 'GEN');

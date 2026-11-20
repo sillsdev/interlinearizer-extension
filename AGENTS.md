@@ -42,6 +42,7 @@ npm run perf:indexes     # Check derived indexes and lookups against the records
 npm run perf:queries     # Time the queries a view sends a session, in Node
 npm run perf:pages       # Check session pages, outlines and change events against what the selectors derive from the whole analysis
 npm run perf:reports     # Measure the change reports of re-anchor passes
+npm run perf:first-open  # Time a book's first open in a session, with and without a stored anchor stamp, in Node
 ```
 
 A template merge refreshes the dependency baseline in the same commit with `npm run template:baseline`; [README.md](README.md#to-update-this-extension-from-the-template) has the procedure.

@@ -1,5 +1,5 @@
 import type { ReadonlyBook } from 'interlinearizer';
-import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
+import type { AnalysisRepository, ApplyOptions, ChangeSet } from '../types/analysis-repository';
 import type { EditStep } from '../types/edit-step';
 import type { AppliedChange } from './analysisChanges';
 import { mergeChangeSets } from '../utils/change-set';
@@ -29,6 +29,8 @@ export type EditOptions = {
   unsavedMark?: 'keep' | 'clear';
   /** The step to record the edit as, which an undo or redo of the edit hands back. */
   step?: EditStep;
+  /** As {@link ApplyOptions.unanchored}. */
+  unanchored?: ApplyOptions['unanchored'];
 };
 
 /**
@@ -150,10 +152,10 @@ export class EditHistory {
    */
   async apply(changes: ChangeSet, options?: EditOptions): Promise<ChangeSet> {
     const keep = options?.unsavedMark === 'keep';
-    const { inverse, wasDirty } = await this.repository.apply(
-      changes,
-      keep ? { keepDirty: true } : undefined,
-    );
+    const { inverse, wasDirty } = await this.repository.apply(changes, {
+      ...(keep && { keepDirty: true }),
+      ...(options?.unanchored && { unanchored: options.unanchored }),
+    });
     this.appliedCount += 1;
     this.noteMark(wasDirty);
     this.undoable.push({

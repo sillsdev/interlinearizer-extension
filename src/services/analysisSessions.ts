@@ -289,7 +289,9 @@ async function reanchorUnlessAnchored(
 /**
  * Applies an edit's staged changes as one undo step, re-anchored to `reanchorTo`. The snapshots
  * that the changes write record their form's count, in each verse that the host holds text for.
- * Once the changes apply, drops from `storedVersions` each book that `reanchorTo` names.
+ * Drops the stored anchor stamp of each book that `reanchorTo` names, in storage and in
+ * `storedVersions`. No stamp could stay true there, because an undo can restore the book's analysis
+ * anchored to older text.
  *
  * @throws As {@link AnalysisSessions.edit} does.
  */
@@ -319,8 +321,13 @@ async function applyStaged(
   const changes = reanchored ? mergeChangeSets(counted, reanchored) : counted;
   const { unsavedMark } = options;
   const step = typeof options.step === 'function' ? options.step(changes) : options.step;
-  const inverse = await session.history.apply(changes, { unsavedMark, step });
-  reanchorTo?.forEach(({ bookRef }) => storedVersions?.delete(bookRef));
+  const unanchored = reanchorTo?.map(({ bookRef }) => bookRef);
+  const inverse = await session.history.apply(changes, {
+    unsavedMark,
+    step,
+    ...(unanchored && { unanchored }),
+  });
+  unanchored?.forEach((bookCode) => storedVersions?.delete(bookCode));
   if (unsavedMark) await noteIfEmpty(session);
   return { changes, inverse, ...(step && { step }) };
 }

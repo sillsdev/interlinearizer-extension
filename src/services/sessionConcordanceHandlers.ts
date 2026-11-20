@@ -117,6 +117,10 @@ export function sessionConcordanceHandlers({
     request,
   }: ArgsOf<'interlinearizer.getConcordance'>): Promise<string> {
     try {
+      if (![request.offset, request.count].every((n) => Number.isInteger(n) && n >= 0))
+        throw new Error(
+          `Concordance offset and count must be non-negative integers, not ${request.offset} and ${request.count}`,
+        );
       return await sessions.run(sessionId, async (session) => {
         const { sourceProjectId } = session.scope;
         const books = getConcordanceBooks(sourceProjectId);

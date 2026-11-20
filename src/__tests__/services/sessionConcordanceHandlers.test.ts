@@ -141,6 +141,23 @@ describe('getConcordance', () => {
     );
   });
 
+  it.each([
+    ['a negative offset', { currentBook: 'GEN', offset: -1, count: 2 }],
+    ['a negative count', { currentBook: 'GEN', offset: 0, count: -5 }],
+    ['a fractional count', { currentBook: 'GEN', offset: 0, count: 1.5 }],
+    ["a negative offset into a form's occurrences", { form: 'and', offset: -1, count: 2 }],
+  ])('logs and rethrows on %s', async (_, request) => {
+    const { handlers, sessionId, logger } = await handlersOver();
+
+    await expect(
+      handlers['interlinearizer.getConcordance']({ sessionId, request }),
+    ).rejects.toThrow('Concordance offset and count must be non-negative integers');
+    expect(logger.error).toHaveBeenCalledWith(
+      `Interlinearizer: failed to serve the concordance of session ${sessionId}`,
+      expect.any(Error),
+    );
+  });
+
   it('serves a book as it was last read', async () => {
     let books = [indexBook(BOOK)];
     const { handlers, sessionId } = await handlersOver({ books: () => books });

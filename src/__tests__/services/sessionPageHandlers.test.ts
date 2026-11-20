@@ -78,9 +78,9 @@ describe('getBookOutline', () => {
     expect(host.getOpenBook).toHaveBeenCalledWith('src', 'GEN', SEGMENTATION);
     expect(
       JSON.parse(json ?? '').segments.map(
-        ({ orphanedCardCount }: { orphanedCardCount: number }) => orphanedCardCount,
+        ({ orphanedCardCount }: { orphanedCardCount?: number }) => orphanedCardCount,
       ),
-    ).toStrictEqual([0, 1]);
+    ).toStrictEqual([undefined, 1]);
   });
 
   it('names no boundaries for a book the draft sets none in', async () => {

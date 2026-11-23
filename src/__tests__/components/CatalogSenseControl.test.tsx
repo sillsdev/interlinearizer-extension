@@ -1,10 +1,10 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { SenseRef } from 'interlinearizer';
-import type { ResolvedSense, SenseCandidate } from 'interlinearizer/lexicon';
+import type { ResolvedSense, SenseCandidate, SenseQuery } from 'interlinearizer/lexicon';
 import { TooltipProvider } from 'platform-bible-react';
 import type { ComponentProps } from 'react';
 import CatalogSenseControl, {
@@ -26,7 +26,15 @@ const STRINGS: Record<string, string> = {
   '%interlinearizer_analysisCatalog_senseDiffers%': 'differs {gloss}',
   '%interlinearizer_analysisCatalog_senseKeepPrompt%': 'keep {gloss}?',
   '%interlinearizer_analysisCatalog_senseLexiconGloss%': 'lexicon says {gloss}',
+  '%interlinearizer_analysisCatalog_senseQueryFormContains%': 'form contains {text}',
+  '%interlinearizer_analysisCatalog_senseQueryFormExact%': 'form is {text}',
+  '%interlinearizer_analysisCatalog_senseQueryGlossContains%': '{language} gloss contains {text}',
+  '%interlinearizer_analysisCatalog_senseQueryGlossExact%': '{language} gloss is {text}',
+  '%interlinearizer_analysisCatalog_senseRefineGloss%': '{language} gloss',
 };
+
+/** The search a popover opens on: entries whose form contains `agua`, in any writing system. */
+const FORM_QUERY: SenseQuery = { text: 'agua', field: 'form', exact: false };
 
 const SENSES: Record<string, ResolvedSense> = {
   's-1': { gloss: { en: 'water' } },
@@ -66,19 +74,19 @@ async function settle() {
 
 /**
  * Renders the control beside a lexicon holding {@link SENSES}. The lexicon can search unless
- * `lexicon` says otherwise, and answers searches with `searchByForm`.
+ * `lexicon` says otherwise, and answers searches with `searchSenses`.
  */
 function renderControl(
   props: Partial<ComponentProps<typeof CatalogSenseControl>> = {},
   lexicon: {
     canSearch?: boolean;
-    searchByForm?: (form: string) => Promise<SenseCandidate[]>;
+    searchSenses?: (query: SenseQuery) => Promise<SenseCandidate[]>;
     resolveSense?: (ref: SenseRef) => Promise<ResolvedSense | undefined>;
   } = {},
 ) {
   const {
     canSearch = true,
-    searchByForm = jest.fn(async () => [candidate('s-1')]),
+    searchSenses = jest.fn(async () => [candidate('s-1')]),
     resolveSense = jest.fn(async ({ senseId }: SenseRef) => SENSES[senseId]),
   } = lexicon;
   const registry = createLexiconRegistry([
@@ -87,7 +95,7 @@ function renderControl(
       authorities: [TEST_LEXICON_AUTHORITY],
       capabilities: { ...nullLexiconResolver.capabilities, search: canSearch },
       resolveSense,
-      searchByForm,
+      searchSenses,
     },
   ]);
   const handlers = { onLink: jest.fn(), onUnlink: jest.fn(), onAdopt: jest.fn() };
@@ -106,7 +114,7 @@ function renderControl(
       </LexiconSensesProvider>
     </TooltipProvider>,
   );
-  return { ...view, ...handlers, searchByForm, resolveSense };
+  return { ...view, ...handlers, searchSenses, resolveSense };
 }
 
 /** Opens the control's popover. */
@@ -356,18 +364,18 @@ describe('CatalogSenseControl', () => {
 
   describe('linking', () => {
     it('searches for the form as it stands, once', async () => {
-      const { searchByForm } = renderControl();
+      const { searchSenses } = renderControl();
       await openPopover();
 
       await screen.findByTestId('catalog-sense-candidate');
 
-      expect(searchByForm).toHaveBeenCalledTimes(1);
-      expect(searchByForm).toHaveBeenCalledWith('agua');
+      expect(searchSenses).toHaveBeenCalledTimes(1);
+      expect(searchSenses).toHaveBeenCalledWith(FORM_QUERY);
     });
 
     it('shows a spinner while the search is out', async () => {
       const pending = deferred<SenseCandidate[]>();
-      renderControl({}, { searchByForm: () => pending.promise });
+      renderControl({}, { searchSenses: () => pending.promise });
       await openPopover();
 
       expect(await screen.findByTestId('spinner')).toBeInTheDocument();
@@ -376,14 +384,14 @@ describe('CatalogSenseControl', () => {
     });
 
     it('says so when nothing matches', async () => {
-      renderControl({}, { searchByForm: async () => [] });
+      renderControl({}, { searchSenses: async () => [] });
       await openPopover();
 
       expect(await screen.findByTestId('catalog-sense-no-match')).toHaveTextContent('senseNoMatch');
     });
 
     it('says so when the search fails', async () => {
-      renderControl({}, { searchByForm: jest.fn().mockRejectedValue(new Error('down')) });
+      renderControl({}, { searchSenses: jest.fn().mockRejectedValue(new Error('down')) });
       await openPopover();
 
       expect(await screen.findByTestId('catalog-sense-search-failed')).toHaveTextContent(
@@ -395,7 +403,7 @@ describe('CatalogSenseControl', () => {
       renderControl(
         {},
         {
-          searchByForm: async () => [
+          searchSenses: async () => [
             candidate('s-1', {
               gloss: { en: 'water', fr: 'eau' },
               lexemeForm: { grc: 'ὕδωρ' },
@@ -416,7 +424,7 @@ describe('CatalogSenseControl', () => {
     it('lists a candidate with no gloss in the analysis language by another one', async () => {
       renderControl(
         {},
-        { searchByForm: async () => [candidate('s-fr', { gloss: { fr: 'eau' } })] },
+        { searchSenses: async () => [candidate('s-fr', { gloss: { fr: 'eau' } })] },
       );
       await openPopover();
 
@@ -424,7 +432,7 @@ describe('CatalogSenseControl', () => {
     });
 
     it('lists a candidate with no gloss at all as having none', async () => {
-      renderControl({}, { searchByForm: async () => [candidate('s-x', { gloss: {} })] });
+      renderControl({}, { searchSenses: async () => [candidate('s-x', { gloss: {} })] });
       await openPopover();
 
       const item = await screen.findByTestId('catalog-sense-candidate');
@@ -435,7 +443,7 @@ describe('CatalogSenseControl', () => {
     it('marks the sense the form links to now, and no other', async () => {
       renderControl(
         { gloss: 'water', senseRef: testSenseRef('s-1') },
-        { searchByForm: async () => [candidate('s-1'), candidate('s-2')] },
+        { searchSenses: async () => [candidate('s-1'), candidate('s-2')] },
       );
       await openPopover();
 
@@ -451,7 +459,7 @@ describe('CatalogSenseControl', () => {
     it('does not mark a sense of the same id in another lexicon project', async () => {
       renderControl(
         { senseRef: { ...testSenseRef('s-1'), projectId: 'p-1' } },
-        { searchByForm: async () => [candidate('s-1')] },
+        { searchSenses: async () => [candidate('s-1')] },
       );
       await openPopover();
 
@@ -466,7 +474,7 @@ describe('CatalogSenseControl', () => {
       const picked = candidate('s-2');
       const { onLink } = renderControl(
         {},
-        { searchByForm: async () => [candidate('s-1'), picked] },
+        { searchSenses: async () => [candidate('s-1'), picked] },
       );
       await openPopover();
 
@@ -493,11 +501,11 @@ describe('CatalogSenseControl', () => {
     it('ignores a search that answers after the popover closed', async () => {
       const first = deferred<SenseCandidate[]>();
       const second = deferred<SenseCandidate[]>();
-      const searchByForm = jest
-        .fn<Promise<SenseCandidate[]>, [string]>()
+      const searchSenses = jest
+        .fn<Promise<SenseCandidate[]>, [SenseQuery]>()
         .mockReturnValueOnce(first.promise)
         .mockReturnValueOnce(second.promise);
-      renderControl({}, { searchByForm });
+      renderControl({}, { searchSenses });
       await openPopover();
       await screen.findByTestId('spinner');
       await userEvent.click(screen.getByTestId('catalog-sense-control'));
@@ -514,7 +522,7 @@ describe('CatalogSenseControl', () => {
 
     it('ignores a search that fails after the popover closed', async () => {
       const pending = deferred<SenseCandidate[]>();
-      renderControl({}, { searchByForm: () => pending.promise });
+      renderControl({}, { searchSenses: () => pending.promise });
       await openPopover();
       await screen.findByTestId('spinner');
       await userEvent.click(screen.getByTestId('catalog-sense-control'));
@@ -522,6 +530,193 @@ describe('CatalogSenseControl', () => {
       await act(async () => pending.reject(new Error('down')));
 
       expect(screen.queryByTestId('catalog-sense-search-failed')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('changing the search', () => {
+    /** Opens the dialog that changes the search, from an unlinked form's popover. */
+    async function openDialog() {
+      await userEvent.click(await screen.findByRole('button', { name: 'senseRefine' }));
+      return screen.getByRole('dialog', { name: 'senseRefineTitle' });
+    }
+
+    /** Fills the dialog with `text`, searched in glosses, whole. */
+    async function askForWholeGloss(dialog: HTMLElement, text: string) {
+      const input = within(dialog).getByLabelText('senseRefineText');
+      await userEvent.clear(input);
+      await userEvent.type(input, text);
+      await userEvent.click(within(dialog).getByLabelText('en gloss'));
+      await userEvent.click(within(dialog).getByLabelText('senseRefineExact'));
+    }
+
+    it('says the popover searches forms containing the form it sits beside', async () => {
+      renderControl();
+      await openPopover();
+
+      expect(await screen.findByTestId('catalog-sense-query')).toHaveTextContent(
+        'form contains agua',
+      );
+    });
+
+    it('opens a dialog on the search the popover shows, leaving the popover open', async () => {
+      renderControl();
+      await openPopover();
+
+      const dialog = await openDialog();
+
+      expect(within(dialog).getByLabelText('senseRefineText')).toHaveValue('agua');
+      expect(within(dialog).getByLabelText('senseRefineForm')).toBeChecked();
+      expect(within(dialog).getByLabelText('senseRefineExact')).not.toBeChecked();
+      expect(screen.getByTestId('catalog-sense-popover')).toBeInTheDocument();
+    });
+
+    it('searches again with what the dialog asks for, and lists what it finds in the popover', async () => {
+      const searchSenses = jest
+        .fn<Promise<SenseCandidate[]>, [SenseQuery]>()
+        .mockResolvedValueOnce([candidate('s-1')])
+        .mockResolvedValueOnce([candidate('s-2')]);
+      renderControl({}, { searchSenses });
+      await openPopover();
+      await screen.findByTestId('catalog-sense-candidate');
+      const dialog = await openDialog();
+
+      await askForWholeGloss(dialog, ' water ');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'senseRefineSubmit' }));
+
+      expect(searchSenses).toHaveBeenLastCalledWith({
+        text: 'water',
+        field: 'gloss',
+        exact: true,
+        writingSystem: 'en',
+      });
+      expect(screen.queryByRole('dialog', { name: 'senseRefineTitle' })).not.toBeInTheDocument();
+      expect(await screen.findByTestId('catalog-sense-candidate')).toHaveTextContent('s-2');
+    });
+
+    it('says what a changed search matches', async () => {
+      renderControl();
+      await openPopover();
+      const dialog = await openDialog();
+
+      await askForWholeGloss(dialog, 'water');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'senseRefineSubmit' }));
+
+      await screen.findByTestId('catalog-sense-candidate');
+      expect(screen.getByTestId('catalog-sense-query')).toHaveTextContent('en gloss is water');
+    });
+
+    it('searches forms in every writing system rather than in the analysis language', async () => {
+      const { searchSenses } = renderControl();
+      await openPopover();
+      const dialog = await openDialog();
+
+      await userEvent.type(within(dialog).getByLabelText('senseRefineText'), 's');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'senseRefineSubmit' }));
+
+      await screen.findByTestId('catalog-sense-candidate');
+      expect(jest.mocked(searchSenses).mock.lastCall?.[0]).toStrictEqual({
+        ...FORM_QUERY,
+        text: 'aguas',
+      });
+    });
+
+    it('opens the dialog again on the search it last asked for', async () => {
+      renderControl();
+      await openPopover();
+      const first = await openDialog();
+      await askForWholeGloss(first, 'water');
+      await userEvent.click(within(first).getByRole('button', { name: 'senseRefineSubmit' }));
+      await screen.findByTestId('catalog-sense-candidate');
+
+      const second = await openDialog();
+
+      expect(within(second).getByLabelText('senseRefineText')).toHaveValue('water');
+      expect(within(second).getByLabelText('en gloss')).toBeChecked();
+      expect(within(second).getByLabelText('senseRefineExact')).toBeChecked();
+    });
+
+    it('goes back to searching forms when the dialog switches back to them', async () => {
+      const { searchSenses } = renderControl();
+      await openPopover();
+      const first = await openDialog();
+      await askForWholeGloss(first, 'water');
+      await userEvent.click(within(first).getByRole('button', { name: 'senseRefineSubmit' }));
+      await screen.findByTestId('catalog-sense-candidate');
+      const second = await openDialog();
+
+      await userEvent.click(within(second).getByLabelText('senseRefineForm'));
+      await userEvent.click(within(second).getByRole('button', { name: 'senseRefineSubmit' }));
+
+      await screen.findByTestId('catalog-sense-candidate');
+      expect(jest.mocked(searchSenses).mock.lastCall?.[0]).toStrictEqual({
+        text: 'water',
+        field: 'form',
+        exact: true,
+      });
+    });
+
+    it('cannot search for blank text', async () => {
+      renderControl();
+      await openPopover();
+      const dialog = await openDialog();
+
+      await userEvent.clear(within(dialog).getByLabelText('senseRefineText'));
+      await userEvent.type(within(dialog).getByLabelText('senseRefineText'), '  ');
+
+      expect(within(dialog).getByRole('button', { name: 'senseRefineSubmit' })).toBeDisabled();
+    });
+
+    it('keeps the search and the popover when the dialog is canceled', async () => {
+      const { searchSenses } = renderControl();
+      await openPopover();
+      await screen.findByTestId('catalog-sense-candidate');
+      const dialog = await openDialog();
+
+      await userEvent.type(within(dialog).getByLabelText('senseRefineText'), 's');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'senseCancel' }));
+
+      expect(screen.queryByRole('dialog', { name: 'senseRefineTitle' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('catalog-sense-candidate')).toBeInTheDocument();
+      expect(screen.getByTestId('catalog-sense-query')).toHaveTextContent('form contains agua');
+      expect(searchSenses).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the popover open while focus is in the dialog', async () => {
+      renderControl();
+      await openPopover();
+      await openDialog();
+
+      await userEvent.click(screen.getByTestId('popover-focus-outside'));
+
+      expect(screen.getByTestId('catalog-sense-popover')).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: 'senseRefineTitle' })).toBeInTheDocument();
+    });
+
+    it('closes the popover when focus leaves it with no dialog open', async () => {
+      renderControl();
+      await openPopover();
+      await screen.findByTestId('catalog-sense-candidate');
+
+      await userEvent.click(screen.getByTestId('popover-focus-outside'));
+
+      expect(screen.queryByTestId('catalog-sense-popover')).not.toBeInTheDocument();
+    });
+
+    it('searches the form again once the popover closes and opens', async () => {
+      const { searchSenses } = renderControl();
+      await openPopover();
+      const dialog = await openDialog();
+      await askForWholeGloss(dialog, 'water');
+      await userEvent.click(within(dialog).getByRole('button', { name: 'senseRefineSubmit' }));
+      await screen.findByTestId('catalog-sense-candidate');
+
+      await userEvent.click(screen.getByTestId('catalog-sense-control'));
+      await openPopover();
+
+      expect(await screen.findByTestId('catalog-sense-query')).toHaveTextContent(
+        'form contains agua',
+      );
+      expect(searchSenses).toHaveBeenLastCalledWith(FORM_QUERY);
     });
   });
 

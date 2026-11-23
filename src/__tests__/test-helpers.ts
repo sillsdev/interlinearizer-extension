@@ -700,7 +700,7 @@ export const nullLexiconResolver: LexiconResolver = {
   authorities: [],
   capabilities: { search: false, create: false, allomorphs: false, msas: false },
   resolveSense: async () => undefined,
-  searchByForm: async () => [],
+  searchSenses: async () => [],
   createEntry: async () => {
     throw new Error('No lexicon is connected to create an entry in.');
   },

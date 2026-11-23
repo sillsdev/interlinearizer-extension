@@ -1465,6 +1465,9 @@ export function PopoverAnchor({
  * - An Escape keydown anywhere inside the content invokes `onEscapeKeyDown`.
  * - A sentinel `data-testid="popover-outside"` button invokes `onPointerDownOutside` on click,
  *   simulating a pointer press outside the popover.
+ * - A sentinel `data-testid="popover-focus-outside"` button stands in for focus moving outside the
+ *   popover, as it does into a dialog opened from it. A click invokes `onInteractOutside` and,
+ *   unless that prevents the event, closes the popover through the root's change handler.
  * - A sentinel `data-testid="popover-close"` button invokes `onCloseAutoFocus` on click,
  *   simulating Radix's focus-restoration event fired as the popover closes; unless it is prevented,
  *   the focused element is blurred. Which element Radix restores focus to — its trigger, or the
@@ -1487,6 +1490,7 @@ export function PopoverContent({
   style,
   onEscapeKeyDown,
   onPointerDownOutside,
+  onInteractOutside,
   onOpenAutoFocus,
   onCloseAutoFocus,
   onClick,
@@ -1505,11 +1509,13 @@ export function PopoverContent({
   hideWhenDetached?: boolean;
   onEscapeKeyDown?: (event: KeyboardEvent) => void;
   onPointerDownOutside?: (event: CustomEvent) => void;
+  onInteractOutside?: (event: CustomEvent) => void;
   onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
   onClick?: MouseEventHandler<HTMLDivElement>;
   onMouseDown?: MouseEventHandler<HTMLDivElement>;
 }>): ReactElement {
+  const popover = useContext(PopoverContext);
   const [portalMounted, setPortalMounted] = useState(false);
   useLayoutEffect(() => setPortalMounted(true), []);
   // eslint-disable-next-line no-null/no-null
@@ -1561,6 +1567,19 @@ export function PopoverContent({
           }
         >
           outside
+        </button>
+      )}
+      {onInteractOutside && (
+        <button
+          data-testid="popover-focus-outside"
+          type="button"
+          onClick={() => {
+            const event = new CustomEvent('dismissableLayer.focusOutside', { cancelable: true });
+            onInteractOutside(event);
+            if (!event.defaultPrevented) popover?.onOpenChange?.(false);
+          }}
+        >
+          focus outside
         </button>
       )}
       {onCloseAutoFocus && (

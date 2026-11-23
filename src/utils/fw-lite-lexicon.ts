@@ -4,10 +4,12 @@ import type {
   LexiconResolver,
   ResolvedSense,
   SenseCandidate,
+  SenseQuery,
 } from 'interlinearizer/lexicon';
 import type { UnsubscriberAsync } from 'platform-bible-utils';
 import type { LexiconEntry, LexiconEntryService, LexiconSense } from '../types/lexicon-extension';
 import { FW_LITE_AUTHORITY } from './lexicon-authorities';
+import { multiStringTextByLanguage } from './multi-string';
 import { foldForSearch } from './search-fold';
 
 /** Id of the Lexicon extension's network service, the only way in to FieldWorks Lite. */
@@ -141,31 +143,69 @@ function toResolvedSense(sense: LexiconSense): ResolvedSense {
 }
 
 /**
- * Whether `entry` is listed under a form in `writingSystem` that `form` matches.
- *
- * Matching ignores whatever the search fold ignores, so a match the lexicon made on a pointed or
- * accented form survives rather than being dropped for not being spelled the way it was queried.
+ * Tests a form or gloss against the text `query` names, ignoring whatever the search fold ignores.
+ * So a match the lexicon made on a pointed or accented form survives, rather than being dropped for
+ * not being spelled the way it was queried.
  *
  * This can only narrow what the lexicon matched. A candidate it matched by something the fold does
- * not reach is dropped, which is the cost of there being no writing system to search in.
+ * not reach is dropped, which is the cost of the lexicon matching more loosely than asked.
  */
-function matchesInWritingSystem(entry: LexiconEntry, form: string, writingSystem: string): boolean {
-  const lexemeForm = (entry.lexemeForm ?? {})[writingSystem];
-  return lexemeForm !== undefined && foldForSearch(lexemeForm).includes(foldForSearch(form));
+function textMatcher({ text, exact }: SenseQuery): (value: string) => boolean {
+  const folded = foldForSearch(text);
+  return (value) =>
+    exact ? foldForSearch(value) === folded : foldForSearch(value).includes(folded);
 }
 
 /**
- * Names every sense of `entry` for linking, alongside the form the entry is listed under. An entry
- * carrying no senses names none, so it offers nothing to link a gloss to and drops out of a
- * search.
+ * The forms `entry` is listed and cited under in `writingSystem`, or in every writing system when
+ * `writingSystem` is absent.
  */
-function toCandidates(entry: LexiconEntry, lexiconCode: string): SenseCandidate[] {
-  return (entry.senses ?? []).map((sense) => ({
+function entryForms(entry: LexiconEntry, writingSystem: string | undefined): string[] {
+  return [entry.lexemeForm, entry.citationForm].flatMap((forms) => {
+    if (!forms) return [];
+    if (writingSystem === undefined) return Object.values(forms);
+    const form = forms[writingSystem];
+    return form === undefined ? [] : [form];
+  });
+}
+
+/**
+ * The gloss `sense` carries in the language `writingSystem` names, or every gloss it carries when
+ * `writingSystem` is absent. The lexicon keys glosses by its own writing systems, so a gloss under
+ * a broader or narrower tag of the same language stands in.
+ */
+function senseGlosses(sense: LexiconSense, writingSystem: string | undefined): string[] {
+  const glosses = sense.gloss ?? {};
+  if (writingSystem === undefined) return Object.values(glosses);
+  const gloss = multiStringTextByLanguage(glosses, writingSystem);
+  return gloss === '' ? [] : [gloss];
+}
+
+/** Names each of `senses` for linking, alongside the form their entry is listed under. */
+function toCandidates(
+  entry: LexiconEntry,
+  senses: readonly LexiconSense[],
+  lexiconCode: string,
+): SenseCandidate[] {
+  return senses.map((sense) => ({
     ...toResolvedSense(sense),
     lexemeForm: entry.lexemeForm,
     entryRef: { authority: FW_LITE_AUTHORITY, projectId: lexiconCode, entryId: entry.id },
     senseRef: { authority: FW_LITE_AUTHORITY, projectId: lexiconCode, senseId: sense.id },
   }));
+}
+
+/**
+ * The senses of `entry` that `query` matches: every sense of an entry whose form matches, or each
+ * sense whose own gloss matches. An entry carrying no senses offers nothing to link a gloss to, so
+ * it drops out of a search.
+ */
+function matchingSenses(entry: LexiconEntry, query: SenseQuery): LexiconSense[] {
+  const senses = entry.senses ?? [];
+  const matches = textMatcher(query);
+  if (query.field === 'form')
+    return entryForms(entry, query.writingSystem).some(matches) ? senses : [];
+  return senses.filter((sense) => senseGlosses(sense, query.writingSystem).some(matches));
 }
 
 /**
@@ -194,23 +234,20 @@ function createResolver(lexiconCode?: string): LexiconResolver {
       return sense ? toResolvedSense(sense) : undefined;
     },
 
-    searchByForm: async (form, options) => {
+    searchSenses: async (query) => {
       if (!lexiconCode) return [];
       const entries =
-        (await (await getEntryService())?.getEntries(lexiconCode, { surfaceForm: form })) ?? [];
-      // The backend searches every writing system it holds forms in, and cannot be told to search
-      // just one, so `writingSystem` narrows the results here instead. Holding a form in that
-      // writing system does not make an entry a match: the backend may have matched it on another
-      // language's form, or on a gloss.
-      const writingSystem = options?.writingSystem;
-      const candidates = entries
-        .filter((entry) => !writingSystem || matchesInWritingSystem(entry, form, writingSystem))
-        .flatMap((entry) => toCandidates(entry, lexiconCode));
+        (await (await getEntryService())?.getEntries(lexiconCode, { surfaceForm: query.text })) ??
+        [];
+      // The backend matches the text within any form or gloss, in every writing system, and cannot
+      // be told otherwise. So the query's field, exactness, and writing system narrow its results
+      // here instead.
+      const candidates = entries.flatMap((entry) =>
+        toCandidates(entry, matchingSenses(entry, query), lexiconCode),
+      );
       // Clamped, since a negative end offset would trim candidates off the end rather than cap
       // them: a caller asking for at most -1 gets none, not all but one.
-      return options?.limit === undefined
-        ? candidates
-        : candidates.slice(0, Math.max(0, options.limit));
+      return query.limit === undefined ? candidates : candidates.slice(0, Math.max(0, query.limit));
     },
 
     createEntry: async (draft) => {

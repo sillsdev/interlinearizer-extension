@@ -1,7 +1,7 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { TooltipProvider } from 'platform-bible-react';
 import type { SenseRef } from 'interlinearizer';
-import type { ResolvedSense, SenseCandidate } from 'interlinearizer/lexicon';
+import type { ResolvedSense, SenseCandidate, SenseQuery } from 'interlinearizer/lexicon';
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { PageClient } from '../../cache/pageClient';
 import { SessionAnalysisProvider } from '../../components/AnalysisStore';
@@ -101,22 +101,22 @@ export function testSenseRef(senseId: string): SenseRef {
 
 /**
  * One connected lexicon holding `senses`, keyed by sense id. A ref naming any other authority is
- * foreign to it. The lexicon can search when `searchByForm` is given, and cannot otherwise.
+ * foreign to it. The lexicon can search when `searchSenses` is given, and cannot otherwise.
  *
  * @returns The registry, and the lexicon's sense look-up so a test can see what was asked.
  */
 export function stubLexiconRegistry(
   senses?: Record<string, ResolvedSense>,
-  searchByForm?: (form: string) => Promise<SenseCandidate[]>,
+  searchSenses?: (query: SenseQuery) => Promise<SenseCandidate[]>,
 ) {
   const resolveSense = jest.fn(async ({ senseId }: SenseRef) => senses?.[senseId]);
   const registry = createLexiconRegistry([
     {
       ...nullLexiconResolver,
       authorities: [TEST_LEXICON_AUTHORITY],
-      capabilities: { ...nullLexiconResolver.capabilities, search: searchByForm !== undefined },
+      capabilities: { ...nullLexiconResolver.capabilities, search: searchSenses !== undefined },
       resolveSense,
-      ...(searchByForm && { searchByForm }),
+      ...(searchSenses && { searchSenses }),
     },
   ]);
   return { registry, resolveSense };
@@ -131,9 +131,9 @@ export function stubLexiconRegistry(
 export function withLexicon(
   children: ReactNode,
   senses?: Record<string, ResolvedSense>,
-  searchByForm?: (form: string) => Promise<SenseCandidate[]>,
+  searchSenses?: (query: SenseQuery) => Promise<SenseCandidate[]>,
 ) {
-  const { registry, resolveSense } = stubLexiconRegistry(senses, searchByForm);
+  const { registry, resolveSense } = stubLexiconRegistry(senses, searchSenses);
   return {
     ui: <LexiconSensesProvider registry={registry}>{children}</LexiconSensesProvider>,
     resolveSense,

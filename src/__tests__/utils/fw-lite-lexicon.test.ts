@@ -2,7 +2,8 @@
 
 import papi, { logger } from '@papi/frontend';
 import type { EntryRef, SenseRef } from 'interlinearizer';
-import type { LexiconEntry } from '../../types/lexicon-extension';
+import type { SenseQuery } from 'interlinearizer/lexicon';
+import type { LexiconEntry, LexiconSense } from '../../types/lexicon-extension';
 import { fwLiteLexiconProvider, resetEntryServiceForTesting } from '../../utils/fw-lite-lexicon';
 import { FW_LITE_AUTHORITY } from '../../utils/lexicon-authorities';
 import {
@@ -61,6 +62,16 @@ function entry(overrides?: Partial<LexiconEntry>): LexiconEntry {
     senses: [{ id: 's-1', gloss: { en: 'water' } }],
     ...overrides,
   };
+}
+
+/** A search for entries whose form contains `text`, in every writing system unless `overrides` say. */
+function formQuery(text: string, overrides: Partial<SenseQuery> = {}): SenseQuery {
+  return { text, field: 'form', exact: false, ...overrides };
+}
+
+/** A search for senses whose gloss contains `text`, in every writing system unless `overrides` say. */
+function glossQuery(text: string, overrides: Partial<SenseQuery> = {}): SenseQuery {
+  return { text, field: 'gloss', exact: false, ...overrides };
 }
 
 function entryRef(projectId?: string): EntryRef {
@@ -275,7 +286,9 @@ describe('fwLiteLexiconProvider', () => {
     });
 
     it('finds nothing to gloss a form with', async () => {
-      await expect(fwLiteLexiconProvider.connect().searchByForm('mayim')).resolves.toEqual([]);
+      await expect(
+        fwLiteLexiconProvider.connect().searchSenses(formQuery('mayim')),
+      ).resolves.toEqual([]);
     });
 
     it('refuses to create an entry rather than reporting one it did not create', async () => {
@@ -345,7 +358,7 @@ describe('fwLiteLexiconProvider', () => {
       });
     });
 
-    describe('searchByForm', () => {
+    describe('searchSenses', () => {
       it('names every sense of every matching entry, alongside the form it is listed under', async () => {
         const service = stubService({
           getEntries: jest.fn(async () => [
@@ -364,28 +377,28 @@ describe('fwLiteLexiconProvider', () => {
         });
         serve(service);
 
-        await expect(fwLiteLexiconProvider.connect(LEXICON).searchByForm('mayim')).resolves.toEqual(
-          [
-            {
-              gloss: { en: 'water' },
-              lexemeForm: { hbo: 'mayim' },
-              entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-1' },
-              senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-1' },
-            },
-            {
-              gloss: { en: 'waters' },
-              lexemeForm: { hbo: 'mayim' },
-              entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-1' },
-              senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-2' },
-            },
-            {
-              gloss: { en: 'sea' },
-              lexemeForm: { hbo: 'mayim2' },
-              entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-2' },
-              senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-3' },
-            },
-          ],
-        );
+        await expect(
+          fwLiteLexiconProvider.connect(LEXICON).searchSenses(formQuery('mayim')),
+        ).resolves.toEqual([
+          {
+            gloss: { en: 'water' },
+            lexemeForm: { hbo: 'mayim' },
+            entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-1' },
+            senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-1' },
+          },
+          {
+            gloss: { en: 'waters' },
+            lexemeForm: { hbo: 'mayim' },
+            entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-1' },
+            senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-2' },
+          },
+          {
+            gloss: { en: 'sea' },
+            lexemeForm: { hbo: 'mayim2' },
+            entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-2' },
+            senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-3' },
+          },
+        ]);
         expect(service.getEntries).toHaveBeenCalledWith(LEXICON, { surfaceForm: 'mayim' });
       });
 
@@ -401,30 +414,18 @@ describe('fwLiteLexiconProvider', () => {
 
         const candidates = await fwLiteLexiconProvider
           .connect(LEXICON)
-          .searchByForm('mayim', { writingSystem: 'hbo' });
+          .searchSenses(formQuery('mayim', { writingSystem: 'hbo' }));
 
         expect(candidates).toHaveLength(1);
         expect(candidates[0].lexemeForm).toEqual({ hbo: 'mayim' });
       });
 
-      it('caps the candidates at the count asked for', async () => {
-        serve(
-          stubService({
-            getEntries: jest.fn(async () => [entry(), entry({ id: 'e-2' })]),
-          }),
-        );
-
-        await expect(
-          fwLiteLexiconProvider.connect(LEXICON).searchByForm('mayim', { limit: 1 }),
-        ).resolves.toHaveLength(1);
-      });
-
       it('finds nothing when the lexicon cannot be read', async () => {
         serve(stubService({}));
 
-        await expect(fwLiteLexiconProvider.connect(LEXICON).searchByForm('mayim')).resolves.toEqual(
-          [],
-        );
+        await expect(
+          fwLiteLexiconProvider.connect(LEXICON).searchSenses(formQuery('mayim')),
+        ).resolves.toEqual([]);
       });
     });
 
@@ -514,7 +515,9 @@ describe('fwLiteLexiconProvider on a record missing a field its type requires', 
   it('offers no candidate for an entry carrying no senses', async () => {
     serve(stubService({ getEntries: jest.fn(async () => [SENSELESS_ENTRY]) }));
 
-    const candidates = await fwLiteLexiconProvider.connect(LEXICON).searchByForm('mayim');
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(formQuery('mayim'));
 
     expect(candidates).toEqual([]);
   });
@@ -524,21 +527,45 @@ describe('fwLiteLexiconProvider on a record missing a field its type requires', 
 
     const candidates = await fwLiteLexiconProvider
       .connect(LEXICON)
-      .searchByForm('mayim', { writingSystem: 'hbo' });
+      .searchSenses(formQuery('mayim', { writingSystem: 'hbo' }));
 
     expect(candidates).toEqual([]);
   });
 
-  // Narrowing by writing system is what drops a form-less entry. With nothing to narrow by, it
-  // stays in the search and only its form is missing, so the candidate names none.
-  it('offers a candidate naming no form for an entry listed under none', async () => {
+  it('matches no form for an entry listed under none, in any writing system', async () => {
     serve(stubService({ getEntries: jest.fn(async () => [FORMLESS_ENTRY]) }));
 
-    const candidates = await fwLiteLexiconProvider.connect(LEXICON).searchByForm('mayim');
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(formQuery('mayim'));
+
+    expect(candidates).toEqual([]);
+  });
+
+  it('offers a candidate naming no form when a gloss matches on an entry listed under none', async () => {
+    serve(stubService({ getEntries: jest.fn(async () => [FORMLESS_ENTRY]) }));
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(glossQuery('water'));
 
     expect(candidates).toEqual([
       { gloss: { en: 'water' }, entryRef: entryRef(LEXICON), senseRef: senseRef(LEXICON) },
     ]);
+  });
+
+  it('matches no gloss for a sense carrying none', async () => {
+    serve(
+      stubService({
+        getEntries: jest.fn(async () => [{ ...SENSELESS_ENTRY, senses: [GLOSSLESS_SENSE] }]),
+      }),
+    );
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(glossQuery('water'));
+
+    expect(candidates).toEqual([]);
   });
 
   it('says what went wrong when a created entry carries no senses at all', async () => {
@@ -550,13 +577,182 @@ describe('fwLiteLexiconProvider on a record missing a field its type requires', 
   });
 });
 
-describe('fwLiteLexiconProvider searchByForm limits', () => {
+describe('fwLiteLexiconProvider searchSenses by form', () => {
+  it('drops an entry the lexicon matched only by a gloss', async () => {
+    serve(stubService({ getEntries: jest.fn(async () => [entry()]) }));
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(formQuery('water'));
+
+    expect(candidates).toEqual([]);
+  });
+
+  it('keeps an entry whose citation form matches where its lexeme form does not', async () => {
+    const cited = entry({ citationForm: { hbo: 'hammayim' } });
+    serve(stubService({ getEntries: jest.fn(async () => [cited]) }));
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(formQuery('hammayim', { writingSystem: 'hbo' }));
+
+    expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-1']);
+  });
+
+  it('keeps an entry whose form holds the text within it', async () => {
+    serve(
+      stubService({
+        getEntries: jest.fn(async () => [entry({ lexemeForm: { hbo: 'hammayim' } })]),
+      }),
+    );
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(formQuery('mayim'));
+
+    expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-1']);
+  });
+
+  it('keeps only an entry whose whole form matches, ignoring case, when the search is exact', async () => {
+    serve(
+      stubService({
+        getEntries: jest.fn(async () => [
+          entry({ id: 'e-long', lexemeForm: { hbo: 'hammayim' } }),
+          entry({ id: 'e-whole', lexemeForm: { hbo: 'Mayim' } }),
+        ]),
+      }),
+    );
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(formQuery('mayim', { exact: true }));
+
+    expect(candidates.map((c) => c.entryRef.entryId)).toEqual(['e-whole']);
+  });
+
+  it('offers every sense of a matching entry, whatever their glosses', async () => {
+    const twoSenses = entry({
+      senses: [
+        { id: 's-1', gloss: { en: 'water' } },
+        { id: 's-2', gloss: { en: 'sea' } },
+      ],
+    });
+    serve(stubService({ getEntries: jest.fn(async () => [twoSenses]) }));
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(formQuery('mayim'));
+
+    expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-1', 's-2']);
+  });
+});
+
+describe('fwLiteLexiconProvider searchSenses by gloss', () => {
+  const SENSES: LexiconSense[] = [
+    { id: 's-water', gloss: { en: 'water', fr: 'eau' } },
+    { id: 's-waters', gloss: { en: 'Waters' } },
+    { id: 's-sea', gloss: { en: 'sea' } },
+  ];
+
+  /** Serves one entry listed under `mayim`, holding {@link SENSES}. */
+  function serveSenses() {
+    serve(stubService({ getEntries: jest.fn(async () => [entry({ senses: SENSES })]) }));
+  }
+
+  it('offers only the senses whose gloss holds the text', async () => {
+    serveSenses();
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(glossQuery('water'));
+
+    expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-water', 's-waters']);
+  });
+
+  it('offers only the senses whose whole gloss matches, ignoring case, when the search is exact', async () => {
+    serveSenses();
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(glossQuery('WATER', { exact: true }));
+
+    expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-water']);
+  });
+
+  it('drops an entry the lexicon matched only by its form', async () => {
+    serveSenses();
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(glossQuery('mayim'));
+
+    expect(candidates).toEqual([]);
+  });
+
+  it('misses a gloss held only in another writing system than the one asked for', async () => {
+    serveSenses();
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(glossQuery('eau', { writingSystem: 'en' }));
+
+    expect(candidates).toEqual([]);
+  });
+
+  it('matches a gloss in the writing system asked for', async () => {
+    serveSenses();
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(glossQuery('eau', { writingSystem: 'fr' }));
+
+    expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-water']);
+  });
+
+  it('matches a gloss the lexicon keys under a broader tag of the language asked for', async () => {
+    serveSenses();
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(glossQuery('sea', { writingSystem: 'en-US' }));
+
+    expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-sea']);
+  });
+
+  it('matches a gloss in any writing system when none is asked for', async () => {
+    serveSenses();
+
+    const candidates = await fwLiteLexiconProvider.connect(LEXICON).searchSenses(glossQuery('eau'));
+
+    expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-water']);
+  });
+});
+
+describe('fwLiteLexiconProvider searchSenses limits', () => {
+  it('caps the candidates left once the search has narrowed them', async () => {
+    serve(
+      stubService({
+        getEntries: jest.fn(async () => [
+          entry({ id: 'e-yam', lexemeForm: { hbo: 'yam' } }),
+          entry({ id: 'e-2' }),
+          entry({ id: 'e-3' }),
+        ]),
+      }),
+    );
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(formQuery('mayim', { limit: 1 }));
+
+    expect(candidates.map((c) => c.entryRef.entryId)).toEqual(['e-2']);
+  });
+
   it('caps at none for a limit below zero, rather than trimming from the end', async () => {
     serve(stubService({ getEntries: jest.fn(async () => [entry(), entry({ id: 'e-2' })]) }));
 
     const candidates = await fwLiteLexiconProvider
       .connect(LEXICON)
-      .searchByForm('mayim', { limit: -1 });
+      .searchSenses(formQuery('mayim', { limit: -1 }));
 
     expect(candidates).toEqual([]);
   });
@@ -566,13 +762,13 @@ describe('fwLiteLexiconProvider searchByForm limits', () => {
 
     const candidates = await fwLiteLexiconProvider
       .connect(LEXICON)
-      .searchByForm('mayim', { limit: 0 });
+      .searchSenses(formQuery('mayim', { limit: 0 }));
 
     expect(candidates).toEqual([]);
   });
 });
 
-describe('fwLiteLexiconProvider searchByForm writing systems', () => {
+describe('fwLiteLexiconProvider searchSenses writing systems', () => {
   it('drops an entry whose queried text sits under another writing system', async () => {
     // The backend searches every writing system it holds forms in, so it matched this entry on its
     // English form. Asked for Hebrew, the Hebrew form is the one that has to match.
@@ -581,7 +777,7 @@ describe('fwLiteLexiconProvider searchByForm writing systems', () => {
 
     const candidates = await fwLiteLexiconProvider
       .connect(LEXICON)
-      .searchByForm('water', { writingSystem: 'hbo' });
+      .searchSenses(formQuery('water', { writingSystem: 'hbo' }));
 
     expect(candidates).toEqual([]);
   });
@@ -592,7 +788,7 @@ describe('fwLiteLexiconProvider searchByForm writing systems', () => {
 
     const candidates = await fwLiteLexiconProvider
       .connect(LEXICON)
-      .searchByForm('mayim', { writingSystem: 'hbo' });
+      .searchSenses(formQuery('mayim', { writingSystem: 'hbo' }));
 
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.lexemeForm).toEqual({ en: 'water', hbo: 'mayim' });
@@ -604,7 +800,7 @@ describe('fwLiteLexiconProvider searchByForm writing systems', () => {
 
     const candidates = await fwLiteLexiconProvider
       .connect(LEXICON)
-      .searchByForm('\u05de\u05d9\u05dd', { writingSystem: 'hbo' });
+      .searchSenses(formQuery('\u05de\u05d9\u05dd', { writingSystem: 'hbo' }));
 
     expect(candidates).toHaveLength(1);
   });
@@ -613,7 +809,9 @@ describe('fwLiteLexiconProvider searchByForm writing systems', () => {
     const multilingual = entry({ lexemeForm: { en: 'water', hbo: 'mayim' } });
     serve(stubService({ getEntries: jest.fn(async () => [multilingual]) }));
 
-    const candidates = await fwLiteLexiconProvider.connect(LEXICON).searchByForm('water');
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(formQuery('water'));
 
     expect(candidates).toHaveLength(1);
   });

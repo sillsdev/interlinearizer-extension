@@ -660,7 +660,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Deletes the shards of the `wiped` books. A failed deletion is logged, not thrown.
+   * Deletes the shards of the `wiped` books. A deleted book's shard is also dropped from
+   * {@link shardContents}. A failed deletion is logged, not thrown.
    *
    * @returns The books whose shard could not be deleted.
    */
@@ -776,8 +777,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
 
   /**
    * Reads the shards of the `analysisBooks` a manifest names. A save interrupted before its
-   * envelope landed leaves shards this manifest never came to name. Those shards are read too, and
-   * the anchored versions of the books such a save may have rewritten are dropped.
+   * envelope landed leaves shards this manifest never came to name. Those shards are read too. The
+   * anchored versions of the books such a save may have rewritten are dropped.
    *
    * @returns `shards`, every shard read with the manifest's books first, and `orphaned`, the books
    *   read that the manifest does not name.

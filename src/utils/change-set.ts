@@ -217,10 +217,34 @@ function mergeRecordChanges<T extends { id: string }>(
 }
 
 /**
+ * Throws if `then` puts an analysis that `first` deletes, because merged changes would keep the
+ * links that the delete takes with it.
+ */
+function assertNoAnalysisRestored(
+  first: RecordChanges<{ id: string }> | undefined,
+  then: RecordChanges<{ id: string }> | undefined,
+  kind: string,
+): void {
+  if (!first || !then) return;
+  const deleted = new Set(first.deletes);
+  const restored = then.puts.find(({ id }) => deleted.has(id));
+  if (restored) {
+    throw new Error(
+      `Interlinearizer: cannot merge change sets that delete and then put ${kind} ${restored.id}`,
+    );
+  }
+}
+
+/**
  * Changes that apply as `first` and then `then` do, named by `first`'s intent. Where both name a
  * record, or both carry the scope's record, `then`'s stands.
+ *
+ * @throws {Error} If `then` puts an analysis that `first` deletes.
  */
 export function mergeChangeSets(first: ChangeSet, then: ChangeSet): ChangeSet {
+  assertNoAnalysisRestored(first.segmentAnalyses, then.segmentAnalyses, 'segment analysis');
+  assertNoAnalysisRestored(first.tokenAnalyses, then.tokenAnalyses, 'token analysis');
+  assertNoAnalysisRestored(first.phraseAnalyses, then.phraseAnalyses, 'phrase analysis');
   const scope = then.scope ?? first.scope;
   const segmentAnalyses = mergeRecordChanges(first.segmentAnalyses, then.segmentAnalyses);
   const segmentAnalysisLinks = mergeRecordChanges(

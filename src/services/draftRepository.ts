@@ -433,7 +433,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     }
     this.current = { draft, index };
     this.anchored = anchored;
-    return { inverse, applied, wasDirty: base.dirty };
+    return { inverse, applied: jsonCopy(applied), wasDirty: base.dirty };
   }
 
   /**

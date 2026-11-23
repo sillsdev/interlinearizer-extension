@@ -361,7 +361,7 @@ describe('mergeChangeSets', () => {
     };
     const then = {
       intent: 'then',
-      tokenAnalyses: { puts: [payload('a', 'two'), payload('b', 'back')], deletes: ['d', 'c'] },
+      tokenAnalyses: { puts: [payload('a', 'two'), payload('e')], deletes: ['d', 'c'] },
     };
 
     const merged = applyChangeSet(draft, mergeChangeSets(first, then)).draft;
@@ -371,6 +371,27 @@ describe('mergeChangeSets', () => {
       expect.arrayContaining(inTurn.analysis.tokenAnalyses),
     );
     expect(merged.analysis.tokenAnalyses).toHaveLength(inTurn.analysis.tokenAnalyses.length);
+  });
+
+  it.each(['segmentAnalyses', 'tokenAnalyses', 'phraseAnalyses'] as const)(
+    'throws when the later change set puts one of %s that the first deletes',
+    (kind) => {
+      const first = { intent: 'a', [kind]: { puts: [], deletes: ['x'] } };
+      const then = { intent: 'b', [kind]: { puts: [{ id: 'x' }], deletes: [] } };
+
+      expect(() => mergeChangeSets(first, then)).toThrow(/delete and then put .* x/);
+    },
+  );
+
+  it('merges a link that the first change set deletes and the later one puts', () => {
+    const link = makeTokenLink('a', 'GEN 1:1:0', { id: 'l' });
+
+    const merged = mergeChangeSets(
+      { intent: 'a', tokenAnalysisLinks: { puts: [], deletes: ['l'] } },
+      { intent: 'b', tokenAnalysisLinks: { puts: [link], deletes: [] } },
+    );
+
+    expect(merged.tokenAnalysisLinks).toStrictEqual({ puts: [link], deletes: [] });
   });
 
   it("is named by the first change set's intent", () => {

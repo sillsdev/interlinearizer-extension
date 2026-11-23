@@ -165,33 +165,46 @@ function CandidateButton({
 }
 
 /**
- * Searches for the senses `form` could link to, and reports how the search stands. An answer that
- * arrives after unmounting, or after the form or search changes, is dropped. Without `search`,
- * nothing is searched and the outcome stays pending.
+ * Searches for the senses `form` could link to. The outcome reads pending until the latest search
+ * answers, so an answer for an earlier form or search is never shown. Without `search`, nothing is
+ * searched and the outcome stays pending.
+ *
+ * @returns How the latest search stands, and `retry`, which searches again.
  */
 function useCandidateSearch(
   form: string,
   search: ((form: string) => Promise<SenseCandidate[]>) | undefined,
-): SearchOutcome {
-  const [outcome, setOutcome] = useState<SearchOutcome>({ status: 'pending' });
+): { outcome: SearchOutcome; retry: () => void } {
+  const [attempt, setAttempt] = useState(0);
+  const [answer, setAnswer] = useState<{
+    form: string;
+    search: (form: string) => Promise<SenseCandidate[]>;
+    attempt: number;
+    outcome: SearchOutcome;
+  }>();
 
   useEffect(() => {
     if (!search) return undefined;
     let abandoned = false;
     (async () => {
+      let outcome: SearchOutcome;
       try {
-        const candidates = await search(form);
-        if (!abandoned) setOutcome({ status: 'found', candidates });
+        outcome = { status: 'found', candidates: await search(form) };
       } catch {
-        if (!abandoned) setOutcome({ status: 'failed' });
+        outcome = { status: 'failed' };
       }
+      if (!abandoned) setAnswer({ form, search, attempt, outcome });
     })();
     return () => {
       abandoned = true;
     };
-  }, [form, search]);
+  }, [form, search, attempt]);
 
-  return outcome;
+  const current = answer?.form === form && answer.search === search && answer.attempt === attempt;
+  return {
+    outcome: current ? answer.outcome : { status: 'pending' },
+    retry: () => setAttempt((previous) => previous + 1),
+  };
 }
 
 /** The senses a search turned up, listed to pick from. */
@@ -288,7 +301,7 @@ function PopoverBody({
   onClose: () => void;
 }>) {
   const [view, setView] = useState<View>('menu');
-  const outcome = useCandidateSearch(form, canLink ? search : undefined);
+  const { outcome, retry } = useCandidateSearch(form, canLink ? search : undefined);
 
   const linked = senseRef !== undefined;
   const onlyCurrent =
@@ -297,7 +310,7 @@ function PopoverBody({
     outcome.candidates.every((candidate) => sameSense(senseRef, candidate.senseRef));
 
   let content: ReactNode;
-  if (view === 'search')
+  if (view === 'search' && canLink)
     content = (
       <SearchView
         analysisLanguage={analysisLanguage}
@@ -367,7 +380,10 @@ function PopoverBody({
               disabled={onlyCurrent}
               size="sm"
               variant="ghost"
-              onClick={() => setView('search')}
+              onClick={() => {
+                if (outcome.status === 'failed') retry();
+                setView('search');
+              }}
             >
               {
                 localizedStrings[

@@ -91,7 +91,7 @@ function renderControl(
     },
   ]);
   const handlers = { onLink: jest.fn(), onUnlink: jest.fn(), onAdopt: jest.fn() };
-  const view = render(
+  const tree = (overrides: Partial<ComponentProps<typeof CatalogSenseControl>>) => (
     <TooltipProvider>
       <LexiconSensesProvider registry={registry}>
         <CatalogSenseControl
@@ -101,12 +101,15 @@ function renderControl(
           localizedStrings={STRINGS}
           readOnly={false}
           {...handlers}
-          {...props}
+          {...overrides}
         />
       </LexiconSensesProvider>
-    </TooltipProvider>,
+    </TooltipProvider>
   );
-  return { ...view, ...handlers, searchByForm, resolveSense };
+  const view = render(tree(props));
+  const rerenderWith = (next: Partial<ComponentProps<typeof CatalogSenseControl>>) =>
+    view.rerender(tree({ ...props, ...next }));
+  return { ...view, ...handlers, searchByForm, resolveSense, rerenderWith };
 }
 
 /** Opens the control's popover. */
@@ -469,6 +472,49 @@ describe('CatalogSenseControl', () => {
       expect(await screen.findByTestId('catalog-sense-search-failed')).toHaveTextContent(
         'senseSearchFailed',
       );
+    });
+
+    it('searches again when the action is chosen again after a failed search', async () => {
+      renderControl(
+        {},
+        {
+          searchByForm: jest
+            .fn()
+            .mockRejectedValueOnce(new Error('down'))
+            .mockRejectedValueOnce(new Error('down'))
+            .mockResolvedValue([candidate('s-1')]),
+        },
+      );
+      await openPopover();
+      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
+      await screen.findByTestId('catalog-sense-search-failed');
+
+      await userEvent.click(screen.getByRole('button', { name: 'senseBack' }));
+      await userEvent.click(screen.getByRole('button', { name: 'senseLinkAction' }));
+
+      expect(await screen.findByTestId('catalog-sense-candidate')).toBeInTheDocument();
+    });
+
+    it('drops the old candidates while the search for a changed form is out', async () => {
+      const second = deferred<SenseCandidate[]>();
+      const { rerenderWith } = renderControl(
+        {},
+        {
+          searchByForm: jest
+            .fn()
+            .mockResolvedValueOnce([candidate('s-1')])
+            .mockReturnValue(second.promise),
+        },
+      );
+      await openPopover();
+      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
+      await screen.findByTestId('catalog-sense-candidate');
+
+      rerenderWith({ form: 'agu' });
+
+      expect(screen.queryByTestId('catalog-sense-candidate')).not.toBeInTheDocument();
+      expect(screen.getByTestId('spinner')).toBeInTheDocument();
+      await act(async () => second.resolve([]));
     });
 
     it('lists each candidate by its gloss in the analysis language, with what tells it apart', async () => {

@@ -766,13 +766,14 @@ export function describeAnalysisRepositoryConformance(
             intent: 'put',
             tokenAnalyses: { puts: tokenAnalyses, deletes: [] },
           });
+          expect(applied.tokenAnalyses?.puts).toHaveLength(tokenAnalyses.length);
           (applied.tokenAnalyses?.puts ?? []).forEach((record) => {
             record.surfaceText = 'changed';
           });
 
           await expect(
             repository.getTokenAnalyses(tokenAnalyses.map(({ id }) => id)).then(unstampedInIdOrder),
-          ).resolves.toStrictEqual(unstampedInIdOrder(tokenAnalyses));
+          ).resolves.toStrictEqual(unstampedInIdOrder(newRecords().tokenAnalyses));
         });
 
         it('leaves a delete it skipped out of what it reports as applied', async () => {

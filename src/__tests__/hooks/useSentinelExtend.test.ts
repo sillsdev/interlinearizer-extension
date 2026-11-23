@@ -100,28 +100,33 @@ describe('useSentinelExtend', () => {
     expect(global.ioInstances).toHaveLength(0);
   });
 
-  it('ignores a sentinel whose newest entry in a delivery left the margin', () => {
-    const { root, leading } = mountRootAndSentinels();
-    const onReach = jest.fn();
-    renderHook(() =>
-      useSentinelExtend({
-        root,
-        sentinels: [['leading', leading]],
-        margin: 400,
-        onReach,
-        resubscribeKeys: [],
-      }),
-    );
+  it.each([
+    { order: 'entered then left', entries: [true, false], expectedCalls: [] },
+    { order: 'left then entered', entries: [false, true], expectedCalls: [['leading']] },
+  ])(
+    "lets a sentinel's newest entry in a delivery decide ($order)",
+    ({ entries, expectedCalls }) => {
+      const { root, leading } = mountRootAndSentinels();
+      const onReach = jest.fn();
+      renderHook(() =>
+        useSentinelExtend({
+          root,
+          sentinels: [['leading', leading]],
+          margin: 400,
+          onReach,
+          resubscribeKeys: [],
+        }),
+      );
 
-    act(() =>
-      global.ioInstances[0].callback([
-        { target: leading, isIntersecting: true },
-        { target: leading, isIntersecting: false },
-      ]),
-    );
+      act(() =>
+        global.ioInstances[0].callback(
+          entries.map((isIntersecting) => ({ target: leading, isIntersecting })),
+        ),
+      );
 
-    expect(onReach).not.toHaveBeenCalled();
-  });
+      expect(onReach.mock.calls).toEqual(expectedCalls);
+    },
+  );
 
   it('ignores a delivery from an observer it has replaced', () => {
     const { root, leading } = mountRootAndSentinels();

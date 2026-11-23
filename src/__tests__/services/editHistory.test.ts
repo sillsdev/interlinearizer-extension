@@ -49,12 +49,12 @@ describe('EditHistory', () => {
     await expect(storedIds()).resolves.toStrictEqual(['a']);
   });
 
-  it('returns what reverts an edit it applies', async () => {
+  it('returns what an edit it applies changed, and what reverts it', async () => {
     const { history } = makeHistory();
 
     await expect(history.apply(putting('a'))).resolves.toStrictEqual({
-      intent: 'put a',
-      tokenAnalyses: { puts: [], deletes: ['a'] },
+      changes: putting('a'),
+      inverse: { intent: 'put a', tokenAnalyses: { puts: [], deletes: ['a'] } },
     });
   });
 
@@ -137,6 +137,22 @@ describe('EditHistory', () => {
     await expect(history.undo()).resolves.toMatchObject({ step });
     await expect(history.redo()).resolves.toMatchObject({ step });
     await expect(history.redo()).resolves.not.toHaveProperty('step');
+  });
+
+  it('returns with an undo the links that the repository deleted with an analysis', async () => {
+    const { history, repository } = makeHistory();
+    await history.apply(putting('a'));
+    await repository.apply({
+      intent: 'link',
+      tokenAnalysisLinks: {
+        puts: [makeTokenLink('a', 'GEN 1:1:0', { id: 'linked' })],
+        deletes: [],
+      },
+    });
+
+    const undone = await history.undo();
+
+    expect(undone?.changes.tokenAnalysisLinks).toStrictEqual({ puts: [], deletes: ['linked'] });
   });
 
   it('has nothing to undo before any edit', async () => {

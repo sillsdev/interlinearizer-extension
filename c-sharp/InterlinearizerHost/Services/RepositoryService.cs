@@ -58,7 +58,7 @@ internal sealed class RepositoryService(PapiClient papi, OpenSources sources)
             ("createProject", (Func<CreateProjectArgs, Task>)CreateProject),
             ("updateProject", (Func<UpdateProjectArgs, Task>)UpdateProject),
             ("deleteProject", (Func<ProjectArgs, Task>)DeleteProject),
-            ("apply", (Func<ApplyArgs, Task>)Apply),
+            ("apply", (Func<ApplyArgs, Task<ChangeSet>>)Apply),
             ("readAll", (Func<ProjectArgs, Task<TextAnalysis>>)ReadAll),
             ("getTokenAnalyses", (Func<IdsArgs, Task<List<TokenAnalysis>>>)GetTokenAnalyses),
             ("getPhraseAnalyses", (Func<IdsArgs, Task<List<PhraseAnalysis>>>)GetPhraseAnalyses),
@@ -99,7 +99,7 @@ internal sealed class RepositoryService(PapiClient papi, OpenSources sources)
 
     private Task DeleteProject(ProjectArgs args) => OnProjects(args.SourceProjectId, p => p.Delete(ParseProjectId(args.ProjectId)));
 
-    private Task Apply(ApplyArgs args) => OnRepository(args, r => r.Apply(args.Changes));
+    private Task<ChangeSet> Apply(ApplyArgs args) => OnRepository(args, r => r.Apply(args.Changes));
 
     private Task<TextAnalysis> ReadAll(ProjectArgs args) => OnRepository(args, r => r.ReadAll());
 

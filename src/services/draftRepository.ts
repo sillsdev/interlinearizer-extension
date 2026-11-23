@@ -405,10 +405,9 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   async apply(changes: ChangeSet, options?: ApplyOptions): Promise<ApplyResult> {
     const { draft: base, index } = await this.indexed();
     const copied = jsonCopy(changes);
-    const applied = applyChangeSet(base, copied);
-    const { inverse } = applied;
-    const draft = options?.keepDirty ? { ...applied.draft, dirty: base.dirty } : applied.draft;
-    const reached = index.reach(copied);
+    const { draft: changed, inverse, applied } = applyChangeSet(base, copied);
+    const draft = options?.keepDirty ? { ...changed, dirty: base.dirty } : changed;
+    const reached = index.reach(applied);
     const storedBooks = await perfTimeAsync('saveDraft:read', () =>
       this.assertStoredDraftIsWritable(),
     );
@@ -418,7 +417,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
         `Interlinearizer: the draft for ${this.sourceProjectId} could not read the stored analysis of ${refused.join(', ')}, so it refuses changes there`,
       );
     }
-    index.apply(copied);
+    index.apply(applied);
     const anchored = new Map(this.anchored);
     if (options?.anchoredTo)
       anchored.set(options.anchoredTo.bookCode, options.anchoredTo.textVersion);
@@ -434,7 +433,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     }
     this.current = { draft, index };
     this.anchored = anchored;
-    return { inverse, wasDirty: base.dirty };
+    return { inverse, applied, wasDirty: base.dirty };
   }
 
   /**

@@ -1,10 +1,14 @@
 import type { DraftProject } from 'interlinearizer';
 import type { ChangeSet, RecordChanges, ScopeRecord } from '../types/analysis-repository';
 
-/** A draft with a {@link ChangeSet} applied, and the change set that restores what it replaced. */
+/**
+ * A draft with a {@link ChangeSet} applied, the change set that restores what it replaced, and what
+ * the changes changed, as an apply reports it.
+ */
 export type AppliedChanges = {
   draft: DraftProject;
   inverse: ChangeSet;
+  applied: ChangeSet;
 };
 
 /** Each record that a kind's changes put, and each that the changes' inverse restores. */
@@ -30,14 +34,15 @@ export function scopeRecordOf({ analysis, dirty, ...scope }: DraftProject): Scop
  * Applies one record kind's changes to `records`.
  *
  * @returns The records the changes leave, and the changes that restore what they replaced, absent
- *   when the changes replaced nothing and added nothing.
+ *   when the changes replaced nothing and added nothing. Also the changes less each delete of a
+ *   record not stored, absent when that leaves none.
  * @throws {Error} If an id appears more than once in the changes.
  */
 function applyRecordChanges<T extends { id: string }>(
   records: T[],
   changes: RecordChanges<T> | undefined,
   kind: string,
-): { records: T[]; inverse?: RecordChanges<T> } {
+): { records: T[]; inverse?: RecordChanges<T>; applied?: RecordChanges<T> } {
   if (!changes) return { records };
   const named = new Set<string>();
   [...changes.puts.map(({ id }) => id), ...changes.deletes].forEach((id) => {
@@ -76,16 +81,44 @@ function applyRecordChanges<T extends { id: string }>(
   puts.forEach((record, id) => {
     if (!stored.has(id)) next.push(record);
   });
+  const applied: RecordChanges<T> = {
+    puts: changes.puts,
+    deletes: changes.deletes.filter((id) => stored.has(id)),
+  };
   return {
     records: next,
     ...((inverse.puts.length > 0 || inverse.deletes.length > 0) && { inverse }),
+    ...((applied.puts.length > 0 || applied.deletes.length > 0) && { applied }),
   };
 }
 
 /**
- * Applies `changes` to `draft`, leaving `draft` as it was. The result is marked unsaved. It shares
- * the put records and any scope record with `changes`, and everything else with `draft`, including
- * the records the inverse restores.
+ * `changes` to one link kind, with a delete added for each of `links` that names one of
+ * `deletedAnalyses` and that `changes` leave alone.
+ */
+function withCascade<T extends { id: string; analysisId: string }>(
+  links: T[],
+  changes: RecordChanges<T> | undefined,
+  deletedAnalyses: RecordChanges<{ id: string }> | undefined,
+): RecordChanges<T> | undefined {
+  if (!deletedAnalyses || deletedAnalyses.deletes.length === 0) return changes;
+  const deleted = new Set(deletedAnalyses.deletes);
+  const named = new Set([
+    ...(changes?.puts ?? []).map(({ id }) => id),
+    ...(changes?.deletes ?? []),
+  ]);
+  const taken = links
+    .filter(({ id, analysisId }) => deleted.has(analysisId) && !named.has(id))
+    .map(({ id }) => id);
+  if (taken.length === 0) return changes;
+  return { puts: changes?.puts ?? [], deletes: [...(changes?.deletes ?? []), ...taken] };
+}
+
+/**
+ * Applies `changes` to `draft`, leaving `draft` as it was. Deleting an analysis also deletes each
+ * link that names it and that `changes` leave alone; the inverse restores such links. The result is
+ * marked unsaved. It shares the put records and any scope record with `changes`, and everything
+ * else with `draft`, including the records the inverse restores.
  *
  * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
  *   record names another source project.
@@ -102,29 +135,33 @@ export function applyChangeSet(draft: DraftProject, changes: ChangeSet): Applied
     changes.segmentAnalyses,
     'segment analysis',
   );
-  const segmentAnalysisLinks = applyRecordChanges(
-    analysis.segmentAnalysisLinks,
-    changes.segmentAnalysisLinks,
-    'segment analysis link',
-  );
   const tokenAnalyses = applyRecordChanges(
     analysis.tokenAnalyses,
     changes.tokenAnalyses,
     'token analysis',
-  );
-  const tokenAnalysisLinks = applyRecordChanges(
-    analysis.tokenAnalysisLinks,
-    changes.tokenAnalysisLinks,
-    'token analysis link',
   );
   const phraseAnalyses = applyRecordChanges(
     analysis.phraseAnalyses,
     changes.phraseAnalyses,
     'phrase analysis',
   );
+  const segmentAnalysisLinks = applyRecordChanges(
+    analysis.segmentAnalysisLinks,
+    withCascade(
+      analysis.segmentAnalysisLinks,
+      changes.segmentAnalysisLinks,
+      segmentAnalyses.applied,
+    ),
+    'segment analysis link',
+  );
+  const tokenAnalysisLinks = applyRecordChanges(
+    analysis.tokenAnalysisLinks,
+    withCascade(analysis.tokenAnalysisLinks, changes.tokenAnalysisLinks, tokenAnalyses.applied),
+    'token analysis link',
+  );
   const phraseAnalysisLinks = applyRecordChanges(
     analysis.phraseAnalysisLinks,
-    changes.phraseAnalysisLinks,
+    withCascade(analysis.phraseAnalysisLinks, changes.phraseAnalysisLinks, phraseAnalyses.applied),
     'phrase analysis link',
   );
 
@@ -137,6 +174,16 @@ export function applyChangeSet(draft: DraftProject, changes: ChangeSet): Applied
     ...(tokenAnalysisLinks.inverse && { tokenAnalysisLinks: tokenAnalysisLinks.inverse }),
     ...(phraseAnalyses.inverse && { phraseAnalyses: phraseAnalyses.inverse }),
     ...(phraseAnalysisLinks.inverse && { phraseAnalysisLinks: phraseAnalysisLinks.inverse }),
+  };
+  const applied: ChangeSet = {
+    intent: changes.intent,
+    ...(changes.scope && { scope: changes.scope }),
+    ...(segmentAnalyses.applied && { segmentAnalyses: segmentAnalyses.applied }),
+    ...(segmentAnalysisLinks.applied && { segmentAnalysisLinks: segmentAnalysisLinks.applied }),
+    ...(tokenAnalyses.applied && { tokenAnalyses: tokenAnalyses.applied }),
+    ...(tokenAnalysisLinks.applied && { tokenAnalysisLinks: tokenAnalysisLinks.applied }),
+    ...(phraseAnalyses.applied && { phraseAnalyses: phraseAnalyses.applied }),
+    ...(phraseAnalysisLinks.applied && { phraseAnalysisLinks: phraseAnalysisLinks.applied }),
   };
   return {
     draft: {
@@ -152,6 +199,7 @@ export function applyChangeSet(draft: DraftProject, changes: ChangeSet): Applied
       },
     },
     inverse,
+    applied,
   };
 }
 

@@ -84,6 +84,8 @@ export type LinkedGloss = DisplayedGloss &
      * failed.
      */
     lexiconAnswered: boolean;
+    /** Whether a connected lexicon has answered for the ref with a sense. */
+    senseFound: boolean;
   }>;
 
 /**
@@ -108,6 +110,7 @@ export function useLinkedGloss(
   );
   const lexiconAnswered = senseRef !== undefined && !registry.isForeign(senseRef) && answered;
   const senseGloss = multiStringTextByLanguage(sense?.gloss, language);
+  const senseFound = sense !== undefined;
 
   if (gloss)
     return {
@@ -116,6 +119,7 @@ export function useLinkedGloss(
       senseGloss,
       differs: senseGloss !== '' && senseGloss.trim() !== gloss.trim(),
       lexiconAnswered,
+      senseFound,
     };
   return {
     text: senseGloss,
@@ -123,6 +127,7 @@ export function useLinkedGloss(
     senseGloss,
     differs: false,
     lexiconAnswered,
+    senseFound,
   };
 }
 
@@ -138,6 +143,14 @@ export function useLexiconSearch(): ((form: string) => Promise<SenseCandidate[]>
     () => (resolver ? (form: string) => resolver.searchByForm(form) : undefined),
     [resolver],
   );
+}
+
+/**
+ * Lists every sense of the entry that a sense belongs to, through the lexicon that minted the
+ * sense's ref. The function keeps its identity while the connected lexicons stay the same.
+ */
+export function useEntrySenses(): (ref: SenseRef) => Promise<SenseCandidate[] | undefined> {
+  return useContext(LexiconRegistryContext).listEntrySenses;
 }
 
 /** Asks for the sense `senseRef` points to, and reads it once it arrives. */

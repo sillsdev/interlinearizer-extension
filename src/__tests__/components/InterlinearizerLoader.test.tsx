@@ -871,6 +871,7 @@ function mockLexiconRegistry(openChooser?: () => Promise<boolean>) {
     isForeign: () => true,
     resolverWith: () => undefined,
     resolveSense: async () => undefined,
+    listEntrySenses: async () => undefined,
     openChooser,
   });
 }

@@ -135,6 +135,7 @@ function mockLoaderHooks(): void {
     isForeign: () => true,
     resolverWith: () => undefined,
     resolveSense: async () => undefined,
+    listEntrySenses: async () => undefined,
     openChooser: undefined,
   });
   jest

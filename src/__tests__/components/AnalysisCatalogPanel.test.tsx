@@ -11,6 +11,7 @@ import type {
   AssignmentStatus,
   Book,
   MorphemeAnalysis,
+  SenseRef,
   TextAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
@@ -164,6 +165,8 @@ type PanelOptions = Partial<{
   senses: Record<string, ResolvedSense>;
   /** Searches the connected lexicon for the senses of a form. Omitted, the lexicon cannot search. */
   search: (form: string) => Promise<SenseCandidate[]>;
+  /** Lists the senses of a linked sense's entry. Omitted, the lexicon lists none. */
+  listEntrySenses: (ref: SenseRef) => Promise<SenseCandidate[] | undefined>;
 }>;
 
 /** Reads every token as still carrying the form its analysis was recorded under. */
@@ -253,7 +256,9 @@ function renderPanel(overrides: PanelOptions = {}) {
   // the same tree.
   return renderOver(
     overrides.analysis,
-    overrides.senses ? withLexicon(panel, overrides.senses, overrides.search).ui : panel,
+    overrides.senses
+      ? withLexicon(panel, overrides.senses, overrides.search, overrides.listEntrySenses).ui
+      : panel,
     overrides.text,
     overrides.book,
   );
@@ -3880,11 +3885,11 @@ describe('AnalysisCatalogPanel', () => {
       's-new': { gloss: { en: 'reason' } },
     };
 
-    /** A search hit for the sense `senseId`. */
-    function candidate(senseId: string): SenseCandidate {
+    /** A search hit for the sense `senseId` of the entry `entryId`. */
+    function candidate(senseId: string, entryId = 'e-word'): SenseCandidate {
       return {
         gloss: { en: senseId },
-        entryRef: { authority: TEST_LEXICON_AUTHORITY, entryId: `e-${senseId}` },
+        entryRef: { authority: TEST_LEXICON_AUTHORITY, entryId },
         senseRef: testSenseRef(senseId),
       };
     }
@@ -4024,14 +4029,40 @@ describe('AnalysisCatalogPanel', () => {
       await renderPanel({
         analysis: draftOf(wordAnalysis({ glossSenseRef: testSenseRef('s-word') })),
         senses: SENSES,
-        search,
+        listEntrySenses: async () => [candidate('s-word'), candidate('s-new')],
       });
 
       await chooseAction(rowFor('ta-1'), 'senseChangeAction');
-      await userEvent.click(await screen.findByTestId('catalog-sense-candidate'));
+      const [, other] = await screen.findAllByTestId('catalog-sense-candidate');
+      await userEvent.click(other);
       await settle();
 
       expect((await savedAnalysis()).tokenAnalyses[0].glossSenseRef).toEqual(testSenseRef('s-new'));
+    });
+
+    it('links a word to another entry without folding it into a row that matches it unlinked', async () => {
+      await renderPanel({
+        analysis: draftOf(
+          wordAnalysis({ gloss: { en: 'word' }, glossSenseRef: testSenseRef('s-word') }),
+          wordAnalysis({ id: 'ta-2', gloss: { en: 'word' } }),
+        ),
+        senses: SENSES,
+        search: async () => [candidate('s-other', 'e-other')],
+      });
+
+      await chooseAction(rowFor('ta-1'), 'senseOtherEntryAction');
+      await userEvent.click(await screen.findByTestId('catalog-sense-candidate'));
+      await settle();
+
+      const saved = await savedAnalysis();
+      expect(saved.tokenAnalyses.map((ta) => [ta.id, ta.glossSenseRef])).toEqual([
+        ['ta-1', testSenseRef('s-other')],
+        ['ta-2', undefined],
+      ]);
+      expect(saved.tokenAnalysisLinks.map((l) => [l.analysisId, l.token.tokenRef])).toEqual([
+        ['ta-1', 'GEN 1:1:0'],
+        ['ta-2', 'GEN 1:1:1'],
+      ]);
     });
 
     it("adopts the sense's gloss as the gloss of a word with none typed, keeping the link", async () => {

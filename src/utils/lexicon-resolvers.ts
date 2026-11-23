@@ -4,6 +4,7 @@ import type {
   LexiconProvider,
   LexiconResolver,
   ResolvedSense,
+  SenseCandidate,
 } from 'interlinearizer/lexicon';
 
 /**
@@ -32,9 +33,23 @@ export type LexiconRegistry = {
   /**
    * Resolves `ref` through the lexicon whose authority minted it.
    *
-   * @returns The sense, or `undefined` when the ref is foreign or its lexicon has no such sense.
+   * @returns The sense, or `undefined` when the ref is foreign, its lexicon has no such sense, or
+   *   no software is there to ask.
+   * @throws When asking the software of the lexicon that minted `ref` fails, a lost connection
+   *   included.
    */
   resolveSense: (ref: SenseRef) => Promise<ResolvedSense | undefined>;
+
+  /**
+   * Lists every sense of the entry owning the sense named by `ref`, through the lexicon whose
+   * authority minted `ref`.
+   *
+   * @returns The senses, or `undefined` when the ref is foreign, its lexicon has no such sense, or
+   *   no software is there to ask.
+   * @throws When asking the software of the lexicon that minted `ref` fails, a lost connection
+   *   included.
+   */
+  listEntrySenses: (ref: SenseRef) => Promise<SenseCandidate[] | undefined>;
 
   /**
    * Opens the way to choose a lexicon for this project, or `undefined` where there is none to
@@ -68,6 +83,7 @@ export function createLexiconRegistry(
     isForeign: (ref) => !resolversByAuthority.has(ref.authority),
     resolverWith: (capability) => resolvers.find((resolver) => resolver.capabilities[capability]),
     resolveSense: async (ref) => resolversByAuthority.get(ref.authority)?.resolveSense(ref),
+    listEntrySenses: async (ref) => resolversByAuthority.get(ref.authority)?.listEntrySenses(ref),
     openChooser,
   };
 }

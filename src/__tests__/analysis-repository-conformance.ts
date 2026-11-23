@@ -758,6 +758,23 @@ export function describeAnalysisRepositoryConformance(
           expect(applied.tokenAnalysisLinks).toBeUndefined();
         });
 
+        it('reports records the caller may change without changing what is stored', async () => {
+          const repository = await overFullDraft();
+          const { tokenAnalyses } = newRecords();
+
+          const { applied } = await repository.apply({
+            intent: 'put',
+            tokenAnalyses: { puts: tokenAnalyses, deletes: [] },
+          });
+          (applied.tokenAnalyses?.puts ?? []).forEach((record) => {
+            record.surfaceText = 'changed';
+          });
+
+          await expect(
+            repository.getTokenAnalyses(tokenAnalyses.map(({ id }) => id)).then(unstampedInIdOrder),
+          ).resolves.toStrictEqual(unstampedInIdOrder(tokenAnalyses));
+        });
+
         it('leaves a delete it skipped out of what it reports as applied', async () => {
           const repository = await overFullDraft();
 

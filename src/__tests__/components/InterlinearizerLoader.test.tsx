@@ -1899,6 +1899,15 @@ describe('InterlinearizerLoader', () => {
     it('silences Save, Save As, and Discard Unsaved Changes while an import is open', async () => {
       mockImportCommands();
       await renderImportView();
+      await waitFor(() =>
+        expect(mockSendCommand).toHaveBeenCalledWith(
+          'interlinearizer.getSegments',
+          expect.anything(),
+          'GEN',
+          0,
+          32,
+        ),
+      );
       mockSendCommand.mockClear();
 
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
@@ -2567,6 +2576,15 @@ describe('InterlinearizerLoader', () => {
     it('hands the import view a segmentation dispatch that cannot write the draft', async () => {
       mockImportCommands();
       await renderImportView();
+      await waitFor(() =>
+        expect(mockSendCommand).toHaveBeenCalledWith(
+          'interlinearizer.getSegments',
+          expect.anything(),
+          'GEN',
+          0,
+          32,
+        ),
+      );
       mockSendCommand.mockClear();
 
       await flushHost(() => {
@@ -4016,7 +4034,15 @@ describe('InterlinearizerLoader', () => {
       });
       const activeProject = { ...STUB_ACTIVE_PROJECT, targetProjectId: 'target-1' };
       await act(async () => renderLoader({ useWebViewState: makeWebViewState({ activeProject }) }));
-
+      await waitFor(() =>
+        expect(mockSendCommand).toHaveBeenCalledWith(
+          'interlinearizer.getSegments',
+          expect.anything(),
+          'GEN',
+          0,
+          32,
+        ),
+      );
       mockSendCommand.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 

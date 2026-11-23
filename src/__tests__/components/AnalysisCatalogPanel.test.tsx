@@ -840,12 +840,13 @@ describe('AnalysisCatalogPanel', () => {
       await renderPanel({ analysis: PER_BOOK });
       await openFilters();
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
+      await waitFor(() => expect(listedAnalysisIds()).toEqual(['in-exo']));
 
       await userEvent.click(screen.getByRole('option', { name: 'EXO' }));
 
       // An empty selection reads as no filter at all rather than as one nothing satisfies, so
       // deselecting the last choice is how a reader gets the whole draft back.
-      expect(listedAnalysisIds()).toEqual(['in-gen', 'in-exo']);
+      await waitFor(() => expect(listedAnalysisIds()).toEqual(['in-gen', 'in-exo']));
     });
 
     it('releases a chosen book the draft has since stopped using', async () => {
@@ -1336,7 +1337,7 @@ describe('AnalysisCatalogPanel', () => {
 
       await userEvent.click(screen.getByTestId('catalog-filter-gloss-lacks'));
 
-      expect(listedAnalysisIds()).toEqual(['elsewhere']);
+      await waitFor(() => expect(listedAnalysisIds()).toEqual(['elsewhere']));
     });
 
     it('narrows the list to the analyses with a gloss in the active language', async () => {
@@ -1352,10 +1353,11 @@ describe('AnalysisCatalogPanel', () => {
       await renderPanel({ analysis: PER_GLOSS, analysisLanguage: 'en' });
       await openFilters();
       await userEvent.click(screen.getByTestId('catalog-filter-gloss-has'));
+      await waitFor(() => expect(listedAnalysisIds()).toEqual(['glossed']));
 
       await userEvent.click(screen.getByTestId('catalog-filter-gloss-any'));
 
-      expect(listedAnalysisIds()).toEqual(['elsewhere', 'glossed']);
+      await waitFor(() => expect(listedAnalysisIds()).toEqual(['elsewhere', 'glossed']));
     });
 
     /** One analysis broken into morphemes and one not, so the breakdown filter separates them. */
@@ -1395,11 +1397,12 @@ describe('AnalysisCatalogPanel', () => {
       await renderPanel({ analysis: PER_BREAKDOWN });
       await openFilters();
       await userEvent.click(screen.getByTestId('catalog-filter-morphemes-has'));
+      await waitFor(() => expect(listedAnalysisIds()).toEqual(['analyzed']));
 
       await userEvent.click(screen.getByTestId('catalog-filter-morphemes-any'));
 
       // Ordered by form under the source language's collation, eta before lambda.
-      expect(listedAnalysisIds()).toEqual(['whole', 'analyzed']);
+      await waitFor(() => expect(listedAnalysisIds()).toEqual(['whole', 'analyzed']));
     });
 
     it('offers no breakdown filter to a project that does not break words into morphemes', async () => {

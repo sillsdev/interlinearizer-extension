@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import type { Book, DraftProject, TextAnalysis } from 'interlinearizer';
+import type { Book, DraftProject, TextAnalysis, TokenAnalysis } from 'interlinearizer';
 import { DraftRepository } from '../../services/draftRepository';
 import { EditHistory } from '../../services/editHistory';
 import { reanchorRestored, reanchorStoredBook } from '../../services/reanchorPasses';
@@ -295,6 +295,12 @@ describe('reanchorStoredBook', () => {
   });
 });
 
+/** An undo that updates the stored link on Genesis's "beta" without changing it. */
+function touchingGenesisLink() {
+  const [link] = glossing(verseBook('GEN 1:1', 'alpha beta'), 'beta', 'tl-gen').tokenAnalysisLinks;
+  return { intent: 'undo', tokenAnalysisLinks: updating({ before: link, after: link }) };
+}
+
 describe('reanchorRestored', () => {
   it('re-anchors what the changes would restore, applying nothing', async () => {
     const { repository, stored } = await storedDraft();
@@ -350,7 +356,7 @@ describe('reanchorRestored', () => {
   it('re-anchors to each book in turn', async () => {
     const { repository } = await storedDraft();
 
-    const changes = await reanchorRestored(repository)({ intent: 'undo' }, [
+    const changes = await reanchorRestored(repository)(touchingGenesisLink(), [
       verseBook('GEN 1:1', 'alpha and beta'),
       missingBook('EXO'),
     ]);
@@ -404,7 +410,24 @@ describe('reanchorRestored', () => {
     const { repository } = await storedDraft();
 
     await expect(
-      reanchorRestored(repository)({ intent: 'undo' }, [verseBook('GEN 1:1', 'alpha beta')]),
+      reanchorRestored(repository)(touchingGenesisLink(), [verseBook('GEN 1:1', 'alpha beta')]),
     ).resolves.toBeUndefined();
+  });
+
+  it('gives nothing, reading nothing, when the changes touch no link, segment analysis or boundary edit', async () => {
+    const { repository } = await storedDraft();
+    const findLinksInBooks = jest.spyOn(repository, 'findLinksInBooks');
+    const read: TokenAnalysis = { ...FIXTURE_STAMPS, id: 'ta-beta', surfaceText: 'beta' };
+
+    await expect(
+      reanchorRestored(repository)(
+        {
+          intent: 'undo',
+          tokenAnalyses: updating({ before: read, after: { ...read, gloss: { en: 'second' } } }),
+        },
+        [verseBook('GEN 1:1', 'alpha and beta')],
+      ),
+    ).resolves.toBeUndefined();
+    expect(findLinksInBooks).not.toHaveBeenCalled();
   });
 });

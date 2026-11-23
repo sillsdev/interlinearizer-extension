@@ -400,7 +400,11 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
 
         IEnumerable<Guid> DeleteIds { get; }
 
-        /// <summary>The links of this kind that the changes create, and as updates leave them.</summary>
+        /// <summary>
+        /// The links of this kind that the changes create, and those that an update moves to
+        /// another analysis, as the update leaves them. An update that keeps its analysis writes no
+        /// analysis, so the stored one stands.
+        /// </summary>
         IEnumerable<AnalysisLink> WrittenLinks { get; }
 
         /// <summary>The ids of the analyses of this kind that the changes create.</summary>
@@ -442,7 +446,9 @@ public class AnalysisRepository(DataModel dataModel, InterlinearizerCrdtDbContex
         public IEnumerable<Guid> Ids => CreateIds.Concat(UpdateIds).Concat(DeleteIds);
 
         public IEnumerable<AnalysisLink> WrittenLinks =>
-            changes?.Creates.Concat(changes.Updates.Select(u => u.After)).OfType<AnalysisLink>() ?? [];
+            changes?.Creates.OfType<AnalysisLink>().Concat(changes.Updates
+                .Where(u => u is { Before: AnalysisLink before, After: AnalysisLink after } && before.AnalysisId != after.AnalysisId)
+                .Select(u => u.After).OfType<AnalysisLink>()) ?? [];
 
         public IEnumerable<Guid> CreatedAnalysisIds => changes?.Creates.OfType<Analysis>().Select(a => a.Id) ?? [];
 

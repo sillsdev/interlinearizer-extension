@@ -7,7 +7,7 @@ import type {
   TokenAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
-import { morphemeCarriesAnnotation } from './analysis-identity';
+import { morphemeCarriesAnnotation, normalizeSurfaceForm } from './analysis-identity';
 import { preferredLinkByKey } from './pick-rules';
 import type { StaleFreeTranslation } from './stale-free-translations';
 import {
@@ -317,15 +317,19 @@ export function selectAnalysisDeletionOutcome(
 
 /**
  * What `tokenRef` is offered: its own persisted non-approved analyses ranked ahead of the `pool`
- * offer, less any analysis the token rejected.
+ * offer, less any analysis the token rejected. A persisted analysis that folds unlike `surfaceText`
+ * is left out, because it was recorded for a word that has been replaced at this reference.
  */
 function offerForToken(
   state: AnalysisState,
   tokenRef: string,
+  surfaceText: string,
   pool: TokenSuggestion | undefined,
 ): TokenSuggestion | undefined {
+  const form = normalizeSurfaceForm(surfaceText);
+  const pending = selectPendingAnalysesByTokenRef(state).get(tokenRef) ?? NO_PENDING;
   return withPendingAnalyses(
-    selectPendingAnalysesByTokenRef(state).get(tokenRef) ?? NO_PENDING,
+    pending.filter((analysis) => normalizeSurfaceForm(analysis.surfaceText) === form),
     withoutAnalyses(pool, selectRejectedAnalysisIdsByTokenRef(state).get(tokenRef)),
   );
 }
@@ -333,10 +337,11 @@ function offerForToken(
 /**
  * Returns the merged analysis the renderer shows for a token: its approved decision when one
  * exists, otherwise what it is offered, or `undefined` when the token has neither. What a token is
- * offered is its own persisted non-approved analyses ranked ahead of the pool's match for its
- * surface form, less any analysis it rejected. This is the single source the gloss renderer reads —
- * it never combines stored decisions and the derived view itself. An approved token carries the
- * offer only as promotable alternatives, so a confirmed token never shows a suggestion.
+ * offered is its own persisted non-approved analyses of its spelling, ranked ahead of the pool's
+ * match for its surface form, less any analysis it rejected. This is the single source the gloss
+ * renderer reads — it never combines stored decisions and the derived view itself. An approved
+ * token carries the offer only as promotable alternatives, so a confirmed token never shows a
+ * suggestion.
  *
  * Unlike reference-stable per-token reads such as {@link selectApprovedGloss}, this returns a fresh
  * object on every call. A suggested result also carries a fresh `candidates` array. A subscriber
@@ -356,7 +361,12 @@ export function selectResolvedTokenAnalysis(
   surfaceText: string,
   pool: PoolIndex = selectPoolIndex(state),
 ): ResolvedTokenAnalysis | undefined {
-  const offered = offerForToken(state, tokenRef, deriveTokenSuggestion(pool, surfaceText));
+  const offered = offerForToken(
+    state,
+    tokenRef,
+    surfaceText,
+    deriveTokenSuggestion(pool, surfaceText),
+  );
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
   if (approvedId !== undefined) {
     const analysis = selectAnalysisById(state).get(approvedId);
@@ -373,9 +383,10 @@ export function selectResolvedTokenAnalysis(
  * blur. Re-derives this surface form's bucket with the token's approved payload discounted by one
  * approval (dropped when this was its last), so the previewed pick matches what the committed
  * deletion will surface rather than the approved payload's mere alternatives. The token's own
- * persisted non-approved analyses rank ahead and those it rejected are left out, as once the
- * deletion commits. Returns `undefined` when the token has no approval (callers only consult this
- * for an approved token) or when nothing is left to offer once that approval is discounted.
+ * persisted non-approved analyses of its spelling rank ahead, and those it rejected are left out,
+ * as once the deletion commits. Returns `undefined` when the token has no approval (callers only
+ * consult this for an approved token) or when nothing is left to offer once that approval is
+ * discounted.
  *
  * @param state - The analysis state that holds the token's decisions.
  * @param tokenRef - The approved token whose gloss is being cleared.
@@ -393,6 +404,7 @@ export function selectSuggestionAfterClearing(
   const suggestion = offerForToken(
     state,
     tokenRef,
+    surfaceText,
     deriveTokenSuggestion(pool, surfaceText, approvedId),
   );
   return suggestion ? { status: 'suggested', ...suggestion } : undefined;

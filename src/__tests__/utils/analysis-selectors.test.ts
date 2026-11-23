@@ -766,6 +766,17 @@ describe('selectResolvedTokenAnalysis', () => {
     });
   });
 
+  it('leaves out a persisted analysis recorded for a word since replaced at the reference', () => {
+    const imported = logos('ta-imported', 'word');
+    const store = createAnalysisStore(
+      tokenState([imported], [makeLink(imported, 'tok-1', 'suggested')]),
+    );
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'rhema'),
+    ).toBeUndefined();
+  });
+
   it("ranks a token's persisted analyses ahead of the pool's match", () => {
     const pooled = logos('ta-pooled', 'word');
     const imported = logos('ta-imported', 'speech');
@@ -1035,6 +1046,33 @@ describe('selectSuggestionAfterClearing', () => {
       status: 'suggested',
       suggested: imported,
       candidates: [river, fin],
+    });
+  });
+
+  it('leaves out a persisted analysis recorded for a word since replaced at the reference', () => {
+    const pool = bankPool();
+    const replaced: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-replaced',
+      surfaceText: 'shore',
+      gloss: { en: 'coast' },
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...pool,
+          tokenAnalyses: [...pool.tokenAnalyses, replaced],
+          tokenAnalysisLinks: [...pool.tokenAnalysisLinks, makeLink(replaced, 'r1', 'suggested')],
+        },
+        analysisLanguage: 'en',
+      },
+    });
+
+    const [river, fin] = store.getState().analysis.analysis.tokenAnalyses;
+    expect(selectSuggestionAfterClearing(store.getState().analysis, 'r1', 'bank')).toEqual({
+      status: 'suggested',
+      suggested: river,
+      candidates: [fin],
     });
   });
 });

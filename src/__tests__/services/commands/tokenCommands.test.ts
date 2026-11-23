@@ -120,7 +120,7 @@ describe('approveAnalysisForToken', () => {
       analysisId: 'ta-in',
     });
 
-    expect(buffer.toChangeSet('approve').tokenAnalysisLinks?.puts).toStrictEqual([
+    expect(asPuts(buffer.toChangeSet('approve')).tokenAnalysisLinks?.puts).toStrictEqual([
       expect.objectContaining({
         analysisId: 'ta-in',
         token: { tokenRef: 'GEN 1:1:1', surfaceText: 'in' },

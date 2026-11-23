@@ -54,8 +54,8 @@ export default function useSentinelExtend<E extends string>({
       if (el) edges.set(el, edge);
     });
     if (!rootEl || edges.size === 0 || !isEnabled) return undefined;
-    // An observer can deliver entries it queued before it was disconnected. Those were measured
-    // against a window since replaced, so only the current subscription reports.
+    // An observer can deliver entries it queued before it was disconnected. Its replacement reports
+    // the current state itself, so a stale delivery would report an edge a second time.
     let isSubscribed = true;
     const observer = new IntersectionObserver(
       (entries) => {

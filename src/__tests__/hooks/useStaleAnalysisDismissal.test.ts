@@ -9,10 +9,14 @@ import { makeWebViewState } from '../test-helpers';
 // Mocked so each test decides which records are dismissed.
 jest.mock('../../hooks/useRecordDismissal');
 
-/** Stale glosses and free translations, with a segment showing more than one of the latter. */
+/**
+ * Stale glosses, phrases, and free translations, with a segment showing more than one free
+ * translation.
+ */
 const REPORT: StaleAnalysesReport = {
   bookRef: 'GEN',
   glosses: ['gloss a GEN 1:1:0', 'gloss b GEN 1:2:0'],
+  phrases: ['phrase p1', 'phrase p2'],
   freeTranslations: [
     { key: 'freeTranslation s1', segmentId: 'GEN 1:1' },
     { key: 'freeTranslation s2', segmentId: 'GEN 1:1' },
@@ -41,6 +45,14 @@ describe('useStaleAnalysisDismissal', () => {
     const { result } = renderStale(REPORT);
 
     expect(result.current.glossCount).toBe(1);
+  });
+
+  it('counts the stale phrases the notice has not been dismissed for', () => {
+    mockDismissed(['phrase p2']);
+
+    const { result } = renderStale(REPORT);
+
+    expect(result.current.phraseCount).toBe(1);
   });
 
   it('counts the stale free translations the notice has not been dismissed for', () => {
@@ -75,6 +87,7 @@ describe('useStaleAnalysisDismissal', () => {
     expect(result.current).toEqual(
       expect.objectContaining({
         glossCount: 0,
+        phraseCount: 0,
         freeTranslationCount: 0,
         freeTranslationSegmentIds: [],
       }),
@@ -91,6 +104,8 @@ describe('useStaleAnalysisDismissal', () => {
         records: [
           'gloss a GEN 1:1:0',
           'gloss b GEN 1:2:0',
+          'phrase p1',
+          'phrase p2',
           'freeTranslation s1',
           'freeTranslation s2',
           'freeTranslation s3',

@@ -100,10 +100,11 @@ async function anyLinkedStale(
  * The description names each segment on which the change put or removed links, at the place where
  * the view shows it. A book whose boundaries the change moved is named whole, as is a book that the
  * host holds no outline for. Among the books that it names, the description flags each one where
- * the change put or removed a stale free translation, and each one where it put or removed a stale
- * token link. The description also names the analyses whose payloads or links the change put or
- * removed, and the cross-book queries that those analyses or the moved boundaries may change. It
- * names the forms whose pool buckets the change may have changed, too.
+ * the change put or removed a stale free translation. It separately flags each one where the change
+ * put or removed a stale token or phrase link. The description also names the analyses whose
+ * payloads or links the change put or removed, and the cross-book queries that those analyses or
+ * the moved boundaries may change. It names the forms whose pool buckets the change may have
+ * changed, too.
  *
  * @throws Whatever the repository's lookups throw.
  */
@@ -114,16 +115,13 @@ export async function describeChange(
 ): Promise<AnalysisChange> {
   const { changes, inverse } = applied;
   const tokenPayloads = touched(changes.tokenAnalyses, inverse.tokenAnalyses);
+  const phrasePayloads = touched(changes.phraseAnalyses, inverse.phraseAnalyses);
   const tokenLinks = touched(changes.tokenAnalysisLinks, inverse.tokenAnalysisLinks);
   const phraseLinks = touched(changes.phraseAnalysisLinks, inverse.phraseAnalysisLinks);
   const segmentPayloads = touched(changes.segmentAnalyses, inverse.segmentAnalyses);
   const segmentLinks = touched(changes.segmentAnalysisLinks, inverse.segmentAnalysisLinks);
   const links: AnalysisLink[] = [...tokenLinks, ...phraseLinks, ...segmentLinks];
-  const payloadIds = [
-    ...tokenPayloads,
-    ...touched(changes.phraseAnalyses, inverse.phraseAnalyses),
-    ...segmentPayloads,
-  ].map(({ id }) => id);
+  const payloadIds = [...tokenPayloads, ...phrasePayloads, ...segmentPayloads].map(({ id }) => id);
 
   const resegmented = booksResegmented(applied);
   const wholeBooks = new Set(resegmented);
@@ -160,11 +158,14 @@ export async function describeChange(
       .filter(({ status }) => status === 'stale')
       .map(({ segmentId }) => bookOfRef(segmentId)),
   );
-  const staleGlossBooks = new Set(
-    tokenLinks
+  const staleGlossBooks = new Set([
+    ...tokenLinks
       .filter(({ status }) => status === 'stale')
       .map(({ token }) => bookOfRef(token.tokenRef)),
-  );
+    ...phraseLinks
+      .filter(({ status }) => status === 'stale')
+      .flatMap(({ tokens }) => tokens.map(({ tokenRef }) => bookOfRef(tokenRef))),
+  ]);
   const changedBooks: ChangedBook[] = [...new Set([...wholeBooks, ...indexesByBook.keys()])]
     .sort((a, b) => Canon.bookIdToNumber(a) - Canon.bookIdToNumber(b))
     .map((bookId) => {
@@ -186,6 +187,7 @@ export async function describeChange(
     links.some(({ status }) => status === 'stale') ||
     (await anyLinkedStale(repository, [
       ...tokenPayloads.map(({ id }) => id),
+      ...phrasePayloads.map(({ id }) => id),
       ...segmentPayloads.map(({ id }) => id),
     ]))
   )

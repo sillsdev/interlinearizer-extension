@@ -15,6 +15,8 @@ type StaleAnalysisDismissalOptions = {
 type StaleAnalysisDismissal = {
   /** How many of the book's stale gloss places the user has not dismissed the notice for. */
   glossCount: number;
+  /** How many of the book's stale phrases the user has not dismissed the notice for. */
+  phraseCount: number;
   /** How many of the book's stale free translations the user has not dismissed the notice for. */
   freeTranslationCount: number;
   /** The segments showing those free translations, in document order. */
@@ -37,7 +39,11 @@ export default function useStaleAnalysisDismissal({
   const records = useMemo(
     () =>
       report
-        ? [...report.glosses, ...report.freeTranslations.map((translation) => translation.key)]
+        ? [
+            ...report.glosses,
+            ...report.phrases,
+            ...report.freeTranslations.map((translation) => translation.key),
+          ]
         : NO_RECORDS,
     [report],
   );
@@ -55,6 +61,7 @@ export default function useStaleAnalysisDismissal({
     const freeTranslations = (report?.freeTranslations ?? []).filter(({ key }) => raised.has(key));
     return {
       glossCount: (report?.glosses ?? []).filter((key) => raised.has(key)).length,
+      phraseCount: (report?.phrases ?? []).filter((key) => raised.has(key)).length,
       freeTranslationCount: freeTranslations.length,
       freeTranslationSegmentIds: [...new Set(freeTranslations.map(({ segmentId }) => segmentId))],
       onDismiss,

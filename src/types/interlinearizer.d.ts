@@ -2655,8 +2655,8 @@ declare module 'interlinearizer' {
      */
     staleTranslations?: true;
     /**
-     * Present when the change put or removed a stale token link in the book. Such a change can
-     * change the stale flags of the book's outline.
+     * Present when the change put or removed a stale token or phrase link in the book. Such a
+     * change can change the stale flags of the book's outline.
      */
     staleGlosses?: true;
   };

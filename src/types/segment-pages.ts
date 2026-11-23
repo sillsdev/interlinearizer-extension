@@ -31,8 +31,8 @@ export type OutlineSegment = Readonly<{
    */
   orphanedCardCount?: number;
   /**
-   * `true` when a token of the segment holds a stale analysis. Absent otherwise, or when no session
-   * asked.
+   * `true` when a stale token link sits on one of the segment's tokens, or a stale phrase link is
+   * placed at one of them. Absent otherwise, or when no session asked.
    */
   hasStaleGloss?: boolean;
   /**
@@ -78,10 +78,18 @@ export type PageFailure = Readonly<{
 /** A place in a book where a token's analysis went stale. */
 export type StaleGlossPlace = Readonly<{ analysisId: string; tokenRef: string }>;
 
+/**
+ * A stale phrase link, placed at the earliest of its tokens that the book holds, or at its first
+ * token when the book holds none.
+ */
+export type StalePhrasePlace = Readonly<{ linkId: string; tokenRef: string }>;
+
 /** The stale analyses that a book holds. */
 export type StaleSummary = Readonly<{
   /** Each place, once, in document order; a place whose token the book no longer holds comes last. */
   glosses: readonly StaleGlossPlace[];
+  /** Each stale phrase link, in document order; one holding no token of the book comes last. */
+  phrases: readonly StalePhrasePlace[];
   /**
    * Each stale free translation, with the segment showing it or, for one whose verse is gone, the
    * segment it is shown beside, in the order the view shows them.

@@ -159,6 +159,7 @@ describe('getStaleSummary', () => {
     expect(host.getOpenBook).toHaveBeenCalledWith('src', 'GEN', SEGMENTATION);
     expect(JSON.parse(json ?? '')).toStrictEqual({
       glosses: [{ analysisId: 'ta-in', tokenRef: 'GEN 1:1:0' }],
+      phrases: [],
       freeTranslations: [{ analysisId: 'sa-9', segmentId: 'GEN 1:2' }],
     });
   });

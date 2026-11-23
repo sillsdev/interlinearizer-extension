@@ -126,6 +126,7 @@ function mockLoaderHooks(): void {
   });
   jest.mocked(useStaleAnalysisDismissal).mockReturnValue({
     glossCount: 0,
+    phraseCount: 0,
     freeTranslationCount: 0,
     freeTranslationSegmentIds: [],
     onDismiss: jest.fn(),

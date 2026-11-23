@@ -1,9 +1,23 @@
 import type { MultiString, SenseRef } from 'interlinearizer';
 import type { SenseCandidate } from 'interlinearizer/lexicon';
 import { BookAlert, BookOpen } from 'lucide-react';
-import { Button, Popover, PopoverContent, PopoverTrigger, Spinner } from 'platform-bible-react';
+import {
+  Button,
+  DisabledActionTooltip,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Spinner,
+} from 'platform-bible-react';
 import { formatReplacementString, type LanguageStrings } from 'platform-bible-utils';
-import { useEffect, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import { useLexiconSearch, useLinkedGloss, type LinkedGloss } from './LexiconSenses';
 import LocalizedTooltip from './LocalizedTooltip';
 import { multiStringTextByLanguage } from '../utils/multi-string';
@@ -17,6 +31,7 @@ export const SENSE_CONTROL_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_senseAddLink%',
   '%interlinearizer_analysisCatalog_senseLinkAction%',
   '%interlinearizer_analysisCatalog_senseChangeAction%',
+  '%interlinearizer_analysisCatalog_senseNoOther%',
   '%interlinearizer_analysisCatalog_senseAdoptGloss%',
   '%interlinearizer_analysisCatalog_senseUnlink%',
   '%interlinearizer_analysisCatalog_senseLexiconGloss%',
@@ -149,28 +164,19 @@ function CandidateButton({
   );
 }
 
-/** The senses the lexicon has for `form`, listed to pick from. */
-function SearchView({
-  form,
-  search,
-  senseRef,
-  analysisLanguage,
-  localizedStrings,
-  onPick,
-  onBack,
-}: Readonly<{
-  form: string;
-  search: (form: string) => Promise<SenseCandidate[]>;
-  /** The sense the form links to now, which the list marks. */
-  senseRef?: SenseRef;
-  analysisLanguage: string;
-  localizedStrings: LanguageStrings;
-  onPick: (candidate: SenseCandidate) => void;
-  onBack: () => void;
-}>) {
+/**
+ * Searches for the senses `form` could link to, and reports how the search stands. An answer that
+ * arrives after unmounting, or after the form or search changes, is dropped. Without `search`,
+ * nothing is searched and the outcome stays pending.
+ */
+function useCandidateSearch(
+  form: string,
+  search: ((form: string) => Promise<SenseCandidate[]>) | undefined,
+): SearchOutcome {
   const [outcome, setOutcome] = useState<SearchOutcome>({ status: 'pending' });
 
   useEffect(() => {
+    if (!search) return undefined;
     let abandoned = false;
     (async () => {
       try {
@@ -185,6 +191,26 @@ function SearchView({
     };
   }, [form, search]);
 
+  return outcome;
+}
+
+/** The senses a search turned up, listed to pick from. */
+function SearchView({
+  outcome,
+  senseRef,
+  analysisLanguage,
+  localizedStrings,
+  onPick,
+  onBack,
+}: Readonly<{
+  outcome: SearchOutcome;
+  /** The sense the form links to now, which the list marks. */
+  senseRef?: SenseRef;
+  analysisLanguage: string;
+  localizedStrings: LanguageStrings;
+  onPick: (candidate: SenseCandidate) => void;
+  onBack: () => void;
+}>) {
   let body: ReactNode;
   if (outcome.status === 'pending') body = <Spinner className="tw:size-4" />;
   else if (outcome.status === 'failed')
@@ -223,6 +249,170 @@ function SearchView({
       {body}
     </>
   );
+}
+
+/**
+ * The contents of the control's popover: the actions on the link, the senses to pick from, or the
+ * question of what to keep on unlinking.
+ *
+ * The change of sense is disabled when the only sense the lexicon finds for `form` is the linked
+ * one.
+ */
+function PopoverBody({
+  form,
+  search,
+  senseRef,
+  link,
+  canLink,
+  canUnlink,
+  canAdopt,
+  analysisLanguage,
+  localizedStrings,
+  onLink,
+  onUnlink,
+  onAdopt,
+  onClose,
+}: Readonly<{
+  form: string;
+  search: ((form: string) => Promise<SenseCandidate[]>) | undefined;
+  senseRef?: SenseRef;
+  link: LinkedGloss;
+  canLink: boolean;
+  canUnlink: boolean;
+  canAdopt: boolean;
+  analysisLanguage: string;
+  localizedStrings: LanguageStrings;
+  onLink: (candidate: SenseCandidate) => void;
+  onUnlink: (keepGloss?: string) => void;
+  onAdopt: (senseGloss: string) => void;
+  onClose: () => void;
+}>) {
+  const [view, setView] = useState<View>('menu');
+  const outcome = useCandidateSearch(form, canLink ? search : undefined);
+
+  const linked = senseRef !== undefined;
+  const onlyCurrent =
+    outcome.status === 'found' &&
+    outcome.candidates.length > 0 &&
+    outcome.candidates.every((candidate) => sameSense(senseRef, candidate.senseRef));
+
+  let content: ReactNode;
+  if (view === 'search')
+    content = (
+      <SearchView
+        analysisLanguage={analysisLanguage}
+        localizedStrings={localizedStrings}
+        outcome={outcome}
+        senseRef={senseRef}
+        onBack={() => setView('menu')}
+        onPick={(candidate) => {
+          onLink(candidate);
+          onClose();
+        }}
+      />
+    );
+  else if (view === 'confirmUnlink')
+    content = (
+      <>
+        <p className="tw:text-sm" data-testid="catalog-sense-keep-prompt">
+          {formatReplacementString(
+            localizedStrings['%interlinearizer_analysisCatalog_senseKeepPrompt%'],
+            { gloss: link.senseGloss },
+          )}
+        </p>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            onUnlink(link.senseGloss);
+            onClose();
+          }}
+        >
+          {localizedStrings['%interlinearizer_analysisCatalog_senseKeepGloss%']}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            onUnlink();
+            onClose();
+          }}
+        >
+          {localizedStrings['%interlinearizer_analysisCatalog_senseRemoveGloss%']}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setView('menu')}>
+          {localizedStrings['%interlinearizer_analysisCatalog_senseCancel%']}
+        </Button>
+      </>
+    );
+  else
+    content = (
+      <>
+        {linked && link.senseGloss !== '' && (
+          <p className="tw:text-sm" data-testid="catalog-sense-menu-gloss">
+            {formatReplacementString(
+              localizedStrings['%interlinearizer_analysisCatalog_senseLexiconGloss%'],
+              { gloss: link.senseGloss },
+            )}
+          </p>
+        )}
+        {canLink && (
+          <DisabledActionTooltip
+            className="tw:flex tw:flex-col"
+            disabled={onlyCurrent}
+            tooltipText={localizedStrings['%interlinearizer_analysisCatalog_senseNoOther%']}
+          >
+            <Button
+              className="tw:justify-start"
+              disabled={onlyCurrent}
+              size="sm"
+              variant="ghost"
+              onClick={() => setView('search')}
+            >
+              {
+                localizedStrings[
+                  linked
+                    ? '%interlinearizer_analysisCatalog_senseChangeAction%'
+                    : '%interlinearizer_analysisCatalog_senseLinkAction%'
+                ]
+              }
+            </Button>
+          </DisabledActionTooltip>
+        )}
+        {canAdopt && (
+          <Button
+            className="tw:justify-start"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              onAdopt(link.senseGloss);
+              onClose();
+            }}
+          >
+            {localizedStrings['%interlinearizer_analysisCatalog_senseAdoptGloss%']}
+          </Button>
+        )}
+        {canUnlink && (
+          <Button
+            className="tw:justify-start"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              if (link.fromLexicon) {
+                setView('confirmUnlink');
+                return;
+              }
+              onUnlink();
+              onClose();
+            }}
+          >
+            {localizedStrings['%interlinearizer_analysisCatalog_senseUnlink%']}
+          </Button>
+        )}
+      </>
+    );
+
+  return content;
 }
 
 /**
@@ -269,7 +459,8 @@ export default function CatalogSenseControl({
   const link = useLinkedGloss(gloss, senseRef, analysisLanguage);
   const search = useLexiconSearch();
   const [open, setOpen] = useState(false);
-  const [view, setView] = useState<View>('menu');
+  // eslint-disable-next-line no-null/no-null
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const linked = senseRef !== undefined;
   const canLink = !readOnly && search !== undefined && form !== '';
@@ -286,124 +477,8 @@ export default function CatalogSenseControl({
     return <StaticMark className={className} label={label} link={link} style={style} />;
 
   const Icon = linked ? linkIcon(link) : BookOpen;
-  const handleOpenChange = (next: boolean) => {
-    setOpen(next);
-    if (!next) setView('menu');
-  };
-  const close = () => handleOpenChange(false);
-
-  let content: ReactNode;
-  if (view === 'search' && search)
-    content = (
-      <SearchView
-        analysisLanguage={analysisLanguage}
-        form={form}
-        localizedStrings={localizedStrings}
-        search={search}
-        senseRef={senseRef}
-        onBack={() => setView('menu')}
-        onPick={(candidate) => {
-          onLink(candidate);
-          close();
-        }}
-      />
-    );
-  else if (view === 'confirmUnlink')
-    content = (
-      <>
-        <p className="tw:text-sm" data-testid="catalog-sense-keep-prompt">
-          {formatReplacementString(
-            localizedStrings['%interlinearizer_analysisCatalog_senseKeepPrompt%'],
-            { gloss: link.senseGloss },
-          )}
-        </p>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            onUnlink(link.senseGloss);
-            close();
-          }}
-        >
-          {localizedStrings['%interlinearizer_analysisCatalog_senseKeepGloss%']}
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            onUnlink();
-            close();
-          }}
-        >
-          {localizedStrings['%interlinearizer_analysisCatalog_senseRemoveGloss%']}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setView('menu')}>
-          {localizedStrings['%interlinearizer_analysisCatalog_senseCancel%']}
-        </Button>
-      </>
-    );
-  else
-    content = (
-      <>
-        {linked && link.senseGloss !== '' && (
-          <p className="tw:text-sm" data-testid="catalog-sense-menu-gloss">
-            {formatReplacementString(
-              localizedStrings['%interlinearizer_analysisCatalog_senseLexiconGloss%'],
-              { gloss: link.senseGloss },
-            )}
-          </p>
-        )}
-        {canLink && (
-          <Button
-            className="tw:justify-start"
-            size="sm"
-            variant="ghost"
-            onClick={() => setView('search')}
-          >
-            {
-              localizedStrings[
-                linked
-                  ? '%interlinearizer_analysisCatalog_senseChangeAction%'
-                  : '%interlinearizer_analysisCatalog_senseLinkAction%'
-              ]
-            }
-          </Button>
-        )}
-        {canAdopt && (
-          <Button
-            className="tw:justify-start"
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              onAdopt(link.senseGloss);
-              close();
-            }}
-          >
-            {localizedStrings['%interlinearizer_analysisCatalog_senseAdoptGloss%']}
-          </Button>
-        )}
-        {canUnlink && (
-          <Button
-            className="tw:justify-start"
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              if (link.fromLexicon) {
-                setView('confirmUnlink');
-                return;
-              }
-              onUnlink();
-              close();
-            }}
-          >
-            {localizedStrings['%interlinearizer_analysisCatalog_senseUnlink%']}
-          </Button>
-        )}
-      </>
-    );
-
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
+    <Popover open={open} onOpenChange={setOpen}>
       <LocalizedTooltip label={label}>
         <PopoverTrigger asChild>
           <Button
@@ -421,10 +496,38 @@ export default function CatalogSenseControl({
       {open && (
         <PopoverContent
           align="start"
-          className="tw:flex tw:w-72 tw:flex-col tw:gap-1 tw:p-2"
+          className="tw:w-72 tw:p-2"
           data-testid="catalog-sense-popover"
+          onOpenAutoFocus={(event) => {
+            // Opening focuses the menu rather than its first action. A disabled action's
+            // explanation shows on focus, and would otherwise cover the menu whenever that action
+            // is disabled.
+            event.preventDefault();
+            menuRef.current?.focus();
+          }}
         >
-          {content}
+          <div
+            className="tw:flex tw:flex-col tw:gap-1 tw:outline-none"
+            data-testid="catalog-sense-menu"
+            ref={menuRef}
+            tabIndex={-1}
+          >
+            <PopoverBody
+              analysisLanguage={analysisLanguage}
+              canAdopt={canAdopt}
+              canLink={canLink}
+              canUnlink={canUnlink}
+              form={form}
+              link={link}
+              localizedStrings={localizedStrings}
+              search={search}
+              senseRef={senseRef}
+              onAdopt={onAdopt}
+              onClose={() => setOpen(false)}
+              onLink={onLink}
+              onUnlink={onUnlink}
+            />
+          </div>
         </PopoverContent>
       )}
     </Popover>

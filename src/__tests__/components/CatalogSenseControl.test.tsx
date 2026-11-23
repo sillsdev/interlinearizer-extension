@@ -345,11 +345,80 @@ describe('CatalogSenseControl', () => {
       expect(screen.queryByRole('button', { name: 'senseChangeAction' })).not.toBeInTheDocument();
     });
 
-    it('returns to the menu when the popover closes and opens again', async () => {
+    it('disables the change of sense, saying why, when the search finds only the linked sense', async () => {
       renderControl({ gloss: 'water', senseRef: testSenseRef('s-1') });
       await openPopover();
+      await settle();
+
+      expect(screen.getByRole('button', { name: 'senseChangeAction' })).toBeDisabled();
+      expect(screen.getByRole('group', { name: 'senseNoOther' })).toBeInTheDocument();
+    });
+
+    it('focuses the menu rather than its first action on opening', async () => {
+      renderControl({ gloss: 'water', senseRef: testSenseRef('s-1') });
+      await openPopover();
+      await settle();
+
+      expect(screen.getByTestId('catalog-sense-menu')).toHaveFocus();
+    });
+
+    it('offers the change of sense when the search finds another sense', async () => {
+      renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { searchByForm: async () => [candidate('s-1'), candidate('s-2')] },
+      );
+      await openPopover();
+      await settle();
+
+      expect(screen.getByRole('button', { name: 'senseChangeAction' })).toBeEnabled();
+      expect(screen.queryByRole('group', { name: 'senseNoOther' })).not.toBeInTheDocument();
+    });
+
+    it('offers the change of sense while the search is out', async () => {
+      const pending = deferred<SenseCandidate[]>();
+      renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { searchByForm: () => pending.promise },
+      );
+      await openPopover();
+
+      expect(await screen.findByRole('button', { name: 'senseChangeAction' })).toBeEnabled();
+      await act(async () => pending.resolve([]));
+    });
+
+    it('offers the change of sense when the search finds nothing', async () => {
+      renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { searchByForm: async () => [] },
+      );
+      await openPopover();
+      await settle();
+
+      expect(screen.getByRole('button', { name: 'senseChangeAction' })).toBeEnabled();
+    });
+
+    it('lists the senses the opening search found without searching again', async () => {
+      const { searchByForm } = renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { searchByForm: jest.fn(async () => [candidate('s-1'), candidate('s-2')]) },
+      );
+      await openPopover();
+      await settle();
+
+      await userEvent.click(screen.getByRole('button', { name: 'senseChangeAction' }));
+
+      expect(screen.getAllByTestId('catalog-sense-candidate')).toHaveLength(2);
+      expect(searchByForm).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns to the menu when the popover closes and opens again', async () => {
+      renderControl(
+        { gloss: 'water', senseRef: testSenseRef('s-1') },
+        { searchByForm: async () => [candidate('s-1'), candidate('s-2')] },
+      );
+      await openPopover();
       await userEvent.click(await screen.findByRole('button', { name: 'senseChangeAction' }));
-      await screen.findByTestId('catalog-sense-candidate');
+      await screen.findAllByTestId('catalog-sense-candidate');
 
       await userEvent.click(screen.getByTestId('catalog-sense-control'));
       await userEvent.click(screen.getByTestId('catalog-sense-control'));

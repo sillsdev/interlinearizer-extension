@@ -432,8 +432,9 @@ function mergePhraseRecords(phrases: LangPhraseRecord[]): MergedPhrase[] {
 }
 
 /**
- * Builds each merged phrase record's analysis and link, numbering their ids per first token. When
- * approved phrases share a token, the first in record order keeps its approval.
+ * Builds each merged phrase record's analysis and link, numbering their ids per first token. A
+ * phrase approval is demoted to candidate when an earlier phrase kept its approval on one of the
+ * same tokens.
  */
 function emitPhraseAnalyses(
   mergedPhrases: MergedPhrase[],

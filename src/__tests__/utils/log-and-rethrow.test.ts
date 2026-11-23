@@ -20,6 +20,7 @@ describe('logAndRethrow', () => {
     ).rejects.toBe(error);
 
     expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.error.mock.calls[0]).toHaveLength(2);
     const [[message, logged]] = logger.error.mock.calls;
     expect(message).toBe('Interlinearizer: failed to count usages in session s1');
     // `toHaveBeenCalledWith` would accept any error with the same message.
@@ -37,6 +38,7 @@ describe('logAndRethrow', () => {
     ).rejects.toBe(error);
 
     expect(logger.error).toHaveBeenCalledTimes(1);
+    expect(logger.error.mock.calls[0]).toHaveLength(2);
     const [[message, logged]] = logger.error.mock.calls;
     expect(message).toBe('Interlinearizer: failed to count');
     expect(logged).toBe(error);

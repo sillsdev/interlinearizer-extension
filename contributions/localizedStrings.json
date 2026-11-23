@@ -135,7 +135,6 @@
       "%interlinearizer_analysisCatalog_senseGloss%": "Gloss from the lexicon",
       "%interlinearizer_analysisCatalog_senseDiffers%": "Differs from the lexicon sense's gloss: {gloss}",
       "%interlinearizer_analysisCatalog_senseAddLink%": "Link to a lexicon sense",
-      "%interlinearizer_analysisCatalog_senseLinkAction%": "Link to a lexicon sense…",
       "%interlinearizer_analysisCatalog_senseChangeAction%": "Change sense…",
       "%interlinearizer_analysisCatalog_senseAdoptGloss%": "Use the lexicon's gloss",
       "%interlinearizer_analysisCatalog_senseUnlink%": "Unlink",

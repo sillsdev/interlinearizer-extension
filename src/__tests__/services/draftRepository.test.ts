@@ -8,11 +8,14 @@ import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import { BOOKLESS_PARTITION } from '../../utils/analysis-book';
 import {
+  creating,
+  deleting,
   FIXTURE_STAMPS,
   makePhraseLink,
   memoryStorage,
   seedRepository,
   silentLogger,
+  updating,
 } from '../test-helpers';
 
 /** An analysis with a token payload shared by GEN and EXO, a phrase in GEN and a segment in EXO. */
@@ -69,7 +72,10 @@ async function failGlossEdit(
   await expect(
     repository.apply({
       intent: 'writeGloss',
-      tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+      tokenAnalyses: updating({
+        before: payload,
+        after: { ...payload, gloss: { en: 'and then' } },
+      }),
     }),
   ).rejects.toThrow('disk full');
   write.mockRestore();
@@ -260,7 +266,10 @@ describe('DraftRepository', () => {
 
       await repository.apply({
         intent: 'writeGloss',
-        tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+        tokenAnalyses: updating({
+          before: payload,
+          after: { ...payload, gloss: { en: 'and then' } },
+        }),
       });
 
       expect(repository.keptForCopy()).toEqual(await freshExport(storage));
@@ -322,7 +331,10 @@ describe('DraftRepository', () => {
 
       await repository.apply({
         intent: 'writeGloss',
-        tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+        tokenAnalyses: updating({
+          before: payload,
+          after: { ...payload, gloss: { en: 'and then' } },
+        }),
       });
 
       expect(JSON.stringify(answered)).toBe(before);
@@ -445,10 +457,10 @@ describe('DraftRepository', () => {
 
       await repository.apply({
         intent: 'writeFreeTranslation',
-        segmentAnalyses: {
-          puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
-          deletes: [],
-        },
+        segmentAnalyses: updating({
+          before: segment,
+          after: { ...segment, freeTranslation: { en: 'And then.' } },
+        }),
       });
 
       expect(writes).toContain(draftAnalysisKey('src', 'EXO'));
@@ -463,7 +475,10 @@ describe('DraftRepository', () => {
 
       await repository.apply({
         intent: 'writeGloss',
-        tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+        tokenAnalyses: updating({
+          before: payload,
+          after: { ...payload, gloss: { en: 'and then' } },
+        }),
       });
 
       expect(records.get(draftAnalysisKey('src', 'GEN'))).toContain('and then');
@@ -484,8 +499,8 @@ describe('DraftRepository', () => {
 
       await new DraftRepository(storage, 'src', silentLogger()).apply({
         intent: 'restamp',
-        tokenAnalyses: { puts: [{ ...payload, ...stamps }], deletes: [] },
-        tokenAnalysisLinks: { puts: [{ ...link, ...stamps }], deletes: [] },
+        tokenAnalyses: updating({ before: payload, after: { ...payload, ...stamps } }),
+        tokenAnalysisLinks: updating({ before: link, after: { ...link, ...stamps } }),
       });
 
       const reopened = new DraftRepository(storage, 'src', silentLogger());
@@ -516,8 +531,13 @@ describe('DraftRepository', () => {
         await expect(
           repository.apply({
             intent: 'writeGloss',
-            tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
-            tokenAnalysisLinks: { puts: twoBookAnalysis().tokenAnalysisLinks, deletes: [] },
+            tokenAnalyses: updating({
+              before: payload,
+              after: { ...payload, gloss: { en: 'and then' } },
+            }),
+            tokenAnalysisLinks: creating(
+              twoBookAnalysis().tokenAnalysisLinks.filter(({ id }) => id === 'tl-GEN'),
+            ),
           }),
         ).rejects.toThrow('could not read the stored analysis of GEN');
 
@@ -531,10 +551,10 @@ describe('DraftRepository', () => {
 
         await repository.apply({
           intent: 'writeFreeTranslation',
-          segmentAnalyses: {
-            puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
-            deletes: [],
-          },
+          segmentAnalyses: updating({
+            before: segment,
+            after: { ...segment, freeTranslation: { en: 'And then.' } },
+          }),
         });
 
         expect(records.get(draftAnalysisKey('src', 'EXO'))).toContain('And then.');
@@ -553,16 +573,19 @@ describe('DraftRepository', () => {
       await expect(
         repository.apply({
           intent: 'writeGloss',
-          tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+          tokenAnalyses: updating({
+            before: payload,
+            after: { ...payload, gloss: { en: 'and then' } },
+          }),
         }),
       ).rejects.toThrow('disk full');
       write.mockRestore();
       await repository.apply({
         intent: 'writeFreeTranslation',
-        segmentAnalyses: {
-          puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
-          deletes: [],
-        },
+        segmentAnalyses: updating({
+          before: segment,
+          after: { ...segment, freeTranslation: { en: 'And then.' } },
+        }),
       });
 
       const {
@@ -580,7 +603,7 @@ describe('DraftRepository', () => {
 
       await repository.apply({
         intent: 'writePhraseGloss',
-        phraseAnalyses: { puts: [{ ...phrase, gloss: { en: 'within' } }], deletes: [] },
+        phraseAnalyses: updating({ before: phrase, after: { ...phrase, gloss: { en: 'within' } } }),
       });
 
       const loaded = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
@@ -605,7 +628,10 @@ describe('DraftRepository', () => {
         const restarted = new DraftRepository(storage, 'src', silentLogger());
         await restarted.apply({
           intent: 'writePhraseGloss',
-          phraseAnalyses: { puts: [{ ...phrase, gloss: { en: 'within' } }], deletes: [] },
+          phraseAnalyses: updating({
+            before: phrase,
+            after: { ...phrase, gloss: { en: 'within' } },
+          }),
         });
 
         const glossIn = (bookCode: string) =>
@@ -631,7 +657,10 @@ describe('DraftRepository', () => {
 
         await new DraftRepository(storage, 'src', silentLogger()).apply({
           intent: 'writePhraseGloss',
-          phraseAnalyses: { puts: [{ ...phrase, gloss: { en: 'within' } }], deletes: [] },
+          phraseAnalyses: updating({
+            before: phrase,
+            after: { ...phrase, gloss: { en: 'within' } },
+          }),
         });
 
         expect(records.get(draftAnalysisKey('src', 'EXO'))).not.toContain('and then');
@@ -649,7 +678,7 @@ describe('DraftRepository', () => {
 
       await repository.apply({
         intent: 'writePhraseGloss',
-        phraseAnalyses: { puts: [{ ...phrase, gloss: { en: 'within' } }], deletes: [] },
+        phraseAnalyses: updating({ before: phrase, after: { ...phrase, gloss: { en: 'within' } } }),
       });
 
       expect(records.get(draftAnalysisKey('src', 'EXO'))).not.toContain('and then');
@@ -678,16 +707,19 @@ describe('DraftRepository', () => {
       const changeSets: ChangeSet[] = [
         {
           intent: 'removePhrase',
-          phraseAnalysisLinks: { puts: [], deletes: ['pa-1'] },
-          tokenAnalyses: { puts: [unlinked], deletes: [] },
+          phraseAnalysisLinks: deleting(twoBookAnalysis().phraseAnalysisLinks),
+          tokenAnalyses: creating([unlinked]),
         },
-        { intent: 'writeGloss', tokenAnalysisLinks: { puts: [leviticusLink], deletes: [] } },
+        { intent: 'writeGloss', tokenAnalysisLinks: creating([leviticusLink]) },
         {
           intent: 'clear',
-          tokenAnalysisLinks: { puts: [], deletes: [exodusLink.id] },
-          segmentAnalysisLinks: { puts: [], deletes: [segmentLink.id] },
+          tokenAnalysisLinks: deleting([exodusLink]),
+          segmentAnalysisLinks: deleting([segmentLink]),
         },
-        { intent: 'relink', tokenAnalysisLinks: { puts: [relinked], deletes: [] } },
+        {
+          intent: 'relink',
+          tokenAnalysisLinks: updating({ before: genesisLink, after: relinked }),
+        },
       ];
 
       await changeSets.reduce(async (prior, changes) => {
@@ -874,10 +906,10 @@ describe('DraftRepository', () => {
         repository.apply(
           {
             intent: 'reanchor',
-            segmentAnalyses: {
-              puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
-              deletes: [],
-            },
+            segmentAnalyses: updating({
+              before: segment,
+              after: { ...segment, freeTranslation: { en: 'And then.' } },
+            }),
           },
           { keepDirty: true, anchoredTo: { bookCode: 'EXO', textVersion: 'v2' } },
         );
@@ -977,8 +1009,8 @@ describe('DraftRepository', () => {
       await repository.findLinksInBooks(['GEN']);
       await new DraftRepository(storage, 'src', silentLogger()).apply({
         intent: 'deletePayload',
-        tokenAnalyses: { puts: [], deletes: ['ta-and'] },
-        tokenAnalysisLinks: { puts: [], deletes: ['tl-GEN', 'tl-EXO'] },
+        tokenAnalyses: deleting(twoBookAnalysis().tokenAnalyses),
+        tokenAnalysisLinks: deleting(twoBookAnalysis().tokenAnalysisLinks),
       });
 
       await repository.exportAll();
@@ -1037,7 +1069,10 @@ describe('DraftRepository', () => {
 
       await repository.apply({
         intent: 'reject',
-        tokenAnalysisLinks: { puts: [{ ...genesis, status: 'rejected' }], deletes: [] },
+        tokenAnalysisLinks: updating({
+          before: genesis,
+          after: { ...genesis, status: 'rejected' },
+        }),
       });
 
       const { tokenAnalysisLinks } = await repository.findLinksInBooks(['GEN']);
@@ -1052,7 +1087,7 @@ describe('DraftRepository', () => {
       const repository = new DraftRepository(storage, 'src', silentLogger());
       await repository.apply({
         intent: 'add',
-        tokenAnalyses: { puts: twoBookAnalysis().tokenAnalyses, deletes: [] },
+        tokenAnalyses: creating(twoBookAnalysis().tokenAnalyses),
       });
       const read = jest.spyOn(storage, 'read');
 
@@ -1081,7 +1116,10 @@ describe('DraftRepository', () => {
 
       await repository.apply({
         intent: 'writeGloss',
-        tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+        tokenAnalyses: updating({
+          before: payload,
+          after: { ...payload, gloss: { en: 'and then' } },
+        }),
       });
 
       await expect(repository.checkIndexes()).resolves.toStrictEqual([]);

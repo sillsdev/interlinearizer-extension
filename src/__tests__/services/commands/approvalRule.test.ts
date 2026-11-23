@@ -106,8 +106,11 @@ describe('assertApprovalRule', () => {
       tokenAnalysisLinks: [tokenLink('a'), tokenLink('b'), tokenLink('c', 'suggested')],
     });
 
-    buffer.put('tokenAnalysisLinks', { ...tokenLink('a'), updatedAt: '2026-06-01T00:00:00.000Z' });
-    buffer.put('tokenAnalysisLinks', tokenLink('c', 'rejected'));
+    buffer.update('tokenAnalysisLinks', tokenLink('a'), {
+      ...tokenLink('a'),
+      updatedAt: '2026-06-01T00:00:00.000Z',
+    });
+    buffer.update('tokenAnalysisLinks', tokenLink('c', 'suggested'), tokenLink('c', 'rejected'));
 
     await expect(assertApprovalRule(buffer, repository)).resolves.toBeUndefined();
   });

@@ -23,7 +23,10 @@ import type { usePhraseDispatch } from '../cache/sessionEdits';
 import { summarizeProject } from '../services/projectSummaries';
 import type {
   AnalysisRepository,
+  AppliedChangeSet,
+  ChangeSet,
   KeyValueStorage,
+  RecordChanges,
   WarningLogger,
 } from '../types/analysis-repository';
 import { emptyAnalysis } from '../types/empty-factories';
@@ -654,6 +657,51 @@ export function memoryStorage(initial: Record<string, string> = {}) {
   return { storage, records, writes };
 }
 
+/** One record kind's changes that create `records`. */
+export function creating<T>(records: T[]): RecordChanges<T> {
+  return { creates: records, updates: [], deletes: [] };
+}
+
+/** One record kind's changes that update each record from `before` to `after`. */
+export function updating<T>(...updates: { before: T; after: T }[]): RecordChanges<T> {
+  return { creates: [], updates, deletes: [] };
+}
+
+/** One record kind's changes that delete `records`. */
+export function deleting<T>(records: T[]): RecordChanges<T> {
+  return { creates: [], updates: [], deletes: records };
+}
+
+/**
+ * `changes` as each record they leave stored and the id of each they delete, for a test that checks
+ * what a command stages rather than what it read.
+ */
+export function asPuts(changes: ChangeSet): AppliedChangeSet {
+  const flattened: AppliedChangeSet = {
+    intent: changes.intent,
+    ...(changes.scope && { scope: changes.scope.after }),
+  };
+  const kinds = [
+    'segmentAnalyses',
+    'segmentAnalysisLinks',
+    'tokenAnalyses',
+    'tokenAnalysisLinks',
+    'phraseAnalyses',
+    'phraseAnalysisLinks',
+  ] as const;
+  kinds.forEach((kind) => {
+    const kindChanges: RecordChanges<{ id: string }> | undefined = changes[kind];
+    if (!kindChanges) return;
+    Object.assign(flattened, {
+      [kind]: {
+        puts: [...kindChanges.creates, ...kindChanges.updates.map(({ after }) => after)],
+        deletes: kindChanges.deletes.map(({ id }) => id),
+      },
+    });
+  });
+  return flattened;
+}
+
 /** Stores `draft`, unsaved mark included, through `repository`, which must hold no draft yet. */
 export async function seedRepository(
   repository: AnalysisRepository,
@@ -662,13 +710,13 @@ export async function seedRepository(
   const { analysis } = draft;
   await repository.apply({
     intent: 'seed',
-    scope: scopeRecordOf(draft),
-    segmentAnalyses: { puts: analysis.segmentAnalyses, deletes: [] },
-    segmentAnalysisLinks: { puts: analysis.segmentAnalysisLinks, deletes: [] },
-    tokenAnalyses: { puts: analysis.tokenAnalyses, deletes: [] },
-    tokenAnalysisLinks: { puts: analysis.tokenAnalysisLinks, deletes: [] },
-    phraseAnalyses: { puts: analysis.phraseAnalyses, deletes: [] },
-    phraseAnalysisLinks: { puts: analysis.phraseAnalysisLinks, deletes: [] },
+    scope: { before: await repository.getScope(), after: scopeRecordOf(draft) },
+    segmentAnalyses: creating(analysis.segmentAnalyses),
+    segmentAnalysisLinks: creating(analysis.segmentAnalysisLinks),
+    tokenAnalyses: creating(analysis.tokenAnalyses),
+    tokenAnalysisLinks: creating(analysis.tokenAnalysisLinks),
+    phraseAnalyses: creating(analysis.phraseAnalyses),
+    phraseAnalysisLinks: creating(analysis.phraseAnalysisLinks),
   });
   if (!draft.dirty) await repository.markClean();
 }

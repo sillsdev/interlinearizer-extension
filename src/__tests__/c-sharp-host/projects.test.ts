@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 import type { TokenAnalysis } from 'interlinearizer';
 import { CSharpRepository, REPOSITORY_COMMAND_PREFIX } from '../../services/csharpRepository';
-import { FIXTURE_STAMPS } from '../test-helpers';
+import { creating, FIXTURE_STAMPS } from '../test-helpers';
 import { FakePapi } from './fake-papi';
 
 let dataDirectory: string;
@@ -48,7 +48,7 @@ function repositoryFor(sourceProjectId: string, projectId: string): CSharpReposi
 /** Stores one token analysis in the repository's project and answers its id. */
 async function seedToken(repository: CSharpRepository): Promise<string> {
   const put: TokenAnalysis = { id: crypto.randomUUID(), ...FIXTURE_STAMPS, surfaceText: 'and' };
-  await repository.apply({ intent: 'seed', tokenAnalyses: { puts: [put], deletes: [] } });
+  await repository.apply({ intent: 'seed', tokenAnalyses: creating([put]) });
   return put.id;
 }
 

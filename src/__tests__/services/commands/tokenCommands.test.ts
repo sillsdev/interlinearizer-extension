@@ -5,7 +5,13 @@ import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { approveAnalysisForToken, writeGloss } from '../../../services/commands/tokenCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, memoryStorage, seedRepository, silentLogger } from '../../test-helpers';
+import {
+  asPuts,
+  FIXTURE_STAMPS,
+  memoryStorage,
+  seedRepository,
+  silentLogger,
+} from '../../test-helpers';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 const STAMP = { analysisId: 'new-analysis', linkId: 'new-link', now: NOW };
@@ -52,7 +58,7 @@ describe('writeGloss', () => {
       analysisLanguage: 'en',
     });
 
-    expect(buffer.toChangeSet('writeGloss')).toStrictEqual({
+    expect(asPuts(buffer.toChangeSet('writeGloss'))).toStrictEqual({
       intent: 'writeGloss',
       tokenAnalysisLinks: { puts: [], deletes: ['tl-1'] },
     });
@@ -69,7 +75,7 @@ describe('writeGloss', () => {
       analysisLanguage: 'en',
     });
 
-    expect(buffer.toChangeSet('writeGloss')).toStrictEqual({ intent: 'writeGloss' });
+    expect(asPuts(buffer.toChangeSet('writeGloss'))).toStrictEqual({ intent: 'writeGloss' });
   });
 });
 
@@ -87,7 +93,7 @@ describe('approveAnalysisForToken', () => {
       analysisId: 'ta-in',
     });
 
-    expect(buffer.toChangeSet('approve')).toStrictEqual({ intent: 'approve' });
+    expect(asPuts(buffer.toChangeSet('approve'))).toStrictEqual({ intent: 'approve' });
   });
 
   it('refuses a token that folds unlike the payload', async () => {

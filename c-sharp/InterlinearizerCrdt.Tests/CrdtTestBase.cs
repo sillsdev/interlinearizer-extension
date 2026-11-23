@@ -61,10 +61,20 @@ public abstract class CrdtTestBase : IAsyncDisposable
     protected InterlinearProjects Projects => new(DataModel, DbContext, new ClientIdentity(ClientId));
 
     /// <summary>Applies through the repository at the next commit time, returning what the apply reports.</summary>
-    protected Task<ChangeSet> ApplyNext(ChangeSet changes, PutMode putMode = PutMode.Replace)
+    protected Task<AppliedChangeSet> ApplyNext(ChangeSet changes)
     {
         _timeProvider.SetNextDateTime(NextDate());
-        return Repository.Apply(changes, putMode);
+        return Repository.Apply(changes);
+    }
+
+    /// <summary>
+    /// Applies through the repository at <paramref name="dateTime"/>, which may be earlier than
+    /// commits already made, as a commit a sync delivers late would be.
+    /// </summary>
+    protected Task<AppliedChangeSet> ApplyAt(DateTimeOffset dateTime, ChangeSet changes)
+    {
+        _timeProvider.SetNextDateTime(dateTime);
+        return Repository.Apply(changes);
     }
 
     /// <summary>The time the next commit will be made at, one day after the last.</summary>

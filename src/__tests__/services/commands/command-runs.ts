@@ -214,9 +214,9 @@ export async function runBoundaryCommand(
 export function expectRemovalPreview(outcome: CommandOutcome, before: TextAnalysis): void {
   const kept = new Set(outcome.result.tokenAnalyses.map(({ id }) => id));
   const reclaimed = before.tokenAnalyses.map(({ id }) => id).filter((id) => !kept.has(id));
-  expect([...(outcome.changes.tokenAnalyses?.deletes ?? [])].sort()).toStrictEqual(
-    reclaimed.sort(),
-  );
+  expect(
+    [...(outcome.changes.tokenAnalyses?.deletes ?? []).map(({ id }) => id)].sort(),
+  ).toStrictEqual(reclaimed.sort());
 }
 
 /** What a draft holds before an unsaved-change discard runs. */

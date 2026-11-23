@@ -12,10 +12,13 @@ import {
   FIXTURE_STAMPS,
   makeTokenLink,
   makeVerseBook,
+  creating,
+  deleting,
   memoryStorage,
   seedRepository,
   silentLogger,
   tokenRefOf,
+  updating,
 } from '../test-helpers';
 
 function payload(id: string): TokenAnalysis {
@@ -23,7 +26,7 @@ function payload(id: string): TokenAnalysis {
 }
 
 function putting(id: string): ChangeSet {
-  return { intent: `put ${id}`, tokenAnalyses: { puts: [payload(id)], deletes: [] } };
+  return { intent: `put ${id}`, tokenAnalyses: creating([payload(id)]) };
 }
 
 /**
@@ -49,12 +52,34 @@ describe('EditHistory', () => {
     await expect(storedIds()).resolves.toStrictEqual(['a']);
   });
 
+  it('undoes an edit by writing back only the fields it changed', async () => {
+    const { history, repository } = makeHistory();
+    await history.apply(putting('a'));
+    await history.apply({
+      intent: 'gloss',
+      tokenAnalyses: updating({
+        before: payload('a'),
+        after: { ...payload('a'), gloss: { en: 'one' } },
+      }),
+    });
+    await repository.apply({
+      intent: 'tag',
+      tokenAnalyses: updating({ before: payload('a'), after: { ...payload('a'), pos: 'noun' } }),
+    });
+
+    await history.undo();
+
+    await expect(repository.getTokenAnalyses(['a'])).resolves.toStrictEqual([
+      { ...payload('a'), pos: 'noun' },
+    ]);
+  });
+
   it('returns what an edit it applies changed, and what reverts it', async () => {
     const { history } = makeHistory();
 
     await expect(history.apply(putting('a'))).resolves.toStrictEqual({
-      changes: putting('a'),
-      inverse: { intent: 'put a', tokenAnalyses: { puts: [], deletes: ['a'] } },
+      changes: { intent: 'put a', tokenAnalyses: { puts: [payload('a')], deletes: [] } },
+      inverse: { intent: 'put a', tokenAnalyses: deleting([payload('a')]) },
     });
   });
 
@@ -119,7 +144,7 @@ describe('EditHistory', () => {
 
     await expect(history.redo()).resolves.toStrictEqual({
       changes: { intent: 'put a', tokenAnalyses: { puts: [payload('a')], deletes: [] } },
-      inverse: { intent: 'put a', tokenAnalyses: { puts: [], deletes: ['a'] } },
+      inverse: { intent: 'put a', tokenAnalyses: deleting([payload('a')]) },
       dirty: true,
     });
     await expect(storedIds()).resolves.toStrictEqual(['a']);
@@ -144,10 +169,7 @@ describe('EditHistory', () => {
     await history.apply(putting('a'));
     await repository.apply({
       intent: 'link',
-      tokenAnalysisLinks: {
-        puts: [makeTokenLink('a', 'GEN 1:1:0', { id: 'linked' })],
-        deletes: [],
-      },
+      tokenAnalysisLinks: creating([makeTokenLink('a', 'GEN 1:1:0', { id: 'linked' })]),
     });
 
     const undone = await history.undo();
@@ -478,8 +500,15 @@ describe('EditHistory re-anchoring', () => {
     });
   }
 
+  function relinking(from: TokenAnalysisLink, to: TokenAnalysisLink): ChangeSet {
+    return {
+      intent: `link ${to.analysisId}`,
+      tokenAnalysisLinks: updating({ before: from, after: to }),
+    };
+  }
+
   function linking(link: TokenAnalysisLink): ChangeSet {
-    return { intent: `link ${link.analysisId}`, tokenAnalysisLinks: { puts: [link], deletes: [] } };
+    return { intent: `link ${link.analysisId}`, tokenAnalysisLinks: creating([link]) };
   }
 
   /**
@@ -523,7 +552,9 @@ describe('EditHistory re-anchoring', () => {
     expect(applied?.changes.tokenAnalysisLinks?.puts.map(({ token }) => token)).toStrictEqual([
       betaLink(after, 'ta-1').token,
     ]);
-    expect(applied?.inverse.tokenAnalysisLinks?.puts).toStrictEqual([betaLink(before, 'ta-1')]);
+    expect(
+      applied?.inverse.tokenAnalysisLinks?.updates.map(({ after: reverted }) => reverted),
+    ).toStrictEqual([betaLink(before, 'ta-1')]);
     expect(history.canUndo).toBe(false);
     expect(await storedLink()).toBeUndefined();
   });
@@ -546,7 +577,7 @@ describe('EditHistory re-anchoring', () => {
     const before = genesis('alpha beta');
     const after = genesis('new alpha beta');
     await history.apply(linking(betaLink(before, 'ta-1')));
-    await history.apply(linking(betaLink(after, 'ta-2')));
+    await history.apply(relinking(betaLink(before, 'ta-1'), betaLink(after, 'ta-2')));
 
     await expect(history.applyPass(after, undefined)).resolves.toBeUndefined();
     await history.undo();
@@ -579,7 +610,7 @@ describe('EditHistory re-anchoring', () => {
     const before = genesis('alpha beta');
     const after = genesis('new alpha beta');
     await history.apply(linking(betaLink(before, 'ta-1')));
-    await history.apply(linking(betaLink(after, 'ta-2')));
+    await history.apply(relinking(betaLink(before, 'ta-1'), betaLink(after, 'ta-2')));
 
     history.notePass(after);
     await history.undo();
@@ -608,7 +639,7 @@ describe('EditHistory re-anchoring', () => {
     const before = genesis('alpha beta');
     const after = genesis('new alpha beta');
     await history.apply(linking(betaLink(before, 'ta-1')));
-    await history.apply(linking(betaLink(before, 'ta-2')));
+    await history.apply(relinking(betaLink(before, 'ta-1'), betaLink(before, 'ta-2')));
     await pass(after);
 
     await history.undo();
@@ -623,7 +654,7 @@ describe('EditHistory re-anchoring', () => {
     const before = genesis('alpha beta');
     const after = genesis('new alpha beta');
     await history.apply(linking(betaLink(before, 'ta-1')));
-    await history.apply(linking(betaLink(before, 'ta-2')));
+    await history.apply(relinking(betaLink(before, 'ta-1'), betaLink(before, 'ta-2')));
     await history.undo();
     await pass(after);
 
@@ -639,7 +670,7 @@ describe('EditHistory re-anchoring', () => {
     const before = genesis('alpha beta');
     const after = genesis('new alpha beta');
     await history.apply(linking(betaLink(before, 'ta-1')));
-    await history.apply(linking(betaLink(before, 'ta-2')));
+    await history.apply(relinking(betaLink(before, 'ta-1'), betaLink(before, 'ta-2')));
     await pass(after);
 
     const undone = (await history.undo())?.changes;
@@ -659,7 +690,7 @@ describe('EditHistory re-anchoring', () => {
     const after = genesis('new alpha beta');
     await history.apply(linking(betaLink(before, 'ta-1')));
     await pass(after);
-    await history.apply(linking(betaLink(after, 'ta-2')));
+    await history.apply(relinking(betaLink(after, 'ta-1'), betaLink(after, 'ta-2')));
 
     await history.undo();
 
@@ -721,7 +752,7 @@ describe('EditHistory re-anchoring', () => {
     const before = genesis('alpha beta');
     const after = genesis('new alpha beta');
     await history.apply(linking(betaLink(before, 'ta-1')));
-    await history.apply(linking(betaLink(before, 'ta-2')));
+    await history.apply(relinking(betaLink(before, 'ta-1'), betaLink(before, 'ta-2')));
     await pass(after);
     reanchorBooks.mockRejectedValueOnce(new Error('busy'));
 
@@ -741,7 +772,7 @@ describe('EditHistory re-anchoring', () => {
     const { history, pass, repository } = makeReanchoringHistory();
     const before = genesis('alpha beta');
     await history.apply(linking(betaLink(before, 'ta-1')));
-    await history.apply(linking(betaLink(before, 'ta-2')));
+    await history.apply(relinking(betaLink(before, 'ta-1'), betaLink(before, 'ta-2')));
     await pass(genesis('new alpha beta'));
     const apply = jest.spyOn(repository, 'apply');
 
@@ -754,7 +785,7 @@ describe('EditHistory re-anchoring', () => {
     const { history, reanchorBooks, pass } = makeReanchoringHistory();
     const before = genesis('alpha beta');
     await history.apply(linking(betaLink(before, 'ta-1')));
-    await history.apply(linking(betaLink(before, 'ta-2')));
+    await history.apply(relinking(betaLink(before, 'ta-1'), betaLink(before, 'ta-2')));
     await pass(genesis('new alpha beta'));
 
     await history.undo();
@@ -762,7 +793,10 @@ describe('EditHistory re-anchoring', () => {
     expect(reanchorBooks).toHaveBeenCalledWith(
       {
         intent: 'link ta-2',
-        tokenAnalysisLinks: { puts: [betaLink(before, 'ta-1')], deletes: [] },
+        tokenAnalysisLinks: updating({
+          before: betaLink(before, 'ta-2'),
+          after: betaLink(before, 'ta-1'),
+        }),
       },
       [genesis('new alpha beta')],
     );

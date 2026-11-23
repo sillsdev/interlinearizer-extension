@@ -15,17 +15,17 @@ public class PatchSegmentAnalysisLinkChange(Guid entityId)
     : EditChange<SegmentAnalysisLink>(entityId), ISelfNamedType<PatchSegmentAnalysisLinkChange>
 {
     /// <summary>
-    /// The patch that takes <paramref name="stored"/> to <paramref name="put"/>, timestamps
+    /// The patch that takes <paramref name="before"/> to <paramref name="after"/>, timestamps
     /// aside; null when nothing differs.
     /// </summary>
-    public static PatchSegmentAnalysisLinkChange? Diff(SegmentAnalysisLink stored, SegmentAnalysisLink put)
+    public static PatchSegmentAnalysisLinkChange? Diff(SegmentAnalysisLink before, SegmentAnalysisLink after)
     {
-        var patch = new PatchSegmentAnalysisLinkChange(put.Id)
+        var patch = new PatchSegmentAnalysisLinkChange(after.Id)
         {
-            AnalysisId = Patches.Changed(stored.AnalysisId, put.AnalysisId) ? new(put.AnalysisId) : default,
-            SegmentId = Patches.Changed(stored.SegmentId, put.SegmentId) ? new(put.SegmentId) : default,
-            Status = Patches.Changed(stored.Status, put.Status) ? new(put.Status) : default,
-            Confidence = Patches.Changed(stored.Confidence, put.Confidence) ? new(put.Confidence) : default,
+            AnalysisId = Patches.Changed(before.AnalysisId, after.AnalysisId) ? new(after.AnalysisId) : default,
+            SegmentId = Patches.Changed(before.SegmentId, after.SegmentId) ? new(after.SegmentId) : default,
+            Status = Patches.Changed(before.Status, after.Status) ? new(after.Status) : default,
+            Confidence = Patches.Changed(before.Confidence, after.Confidence) ? new(after.Confidence) : default,
         };
         return patch.IsEmpty ? null : patch;
     }

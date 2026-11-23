@@ -9,7 +9,13 @@ import {
 } from '../../../services/commands/morphemeCommands';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, memoryStorage, seedRepository, silentLogger } from '../../test-helpers';
+import {
+  asPuts,
+  FIXTURE_STAMPS,
+  memoryStorage,
+  seedRepository,
+  silentLogger,
+} from '../../test-helpers';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 const STAMP = { analysisId: 'new-analysis', linkId: 'new-link', now: NOW };
@@ -62,7 +68,7 @@ describe('writeMorphemes', () => {
       ],
     });
 
-    expect(buffer.toChangeSet('writeMorphemes')).toStrictEqual({
+    expect(asPuts(buffer.toChangeSet('writeMorphemes'))).toStrictEqual({
       intent: 'writeMorphemes',
       tokenAnalysisLinks: {
         puts: [{ ...link('tl-1', 'GEN 1:1:0'), updatedAt: NOW }],
@@ -84,7 +90,7 @@ describe('writeMorphemeGloss', () => {
       analysisLanguage: 'en',
     });
 
-    expect(buffer.toChangeSet('writeMorphemeGloss')).toStrictEqual({
+    expect(asPuts(buffer.toChangeSet('writeMorphemeGloss'))).toStrictEqual({
       intent: 'writeMorphemeGloss',
     });
   });
@@ -103,7 +109,7 @@ describe('writeMorphemeGloss', () => {
       analysisLanguage: 'en',
     });
 
-    expect(buffer.toChangeSet('writeMorphemeGloss')).toStrictEqual({
+    expect(asPuts(buffer.toChangeSet('writeMorphemeGloss'))).toStrictEqual({
       intent: 'writeMorphemeGloss',
       tokenAnalysisLinks: {
         puts: [{ ...link('tl-1', 'GEN 1:1:0'), updatedAt: NOW }],
@@ -126,7 +132,7 @@ describe('writeMorphemeGloss', () => {
       analysisLanguage: 'en',
     });
 
-    expect(buffer.toChangeSet('writeMorphemeGloss')).toStrictEqual({
+    expect(asPuts(buffer.toChangeSet('writeMorphemeGloss'))).toStrictEqual({
       intent: 'writeMorphemeGloss',
     });
   });
@@ -141,7 +147,7 @@ describe('deleteMorphemes', () => {
 
     await deleteMorphemes(buffer, { ...STAMP, tokenRef: 'GEN 1:1:0' });
 
-    expect(buffer.toChangeSet('deleteMorphemes')).toStrictEqual({
+    expect(asPuts(buffer.toChangeSet('deleteMorphemes'))).toStrictEqual({
       intent: 'deleteMorphemes',
       tokenAnalysisLinks: { puts: [], deletes: ['tl-1'] },
     });
@@ -155,6 +161,8 @@ describe('deleteMorphemes', () => {
 
     await deleteMorphemes(buffer, { ...STAMP, tokenRef: 'GEN 1:1:0' });
 
-    expect(buffer.toChangeSet('deleteMorphemes')).toStrictEqual({ intent: 'deleteMorphemes' });
+    expect(asPuts(buffer.toChangeSet('deleteMorphemes'))).toStrictEqual({
+      intent: 'deleteMorphemes',
+    });
   });
 });

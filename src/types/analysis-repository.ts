@@ -88,25 +88,58 @@ export type AnalysisPayloads = Pick<
   'tokenAnalyses' | 'phraseAnalyses' | 'segmentAnalyses'
 >;
 
-/** Whole-record puts and deletes of one record kind. */
+/** A record as a command read it and as its edit leaves it, under one id. */
+export type RecordUpdate<T> = {
+  before: T;
+  after: T;
+};
+
+/**
+ * Creates, updates and deletes of one record kind. An update writes only the fields that differ
+ * between its `before` and its `after`, key by key for a multistring or feature map. So a field
+ * that another commit changed since the read stands.
+ */
 export type RecordChanges<T> = {
-  /** Records to store whole, each replacing any stored under its id. */
-  puts: T[];
-  /** Ids of records to remove; an id with nothing stored under it is skipped. */
-  deletes: string[];
+  /** Records to store under ids that no stored record has. */
+  creates: T[];
+  /** Edits to stored records; an edit of a record not stored is skipped. */
+  updates: RecordUpdate<T>[];
+  /**
+   * Records to remove, as read; a record not stored is skipped. Only the id reaches the store. The
+   * rest lets an undo create the record again.
+   */
+  deletes: T[];
 };
 
 /**
  * One command's changes, applied all-or-nothing. A record kind it leaves alone is absent, and an id
- * appears at most once in a kind's puts and deletes together.
+ * appears at most once in a kind's creates, updates and deletes together.
  */
 export type ChangeSet = {
   /** Names the command that made the changes. */
   intent: string;
-  /** The scope's record, whole, which carries boundary changes; absent when it is left alone. */
-  scope?: ScopeRecord;
+  /** The scope's record, which carries boundary changes; absent when it is left alone. */
+  scope?: RecordUpdate<ScopeRecord>;
 } & {
   [Kind in keyof TextAnalysis]?: RecordChanges<TextAnalysis[Kind][number]>;
+};
+
+/** What an apply left of one record kind. */
+export type AppliedRecords<T> = {
+  /** Records the apply created or updated, as stored. */
+  puts: T[];
+  /** Ids of the records the apply removed. */
+  deletes: string[];
+};
+
+/** What an apply changed, by record kind; a kind it left alone is absent. */
+export type AppliedChangeSet = {
+  /** The intent of the changes applied. */
+  intent: string;
+  /** The scope's record as the apply left it; absent when the apply left it alone. */
+  scope?: ScopeRecord;
+} & {
+  [Kind in keyof TextAnalysis]?: AppliedRecords<TextAnalysis[Kind][number]>;
 };
 
 /** How an apply treats the draft's unsaved mark and its recorded anchor versions. */
@@ -132,14 +165,12 @@ export type ApplyOptions = {
 
 /** What applying a {@link ChangeSet} tells its caller. */
 export type ApplyResult = {
-  /** Restores what the applied changes replaced; applying it undoes them. */
-  inverse: ChangeSet;
   /**
-   * What the apply changed: the changes less each delete of a record not stored. A delete is added
-   * for each link that a deleted analysis took with it. A kind left with no changes is absent. Each
-   * put may come back as stored rather than as given.
+   * What the apply changed: each record created or updated, as stored, and the id of each record
+   * deleted. A skipped update or delete is left out, and so is an update that changed nothing. A
+   * delete is added for each link that a deleted analysis took with it.
    */
-  applied: ChangeSet;
+  applied: AppliedChangeSet;
   /** Whether the draft was marked unsaved before the changes applied. */
   wasDirty: boolean;
 };
@@ -236,8 +267,8 @@ export interface AnalysisRepository {
    * changes leave alone.
    *
    * @throws {ReadOnlyAnalysisError} If the repository is read-only; nothing is applied.
-   * @throws {Error} If an id appears more than once in one record kind's changes, or the scope's
-   *   record names another source project; nothing is applied.
+   * @throws {Error} If an id appears more than once in one record kind's changes, a create names a
+   *   stored record's id, or the scope's record names another source project; nothing is applied.
    * @throws {Error} If the changes reach a book whose stored analysis could not be read; nothing is
    *   applied.
    * @throws {Error} If a link names an analysis that won't be stored once the changes apply, in an

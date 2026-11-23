@@ -159,8 +159,8 @@ async function readWhole(reader: DiscardReader): Promise<StoredPart> {
 }
 
 /**
- * Stages the puts and removals of `kind` that turn `current`'s records into `target`'s, returning
- * the records it puts.
+ * Stages the creates, updates and removals of `kind` that turn `current`'s records into `target`'s,
+ * returning the records it creates or updates.
  */
 function stageKind<Kind extends RecordKind>(
   buffer: ChangeBuffer,
@@ -171,7 +171,11 @@ function stageKind<Kind extends RecordKind>(
   const before = new Map(current.map((record) => [record.id, record]));
   const kept = new Set(target.map(({ id }) => id));
   const puts = target.filter((record) => !deepEqual(before.get(record.id), record));
-  puts.forEach((record) => buffer.put(kind, record));
+  puts.forEach((record) => {
+    const stored = before.get(record.id);
+    if (stored) buffer.update(kind, stored, record);
+    else buffer.create(kind, record);
+  });
   current.filter(({ id }) => !kept.has(id)).forEach((record) => buffer.delete(kind, record));
   return puts;
 }
@@ -225,7 +229,7 @@ function stageDiscard(
     if (restored.segmentation) scope.segmentation = restored.segmentation;
     else delete scope.segmentation;
     if (restoredLanguages) scope.analysisLanguages = [...restoredLanguages];
-    buffer.putScope(scope);
+    buffer.updateScope(stored, scope);
   }
   if (segmentationChanged) {
     const anchoredBooks = [stored.segmentation, restored.segmentation].flatMap((delta) =>

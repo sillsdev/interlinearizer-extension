@@ -106,6 +106,10 @@ async function stageTextChange(
   },
   now: string,
 ): Promise<void> {
+  // Read first, so that the buffer stages each put as an update from the record as stored.
+  await buffer.getTokenAnalyses(tokenAnalyses.map(({ id }) => id));
+  await buffer.getPhraseAnalyses(phraseAnalyses.map(({ id }) => id));
+  await buffer.getSegmentAnalyses(segmentAnalyses.map(({ id }) => id));
   tokenAnalyses.forEach((analysis) => buffer.put('tokenAnalyses', analysis));
   phraseAnalyses.forEach((analysis) => buffer.put('phraseAnalyses', analysis));
   segmentAnalyses.forEach((analysis) => buffer.put('segmentAnalyses', analysis));

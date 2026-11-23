@@ -125,7 +125,7 @@ public class OpenSourcesTests : IAsyncDisposable
         await OpenWithProjects(S1, P1, P2);
         var put = Token("and");
 
-        await (await _sources.Repository(S1, P1)).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) });
+        await (await _sources.Repository(S1, P1)).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(put) });
 
         await Assert.That(await (await _sources.Repository(S1, P1)).GetTokenAnalyses([put.Id])).HasSingleItem();
         await Assert.That(await (await _sources.Repository(S1, P2)).GetTokenAnalyses([put.Id])).IsEmpty();
@@ -179,7 +179,7 @@ public class OpenSourcesTests : IAsyncDisposable
     {
         await OpenWithProjects(S1, P1);
         var put = Token("and");
-        await (await _sources.Repository(S1, P1)).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) });
+        await (await _sources.Repository(S1, P1)).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(put) });
         await _sources.Close(S1);
 
         await _sources.Open(S1);
@@ -196,7 +196,7 @@ public class OpenSourcesTests : IAsyncDisposable
         var first = _sources.Exclusive(S1, async () =>
         {
             await release.Task;
-            await (await _sources.Repository(S1, P1)).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(put) });
+            await (await _sources.Repository(S1, P1)).Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(put) });
         });
         var secondStarted = false;
         var second = _sources.Exclusive(S1, async () =>

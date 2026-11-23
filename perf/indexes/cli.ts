@@ -69,25 +69,35 @@ async function randomChanges(
       rng,
       STATUSES.filter((s) => s !== link.status),
     );
-    changes.tokenAnalysisLinks = { puts: [{ ...link, status }], deletes: [] };
+    changes.tokenAnalysisLinks = {
+      creates: [],
+      updates: [{ before: link, after: { ...link, status } }],
+      deletes: [],
+    };
   } else if (link && roll < 0.45) {
-    changes.tokenAnalysisLinks = { puts: [], deletes: [link.id] };
+    changes.tokenAnalysisLinks = { creates: [], updates: [], deletes: [link] };
   } else if (link && roll < 0.7) {
     // A respelled payload moves to another form's entry.
     const [payload] = await repository.getTokenAnalyses([link.analysisId]);
     if (payload) {
       const surfaceText = pick(rng, surfaceTexts);
-      changes.tokenAnalyses = { puts: [{ ...payload, surfaceText }], deletes: [] };
+      changes.tokenAnalyses = {
+        creates: [],
+        updates: [{ before: payload, after: { ...payload, surfaceText } }],
+        deletes: [],
+      };
     }
   } else {
     const surfaceText = pick(rng, surfaceTexts);
     const analysisId = `check-ta-${step}`;
     changes.tokenAnalyses = {
-      puts: [{ id: analysisId, createdAt: STAMP, updatedAt: STAMP, surfaceText }],
+      creates: [{ id: analysisId, createdAt: STAMP, updatedAt: STAMP, surfaceText }],
+      updates: [],
       deletes: [],
     };
     changes.tokenAnalysisLinks = {
-      puts: [
+      updates: [],
+      creates: [
         {
           id: `check-tl-${step}`,
           analysisId,
@@ -103,8 +113,12 @@ async function randomChanges(
   if (phraseAnalysisLinks.length > 0 && chance(rng, 0.2)) {
     const phrase = pick(rng, phraseAnalysisLinks);
     changes.phraseAnalysisLinks = chance(rng, 0.5)
-      ? { puts: [], deletes: [phrase.id] }
-      : { puts: [{ ...phrase, status: pick(rng, STATUSES) }], deletes: [] };
+      ? { creates: [], updates: [], deletes: [phrase] }
+      : {
+          creates: [],
+          updates: [{ before: phrase, after: { ...phrase, status: pick(rng, STATUSES) } }],
+          deletes: [],
+        };
   }
   return changes;
 }

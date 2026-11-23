@@ -1064,7 +1064,7 @@ export function sessionEditHandlers({
   }: ArgsOf<'interlinearizer.previewRemovals'>): Promise<string> {
     try {
       const changes = await sessions.preview(sessionId, request.intent, stageRemovals(request));
-      return JSON.stringify(changes.tokenAnalyses?.deletes ?? []);
+      return JSON.stringify((changes.tokenAnalyses?.deletes ?? []).map(({ id }) => id));
     } catch (e) {
       logger.error(`Interlinearizer: failed to preview removals in session ${sessionId}`, e);
       throw e;

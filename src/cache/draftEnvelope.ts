@@ -1,5 +1,5 @@
 import type { DraftEnvelope } from 'interlinearizer';
-import type { ChangeSet, ScopeRecord } from '../types/analysis-repository';
+import type { AppliedChangeSet, ScopeRecord } from '../types/analysis-repository';
 import { deepEqual } from '../utils/analysis-identity';
 import { isEmptyChangeSet } from '../utils/change-set';
 
@@ -92,7 +92,7 @@ export class DraftEnvelopeStore {
    * A fetch under way lands updated by the changes too, because the host may have answered it
    * before applying them.
    */
-  take(changes: ChangeSet, mark?: Mark): void {
+  take(changes: AppliedChangeSet, mark?: Mark): void {
     if (isEmptyChangeSet(changes)) return;
     const taken = { scope: changes.scope, mark };
     this.takenDuringFetch?.push(taken);

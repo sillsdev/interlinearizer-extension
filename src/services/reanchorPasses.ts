@@ -86,11 +86,12 @@ export async function reanchorStoredBook(
  */
 export function reanchorRestored(repository: AnalysisRepository): ReanchorBooks {
   return async (changes, books) => {
-    // A restored link may name a payload no stored link does, which only the step's puts reveal.
+    // A restored link may name a payload no stored link does, which only the step's changes reveal.
+    const linkChanges = changes.segmentAnalysisLinks;
     const stored = await readBooks(
       repository,
       books.map(({ bookRef }) => bookRef),
-      changes.segmentAnalysisLinks?.puts,
+      linkChanges && [...linkChanges.creates, ...linkChanges.updates.map(({ after }) => after)],
     );
     const restored = applyChangeSet(stored, changes).draft;
     const linked = booksLinkedIn(restored.analysis);

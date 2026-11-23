@@ -12,9 +12,9 @@ import type {
   AnalysisLinks,
   AnalysisPayloads,
   ApprovalsByForm,
-  ChangeSet,
+  AppliedChangeSet,
   IndexDifference,
-  RecordChanges,
+  AppliedRecords,
 } from '../types/analysis-repository';
 import { bookOfRef, BOOKLESS_PARTITION } from '../utils/analysis-book';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only for its doc links
@@ -53,7 +53,7 @@ function segmentLinkBook(link: SegmentAnalysisLink): string {
 }
 
 /** The ids one record kind's changes put or delete. */
-function idsNamedBy(changes: RecordChanges<{ id: string }> | undefined): string[] {
+function idsNamedBy(changes: AppliedRecords<{ id: string }> | undefined): string[] {
   return changes ? [...changes.puts.map(({ id }) => id), ...changes.deletes] : [];
 }
 
@@ -84,8 +84,8 @@ function reachOfKind<
   payloads: PayloadTable<Payload>,
   links: LinkTable<Link>,
   bookOf: (link: Link) => string,
-  payloadChanges: RecordChanges<Payload> | undefined,
-  linkChanges: RecordChanges<Link> | undefined,
+  payloadChanges: AppliedRecords<Payload> | undefined,
+  linkChanges: AppliedRecords<Link> | undefined,
   books: Set<string>,
 ): boolean {
   const changedPayloadIds = idsNamedBy(payloadChanges);
@@ -215,7 +215,7 @@ export class AnalysisIndex {
    * Applies `changes`, which must name each id at most once per record kind. The index holds the
    * put records themselves, not copies.
    */
-  apply(changes: ChangeSet): void {
+  apply(changes: AppliedChangeSet): void {
     const unsettled = this.tokensReachedBy(changes);
     this.tokenAnalyses.apply(changes.tokenAnalyses);
     this.phraseAnalyses.apply(changes.phraseAnalyses);
@@ -270,7 +270,7 @@ export class AnalysisIndex {
    * {@link BOOKLESS_PARTITION} is included when a payload they reach is unlinked before they apply
    * or after.
    */
-  reach(changes: ChangeSet): Set<string> {
+  reach(changes: AppliedChangeSet): Set<string> {
     const books = new Set<string>();
     const reachesUnlinked = [
       reachOfKind(
@@ -487,7 +487,7 @@ export class AnalysisIndex {
    * links that the changes put or delete. They also include the tokens of each stored token link
    * naming a token payload that the changes put or delete.
    */
-  private tokensReachedBy({ tokenAnalyses, tokenAnalysisLinks }: ChangeSet): Set<string> {
+  private tokensReachedBy({ tokenAnalyses, tokenAnalysisLinks }: AppliedChangeSet): Set<string> {
     return new Set(
       [
         ...this.tokenLinks.get(idsNamedBy(tokenAnalysisLinks)),

@@ -8,6 +8,7 @@ import {
   describeAnalysisRepositoryConformance,
   type ConformanceStore,
 } from '../analysis-repository-conformance';
+import { creating } from '../test-helpers';
 import { FakePapi } from './fake-papi';
 
 let dataDirectory: string;
@@ -74,12 +75,12 @@ function createStore(): ConformanceStore {
         await open(sourceProjectId)
       ).apply({
         intent: 'seed',
-        segmentAnalyses: { puts: analysis.segmentAnalyses, deletes: [] },
-        segmentAnalysisLinks: { puts: analysis.segmentAnalysisLinks, deletes: [] },
-        tokenAnalyses: { puts: analysis.tokenAnalyses, deletes: [] },
-        tokenAnalysisLinks: { puts: analysis.tokenAnalysisLinks, deletes: [] },
-        phraseAnalyses: { puts: analysis.phraseAnalyses, deletes: [] },
-        phraseAnalysisLinks: { puts: analysis.phraseAnalysisLinks, deletes: [] },
+        segmentAnalyses: creating(analysis.segmentAnalyses),
+        segmentAnalysisLinks: creating(analysis.segmentAnalysisLinks),
+        tokenAnalyses: creating(analysis.tokenAnalyses),
+        tokenAnalysisLinks: creating(analysis.tokenAnalysisLinks),
+        phraseAnalyses: creating(analysis.phraseAnalyses),
+        phraseAnalysisLinks: creating(analysis.phraseAnalysisLinks),
       });
     },
     readAll: async (sourceProjectId) => (await (await open(sourceProjectId)).exportAll()).draft,

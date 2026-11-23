@@ -8,7 +8,7 @@ import type {
   SegmentationDelta,
   SegmentRange,
 } from 'interlinearizer';
-import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
+import type { AnalysisRepository, AppliedChangeSet, ChangeSet } from '../types/analysis-repository';
 import { bookOfRef } from '../utils/analysis-book';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { bookIndexesOf } from '../utils/book-indexes';
@@ -17,8 +17,8 @@ import { sameSegmentation, segmentationForBook } from '../utils/segmentation';
 import { placeStaleFreeTranslations } from '../utils/stale-free-translations';
 import { touchedForms } from './sessionPages';
 
-/** Changes as applied, with the changes that restore what they replaced. */
-export type AppliedChange = Readonly<{ changes: ChangeSet; inverse: ChangeSet }>;
+/** What an apply changed, with the changes that undo it. */
+export type AppliedChange = Readonly<{ changes: AppliedChangeSet; inverse: ChangeSet }>;
 
 /**
  * Looks up a book as the session's boundaries now segment it. Answers `undefined` when the host
@@ -46,7 +46,7 @@ export function booksResegmentedBetween(
 /** The books whose boundaries an applied change moved. */
 export function booksResegmented({ changes, inverse }: AppliedChange): string[] {
   return changes.scope && inverse.scope
-    ? booksResegmentedBetween(inverse.scope.segmentation, changes.scope.segmentation)
+    ? booksResegmentedBetween(inverse.scope.after.segmentation, changes.scope.segmentation)
     : [];
 }
 

@@ -214,14 +214,12 @@ describe('CatalogSenseControl', () => {
   });
 
   describe('the menu', () => {
-    it('offers an unlinked form only to link it', async () => {
+    it('skips the menu for an unlinked form, opening the search with no way back', async () => {
       renderControl();
       await openPopover();
 
-      expect(await screen.findByRole('button', { name: 'senseLinkAction' })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'senseUnlink' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'senseAdoptGloss' })).not.toBeInTheDocument();
-      expect(screen.queryByTestId('catalog-sense-menu-gloss')).not.toBeInTheDocument();
+      expect(await screen.findByTestId('catalog-sense-candidate')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'senseBack' })).not.toBeInTheDocument();
     });
 
     it('offers a linked form a change of sense, and shows the sense’s gloss', async () => {
@@ -229,7 +227,6 @@ describe('CatalogSenseControl', () => {
       await openPopover();
 
       expect(await screen.findByRole('button', { name: 'senseChangeAction' })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'senseLinkAction' })).not.toBeInTheDocument();
       expect(await screen.findByTestId('catalog-sense-menu-gloss')).toHaveTextContent(
         'lexicon says water',
       );
@@ -325,7 +322,6 @@ describe('CatalogSenseControl', () => {
 
       expect(await screen.findByRole('button', { name: 'senseAdoptGloss' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'senseUnlink' })).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'senseLinkAction' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'senseChangeAction' })).not.toBeInTheDocument();
     });
 
@@ -363,7 +359,6 @@ describe('CatalogSenseControl', () => {
       const { searchByForm } = renderControl();
       await openPopover();
 
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
       await screen.findByTestId('catalog-sense-candidate');
 
       expect(searchByForm).toHaveBeenCalledTimes(1);
@@ -375,8 +370,6 @@ describe('CatalogSenseControl', () => {
       renderControl({}, { searchByForm: () => pending.promise });
       await openPopover();
 
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
-
       expect(await screen.findByTestId('spinner')).toBeInTheDocument();
       await act(async () => pending.resolve([]));
       expect(screen.queryByTestId('spinner')).not.toBeInTheDocument();
@@ -386,16 +379,12 @@ describe('CatalogSenseControl', () => {
       renderControl({}, { searchByForm: async () => [] });
       await openPopover();
 
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
-
       expect(await screen.findByTestId('catalog-sense-no-match')).toHaveTextContent('senseNoMatch');
     });
 
     it('says so when the search fails', async () => {
       renderControl({}, { searchByForm: jest.fn().mockRejectedValue(new Error('down')) });
       await openPopover();
-
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
 
       expect(await screen.findByTestId('catalog-sense-search-failed')).toHaveTextContent(
         'senseSearchFailed',
@@ -418,8 +407,6 @@ describe('CatalogSenseControl', () => {
       );
       await openPopover();
 
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
-
       const item = await screen.findByTestId('catalog-sense-candidate');
       expect(item).toHaveTextContent('water');
       expect(item).toHaveTextContent('ὕδωρ · 2 · clear liquid');
@@ -433,16 +420,12 @@ describe('CatalogSenseControl', () => {
       );
       await openPopover();
 
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
-
       expect(await screen.findByTestId('catalog-sense-candidate')).toHaveTextContent('eau');
     });
 
     it('lists a candidate with no gloss at all as having none', async () => {
       renderControl({}, { searchByForm: async () => [candidate('s-x', { gloss: {} })] });
       await openPopover();
-
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
 
       const item = await screen.findByTestId('catalog-sense-candidate');
       expect(item).toHaveTextContent('noGloss');
@@ -486,7 +469,6 @@ describe('CatalogSenseControl', () => {
         { searchByForm: async () => [candidate('s-1'), picked] },
       );
       await openPopover();
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
 
       const items = await screen.findAllByTestId('catalog-sense-candidate');
       await userEvent.click(items[1]);
@@ -496,15 +478,15 @@ describe('CatalogSenseControl', () => {
       expect(screen.queryByTestId('catalog-sense-popover')).not.toBeInTheDocument();
     });
 
-    it('goes back to the menu without linking', async () => {
-      const { onLink } = renderControl();
+    it('goes back to a linked form’s menu without linking', async () => {
+      const { onLink } = renderControl({ gloss: 'water', senseRef: testSenseRef('s-1') });
       await openPopover();
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'senseChangeAction' }));
       await screen.findByTestId('catalog-sense-candidate');
 
       await userEvent.click(screen.getByRole('button', { name: 'senseBack' }));
 
-      expect(await screen.findByRole('button', { name: 'senseLinkAction' })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'senseChangeAction' })).toBeInTheDocument();
       expect(onLink).not.toHaveBeenCalled();
     });
 
@@ -517,12 +499,10 @@ describe('CatalogSenseControl', () => {
         .mockReturnValueOnce(second.promise);
       renderControl({}, { searchByForm });
       await openPopover();
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
       await screen.findByTestId('spinner');
       await userEvent.click(screen.getByTestId('catalog-sense-control'));
 
       await openPopover();
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
       await screen.findByTestId('spinner');
       await act(async () => first.resolve([candidate('stale')]));
 
@@ -536,7 +516,6 @@ describe('CatalogSenseControl', () => {
       const pending = deferred<SenseCandidate[]>();
       renderControl({}, { searchByForm: () => pending.promise });
       await openPopover();
-      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
       await screen.findByTestId('spinner');
       await userEvent.click(screen.getByTestId('catalog-sense-control'));
 

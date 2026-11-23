@@ -228,7 +228,6 @@ describe('CatalogRowHeader', () => {
       const { onLinkSense } = renderHeader({}, { search });
 
       await userEvent.click(screen.getByTestId('catalog-sense-control'));
-      await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseLinkAction%'));
       await userEvent.click(await screen.findByTestId('catalog-sense-candidate'));
 
       expect(onLinkSense).toHaveBeenCalledWith(candidate('s-other'));

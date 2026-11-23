@@ -3929,9 +3929,9 @@ describe('AnalysisCatalogPanel', () => {
       await userEvent.click(screen.getByText(`%interlinearizer_analysisCatalog_${key}%`));
     }
 
-    /** Opens the control in `scope`, searches, and picks the one sense found. */
+    /** Links the unlinked control in `scope` to the one sense its search finds. */
     async function linkFrom(scope: HTMLElement): Promise<void> {
-      await chooseAction(scope, 'senseLinkAction');
+      await userEvent.click(await within(scope).findByTestId('catalog-sense-control'));
       await userEvent.click(await screen.findByTestId('catalog-sense-candidate'));
       await settle();
     }

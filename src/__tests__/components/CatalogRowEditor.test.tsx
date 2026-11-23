@@ -452,7 +452,6 @@ describe('CatalogRowEditor lexicon links', () => {
     const { onLinkMorphemeSense } = await renderEditor();
 
     await userEvent.click(screen.getAllByTestId('catalog-sense-control')[1]);
-    await userEvent.click(screen.getByText('%interlinearizer_analysisCatalog_senseLinkAction%'));
     await userEvent.click(await screen.findByTestId('catalog-sense-candidate'));
 
     expect(onLinkMorphemeSense).toHaveBeenCalledWith('m-2', candidate('s-other'));

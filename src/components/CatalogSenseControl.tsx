@@ -15,7 +15,6 @@ export const SENSE_CONTROL_STRING_KEYS = [
   '%interlinearizer_analysisCatalog_senseDiffers%',
   '%interlinearizer_analysisCatalog_noGloss%',
   '%interlinearizer_analysisCatalog_senseAddLink%',
-  '%interlinearizer_analysisCatalog_senseLinkAction%',
   '%interlinearizer_analysisCatalog_senseChangeAction%',
   '%interlinearizer_analysisCatalog_senseAdoptGloss%',
   '%interlinearizer_analysisCatalog_senseUnlink%',
@@ -166,7 +165,8 @@ function SearchView({
   analysisLanguage: string;
   localizedStrings: LanguageStrings;
   onPick: (candidate: SenseCandidate) => void;
-  onBack: () => void;
+  /** Returns to the menu; without it, the view offers no way back. */
+  onBack?: () => void;
 }>) {
   const [outcome, setOutcome] = useState<SearchOutcome>({ status: 'pending' });
 
@@ -217,9 +217,11 @@ function SearchView({
 
   return (
     <>
-      <Button className="tw:justify-start" size="sm" variant="ghost" onClick={onBack}>
-        {localizedStrings['%interlinearizer_analysisCatalog_senseBack%']}
-      </Button>
+      {onBack && (
+        <Button className="tw:justify-start" size="sm" variant="ghost" onClick={onBack}>
+          {localizedStrings['%interlinearizer_analysisCatalog_senseBack%']}
+        </Button>
+      )}
       {body}
     </>
   );
@@ -227,9 +229,10 @@ function SearchView({
 
 /**
  * The control for the lexicon link of one analysis or morpheme, set beside its form. Its icon shows
- * whether the form is linked. The icon opens actions that link, change, or drop the link, and that
- * adopt the sense's gloss as the typed gloss. Where there is nothing to do, a linked form shows
- * only the mark, and an unlinked one shows nothing.
+ * whether the form is linked. On a linked form, the icon opens actions that change or drop the
+ * link, and that adopt the sense's gloss as the typed gloss. On an unlinked form, the icon opens
+ * the sense search at once, because linking is the only action. Where there is nothing to do, a
+ * linked form shows only the mark, and an unlinked one shows nothing.
  *
  * Candidates are searched by `form` as it stands, so a form with no text cannot be linked.
  */
@@ -293,7 +296,7 @@ export default function CatalogSenseControl({
   const close = () => handleOpenChange(false);
 
   let content: ReactNode;
-  if (view === 'search' && search)
+  if ((view === 'search' || !linked) && search)
     content = (
       <SearchView
         analysisLanguage={analysisLanguage}
@@ -301,7 +304,7 @@ export default function CatalogSenseControl({
         localizedStrings={localizedStrings}
         search={search}
         senseRef={senseRef}
-        onBack={() => setView('menu')}
+        onBack={linked ? () => setView('menu') : undefined}
         onPick={(candidate) => {
           onLink(candidate);
           close();
@@ -360,13 +363,7 @@ export default function CatalogSenseControl({
             variant="ghost"
             onClick={() => setView('search')}
           >
-            {
-              localizedStrings[
-                linked
-                  ? '%interlinearizer_analysisCatalog_senseChangeAction%'
-                  : '%interlinearizer_analysisCatalog_senseLinkAction%'
-              ]
-            }
+            {localizedStrings['%interlinearizer_analysisCatalog_senseChangeAction%']}
           </Button>
         )}
         {canAdopt && (

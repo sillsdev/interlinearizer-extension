@@ -486,7 +486,7 @@ describe('CatalogSenseControl', () => {
 
     it('drops the old candidates while the search for a changed form is out', async () => {
       const second = deferred<SenseCandidate[]>();
-      const { rerenderWith } = renderControl(
+      const { rerenderWith, searchByForm } = renderControl(
         {},
         {
           searchByForm: jest
@@ -502,7 +502,27 @@ describe('CatalogSenseControl', () => {
 
       expect(screen.queryByTestId('catalog-sense-candidate')).not.toBeInTheDocument();
       expect(screen.getByTestId('spinner')).toBeInTheDocument();
+      expect(searchByForm).toHaveBeenLastCalledWith('agu');
       await act(async () => second.resolve([]));
+    });
+
+    it('shows the answer to the search for a changed form', async () => {
+      const { rerenderWith } = renderControl(
+        {},
+        {
+          searchByForm: jest
+            .fn()
+            .mockResolvedValueOnce([candidate('s-1')])
+            .mockResolvedValue([]),
+        },
+      );
+      await openPopover();
+      await userEvent.click(await screen.findByRole('button', { name: 'senseLinkAction' }));
+      await screen.findByTestId('catalog-sense-candidate');
+
+      rerenderWith({ form: 'agu' });
+
+      expect(await screen.findByTestId('catalog-sense-no-match')).toBeInTheDocument();
     });
 
     it('lists each candidate by its gloss in the analysis language, with what tells it apart', async () => {

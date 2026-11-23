@@ -164,11 +164,11 @@ function CandidateButton({
 }
 
 /**
- * Searches for the senses `form` could link to. The outcome reads pending until the latest search
- * answers, so an answer for an earlier form or search is never shown. Without `search`, nothing is
- * searched and the outcome stays pending.
+ * Searches for the senses that `form` could link to. The outcome shows only an answer for the
+ * current form and `search`, from a search started since the last `retry`. Until such an answer
+ * arrives, the outcome reads pending. Without `search`, the outcome stays pending.
  *
- * @returns How the latest search stands, and `retry`, which searches again.
+ * @returns The outcome, and `retry`, which searches again.
  */
 function useCandidateSearch(
   form: string,

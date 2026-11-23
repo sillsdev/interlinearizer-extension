@@ -2,7 +2,12 @@
 
 import papiBackendMock from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
-import type { DraftProject, InterlinearProject, TextAnalysis } from 'interlinearizer';
+import type {
+  AlignmentLink,
+  DraftProject,
+  InterlinearProject,
+  TextAnalysis,
+} from 'interlinearizer';
 import {
   createEditableCopy,
   createProject,
@@ -26,7 +31,7 @@ import {
   updateAnalysis,
   updateProjectMetadata,
 } from '../../services/projectStorage';
-import { summarizeProject } from '../../services/projectSummaries';
+import { storedSummaryOf, summarizeProject } from '../../services/projectSummaries';
 import type { AnalysisRepository, ChangeSet } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { UnreadableBooksError } from '../../types/analysis-repository';
@@ -642,6 +647,47 @@ describe('projectStorage', () => {
       expect(result).toMatchObject({ id: 'proj-id', name: 'My Name' });
     });
 
+    it('writes no record when the summaries cannot be written before it', async () => {
+      mockStore({
+        'project:proj-id': JSON.stringify(storedProject),
+        projectSummaries: JSON.stringify({
+          modelVersion: CURRENT_MODEL_VERSION,
+          summaries: [storedSummaryOf(storedProject)],
+        }),
+      });
+      __mockWriteUserData.mockRejectedValue(new Error('disk full'));
+
+      await expect(updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc')).rejects.toThrow(
+        'disk full',
+      );
+      expect(writtenKeys()).toEqual(['projectSummaries']);
+    });
+
+    it('writes the record when the summaries cannot be read', async () => {
+      mockStore({
+        'project:proj-id': JSON.stringify(storedProject),
+        projectSummaries: '{not json',
+      });
+
+      await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
+
+      expect(writtenKeys()).toEqual(['project:proj-id']);
+    });
+
+    it('writes nothing when storage rejects the read of the summaries', async () => {
+      mockListedProject(storedProject);
+      const serve = __mockReadUserData.getMockImplementation();
+      __mockReadUserData.mockImplementation(async (t: unknown, key: unknown) => {
+        if (key === 'projectSummaries') throw new Error('I/O error');
+        return serve?.(t, key);
+      });
+
+      await expect(updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc')).rejects.toThrow(
+        'I/O error',
+      );
+      expect(writtenKeys()).toEqual([]);
+    });
+
     it('returns undefined for an unlisted project whose record remains', async () => {
       mockStore({ 'project:proj-id': JSON.stringify(storedProject) });
 
@@ -1216,6 +1262,269 @@ describe('projectStorage', () => {
 
       expect(result).toMatchObject({ segmentation: projectWithBoundaries.segmentation });
     });
+
+    describe('with boundaries given, from a summary noting what the record holds under links', () => {
+      const SEGMENTATION = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+      const configured: InterlinearProject = {
+        ...storedProject,
+        name: 'Kept',
+        description: 'Kept too',
+        targetProjectId: 'tgt-1',
+        analysisLanguages: ['fr'],
+        links: [],
+      };
+      const UNCHANGED_CONFIG = { analysisLanguages: ['fr'], targetProjectId: 'tgt-1' };
+
+      /** Lists `project` with the noted summary, and stores its record, keeping later writes. */
+      function storeNoted(project: InterlinearProject): void {
+        writeThroughStore({
+          [`project:${project.id}`]: JSON.stringify(project),
+          projectSummaries: JSON.stringify({
+            modelVersion: CURRENT_MODEL_VERSION,
+            summaries: [storedSummaryOf(project)],
+          }),
+        });
+      }
+
+      /**
+       * Fails the next refresh of a listed summary, as a full disk would, and lets other writes
+       * through.
+       */
+      function failNextSummaryRefresh(): void {
+        const writeThrough = __mockWriteUserData.getMockImplementation();
+        let failed = false;
+        __mockWriteUserData.mockImplementation(async (t: unknown, key: unknown, json: unknown) => {
+          const isRefresh =
+            key === 'projectSummaries' &&
+            typeof json === 'string' &&
+            json.includes('alignmentLinks');
+          if (isRefresh && !failed) {
+            failed = true;
+            throw new Error('disk full');
+          }
+          await writeThrough?.(t, key, json);
+        });
+      }
+
+      /** The keys read during the test. */
+      function readKeys(): unknown[] {
+        return __mockReadUserData.mock.calls.map(([, key]) => key);
+      }
+
+      it("writes the record from the summary, keeping the project's metadata, without reading it", async () => {
+        storeNoted(configured);
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        const expected = {
+          ...configured,
+          analysis: newAnalysis,
+          segmentation: SEGMENTATION,
+          updatedAt: UPDATE_TIME,
+        };
+        expect(result).toEqual(expected);
+        const written = __mockWriteUserData.mock.calls.find(([, key]) => key === 'project:proj-id');
+        expect(JSON.parse(written?.[2])).toEqual(expected);
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('rebuilds the stored record of a project setting every field an import lacks', async () => {
+        // Typed so that a field added to the project record must be set here too.
+        const everyField: Required<Omit<InterlinearProject, 'pt9Import'>> = {
+          id: 'proj-id',
+          modelVersion: CURRENT_MODEL_VERSION,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-02T00:00:00.000Z',
+          name: 'Kept',
+          description: 'Kept too',
+          sourceProjectId: 'src-project',
+          targetProjectId: 'tgt-1',
+          analysisLanguages: ['fr', 'de'],
+          analysis: newAnalysis,
+          links: [],
+          segmentation: SEGMENTATION,
+        };
+        storeNoted(everyField);
+
+        // The analysis and boundaries given back are the stored ones, so only the time changes.
+        await updateAnalysis(token, 'proj-id', everyField.analysis, everyField.segmentation);
+
+        expect(readKeys()).not.toContain('project:proj-id');
+        const written = __mockWriteUserData.mock.calls.find(([, key]) => key === 'project:proj-id');
+        expect(JSON.parse(written?.[2])).toStrictEqual({ ...everyField, updatedAt: UPDATE_TIME });
+      });
+
+      it('reads the record when its summary was stored before the links note, as after an upgrade', async () => {
+        mockListedProject(configured);
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).toMatchObject({ name: 'Kept', links: [] });
+        expect(readKeys()).toContain('project:proj-id');
+      });
+
+      it('rebuilds from the summary on the save after an upgrade, the first having noted the links', async () => {
+        writeThroughStore({
+          'project:proj-id': JSON.stringify(configured),
+          projectSummaries: storedSummaries(configured),
+        });
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+        __mockReadUserData.mockClear();
+
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('keeps a record without links without them', async () => {
+        storeNoted(storedProject);
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).not.toHaveProperty('links');
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('drops the stored boundaries when cleared, without reading the record', async () => {
+        storeNoted({ ...configured, segmentation: SEGMENTATION });
+
+        // eslint-disable-next-line no-null/no-null -- explicit "clear boundaries" sentinel under test
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, null);
+
+        expect(result).not.toHaveProperty('segmentation');
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('reads the record when it holds links, keeping them', async () => {
+        const links: AlignmentLink[] = [
+          { id: 'al-1', sourceEndpoints: [], targetEndpoints: [], status: 'approved' },
+        ];
+        storeNoted({ ...configured, links });
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result?.links).toEqual(links);
+        expect(readKeys()).toContain('project:proj-id');
+      });
+
+      it('reads the record when boundaries are not given, keeping its own', async () => {
+        storeNoted({ ...configured, segmentation: SEGMENTATION });
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis);
+
+        expect(result?.segmentation).toEqual(SEGMENTATION);
+        expect(readKeys()).toContain('project:proj-id');
+      });
+
+      it('reads the record when the summaries cannot be read', async () => {
+        writeThroughStore({
+          'project:proj-id': JSON.stringify(configured),
+          projectSummaries: '{not json',
+        });
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).toMatchObject({ name: 'Kept', analysis: newAnalysis });
+        expect(readKeys()).toContain('project:proj-id');
+      });
+
+      it('keeps a rename whose summary failed to refresh, across a restart', async () => {
+        storeNoted(configured);
+        failNextSummaryRefresh();
+        await updateProjectMetadata(token, 'proj-id', 'Renamed', 'Described', 'tgt-1');
+        resetQueuesForTesting();
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).toMatchObject({ name: 'Renamed', description: 'Described' });
+      });
+
+      it('keeps a configuration change whose summary failed to refresh, across a restart', async () => {
+        storeNoted(configured);
+        failNextSummaryRefresh();
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION, {
+          analysisLanguages: ['de'],
+          targetProjectId: 'tgt-2',
+        });
+        resetQueuesForTesting();
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).toMatchObject({ analysisLanguages: ['de'], targetProjectId: 'tgt-2' });
+      });
+
+      it('writes nothing for a configuration change when storage rejects the read of the summaries', async () => {
+        storeNoted(configured);
+        const serve = __mockReadUserData.getMockImplementation();
+        __mockReadUserData.mockImplementation(async (t: unknown, key: unknown) => {
+          if (key === 'projectSummaries') throw new Error('I/O error');
+          return serve?.(t, key);
+        });
+
+        await expect(
+          updateAnalysis(token, 'proj-id', newAnalysis, undefined, {
+            analysisLanguages: ['de'],
+            targetProjectId: 'tgt-2',
+          }),
+        ).rejects.toThrow('I/O error');
+        expect(writtenKeys()).toEqual([]);
+      });
+
+      it('rebuilds from a summary that failed to refresh after a write changing no configuration', async () => {
+        storeNoted(configured);
+        failNextSummaryRefresh();
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION, UNCHANGED_CONFIG);
+        __mockReadUserData.mockClear();
+
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('writes the summaries only after the record when the configuration is unchanged', async () => {
+        storeNoted(configured);
+
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION, UNCHANGED_CONFIG);
+
+        expect(writtenKeys()).toEqual(['project:proj-id', 'projectSummaries']);
+      });
+
+      it('rebuilds from the summary again once the summary refreshes', async () => {
+        storeNoted(configured);
+        failNextSummaryRefresh();
+        await updateProjectMetadata(token, 'proj-id', 'Renamed', 'Described', 'tgt-1');
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+        __mockReadUserData.mockClear();
+
+        await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(readKeys()).not.toContain('project:proj-id');
+      });
+
+      it('returns undefined for an unlisted project, writing nothing', async () => {
+        writeThroughStore({
+          'project:proj-id': JSON.stringify(configured),
+          projectSummaries: storedSummaries(),
+        });
+
+        const result = await updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION);
+
+        expect(result).toBeUndefined();
+        expect(__mockWriteUserData).not.toHaveBeenCalled();
+      });
+
+      it('refuses a Paratext 9 import, writing nothing', async () => {
+        storeNoted({
+          ...configured,
+          pt9Import: { fileHashes: {}, importedAt: '2026-01-01T00:00:00.000Z' },
+        });
+
+        await expect(updateAnalysis(token, 'proj-id', newAnalysis, SEGMENTATION)).rejects.toThrow(
+          'is a Paratext 9 import and is read-only',
+        );
+        expect(__mockWriteUserData).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('getProjectSummariesForSource', () => {
@@ -1255,6 +1564,20 @@ describe('projectStorage', () => {
       await expect(getProjectSummariesForSource(token, 'src-a')).resolves.toEqual([]);
     });
 
+    it('leaves out the note on what each record holds under links', async () => {
+      const project = inSource('id-1', 'src-a');
+      mockStore({
+        projectSummaries: JSON.stringify({
+          modelVersion: CURRENT_MODEL_VERSION,
+          summaries: [storedSummaryOf(project)],
+        }),
+      });
+
+      await expect(getProjectSummariesForSource(token, 'src-a')).resolves.toStrictEqual([
+        summarizeProject(project),
+      ]);
+    });
+
     it('propagates corrupt summaries rather than listing nothing', async () => {
       mockStore({ projectSummaries: JSON.stringify([]) });
 
@@ -1272,6 +1595,20 @@ describe('projectStorage', () => {
 
       await expect(getProjectSummary(token, 'id-2')).resolves.toMatchObject({ id: 'id-2' });
       expect(__mockReadUserData.mock.calls.map(([, key]) => key)).toEqual(['projectSummaries']);
+    });
+
+    it('leaves out the note on what the record holds under links', async () => {
+      const project = makeStubProject('id-1');
+      mockStore({
+        projectSummaries: JSON.stringify({
+          modelVersion: CURRENT_MODEL_VERSION,
+          summaries: [storedSummaryOf(project)],
+        }),
+      });
+
+      await expect(getProjectSummary(token, 'id-1')).resolves.toStrictEqual(
+        summarizeProject(project),
+      );
     });
 
     it('returns undefined for a project that is not listed', async () => {
@@ -1765,6 +2102,88 @@ describe('projectStorage', () => {
         expect(result).toBeUndefined();
         expect(stored.has('project:missing')).toBe(false);
       });
+
+      describe('from the draft a session keeps', () => {
+        /**
+         * The draft analysis shards read since the read mock was last cleared. Marking the draft
+         * clean after the copy reads only its envelope.
+         */
+        function shardReads(): unknown[] {
+          return __mockReadUserData.mock.calls
+            .map(([, key]) => key)
+            .filter((key) => typeof key === 'string' && key.startsWith('draft:src-proj:analysis:'));
+        }
+
+        it('copies the kept draft without reading the stored analysis again', async () => {
+          const stored = backStorageWithMap();
+          storeListedProject(stored, makeStubProject('proj-id'));
+          await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+          await applyToDraft(bookPuts('EXO'));
+          __mockReadUserData.mockClear();
+
+          const result = await saveDraftToProject(token, 'src-proj', 'proj-id');
+
+          expect(shardReads()).toEqual([]);
+          expect(result?.analysis).toEqual(
+            makeDraftSpanningBooks('src-proj', 'GEN', 'EXO').analysis,
+          );
+        });
+
+        it('copies an edit queued before it', async () => {
+          const stored = backStorageWithMap();
+          storeListedProject(stored, makeStubProject('proj-id'));
+          await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+          await applyToDraft(bookPuts('EXO'));
+
+          // Neither call is awaited before the next starts, as when an edit and a Save cross the bus
+          // back to back.
+          const edit = applyToDraft(bookPuts('LEV'));
+          const result = await saveDraftToProject(token, 'src-proj', 'proj-id');
+          await edit;
+
+          expect(result?.analysis).toEqual(
+            makeDraftSpanningBooks('src-proj', 'GEN', 'EXO', 'LEV').analysis,
+          );
+        });
+
+        it('refuses the copy while a book of the kept draft could not be read', async () => {
+          const { stored, project } = await damagedJhn();
+          await openDraftRepository(token, 'src-proj').getScope();
+          __mockReadUserData.mockClear();
+
+          const refusal = saveDraftToProject(token, 'src-proj', 'proj-id');
+
+          await expect(refusal).rejects.toMatchObject({ books: ['JHN'] });
+          expect(shardReads()).toEqual([]);
+          expect(storedProject(stored, 'proj-id')).toEqual(project);
+        });
+
+        it('copies what is stored, not what is kept, after an edit fails partway', async () => {
+          const stored = backStorageWithMap();
+          storeListedProject(stored, makeStubProject('proj-id'));
+          await storeDraft(token, 'src-proj', makeDraftSpanningBooks('src-proj', 'GEN'));
+          await applyToDraft(bookPuts('GEN'));
+          const writeThrough = __mockWriteUserData.getMockImplementation();
+          __mockWriteUserData.mockImplementation(
+            async (t: unknown, key: unknown, json: unknown) => {
+              if (key === 'draft:src-proj:analysis:LEV') throw new Error('disk full');
+              await writeThrough?.(t, key, json);
+            },
+          );
+          const exoAndLev = bookPuts('EXO');
+          const lev = makeDraftSpanningBooks('src-proj', 'LEV').analysis;
+          exoAndLev.tokenAnalyses?.puts.push(...lev.tokenAnalyses);
+          exoAndLev.tokenAnalysisLinks?.puts.push(...lev.tokenAnalysisLinks);
+          await expect(applyToDraft(exoAndLev)).rejects.toThrow('disk full');
+          __mockWriteUserData.mockImplementation(writeThrough);
+          __mockReadUserData.mockClear();
+
+          const result = await saveDraftToProject(token, 'src-proj', 'proj-id');
+
+          expect(shardReads()).not.toEqual([]);
+          expect(result?.analysis.tokenAnalyses.map(({ id }) => id)).toContain('analysis-EXO');
+        });
+      });
     });
 
     describe('saveDraftAsNewProject', () => {
@@ -1799,7 +2218,7 @@ describe('projectStorage', () => {
         expect(result).toEqual({ project: expected, omittedBooks: [] });
         expect(storedProject(stored, expected.id)).toEqual(expected);
         expect(JSON.parse(stored.get('projectSummaries') ?? '{}').summaries).toEqual([
-          summarizeProject(expected),
+          storedSummaryOf(expected),
         ]);
       });
 

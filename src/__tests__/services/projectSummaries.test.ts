@@ -1,7 +1,11 @@
 /// <reference types="jest" />
 
-import type { InterlinearProject } from 'interlinearizer';
-import { ProjectSummaries, summarizeProject } from '../../services/projectSummaries';
+import type { AlignmentLink, InterlinearProject } from 'interlinearizer';
+import {
+  ProjectSummaries,
+  storedSummaryOf,
+  summarizeProject,
+} from '../../services/projectSummaries';
 import type { KeyValueStorage } from '../../types/analysis-repository';
 import { CURRENT_MODEL_VERSION } from '../../types/model-version';
 import { FIXTURE_STAMPS, makeStubProject } from '../test-helpers';
@@ -183,6 +187,53 @@ describe('ProjectSummaries', () => {
     await expect(new ProjectSummaries(storage).list()).rejects.toThrow('is corrupt');
   });
 
+  it('lists a summary noting what its record holds under links', async () => {
+    const { storage } = memoryStorage();
+    const summaries = new ProjectSummaries(storage);
+    const summary = storedSummaryOf({ ...makeStubProject('p1'), links: [] });
+
+    await summaries.add(summary);
+
+    await expect(summaries.list()).resolves.toEqual([summary]);
+  });
+
+  it('throws on summaries holding an entry whose links note is unknown', async () => {
+    const { storage } = memoryStorage({
+      [KEY]: JSON.stringify({
+        modelVersion: CURRENT_MODEL_VERSION,
+        summaries: [{ ...summarizeProject(makeStubProject('p1')), alignmentLinks: 'some' }],
+      }),
+    });
+
+    await expect(new ProjectSummaries(storage).list()).rejects.toThrow('is corrupt');
+  });
+
+  it('lists the summaries unless damaged when they parse', async () => {
+    const { storage } = memoryStorage();
+    const summaries = new ProjectSummaries(storage);
+    const summary = summarizeProject(makeStubProject('p1'));
+    await summaries.add(summary);
+
+    await expect(summaries.listUnlessDamaged()).resolves.toEqual([summary]);
+  });
+
+  it('answers undefined for damaged summaries when listing unless damaged', async () => {
+    const { storage } = memoryStorage({ [KEY]: '{ not json' });
+
+    await expect(new ProjectSummaries(storage).listUnlessDamaged()).resolves.toBeUndefined();
+  });
+
+  it('throws when storage rejects the read while listing unless damaged', async () => {
+    const storage: KeyValueStorage = {
+      ...memoryStorage().storage,
+      read: async () => {
+        throw new Error('I/O error');
+      },
+    };
+
+    await expect(new ProjectSummaries(storage).listUnlessDamaged()).rejects.toThrow('I/O error');
+  });
+
   it('leaves corrupt summaries unwritten', async () => {
     const { storage, writes } = memoryStorage({ [KEY]: 'null' });
 
@@ -205,5 +256,32 @@ describe('summarizeProject', () => {
 
     expect(summary).not.toContain('"analysis"');
     expect(summary).not.toContain('tokenAnalysisLinks');
+  });
+});
+
+describe('storedSummaryOf', () => {
+  it('extends the listed summary with what the record holds under links', () => {
+    const project = analyzedProject('p1');
+
+    expect(storedSummaryOf(project)).toEqual({
+      ...summarizeProject(project),
+      alignmentLinks: 'absent',
+    });
+  });
+
+  it('notes an empty list of links', () => {
+    expect(storedSummaryOf({ ...makeStubProject('p1'), links: [] })).toMatchObject({
+      alignmentLinks: 'empty',
+    });
+  });
+
+  it('notes links that the record holds', () => {
+    const links: AlignmentLink[] = [
+      { id: 'al-1', sourceEndpoints: [], targetEndpoints: [], status: 'approved' },
+    ];
+
+    expect(storedSummaryOf({ ...makeStubProject('p1'), links })).toMatchObject({
+      alignmentLinks: 'present',
+    });
   });
 });

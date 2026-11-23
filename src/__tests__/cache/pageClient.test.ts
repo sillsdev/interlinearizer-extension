@@ -347,6 +347,85 @@ describe('PageClient', () => {
     expect(client.holds(0)).toBe(true);
   });
 
+  it('reports a failure for a segment whose page fails every retry', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+
+    expect(client.failureAt(0)).toStrictEqual({ isRetrying: false });
+  });
+
+  it('reports no failure for a segment that was never asked for', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+
+    expect(client.failureAt(1)).toBeUndefined();
+  });
+
+  it('reports no failure for a held segment whose page fails a refetch', async () => {
+    const { client, getSegments } = await clientOver();
+    client.load(0, 1, 'list');
+    await client.settled();
+    getSegments.mockRejectedValue(new Error('offline'));
+
+    client.hear(firstSegmentChange('elsewhere'));
+    await client.settled();
+
+    expect([...client.failedPages]).toStrictEqual([0]);
+    expect(client.failureAt(0)).toBeUndefined();
+  });
+
+  it('reports a failed segment as retrying while its page is asked for again', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+    failing.mockImplementation(() => new Promise(() => {}));
+
+    client.retryFailed();
+
+    expect(client.failureAt(0)).toStrictEqual({ isRetrying: true });
+  });
+
+  it('reports a segment as no longer retrying once its page fails every retry again', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+
+    client.retryFailed();
+    await client.settled();
+
+    expect(client.failureAt(0)).toStrictEqual({ isRetrying: false });
+  });
+
+  it('tells subscribers when a view asks again for a page that failed every retry', async () => {
+    const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
+      throw new Error('offline');
+    });
+    const { client } = await clientOver({ getSegments: failing });
+    client.load(0, 1, 'list');
+    await client.settled();
+    failing.mockImplementation(() => new Promise(() => {}));
+    const onChange = jest.fn();
+    client.subscribe(onChange);
+
+    client.load(0, 1, 'strip');
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
   it('asks again for a page that failed every retry when a view asks for it again', async () => {
     const failing = jest.fn(async (): Promise<SegmentPage | undefined> => {
       throw new Error('offline');

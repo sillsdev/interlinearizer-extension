@@ -218,6 +218,117 @@ describe('DraftRepository', () => {
     });
   });
 
+  describe('keptForCopy', () => {
+    /** A repository over a stored {@link twoBookDraft}, with the storage under it. */
+    async function overTwoBooks() {
+      const store = memoryStorage();
+      await seedRepository(
+        new DraftRepository(store.storage, 'src', silentLogger()),
+        twoBookDraft(),
+      );
+      return { ...store, repository: new DraftRepository(store.storage, 'src', silentLogger()) };
+    }
+
+    /** What a repository opened afresh over `storage` exports for copying. */
+    function freshExport(storage: KeyValueStorage) {
+      return new DraftRepository(storage, 'src', silentLogger()).exportForCopy();
+    }
+
+    it('answers undefined before the repository keeps a draft', async () => {
+      const { repository } = await overTwoBooks();
+
+      expect(repository.keptForCopy()).toBeUndefined();
+    });
+
+    it('answers undefined after a whole read, until a lookup keeps the draft', async () => {
+      const { repository } = await overTwoBooks();
+      await repository.exportAll();
+
+      expect(repository.keptForCopy()).toBeUndefined();
+    });
+
+    it('answers what the store holds once a lookup keeps the draft', async () => {
+      const { storage, repository } = await overTwoBooks();
+      await repository.getScope();
+
+      expect(repository.keptForCopy()).toEqual(await freshExport(storage));
+    });
+
+    it('answers what the store holds after an apply', async () => {
+      const { storage, repository } = await overTwoBooks();
+      const [payload] = twoBookAnalysis().tokenAnalyses;
+
+      await repository.apply({
+        intent: 'writeGloss',
+        tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+      });
+
+      expect(repository.keptForCopy()).toEqual(await freshExport(storage));
+    });
+
+    it('names the books whose shard could not be read', async () => {
+      const { records, repository } = await overTwoBooks();
+      records.set(draftAnalysisKey('src', 'GEN'), 'not json');
+      await repository.getScope();
+
+      expect(repository.keptForCopy()?.unreadableBooks).toEqual(['GEN']);
+    });
+
+    it('answers undefined once an apply fails, since the store may hold part of it', async () => {
+      const { storage, repository } = await overTwoBooks();
+      await repository.getScope();
+
+      await failGlossEdit(repository, storage, 'GEN');
+
+      expect(repository.keptForCopy()).toBeUndefined();
+    });
+
+    it('answers again once the draft is loaded afresh after a failed apply', async () => {
+      const { storage, repository } = await overTwoBooks();
+      await failGlossEdit(repository, storage, 'GEN');
+      await repository.exportAll();
+      await repository.getScope();
+
+      expect(repository.keptForCopy()).toEqual(await freshExport(storage));
+    });
+
+    it.each([
+      ['a lookup', async (repository: DraftRepository) => repository.getScope()],
+      [
+        'a whole read and then a lookup',
+        async (repository: DraftRepository) => {
+          await repository.exportAll();
+          await repository.getScope();
+        },
+      ],
+    ])(
+      'answers undefined over a draft that loaded empty because it was unreadable, after %s',
+      async (_case, load) => {
+        const { storage } = memoryStorage({ [draftKey('src')]: JSON.stringify({ nope: true }) });
+        const repository = new DraftRepository(storage, 'src', silentLogger());
+
+        await load(repository);
+
+        expect(repository.keptForCopy()).toBeUndefined();
+      },
+    );
+
+    it('leaves a draft it answered as it was when a later apply changes the kept one', async () => {
+      const { repository } = await overTwoBooks();
+      await repository.getScope();
+      const answered = repository.keptForCopy();
+      const before = JSON.stringify(answered);
+      const [payload] = twoBookAnalysis().tokenAnalyses;
+
+      await repository.apply({
+        intent: 'writeGloss',
+        tokenAnalyses: { puts: [{ ...payload, gloss: { en: 'and then' } }], deletes: [] },
+      });
+
+      expect(JSON.stringify(answered)).toBe(before);
+    });
+  });
+
   describe('markClean', () => {
     it('records the stored draft as clean, rewriting only its envelope', async () => {
       const { storage, records, writes } = memoryStorage();
@@ -619,6 +730,186 @@ describe('DraftRepository', () => {
           ],
         ]),
       );
+    });
+  });
+
+  describe('anchored versions', () => {
+    /** A repository over a seeded draft, with Genesis recorded as anchored to `v1`. */
+    async function anchoredGenesis() {
+      const { storage, records } = memoryStorage();
+      const repository = new DraftRepository(storage, 'src', silentLogger());
+      await seedRepository(repository, twoBookDraft());
+      await repository.apply(
+        { intent: 'reanchor' },
+        { keepDirty: true, anchoredTo: { bookCode: 'GEN', textVersion: 'v1' } },
+      );
+      return { storage, records, repository };
+    }
+
+    it('reports the version an apply recorded', async () => {
+      const { repository } = await anchoredGenesis();
+
+      expect((await repository.getDraftState()).anchoredVersions).toEqual({ GEN: 'v1' });
+    });
+
+    it('loads the recorded versions with the draft', async () => {
+      const { storage } = await anchoredGenesis();
+
+      expect(
+        (await new DraftRepository(storage, 'src', silentLogger()).getDraftState())
+          .anchoredVersions,
+      ).toEqual({ GEN: 'v1' });
+    });
+
+    it('keeps the recorded versions out of the loaded draft', async () => {
+      const { storage } = await anchoredGenesis();
+
+      const { draft } = await new DraftRepository(storage, 'src', silentLogger()).exportAll();
+
+      expect(draft).not.toHaveProperty('anchoredVersions');
+    });
+
+    it('keeps the recorded versions through later applies', async () => {
+      const { storage, repository } = await anchoredGenesis();
+      await repository.apply(
+        { intent: 'reanchor' },
+        { anchoredTo: { bookCode: 'EXO', textVersion: 'v2' } },
+      );
+
+      expect(
+        (await new DraftRepository(storage, 'src', silentLogger()).getDraftState())
+          .anchoredVersions,
+      ).toEqual({ GEN: 'v1', EXO: 'v2' });
+    });
+
+    it('drops the version of a book an apply names as unanchored', async () => {
+      const { storage, repository } = await anchoredGenesis();
+
+      await repository.apply({ intent: 'relink' }, { unanchored: ['GEN'] });
+
+      expect(
+        (await new DraftRepository(storage, 'src', silentLogger()).getDraftState())
+          .anchoredVersions,
+      ).toEqual({});
+    });
+
+    it('keeps the recorded versions when the draft is marked clean', async () => {
+      const { storage, repository } = await anchoredGenesis();
+
+      await repository.markClean();
+
+      expect(
+        (await new DraftRepository(storage, 'src', silentLogger()).getDraftState())
+          .anchoredVersions,
+      ).toEqual({ GEN: 'v1' });
+    });
+
+    it('records no version from a failed apply', async () => {
+      const { storage, repository } = await anchoredGenesis();
+      jest.spyOn(storage, 'write').mockRejectedValue(new Error('disk full'));
+
+      await expect(
+        repository.apply(
+          { intent: 'reanchor' },
+          { anchoredTo: { bookCode: 'EXO', textVersion: 'v2' } },
+        ),
+      ).rejects.toThrow('disk full');
+
+      expect((await repository.getDraftState()).anchoredVersions).toEqual({ GEN: 'v1' });
+    });
+
+    it('drops the recorded versions when the draft starts over', async () => {
+      const { storage, repository } = await anchoredGenesis();
+
+      await repository.startOver(twoBookDraft());
+
+      expect(
+        (await new DraftRepository(storage, 'src', silentLogger()).getDraftState())
+          .anchoredVersions,
+      ).toEqual({});
+    });
+
+    it('drops, after a restart, the version of a book whose shard a start-over rewrote before its envelope failed', async () => {
+      const { storage, repository } = await anchoredGenesis();
+      await repository.apply(
+        { intent: 'reanchor' },
+        { anchoredTo: { bookCode: 'EXO', textVersion: 'v2' } },
+      );
+      const started = twoBookDraft();
+      const [phrase] = started.analysis.phraseAnalyses;
+      started.analysis.phraseAnalyses = [{ ...phrase, gloss: { en: 'within' } }];
+      const { write: writeThrough } = storage;
+      const write = jest
+        .spyOn(storage, 'write')
+        .mockImplementation((key, data) =>
+          key === draftKey('src')
+            ? Promise.reject(new Error('disk full'))
+            : writeThrough(key, data),
+        );
+      await expect(repository.startOver(started)).rejects.toThrow('disk full');
+      write.mockRestore();
+
+      expect(
+        (await new DraftRepository(storage, 'src', silentLogger()).getDraftState())
+          .anchoredVersions,
+      ).toEqual({ EXO: 'v2' });
+    });
+
+    it('drops, after a restart, the version of a book whose shard a retried apply found already rewritten', async () => {
+      const { storage, repository } = await anchoredGenesis();
+      await repository.apply(
+        { intent: 'reanchor' },
+        { keepDirty: true, anchoredTo: { bookCode: 'EXO', textVersion: 'v1' } },
+      );
+      const [segment] = twoBookAnalysis().segmentAnalyses;
+      const { write: writeThrough } = storage;
+      const write = jest
+        .spyOn(storage, 'write')
+        .mockImplementation((key, data) =>
+          key === draftKey('src')
+            ? Promise.reject(new Error('disk full'))
+            : writeThrough(key, data),
+        );
+      const reanchorExodus = () =>
+        repository.apply(
+          {
+            intent: 'reanchor',
+            segmentAnalyses: {
+              puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
+              deletes: [],
+            },
+          },
+          { keepDirty: true, anchoredTo: { bookCode: 'EXO', textVersion: 'v2' } },
+        );
+      await expect(reanchorExodus()).rejects.toThrow('disk full');
+      await expect(reanchorExodus()).rejects.toThrow('disk full');
+      write.mockRestore();
+
+      expect(
+        (await new DraftRepository(storage, 'src', silentLogger()).getDraftState())
+          .anchoredVersions,
+      ).toEqual({ GEN: 'v1' });
+    });
+
+    it('drops every recorded version when the shard journal is unusable', async () => {
+      const { storage, records } = await anchoredGenesis();
+      records.set(draftJournalKey('src'), 'not json');
+
+      expect(
+        (await new DraftRepository(storage, 'src', silentLogger()).getDraftState())
+          .anchoredVersions,
+      ).toEqual({});
+    });
+
+    it('loads unusable recorded versions as none', async () => {
+      const { storage, records } = await anchoredGenesis();
+      const envelope = JSON.parse(records.get(draftKey('src')) ?? '');
+      records.set(draftKey('src'), JSON.stringify({ ...envelope, anchoredVersions: ['v1'] }));
+
+      expect(
+        (await new DraftRepository(storage, 'src', silentLogger()).getDraftState())
+          .anchoredVersions,
+      ).toEqual({});
     });
   });
 

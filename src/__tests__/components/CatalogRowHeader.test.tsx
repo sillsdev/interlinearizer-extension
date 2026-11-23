@@ -7,7 +7,6 @@ import type { SenseCandidate } from 'interlinearizer/lexicon';
 import { TooltipProvider } from 'platform-bible-react';
 import type { ComponentProps } from 'react';
 import CatalogRowHeader, { ROW_HEADER_STRING_KEYS } from '../../components/CatalogRowHeader';
-import type { CatalogRow } from '../../utils/analysis-query';
 import {
   EmptyAnalysisProvider,
   TEST_LEXICON_AUTHORITY,
@@ -28,20 +27,18 @@ const STRINGS = {
 /** The lexicon every header is rendered under. */
 const SENSES = { 's-word': { gloss: { en: 'word' } } };
 
+/** The row a header shows. */
+type HeaderRow = ComponentProps<typeof CatalogRowHeader>['row'];
+
 /** A row of one analysis, carrying only what a case sets beyond its form and gloss. */
-function row(overrides: Partial<CatalogRow> = {}): CatalogRow {
+function row(overrides: Partial<HeaderRow> = {}): HeaderRow {
   return {
     analysisId: 'ta-1',
     surfaceText: 'λόγος',
-    form: 'λόγος',
     gloss: 'word',
-    morphemes: [],
     usageCount: 0,
     usageCountInBook: 0,
-    usages: [],
-    staleLocations: [],
-    books: new Set(),
-    searchText: '',
+    staleCount: 0,
     ...overrides,
   };
 }
@@ -264,9 +261,8 @@ describe('CatalogRowHeader', () => {
   });
 
   it('names each count on hover', () => {
-    const stale = { tokenRef: 'GEN 1:1:0', book: 'GEN', chapter: 1, verse: 1, charStart: 0 };
     renderHeader({
-      row: row({ staleLocations: [stale] }),
+      row: row({ staleCount: 1 }),
       localizedStrings: {
         ...STRINGS,
         '%interlinearizer_analysisCatalog_usageCount%': 'uses',
@@ -283,8 +279,7 @@ describe('CatalogRowHeader', () => {
   });
 
   it('counts the places the analysis went stale at', () => {
-    const stale = { tokenRef: 'GEN 1:1:0', book: 'GEN', chapter: 1, verse: 1, charStart: 0 };
-    renderHeader({ row: row({ staleLocations: [stale, { ...stale, tokenRef: 'GEN 1:2:0' }] }) });
+    renderHeader({ row: row({ staleCount: 2 }) });
 
     expect(screen.getByTestId('catalog-row-stale-count')).toHaveTextContent('2');
   });

@@ -1179,6 +1179,20 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
+     * Serves every place that an analysis in a session's draft is applied at, and every place it
+     * went stale at, for the catalog row that lists only the first of them.
+     *
+     * @returns A JSON string of the `CatalogPlaces`; `"null"` when no analysis carries the id.
+     * @throws If the session is not open or its analysis cannot be read (logged before rethrowing).
+     */
+    'interlinearizer.getCatalogPlaces': (
+      args: import('interlinearizer').SessionCommandArgs & {
+        currentBook: string;
+        analysisId: string;
+      },
+    ) => Promise<string>;
+
+    /**
      * Serves the catalog rows in a session's draft sharing the analysis's normalized surface form,
      * the analysis's own among them, most used first.
      *

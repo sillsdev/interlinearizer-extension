@@ -298,6 +298,16 @@ export function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
+/** Type guard for a JSON-parsed value that must be an object mapping keys to strings. */
+export function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.values(value).every((item) => typeof item === 'string')
+  );
+}
+
 /**
  * Validates a {@link SegmentationDelta} parsed from unknown JSON, so a malformed delta cannot
  * corrupt re-segmentation.

@@ -173,12 +173,13 @@ export default function ContinuousView({
     focusedTokenRef,
   );
 
-  const { segments, hasPage, setMounted, isFocusLeftBehind, holdFocus } = useStripSegments({
-    pages,
-    focusTokenRef: displayFocusedTokenRef,
-    nextFocusTokenRef: focusedTokenRef,
-    tokenSegmentMap,
-  });
+  const { segments, hasPage, setMounted, isFocusLeftBehind, holdFocus, isNextFocusFailed } =
+    useStripSegments({
+      pages,
+      focusTokenRef: displayFocusedTokenRef,
+      nextFocusTokenRef: focusedTokenRef,
+      tokenSegmentMap,
+    });
 
   const committedPhraseLinkByRef = usePhraseLinkMap();
   const committedPhraseLinkById = usePhraseLinkByIdMap();
@@ -890,6 +891,11 @@ export default function ContinuousView({
     setAwaitedFocusRef(undefined);
     setDisplayFocusedTokenRef(awaitedFocusRef);
   }, [isAwaitedFocusLoaded, awaitedFocusRef]);
+
+  // A focus whose page failed may never load, so the strip shows what it last displayed meanwhile.
+  useEffect(() => {
+    if (awaitedFocusRef !== undefined && isNextFocusFailed) setIsVisible(true);
+  }, [awaitedFocusRef, isNextFocusFailed]);
 
   // Clear a pending fade on unmount so its deferred update never lands on a torn-down tree.
   useEffect(

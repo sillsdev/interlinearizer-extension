@@ -41,6 +41,8 @@ export interface UseStripSegmentsResult {
   isFocusLeftBehind: boolean;
   /** Holds the segments around the focus again, wherever the strip has been scrolled. */
   holdFocus: () => void;
+  /** Whether the page holding the focus that the strip is moving to failed every retry. */
+  isNextFocusFailed: boolean;
 }
 
 /** The mounted edge tokens, and the focus they were mounted around. */
@@ -143,7 +145,22 @@ export default function useStripSegments({
   );
   useEffect(() => () => pages.release(PAGE_CALLER), [pages]);
 
-  const nextIndex = indexOf(nextFocusTokenRef);
+  // Remembers the segment of the focus that the strip is moving to, because the focus may leave
+  // tokenSegmentMap while the strip awaits its page.
+  const [nextSeen, setNextSeen] = useState<Readonly<{ tokenRef: string; segmentId: string }>>();
+  const nextSegmentId =
+    nextFocusTokenRef === undefined ? undefined : tokenSegmentMap.get(nextFocusTokenRef);
+  if (
+    nextFocusTokenRef !== undefined &&
+    nextSegmentId !== undefined &&
+    (nextSeen?.tokenRef !== nextFocusTokenRef || nextSeen.segmentId !== nextSegmentId)
+  )
+    setNextSeen({ tokenRef: nextFocusTokenRef, segmentId: nextSegmentId });
+  const nextIndex =
+    indexOf(nextFocusTokenRef) ??
+    (nextSeen !== undefined && nextSeen.tokenRef === nextFocusTokenRef
+      ? indexById.get(nextSeen.segmentId)
+      : undefined);
   const isNextHeld = nextIndex !== undefined && nextIndex >= run.start && nextIndex < run.end;
   useEffect(() => {
     if (nextIndex === undefined || isNextHeld) return;
@@ -154,6 +171,8 @@ export default function useStripSegments({
       PAGE_CALLER,
     );
   }, [pages, nextIndex, isNextHeld]);
+
+  const isNextFocusFailed = nextIndex !== undefined && pages.failureAt(nextIndex) !== undefined;
 
   const hasPage = useCallback(
     (tokenRef: string) => {
@@ -177,5 +196,12 @@ export default function useStripSegments({
   );
   const holdFocus = useCallback(() => setMountedState(undefined), []);
 
-  return { segments, hasPage, setMounted, isFocusLeftBehind, holdFocus };
+  return {
+    segments,
+    hasPage,
+    setMounted,
+    isFocusLeftBehind,
+    holdFocus,
+    isNextFocusFailed,
+  };
 }

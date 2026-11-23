@@ -74,6 +74,18 @@ describe('EditHistory', () => {
     await expect(storedDirty()).resolves.toBe(false);
   });
 
+  it('drops the anchor stamps of the books an edit names as unanchored', async () => {
+    const { history, repository } = makeHistory();
+    await history.applyPass(
+      { ...makeVerseBook([{ sid: 'GEN 1:1', text: 'alpha' }]), textVersion: 'v1' },
+      undefined,
+    );
+
+    await history.apply(putting('a'), { unanchored: ['GEN'] });
+
+    expect((await repository.getDraftState()).anchoredVersions).toStrictEqual({});
+  });
+
   it('marks the draft saved when the edit clears the mark', async () => {
     const { history, repository, storedDirty } = makeHistory();
     await seedRepository(repository, { ...emptyDraft('src'), dirty: true });
@@ -521,6 +533,39 @@ describe('EditHistory re-anchoring', () => {
     await history.apply(linking(betaLink(after, 'ta-2')));
 
     await expect(history.applyPass(after, undefined)).resolves.toBeUndefined();
+    await history.undo();
+
+    expect(await storedLink()).toEqual(
+      expect.objectContaining({ analysisId: 'ta-1', token: betaLink(after, 'ta-1').token }),
+    );
+  });
+
+  it('records the text that a pass anchors its book to', async () => {
+    const { history, repository } = makeReanchoringHistory();
+
+    await history.applyPass(genesis('alpha beta'), undefined);
+
+    await expect(repository.getDraftState()).resolves.toMatchObject({
+      anchoredVersions: { GEN: 'alpha beta' },
+    });
+  });
+
+  it('records no text in the repository for a pass it only notes', async () => {
+    const { history, repository } = makeReanchoringHistory();
+
+    history.notePass(genesis('alpha beta'));
+
+    await expect(repository.getDraftState()).resolves.toMatchObject({ anchoredVersions: {} });
+  });
+
+  it('notes a pass, so that an undo re-anchors what it restores', async () => {
+    const { history, storedLink } = makeReanchoringHistory();
+    const before = genesis('alpha beta');
+    const after = genesis('new alpha beta');
+    await history.apply(linking(betaLink(before, 'ta-1')));
+    await history.apply(linking(betaLink(after, 'ta-2')));
+
+    history.notePass(after);
     await history.undo();
 
     expect(await storedLink()).toEqual(

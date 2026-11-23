@@ -170,6 +170,35 @@ describe('getCatalogRowsByIds', () => {
   });
 });
 
+describe('getCatalogPlaces', () => {
+  it("serves every place of the analysis in the session's draft", async () => {
+    const { handlers, sessionId } = await handlersOver();
+
+    const json = await handlers['interlinearizer.getCatalogPlaces']({
+      sessionId,
+      currentBook: 'GEN',
+      analysisId: 'ta-god',
+    });
+
+    expect(JSON.parse(json)).toEqual({
+      usages: [expect.objectContaining({ tokenRef: tokenRefOf(BOOK, 'God') })],
+      staleLocations: [],
+    });
+  });
+
+  it('answers null for an id no analysis carries', async () => {
+    const { handlers, sessionId } = await handlersOver();
+
+    const json = await handlers['interlinearizer.getCatalogPlaces']({
+      sessionId,
+      currentBook: 'GEN',
+      analysisId: 'ta-gone',
+    });
+
+    expect(json).toBe('null');
+  });
+});
+
 describe('getHomographRows', () => {
   it("serves the rows sharing the analysis's form in the session's draft", async () => {
     const { handlers, sessionId } = await handlersOver({
@@ -339,6 +368,13 @@ describe('a session not open', () => {
       }),
     ).rejects.toThrow();
     await expect(
+      handlers['interlinearizer.getCatalogPlaces']({
+        sessionId,
+        currentBook: 'GEN',
+        analysisId: 'ta-god',
+      }),
+    ).rejects.toThrow();
+    await expect(
       handlers['interlinearizer.getHomographRows']({
         sessionId,
         currentBook: 'GEN',
@@ -353,6 +389,6 @@ describe('a session not open', () => {
       handlers['interlinearizer.previewDeletion']({ sessionId, analysisId: 'ta-god' }),
     ).rejects.toThrow();
 
-    expect(logger.error).toHaveBeenCalledTimes(6);
+    expect(logger.error).toHaveBeenCalledTimes(7);
   });
 });

@@ -26,7 +26,7 @@ describe('StaleAnalysesReporter', () => {
     expect(useStaleSummary).toHaveBeenCalledWith('GEN');
   });
 
-  it('reports a key per place in the book an analysis went stale at', () => {
+  it('reports a key per place in the book that a token analysis went stale at', () => {
     mockSummary({
       glosses: [
         { analysisId: 'a', tokenRef: 'GEN 1:1:0' },

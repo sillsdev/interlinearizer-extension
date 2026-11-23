@@ -4,7 +4,7 @@ import { useStaleSummary } from '../cache/staleHooks';
 /** The stale analyses a loaded book holds, each named by a key that holds while it stays stale. */
 export type StaleAnalysesReport = Readonly<{
   bookRef: string;
-  /** A key per place in the book an analysis went stale at. */
+  /** A key per place in the book that a token analysis went stale at. */
   glosses: readonly string[];
   /** A key per stale phrase link in the book. */
   phrases: readonly string[];

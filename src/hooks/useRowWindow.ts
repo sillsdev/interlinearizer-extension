@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
+import useElementState from './useElementState';
+import useSentinelExtend from './useSentinelExtend';
 
 /**
  * How many rows are mounted before the list has been scrolled at all. Deliberately small: the
@@ -70,15 +72,8 @@ export default function useRowWindow<T>(
     setCount(mustMount + 1);
   }
 
-  /**
-   * The mounted scroll container and sentinel, held in state rather than in refs so the observer
-   * effect re-runs once each attaches.
-   */
-  const [scrollEl, setScrollEl] = useState<HTMLElement | undefined>(undefined);
-  const [sentinelEl, setSentinelEl] = useState<HTMLElement | undefined>(undefined);
-
-  const scrollRef = useCallback((el: HTMLElement | null) => setScrollEl(el ?? undefined), []);
-  const sentinelRef = useCallback((el: HTMLElement | null) => setSentinelEl(el ?? undefined), []);
+  const [scrollEl, scrollRef] = useElementState();
+  const [sentinelEl, sentinelRef] = useElementState();
 
   // The count reset alone leaves the offset where it was, merely clamped to the shorter content.
   // Before paint rather than after, so the list is never shown at the old offset first.
@@ -86,25 +81,16 @@ export default function useRowWindow<T>(
     if (scrollEl) scrollEl.scrollTop = 0;
   }, [countedListing, scrollEl]);
 
-  // Extend the window each time the sentinel is reported within reach. Re-subscribes on every count
-  // change as well as on the elements', because an IntersectionObserver reports only intersection
-  // *transitions*: after an extend the sentinel may still sit inside the arming margin, where a
-  // stale observer would stay silent however far the reader scrolls.
-  useEffect(() => {
-    const reachEnd =
+  useSentinelExtend({
+    root: scrollEl,
+    sentinels: [['end', sentinelEl]],
+    margin: SENTINEL_ROOT_MARGIN_PX,
+    onReach:
       count >= rows.length
         ? onReachEnd
-        : () => setCount((current) => Math.min(rows.length, current + EXTEND_CHUNK));
-    if (!scrollEl || !sentinelEl || !reachEnd) return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) reachEnd();
-      },
-      { root: scrollEl, rootMargin: `${SENTINEL_ROOT_MARGIN_PX}px`, threshold: 0 },
-    );
-    observer.observe(sentinelEl);
-    return () => observer.disconnect();
-  }, [scrollEl, sentinelEl, count, rows.length, onReachEnd]);
+        : () => setCount((current) => Math.min(rows.length, current + EXTEND_CHUNK)),
+    resubscribeKeys: [count, rows.length, onReachEnd],
+  });
 
   const windowRows = useMemo(() => rows.slice(0, count), [rows, count]);
 

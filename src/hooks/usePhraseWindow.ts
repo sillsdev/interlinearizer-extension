@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useLayoutEffect, useState, type RefObject } from 'react';
+import type { WindowRange } from '../utils/scroll-window';
+import { countCullableRun } from '../utils/scroll-window';
+import useElementState from './useElementState';
+import useExtendAnchor from './useExtendAnchor';
 import useLatestRef from './useLatestRef';
+import useSentinelExtend from './useSentinelExtend';
 
 /**
  * Phrase groups mounted on each side of the anchor when the window is first built or recentered on
@@ -38,9 +43,6 @@ const CULL_RETENTION_PX = SENTINEL_ROOT_MARGIN_PX * 2;
 
 /** Selects the mounted phrase-group wrappers the cull walk measures. */
 const GROUP_SELECTOR = '[data-phrase-group="true"]';
-
-/** A half-open `[start, end)` range of indices into the strip's flat phrase-group list. */
-export type WindowRange = Readonly<{ start: number; end: number }>;
 
 /** Arguments for {@link usePhraseWindow}. */
 export interface UsePhraseWindowArgs {
@@ -117,15 +119,12 @@ export default function usePhraseWindow({
   );
 
   /**
-   * Scroll anchor owed to the next paint after an extend mutates the window: a group that survives
-   * it, and the inline offset it held just before. Restoring that offset holds the visible content
-   * still, whatever width the mutation added or culled on either side.
-   *
-   * That stillness is what keeps the window from feeding itself — content shifted by a mounting
-   * group carries a sentinel back inside its arming margin, mounting more groups with no reader
-   * input behind any of it.
+   * Holds the visible content still across an extend, whatever width it added or culled on either
+   * side. That stillness is what keeps the window from feeding itself: content shifted by a
+   * mounting group carries a sentinel back inside its arming margin, mounting more groups with no
+   * reader input behind any of it.
    */
-  const pendingExtendAnchorRef = useRef<{ el: Element; left: number } | undefined>(undefined);
+  const extendAnchor = useExtendAnchor('horizontal', viewportRef);
 
   const rangeRef = useLatestRef(range);
   const boundsRef = useLatestRef({ first, last });
@@ -207,20 +206,11 @@ export default function usePhraseWindow({
           ? rect.left > viewportRect.right + CULL_RETENTION_PX
           : rect.right < viewportRect.left - CULL_RETENTION_PX;
       };
-      // The cullable run is contiguous from the far edge inward, so the walk stops at the first
-      // group still within the retention margin.
-      let counted = 0;
-      if (edge === 'leading') {
-        for (let i = els.length - 1; i >= 0; i -= 1) {
-          if (!isBeyondRetention(els[i])) break;
-          counted += 1;
-        }
-      } else {
-        for (let i = 0; i < els.length; i += 1) {
-          if (!isBeyondRetention(els[i])) break;
-          counted += 1;
-        }
-      }
+      const counted = countCullableRun(
+        els,
+        edge === 'leading' ? 'end' : 'start',
+        isBeyondRetention,
+      );
       const size = end - start;
       // A wider rendered span puts some counted groups outside the range on the culled side.
       // Charging the range for those would move its bounds past groups the walk retained, so that
@@ -237,17 +227,8 @@ export default function usePhraseWindow({
       const grow = Math.min(EXTEND_CHUNK, HARD_WINDOW_CAP - (size - cullable));
       if (grow <= 0) return;
       // Anchor on the surviving edge group: the old first for a leading extend (culls take the
-      // trailing end), the old last for a trailing extend (culls take the leading end). An anchor
-      // already pending is left in place; overwriting it would strand the shift it was measured for.
-      if (pendingExtendAnchorRef.current === undefined) {
-        const anchorEl = edge === 'leading' ? els[0] : els[els.length - 1];
-        if (anchorEl) {
-          pendingExtendAnchorRef.current = {
-            el: anchorEl,
-            left: anchorEl.getBoundingClientRect().left,
-          };
-        }
-      }
+      // trailing end), the old last for a trailing extend (culls take the leading end).
+      extendAnchor.record(edge === 'leading' ? els[0] : els.at(-1));
       const next =
         edge === 'leading'
           ? { start: Math.max(bounds.first, start - grow), end: end - cullable }
@@ -257,73 +238,30 @@ export default function usePhraseWindow({
       rangeRef.current = next;
       setRange(next);
     },
-    [viewportRef, rangeRef, boundsRef, renderedStartRef],
+    [viewportRef, rangeRef, boundsRef, renderedStartRef, extendAnchor],
   );
 
-  // Reconcile the scroll position to the freshly-mounted range before the browser paints, so an
-  // extend never shows as a jump. Adding the anchor's measured displacement to `scrollLeft` restores
-  // it — and everything visible with it — to the offset it held before the mutation. Self-clears, so
-  // renders that changed no bounds leave the position alone.
+  // Before the browser paints, so an extend never shows as a jump.
   useLayoutEffect(() => {
-    const anchor = pendingExtendAnchorRef.current;
-    if (anchor === undefined) return;
-    pendingExtendAnchorRef.current = undefined;
-    const viewport = viewportRef.current;
-    /* v8 ignore next -- an extend only runs while the viewport is mounted */
-    if (!viewport || !anchor.el.isConnected) return;
-    const delta = anchor.el.getBoundingClientRect().left - anchor.left;
-    if (delta !== 0) viewport.scrollLeft += delta;
-  }, [range, viewportRef]);
+    extendAnchor.restore();
+  }, [range, extendAnchor]);
 
   const recenterOnFocus = useCallback(() => setIsRecenterRequested(true), []);
 
-  // The mounted sentinel elements, held in state so the observer effect re-runs once they attach.
-  // Ref callbacks only record the node; the observe happens in the effect below, which runs after
-  // React has attached every ref — including the viewport, an ancestor. Wiring the observer inside
-  // the ref callbacks would run before the viewport's own ref, leaving no root to observe against.
-  const [leadingSentinel, setLeadingSentinel] = useState<HTMLElement | undefined>(undefined);
-  const [trailingSentinel, setTrailingSentinel] = useState<HTMLElement | undefined>(undefined);
+  const [leadingSentinel, leadingSentinelRef] = useElementState();
+  const [trailingSentinel, trailingSentinelRef] = useElementState();
 
-  const leadingSentinelRef = useCallback(
-    (el: HTMLElement | null) => setLeadingSentinel(el ?? undefined),
-    [],
-  );
-  const trailingSentinelRef = useCallback(
-    (el: HTMLElement | null) => setTrailingSentinel(el ?? undefined),
-    [],
-  );
-
-  const extendRef = useLatestRef(extend);
-
-  // Extend the window whenever either sentinel nears the viewport. Re-subscribes on every range
-  // change because an IntersectionObserver only fires on intersection transitions: after an extend
-  // the sentinel nodes are unchanged and may still sit inside the arming margin, so a stale observer
-  // would stay silent however far the strip is scrolled. A fresh observer re-delivers the initial
-  // state, extending one chunk per delivery until the sentinel leaves the margin. The loop
-  // terminates because a delivery that cannot grow — the last group or the hard cap — leaves the
-  // range untouched, and no range change means no re-subscription to deliver again. Groups arriving
-  // past an edge the window stopped at re-subscribe it too, since nothing else would.
-  useEffect(() => {
-    const root = viewportRef.current;
-    if (!root || (!leadingSentinel && !trailingSentinel)) return undefined;
-    const edges = new WeakMap<Element, 'leading' | 'trailing'>();
-    if (leadingSentinel) edges.set(leadingSentinel, 'leading');
-    if (trailingSentinel) edges.set(trailingSentinel, 'trailing');
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
-          const edge = edges.get(entry.target);
-          /* v8 ignore next -- every observed sentinel is registered in the edge map */
-          if (edge) extendRef.current(edge);
-        });
-      },
-      { root, rootMargin: `${SENTINEL_ROOT_MARGIN_PX}px`, threshold: 0 },
-    );
-    if (leadingSentinel) observer.observe(leadingSentinel);
-    if (trailingSentinel) observer.observe(trailingSentinel);
-    return () => observer.disconnect();
-  }, [viewportRef, leadingSentinel, trailingSentinel, range, first, last, extendRef]);
+  // Groups arriving past an edge the window stopped at re-subscribe it too, since nothing else would.
+  useSentinelExtend({
+    root: viewportRef,
+    sentinels: [
+      ['leading', leadingSentinel],
+      ['trailing', trailingSentinel],
+    ],
+    margin: SENTINEL_ROOT_MARGIN_PX,
+    onReach: extend,
+    resubscribeKeys: [range, first, last],
+  });
 
   return { range, leadingSentinelRef, trailingSentinelRef, recenterOnFocus };
 }

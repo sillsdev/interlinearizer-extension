@@ -9,13 +9,15 @@ import useSegmentWindow, {
   EXTEND_CHUNK,
   HARD_WINDOW_CAP,
   INITIAL_WINDOW_HALF,
+} from '../../hooks/useSegmentWindow';
+import {
   SKIM_AHEAD_PX,
   SKIM_BEHIND_PX,
   SKIM_LEAD_PX,
   SKIM_REVERSE_PX,
   SKIM_SETTLE_MS,
   SKIM_SLIDE_PX,
-} from '../../hooks/useSegmentWindow';
+} from '../../hooks/useSkimReseat';
 import type { HeightTable } from '../../utils/segment-heights';
 import { EMPTY_GEN_BOOK, makeWordToken, outlineOf } from '../test-helpers';
 

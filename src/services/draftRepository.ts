@@ -176,6 +176,16 @@ type LoadedShard =
       state: 'unusable' | 'absent';
     };
 
+type BookShard = LoadedShard & { bookCode: string };
+
+/** A sharded draft's envelope, its analysis still to be read from the shards its manifest names. */
+type ShardedEnvelope = { draft: DraftProject; analysisBooks: string[] };
+
+/** Names a draft in the violation reports logged while it loads. */
+function describeLoadedDraft(sourceProjectId: string): string {
+  return `draft for source project ${sourceProjectId} on load`;
+}
+
 /**
  * A source project's draft, stored as an envelope plus one analysis shard per book. A save rewrites
  * only the shards whose content changed since this instance last loaded or saved them. Nothing
@@ -593,9 +603,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       }),
     );
 
-    // Journal every shard this save could strand or leave half-written before writing any. A book
-    // the stored manifest already names needs no `adding` entry: the manifest alone keeps it
-    // reachable.
+    // A book the stored manifest already names is not stranded: the manifest alone keeps it reachable.
     const stranded = books.filter((bookCode) => !storedBooks.includes(bookCode));
     // A book stays unsettled until an envelope lands after its rewrite, even when this save finds
     // its shard already rewritten by a failed one.
@@ -605,6 +613,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
         ...(journaled.unsettled ?? []).filter((bookCode) => carried.has(bookCode)),
       ]),
     ];
+
+    // Journal every shard this save could strand or leave half-written before writing any.
     await perfTimeAsync('saveDraft:write', () =>
       this.writeShardJournal({ adding: stranded, removing: wiped, unsettled }),
     );
@@ -630,6 +640,32 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
 
     // A wiped book's shard would otherwise be orphaned. Deleting it only after the envelope stops
     // naming the book means a failure here never leaves the manifest naming a missing shard.
+    const undeleted = await this.deleteWipedShards(wiped);
+
+    // With the envelope naming every shard this save added, only a failed deletion is still owed.
+    // The draft itself has landed, so a failed deletion or journal update is logged, not thrown.
+    // A caller that took either for a failed save would send the same draft again for nothing.
+    // The next save retries the journal either way.
+    try {
+      await perfTimeAsync('saveDraft:write', () =>
+        this.writeShardJournal({ adding: [], removing: undeleted }),
+      );
+    } catch (e) {
+      this.logger.warn(
+        `Interlinearizer: could not update the shard journal for ${sourceProjectId}:`,
+        e,
+      );
+    }
+  }
+
+  /**
+   * Deletes the shards of the `wiped` books. A failed deletion is logged, not thrown. A later save
+   * retries it.
+   *
+   * @returns The books whose shard could not be deleted.
+   */
+  private async deleteWipedShards(wiped: readonly string[]): Promise<string[]> {
+    const { sourceProjectId, storage, shardContents: saved } = this;
     const undeleted: string[] = [];
     const deletions = await perfTimeAsync('saveDraft:write', () =>
       Promise.allSettled(
@@ -647,11 +683,6 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
         }),
       ),
     );
-
-    // With the envelope naming every shard this save added, only a failed deletion is still owed.
-    // The draft itself has landed, so neither a failed deletion nor a failed journal update is
-    // thrown: a caller that took either for a failed save would send the same draft again for
-    // nothing. Both are logged, and the next save retries the journal either way.
     const failed = deletions.find((outcome) => outcome.status === 'rejected');
     if (failed?.status === 'rejected') {
       this.logger.warn(
@@ -659,16 +690,7 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
         failed.reason,
       );
     }
-    try {
-      await perfTimeAsync('saveDraft:write', () =>
-        this.writeShardJournal({ adding: [], removing: undeleted }),
-      );
-    } catch (e) {
-      this.logger.warn(
-        `Interlinearizer: could not update the shard journal for ${sourceProjectId}:`,
-        e,
-      );
-    }
+    return undeleted;
   }
 
   /**
@@ -682,6 +704,33 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
    * @throws If storage rejects a read.
    */
   private async readDraft(strictEnvelope: boolean): Promise<DraftExport & { readable?: false }> {
+    const envelope = await this.readEnvelope(strictEnvelope);
+    if ('unreadableBooks' in envelope) return envelope;
+    const { draft, analysisBooks } = envelope;
+    const { shards, orphaned } = await this.readShards(analysisBooks);
+    const unreadableBooks = this.recordLoadedShards(shards, orphaned);
+    return perfTime('getDraft:parse', () => {
+      // Invariants are checked on the merged analysis, because a link and its payload can sit in
+      // different shards. Each shard's shape was checked as it loaded.
+      const analysis = mergeAnalyses(shards.map((shard) => shard.analysis));
+      reportInvariantViolations(this.logger, analysis, describeLoadedDraft(this.sourceProjectId));
+      return { draft: { ...draft, analysis }, unreadableBooks };
+    });
+  }
+
+  /**
+   * Reads the stored envelope, recording the anchored versions it names.
+   *
+   * @returns The whole load when the draft is absent, unreadable, or stored inline. Otherwise the
+   *   envelope of a sharded draft.
+   * @throws {SyntaxError} If the draft's stored value contains invalid JSON.
+   * @throws {Error} If the stored draft's `modelVersion` is higher than this build's.
+   * @throws {Error} If `strictEnvelope` and the draft itself is unreadable.
+   * @throws If storage rejects the read.
+   */
+  private async readEnvelope(
+    strictEnvelope: boolean,
+  ): Promise<(DraftExport & { readable?: false }) | ShardedEnvelope> {
     const { sourceProjectId, storage } = this;
     /**
      * Rejects an unreadable draft when `strictEnvelope`; otherwise logs it, and the draft loads as
@@ -715,66 +764,74 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
       );
     const { analysisBooks, anchoredVersions, ...draft } = withoutShardManifest(parsed);
     this.anchored = new Map(Object.entries(anchoredVersions ?? {}));
-    const describeDraft = `draft for source project ${sourceProjectId} on load`;
     // A draft with no manifest carries its analysis inline, with no shards to read.
     if (!analysisBooks) {
       perfTime('getDraft:parse', () =>
-        reportAnalysisViolations(this.logger, draft.analysis, describeDraft),
+        reportAnalysisViolations(this.logger, draft.analysis, describeLoadedDraft(sourceProjectId)),
       );
       return { draft, unreadableBooks: [] };
     }
+    return { draft, analysisBooks };
+  }
+
+  /**
+   * Reads the shards of the `analysisBooks` a manifest names. A save interrupted before its
+   * envelope landed leaves shards this manifest never came to name. Those shards are read too. The
+   * anchored versions of the books such a save may have rewritten are dropped.
+   *
+   * @returns `shards`, every shard read with the manifest's books first, and `orphaned`, the books
+   *   read that the manifest does not name.
+   * @throws If storage rejects a read.
+   */
+  private async readShards(
+    analysisBooks: readonly string[],
+  ): Promise<{ shards: BookShard[]; orphaned: string[] }> {
+    const { sourceProjectId, storage } = this;
     const keyOf = (bookCode: string) => draftAnalysisKey(sourceProjectId, bookCode);
-    // A save interrupted before its envelope landed leaves shards this manifest never came to name.
-    // A journaled book whose shard never landed reads as missing and drops back out below.
-    const { booksToRead, orphaned, shards } = await perfTimeAsyncExcluding(
-      'getDraft:read',
-      'getDraft:parse',
-      async () => {
-        const { adding, unsettled, damaged } = await this.readShardJournal();
-        // An interrupted save may have rewritten these shards with analysis anchored to other text.
-        if (damaged) this.anchored.clear();
-        (unsettled ?? []).forEach((bookCode) => this.anchored.delete(bookCode));
-        const orphanedBooks = adding.filter((bookCode) => !analysisBooks.includes(bookCode));
-        const books = [...analysisBooks, ...orphanedBooks];
-        return {
-          booksToRead: books,
-          orphaned: orphanedBooks,
-          shards: await Promise.all(
-            books.map(async (bookCode) => {
-              const shardRaw = await storage.read(keyOf(bookCode));
-              return perfTime('getDraft:parse', () =>
-                this.parseAnalysisShard(shardRaw, keyOf(bookCode)),
-              );
-            }),
-          ),
-        };
-      },
+    return perfTimeAsyncExcluding('getDraft:read', 'getDraft:parse', async () => {
+      const { adding, unsettled, damaged } = await this.readShardJournal();
+      // An interrupted save may have rewritten these shards with analysis anchored to other text.
+      if (damaged) this.anchored.clear();
+      (unsettled ?? []).forEach((bookCode) => this.anchored.delete(bookCode));
+      const orphaned = adding.filter((bookCode) => !analysisBooks.includes(bookCode));
+      const shards = await Promise.all(
+        [...analysisBooks, ...orphaned].map(async (bookCode): Promise<BookShard> => {
+          const shardRaw = await storage.read(keyOf(bookCode));
+          return {
+            bookCode,
+            ...perfTime('getDraft:parse', () => this.parseAnalysisShard(shardRaw, keyOf(bookCode))),
+          };
+        }),
+      );
+      return { shards, orphaned };
+    });
+  }
+
+  /**
+   * Records what each of the `shards` holds, so the next save can tell which books changed. A book
+   * in `orphaned` is left out when its shard is absent.
+   *
+   * @returns The books whose shard could not be used.
+   */
+  private recordLoadedShards(shards: readonly BookShard[], orphaned: readonly string[]): string[] {
+    // An unusable shard is recorded apart, because its empty stand-in is not what storage holds.
+    // Dropping an orphaned book whose shard is still stored would strand that shard, with neither
+    // the manifest nor the journal naming it.
+    const kept = shards.filter(
+      ({ bookCode, state }) => state !== 'absent' || !orphaned.includes(bookCode),
     );
-    // Record what each shard holds, so the next save can tell which books changed. An unusable
-    // shard's empty stand-in is not what storage holds, so it is recorded apart. A journaled book is
-    // dropped only once its shard is gone. Dropping one still in storage would strand it, with
-    // neither the manifest nor the journal naming it.
-    const loadedByBook = booksToRead
-      .map((bookCode, i) => ({ bookCode, ...shards[i] }))
-      .filter(({ bookCode, state }) => state !== 'absent' || !orphaned.includes(bookCode));
-    const unreadableBooks = loadedByBook
+    const unreadableBooks = kept
       .filter(({ state }) => state !== 'loaded')
       .map(({ bookCode }) => bookCode);
     perfTime('getDraft:compare', () => {
       this.shardContents = new Map(
-        loadedByBook.flatMap((shard): [string, string][] =>
+        kept.flatMap((shard): [string, string][] =>
           shard.state === 'loaded' ? [[shard.bookCode, shard.raw]] : [],
         ),
       );
     });
     this.unreadableShards = new Set(unreadableBooks);
-    return perfTime('getDraft:parse', () => {
-      // Checked once merged: a link and its payload can sit in different shards, so a violation
-      // is only real of the whole. Each shard's shape was checked as it loaded.
-      const analysis = mergeAnalyses(shards.map((shard) => shard.analysis));
-      reportInvariantViolations(this.logger, analysis, describeDraft);
-      return { draft: { ...draft, analysis }, unreadableBooks };
-    });
+    return unreadableBooks;
   }
 
   /**

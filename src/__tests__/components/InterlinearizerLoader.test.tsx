@@ -1899,6 +1899,15 @@ describe('InterlinearizerLoader', () => {
     it('silences Save, Save As, and Discard Unsaved Changes while an import is open', async () => {
       mockImportCommands();
       await renderImportView();
+      await waitFor(() =>
+        expect(mockSendCommand).toHaveBeenCalledWith(
+          'interlinearizer.getSegments',
+          expect.anything(),
+          'GEN',
+          0,
+          32,
+        ),
+      );
       mockSendCommand.mockClear();
 
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
@@ -2545,6 +2554,7 @@ describe('InterlinearizerLoader', () => {
       mockBookData({ book: ALPHA_BETA_BOOK });
       jest.useFakeTimers();
       await flushHost(async () => renderLoader());
+      expect(capturedInterlinearizerProps).toBeDefined();
       await flushHost(() => capturedInterlinearizerProps?.segmentationDispatch.split('GEN 1:1:6'));
       act(() => jest.advanceTimersByTime(300));
       fireEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -2567,7 +2577,17 @@ describe('InterlinearizerLoader', () => {
     it('hands the import view a segmentation dispatch that cannot write the draft', async () => {
       mockImportCommands();
       await renderImportView();
+      await waitFor(() =>
+        expect(mockSendCommand).toHaveBeenCalledWith(
+          'interlinearizer.getSegments',
+          expect.anything(),
+          'GEN',
+          0,
+          32,
+        ),
+      );
       mockSendCommand.mockClear();
+      expect(capturedInterlinearizerProps).toBeDefined();
 
       await flushHost(() => {
         capturedInterlinearizerProps?.segmentationDispatch.merge('GEN 1:2:0');
@@ -4016,7 +4036,15 @@ describe('InterlinearizerLoader', () => {
       });
       const activeProject = { ...STUB_ACTIVE_PROJECT, targetProjectId: 'target-1' };
       await act(async () => renderLoader({ useWebViewState: makeWebViewState({ activeProject }) }));
-
+      await waitFor(() =>
+        expect(mockSendCommand).toHaveBeenCalledWith(
+          'interlinearizer.getSegments',
+          expect.anything(),
+          'GEN',
+          0,
+          32,
+        ),
+      );
       mockSendCommand.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 

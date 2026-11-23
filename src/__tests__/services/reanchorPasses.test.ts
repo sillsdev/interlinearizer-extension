@@ -7,6 +7,8 @@ import { reanchorRestored, reanchorStoredBook } from '../../services/reanchorPas
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { missingBook } from '../../utils/reanchor-analysis';
 import {
+  creating,
+  deleting,
   FIXTURE_STAMPS,
   makeTokenLink,
   makeVerseBook,
@@ -14,6 +16,7 @@ import {
   seedRepository,
   silentLogger,
   tokenRefOf,
+  updating,
 } from '../test-helpers';
 
 const SOURCE = 'src';
@@ -112,7 +115,9 @@ describe('reanchorStoredBook', () => {
       verseBook('GEN 1:1', 'alpha and beta'),
     );
 
-    expect(applied?.inverse.tokenAnalysisLinks).toStrictEqual({ puts: [before], deletes: [] });
+    expect(applied?.inverse.tokenAnalysisLinks?.updates).toStrictEqual([
+      { before: linkNamed((await repository.exportAll()).draft, 'tl-gen'), after: before },
+    ]);
   });
 
   it.each([false, true])(
@@ -172,7 +177,7 @@ describe('reanchorStoredBook', () => {
     const link = linkNamed(await stored(), 'tl-gen');
     await history.apply({
       intent: 'suggest',
-      tokenAnalysisLinks: { puts: [{ ...link, status: 'suggested' }], deletes: [] },
+      tokenAnalysisLinks: updating({ before: link, after: { ...link, status: 'suggested' } }),
     });
     const edited = verseBook('GEN 1:1', 'alpha and beta');
 
@@ -190,7 +195,7 @@ describe('reanchorStoredBook', () => {
     const link = linkNamed(await stored(), 'tl-gen');
     await history.apply({
       intent: 'deleteLinks',
-      tokenAnalysisLinks: { puts: [], deletes: [link.id] },
+      tokenAnalysisLinks: deleting([link]),
     });
     const edited = verseBook('GEN 1:1', 'alpha and beta');
 
@@ -211,7 +216,10 @@ describe('reanchorStoredBook', () => {
     });
     await history.apply({
       intent: 'merge',
-      scope: { ...(await repository.getScope()), segmentation: undefined },
+      scope: {
+        before: await repository.getScope(),
+        after: { ...(await repository.getScope()), segmentation: undefined },
+      },
     });
     const edited = verseBook('LEV 1:1', 'epsilon and zeta');
 
@@ -228,11 +236,11 @@ describe('reanchorStoredBook', () => {
     const link = linkNamed(await stored(), 'tl-gen');
     await history.apply({
       intent: 'deleteLinks',
-      tokenAnalysisLinks: { puts: [], deletes: [link.id] },
+      tokenAnalysisLinks: deleting([link]),
     });
     await history.apply({
       intent: 'restoreLinks',
-      tokenAnalysisLinks: { puts: [link], deletes: [] },
+      tokenAnalysisLinks: creating([link]),
     });
     await history.undo();
     const edited = verseBook('GEN 1:1', 'alpha and beta');
@@ -294,18 +302,15 @@ describe('reanchorRestored', () => {
     const edited = verseBook('GEN 1:1', 'alpha and beta');
     const restoring = {
       intent: 'undo',
-      tokenAnalysisLinks: {
-        puts: [
-          makeTokenLink('ta-beta', tokenRefOf(before, 'beta'), { surfaceText: 'beta', id: 'tl-2' }),
-        ],
-        deletes: [],
-      },
+      tokenAnalysisLinks: creating([
+        makeTokenLink('ta-beta', tokenRefOf(before, 'beta'), { surfaceText: 'beta', id: 'tl-2' }),
+      ]),
     };
     const apply = jest.spyOn(repository, 'apply');
 
     const changes = await reanchorRestored(repository)(restoring, [edited]);
 
-    const puts = changes?.tokenAnalysisLinks?.puts;
+    const puts = changes?.tokenAnalysisLinks?.updates.map(({ after }) => after);
     expect(puts).toHaveLength(2);
     expect(puts).toEqual(
       expect.arrayContaining([
@@ -330,16 +335,16 @@ describe('reanchorRestored', () => {
     });
     const restoring = {
       intent: 'undo',
-      tokenAnalysisLinks: { puts: [LATER_STALE], deletes: [] },
+      tokenAnalysisLinks: creating([LATER_STALE]),
     };
 
     const changes = await reanchorRestored(repository)(restoring, [
       verseBook('GEN 1:1', 'alpha beta'),
     ]);
 
-    expect(changes?.tokenAnalysisLinks?.puts.map(({ id, status }) => [id, status])).toEqual([
-      ['tl-later', 'approved'],
-    ]);
+    expect(
+      changes?.tokenAnalysisLinks?.updates.map(({ after: { id, status } }) => [id, status]),
+    ).toEqual([['tl-later', 'approved']]);
   });
 
   it('re-anchors to each book in turn', async () => {
@@ -350,7 +355,9 @@ describe('reanchorRestored', () => {
       missingBook('EXO'),
     ]);
 
-    expect(changes?.tokenAnalysisLinks?.puts.map(({ id, status }) => [id, status])).toEqual([
+    expect(
+      changes?.tokenAnalysisLinks?.updates.map(({ after: { id, status } }) => [id, status]),
+    ).toEqual([
       ['tl-gen', 'approved'],
       ['tl-exo', 'stale'],
     ]);
@@ -373,25 +380,22 @@ describe('reanchorRestored', () => {
     });
     const restoring = {
       intent: 'undo',
-      segmentAnalysisLinks: {
-        puts: [
-          {
-            ...FIXTURE_STAMPS,
-            id: 'sl-1',
-            analysisId: 'sa-1',
-            status: 'approved' as const,
-            segmentId: before.segments[0].id,
-          },
-        ],
-        deletes: [],
-      },
+      segmentAnalysisLinks: creating([
+        {
+          ...FIXTURE_STAMPS,
+          id: 'sl-1',
+          analysisId: 'sa-1',
+          status: 'approved' as const,
+          segmentId: before.segments[0].id,
+        },
+      ]),
     };
 
     const changes = await reanchorRestored(repository)(restoring, [
       verseBook('GEN 1:1', 'alpha gamma'),
     ]);
 
-    expect(changes?.segmentAnalysisLinks?.puts).toEqual([
+    expect(changes?.segmentAnalysisLinks?.updates.map(({ after }) => after)).toEqual([
       expect.objectContaining({ id: 'sl-1', status: 'stale' }),
     ]);
   });

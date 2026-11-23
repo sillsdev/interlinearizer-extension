@@ -19,7 +19,13 @@ import {
 import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
-import { FIXTURE_STAMPS, memoryStorage, seedRepository, silentLogger } from '../../test-helpers';
+import {
+  asPuts,
+  FIXTURE_STAMPS,
+  memoryStorage,
+  seedRepository,
+  silentLogger,
+} from '../../test-helpers';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 
@@ -172,7 +178,7 @@ describe('catalog commands over an analysis that is not stored', () => {
 
     await command(buffer);
 
-    expect(buffer.toChangeSet(intent)).toStrictEqual({ intent });
+    expect(asPuts(buffer.toChangeSet(intent))).toStrictEqual({ intent });
   });
 });
 
@@ -231,7 +237,7 @@ describe('deleteAnalyses', () => {
 
     await deleteAnalyses(buffer, { analysisIds: ['ta-missing'] });
 
-    expect(buffer.toChangeSet('deleteAnalyses')).toStrictEqual({
+    expect(asPuts(buffer.toChangeSet('deleteAnalyses'))).toStrictEqual({
       intent: 'deleteAnalyses',
       tokenAnalysisLinks: { puts: [], deletes: ['tl-in'] },
     });

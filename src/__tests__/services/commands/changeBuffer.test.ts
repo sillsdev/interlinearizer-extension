@@ -5,12 +5,15 @@ import { ChangeBuffer } from '../../../services/commands/changeBuffer';
 import { LinkedAnalysisDeleteError } from '../../../types/linked-analysis-delete-error';
 import { DraftRepository } from '../../../services/draftRepository';
 import { emptyAnalysis, emptyDraft } from '../../../types/empty-factories';
+import { scopeRecordOf } from '../../../utils/change-set';
 import {
+  deleting,
   FIXTURE_STAMPS,
   makePhraseLink,
   memoryStorage,
   seedRepository,
   silentLogger,
+  updating,
 } from '../../test-helpers';
 
 function payload(id: string, surfaceText = id): TokenAnalysis {
@@ -57,6 +60,7 @@ describe('ChangeBuffer', () => {
 
   it('answers with a staged put in place of the stored record', async () => {
     const buffer = await bufferOver({ tokenAnalyses: [payload('ta-1')] });
+    await buffer.getTokenAnalyses(['ta-1']);
 
     buffer.put('tokenAnalyses', { ...payload('ta-1'), gloss: { en: 'one' } });
 
@@ -81,6 +85,7 @@ describe('ChangeBuffer', () => {
     const buffer = await bufferOver({
       tokenAnalysisLinks: [link('tl-1', 'ta-1', 'GEN 1:1:0'), link('tl-2', 'ta-2', 'GEN 1:1:0')],
     });
+    await buffer.findLinksToAnalyses(['ta-1']);
 
     buffer.put('tokenAnalysisLinks', link('tl-1', 'ta-2', 'GEN 1:1:0'));
 
@@ -149,7 +154,7 @@ describe('ChangeBuffer', () => {
     buffer.create('tokenAnalyses', created);
     created.surfaceText = 'changed';
 
-    expect(buffer.toChangeSet('create').tokenAnalyses?.puts).toStrictEqual([payload('ta-1')]);
+    expect(buffer.toChangeSet('create').tokenAnalyses?.creates).toStrictEqual([payload('ta-1')]);
   });
 
   it('collects the staged puts and removals of each kind into one change set', async () => {
@@ -158,15 +163,81 @@ describe('ChangeBuffer', () => {
       tokenAnalyses: [payload('ta-1')],
       tokenAnalysisLinks: [stored],
     });
+    await buffer.getTokenAnalyses(['ta-1']);
 
+    buffer.create('tokenAnalyses', payload('ta-new'));
     buffer.put('tokenAnalyses', { ...payload('ta-1'), gloss: { en: 'one' } });
     buffer.delete('tokenAnalysisLinks', stored);
 
     expect(buffer.toChangeSet('edit')).toStrictEqual({
       intent: 'edit',
-      tokenAnalyses: { puts: [{ ...payload('ta-1'), gloss: { en: 'one' } }], deletes: [] },
-      tokenAnalysisLinks: { puts: [], deletes: ['tl-1'] },
+      tokenAnalyses: {
+        creates: [payload('ta-new')],
+        updates: [{ before: payload('ta-1'), after: { ...payload('ta-1'), gloss: { en: 'one' } } }],
+        deletes: [],
+      },
+      tokenAnalysisLinks: deleting([stored]),
     });
+  });
+
+  it('stages a put of a stored record as an update from the record as first read', async () => {
+    const buffer = await bufferOver({ tokenAnalyses: [payload('ta-1')] });
+    await buffer.getTokenAnalyses(['ta-1']);
+    buffer.put('tokenAnalyses', payload('ta-1', 'one'));
+    await buffer.getTokenAnalyses(['ta-1']);
+
+    buffer.put('tokenAnalyses', payload('ta-1', 'two'));
+
+    expect(buffer.toChangeSet('edit').tokenAnalyses).toStrictEqual(
+      updating({ before: payload('ta-1'), after: payload('ta-1', 'two') }),
+    );
+  });
+
+  it('stages nothing for a put that leaves a stored record as read', async () => {
+    const buffer = await bufferOver({ tokenAnalyses: [payload('ta-1')] });
+    await buffer.getTokenAnalyses(['ta-1']);
+
+    buffer.put('tokenAnalyses', payload('ta-1'));
+
+    expect(buffer.toChangeSet('none')).toStrictEqual({ intent: 'none' });
+  });
+
+  it('refuses a put of a record it neither created nor read', async () => {
+    const buffer = await bufferOver({ tokenAnalyses: [payload('ta-1')] });
+
+    expect(() => buffer.put('tokenAnalyses', payload('ta-1', 'one'))).toThrow(
+      'tokenAnalyses record ta-1 is put without being read first',
+    );
+  });
+
+  it('stages an update from a record read elsewhere', async () => {
+    const buffer = await bufferOver({ tokenAnalyses: [payload('ta-1')] });
+
+    buffer.update('tokenAnalyses', payload('ta-1'), payload('ta-1', 'one'));
+
+    expect(buffer.toChangeSet('edit').tokenAnalyses).toStrictEqual(
+      updating({ before: payload('ta-1'), after: payload('ta-1', 'one') }),
+    );
+  });
+
+  it('stages an update from the record as it read it, over one read elsewhere', async () => {
+    const buffer = await bufferOver({ tokenAnalyses: [payload('ta-1')] });
+    await buffer.getTokenAnalyses(['ta-1']);
+
+    buffer.update('tokenAnalyses', payload('ta-1', 'elsewhere'), payload('ta-1', 'one'));
+
+    expect(buffer.toChangeSet('edit').tokenAnalyses).toStrictEqual(
+      updating({ before: payload('ta-1'), after: payload('ta-1', 'one') }),
+    );
+  });
+
+  it('stages a removal carrying the record as first read', async () => {
+    const buffer = await bufferOver({ tokenAnalyses: [payload('ta-1')] });
+    await buffer.getTokenAnalyses(['ta-1']);
+
+    buffer.delete('tokenAnalyses', payload('ta-1', 'changed'));
+
+    expect(buffer.toChangeSet('delete').tokenAnalyses).toStrictEqual(deleting([payload('ta-1')]));
   });
 
   it('stages nothing for a record it created and then removed', async () => {
@@ -180,14 +251,14 @@ describe('ChangeBuffer', () => {
 
   it('stages a put again after a removal of a stored record', async () => {
     const buffer = await bufferOver({ tokenAnalyses: [payload('ta-1')] });
+    await buffer.getTokenAnalyses(['ta-1']);
 
     buffer.delete('tokenAnalyses', payload('ta-1'));
-    buffer.put('tokenAnalyses', payload('ta-1'));
+    buffer.put('tokenAnalyses', payload('ta-1', 'one'));
 
-    expect(buffer.toChangeSet('restore').tokenAnalyses).toStrictEqual({
-      puts: [payload('ta-1')],
-      deletes: [],
-    });
+    expect(buffer.toChangeSet('restore').tokenAnalyses).toStrictEqual(
+      updating({ before: payload('ta-1'), after: payload('ta-1', 'one') }),
+    );
   });
 
   it("answers with the scope's record as stored while none is staged, and stages none", async () => {
@@ -202,7 +273,8 @@ describe('ChangeBuffer', () => {
   it("answers with the staged scope's record as it stood when staged, and collects it", async () => {
     const buffer = await bufferOver();
     const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
-    const scope = { ...(await buffer.getScope()), segmentation };
+    const read = await buffer.getScope();
+    const scope = { ...read, segmentation };
 
     buffer.putScope(scope);
     segmentation.removedVerseStarts.push('GEN 1:3:0');
@@ -210,9 +282,36 @@ describe('ChangeBuffer', () => {
     await expect(buffer.getScope()).resolves.toMatchObject({
       segmentation: { removedVerseStarts: ['GEN 1:2:0'] },
     });
-    expect(buffer.toChangeSet('merge').scope).toMatchObject({
-      segmentation: { removedVerseStarts: ['GEN 1:2:0'] },
+    expect(buffer.toChangeSet('merge').scope).toStrictEqual({
+      before: read,
+      after: { ...read, segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] } },
     });
+  });
+
+  it("refuses a put of the scope's record before reading it", async () => {
+    const buffer = await bufferOver();
+
+    expect(() => buffer.putScope(scopeRecordOf(emptyDraft('src')))).toThrow(
+      'the scope is put without being read first',
+    );
+  });
+
+  it("stages nothing for a put that leaves the scope's record as read", async () => {
+    const buffer = await bufferOver();
+
+    buffer.putScope(await buffer.getScope());
+
+    expect(buffer.toChangeSet('none')).toStrictEqual({ intent: 'none' });
+  });
+
+  it("stages an update of the scope's record from one read elsewhere", async () => {
+    const buffer = await bufferOver();
+    const read = scopeRecordOf(emptyDraft('src'));
+    const after = { ...read, analysisLanguages: ['en'] };
+
+    buffer.updateScope(read, after);
+
+    expect(buffer.toChangeSet('rescope').scope).toStrictEqual({ before: read, after });
   });
 
   describe('findLinksInBooks', () => {
@@ -234,6 +333,7 @@ describe('ChangeBuffer', () => {
         phraseAnalysisLinks: [makePhraseLink('pl-1', ['GEN 1:1:0', 'GEN 1:1:3'])],
         segmentAnalysisLinks: [segmentLink],
       });
+      await buffer.findLinksInBooks(['GEN']);
       buffer.put('tokenAnalysisLinks', { ...link('tl-1', 'ta-1', 'GEN 1:1:0'), status: 'stale' });
       buffer.create('phraseAnalysisLinks', makePhraseLink('pl-new', ['GEN 1:2:0', 'GEN 1:2:3']));
       return buffer;
@@ -312,6 +412,7 @@ describe('ChangeBuffer', () => {
         tokenAnalyses: [payload('ta-1'), payload('ta-2')],
         tokenAnalysisLinks: [link('tl-1', 'ta-1', 'GEN 1:1:0')],
       });
+      await buffer.findLinksToAnalyses(['ta-1']);
 
       buffer.put('tokenAnalysisLinks', link('tl-1', 'ta-2', 'GEN 1:1:0'));
       buffer.delete('tokenAnalyses', payload('ta-1'));
@@ -352,6 +453,7 @@ describe('ChangeBuffer', () => {
 
     it('allows changes that stage no link and remove no analysis', async () => {
       const buffer = await bufferOver({ tokenAnalyses: [payload('ta-1')] });
+      await buffer.getTokenAnalyses(['ta-1']);
 
       buffer.put('tokenAnalyses', payload('ta-1', 'b'));
 

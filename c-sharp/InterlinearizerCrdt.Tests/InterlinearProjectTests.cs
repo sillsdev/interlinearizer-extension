@@ -180,14 +180,13 @@ public class InterlinearProjectTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ARecordsProjectIsKeptThroughReplaceAndPatch()
+    public async Task ARecordsProjectIsKeptThroughPatch()
     {
         await WriteNextChange(Fixtures.CreateInterlinearProject(_projectId));
         var token = Token(_projectId);
         await WriteNextChange(new CreateTokenAnalysisChange(token, _projectId));
 
-        await WriteNextChange(new ReplaceTokenAnalysisChange(new TokenAnalysis { Id = token.Id, SurfaceText = "but" }));
-        await WriteNextChange(new PatchTokenAnalysisChange(token.Id) { Pos = "conj" });
+        await WriteNextChange(new PatchTokenAnalysisChange(token.Id) { SurfaceText = new("but"), Pos = "conj" });
 
         var stored = await DataModel.GetLatest<TokenAnalysis>(token.Id);
         await Assert.That(stored!.ProjectId).IsEqualTo(_projectId);

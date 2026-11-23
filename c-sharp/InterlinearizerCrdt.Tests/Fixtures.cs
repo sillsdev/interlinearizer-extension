@@ -52,16 +52,6 @@ public static class Fixtures
         LiteralTranslation = Multi("In beginning", "En commencement"),
     };
 
-    public static ReplaceSegmentAnalysisChange ReplaceSegmentAnalysis(Guid id) => new(id)
-    {
-        SurfaceText = "In the beginning,",
-        Confidence = Confidence.Medium,
-        Producer = "translator-tool",
-        SourceUser = null,
-        FreeTranslation = Multi("At the start", "Au début"),
-        LiteralTranslation = null,
-    };
-
     /// <summary>Sets some fields, clears one, and edits one translation key while removing another.</summary>
     public static PatchSegmentAnalysisChange PatchSegmentAnalysis(Guid id) => new(id)
     {
@@ -111,14 +101,6 @@ public static class Fixtures
         Confidence = Confidence.High,
     };
 
-    public static ReplaceSegmentAnalysisLinkChange ReplaceSegmentAnalysisLink(Guid id, Guid analysisId) => new(id)
-    {
-        AnalysisId = analysisId,
-        SegmentId = "GEN 1:2",
-        Status = AssignmentStatus.Stale,
-        Confidence = null,
-    };
-
     public static CreateTokenAnalysisChange CreateTokenAnalysis(Guid id) => new(id)
     {
         ProjectId = ProjectId,
@@ -134,20 +116,6 @@ public static class Fixtures
         GlossSenseRef = Sense,
     };
 
-    public static ReplaceTokenAnalysisChange ReplaceTokenAnalysis(Guid id) => new(id)
-    {
-        SurfaceText = "ἀρχή",
-        Confidence = Confidence.High,
-        Producer = "human",
-        SourceUser = "kevin",
-        Morphemes = [Morpheme("ἀρχή")],
-        MorphemesStale = true,
-        Pos = "N",
-        Features = null,
-        Gloss = Multi("start", "début"),
-        GlossSenseRef = null,
-    };
-
     public static CreateTokenAnalysisLinkChange CreateTokenAnalysisLink(Guid id, Guid analysisId) => new(id)
     {
         ProjectId = ProjectId,
@@ -155,14 +123,6 @@ public static class Fixtures
         Token = Token1,
         Status = AssignmentStatus.Suggested,
         Confidence = Confidence.Low,
-    };
-
-    public static ReplaceTokenAnalysisLinkChange ReplaceTokenAnalysisLink(Guid id, Guid analysisId) => new(id)
-    {
-        AnalysisId = analysisId,
-        Token = Token2,
-        Status = AssignmentStatus.Approved,
-        Confidence = Confidence.High,
     };
 
     public static CreatePhraseAnalysisChange CreatePhraseAnalysis(Guid id) => new(id)
@@ -176,16 +136,6 @@ public static class Fixtures
         SenseRef = Sense,
     };
 
-    public static ReplacePhraseAnalysisChange ReplacePhraseAnalysis(Guid id) => new(id)
-    {
-        SurfaceText = "In the beginning",
-        Confidence = null,
-        Producer = null,
-        SourceUser = null,
-        Gloss = null,
-        SenseRef = new SenseRef("lexicon", null, "sense-2"),
-    };
-
     public static CreatePhraseAnalysisLinkChange CreatePhraseAnalysisLink(Guid id, Guid analysisId) => new(id)
     {
         ProjectId = ProjectId,
@@ -193,13 +143,5 @@ public static class Fixtures
         Tokens = [Token1, Token2],
         Status = AssignmentStatus.Candidate,
         Confidence = Confidence.Medium,
-    };
-
-    public static ReplacePhraseAnalysisLinkChange ReplacePhraseAnalysisLink(Guid id, Guid analysisId) => new(id)
-    {
-        AnalysisId = analysisId,
-        Tokens = [Token2],
-        Status = AssignmentStatus.Rejected,
-        Confidence = null,
     };
 }

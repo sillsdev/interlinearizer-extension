@@ -1,4 +1,4 @@
-import type { IndexDifference, RecordChanges } from '../types/analysis-repository';
+import type { IndexDifference, AppliedRecords } from '../types/analysis-repository';
 
 /** The keys a derived index files a record under. */
 export type KeysOf<T> = (record: T) => readonly string[];
@@ -132,7 +132,7 @@ export class RecordTable<T extends { id: string }, Index extends string> {
   }
 
   /** Applies one record kind's puts and deletes; absent changes apply nothing. */
-  apply(changes: RecordChanges<T> | undefined): void {
+  apply(changes: AppliedRecords<T> | undefined): void {
     changes?.puts.forEach((record) => this.put(record));
     changes?.deletes.forEach((id) => this.remove(id));
   }

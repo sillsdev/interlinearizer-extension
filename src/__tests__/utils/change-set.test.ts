@@ -4,12 +4,21 @@ import type { DraftProject, TextAnalysis, TokenAnalysis } from 'interlinearizer'
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import {
   applyChangeSet,
+  invertChangeSet,
   isEmptyChangeSet,
   mergeChangeSets,
+  patchRecord,
   scopeRecordOf,
   touched,
 } from '../../utils/change-set';
-import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from '../test-helpers';
+import {
+  creating,
+  deleting,
+  FIXTURE_STAMPS,
+  makePhraseLink,
+  makeTokenLink,
+  updating,
+} from '../test-helpers';
 
 function payload(id: string, gloss?: string): TokenAnalysis {
   return { id, ...FIXTURE_STAMPS, surfaceText: id, ...(gloss && { gloss: { en: gloss } }) };
@@ -40,24 +49,85 @@ describe('scopeRecordOf', () => {
   });
 });
 
+describe('patchRecord', () => {
+  it('writes each field that differs between before and after', () => {
+    const stored = { id: 'a', pos: 'n', surfaceText: 'x' };
+
+    expect(
+      patchRecord(stored, {
+        before: { id: 'a', pos: 'n', surfaceText: 'a' },
+        after: { id: 'a', pos: 'v', surfaceText: 'a' },
+      }),
+    ).toStrictEqual({ id: 'a', pos: 'v', surfaceText: 'x' });
+  });
+
+  it('removes a field that after lacks', () => {
+    expect(
+      patchRecord<{ id: string; pos?: string }>(
+        { id: 'a', pos: 'n' },
+        { before: { id: 'a', pos: 'n' }, after: { id: 'a' } },
+      ),
+    ).toStrictEqual({ id: 'a' });
+  });
+
+  it('writes a keyed field key by key, keeping keys that before and after agree on', () => {
+    const stored = { id: 'a', gloss: { en: 'one', fr: 'un' } };
+
+    expect(
+      patchRecord<{ id: string; gloss: Record<string, string> }>(
+        stored,
+        { before: { id: 'a', gloss: { en: 'one' } }, after: { id: 'a', gloss: { en: 'two' } } },
+        ['gloss'],
+      ),
+    ).toStrictEqual({ id: 'a', gloss: { en: 'two', fr: 'un' } });
+  });
+
+  it('removes a key that after lacks from a keyed field', () => {
+    expect(
+      patchRecord(
+        { id: 'a', gloss: { en: 'one', fr: 'un' } },
+        { before: { id: 'a', gloss: { en: 'one' } }, after: { id: 'a', gloss: {} } },
+        ['gloss'],
+      ),
+    ).toStrictEqual({ id: 'a', gloss: { fr: 'un' } });
+  });
+
+  it('removes a keyed field left with no keys that after lacks', () => {
+    expect(
+      patchRecord<{ id: string; gloss?: Record<string, string> }>(
+        { id: 'a', gloss: { en: 'one' } },
+        { before: { id: 'a', gloss: { en: 'one' } }, after: { id: 'a' } },
+        ['gloss'],
+      ),
+    ).toStrictEqual({ id: 'a' });
+  });
+
+  it('starts a keyed field that the stored record lacks', () => {
+    expect(
+      patchRecord<{ id: string; gloss?: Record<string, string> }>(
+        { id: 'a' },
+        { before: { id: 'a' }, after: { id: 'a', gloss: { en: 'one' } } },
+        ['gloss'],
+      ),
+    ).toStrictEqual({ id: 'a', gloss: { en: 'one' } });
+  });
+});
+
 describe('applyChangeSet', () => {
-  it('puts a new record after those stored, restored by deleting it', () => {
-    const { draft, inverse } = applyChangeSet(draftOf(payload('a')), {
+  it('creates a record after those stored', () => {
+    const { draft, applied } = applyChangeSet(draftOf(payload('a')), {
       intent: 'add',
-      tokenAnalyses: { puts: [payload('b')], deletes: [] },
+      tokenAnalyses: creating([payload('b')]),
     });
 
     expect(draft.analysis.tokenAnalyses).toStrictEqual([payload('a'), payload('b')]);
-    expect(inverse).toStrictEqual({
-      intent: 'add',
-      tokenAnalyses: { puts: [], deletes: ['b'] },
-    });
+    expect(applied.tokenAnalyses).toStrictEqual({ puts: [payload('b')], deletes: [] });
   });
 
-  it('replaces a stored record in its place, restored by putting it back', () => {
-    const { draft, inverse } = applyChangeSet(draftOf(payload('a'), payload('b'), payload('c')), {
+  it('updates a stored record in its place', () => {
+    const { draft } = applyChangeSet(draftOf(payload('a'), payload('b'), payload('c')), {
       intent: 'edit',
-      tokenAnalyses: { puts: [payload('b', 'bee')], deletes: [] },
+      tokenAnalyses: updating({ before: payload('b'), after: payload('b', 'bee') }),
     });
 
     expect(draft.analysis.tokenAnalyses).toStrictEqual([
@@ -65,87 +135,157 @@ describe('applyChangeSet', () => {
       payload('b', 'bee'),
       payload('c'),
     ]);
-    expect(inverse.tokenAnalyses).toStrictEqual({ puts: [payload('b')], deletes: [] });
   });
 
-  it('deletes a stored record, restored by putting it back', () => {
-    const { draft, inverse } = applyChangeSet(draftOf(payload('a'), payload('b')), {
+  it('keeps a field that the update leaves alone as stored, though the update read it otherwise', () => {
+    const stored = { ...payload('a', 'one'), pos: 'noun' };
+
+    const { draft, applied } = applyChangeSet(draftOf(stored), {
+      intent: 'gloss',
+      tokenAnalyses: updating({ before: payload('a', 'one'), after: payload('a', 'two') }),
+    });
+
+    expect(draft.analysis.tokenAnalyses).toStrictEqual([{ ...payload('a', 'two'), pos: 'noun' }]);
+    expect(applied.tokenAnalyses?.puts).toStrictEqual([{ ...payload('a', 'two'), pos: 'noun' }]);
+  });
+
+  it('keeps a gloss language that the update leaves alone as stored', () => {
+    const stored = { ...payload('a'), gloss: { en: 'one', fr: 'un' } };
+
+    const { draft } = applyChangeSet(draftOf(stored), {
+      intent: 'gloss',
+      tokenAnalyses: updating({ before: payload('a', 'one'), after: payload('a', 'two') }),
+    });
+
+    expect(draft.analysis.tokenAnalyses[0].gloss).toStrictEqual({ en: 'two', fr: 'un' });
+  });
+
+  it('skips an update of a record not stored', () => {
+    const { draft, applied } = applyChangeSet(draftOf(payload('a')), {
+      intent: 'edit',
+      tokenAnalyses: updating({ before: payload('b'), after: payload('b', 'bee') }),
+    });
+
+    expect(draft.analysis.tokenAnalyses).toStrictEqual([payload('a')]);
+    expect(applied).toStrictEqual({ intent: 'edit' });
+  });
+
+  it('leaves out of what it applied an update that changes nothing stored', () => {
+    const { applied } = applyChangeSet(draftOf(payload('a', 'two')), {
+      intent: 'edit',
+      tokenAnalyses: updating({ before: payload('a', 'one'), after: payload('a', 'two') }),
+    });
+
+    expect(applied).toStrictEqual({ intent: 'edit' });
+  });
+
+  it('deletes a stored record', () => {
+    const { draft, applied } = applyChangeSet(draftOf(payload('a'), payload('b')), {
       intent: 'delete',
-      tokenAnalyses: { puts: [], deletes: ['a'] },
+      tokenAnalyses: deleting([payload('a')]),
     });
 
     expect(draft.analysis.tokenAnalyses).toStrictEqual([payload('b')]);
-    expect(inverse.tokenAnalyses).toStrictEqual({ puts: [payload('a')], deletes: [] });
+    expect(applied.tokenAnalyses).toStrictEqual({ puts: [], deletes: ['a'] });
   });
 
-  it('leaves out of the inverse a kind whose changes replaced and added nothing', () => {
-    const { inverse } = applyChangeSet(draftOf(payload('a')), {
+  it('leaves out of what it applied a delete of a record not stored', () => {
+    const { applied } = applyChangeSet(draftOf(payload('a')), {
       intent: 'deleteMissing',
-      tokenAnalyses: { puts: [], deletes: ['missing'] },
+      tokenAnalyses: deleting([payload('missing')]),
     });
 
-    expect(inverse).toStrictEqual({ intent: 'deleteMissing' });
+    expect(applied).toStrictEqual({ intent: 'deleteMissing' });
   });
 
-  it("puts the scope's record, restored by putting the one it replaced", () => {
+  it("updates the scope's record field by field", () => {
     const stored = { ...draftOf(), dirty: true, suggestedDescription: 'Old' };
-    const scope = {
-      ...scopeRecordOf(draftOf()),
-      segmentation: { removedVerseStarts: ['GEN 1:2'], addedStarts: [] },
-    };
+    const segmentation = { removedVerseStarts: ['GEN 1:2'], addedStarts: [] };
+    const read = scopeRecordOf(draftOf());
 
-    const { draft, inverse } = applyChangeSet(stored, { intent: 'boundaries', scope });
+    const { draft, applied } = applyChangeSet(stored, {
+      intent: 'boundaries',
+      scope: { before: read, after: { ...read, segmentation } },
+    });
 
+    const scope = { ...scopeRecordOf(stored), segmentation };
     expect(draft).toStrictEqual({ ...scope, dirty: true, analysis: stored.analysis });
-    expect(inverse.scope).toStrictEqual(scopeRecordOf(stored));
+    expect(applied.scope).toStrictEqual(scope);
   });
 
-  it('marks the draft unsaved, leaving that out of the inverse', () => {
-    const { draft, inverse } = applyChangeSet(draftOf(payload('a')), {
+  it('marks the draft unsaved', () => {
+    const { draft } = applyChangeSet(draftOf(payload('a')), {
       intent: 'edit',
-      scope: scopeRecordOf(draftOf()),
-      tokenAnalyses: { puts: [payload('a', 'ay')], deletes: [] },
+      tokenAnalyses: updating({ before: payload('a'), after: payload('a', 'ay') }),
     });
 
     expect(draft.dirty).toBe(true);
-    expect(inverse.scope).not.toHaveProperty('dirty');
   });
 
   it('leaves the draft it was given as it was', () => {
     const stored = draftOf(payload('a'));
+    const read = scopeRecordOf(stored);
 
     applyChangeSet(stored, {
       intent: 'edit',
-      scope: { ...scopeRecordOf(stored), suggestedDescription: 'New' },
-      tokenAnalyses: { puts: [payload('a', 'ay'), payload('b')], deletes: [] },
+      scope: { before: read, after: { ...read, suggestedDescription: 'New' } },
+      tokenAnalyses: {
+        creates: [payload('b')],
+        updates: [{ before: payload('a'), after: payload('a', 'ay') }],
+        deletes: [],
+      },
     });
 
     expect(stored).toStrictEqual(draftOf(payload('a')));
   });
 
-  it('refuses an id both put and deleted', () => {
+  it('refuses an id both updated and deleted', () => {
     expect(() =>
       applyChangeSet(draftOf(payload('a')), {
         intent: 'conflict',
-        tokenAnalyses: { puts: [payload('a', 'ay')], deletes: ['a'] },
+        tokenAnalyses: {
+          creates: [],
+          updates: [{ before: payload('a'), after: payload('a', 'ay') }],
+          deletes: [payload('a')],
+        },
       }),
     ).toThrow('a change set names token analysis record a more than once');
   });
 
-  it('refuses an id put twice', () => {
+  it('refuses an id created twice', () => {
     expect(() =>
       applyChangeSet(draftOf(), {
         intent: 'conflict',
-        tokenAnalyses: { puts: [payload('a'), payload('a', 'ay')], deletes: [] },
+        tokenAnalyses: creating([payload('a'), payload('a', 'ay')]),
       }),
     ).toThrow('a change set names token analysis record a more than once');
   });
 
+  it('refuses a create of a stored record', () => {
+    expect(() =>
+      applyChangeSet(draftOf(payload('a')), {
+        intent: 'conflict',
+        tokenAnalyses: creating([payload('a', 'ay')]),
+      }),
+    ).toThrow('a change set creates token analysis record a, which is stored');
+  });
+
+  it('refuses an update whose before and after name different records', () => {
+    expect(() =>
+      applyChangeSet(draftOf(payload('a')), {
+        intent: 'conflict',
+        tokenAnalyses: updating({ before: payload('b'), after: payload('a') }),
+      }),
+    ).toThrow('an update of token analysis record a reads as record b');
+  });
+
   it("refuses a scope's record of another source project", () => {
+    const read = scopeRecordOf(draftOf());
+
     expect(() =>
       applyChangeSet(draftOf(), {
-        intent: 'wrongScope',
-        scope: { ...scopeRecordOf(draftOf()), sourceProjectId: 'other' },
+        intent: 'conflict',
+        scope: { before: read, after: { ...read, sourceProjectId: 'other' } },
       }),
     ).toThrow('a change set for source project other cannot apply to the draft of src');
   });
@@ -159,31 +299,23 @@ describe('applyChangeSet', () => {
     };
     const { draft } = applyChangeSet(draftOf(), {
       intent: 'everyKind',
-      segmentAnalyses: { puts: [{ id: 'sa', ...FIXTURE_STAMPS, surfaceText: 'In' }], deletes: [] },
-      segmentAnalysisLinks: {
-        puts: [{ ...link, id: 'sl', analysisId: 'sa', segmentId: 'GEN 1:1' }],
-        deletes: [],
-      },
-      tokenAnalyses: { puts: [payload('a')], deletes: [] },
-      tokenAnalysisLinks: {
-        puts: [{ ...link, id: 'tl', token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' } }],
-        deletes: [],
-      },
-      phraseAnalyses: {
-        puts: [{ id: 'pa', ...FIXTURE_STAMPS, surfaceText: 'In the' }],
-        deletes: [],
-      },
-      phraseAnalysisLinks: {
-        puts: [
-          {
-            ...link,
-            id: 'pl',
-            analysisId: 'pa',
-            tokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
-          },
-        ],
-        deletes: [],
-      },
+      segmentAnalyses: creating([{ id: 'sa', ...FIXTURE_STAMPS, surfaceText: 'In' }]),
+      segmentAnalysisLinks: creating([
+        { ...link, id: 'sl', analysisId: 'sa', segmentId: 'GEN 1:1' },
+      ]),
+      tokenAnalyses: creating([payload('a')]),
+      tokenAnalysisLinks: creating([
+        { ...link, id: 'tl', token: { tokenRef: 'GEN 1:1:0', surfaceText: 'In' } },
+      ]),
+      phraseAnalyses: creating([{ id: 'pa', ...FIXTURE_STAMPS, surfaceText: 'In the' }]),
+      phraseAnalysisLinks: creating([
+        {
+          ...link,
+          id: 'pl',
+          analysisId: 'pa',
+          tokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
+        },
+      ]),
     });
 
     const { analysis } = draft;
@@ -204,19 +336,20 @@ describe('applyChangeSet cascade', () => {
   const kept = makeTokenLink('a', 'GEN 1:1:0', { id: 'kept' });
   const other = makeTokenLink('b', 'GEN 1:1:1', { id: 'other' });
 
-  it('deletes each link naming an analysis it deletes, reporting the delete and restoring the link', () => {
-    const { draft, inverse, applied } = applyChangeSet(
+  it('deletes each link naming an analysis it deletes, reporting the delete', () => {
+    const { draft, applied } = applyChangeSet(
       draftWith({ tokenAnalyses: [payload('a'), payload('b')], tokenAnalysisLinks: [kept, other] }),
-      { intent: 'delete', tokenAnalyses: { puts: [], deletes: ['a'] } },
+      { intent: 'delete', tokenAnalyses: deleting([payload('a')]) },
     );
 
     expect(draft.analysis.tokenAnalysisLinks).toStrictEqual([other]);
     expect(applied.tokenAnalysisLinks).toStrictEqual({ puts: [], deletes: ['kept'] });
-    expect(inverse.tokenAnalysisLinks).toStrictEqual({ puts: [kept], deletes: [] });
   });
 
   it('deletes the phrase and segment links of the analyses it deletes', () => {
     const phraseLink = makePhraseLink('pa', ['GEN 1:1:0']);
+    const phrase = { id: 'pa', ...FIXTURE_STAMPS, surfaceText: 'In' };
+    const segment = { id: 'sa', ...FIXTURE_STAMPS, surfaceText: 'In' };
     const segmentLink = {
       id: 'sl',
       analysisId: 'sa',
@@ -227,15 +360,15 @@ describe('applyChangeSet cascade', () => {
 
     const { draft, applied } = applyChangeSet(
       draftWith({
-        phraseAnalyses: [{ id: 'pa', ...FIXTURE_STAMPS, surfaceText: 'In' }],
+        phraseAnalyses: [phrase],
         phraseAnalysisLinks: [phraseLink],
-        segmentAnalyses: [{ id: 'sa', ...FIXTURE_STAMPS, surfaceText: 'In' }],
+        segmentAnalyses: [segment],
         segmentAnalysisLinks: [segmentLink],
       }),
       {
         intent: 'delete',
-        phraseAnalyses: { puts: [], deletes: ['pa'] },
-        segmentAnalyses: { puts: [], deletes: ['sa'] },
+        phraseAnalyses: deleting([phrase]),
+        segmentAnalyses: deleting([segment]),
       },
     );
 
@@ -245,15 +378,15 @@ describe('applyChangeSet cascade', () => {
     expect(applied.segmentAnalysisLinks?.deletes).toStrictEqual(['sl']);
   });
 
-  it('leaves alone a link that the changes put, though it names an analysis they delete', () => {
+  it('leaves alone a link that the changes update, though it names an analysis they delete', () => {
     const moved = { ...kept, status: 'suggested' as const };
 
     const { draft, applied } = applyChangeSet(
       draftWith({ tokenAnalyses: [payload('a')], tokenAnalysisLinks: [kept] }),
       {
         intent: 'delete',
-        tokenAnalyses: { puts: [], deletes: ['a'] },
-        tokenAnalysisLinks: { puts: [moved], deletes: [] },
+        tokenAnalyses: deleting([payload('a')]),
+        tokenAnalysisLinks: updating({ before: kept, after: moved }),
       },
     );
 
@@ -266,8 +399,8 @@ describe('applyChangeSet cascade', () => {
       draftWith({ tokenAnalyses: [payload('a')], tokenAnalysisLinks: [kept] }),
       {
         intent: 'delete',
-        tokenAnalyses: { puts: [], deletes: ['a'] },
-        tokenAnalysisLinks: { puts: [], deletes: ['kept'] },
+        tokenAnalyses: deleting([payload('a')]),
+        tokenAnalysisLinks: deleting([kept]),
       },
     );
 
@@ -281,8 +414,8 @@ describe('applyChangeSet cascade', () => {
       draftWith({ tokenAnalyses: [payload('a'), payload('b')], tokenAnalysisLinks: [kept, other] }),
       {
         intent: 'relink',
-        tokenAnalyses: { puts: [], deletes: ['a'] },
-        tokenAnalysisLinks: { puts: [added], deletes: ['other'] },
+        tokenAnalyses: deleting([payload('a')]),
+        tokenAnalysisLinks: { creates: [added], updates: [], deletes: [other] },
       },
     );
 
@@ -296,7 +429,7 @@ describe('applyChangeSet cascade', () => {
   it('takes no link with a delete of an analysis not stored', () => {
     const { draft, applied } = applyChangeSet(draftWith({ tokenAnalysisLinks: [kept] }), {
       intent: 'delete',
-      tokenAnalyses: { puts: [], deletes: ['a'] },
+      tokenAnalyses: deleting([payload('a')]),
     });
 
     expect(draft.analysis.tokenAnalysisLinks).toStrictEqual([kept]);
@@ -304,35 +437,117 @@ describe('applyChangeSet cascade', () => {
   });
 });
 
-describe('applyChangeSet applied', () => {
-  it('reports the changes as given when every delete names a stored record', () => {
+describe('invertChangeSet', () => {
+  it('deletes what the changes created', () => {
+    const changes = { intent: 'add', tokenAnalyses: creating([payload('a')]) };
+
+    expect(
+      invertChangeSet(changes, {
+        intent: 'add',
+        tokenAnalyses: { puts: [payload('a')], deletes: [] },
+      }),
+    ).toStrictEqual({ intent: 'add', tokenAnalyses: deleting([payload('a')]) });
+  });
+
+  it('updates back what the changes updated', () => {
     const changes = {
       intent: 'edit',
-      tokenAnalyses: { puts: [payload('b')], deletes: ['a'] },
+      tokenAnalyses: updating({ before: payload('a', 'one'), after: payload('a', 'two') }),
     };
 
-    expect(applyChangeSet(draftOf(payload('a')), changes).applied).toStrictEqual(changes);
-  });
-
-  it('leaves out each delete of a record not stored', () => {
-    const { applied } = applyChangeSet(draftOf(payload('a')), {
+    expect(
+      invertChangeSet(changes, {
+        intent: 'edit',
+        tokenAnalyses: { puts: [payload('a', 'two')], deletes: [] },
+      }),
+    ).toStrictEqual({
       intent: 'edit',
-      tokenAnalyses: { puts: [payload('b')], deletes: ['missing'] },
-    });
-
-    expect(applied).toStrictEqual({
-      intent: 'edit',
-      tokenAnalyses: { puts: [payload('b')], deletes: [] },
+      tokenAnalyses: updating({ before: payload('a', 'two'), after: payload('a', 'one') }),
     });
   });
 
-  it("carries the scope's record the changes put", () => {
-    const scope = { ...scopeRecordOf(draftOf()), suggestedDescription: 'Draft' };
+  it('creates again what the changes deleted', () => {
+    const changes = { intent: 'delete', tokenAnalyses: deleting([payload('a')]) };
 
-    expect(applyChangeSet(draftOf(), { intent: 'describe', scope }).applied).toStrictEqual({
-      intent: 'describe',
-      scope,
+    expect(
+      invertChangeSet(changes, { intent: 'delete', tokenAnalyses: { puts: [], deletes: ['a'] } }),
+    ).toStrictEqual({ intent: 'delete', tokenAnalyses: creating([payload('a')]) });
+  });
+
+  it('leaves out each change that the apply skipped', () => {
+    const changes = {
+      intent: 'edit',
+      tokenAnalyses: {
+        creates: [],
+        updates: [{ before: payload('a'), after: payload('a', 'ay') }],
+        deletes: [payload('b')],
+      },
+    };
+
+    expect(invertChangeSet(changes, { intent: 'edit' })).toStrictEqual({ intent: 'edit' });
+  });
+
+  it('leaves out a kind left with no changes to undo', () => {
+    const changes = { intent: 'delete', tokenAnalyses: deleting([payload('a')]) };
+
+    expect(
+      invertChangeSet(changes, { intent: 'delete', tokenAnalyses: { puts: [], deletes: ['b'] } }),
+    ).toStrictEqual({ intent: 'delete' });
+  });
+
+  it("swaps the scope's update", () => {
+    const before = scopeRecordOf(draftOf());
+    const after = { ...before, suggestedDescription: 'New' };
+
+    expect(
+      invertChangeSet({ intent: 'describe', scope: { before, after } }, { intent: 'describe' })
+        .scope,
+    ).toStrictEqual({ before: after, after: before });
+  });
+
+  it('undoes every record kind', () => {
+    const kinds = [
+      'segmentAnalyses',
+      'segmentAnalysisLinks',
+      'tokenAnalyses',
+      'tokenAnalysisLinks',
+      'phraseAnalyses',
+      'phraseAnalysisLinks',
+    ] as const;
+    const record = { id: 'x' };
+
+    const inverse = invertChangeSet(
+      { intent: 'a', ...Object.fromEntries(kinds.map((kind) => [kind, creating([record])])) },
+      {
+        intent: 'a',
+        ...Object.fromEntries(kinds.map((kind) => [kind, { puts: [record], deletes: [] }])),
+      },
+    );
+
+    expect(inverse).toStrictEqual({
+      intent: 'a',
+      ...Object.fromEntries(kinds.map((kind) => [kind, deleting([record])])),
     });
+  });
+
+  it('undoes the changes when applied after them', () => {
+    const stored = draftOf(payload('a', 'one'), payload('b'));
+    const changes = {
+      intent: 'edit',
+      tokenAnalyses: {
+        creates: [payload('c')],
+        updates: [{ before: payload('a', 'one'), after: payload('a', 'two') }],
+        deletes: [payload('b')],
+      },
+    };
+    const { draft, applied } = applyChangeSet(stored, changes);
+
+    const undone = applyChangeSet(draft, invertChangeSet(changes, applied)).draft;
+
+    expect(undone.analysis.tokenAnalyses).toEqual(
+      expect.arrayContaining(stored.analysis.tokenAnalyses),
+    );
+    expect(undone.analysis.tokenAnalyses).toHaveLength(2);
   });
 });
 
@@ -342,26 +557,44 @@ describe('isEmptyChangeSet', () => {
   });
 
   it('finds a change set with record changes not empty', () => {
-    expect(isEmptyChangeSet({ intent: 'edit', tokenAnalyses: { puts: [], deletes: ['a'] } })).toBe(
+    expect(isEmptyChangeSet({ intent: 'edit', tokenAnalyses: deleting([payload('a')]) })).toBe(
       false,
     );
   });
 
-  it("finds a change set putting the scope's record not empty", () => {
-    expect(isEmptyChangeSet({ intent: 'edit', scope: scopeRecordOf(draftOf()) })).toBe(false);
+  it("finds a change set updating the scope's record not empty", () => {
+    const scope = scopeRecordOf(draftOf());
+
+    expect(isEmptyChangeSet({ intent: 'edit', scope: { before: scope, after: scope } })).toBe(
+      false,
+    );
   });
 });
 
 describe('mergeChangeSets', () => {
   it('applies as its two change sets applied in turn', () => {
-    const draft = draftOf(payload('a'), payload('b'), payload('c'));
+    const draft = draftOf(payload('a'), payload('b'), payload('c'), payload('f'));
     const first = {
       intent: 'first',
-      tokenAnalyses: { puts: [payload('a', 'one'), payload('d')], deletes: ['b'] },
+      tokenAnalyses: {
+        creates: [payload('d'), payload('g')],
+        updates: [
+          { before: payload('a'), after: payload('a', 'one') },
+          { before: payload('f'), after: payload('f', 'one') },
+        ],
+        deletes: [payload('b')],
+      },
     };
     const then = {
       intent: 'then',
-      tokenAnalyses: { puts: [payload('a', 'two'), payload('e')], deletes: ['d', 'c'] },
+      tokenAnalyses: {
+        creates: [payload('e')],
+        updates: [
+          { before: payload('a', 'one'), after: payload('a', 'two') },
+          { before: payload('g'), after: payload('g', 'gee') },
+        ],
+        deletes: [payload('d'), payload('c'), payload('f', 'one')],
+      },
     };
 
     const merged = applyChangeSet(draft, mergeChangeSets(first, then)).draft;
@@ -373,44 +606,142 @@ describe('mergeChangeSets', () => {
     expect(merged.analysis.tokenAnalyses).toHaveLength(inTurn.analysis.tokenAnalyses.length);
   });
 
-  it.each(['segmentAnalyses', 'tokenAnalyses', 'phraseAnalyses'] as const)(
-    'throws when the later change set puts one of %s that the first deletes',
-    (kind) => {
-      const first = { intent: 'a', [kind]: { puts: [], deletes: ['x'] } };
-      const then = { intent: 'b', [kind]: { puts: [{ id: 'x' }], deletes: [] } };
+  it('merges two updates of a record into one from the first read to the later edit', () => {
+    const merged = mergeChangeSets(
+      {
+        intent: 'a',
+        tokenAnalyses: updating({ before: payload('a'), after: payload('a', 'one') }),
+      },
+      {
+        intent: 'b',
+        tokenAnalyses: updating({ before: payload('a', 'one'), after: payload('a', 'two') }),
+      },
+    );
 
-      expect(() => mergeChangeSets(first, then)).toThrow(/delete and then put .* x/);
+    expect(merged.tokenAnalyses).toStrictEqual(
+      updating({ before: payload('a'), after: payload('a', 'two') }),
+    );
+  });
+
+  it('merges an update then a delete into a delete of the record as first read', () => {
+    const merged = mergeChangeSets(
+      {
+        intent: 'a',
+        tokenAnalyses: updating({ before: payload('a'), after: payload('a', 'one') }),
+      },
+      { intent: 'b', tokenAnalyses: deleting([payload('a', 'one')]) },
+    );
+
+    expect(merged.tokenAnalyses).toStrictEqual(deleting([payload('a')]));
+  });
+
+  it('keeps a delete that a later update or delete of the record follows', () => {
+    const merged = mergeChangeSets(
+      {
+        intent: 'a',
+        tokenAnalysisLinks: deleting([
+          makeTokenLink('a', 'GEN 1:1:0', { id: 'l' }),
+          makeTokenLink('a', 'GEN 1:1:1', { id: 'm' }),
+        ]),
+      },
+      {
+        intent: 'b',
+        tokenAnalysisLinks: {
+          creates: [],
+          updates: [
+            {
+              before: makeTokenLink('a', 'GEN 1:1:0', { id: 'l' }),
+              after: makeTokenLink('b', 'GEN 1:1:0', { id: 'l' }),
+            },
+          ],
+          deletes: [makeTokenLink('a', 'GEN 1:1:1', { id: 'm' })],
+        },
+      },
+    );
+
+    expect(merged.tokenAnalysisLinks).toStrictEqual(
+      deleting([
+        makeTokenLink('a', 'GEN 1:1:0', { id: 'l' }),
+        makeTokenLink('a', 'GEN 1:1:1', { id: 'm' }),
+      ]),
+    );
+  });
+
+  it('drops a record that the first change set creates and the later one deletes', () => {
+    const merged = mergeChangeSets(
+      { intent: 'a', tokenAnalyses: creating([payload('a')]) },
+      { intent: 'b', tokenAnalyses: deleting([payload('a')]) },
+    );
+
+    expect(merged.tokenAnalyses).toStrictEqual({ creates: [], updates: [], deletes: [] });
+  });
+
+  it.each(['segmentAnalyses', 'tokenAnalyses', 'phraseAnalyses'] as const)(
+    'throws when the later change set creates one of %s that the first deletes',
+    (kind) => {
+      const first = { intent: 'a', [kind]: deleting([{ id: 'x' }]) };
+      const then = { intent: 'b', [kind]: creating([{ id: 'x' }]) };
+
+      expect(() => mergeChangeSets(first, then)).toThrow(/delete and then create .* x/);
     },
   );
 
-  it('merges a link that the first change set deletes and the later one puts', () => {
+  it('throws when the later change set creates a record that the first leaves stored', () => {
+    expect(() =>
+      mergeChangeSets(
+        {
+          intent: 'a',
+          tokenAnalysisLinks: creating([makeTokenLink('a', 'GEN 1:1:0', { id: 'l' })]),
+        },
+        {
+          intent: 'b',
+          tokenAnalysisLinks: creating([makeTokenLink('a', 'GEN 1:1:0', { id: 'l' })]),
+        },
+      ),
+    ).toThrow('cannot merge change sets that create token analysis link l while it is stored');
+  });
+
+  it('merges a link that the first change set deletes and the later one creates into an update', () => {
     const link = makeTokenLink('a', 'GEN 1:1:0', { id: 'l' });
+    const relinked = makeTokenLink('b', 'GEN 1:1:0', { id: 'l' });
 
     const merged = mergeChangeSets(
-      { intent: 'a', tokenAnalysisLinks: { puts: [], deletes: ['l'] } },
-      { intent: 'b', tokenAnalysisLinks: { puts: [link], deletes: [] } },
+      { intent: 'a', tokenAnalysisLinks: deleting([link]) },
+      { intent: 'b', tokenAnalysisLinks: creating([relinked]) },
     );
 
-    expect(merged.tokenAnalysisLinks).toStrictEqual({ puts: [link], deletes: [] });
+    expect(merged.tokenAnalysisLinks).toStrictEqual(updating({ before: link, after: relinked }));
   });
 
   it("is named by the first change set's intent", () => {
     expect(mergeChangeSets({ intent: 'first' }, { intent: 'then' }).intent).toBe('first');
   });
 
-  it("keeps the later scope's record when both have one", () => {
-    const earlier = scopeRecordOf({ ...draftOf(), suggestedDescription: 'Earlier' });
-    const later = scopeRecordOf({ ...draftOf(), suggestedDescription: 'Later' });
+  it("updates the scope's record from the first read to the later edit when both update it", () => {
+    const read = scopeRecordOf(draftOf());
+    const earlier = { ...read, suggestedDescription: 'Earlier' };
+    const later = { ...read, suggestedDescription: 'Later' };
 
     expect(
-      mergeChangeSets({ intent: 'a', scope: earlier }, { intent: 'b', scope: later }).scope,
-    ).toBe(later);
+      mergeChangeSets(
+        { intent: 'a', scope: { before: read, after: earlier } },
+        { intent: 'b', scope: { before: earlier, after: later } },
+      ).scope,
+    ).toStrictEqual({ before: read, after: later });
   });
 
-  it("keeps the earlier scope's record when only it has one", () => {
-    const earlier = scopeRecordOf({ ...draftOf(), suggestedDescription: 'Earlier' });
+  it("keeps the first change set's scope update when only it has one", () => {
+    const read = scopeRecordOf(draftOf());
+    const scope = { before: read, after: { ...read, suggestedDescription: 'Earlier' } };
 
-    expect(mergeChangeSets({ intent: 'a', scope: earlier }, { intent: 'b' }).scope).toBe(earlier);
+    expect(mergeChangeSets({ intent: 'a', scope }, { intent: 'b' }).scope).toBe(scope);
+  });
+
+  it("keeps the later change set's scope update when only it has one", () => {
+    const read = scopeRecordOf(draftOf());
+    const scope = { before: read, after: { ...read, suggestedDescription: 'Later' } };
+
+    expect(mergeChangeSets({ intent: 'a' }, { intent: 'b', scope }).scope).toBe(scope);
   });
 
   it('merges every record kind both change sets change', () => {
@@ -422,42 +753,53 @@ describe('mergeChangeSets', () => {
       'phraseAnalyses',
       'phraseAnalysisLinks',
     ] as const;
-    const deleting = (id: string) =>
-      Object.fromEntries(kinds.map((kind) => [kind, { puts: [], deletes: [id] }]));
+    const deletingIn = (id: string) =>
+      Object.fromEntries(kinds.map((kind) => [kind, deleting([{ id }])]));
 
     const merged = mergeChangeSets(
-      { intent: 'a', ...deleting('x') },
-      { intent: 'b', ...deleting('y') },
+      { intent: 'a', ...deletingIn('x') },
+      { intent: 'b', ...deletingIn('y') },
     );
 
     expect(merged).toStrictEqual({
       intent: 'a',
-      ...Object.fromEntries(kinds.map((kind) => [kind, { puts: [], deletes: ['x', 'y'] }])),
+      ...Object.fromEntries(kinds.map((kind) => [kind, deleting([{ id: 'x' }, { id: 'y' }])])),
     });
   });
 
   it('carries each kind that either change set changes, and no other', () => {
     const merged = mergeChangeSets(
-      { intent: 'a', tokenAnalyses: { puts: [payload('a')], deletes: [] } },
-      { intent: 'b', segmentAnalyses: { puts: [], deletes: ['s'] } },
+      { intent: 'a', tokenAnalyses: creating([payload('a')]) },
+      {
+        intent: 'b',
+        segmentAnalyses: deleting([{ id: 's', ...FIXTURE_STAMPS, surfaceText: 's' }]),
+      },
     );
 
     expect(merged).toStrictEqual({
       intent: 'a',
-      tokenAnalyses: { puts: [payload('a')], deletes: [] },
-      segmentAnalyses: { puts: [], deletes: ['s'] },
+      tokenAnalyses: creating([payload('a')]),
+      segmentAnalyses: deleting([{ id: 's', ...FIXTURE_STAMPS, surfaceText: 's' }]),
     });
   });
 });
 
 describe('touched', () => {
-  it("lists the changes' puts, then the inverse's", () => {
+  it('lists the applied puts, then the records the inverse creates and updates to', () => {
     const put = { id: 'a' };
     const restored = { id: 'b' };
+    const reverted = { id: 'c' };
 
     expect(
-      touched({ puts: [put], deletes: ['b'] }, { puts: [restored], deletes: ['a'] }),
-    ).toStrictEqual([put, restored]);
+      touched(
+        { puts: [put], deletes: ['b'] },
+        {
+          creates: [restored],
+          updates: [{ before: { id: 'c' }, after: reverted }],
+          deletes: [put],
+        },
+      ),
+    ).toStrictEqual([put, restored, reverted]);
   });
 
   it('lists nothing for a kind that neither side changes', () => {

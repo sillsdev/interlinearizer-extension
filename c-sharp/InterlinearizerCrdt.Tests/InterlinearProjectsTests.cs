@@ -42,7 +42,7 @@ public class InterlinearProjectsTests : CrdtTestBase
         await Projects.Create(Project(_id));
         await Projects.Delete(_id);
         var token = new TokenAnalysis { Id = Guid.NewGuid(), SurfaceText = "and" };
-        await ApplyNext(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(token) });
+        await ApplyNext(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(token) });
         var commits = await Commits();
 
         await Assert.That(() => Projects.Create(Project(_id))).Throws<ArgumentException>();
@@ -117,9 +117,9 @@ public class InterlinearProjectsTests : CrdtTestBase
         await Projects.Create(Project(_id));
         var repository = RepositoryFor(_id);
         var token = new TokenAnalysis { Id = Guid.NewGuid(), SurfaceText = "and" };
-        await repository.Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(token) });
+        await repository.Apply(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(token) });
         var mine = new TokenAnalysis { Id = Guid.NewGuid(), SurfaceText = "and" };
-        await ApplyNext(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Put(mine) });
+        await ApplyNext(new ChangeSet { Intent = "seed", TokenAnalyses = RecordChanges<TokenAnalysis>.Create(mine) });
 
         await Projects.Delete(_id);
 

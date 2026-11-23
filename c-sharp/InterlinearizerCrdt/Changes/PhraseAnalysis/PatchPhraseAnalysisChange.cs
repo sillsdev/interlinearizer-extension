@@ -13,19 +13,19 @@ public class PatchPhraseAnalysisChange(Guid entityId)
     : EditChange<PhraseAnalysis>(entityId), ISelfNamedType<PatchPhraseAnalysisChange>
 {
     /// <summary>
-    /// The patch that takes <paramref name="stored"/> to <paramref name="put"/>, timestamps
+    /// The patch that takes <paramref name="before"/> to <paramref name="after"/>, timestamps
     /// aside; null when nothing differs.
     /// </summary>
-    public static PatchPhraseAnalysisChange? Diff(PhraseAnalysis stored, PhraseAnalysis put)
+    public static PatchPhraseAnalysisChange? Diff(PhraseAnalysis before, PhraseAnalysis after)
     {
-        var patch = new PatchPhraseAnalysisChange(put.Id)
+        var patch = new PatchPhraseAnalysisChange(after.Id)
         {
-            SurfaceText = Patches.Changed(stored.SurfaceText, put.SurfaceText) ? new(put.SurfaceText) : default,
-            Confidence = Patches.Changed(stored.Confidence, put.Confidence) ? new(put.Confidence) : default,
-            Producer = Patches.Changed(stored.Producer, put.Producer) ? new(put.Producer) : default,
-            SourceUser = Patches.Changed(stored.SourceUser, put.SourceUser) ? new(put.SourceUser) : default,
-            SenseRef = Patches.Changed(stored.SenseRef, put.SenseRef) ? new(put.SenseRef) : default,
-            Gloss = MultiStringPatch.Diff(stored.Gloss, put.Gloss),
+            SurfaceText = Patches.Changed(before.SurfaceText, after.SurfaceText) ? new(after.SurfaceText) : default,
+            Confidence = Patches.Changed(before.Confidence, after.Confidence) ? new(after.Confidence) : default,
+            Producer = Patches.Changed(before.Producer, after.Producer) ? new(after.Producer) : default,
+            SourceUser = Patches.Changed(before.SourceUser, after.SourceUser) ? new(after.SourceUser) : default,
+            SenseRef = Patches.Changed(before.SenseRef, after.SenseRef) ? new(after.SenseRef) : default,
+            Gloss = MultiStringPatch.Diff(before.Gloss, after.Gloss),
         };
         return patch.IsEmpty ? null : patch;
     }

@@ -2,6 +2,7 @@ import { CSharpRepository, REPOSITORY_COMMAND_PREFIX } from '../../services/csha
 import type { AnalysisRepository } from '../../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { scopeRecordOf } from '../../utils/change-set';
+import { deleting, FIXTURE_STAMPS } from '../test-helpers';
 
 const PROJECT = 'project-1';
 const SOURCE = 'source-project';
@@ -100,10 +101,12 @@ describe('CSharpRepository', () => {
       tokenAnalysisLinks: { puts: [], deletes: ['l'] },
     };
     send.mockResolvedValue(applied);
-    const changes = { intent: 'edit', tokenAnalyses: { puts: [], deletes: ['a'] } };
+    const changes = {
+      intent: 'edit',
+      tokenAnalyses: deleting([{ id: 'a', ...FIXTURE_STAMPS, surfaceText: 'a' }]),
+    };
 
     await expect(repository.apply(changes)).resolves.toStrictEqual({
-      inverse: { intent: 'edit' },
       applied,
       wasDirty: false,
     });
@@ -119,7 +122,13 @@ describe('CSharpRepository', () => {
     const { send, repository } = createRepository();
 
     await expect(
-      repository.apply({ intent: 'rescope', scope: scopeRecordOf(emptyDraft(SOURCE)) }),
+      repository.apply({
+        intent: 'rescope',
+        scope: {
+          before: scopeRecordOf(emptyDraft(SOURCE)),
+          after: scopeRecordOf(emptyDraft(SOURCE)),
+        },
+      }),
     ).rejects.toThrow('stores no scope record');
 
     expect(send).not.toHaveBeenCalled();

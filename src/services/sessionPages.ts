@@ -329,8 +329,9 @@ export async function readSegmentPage(
 
 /**
  * The normalized surface forms whose pool buckets an applied change may have changed, sorted. They
- * are the forms of each token payload that the change or its inverse puts. They also include the
- * form of the payload named by each token link that the change or its inverse puts.
+ * are the forms of each token payload as the change left it or as it stood before. They also
+ * include the form of the payload named by each token link, as the change left it or as it stood
+ * before.
  *
  * @throws Whatever the repository's lookups throw.
  */

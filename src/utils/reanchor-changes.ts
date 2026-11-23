@@ -12,16 +12,19 @@ import { reanchorSegmentation } from './segmentation';
 export const REANCHOR_INTENT = 'reanchor';
 
 /**
- * The records of `after` that differ from `before`'s record of the same id. A pass only rewrites
- * records, never adding or removing one, so these are all it changed.
+ * Each record of `after` that differs from `before`'s record of the same id, as an update. A pass
+ * only rewrites records, never adding or removing one, so these are all it changed.
  */
 function rewritten<T extends { id: string }>(
   before: readonly T[],
   after: readonly T[],
 ): RecordChanges<T> | undefined {
   const prior = new Map(before.map((record) => [record.id, record]));
-  const puts = after.filter((record) => prior.get(record.id) !== record);
-  return puts.length > 0 ? { puts, deletes: [] } : undefined;
+  const updates = after.flatMap((record) => {
+    const was = prior.get(record.id);
+    return was && was !== record ? [{ before: was, after: record }] : [];
+  });
+  return updates.length > 0 ? { creates: [], updates, deletes: [] } : undefined;
 }
 
 /**
@@ -51,7 +54,9 @@ export function changesOfReanchor(
   }
   return {
     intent: REANCHOR_INTENT,
-    ...(movesSplits && { scope: { ...scopeRecordOf(draft), segmentation } }),
+    ...(movesSplits && {
+      scope: { before: scopeRecordOf(draft), after: { ...scopeRecordOf(draft), segmentation } },
+    }),
     ...(tokenAnalysisLinks && { tokenAnalysisLinks }),
     ...(phraseAnalysisLinks && { phraseAnalysisLinks }),
     ...(segmentAnalysisLinks && { segmentAnalysisLinks }),

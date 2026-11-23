@@ -121,7 +121,11 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
         const status = link.status === 'suggested' ? 'approved' : 'suggested';
         return {
           intent: 'bench',
-          tokenAnalysisLinks: { puts: [{ ...link, status }], deletes: [] },
+          tokenAnalysisLinks: {
+            creates: [],
+            updates: [{ before: link, after: { ...link, status } }],
+            deletes: [],
+          },
         };
       },
       (changes) => repository.apply(changes),
@@ -134,7 +138,11 @@ async function benchTier(tier: TierSpec, allBooks: () => Book[]): Promise<Record
       opts,
       (i): ChangeSet => ({
         intent: 'bench',
-        tokenAnalyses: { puts: [{ ...widest, gloss: { [language]: `bench-${i}` } }], deletes: [] },
+        tokenAnalyses: {
+          creates: [],
+          updates: [{ before: widest, after: { ...widest, gloss: { [language]: `bench-${i}` } } }],
+          deletes: [],
+        },
       }),
       (changes) => repository.apply(changes),
     ),

@@ -43,28 +43,6 @@ public class TokenAnalysisTests : CrdtTestBase
     }
 
     [Test]
-    public async Task ReplaceOverwritesEveryFieldButIdentityAndCreation()
-    {
-        var created = await WriteNextChange(Fixtures.CreateTokenAnalysis(_analysisId));
-        var change = Fixtures.ReplaceTokenAnalysis(_analysisId);
-        var replaced = await WriteNextChange(change);
-
-        var analysis = await DataModel.GetLatest<TokenAnalysis>(_analysisId);
-        await Assert.That(analysis!.CreatedAt).IsEqualTo(created.DateTime);
-        await Assert.That(analysis.UpdatedAt).IsEqualTo(replaced.DateTime);
-        await Assert.That(analysis.SurfaceText).IsEqualTo(change.SurfaceText);
-        await Assert.That(analysis.Confidence).IsEqualTo(change.Confidence);
-        await Assert.That(analysis.Producer).IsEqualTo(change.Producer);
-        await Assert.That(analysis.SourceUser).IsEqualTo(change.SourceUser);
-        await Assert.That(analysis.Morphemes).IsEquivalentTo(change.Morphemes!);
-        await Assert.That(analysis.MorphemesStale).IsEqualTo(change.MorphemesStale);
-        await Assert.That(analysis.Pos).IsEqualTo(change.Pos);
-        await Assert.That(analysis.Features).IsNull();
-        await Assert.That(analysis.Gloss).IsEquivalentTo(change.Gloss!);
-        await Assert.That(analysis.GlossSenseRef).IsNull();
-    }
-
-    [Test]
     public async Task DeleteMarksTheAnalysisDeleted()
     {
         await WriteNextChange(Fixtures.CreateTokenAnalysis(_analysisId));
@@ -103,27 +81,6 @@ public class TokenAnalysisTests : CrdtTestBase
         var rows = await DataModel.QueryLatest<TokenAnalysisLink>().ToListAsync();
         await Assert.That(rows).HasSingleItem();
         await Assert.That(rows[0].Token).IsEqualTo(Fixtures.Token1);
-    }
-
-    [Test]
-    public async Task ReplaceLinkOverwritesEveryFieldButIdentityAndCreation()
-    {
-        var otherAnalysisId = Guid.NewGuid();
-        await WriteNextChange([
-            Fixtures.CreateTokenAnalysis(_analysisId),
-            Fixtures.CreateTokenAnalysis(otherAnalysisId),
-        ]);
-        var created = await WriteNextChange(Fixtures.CreateTokenAnalysisLink(_linkId, _analysisId));
-        var change = Fixtures.ReplaceTokenAnalysisLink(_linkId, otherAnalysisId);
-        var replaced = await WriteNextChange(change);
-
-        var link = await DataModel.GetLatest<TokenAnalysisLink>(_linkId);
-        await Assert.That(link!.CreatedAt).IsEqualTo(created.DateTime);
-        await Assert.That(link.UpdatedAt).IsEqualTo(replaced.DateTime);
-        await Assert.That(link.AnalysisId).IsEqualTo(otherAnalysisId);
-        await Assert.That(link.Status).IsEqualTo(change.Status);
-        await Assert.That(link.Confidence).IsEqualTo(change.Confidence);
-        await Assert.That(link.Token).IsEqualTo(change.Token);
     }
 
     [Test]

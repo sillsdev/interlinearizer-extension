@@ -1,21 +1,28 @@
 /// <reference types="jest" />
 
-import type { DraftProject, TextAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type { DraftProject, TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import type { AnalysisLinks, AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { CURRENT_MODEL_VERSION } from '../types/model-version';
 import { ReadOnlyAnalysisError } from '../types/read-only-analysis-error';
 import { normalizeSurfaceForm } from '../utils/analysis-identity';
-import { scopeRecordOf } from '../utils/change-set';
-import { FIXTURE_STAMPS, makePhraseLink, makeTokenLink } from './test-helpers';
+import { invertChangeSet, scopeRecordOf } from '../utils/change-set';
+import {
+  creating,
+  deleting,
+  FIXTURE_STAMPS,
+  makePhraseLink,
+  makeTokenLink,
+  updating,
+} from './test-helpers';
 
 /**
  * A group of conformance tests an implementation opts into. The required tests, of records by id,
  * lookups, and all-or-nothing applies, always run.
  *
  * - `scope`: {@link AnalysisRepository.getScope} and {@link ChangeSet.scope}.
- * - `undo`: the inverse that {@link AnalysisRepository.apply} returns. Without it, `apply` may return
- *   an inverse that restores nothing (`{ intent }`), which no other group reads.
+ * - `undo`: applying the changes that {@link invertChangeSet} builds from an apply. They undo its
+ *   creates and deletes as well as its updates.
  * - `draftState`: the unsaved mark (`dirty`, `keepDirty`, `wasDirty`, and
  *   {@link AnalysisRepository.markClean}), {@link AnalysisRepository.exportForCopy},
  *   {@link AnalysisRepository.getDraftState}, and {@link AnalysisRepository.findUnlinkedPayloads}.
@@ -355,17 +362,37 @@ function newRecords() {
   };
 }
 
-/** Puts {@link newRecords}, one list per record kind. */
+/** {@link fullAnalysis}'s record of `kind` under `id`. */
+function fixture<Kind extends keyof TextAnalysis>(
+  kind: Kind,
+  id: string,
+): TextAnalysis[Kind][number] {
+  const records: TextAnalysis[Kind][number][] = fullAnalysis()[kind];
+  const record = records.find((candidate) => candidate.id === id);
+  if (!record) throw new Error(`No ${kind} fixture ${id}`);
+  return record;
+}
+
+/** Applies `changes` through `repository`, returning the changes that undo what it applied. */
+async function applyUndoably(
+  repository: AnalysisRepository,
+  changes: ChangeSet,
+): Promise<ChangeSet> {
+  const { applied } = await repository.apply(changes);
+  return invertChangeSet(changes, applied);
+}
+
+/** Creates {@link newRecords}, one list per record kind. */
 function puttingNewRecords(): ChangeSet {
   const records = newRecords();
   return {
     intent: 'putNewRecords',
-    segmentAnalyses: { puts: records.segmentAnalyses, deletes: [] },
-    segmentAnalysisLinks: { puts: records.segmentAnalysisLinks, deletes: [] },
-    tokenAnalyses: { puts: records.tokenAnalyses, deletes: [] },
-    tokenAnalysisLinks: { puts: records.tokenAnalysisLinks, deletes: [] },
-    phraseAnalyses: { puts: records.phraseAnalyses, deletes: [] },
-    phraseAnalysisLinks: { puts: records.phraseAnalysisLinks, deletes: [] },
+    segmentAnalyses: creating(records.segmentAnalyses),
+    segmentAnalysisLinks: creating(records.segmentAnalysisLinks),
+    tokenAnalyses: creating(records.tokenAnalyses),
+    tokenAnalysisLinks: creating(records.tokenAnalysisLinks),
+    phraseAnalyses: creating(records.phraseAnalyses),
+    phraseAnalysisLinks: creating(records.phraseAnalysisLinks),
   };
 }
 
@@ -392,15 +419,36 @@ function mixedChanges(): ChangeSet {
   const records = newRecords();
   return {
     intent: 'mixedChanges',
-    segmentAnalyses: { puts: records.segmentAnalyses, deletes: [ID.saExo] },
-    segmentAnalysisLinks: { puts: records.segmentAnalysisLinks, deletes: [ID.slExo] },
-    tokenAnalyses: {
-      puts: [{ ...analysis.tokenAnalyses[0], gloss: { en: 'and then' } }, ...records.tokenAnalyses],
-      deletes: [ID.taUnlinked],
+    segmentAnalyses: {
+      ...creating(records.segmentAnalyses),
+      deletes: [fixture('segmentAnalyses', ID.saExo)],
     },
-    tokenAnalysisLinks: { puts: records.tokenAnalysisLinks, deletes: [ID.tlGenBeginning] },
-    phraseAnalyses: { puts: records.phraseAnalyses, deletes: [ID.paInThe] },
-    phraseAnalysisLinks: { puts: records.phraseAnalysisLinks, deletes: [ID.plInThe] },
+    segmentAnalysisLinks: {
+      ...creating(records.segmentAnalysisLinks),
+      deletes: [fixture('segmentAnalysisLinks', ID.slExo)],
+    },
+    tokenAnalyses: {
+      creates: records.tokenAnalyses,
+      updates: [
+        {
+          before: analysis.tokenAnalyses[0],
+          after: { ...analysis.tokenAnalyses[0], gloss: { en: 'and then' } },
+        },
+      ],
+      deletes: [fixture('tokenAnalyses', ID.taUnlinked)],
+    },
+    tokenAnalysisLinks: {
+      ...creating(records.tokenAnalysisLinks),
+      deletes: [fixture('tokenAnalysisLinks', ID.tlGenBeginning)],
+    },
+    phraseAnalyses: {
+      ...creating(records.phraseAnalyses),
+      deletes: [fixture('phraseAnalyses', ID.paInThe)],
+    },
+    phraseAnalysisLinks: {
+      ...creating(records.phraseAnalysisLinks),
+      deletes: [fixture('phraseAnalysisLinks', ID.plInThe)],
+    },
   };
 }
 
@@ -414,21 +462,22 @@ function newSegmentation(): NonNullable<DraftProject['segmentation']> {
 
 /** Replaces {@link fullDraft}'s boundaries with {@link newSegmentation} in the scope's record. */
 function resegmenting(): ChangeSet {
+  const scope = scopeRecordOf(fullDraft());
   return {
     intent: 'splitSegment',
-    scope: { ...scopeRecordOf(fullDraft()), segmentation: newSegmentation() },
+    scope: { before: scope, after: { ...scope, segmentation: newSegmentation() } },
   };
 }
 
-/** Replaces EXO's segment payload with one carrying a new free translation. */
+/** Updates EXO's segment payload with a new free translation. */
 function translatingExodus(): ChangeSet {
   const [segment] = fullAnalysis().segmentAnalyses;
   return {
     intent: 'writeFreeTranslation',
-    segmentAnalyses: {
-      puts: [{ ...segment, freeTranslation: { en: 'And then.' } }],
-      deletes: [],
-    },
+    segmentAnalyses: updating({
+      before: segment,
+      after: { ...segment, freeTranslation: { en: 'And then.' } },
+    }),
   };
 }
 
@@ -450,7 +499,7 @@ function missingAnalysisLink(): TokenAnalysisLink {
 function linkingMissingAnalysis(): ChangeSet {
   return {
     intent: 'linkMissing',
-    tokenAnalysisLinks: { puts: [missingAnalysisLink()], deletes: [] },
+    tokenAnalysisLinks: creating([missingAnalysisLink()]),
   };
 }
 
@@ -458,9 +507,9 @@ function linkingMissingAnalysis(): ChangeSet {
 function deletingExodus(): ChangeSet {
   return {
     intent: 'deleteExodus',
-    segmentAnalyses: { puts: [], deletes: [ID.saExo] },
-    segmentAnalysisLinks: { puts: [], deletes: [ID.slExo] },
-    tokenAnalysisLinks: { puts: [], deletes: [ID.tlExoAnd] },
+    segmentAnalyses: deleting([fixture('segmentAnalyses', ID.saExo)]),
+    segmentAnalysisLinks: deleting([fixture('segmentAnalysisLinks', ID.slExo)]),
+    tokenAnalysisLinks: deleting([fixture('tokenAnalysisLinks', ID.tlExoAnd)]),
   };
 }
 
@@ -685,20 +734,108 @@ export function describeAnalysisRepositoryConformance(
           await expect(readStored()).resolves.toStrictEqual(comparable(fullDraftWithNewRecords()));
         });
 
-        it('replaces a stored record whole, dropping fields the put lacks', async () => {
+        it('removes a field that an update drops', async () => {
           await store.seed(SOURCE, fullDraft());
           const repository = await store.open(SOURCE);
+          const stored = fixture('tokenAnalyses', ID.taBeginning);
           const bare = { id: ID.taBeginning, ...FIXTURE_STAMPS, surfaceText: 'beginning' };
 
           await repository.apply({
-            intent: 'replace',
-            tokenAnalyses: { puts: [bare], deletes: [] },
+            intent: 'clear',
+            tokenAnalyses: updating({ before: stored, after: bare }),
           });
 
           const { analysis } = await readStored();
           expect(analysis.tokenAnalyses.find(({ id }) => id === ID.taBeginning)).toStrictEqual(
             unstamped(bare),
           );
+        });
+
+        it('keeps the fields that an update leaves alone, though another apply changed them after its read', async () => {
+          const repository = await overFullDraft();
+          const read = fixture('tokenAnalyses', ID.taBeginning);
+          await repository.apply({
+            intent: 'tagPos',
+            tokenAnalyses: updating({ before: read, after: { ...read, pos: 'noun' } }),
+          });
+
+          await repository.apply({
+            intent: 'writeGloss',
+            tokenAnalyses: updating({ before: read, after: { ...read, gloss: { en: 'start' } } }),
+          });
+
+          const [stored] = await repository.getTokenAnalyses([ID.taBeginning]);
+          expect(unstamped(stored)).toStrictEqual(
+            unstamped({ ...read, pos: 'noun', gloss: { en: 'start' } }),
+          );
+        });
+
+        it('keeps the gloss languages that an update leaves alone, though another apply changed them after its read', async () => {
+          const repository = await overFullDraft();
+          const read = fixture('tokenAnalyses', ID.taBeginning);
+          await repository.apply({
+            intent: 'writeGloss',
+            tokenAnalyses: updating({
+              before: read,
+              after: { ...read, gloss: { ...read.gloss, fr: 'début' } },
+            }),
+          });
+
+          await repository.apply({
+            intent: 'writeGloss',
+            tokenAnalyses: updating({ before: read, after: { ...read, gloss: { en: 'start' } } }),
+          });
+
+          const [stored] = await repository.getTokenAnalyses([ID.taBeginning]);
+          expect(stored.gloss).toStrictEqual({ en: 'start', fr: 'début' });
+        });
+
+        it('undoes a gloss edit by writing back only the gloss', async () => {
+          const repository = await overFullDraft();
+          const read = fixture('tokenAnalyses', ID.taBeginning);
+          const inverse = await applyUndoably(repository, {
+            intent: 'writeGloss',
+            tokenAnalyses: updating({ before: read, after: { ...read, gloss: { en: 'start' } } }),
+          });
+          await repository.apply({
+            intent: 'tagPos',
+            tokenAnalyses: updating({ before: read, after: { ...read, pos: 'noun' } }),
+          });
+
+          await repository.apply(inverse);
+
+          const [stored] = await repository.getTokenAnalyses([ID.taBeginning]);
+          expect(unstamped(stored)).toStrictEqual(unstamped({ ...read, pos: 'noun' }));
+        });
+
+        it('skips an update of a record that is not stored, reporting nothing applied', async () => {
+          const repository = await overFullDraft();
+          const missing: TokenAnalysis = {
+            id: ID.taMissing,
+            ...FIXTURE_STAMPS,
+            surfaceText: 'missing',
+          };
+
+          const { applied } = await repository.apply({
+            intent: 'editMissing',
+            tokenAnalyses: updating({ before: missing, after: { ...missing, pos: 'noun' } }),
+          });
+
+          expect(applied).toStrictEqual({ intent: 'editMissing' });
+          await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
+        });
+
+        it('refuses a create of a stored record, applying nothing', async () => {
+          const repository = await overFullDraft();
+
+          await expect(
+            repository.apply({
+              intent: 'createStored',
+              tokenAnalyses: creating([{ ...fixture('tokenAnalyses', ID.taAnd), pos: 'noun' }]),
+            }),
+          ).rejects.toThrow();
+
+          await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
         });
 
         it('deletes records of every kind', async () => {
@@ -716,7 +853,9 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'deleteMissing',
-            tokenAnalyses: { puts: [], deletes: [ID.taMissing] },
+            tokenAnalyses: deleting([
+              { id: ID.taMissing, ...FIXTURE_STAMPS, surfaceText: 'missing' },
+            ]),
           });
 
           await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
@@ -727,7 +866,7 @@ export function describeAnalysisRepositoryConformance(
 
           const { applied } = await repository.apply({
             intent: 'deleteAnd',
-            tokenAnalyses: { puts: [], deletes: [ID.taAnd] },
+            tokenAnalyses: deleting([fixture('tokenAnalyses', ID.taAnd)]),
           });
 
           expect(applied.intent).toBe('deleteAnd');
@@ -748,7 +887,7 @@ export function describeAnalysisRepositoryConformance(
 
           const { applied } = await repository.apply({
             intent: 'put',
-            tokenAnalyses: { puts: tokenAnalyses, deletes: [] },
+            tokenAnalyses: creating(tokenAnalyses),
           });
 
           expect(unstampedInIdOrder(applied.tokenAnalyses?.puts ?? [])).toStrictEqual(
@@ -764,7 +903,7 @@ export function describeAnalysisRepositoryConformance(
 
           const { applied } = await repository.apply({
             intent: 'put',
-            tokenAnalyses: { puts: tokenAnalyses, deletes: [] },
+            tokenAnalyses: creating(tokenAnalyses),
           });
           expect(applied.tokenAnalyses?.puts).toHaveLength(tokenAnalyses.length);
           (applied.tokenAnalyses?.puts ?? []).forEach((record) => {
@@ -781,7 +920,9 @@ export function describeAnalysisRepositoryConformance(
 
           const { applied } = await repository.apply({
             intent: 'deleteMissing',
-            tokenAnalyses: { puts: [], deletes: [ID.taMissing] },
+            tokenAnalyses: deleting([
+              { id: ID.taMissing, ...FIXTURE_STAMPS, surfaceText: 'missing' },
+            ]),
           });
 
           expect(applied).toStrictEqual({ intent: 'deleteMissing' });
@@ -813,11 +954,11 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'first',
-            tokenAnalyses: { puts: tokenAnalyses, deletes: [] },
+            tokenAnalyses: creating(tokenAnalyses),
           });
           await repository.apply({
             intent: 'second',
-            tokenAnalysisLinks: { puts: tokenAnalysisLinks, deletes: [] },
+            tokenAnalysisLinks: creating(tokenAnalysisLinks),
           });
 
           await expect(readStored()).resolves.toStrictEqual(
@@ -832,11 +973,12 @@ export function describeAnalysisRepositoryConformance(
         it('saves an edit to a payload linked from several books, for both books to load', async () => {
           await store.seed(SOURCE, fullDraft());
           const repository = await store.open(SOURCE);
-          const edited = { ...fullAnalysis().tokenAnalyses[0], gloss: { en: 'and then' } };
+          const [read] = fullAnalysis().tokenAnalyses;
+          const edited = { ...read, gloss: { en: 'and then' } };
 
           await repository.apply({
             intent: 'writeGloss',
-            tokenAnalyses: { puts: [edited], deletes: [] },
+            tokenAnalyses: updating({ before: read, after: edited }),
           });
 
           const { analysis } = await readStored();
@@ -853,12 +995,12 @@ export function describeAnalysisRepositoryConformance(
           const changes = puttingNewRecords();
           await repository.apply(changes);
 
-          changes.tokenAnalyses?.puts.push({
+          changes.tokenAnalyses?.creates.push({
             id: ID.taLater,
             ...FIXTURE_STAMPS,
             surfaceText: 'later',
           });
-          const [god] = changes.tokenAnalyses?.puts ?? [];
+          const [god] = changes.tokenAnalyses?.creates ?? [];
           god.surfaceText = 'changed';
 
           await expect(
@@ -874,7 +1016,11 @@ export function describeAnalysisRepositoryConformance(
           await expect(
             repository.apply({
               intent: 'conflicting',
-              tokenAnalyses: { puts: [{ ...and, gloss: { en: 'also' } }], deletes: [ID.taAnd] },
+              tokenAnalyses: {
+                creates: [],
+                updates: [{ before: and, after: { ...and, gloss: { en: 'also' } } }],
+                deletes: [and],
+              },
             }),
           ).rejects.toThrow();
 
@@ -896,11 +1042,10 @@ export function describeAnalysisRepositoryConformance(
             await expect(
               repository.apply({
                 intent: 'linkAndDelete',
-                tokenAnalyses: { puts: [], deletes: [ID.taUnlinked] },
-                tokenAnalysisLinks: {
-                  puts: [{ ...missingAnalysisLink(), analysisId: ID.taUnlinked }],
-                  deletes: [],
-                },
+                tokenAnalyses: deleting([fixture('tokenAnalyses', ID.taUnlinked)]),
+                tokenAnalysisLinks: creating([
+                  { ...missingAnalysisLink(), analysisId: ID.taUnlinked },
+                ]),
               }),
             ).rejects.toThrow();
 
@@ -1031,10 +1176,11 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'unlinkTokens',
-            tokenAnalysisLinks: {
-              puts: [],
-              deletes: [ID.tlGenAnd, ID.tlExoAnd, ID.tlGenBeginning],
-            },
+            tokenAnalysisLinks: deleting([
+              fixture('tokenAnalysisLinks', ID.tlGenAnd),
+              fixture('tokenAnalysisLinks', ID.tlExoAnd),
+              fixture('tokenAnalysisLinks', ID.tlGenBeginning),
+            ]),
           });
 
           await expect(repository.findLinkedBooks().then((books) => books.sort())).resolves.toEqual(
@@ -1047,12 +1193,9 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'linkOutsideCanon',
-            tokenAnalysisLinks: {
-              puts: [
-                makeTokenLink(ID.taAnd, 'ZZZ front1:0', { id: ID.tlZzzAnd, surfaceText: 'and' }),
-              ],
-              deletes: [],
-            },
+            tokenAnalysisLinks: creating([
+              makeTokenLink(ID.taAnd, 'ZZZ front1:0', { id: ID.tlZzzAnd, surfaceText: 'and' }),
+            ]),
           });
 
           await expect(repository.findLinkedBooks().then((books) => books.sort())).resolves.toEqual(
@@ -1065,8 +1208,8 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'unlinkExodus',
-            tokenAnalysisLinks: { puts: [], deletes: [ID.tlExoAnd] },
-            segmentAnalysisLinks: { puts: [], deletes: [ID.slExo] },
+            tokenAnalysisLinks: deleting([fixture('tokenAnalysisLinks', ID.tlExoAnd)]),
+            segmentAnalysisLinks: deleting([fixture('segmentAnalysisLinks', ID.slExo)]),
           });
 
           await expect(repository.findLinkedBooks()).resolves.toEqual(['GEN']);
@@ -1080,10 +1223,9 @@ export function describeAnalysisRepositoryConformance(
           const repository = await overFullDraft();
           await repository.apply({
             intent: 'addCapitalized',
-            tokenAnalyses: {
-              puts: [{ id: ID.taAndCapitalized, ...FIXTURE_STAMPS, surfaceText: 'And' }],
-              deletes: [],
-            },
+            tokenAnalyses: creating([
+              { id: ID.taAndCapitalized, ...FIXTURE_STAMPS, surfaceText: 'And' },
+            ]),
           });
 
           await expect(
@@ -1108,17 +1250,15 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'approveTwice',
-            tokenAnalysisLinks: {
-              puts: [
-                {
-                  ...beginning,
-                  token: genAnd.token,
-                  status: 'approved',
-                  updatedAt: '2026-02-01T00:00:00.000Z',
-                },
-              ],
-              deletes: [],
-            },
+            tokenAnalysisLinks: updating({
+              before: beginning,
+              after: {
+                ...beginning,
+                token: genAnd.token,
+                status: 'approved',
+                updatedAt: '2026-02-01T00:00:00.000Z',
+              },
+            }),
           });
 
           await expect(
@@ -1134,23 +1274,27 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'approveAndDelete',
-            tokenAnalysisLinks: { puts: [approvedBeginning], deletes: [ID.tlExoAnd] },
+            tokenAnalysisLinks: {
+              creates: [],
+              updates: [{ before: beginning, after: approvedBeginning }],
+              deletes: [fixture('tokenAnalysisLinks', ID.tlExoAnd)],
+            },
           });
           await expect(
             repository.countApprovals([ID.taAnd, ID.taBeginning]),
           ).resolves.toStrictEqual({ [ID.taAnd]: 1, [ID.taBeginning]: 1 });
           await repository.apply({
             intent: 'deleteAnalysis',
-            tokenAnalyses: { puts: [], deletes: [ID.taBeginning] },
-            tokenAnalysisLinks: { puts: [], deletes: [ID.tlGenBeginning] },
+            tokenAnalyses: deleting([fixture('tokenAnalyses', ID.taBeginning)]),
+            tokenAnalysisLinks: deleting([fixture('tokenAnalysisLinks', ID.tlGenBeginning)]),
           });
           await expect(
             repository.countApprovals([ID.taAnd, ID.taBeginning]),
           ).resolves.toStrictEqual({ [ID.taAnd]: 1 });
           await repository.apply({
             intent: 'restoreAnalysis',
-            tokenAnalyses: { puts: [fullAnalysis().tokenAnalyses[1]], deletes: [] },
-            tokenAnalysisLinks: { puts: [approvedBeginning], deletes: [] },
+            tokenAnalyses: creating([fullAnalysis().tokenAnalyses[1]]),
+            tokenAnalysisLinks: creating([approvedBeginning]),
           });
           await expect(
             repository.countApprovals([ID.taAnd, ID.taBeginning]),
@@ -1171,16 +1315,14 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'approveCapitalized',
-            tokenAnalysisLinks: {
-              puts: [
-                {
-                  ...beginning,
-                  token: { ...beginning.token, surfaceText: 'Beginning' },
-                  status: 'approved',
-                },
-              ],
-              deletes: [],
-            },
+            tokenAnalysisLinks: updating({
+              before: beginning,
+              after: {
+                ...beginning,
+                token: { ...beginning.token, surfaceText: 'Beginning' },
+                status: 'approved',
+              },
+            }),
           });
 
           await expect(
@@ -1194,17 +1336,15 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'approveTwice',
-            tokenAnalysisLinks: {
-              puts: [
-                {
-                  ...beginning,
-                  token: { tokenRef: genAnd.token.tokenRef, surfaceText: 'beginning' },
-                  status: 'approved',
-                  updatedAt: '2026-02-01T00:00:00.000Z',
-                },
-              ],
-              deletes: [],
-            },
+            tokenAnalysisLinks: updating({
+              before: beginning,
+              after: {
+                ...beginning,
+                token: { tokenRef: genAnd.token.tokenRef, surfaceText: 'beginning' },
+                status: 'approved',
+                updatedAt: '2026-02-01T00:00:00.000Z',
+              },
+            }),
           });
 
           await expect(repository.findApprovalsByForm(['and', 'beginning'])).resolves.toStrictEqual(
@@ -1223,8 +1363,14 @@ export function describeAnalysisRepositoryConformance(
           await repository.apply({
             intent: 'relabelAndDelete',
             tokenAnalysisLinks: {
-              puts: [{ ...genAnd, token: { ...genAnd.token, surfaceText: 'beginning' } }],
-              deletes: [ID.tlExoAnd],
+              creates: [],
+              updates: [
+                {
+                  before: genAnd,
+                  after: { ...genAnd, token: { ...genAnd.token, surfaceText: 'beginning' } },
+                },
+              ],
+              deletes: [fixture('tokenAnalysisLinks', ID.tlExoAnd)],
             },
           });
 
@@ -1284,7 +1430,10 @@ export function describeAnalysisRepositoryConformance(
 
           await repository.apply({
             intent: 'approve',
-            tokenAnalysisLinks: { puts: [{ ...beginning, status: 'approved' }], deletes: [] },
+            tokenAnalysisLinks: updating({
+              before: beginning,
+              after: { ...beginning, status: 'approved' },
+            }),
           });
 
           await expect(
@@ -1323,9 +1472,17 @@ export function describeAnalysisRepositoryConformance(
           const repository = await overFullDraft();
           await repository.findLinksInBooks(['GEN']);
 
+          const [genAnd] = fullAnalysis().tokenAnalysisLinks;
+
           await repository.apply(mixedChanges());
           await repository.apply(deletingExodus());
-          await repository.apply(puttingNewRecords());
+          await repository.apply({
+            intent: 'relabel',
+            tokenAnalysisLinks: updating({
+              before: genAnd,
+              after: { ...genAnd, token: { ...genAnd.token, surfaceText: 'beginning' } },
+            }),
+          });
 
           await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
         });
@@ -1380,9 +1537,10 @@ export function describeAnalysisRepositoryConformance(
 
         it('reads the record the applied changes leave', async () => {
           const repository = await overFullDraft();
-          const scope = { ...scopeRecordOf(fullDraft()), analysisLanguages: ['de'] };
+          const read = scopeRecordOf(fullDraft());
+          const scope = { ...read, analysisLanguages: ['de'] };
 
-          await repository.apply({ intent: 'rescope', scope });
+          await repository.apply({ intent: 'rescope', scope: { before: read, after: scope } });
 
           await expect(repository.getScope()).resolves.toStrictEqual(scope);
         });
@@ -1401,9 +1559,13 @@ export function describeAnalysisRepositoryConformance(
         it("clears the boundaries when the scope's record carries none", async () => {
           await store.seed(SOURCE, fullDraft());
           const repository = await store.open(SOURCE);
-          const { segmentation, ...withoutBoundaries } = scopeRecordOf(fullDraft());
+          const read = scopeRecordOf(fullDraft());
+          const { segmentation, ...withoutBoundaries } = read;
 
-          await repository.apply({ intent: 'resetBoundaries', scope: withoutBoundaries });
+          await repository.apply({
+            intent: 'resetBoundaries',
+            scope: { before: read, after: withoutBoundaries },
+          });
 
           const stored = await readStored();
           expect(segmentation).toBeDefined();
@@ -1417,7 +1579,10 @@ export function describeAnalysisRepositoryConformance(
           await expect(
             repository.apply({
               intent: 'wrongScope',
-              scope: { ...scopeRecordOf(fullDraft()), sourceProjectId: 'other-project' },
+              scope: {
+                before: scopeRecordOf(fullDraft()),
+                after: { ...scopeRecordOf(fullDraft()), sourceProjectId: 'other-project' },
+              },
             }),
           ).rejects.toThrow();
 
@@ -1428,10 +1593,10 @@ export function describeAnalysisRepositoryConformance(
           it('undoes and redoes boundary changes through the inverse', async () => {
             await store.seed(SOURCE, fullDraft());
             const repository = await store.open(SOURCE);
-            const { inverse } = await repository.apply(resegmenting());
+            const inverse = await applyUndoably(repository, resegmenting());
             const changed = await readStored();
 
-            const { inverse: redo } = await repository.apply(inverse);
+            const redo = await applyUndoably(repository, inverse);
 
             await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
             await repository.apply(redo);
@@ -1443,11 +1608,11 @@ export function describeAnalysisRepositoryConformance(
 
     if (supports.has('undo')) {
       describe('undo', () => {
-        it('returns an inverse that undoes the changes', async () => {
+        it('undoes the changes through their inverse', async () => {
           await store.seed(SOURCE, fullDraft());
           const repository = await store.open(SOURCE);
 
-          const { inverse } = await repository.apply(mixedChanges());
+          const inverse = await applyUndoably(repository, mixedChanges());
           await repository.apply(inverse);
 
           await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
@@ -1456,9 +1621,9 @@ export function describeAnalysisRepositoryConformance(
         it("redoes the changes when the inverse's inverse is applied", async () => {
           await store.seed(SOURCE, fullDraft());
           const repository = await store.open(SOURCE);
-          const { inverse } = await repository.apply(mixedChanges());
+          const inverse = await applyUndoably(repository, mixedChanges());
           const changed = await readStored();
-          const { inverse: redo } = await repository.apply(inverse);
+          const redo = await applyUndoably(repository, inverse);
 
           await repository.apply(redo);
 
@@ -1467,73 +1632,19 @@ export function describeAnalysisRepositoryConformance(
 
         it('undoes the changes through a newly opened repository', async () => {
           await store.seed(SOURCE, fullDraft());
-          const { inverse } = await (await store.open(SOURCE)).apply(mixedChanges());
+          const inverse = await applyUndoably(await store.open(SOURCE), mixedChanges());
 
           await (await store.open(SOURCE)).apply(inverse);
 
           await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
         });
 
-        it('names the intent of the changes in their inverse, as JSON-plain values', async () => {
-          await store.seed(SOURCE, fullDraft());
-          const repository = await store.open(SOURCE);
-
-          const { inverse } = await repository.apply(mixedChanges());
-
-          expect(inverse.intent).toBe('mixedChanges');
-          expectJsonPlain(inverse);
-        });
-
-        it('stores what its inverse restores, unaffected by later changes to that inverse', async () => {
-          await store.seed(SOURCE, fullDraft());
-          const repository = await store.open(SOURCE);
-          const { inverse } = await repository.apply(mixedChanges());
-          await repository.apply(inverse);
-
-          inverse.tokenAnalyses?.puts.forEach((payload) => {
-            payload.surfaceText = 'changed';
-          });
-
-          await expect(
-            repository.getTokenAnalyses([ID.taAnd, ID.taUnlinked]).then(unstampedInIdOrder),
-          ).resolves.toStrictEqual(
-            unstampedInIdOrder(
-              fullAnalysis().tokenAnalyses.filter(({ id }) => id !== ID.taBeginning),
-            ),
-          );
-        });
-
-        it('returns an inverse that restores the links an analysis delete took with it', async () => {
-          await store.seed(SOURCE, fullDraft());
-          const repository = await store.open(SOURCE);
-
-          const { inverse } = await repository.apply({
-            intent: 'deleteAnd',
-            tokenAnalyses: { puts: [], deletes: [ID.taAnd] },
-          });
-          await repository.apply(inverse);
-
-          await expect(readStored()).resolves.toStrictEqual(comparable(fullDraft()));
-        });
-
-        it('returns an inverse with nothing to restore for a delete it skipped', async () => {
-          await store.seed(SOURCE, fullDraft());
-          const repository = await store.open(SOURCE);
-
-          const { inverse } = await repository.apply({
-            intent: 'deleteMissing',
-            tokenAnalyses: { puts: [], deletes: [ID.taMissing] },
-          });
-
-          expect(inverse).toStrictEqual({ intent: 'deleteMissing' });
-        });
-
         it('keeps indexes that match its records through undo and redo', async () => {
           const repository = await overFullDraft();
           await repository.findLinksInBooks(['GEN']);
 
-          const { inverse } = await repository.apply(mixedChanges());
-          const { inverse: redo } = await repository.apply(inverse);
+          const inverse = await applyUndoably(repository, mixedChanges());
+          const redo = await applyUndoably(repository, inverse);
           await repository.apply(redo);
 
           await expect(repository.checkIndexes()).resolves.toStrictEqual([]);
@@ -1595,13 +1706,17 @@ export function describeAnalysisRepositoryConformance(
             });
           });
 
-          it('tells a free translation that its own apply puts', async () => {
+          it('tells a free translation that its own apply creates', async () => {
             const repository = await store.open(SOURCE);
             await expect(repository.getDraftState()).resolves.toMatchObject({
               hasFreeTranslations: false,
             });
+            const [segment] = fullAnalysis().segmentAnalyses;
 
-            await repository.apply(translatingExodus());
+            await repository.apply({
+              intent: 'writeFreeTranslation',
+              segmentAnalyses: creating([{ ...segment, freeTranslation: { en: 'And then.' } }]),
+            });
 
             await expect(repository.getDraftState()).resolves.toMatchObject({
               hasFreeTranslations: true,
@@ -1716,7 +1831,7 @@ export function describeAnalysisRepositoryConformance(
             it('leaves the draft unsaved when undoing an edit made before it was marked clean', async () => {
               await store.seed(SOURCE, exodusOnlyDraft());
               const repository = await store.open(SOURCE);
-              const { inverse } = await repository.apply(translatingExodus());
+              const inverse = await applyUndoably(repository, translatingExodus());
               await repository.markClean();
 
               await repository.apply(inverse);
@@ -1734,7 +1849,7 @@ export function describeAnalysisRepositoryConformance(
               const repository = await overFullDraft();
               await repository.apply({
                 intent: 'unlinkExodus',
-                tokenAnalysisLinks: { puts: [], deletes: [ID.tlExoAnd] },
+                tokenAnalysisLinks: deleting([fixture('tokenAnalysisLinks', ID.tlExoAnd)]),
               });
 
               await repository.markClean();
@@ -1805,11 +1920,13 @@ export function describeAnalysisRepositoryConformance(
 
             await repository.apply({
               intent: 'unlinkExodus',
-              tokenAnalysisLinks: { puts: [], deletes: [ID.tlExoAnd] },
+              tokenAnalysisLinks: deleting([fixture('tokenAnalysisLinks', ID.tlExoAnd)]),
             });
 
             const expected = fullDraft();
-            expected.analysis.segmentAnalyses = translating.segmentAnalyses?.puts ?? [];
+            expected.analysis.segmentAnalyses = (translating.segmentAnalyses?.updates ?? []).map(
+              ({ after }) => after,
+            );
             expected.analysis.tokenAnalysisLinks = expected.analysis.tokenAnalysisLinks.filter(
               ({ id }) => id !== ID.tlExoAnd,
             );
@@ -1855,7 +1972,7 @@ export function describeAnalysisRepositoryConformance(
 
             await repository.apply({
               intent: 'unlinkExodus',
-              tokenAnalysisLinks: { puts: [], deletes: [ID.tlExoAnd] },
+              tokenAnalysisLinks: deleting([fixture('tokenAnalysisLinks', ID.tlExoAnd)]),
             });
 
             const expected = fullDraft();
@@ -2002,11 +2119,15 @@ export function describeAnalysisRepositoryConformance(
         describe('apply', () => {
           it("saves an edit to a payload linked from several books into each book's stored analysis", async () => {
             await store.seed(SOURCE, fullDraft());
-            const edited = { ...fullAnalysis().tokenAnalyses[0], gloss: { en: 'and then' } };
+            const [read] = fullAnalysis().tokenAnalyses;
+            const edited = { ...read, gloss: { en: 'and then' } };
 
             await (
               await store.open(SOURCE)
-            ).apply({ intent: 'writeGloss', tokenAnalyses: { puts: [edited], deletes: [] } });
+            ).apply({
+              intent: 'writeGloss',
+              tokenAnalyses: updating({ before: read, after: edited }),
+            });
 
             await hooks.damageBook(SOURCE, 'GEN', 'corrupt');
             const { draft } = await reloadForCopy();
@@ -2020,7 +2141,10 @@ export function describeAnalysisRepositoryConformance(
               await store.open(SOURCE)
             ).apply({
               intent: 'stamp',
-              scope: { ...scopeRecordOf(fullDraft()), modelVersion: CURRENT_MODEL_VERSION - 1 },
+              scope: {
+                before: scopeRecordOf(fullDraft()),
+                after: { ...scopeRecordOf(fullDraft()), modelVersion: CURRENT_MODEL_VERSION - 1 },
+              },
             });
 
             const { modelVersion } = await reload();
@@ -2073,7 +2197,9 @@ export function describeAnalysisRepositoryConformance(
                 ...fullDraftWithoutGenesis(),
                 analysis: {
                   ...fullDraftWithoutGenesis().analysis,
-                  segmentAnalyses: changes.segmentAnalyses?.puts ?? [],
+                  segmentAnalyses: (changes.segmentAnalyses?.updates ?? []).map(
+                    ({ after }) => after,
+                  ),
                 },
               }),
               unreadableBooks: ['GEN'],
@@ -2211,7 +2337,7 @@ export function describeReadOnlyRepositoryConformance(
       ).resolves.toStrictEqual(
         unstampedAnalysis({
           ...analysis,
-          segmentAnalyses: translating.segmentAnalyses?.puts ?? [],
+          segmentAnalyses: (translating.segmentAnalyses?.updates ?? []).map(({ after }) => after),
         }),
       );
     });

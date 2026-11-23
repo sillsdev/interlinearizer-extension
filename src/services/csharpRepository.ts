@@ -14,6 +14,7 @@ import type {
   ApprovalsByForm,
   AnalysisRepository,
   ApplyResult,
+  AppliedChangeSet,
   ChangeSet,
   DraftExport,
   DraftState,
@@ -38,9 +39,9 @@ export const REPOSITORY_COMMAND_PREFIX = 'interlinearizer.repository.';
  * already store. Every record id must be a GUID string, as the host stores ids.
  *
  * The scope's record and the unsaved mark are not stored yet. An apply refuses a change set
- * carrying a scope. It reports an inverse that restores nothing, and the draft as clean. What it
- * reports as applied carries each put as the host stored it, timestamps included. The calls that
- * read the scope or clear the mark throw, as do those that copy or replace the draft whole.
+ * carrying a scope. It reports the draft as clean. What it reports as applied carries each record
+ * as the host stored it, timestamps included. The calls that read the scope or clear the mark
+ * throw, as do those that copy or replace the draft whole.
  */
 export class CSharpRepository implements AnalysisRepository {
   readonly capabilities: RepositoryCapabilities = { readOnly: false };
@@ -78,8 +79,8 @@ export class CSharpRepository implements AnalysisRepository {
         `The C# host stores no scope record for ${this.projectId}: the change set must not carry one`,
       );
     }
-    const applied = await this.command<ChangeSet>('apply', { changes });
-    return { inverse: { intent: changes.intent }, applied, wasDirty: false };
+    const applied = await this.command<AppliedChangeSet>('apply', { changes });
+    return { applied, wasDirty: false };
   }
 
   async getWholeDraft(): Promise<DraftProject> {

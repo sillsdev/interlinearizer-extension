@@ -306,9 +306,12 @@ async function applyStaged(
 ): Promise<AppliedChange & { step?: EditStep }> {
   await buffer.assertLinkedAnalysesStored();
   await assertApprovalRule(buffer, session.repository);
-  const scope = staged.scope ?? (await session.repository.getScope());
+  const scope = staged.scope?.after ?? (await session.repository.getScope());
   if (scope.analysisLanguages.length === 0) {
-    staged.scope = { ...scope, analysisLanguages: [session.analysisLanguage] };
+    staged.scope = {
+      before: staged.scope?.before ?? scope,
+      after: { ...scope, analysisLanguages: [session.analysisLanguage] },
+    };
   }
   const { sourceProjectId } = session.scope;
   const counted = withFormCounts(staged, (bookId) =>
@@ -678,7 +681,7 @@ export class AnalysisSessions {
           const extra = { ...outcome, ...(await freeTranslations()) };
           return {
             changeId,
-            changes: staged,
+            changes: { intent },
             poolBuckets: {},
             poolAnalyses: [],
             resegmentedBooks: [],

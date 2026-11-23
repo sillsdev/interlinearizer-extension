@@ -17,7 +17,7 @@ export type CommandReply = {
   resegmentedBooks: string[];
   /** The books in which the changes put or removed a stale free translation that the view places. */
   staleTranslationBooks: string[];
-  /** The books in which the changes put or removed a stale token link. */
+  /** The books in which the changes put or removed a stale token or phrase link. */
   staleGlossBooks: string[];
   /** Whether the session has an edit to undo, as of this reply. */
   canUndo: boolean;

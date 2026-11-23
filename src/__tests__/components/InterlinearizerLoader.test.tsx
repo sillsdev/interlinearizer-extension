@@ -844,6 +844,7 @@ function mockLostBoundaries(undismissedLostBoundaries: readonly string[]): jest.
 function mockStaleAnalyses(
   undismissed: Partial<{
     glossCount: number;
+    phraseCount: number;
     freeTranslationCount: number;
     freeTranslationSegmentIds: readonly string[];
   }> = {},
@@ -851,6 +852,7 @@ function mockStaleAnalyses(
   const onDismiss = jest.fn();
   jest.mocked(useStaleAnalysisDismissal).mockReturnValue({
     glossCount: 0,
+    phraseCount: 0,
     freeTranslationCount: 0,
     freeTranslationSegmentIds: [],
     ...undismissed,
@@ -3683,6 +3685,7 @@ describe('InterlinearizerLoader', () => {
       const report: StaleAnalysesReport = {
         bookRef: 'GEN',
         glosses: ['gloss ta-1 GEN 1:1:0'],
+        phrases: [],
         freeTranslations: [],
       };
 
@@ -3761,6 +3764,38 @@ describe('InterlinearizerLoader', () => {
       await renderOnLoadedBook();
 
       expect(screen.getByTestId('stale-analyses-banner')).toHaveTextContent('2 translations');
+    });
+
+    it('counts only the phrases when the book has no other stale analysis', async () => {
+      mockTemplate('%interlinearizer_staleNotice_phrases%', '{count} phrases');
+      mockStaleAnalyses({ phraseCount: 2 });
+
+      await renderOnLoadedBook();
+
+      expect(screen.getByTestId('stale-analyses-banner')).toHaveTextContent(/^2 phrases$/);
+    });
+
+    it('counts the phrases after the other stale analyses', async () => {
+      mockKeyAsValueLocalizedStrings({
+        '%interlinearizer_staleNotice_glosses%': '{count} glosses.',
+        '%interlinearizer_staleNotice_phrases%': '{count} phrases.',
+      });
+      mockStaleAnalyses({ glossCount: 3, phraseCount: 2 });
+
+      await renderOnLoadedBook();
+
+      expect(screen.getByTestId('stale-analyses-banner')).toHaveTextContent(
+        '3 glosses. 2 phrases.',
+      );
+    });
+
+    it('offers neither review when it reports only phrases', async () => {
+      mockStaleAnalyses({ phraseCount: 1 });
+
+      await renderOnLoadedBook();
+
+      expect(screen.queryByTestId('stale-review-glosses')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('stale-next-free-translation')).not.toBeInTheDocument();
     });
 
     it('offers a review of the glosses when it reports some', async () => {

@@ -316,6 +316,7 @@ const STRING_KEYS = [
   '%interlinearizer_staleNotice_glossesAndFreeTranslations%',
   '%interlinearizer_staleNotice_glosses%',
   '%interlinearizer_staleNotice_freeTranslations%',
+  '%interlinearizer_staleNotice_phrases%',
   '%interlinearizer_staleNotice_reviewGlosses%',
   '%interlinearizer_staleNotice_nextFreeTranslation%',
   '%interlinearizer_staleNotice_dismiss%',
@@ -765,6 +766,7 @@ function InterlinearizerLoaderInner({
 
   const {
     glossCount: staleGlossCount,
+    phraseCount: stalePhraseCount,
     freeTranslationCount: staleFreeTranslationCount,
     freeTranslationSegmentIds: staleFreeTranslationSegmentIds,
     onDismiss: handleDismissStaleAnalyses,
@@ -1779,7 +1781,7 @@ function InterlinearizerLoaderInner({
       </SessionAnalysisProvider>
     );
 
-  let staleNoticeMessage: string;
+  let staleNoticeMessage = '';
   if (staleGlossCount > 0 && staleFreeTranslationCount > 0)
     staleNoticeMessage = formatReplacementString(
       localizedStrings['%interlinearizer_staleNotice_glossesAndFreeTranslations%'],
@@ -1790,11 +1792,20 @@ function InterlinearizerLoaderInner({
       localizedStrings['%interlinearizer_staleNotice_glosses%'],
       { count: staleGlossCount },
     );
-  else
+  else if (staleFreeTranslationCount > 0)
     staleNoticeMessage = formatReplacementString(
       localizedStrings['%interlinearizer_staleNotice_freeTranslations%'],
       { count: staleFreeTranslationCount },
     );
+  if (stalePhraseCount > 0)
+    staleNoticeMessage = [
+      staleNoticeMessage,
+      formatReplacementString(localizedStrings['%interlinearizer_staleNotice_phrases%'], {
+        count: stalePhraseCount,
+      }),
+    ]
+      .filter(Boolean)
+      .join(' ');
 
   return (
     <div className="tw:flex tw:flex-col tw:h-full">
@@ -1909,42 +1920,44 @@ function InterlinearizerLoaderInner({
         </div>
       )}
 
-      {isLoaded && (staleGlossCount > 0 || staleFreeTranslationCount > 0) && !stringsLoading && (
-        <div className={BANNER_STRIP_CLASS} data-testid="stale-analyses-banner">
-          <span className="tw:text-sm tw:text-muted-foreground">{staleNoticeMessage}</span>
-          <span className="tw:ml-auto tw:flex tw:gap-2">
-            {staleGlossCount > 0 && (
-              <Button
-                data-testid="stale-review-glosses"
-                size="sm"
-                variant="secondary"
-                onClick={handleReviewStaleGlosses}
-              >
-                {localizedStrings['%interlinearizer_staleNotice_reviewGlosses%']}
-              </Button>
-            )}
-            {staleFreeTranslationCount > 0 && (
-              <Button
-                data-testid="stale-next-free-translation"
-                size="sm"
-                variant="secondary"
-                onClick={handleNextStaleFreeTranslation}
-              >
-                {localizedStrings['%interlinearizer_staleNotice_nextFreeTranslation%']}
-              </Button>
-            )}
-          </span>
-          <Button
-            aria-label={localizedStrings['%interlinearizer_staleNotice_dismiss%']}
-            data-testid="stale-analyses-dismiss"
-            onClick={handleDismissStaleAnalyses}
-            size="icon"
-            variant="ghost"
-          >
-            <X className="tw:size-4" />
-          </Button>
-        </div>
-      )}
+      {isLoaded &&
+        (staleGlossCount > 0 || stalePhraseCount > 0 || staleFreeTranslationCount > 0) &&
+        !stringsLoading && (
+          <div className={BANNER_STRIP_CLASS} data-testid="stale-analyses-banner">
+            <span className="tw:text-sm tw:text-muted-foreground">{staleNoticeMessage}</span>
+            <span className="tw:ml-auto tw:flex tw:gap-2">
+              {staleGlossCount > 0 && (
+                <Button
+                  data-testid="stale-review-glosses"
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleReviewStaleGlosses}
+                >
+                  {localizedStrings['%interlinearizer_staleNotice_reviewGlosses%']}
+                </Button>
+              )}
+              {staleFreeTranslationCount > 0 && (
+                <Button
+                  data-testid="stale-next-free-translation"
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleNextStaleFreeTranslation}
+                >
+                  {localizedStrings['%interlinearizer_staleNotice_nextFreeTranslation%']}
+                </Button>
+              )}
+            </span>
+            <Button
+              aria-label={localizedStrings['%interlinearizer_staleNotice_dismiss%']}
+              data-testid="stale-analyses-dismiss"
+              onClick={handleDismissStaleAnalyses}
+              size="icon"
+              variant="ghost"
+            >
+              <X className="tw:size-4" />
+            </Button>
+          </div>
+        )}
 
       <div className="tw:flex tw:flex-1 tw:min-h-0">
         <LexiconSensesProvider registry={lexiconRegistry}>{viewArea}</LexiconSensesProvider>

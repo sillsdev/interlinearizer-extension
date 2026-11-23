@@ -267,8 +267,8 @@ declare module 'papi-shared-types' {
     /**
      * Outlines a book of the session's source as the session's draft segments it. The outline
      * counts each segment's orphaned free-translation cards and flags the segments that show a
-     * stale gloss or free translation. Before the session's first outline of a book, the session
-     * re-anchors its draft to the book's text.
+     * stale gloss, phrase, or free translation. Before the session's first outline of a book, the
+     * session re-anchors its draft to the book's text.
      *
      * @returns The `BookOutline` as a JSON string, or `undefined` when the project has no text for
      *   the book.
@@ -2655,8 +2655,8 @@ declare module 'interlinearizer' {
      */
     staleTranslations?: true;
     /**
-     * Present when the change put or removed a stale token link in the book. Such a change can
-     * change the stale flags of the book's outline.
+     * Present when the change put or removed a stale token or phrase link in the book. Such a
+     * change can change the stale flags of the book's outline.
      */
     staleGlosses?: true;
   };

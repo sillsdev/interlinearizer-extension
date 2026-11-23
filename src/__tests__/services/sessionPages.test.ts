@@ -144,6 +144,14 @@ const book = makeVerseBook([
 ]);
 const ref = (surfaceText: string) => tokenRefOf(book, surfaceText);
 
+/** A stored phrase payload with a stale link over `tokenRefs`, both named `id`. */
+function stalePhrase(id: string, tokenRefs: string[]): Partial<TextAnalysis> {
+  return {
+    phraseAnalyses: [{ id, ...FIXTURE_STAMPS, surfaceText: id }],
+    phraseAnalysisLinks: [{ ...makePhraseLink(id, tokenRefs), status: 'stale' }],
+  };
+}
+
 function staleTranslation(segmentId: string): Partial<TextAnalysis> {
   const analysisId = `sa ${segmentId}`;
   return {
@@ -246,6 +254,37 @@ describe('readBookOutline stale flags', () => {
     ]);
   });
 
+  it('flags the segment where each stale phrase of a stored payload is placed', async () => {
+    const placed = stalePhrase('pl-placed', [ref('light'), ref('created')]);
+    const repository = await repositoryOver({
+      phraseAnalyses: placed.phraseAnalyses,
+      phraseAnalysisLinks: [
+        ...(placed.phraseAnalysisLinks ?? []),
+        { ...makePhraseLink('pl-gone', [ref('In'), ref('the')]), status: 'stale' },
+      ],
+    });
+
+    const outline = await readBookOutline(repository, book, book);
+
+    expect(outline.segments.map((segment) => segment.hasStaleGloss)).toStrictEqual([
+      undefined,
+      true,
+      undefined,
+    ]);
+  });
+
+  it('flags no segment for a stale phrase whose first token is now punctuation and whose words are gone', async () => {
+    const original = makeVerseBook([{ sid: 'GEN 1:1', text: 'Alpha beta' }]);
+    const edited = makeVerseBook([{ sid: 'GEN 1:1', text: '"New' }]);
+    const repository = await repositoryOver(
+      stalePhrase('pl', [tokenRefOf(original, 'Alpha'), tokenRefOf(original, 'beta')]),
+    );
+
+    const outline = await readBookOutline(repository, edited, edited);
+
+    expect(outline.segments.map((segment) => segment.hasStaleGloss)).toStrictEqual([undefined]);
+  });
+
   it('flags each segment showing a stale free translation, an orphaned card included', async () => {
     const translations = ['GEN 1:0', 'GEN 1:5'].map(staleTranslation);
     const repository = await repositoryOver({
@@ -332,6 +371,45 @@ describe('readStaleSummary', () => {
     expect(summary.glosses).toStrictEqual([
       { analysisId: 'ta-god', tokenRef: ref('God') },
       { analysisId: 'ta-gone', tokenRef: 'GEN 1:9:0' },
+    ]);
+  });
+
+  it("lists each stored payload's stale phrase link at its first token in the book, in document order", async () => {
+    const later = stalePhrase('pl-later', [ref('light'), ref('created')]);
+    const earlier = stalePhrase('pl-earlier', ['GEN 1:9:0', ref('beginning')]);
+    const repository = await repositoryOver({
+      phraseAnalyses: [...(later.phraseAnalyses ?? []), ...(earlier.phraseAnalyses ?? [])],
+      phraseAnalysisLinks: [
+        ...(later.phraseAnalysisLinks ?? []),
+        ...(earlier.phraseAnalysisLinks ?? []),
+        { ...makePhraseLink('pl-gone', [ref('In'), ref('the')]), status: 'stale' },
+      ],
+    });
+
+    const summary = await readStaleSummary(repository, book);
+
+    expect(summary.phrases).toStrictEqual([
+      { linkId: 'pl-earlier', tokenRef: ref('beginning') },
+      { linkId: 'pl-later', tokenRef: ref('created') },
+    ]);
+  });
+
+  it('lists a stale phrase holding no token of the book after those holding some', async () => {
+    const gone = stalePhrase('pl-gone', ['GEN 1:9:0', 'GEN 1:9:1']);
+    const held = stalePhrase('pl-held', [ref('light')]);
+    const repository = await repositoryOver({
+      phraseAnalyses: [...(gone.phraseAnalyses ?? []), ...(held.phraseAnalyses ?? [])],
+      phraseAnalysisLinks: [
+        ...(gone.phraseAnalysisLinks ?? []),
+        ...(held.phraseAnalysisLinks ?? []),
+      ],
+    });
+
+    const summary = await readStaleSummary(repository, book);
+
+    expect(summary.phrases).toStrictEqual([
+      { linkId: 'pl-held', tokenRef: ref('light') },
+      { linkId: 'pl-gone', tokenRef: 'GEN 1:9:0' },
     ]);
   });
 

@@ -290,6 +290,7 @@
       "%interlinearizer_staleNotice_glossesAndFreeTranslations%": "{glossCount} glosses and {freeTranslationCount} free translations in this book no longer match the text.",
       "%interlinearizer_staleNotice_glosses%": "{count} glosses in this book no longer match the text.",
       "%interlinearizer_staleNotice_freeTranslations%": "{count} free translations in this book no longer match the text.",
+      "%interlinearizer_staleNotice_phrases%": "{count} phrases in this book no longer match the text.",
       "%interlinearizer_staleNotice_reviewGlosses%": "Review glosses",
       "%interlinearizer_staleNotice_nextFreeTranslation%": "Next free translation",
       "%interlinearizer_staleNotice_dismiss%": "Dismiss this notice",

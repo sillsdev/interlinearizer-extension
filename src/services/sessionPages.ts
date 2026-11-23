@@ -15,6 +15,7 @@ import type {
   PoolRead,
   SegmentPage,
   StaleGlossPlace,
+  StalePhrasePlace,
   StaleSummary,
 } from '../types/segment-pages';
 import { isWordToken } from '../types/type-guards';
@@ -118,14 +119,17 @@ type StaleRead = { summary: StaleSummary; placed: PlacedStaleFreeTranslations };
  * @throws Whatever the repository's lookups throw.
  */
 async function readStale(repository: AnalysisRepository, book: ReadonlyBook): Promise<StaleRead> {
-  const { tokenAnalysisLinks, segmentAnalysisLinks } = await repository.findLinksInBooks(
-    [book.bookRef],
-    ['stale'],
-  );
+  const { tokenAnalysisLinks, phraseAnalysisLinks, segmentAnalysisLinks } =
+    await repository.findLinksInBooks([book.bookRef], ['stale']);
   const stored = new Set(
     (await repository.getTokenAnalyses(tokenAnalysisLinks.map(({ analysisId }) => analysisId))).map(
       ({ id }) => id,
     ),
+  );
+  const storedPhrases = new Set(
+    (
+      await repository.getPhraseAnalyses(phraseAnalysisLinks.map(({ analysisId }) => analysisId))
+    ).map(({ id }) => id),
   );
   const places = new Map<string, StaleGlossPlace>();
   tokenAnalysisLinks.forEach(({ analysisId, token: { tokenRef } }) => {
@@ -133,13 +137,20 @@ async function readStale(repository: AnalysisRepository, book: ReadonlyBook): Pr
       places.set(JSON.stringify([analysisId, tokenRef]), { analysisId, tokenRef });
   });
   const { tokenDocOrder } = bookIndexesOf(book.segments);
-  const orderOf = ({ tokenRef }: StaleGlossPlace) =>
+  const orderOf = ({ tokenRef }: { tokenRef: string }) =>
     tokenDocOrder.get(tokenRef) ?? Number.MAX_SAFE_INTEGER;
+  const phrases = phraseAnalysisLinks
+    .filter(({ analysisId }) => storedPhrases.has(analysisId))
+    .map(({ id, tokens }): StalePhrasePlace => {
+      const [first] = tokens.toSorted((a, b) => orderOf(a) - orderOf(b));
+      return { linkId: id, tokenRef: first.tokenRef };
+    });
   const { placed } = await readStalePlacement(repository, book, segmentAnalysisLinks);
   const { bySegment, orphanedAfter, orphanedAhead } = placed;
   return {
     summary: {
       glosses: [...places.values()].sort((a, b) => orderOf(a) - orderOf(b)),
+      phrases: phrases.sort((a, b) => orderOf(a) - orderOf(b)),
       freeTranslations: book.segments.flatMap(({ id: segmentId }, index) =>
         [
           ...(index === 0 ? orphanedAhead : []),
@@ -192,9 +203,12 @@ export async function readBookOutline(
   verseBook: ReadonlyBook,
 ): Promise<BookOutline> {
   const { summary, placed } = await readStale(repository, book);
-  const { tokenSegmentMap } = bookIndexesOf(book.segments);
+  const { tokenSegmentMap, tokenDocOrder } = bookIndexesOf(book.segments);
   const glossSegments = new Set(
-    summary.glosses.map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)),
+    [
+      ...summary.glosses,
+      ...summary.phrases.filter(({ tokenRef }) => tokenDocOrder.has(tokenRef)),
+    ].map(({ tokenRef }) => tokenSegmentMap.get(tokenRef)),
   );
   const translationSegments = new Set(summary.freeTranslations.map(({ segmentId }) => segmentId));
   const outline = buildBookOutline(book, book.segments);

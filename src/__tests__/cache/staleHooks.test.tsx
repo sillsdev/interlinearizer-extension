@@ -37,6 +37,7 @@ describe('useStaleSummary', () => {
     await waitFor(() =>
       expect(result.current).toStrictEqual({
         glosses: [{ analysisId: 'ta-beginning', tokenRef: ref('beginning') }],
+        phrases: [],
         freeTranslations: [],
       }),
     );

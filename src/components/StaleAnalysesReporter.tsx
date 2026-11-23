@@ -4,8 +4,10 @@ import { useStaleSummary } from '../cache/staleHooks';
 /** The stale analyses a loaded book holds, each named by a key that holds while it stays stale. */
 export type StaleAnalysesReport = Readonly<{
   bookRef: string;
-  /** A key per place in the book an analysis went stale at. */
+  /** A key per place in the book that a token analysis went stale at. */
   glosses: readonly string[];
+  /** A key per stale phrase link in the book. */
+  phrases: readonly string[];
   /**
    * A key per stale free translation the book shows, with the segment showing it or, for one whose
    * verse is gone, the segment it is shown beside, in document order.
@@ -19,6 +21,8 @@ function sameReport(a: StaleAnalysesReport | undefined, b: StaleAnalysesReport):
     a.bookRef === b.bookRef &&
     a.glosses.length === b.glosses.length &&
     a.glosses.every((key, i) => key === b.glosses[i]) &&
+    a.phrases.length === b.phrases.length &&
+    a.phrases.every((key, i) => key === b.phrases[i]) &&
     a.freeTranslations.length === b.freeTranslations.length &&
     a.freeTranslations.every(
       ({ key, segmentId }, i) =>
@@ -48,6 +52,7 @@ export default function StaleAnalysesReporter({
         glosses: summary.glosses.map(
           ({ analysisId, tokenRef }) => `gloss ${analysisId} ${tokenRef}`,
         ),
+        phrases: summary.phrases.map(({ linkId }) => `phrase ${linkId}`),
         freeTranslations: summary.freeTranslations.map(({ analysisId, segmentId }) => ({
           key: `freeTranslation ${analysisId}`,
           segmentId,

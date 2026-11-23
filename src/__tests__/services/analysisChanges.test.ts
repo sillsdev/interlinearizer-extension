@@ -308,6 +308,64 @@ describe('describeChange', () => {
       ]);
     });
 
+    it('flags the book of a stale phrase link that the change put', async () => {
+      const link = makePhraseLink('pl', [ref('created'), ref('the')]);
+      const changes: ChangeSet = {
+        intent: 'x',
+        phraseAnalysisLinks: { puts: [{ ...link, status: 'stale' }], deletes: [] },
+      };
+      const inverse: ChangeSet = {
+        intent: 'x',
+        phraseAnalysisLinks: { puts: [link], deletes: [] },
+      };
+
+      const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
+
+      expect(change.books).toStrictEqual([
+        expect.objectContaining({ bookId: 'GEN', staleGlosses: true }),
+      ]);
+    });
+
+    it('flags the book of a stale phrase link that the change removed', async () => {
+      const link = makePhraseLink('pl', [ref('created'), ref('the')]);
+      const changes: ChangeSet = {
+        intent: 'x',
+        phraseAnalysisLinks: { puts: [link], deletes: [] },
+      };
+      const inverse: ChangeSet = {
+        intent: 'x',
+        phraseAnalysisLinks: { puts: [{ ...link, status: 'stale' }], deletes: [] },
+      };
+
+      const change = await describeChange(await repositoryOver(), { changes, inverse }, held);
+
+      expect(change.books).toStrictEqual([
+        expect.objectContaining({ bookId: 'GEN', staleGlosses: true }),
+      ]);
+    });
+
+    it('is named when a phrase payload a stale link names changes', async () => {
+      const phrasePayload = { id: 'pa', ...FIXTURE_STAMPS, surfaceText: 'created the' };
+      const repository = await repositoryOver({
+        phraseAnalyses: [phrasePayload],
+        phraseAnalysisLinks: [
+          { ...makePhraseLink('pa', [ref('created'), ref('the')]), status: 'stale' },
+        ],
+      });
+      const changes: ChangeSet = {
+        intent: 'x',
+        phraseAnalyses: { puts: [{ ...phrasePayload, gloss: { en: 'y' } }], deletes: [] },
+      };
+      const inverse: ChangeSet = {
+        intent: 'x',
+        phraseAnalyses: { puts: [phrasePayload], deletes: [] },
+      };
+
+      const change = await describeChange(repository, { changes, inverse }, held);
+
+      expect(change.queries).toStrictEqual(['getStaleSummary']);
+    });
+
     it('leaves the book unflagged for glosses when no stale token link changed', async () => {
       const link = makeTokenLink('ta', ref('God'));
       const changes: ChangeSet = { intent: 'x', tokenAnalysisLinks: { puts: [link], deletes: [] } };

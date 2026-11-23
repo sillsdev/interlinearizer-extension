@@ -1,8 +1,8 @@
 import { useCallback, useState } from 'react';
 
 /**
- * Holds the element a ref callback attaches in state rather than in a ref, so an effect that needs
- * the element re-runs once it mounts, and again when it is replaced or removed.
+ * Holds in state, rather than in a ref, the element that a ref callback attaches, so an effect that
+ * needs the element re-runs once it mounts, and again when it is replaced or removed.
  *
  * @returns The attached element, `undefined` before it mounts, and the ref callback to attach it
  *   with, whose identity is stable.

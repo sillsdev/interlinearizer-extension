@@ -47,15 +47,6 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * The intersection-observer Jest stub records instances on the global object and exposes a helper
- * to fire intersections. Declare the shape here so the test reads it without a type assertion.
- */
-declare global {
-  // eslint-disable-next-line no-var, vars-on-top
-  var triggerIntersection: (el: Element, isIntersecting: boolean) => void;
-}
-
-/**
  * Stable module-level phrase-link map returned by `usePhraseLinkMap` across renders. Mutated by
  * individual tests to simulate phrase membership; reset in `beforeEach`.
  */

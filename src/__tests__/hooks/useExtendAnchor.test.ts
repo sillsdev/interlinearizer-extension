@@ -45,13 +45,13 @@ describe('useExtendAnchor', () => {
   it('scrolls the inline axis for a horizontal window', () => {
     const { container, anchor } = renderAnchor('horizontal');
     const group = positionedEl(container, 100);
-    container.scrollLeft = 50;
+    container.scrollLeft = 100;
 
     anchor.record(group.el);
     group.move(40);
 
     expect(anchor.restore()).toBe(true);
-    expect(container.scrollLeft).toBe(-10);
+    expect(container.scrollLeft).toBe(40);
   });
 
   it('reports nothing pending once an anchor is restored', () => {

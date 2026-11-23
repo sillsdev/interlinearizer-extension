@@ -2,9 +2,9 @@
 export type WindowRange = Readonly<{ start: number; end: number }>;
 
 /**
- * Counts the mounted elements an extend may cull: the contiguous run, from the end of the window
- * opposite the one growing, that `isBeyondRetention` reports clear of the viewport. The walk stops
- * at the first retained element, since every element past it lies nearer the viewport still.
+ * Counts the mounted elements an extend may cull: the contiguous run that `isBeyondRetention`
+ * reports clear of the viewport. The walk stops at the first retained element, because every
+ * element past it lies nearer the viewport still.
  *
  * @param els - The mounted elements, in list order.
  * @param from - The end the run starts from: `'end'` for a window growing at its start, `'start'`

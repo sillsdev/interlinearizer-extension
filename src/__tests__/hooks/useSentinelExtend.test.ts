@@ -46,7 +46,7 @@ describe('useSentinelExtend', () => {
     expect(onReach).toHaveBeenNthCalledWith(2, 'trailing');
   });
 
-  it('reports a sentinel entering the margin but not one leaving it', () => {
+  it('reports a sentinel entering the margin', () => {
     const { root, leading } = mountRootAndSentinels();
     const onReach = jest.fn();
     renderHook(() =>
@@ -59,12 +59,30 @@ describe('useSentinelExtend', () => {
       }),
     );
 
-    act(() => global.triggerIntersection(leading, false));
-    expect(onReach).not.toHaveBeenCalled();
-
     act(() => global.triggerIntersection(leading, true));
+
     expect(onReach).toHaveBeenCalledTimes(1);
     expect(onReach).toHaveBeenCalledWith('leading');
+  });
+
+  it('ignores a sentinel leaving the margin', () => {
+    const { root, leading } = mountRootAndSentinels();
+    const onReach = jest.fn();
+    renderHook(() =>
+      useSentinelExtend({
+        root: { current: root },
+        sentinels: [['leading', leading]],
+        margin: 400,
+        onReach,
+        resubscribeKeys: [],
+      }),
+    );
+    // Watched, so the report below reaches the hook rather than passing unobserved.
+    expect(global.ioInstances.some((observer) => observer.targets.has(leading))).toBe(true);
+
+    act(() => global.triggerIntersection(leading, false));
+
+    expect(onReach).not.toHaveBeenCalled();
   });
 
   it('watches nothing while there is no callback', () => {

@@ -176,8 +176,8 @@ export interface UseSkimReseatResult {
   isSkimmingRef: RefObject<boolean>;
   /**
    * Changes each time a skim ends. A skim can settle with a sentinel already inside the arming
-   * margin, whose delivery was dropped during the skim, so watchers of the sentinels re-arm on this
-   * change.
+   * margin. That sentinel's delivery was dropped during the skim, so watchers of the sentinels
+   * re-arm on this change.
    */
   skimEpoch: number;
 }

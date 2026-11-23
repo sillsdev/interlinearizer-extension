@@ -249,7 +249,7 @@ describe('sessionEditHandlers', () => {
 
     await expect(change).rejects.toThrow('needs an analysis language');
     expect(host.logger.error).toHaveBeenCalledTimes(1);
-    const [[message, logged]] = host.logger.error.mock.calls;
+    const [[message, logged]] = jest.mocked(host.logger.error).mock.calls;
     expect(message).toBe(
       `Interlinearizer: failed to changeAnalysisLanguages in session ${sessionId}`,
     );

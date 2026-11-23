@@ -92,13 +92,19 @@ describe('CSharpRepository', () => {
     });
   });
 
-  it('applies through the host, reporting an inverse that restores nothing and a clean draft', async () => {
+  it('applies through the host, reporting what the host applied, an inverse that restores nothing and a clean draft', async () => {
     const { send, repository } = createRepository();
-    send.mockResolvedValue(undefined);
+    const applied = {
+      intent: 'edit',
+      tokenAnalyses: { puts: [], deletes: ['a'] },
+      tokenAnalysisLinks: { puts: [], deletes: ['l'] },
+    };
+    send.mockResolvedValue(applied);
     const changes = { intent: 'edit', tokenAnalyses: { puts: [], deletes: ['a'] } };
 
     await expect(repository.apply(changes)).resolves.toStrictEqual({
       inverse: { intent: 'edit' },
+      applied,
       wasDirty: false,
     });
 

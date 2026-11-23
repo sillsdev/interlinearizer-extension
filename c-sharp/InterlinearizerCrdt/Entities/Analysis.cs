@@ -63,7 +63,7 @@ public abstract class Analysis : AnalysisRecord
 
     public void RemoveReference(Guid id, CommitBase commit)
     {
-        if (ProjectId == id) DeletedAt = commit.DateTime;
+        if (ProjectId == id) DeletedAt ??= commit.DateTime;
     }
 }
 
@@ -89,9 +89,12 @@ public abstract class AnalysisLink : AnalysisRecord
 
     public Guid[] GetReferences() => [AnalysisId, ProjectId];
 
-    /// <summary>A link cannot outlive its payload either: deleting the analysis deletes the link.</summary>
+    /// <summary>
+    /// A link cannot outlive its payload either: deleting the analysis deletes the link. A link
+    /// already deleted keeps the time it was deleted at.
+    /// </summary>
     public void RemoveReference(Guid id, CommitBase commit)
     {
-        if (AnalysisId == id || ProjectId == id) DeletedAt = commit.DateTime;
+        if (AnalysisId == id || ProjectId == id) DeletedAt ??= commit.DateTime;
     }
 }

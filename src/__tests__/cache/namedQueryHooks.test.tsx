@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 
 import { logger } from '@papi/frontend';
+import type { SessionAnalysisChange } from 'interlinearizer';
 import { act, renderHook } from '@testing-library/react';
 import {
   type ChangeAffects,
@@ -222,11 +223,17 @@ describe('useNamedFetch', () => {
     /** A rule that lets through only the changes naming no forms. */
     const formless: ChangeAffects<string> = (change) => change.forms.length === 0;
 
-    /** Relays a change naming `getConcordance` and the form `a`, letting any fetch it starts land. */
+    /** A change to `sessionId` that names `getConcordance` and the form `a`. */
+    function formChange(sessionId: string): SessionAnalysisChange {
+      return { ...changeNaming(sessionId, ['getConcordance']), forms: ['a'] };
+    }
+
+    /**
+     * Relays a change to `sessionId` that names `getConcordance` and the form `a`, letting any
+     * fetch it starts land.
+     */
     async function relayForm(sessionId: string): Promise<void> {
-      await act(async () =>
-        relayChange({ ...changeNaming(sessionId, ['getConcordance']), forms: ['a'] }),
-      );
+      await act(async () => relayChange(formChange(sessionId)));
     }
 
     it('skips a change that the rule rules out for the answer held', async () => {
@@ -285,7 +292,7 @@ describe('useNamedFetch', () => {
       expect(affects).toHaveBeenCalledTimes(1);
     });
 
-    it('fetches again for a change that arrives before the answer for a new key', async () => {
+    it("fetches again for a change that arrives once a new key's answer is fetched but not yet rendered, without asking the rule", async () => {
       const key: { current: string | undefined } = { current: 'a' };
       let release = () => {};
       const fetch = jest.fn(() =>
@@ -295,17 +302,20 @@ describe('useNamedFetch', () => {
               release = () => resolve('second');
             }),
       );
-      const { result, rerender } = await renderFetch(key, fetch, {
-        keepPrevious: true,
-        affects: formless,
-      });
+      const affects = jest.fn(formless);
+      const { result, rerender } = await renderFetch(key, fetch, { affects });
       key.current = 'b';
       await act(async () => rerender());
 
-      await relayForm(result.current.session.sessionId);
-      await act(async () => release());
+      await act(async () => {
+        release();
+        // Lets the fetch settle while `act` holds back the render that would hand over its answer.
+        await Promise.resolve();
+        relayChange(formChange(result.current.session.sessionId));
+      });
 
       expect(fetch).toHaveBeenCalledTimes(3);
+      expect(affects).not.toHaveBeenCalled();
     });
   });
 });

@@ -27,15 +27,7 @@ function changeTo(
   forms: string[],
   fields: Partial<SessionAnalysisChange> = {},
 ): SessionAnalysisChange {
-  return {
-    sessionId: 's',
-    changeId: 'c',
-    books: [],
-    analysisIds: [],
-    forms,
-    queries: ['getConcordance'],
-    ...fields,
-  };
+  return { ...changeNaming('s', ['getConcordance']), forms, ...fields };
 }
 
 /** Relays {@link changeTo}'s change to the session that `command` was sent to. */

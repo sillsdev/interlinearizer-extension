@@ -1,7 +1,7 @@
 /// <reference types="jest" />
 
 import papi from '@papi/frontend';
-import type { TextAnalysis } from 'interlinearizer';
+import type { AnalysisQuery, SessionAnalysisChange, TextAnalysis } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { prepareAnalysis } from '../components/analysis-provider';
@@ -56,7 +56,7 @@ export function sessionIdOf(command: string): string {
 }
 
 /** A change to the session that names `queries`, and touched nothing else. */
-export function changeNaming(sessionId: string, queries: string[]) {
+export function changeNaming(sessionId: string, queries: AnalysisQuery[]): SessionAnalysisChange {
   return { sessionId, changeId: 'c', books: [], analysisIds: [], forms: [], queries };
 }
 

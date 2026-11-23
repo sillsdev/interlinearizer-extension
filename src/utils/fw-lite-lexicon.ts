@@ -1,4 +1,5 @@
 import papi, { logger } from '@papi/frontend';
+import type { MultiString } from 'interlinearizer';
 import type {
   LexiconProvider,
   LexiconResolver,
@@ -143,17 +144,55 @@ function toResolvedSense(sense: LexiconSense): ResolvedSense {
 }
 
 /**
- * Tests a form or gloss against the text `query` names, ignoring whatever the search fold ignores.
- * So a match the lexicon made on a pointed or accented form survives, rather than being dropped for
- * not being spelled the way it was queried.
+ * Builds a test of a form or gloss against the text `query` names, whole or in part as `query`
+ * asks. The test ignores case, diacritics, and similar differences of spelling. That way a match
+ * the lexicon made on a pointed or accented form survives, rather than being dropped for not being
+ * spelled the way it was queried.
  *
- * This can only narrow what the lexicon matched. A candidate it matched by something the fold does
- * not reach is dropped, which is the cost of the lexicon matching more loosely than asked.
+ * The test can only narrow what the lexicon matched. It drops a candidate the lexicon matched on a
+ * likeness the test does not see. That loss is the price of re-checking results from a lexicon that
+ * matches more loosely than asked.
  */
 function textMatcher({ text, exact }: SenseQuery): (value: string) => boolean {
-  const folded = foldForSearch(text);
+  const folded = foldForSearch(text).trim();
+  // A stored value can carry surrounding spaces no one sees, which would keep it from ever matching
+  // whole.
   return (value) =>
-    exact ? foldForSearch(value) === folded : foldForSearch(value).includes(folded);
+    exact ? foldForSearch(value).trim() === folded : foldForSearch(value).includes(folded);
+}
+
+/**
+ * `text` without its nonspacing marks. FieldWorks Lite ignores diacritics only for a query that
+ * carries none, so a query that does carry them would leave out entries spelled without them, and
+ * no later filtering could bring those back.
+ *
+ * Only nonspacing marks go: a fuller fold would also unify letters FieldWorks Lite keeps apart,
+ * such as a final letter shape and its ordinary one, and so miss entries it would have matched.
+ */
+function withoutDiacritics(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/\p{Mn}/gu, '')
+    .normalize('NFC');
+}
+
+/**
+ * The affix markers FieldWorks writes by default at either end of a headword, as in `un-` or
+ * `-ing`.
+ */
+const AFFIX_MARKERS = /^[-=~*]+|[-=~*]+$/gu;
+
+/**
+ * `form` without the affix markers at its ends. FieldWorks Lite matches a search on headwords that
+ * carry markers, as do the morpheme forms an analysis records, while lexeme and citation forms
+ * carry none. Comparing forms without markers keeps `un-` from missing the entry listed under
+ * `un`.
+ *
+ * The markers are FieldWorks' defaults. A lexicon that sets its own markers keeps them, so a form
+ * written with those can still miss.
+ */
+function withoutAffixMarkers(form: string): string {
+  return form.trim().replace(AFFIX_MARKERS, '');
 }
 
 /**
@@ -171,8 +210,8 @@ function entryForms(entry: LexiconEntry, writingSystem: string | undefined): str
 
 /**
  * The gloss `sense` carries in the language `writingSystem` names, or every gloss it carries when
- * `writingSystem` is absent. The lexicon keys glosses by its own writing systems, so a gloss under
- * a broader or narrower tag of the same language stands in.
+ * `writingSystem` is absent. The lexicon keys glosses by its own writing systems. A gloss under a
+ * broader or narrower tag of the same language therefore stands in.
  */
 function senseGlosses(sense: LexiconSense, writingSystem: string | undefined): string[] {
   const glosses = sense.gloss ?? {};
@@ -181,7 +220,17 @@ function senseGlosses(sense: LexiconSense, writingSystem: string | undefined): s
   return gloss === '' ? [] : [gloss];
 }
 
-/** Names each of `senses` for linking, alongside the form their entry is listed under. */
+/**
+ * The form `entry` is shown under in each writing system: its citation form where it has one, else
+ * its lexeme form, as FieldWorks shows a headword. `undefined` for an entry carrying neither.
+ */
+function headword(entry: LexiconEntry): MultiString | undefined {
+  const citations = Object.entries(entry.citationForm ?? {}).filter(([, form]) => form.trim());
+  const forms = { ...entry.lexemeForm, ...Object.fromEntries(citations) };
+  return Object.keys(forms).length > 0 ? forms : undefined;
+}
+
+/** Names each of `senses` for linking, alongside the headword of their entry. */
 function toCandidates(
   entry: LexiconEntry,
   senses: readonly LexiconSense[],
@@ -189,7 +238,7 @@ function toCandidates(
 ): SenseCandidate[] {
   return senses.map((sense) => ({
     ...toResolvedSense(sense),
-    lexemeForm: entry.lexemeForm,
+    headword: headword(entry),
     entryRef: { authority: FW_LITE_AUTHORITY, projectId: lexiconCode, entryId: entry.id },
     senseRef: { authority: FW_LITE_AUTHORITY, projectId: lexiconCode, senseId: sense.id },
   }));
@@ -197,14 +246,19 @@ function toCandidates(
 
 /**
  * The senses of `entry` that `query` matches: every sense of an entry whose form matches, or each
- * sense whose own gloss matches. An entry carrying no senses offers nothing to link a gloss to, so
- * it drops out of a search.
+ * sense whose own gloss matches.
  */
 function matchingSenses(entry: LexiconEntry, query: SenseQuery): LexiconSense[] {
   const senses = entry.senses ?? [];
+  if (query.field === 'form') {
+    // A query of markers alone keeps them, rather than matching every form.
+    const text = withoutAffixMarkers(query.text) || query.text;
+    const matches = textMatcher({ ...query, text });
+    return entryForms(entry, query.writingSystem).map(withoutAffixMarkers).some(matches)
+      ? senses
+      : [];
+  }
   const matches = textMatcher(query);
-  if (query.field === 'form')
-    return entryForms(entry, query.writingSystem).some(matches) ? senses : [];
   return senses.filter((sense) => senseGlosses(sense, query.writingSystem).some(matches));
 }
 
@@ -237,8 +291,11 @@ function createResolver(lexiconCode?: string): LexiconResolver {
     searchSenses: async (query) => {
       if (!lexiconCode) return [];
       const entries =
-        (await (await getEntryService())?.getEntries(lexiconCode, { surfaceForm: query.text })) ??
-        [];
+        (await (
+          await getEntryService()
+        )?.getEntries(lexiconCode, {
+          surfaceForm: withoutDiacritics(query.text),
+        })) ?? [];
       // The backend matches the text within any form or gloss, in every writing system, and cannot
       // be told otherwise. So the query's field, exactness, and writing system narrow its results
       // here instead.

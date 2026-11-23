@@ -203,7 +203,7 @@ export function TriangleAlert(props: Readonly<{ className?: string }>): ReactEle
 }
 
 /**
- * Stub for the TextSearch icon, marking the control that changes a sense search.
+ * Stub for the TextSearch icon.
  */
 export function TextSearch(props: Readonly<{ className?: string }>): ReactElement {
   return <svg data-testid="text-search-icon" {...props} />;

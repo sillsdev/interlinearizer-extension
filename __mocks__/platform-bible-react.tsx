@@ -1465,15 +1465,16 @@ export function PopoverAnchor({
  * - An Escape keydown anywhere inside the content invokes `onEscapeKeyDown`.
  * - A sentinel `data-testid="popover-outside"` button invokes `onPointerDownOutside` on click,
  *   simulating a pointer press outside the popover.
- * - A sentinel `data-testid="popover-focus-outside"` button stands in for focus moving outside the
- *   popover, as it does into a dialog opened from it. A click invokes `onInteractOutside` and,
- *   unless that prevents the event, closes the popover through the root's change handler.
+ * - A sentinel `data-testid="popover-focus-outside"` button invokes `onInteractOutside` on click,
+ *   simulating focus moving outside the popover, such as into a dialog. Unless the event is
+ *   prevented, the click then closes the popover through the enclosing {@link Popover}'s
+ *   `onOpenChange`.
  * - A sentinel `data-testid="popover-close"` button invokes `onCloseAutoFocus` on click,
  *   simulating Radix's focus-restoration event fired as the popover closes; unless it is prevented,
  *   the focused element is blurred. Which element Radix restores focus to — its trigger, or the
  *   element focused before the panel opened — is not modeled; only that an unprevented event lets
  *   the panel take focus away.
- * - Both sentinels are siblings of the panel rather than children — scaffolding with no counterpart
+ * - The sentinels are siblings of the panel rather than children — scaffolding with no counterpart
  *   in the real component has no business among the children of a panel whose role a caller has
  *   overridden.
  * - The layout props are accepted and ignored: they steer positioning the real component computes

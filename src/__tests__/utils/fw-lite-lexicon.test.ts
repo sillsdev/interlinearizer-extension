@@ -64,12 +64,18 @@ function entry(overrides?: Partial<LexiconEntry>): LexiconEntry {
   };
 }
 
-/** A search for entries whose form contains `text`, in every writing system unless `overrides` say. */
+/**
+ * A search for entries whose form contains `text` in any writing system, with `overrides` replacing
+ * any of those defaults.
+ */
 function formQuery(text: string, overrides: Partial<SenseQuery> = {}): SenseQuery {
   return { text, field: 'form', exact: false, ...overrides };
 }
 
-/** A search for senses whose gloss contains `text`, in every writing system unless `overrides` say. */
+/**
+ * A search for senses whose gloss contains `text` in any writing system, with `overrides` replacing
+ * any of those defaults.
+ */
 function glossQuery(text: string, overrides: Partial<SenseQuery> = {}): SenseQuery {
   return { text, field: 'gloss', exact: false, ...overrides };
 }
@@ -382,19 +388,19 @@ describe('fwLiteLexiconProvider', () => {
         ).resolves.toEqual([
           {
             gloss: { en: 'water' },
-            lexemeForm: { hbo: 'mayim' },
+            headword: { hbo: 'mayim' },
             entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-1' },
             senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-1' },
           },
           {
             gloss: { en: 'waters' },
-            lexemeForm: { hbo: 'mayim' },
+            headword: { hbo: 'mayim' },
             entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-1' },
             senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-2' },
           },
           {
             gloss: { en: 'sea' },
-            lexemeForm: { hbo: 'mayim2' },
+            headword: { hbo: 'mayim2' },
             entryRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, entryId: 'e-2' },
             senseRef: { authority: FW_LITE_AUTHORITY, projectId: LEXICON, senseId: 's-3' },
           },
@@ -417,7 +423,7 @@ describe('fwLiteLexiconProvider', () => {
           .searchSenses(formQuery('mayim', { writingSystem: 'hbo' }));
 
         expect(candidates).toHaveLength(1);
-        expect(candidates[0].lexemeForm).toEqual({ hbo: 'mayim' });
+        expect(candidates[0].headword).toEqual({ hbo: 'mayim' });
       });
 
       it('finds nothing when the lexicon cannot be read', async () => {
@@ -645,6 +651,58 @@ describe('fwLiteLexiconProvider searchSenses by form', () => {
 
     expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-1', 's-2']);
   });
+
+  it('matches a form written with affix markers to the entry listed under the bare form', async () => {
+    serve(
+      stubService({
+        getEntries: jest.fn(async () => [
+          entry({ id: 'e-prefix', lexemeForm: { en: 'un' } }),
+          entry({ id: 'e-suffix', lexemeForm: { en: '-ing' } }),
+        ]),
+      }),
+    );
+    const resolver = fwLiteLexiconProvider.connect(LEXICON);
+
+    const prefix = await resolver.searchSenses(formQuery('un-', { exact: true }));
+    const suffix = await resolver.searchSenses(formQuery('ing', { exact: true }));
+
+    expect(prefix.map((c) => c.entryRef.entryId)).toEqual(['e-prefix']);
+    expect(suffix.map((c) => c.entryRef.entryId)).toEqual(['e-suffix']);
+  });
+
+  it('matches a query of affix markers alone as written', async () => {
+    serve(
+      stubService({
+        getEntries: jest.fn(async () => [
+          entry({ id: 'e-dash', lexemeForm: { en: 'up-to-date' } }),
+          entry({ id: 'e-plain', lexemeForm: { en: 'update' } }),
+        ]),
+      }),
+    );
+
+    const candidates = await fwLiteLexiconProvider.connect(LEXICON).searchSenses(formQuery('-'));
+
+    expect(candidates.map((c) => c.entryRef.entryId)).toEqual(['e-dash']);
+  });
+
+  it('names a candidate by its citation form where the entry has one, else by its lexeme form', async () => {
+    serve(
+      stubService({
+        getEntries: jest.fn(async () => [
+          entry({
+            lexemeForm: { hbo: 'mayim', en: 'water' },
+            citationForm: { hbo: 'hammayim', en: ' ' },
+          }),
+        ]),
+      }),
+    );
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(formQuery('hammayim'));
+
+    expect(candidates[0]?.headword).toEqual({ hbo: 'hammayim', en: 'water' });
+  });
 });
 
 describe('fwLiteLexiconProvider searchSenses by gloss', () => {
@@ -654,7 +712,7 @@ describe('fwLiteLexiconProvider searchSenses by gloss', () => {
     { id: 's-sea', gloss: { en: 'sea' } },
   ];
 
-  /** Serves one entry listed under `mayim`, holding {@link SENSES}. */
+  /** Serves one entry holding {@link SENSES}. */
   function serveSenses() {
     serve(stubService({ getEntries: jest.fn(async () => [entry({ senses: SENSES })]) }));
   }
@@ -677,6 +735,52 @@ describe('fwLiteLexiconProvider searchSenses by gloss', () => {
       .searchSenses(glossQuery('WATER', { exact: true }));
 
     expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-water']);
+  });
+
+  it('matches a whole gloss stored with surrounding spaces when the search is exact', async () => {
+    serve(
+      stubService({
+        getEntries: jest.fn(async () => [
+          entry({ senses: [{ id: 's-padded', gloss: { en: ' water ' } }] }),
+        ]),
+      }),
+    );
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(glossQuery('water', { exact: true }));
+
+    expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-padded']);
+  });
+
+  it('misses a whole gloss spaced differently inside when the search is exact', async () => {
+    serve(
+      stubService({
+        getEntries: jest.fn(async () => [
+          entry({ senses: [{ id: 's-spaced', gloss: { en: 'living  water' } }] }),
+        ]),
+      }),
+    );
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(glossQuery('living water', { exact: true }));
+
+    expect(candidates).toEqual([]);
+  });
+
+  it('asks the lexicon for an accented query without its accents, so unaccented spellings come back', async () => {
+    const getEntries = jest.fn(async () => [
+      entry({ senses: [{ id: 's-cote', gloss: { fr: 'cote' } }] }),
+    ]);
+    serve(stubService({ getEntries }));
+
+    const candidates = await fwLiteLexiconProvider
+      .connect(LEXICON)
+      .searchSenses(glossQuery('côte', { exact: true, writingSystem: 'fr' }));
+
+    expect(getEntries).toHaveBeenCalledWith(LEXICON, { surfaceForm: 'cote' });
+    expect(candidates.map((c) => c.senseRef.senseId)).toEqual(['s-cote']);
   });
 
   it('drops an entry the lexicon matched only by its form', async () => {
@@ -791,7 +895,7 @@ describe('fwLiteLexiconProvider searchSenses writing systems', () => {
       .searchSenses(formQuery('mayim', { writingSystem: 'hbo' }));
 
     expect(candidates).toHaveLength(1);
-    expect(candidates[0]?.lexemeForm).toEqual({ en: 'water', hbo: 'mayim' });
+    expect(candidates[0]?.headword).toEqual({ en: 'water', hbo: 'mayim' });
   });
 
   it('keeps a match the lexicon made on a pointed form, which the fold reaches', async () => {

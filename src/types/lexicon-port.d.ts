@@ -25,7 +25,7 @@ declare module 'interlinearizer/lexicon' {
    * broken version of one.
    */
   export interface LexiconCapabilities {
-    /** The lexicon can be searched for senses, by an entry's form or by a sense's gloss. */
+    /** The lexicon can be searched for senses. */
     search: boolean;
 
     /** Entries can be added to the lexicon. */
@@ -59,8 +59,11 @@ declare module 'interlinearizer/lexicon' {
     /** Fuller wording of the sense, where the lexicon carries one beyond the gloss. */
     definition?: MultiString;
 
-    /** The form the sense's entry is listed under, keyed by BCP 47 writing-system tag. */
-    lexemeForm?: MultiString;
+    /**
+     * The form the sense's entry is shown under, keyed by BCP 47 writing-system tag: its citation
+     * form where it has one, else the form it is listed under.
+     */
+    headword?: MultiString;
 
     /**
      * Tells this sense from the other senses of its entry, in the lexicon's own numbering. Absent
@@ -84,9 +87,9 @@ declare module 'interlinearizer/lexicon' {
     text: string;
 
     /**
-     * What `text` is matched against. `form` matches the form an entry is listed under and offers
-     * every sense of a matching entry. `gloss` matches each sense's own gloss and offers only the
-     * senses that match.
+     * What `text` is matched against. `form` matches the forms an entry is listed or cited under
+     * and offers every sense of a matching entry. `gloss` matches each sense's own gloss and offers
+     * only the senses that match.
      */
     field: 'form' | 'gloss';
 
@@ -161,8 +164,7 @@ declare module 'interlinearizer/lexicon' {
     resolveSense: (ref: SenseRef) => Promise<ResolvedSense | undefined>;
 
     /**
-     * Finds the senses a query matches. In what order candidates come back is the lexicon's to
-     * decide.
+     * Finds the senses a query matches. The lexicon decides the order candidates come back in.
      *
      * @returns The candidates, empty when nothing matches.
      * @throws When this lexicon cannot be searched, which its capabilities declare in advance.

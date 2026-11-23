@@ -33,7 +33,7 @@ const STRINGS: Record<string, string> = {
   '%interlinearizer_analysisCatalog_senseRefineGloss%': '{language} gloss',
 };
 
-/** The search a popover opens on: entries whose form contains `agua`, in any writing system. */
+/** The search a popover opens on, for the control's default form. */
 const FORM_QUERY: SenseQuery = { text: 'agua', field: 'form', exact: false };
 
 const SENSES: Record<string, ResolvedSense> = {
@@ -406,7 +406,7 @@ describe('CatalogSenseControl', () => {
           searchSenses: async () => [
             candidate('s-1', {
               gloss: { en: 'water', fr: 'eau' },
-              lexemeForm: { grc: 'ὕδωρ' },
+              headword: { grc: 'ὕδωρ' },
               senseLabel: '2',
               definition: { en: 'clear liquid' },
             }),
@@ -540,7 +540,7 @@ describe('CatalogSenseControl', () => {
       return screen.getByRole('dialog', { name: 'senseRefineTitle' });
     }
 
-    /** Fills the dialog with `text`, searched in glosses, whole. */
+    /** Fills in the dialog to search for glosses matching `text` exactly. */
     async function askForWholeGloss(dialog: HTMLElement, text: string) {
       const input = within(dialog).getByLabelText('senseRefineText');
       await userEvent.clear(input);
@@ -679,6 +679,18 @@ describe('CatalogSenseControl', () => {
       expect(screen.getByTestId('catalog-sense-candidate')).toBeInTheDocument();
       expect(screen.getByTestId('catalog-sense-query')).toHaveTextContent('form contains agua');
       expect(searchSenses).toHaveBeenCalledTimes(1);
+    });
+
+    it('hides the popover while the dialog is open, so it cannot paint over the dialog', async () => {
+      renderControl();
+      await openPopover();
+      const dialog = await openDialog();
+
+      expect(screen.getByTestId('catalog-sense-popover')).not.toBeVisible();
+
+      await userEvent.click(within(dialog).getByRole('button', { name: 'senseCancel' }));
+
+      expect(screen.getByTestId('catalog-sense-popover')).toBeVisible();
     });
 
     it('keeps the popover open while focus is in the dialog', async () => {

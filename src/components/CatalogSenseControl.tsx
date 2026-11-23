@@ -171,7 +171,7 @@ function CandidateButton({
     anyText(candidate.gloss, analysisLanguage) ||
     localizedStrings['%interlinearizer_analysisCatalog_noGloss%'];
   const detail = [
-    anyText(candidate.lexemeForm, analysisLanguage),
+    anyText(candidate.headword, analysisLanguage),
     candidate.senseLabel ?? '',
     anyText(candidate.definition, analysisLanguage),
   ].filter((part) => part !== '');
@@ -258,7 +258,10 @@ function SearchView({
     );
   else
     body = (
-      <div className="tw:flex tw:flex-col tw:gap-0.5">
+      <div
+        className="tw:flex tw:min-h-0 tw:flex-col tw:gap-0.5 tw:overflow-y-auto"
+        data-testid="catalog-sense-candidates"
+      >
         {outcome.candidates.map((candidate) => (
           <CandidateButton
             analysisLanguage={analysisLanguage}
@@ -307,8 +310,8 @@ function SearchView({
 
 /**
  * Asks what a sense search should match: which text, whether in an entry's form or in a sense's
- * gloss, and whether whole or in part. It opens on the search the popover shows. Glosses are
- * searched in `analysisLanguage` alone.
+ * gloss, and whether whole or in part. The dialog starts from `query`. Glosses are searched in
+ * `analysisLanguage` alone.
  */
 function SenseQueryDialog({
   query,
@@ -483,33 +486,19 @@ export default function CatalogSenseControl({
   let content: ReactNode;
   if ((view === 'search' || !linked) && search)
     content = (
-      <>
-        <SearchView
-          analysisLanguage={analysisLanguage}
-          localizedStrings={localizedStrings}
-          query={query}
-          search={search}
-          senseRef={senseRef}
-          onBack={linked ? showMenu : undefined}
-          onPick={(candidate) => {
-            onLink(candidate);
-            close();
-          }}
-          onRefine={() => setRefining(true)}
-        />
-        {refining && (
-          <SenseQueryDialog
-            analysisLanguage={analysisLanguage}
-            localizedStrings={localizedStrings}
-            query={query}
-            onClose={() => setRefining(false)}
-            onSubmit={(next) => {
-              setEditedQuery(next);
-              setRefining(false);
-            }}
-          />
-        )}
-      </>
+      <SearchView
+        analysisLanguage={analysisLanguage}
+        localizedStrings={localizedStrings}
+        query={query}
+        search={search}
+        senseRef={senseRef}
+        onBack={linked ? showMenu : undefined}
+        onPick={(candidate) => {
+          onLink(candidate);
+          close();
+        }}
+        onRefine={() => setRefining(true)}
+      />
     );
   else if (view === 'confirmUnlink')
     content = (
@@ -618,16 +607,32 @@ export default function CatalogSenseControl({
       {open && (
         <PopoverContent
           align="start"
-          className="tw:flex tw:w-72 tw:flex-col tw:gap-1 tw:p-2"
+          className="tw:flex tw:max-h-(--radix-popover-content-available-height) tw:w-72 tw:flex-col tw:gap-1 tw:p-2"
           data-testid="catalog-sense-popover"
+          // Platform.Bible paints popovers above dialogs, so the popover would cover the search
+          // dialog. It is hidden rather than closed, keeping it mounted to show what the dialog's
+          // search finds.
+          style={refining ? { visibility: 'hidden' } : undefined}
           // The search dialog lies outside the popover, so focus leaves the popover when the dialog
-          // opens. The popover stays open regardless, to show what the dialog's search finds.
+          // opens. The popover stays open regardless.
           onInteractOutside={(event) => {
             if (refining) event.preventDefault();
           }}
         >
           {content}
         </PopoverContent>
+      )}
+      {open && refining && (
+        <SenseQueryDialog
+          analysisLanguage={analysisLanguage}
+          localizedStrings={localizedStrings}
+          query={query}
+          onClose={() => setRefining(false)}
+          onSubmit={(next) => {
+            setEditedQuery(next);
+            setRefining(false);
+          }}
+        />
       )}
     </Popover>
   );

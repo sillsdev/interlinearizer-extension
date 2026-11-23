@@ -36,8 +36,8 @@ async function repositoryOver(analysis: Partial<TextAnalysis> = {}): Promise<Dra
 const held = (bookId: string): Book | undefined => (bookId === 'GEN' ? book : undefined);
 
 describe('describeChange', () => {
-  it("names the range of the segment a token link was put on, and the link's analysis", async () => {
-    const link = makeTokenLink('ta-god', ref('God'));
+  it("names the range of the segment a token link was put on, the link's analysis, and its token's form", async () => {
+    const link = makeTokenLink('ta-created', ref('created'), { surfaceText: 'Created' });
     const changes: ChangeSet = {
       intent: 'writeGloss',
       tokenAnalysisLinks: { puts: [link], deletes: [] },
@@ -51,8 +51,8 @@ describe('describeChange', () => {
 
     expect(change).toStrictEqual({
       books: [{ bookId: 'GEN', ranges: [{ start: 1, end: 2 }] }],
-      analysisIds: ['ta-god'],
-      forms: [],
+      analysisIds: ['ta-created'],
+      forms: ['created'],
       queries: ['getCatalogRows', 'getConcordance'],
     });
   });

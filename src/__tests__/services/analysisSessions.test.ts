@@ -1257,7 +1257,7 @@ describe('AnalysisSessions', () => {
         'link',
         async (buffer) => {
           buffer.create('tokenAnalyses', payload('ta'));
-          buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma));
+          buffer.create('tokenAnalysisLinks', makeTokenLink('ta', gamma, { surfaceText: 'ta' }));
         },
         { changeId: 'change-1' },
       );
@@ -1391,7 +1391,7 @@ describe('AnalysisSessions', () => {
         keepsUnsavedMark: true,
         books: [{ bookId: 'GEN', ranges: [{ start: 0, end: 1 }] }],
         analysisIds: ['ta'],
-        forms: [],
+        forms: ['beta'],
         queries: ['getCatalogRows', 'getConcordance'],
       });
     });
@@ -1486,7 +1486,7 @@ describe('AnalysisSessions', () => {
           keepsUnsavedMark: true,
           books: [{ bookId: 'GEN' }],
           analysisIds: ['ta'],
-          forms: [],
+          forms: ['beta'],
           queries: ['getCatalogRows', 'getConcordance', 'getStaleSummary'],
         });
       });

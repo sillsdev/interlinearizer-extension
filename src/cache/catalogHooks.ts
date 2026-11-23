@@ -65,7 +65,7 @@ export function useCatalogView(
       );
       return { ...page, rows: page.rows.map(fromWire), facets: restoreUntagged(page.facets) };
     },
-    true,
+    { keepPrevious: true },
   );
   const view = fetched?.value;
   const retry = fetched?.failed ? fetched.retry : undefined;

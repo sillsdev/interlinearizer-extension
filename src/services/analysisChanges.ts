@@ -10,6 +10,7 @@ import type {
 } from 'interlinearizer';
 import type { AnalysisRepository, ChangeSet } from '../types/analysis-repository';
 import { bookOfRef } from '../utils/analysis-book';
+import { normalizeSurfaceForm } from '../utils/analysis-identity';
 import { bookIndexesOf } from '../utils/book-indexes';
 import { touched } from '../utils/change-set';
 import { sameSegmentation, segmentationForBook } from '../utils/segmentation';
@@ -103,8 +104,9 @@ async function anyLinkedStale(
  * the change put or removed a stale free translation. It separately flags each one where the change
  * put or removed a stale token or phrase link. The description also names the analyses whose
  * payloads or links the change put or removed, and the cross-book queries that those analyses or
- * the moved boundaries may change. It names the forms whose pool buckets the change may have
- * changed, too.
+ * the moved boundaries may change. It names the forms whose pool buckets or approvals the change
+ * may have changed, too. Those forms include the normalized surface text of each token link that
+ * the change put or removed.
  *
  * @throws Whatever the repository's lookups throw.
  */
@@ -196,7 +198,12 @@ export async function describeChange(
   return {
     books: changedBooks,
     analysisIds: [...new Set([...payloadIds, ...links.map(({ analysisId }) => analysisId)])].sort(),
-    forms: await touchedForms(repository, applied),
+    forms: [
+      ...new Set([
+        ...(await touchedForms(repository, applied)),
+        ...tokenLinks.map(({ token }) => normalizeSurfaceForm(token.surfaceText)),
+      ]),
+    ].sort(),
     queries,
   };
 }

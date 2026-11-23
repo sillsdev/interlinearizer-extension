@@ -176,13 +176,12 @@ type LoadedShard =
       state: 'unusable' | 'absent';
     };
 
-/** One book's shard as loaded, with its book code. */
 type BookShard = LoadedShard & { bookCode: string };
 
 /** A sharded draft's envelope, its analysis still to be read from the shards its manifest names. */
 type ShardedEnvelope = { draft: DraftProject; analysisBooks: string[] };
 
-/** Names a draft in the messages logged while it loads. */
+/** Names a draft in the violation reports logged while it loads. */
 function describeLoadedDraft(sourceProjectId: string): string {
   return `draft for source project ${sourceProjectId} on load`;
 }
@@ -660,8 +659,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
   }
 
   /**
-   * Deletes the shards of the `wiped` books. A failed deletion is logged, not thrown, and a later
-   * save retries it.
+   * Deletes the shards of the `wiped` books. A failed deletion is logged, not thrown. A later save
+   * retries it.
    *
    * @returns The books whose shard could not be deleted.
    */
@@ -711,8 +710,8 @@ export class DraftRepository extends IndexedRepository implements AnalysisReposi
     const { shards, orphaned } = await this.readShards(analysisBooks);
     const unreadableBooks = this.recordLoadedShards(shards, orphaned);
     return perfTime('getDraft:parse', () => {
-      // Invariants are checked once merged, because a link and its payload can sit in different
-      // shards. Each shard's shape was checked as it loaded.
+      // Invariants are checked on the merged analysis, because a link and its payload can sit in
+      // different shards. Each shard's shape was checked as it loaded.
       const analysis = mergeAnalyses(shards.map((shard) => shard.analysis));
       reportInvariantViolations(this.logger, analysis, describeLoadedDraft(this.sourceProjectId));
       return { draft: { ...draft, analysis }, unreadableBooks };

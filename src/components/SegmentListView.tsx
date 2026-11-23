@@ -762,8 +762,9 @@ export default function SegmentListView({
                       ) : (
                         <div aria-hidden="true" className="tw:h-4" />
                       ))}
-                    {/* Negative margins cancel the extra row gap and the line's height. The divider
-                        then sits inside the gap that the height table already charges. */}
+                    {/* Negative margins cancel the line's height and the extra `tw:gap-2` row gap that
+                        the list adds for it. The divider then sits inside the gap that the height
+                        table already charges. */}
                     {seg.heading && bookIndex > 0 && (
                       <div
                         aria-hidden="true"
